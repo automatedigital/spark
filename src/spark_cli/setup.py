@@ -1614,7 +1614,12 @@ def setup_permissions(config: dict):
       0 — Locked down  : only spark-cli tools; manual approvals (default)
       1 — Standard     : common toolsets (terminal, file, web, etc.); manual approvals
       2 — Full / Yolo  : all toolsets; approvals disabled
+
+    Applies to ALL configured platforms (CLI, Telegram, Discord, etc.) so that
+    messaging-platform sessions get the same tool access as the local CLI.
     """
+    from spark_cli.tools_config import _get_enabled_platforms, _save_platform_tools
+
     print_header("Agent Permissions")
     print_info("Choose how much the agent can do.")
     print_info("")
@@ -1622,17 +1627,19 @@ def setup_permissions(config: dict):
     print_info("  Standard     — terminal, files, web, memory and more; approvals on")
     print_info("  Full / Yolo  — everything enabled; no approval prompts")
     print_info("")
-    print_info("You can adjust toolsets individually later with:  spark tools")
-    print_info("And change approval mode with:  spark config set approvals.mode manual|off")
+    print_info("Applies to all platforms: CLI, Telegram, Discord, Slack, etc.")
+    print_info("Adjust individual toolsets later with:  spark tools")
+    print_info("Change approval mode with:  spark config set approvals.mode manual|off")
     print()
 
-    current_toolsets = set(config.get("toolsets", ["spark-cli"]))
+    # Derive current level from the CLI platform config (most representative).
+    from spark_cli.tools_config import _get_platform_tools
+    current_cli_toolsets = _get_platform_tools(config, "cli", include_default_mcp_servers=False)
     current_approval = config.get("approvals", {}).get("mode", "manual")
 
-    # Detect current level to use as default
-    if current_approval == "off" or set(_FULL_TOOLSETS).issubset(current_toolsets):
+    if current_approval == "off" or set(_FULL_TOOLSETS).issubset(current_cli_toolsets):
         current_level = 2
-    elif any(ts in current_toolsets for ts in _STANDARD_TOOLSETS):
+    elif any(ts in current_cli_toolsets for ts in _STANDARD_TOOLSETS):
         current_level = 1
     else:
         current_level = 0
@@ -1648,23 +1655,33 @@ def setup_permissions(config: dict):
     )
 
     if level == 0:
-        config["toolsets"] = ["spark-cli"]
+        new_toolsets: set = set()
         config.setdefault("approvals", {})["mode"] = "manual"
         print_success("Locked down: spark-cli toolset only, manual approvals.")
 
     elif level == 1:
-        existing = [ts for ts in current_toolsets if ts not in _FULL_TOOLSETS and ts != "spark-cli"]
-        config["toolsets"] = ["spark-cli"] + _STANDARD_TOOLSETS + existing
+        new_toolsets = set(_STANDARD_TOOLSETS)
         config.setdefault("approvals", {})["mode"] = "manual"
         print_success("Standard: common toolsets enabled, manual approvals.")
         print_info("  Enabled: " + ", ".join(_STANDARD_TOOLSETS))
 
     else:  # level == 2
-        existing = [ts for ts in current_toolsets if ts not in _FULL_TOOLSETS and ts != "spark-cli"]
-        config["toolsets"] = ["spark-cli"] + _FULL_TOOLSETS + existing
+        new_toolsets = set(_FULL_TOOLSETS)
         config.setdefault("approvals", {})["mode"] = "off"
         print_success("Full / Yolo: all toolsets enabled, no approval prompts.")
         print_warning("Commands will run without asking for confirmation.")
+
+    # Apply to every configured platform (CLI + any messaging gateways).
+    platforms = _get_enabled_platforms()
+    for platform in platforms:
+        # Preserve any MCP/custom toolsets the user has added for this platform.
+        from spark_cli.tools_config import CONFIGURABLE_TOOLSETS as _CTS
+        _configurable_keys = {ts for ts, _, _ in _CTS}
+        existing_extras = {
+            ts for ts in config.get("platform_toolsets", {}).get(platform, [])
+            if ts not in _configurable_keys
+        }
+        _save_platform_tools(config, platform, new_toolsets | existing_extras)
 
     save_config(config)
 
@@ -3294,8 +3311,9 @@ def _run_quick_setup(config: dict, spark_home):
     )
 
     # Offer permissions setup if toolsets haven't been customised yet.
-    _current_toolsets = config.get("toolsets", ["spark-cli"])
-    _toolsets_at_default = _current_toolsets == ["spark-cli"] or _current_toolsets == []
+    from spark_cli.tools_config import _get_platform_tools as _gpt
+    _current_cli_toolsets = _gpt(config, "cli", include_default_mcp_servers=False)
+    _toolsets_at_default = not any(ts in _current_cli_toolsets for ts in _STANDARD_TOOLSETS)
     if _toolsets_at_default:
         print()
         print_info("Agent permissions haven't been configured yet.")
