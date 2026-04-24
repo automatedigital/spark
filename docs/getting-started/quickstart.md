@@ -48,6 +48,7 @@ Pick what sounds useful and follow the link:
 
 | Goal | How to get there |
 |------|----------------|
+| Give the agent full tool access | `spark setup permissions` — pick **Standard** or **Full** — [Permissions](../configuration.md#permissions) |
 | Run terminal commands in a sandbox | `spark config set terminal.backend docker` (or `ssh`) — [Configuration](../configuration.md) |
 | Connect to Telegram, Discord, etc. | `spark gateway setup` — [Messaging](../chat-platforms/index.md) |
 | Talk to Spark with your voice | `pip install "spark-agent[voice]"` then `/voice on` — [Voice](../voice/voice-mode.md) |

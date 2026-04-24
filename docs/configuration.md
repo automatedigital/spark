@@ -750,6 +750,52 @@ Domain rules support exact matches, wildcard subdomains (`*.internal.company.com
 
 ---
 
+## Permissions
+
+The quickest way to set the agent's permission level is during setup:
+
+```bash
+spark setup permissions   # or choose it from the main spark setup menu
+```
+
+Three levels are available:
+
+| Level | Toolsets | Approval mode | Best for |
+|-------|----------|---------------|----------|
+| **Locked down** | `spark-cli` only | `manual` | Minimal footprint; every risky command is confirmed |
+| **Standard** | terminal, file, web, code execution, vision, memory, skills, session search, delegation, cronjob | `manual` | Every-day use — full tool access with a safety net |
+| **Full / Yolo** | Everything (standard + browser, tts, image_gen, moa) | `off` | Trusted/sandboxed environments; no confirmation prompts |
+
+You can adjust either dimension independently after setup:
+
+```bash
+spark tools                                           # toggle individual toolsets
+spark config set approvals.mode manual|smart|off      # change approval behaviour
+```
+
+Or in `config.yaml`:
+
+```yaml
+# Standard level — common toolsets on, approvals on
+toolsets:
+  - spark-cli
+  - web
+  - terminal
+  - file
+  - code_execution
+  - vision
+  - skills
+  - memory
+  - session_search
+  - delegation
+  - cronjob
+
+approvals:
+  mode: manual
+```
+
+---
+
 ## Smart Approvals
 
 ```yaml

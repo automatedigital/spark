@@ -1593,6 +1593,83 @@ def setup_agent_settings(config: dict):
 
 
 # =============================================================================
+# Section: Permissions
+# =============================================================================
+
+# Toolsets enabled for the "standard" permission level.
+_STANDARD_TOOLSETS = [
+    "web", "terminal", "file", "code_execution", "vision",
+    "skills", "todo", "memory", "session_search", "delegation", "cronjob",
+]
+
+# All toolsets enabled for the "full" permission level (superset of standard).
+_FULL_TOOLSETS = _STANDARD_TOOLSETS + ["browser", "tts", "image_gen", "moa"]
+
+
+def setup_permissions(config: dict):
+    """Configure the agent's permission level — which toolsets are on and whether
+    dangerous commands require approval.
+
+    Three levels:
+      0 — Locked down  : only spark-cli tools; manual approvals (default)
+      1 — Standard     : common toolsets (terminal, file, web, etc.); manual approvals
+      2 — Full / Yolo  : all toolsets; approvals disabled
+    """
+    print_header("Agent Permissions")
+    print_info("Choose how much the agent can do.")
+    print_info("")
+    print_info("  Locked down  — spark-cli tools only; all commands require approval")
+    print_info("  Standard     — terminal, files, web, memory and more; approvals on")
+    print_info("  Full / Yolo  — everything enabled; no approval prompts")
+    print_info("")
+    print_info("You can adjust toolsets individually later with:  spark tools")
+    print_info("And change approval mode with:  spark config set approvals.mode manual|off")
+    print()
+
+    current_toolsets = set(config.get("toolsets", ["spark-cli"]))
+    current_approval = config.get("approvals", {}).get("mode", "manual")
+
+    # Detect current level to use as default
+    if current_approval == "off" or set(_FULL_TOOLSETS).issubset(current_toolsets):
+        current_level = 2
+    elif any(ts in current_toolsets for ts in _STANDARD_TOOLSETS):
+        current_level = 1
+    else:
+        current_level = 0
+
+    level = prompt_choice(
+        "Permission level",
+        [
+            "Locked down  — spark-cli only, manual approvals (safest)",
+            "Standard     — common toolsets enabled, manual approvals (recommended)",
+            "Full / Yolo  — all toolsets, no approval prompts",
+        ],
+        current_level,
+    )
+
+    if level == 0:
+        config["toolsets"] = ["spark-cli"]
+        config.setdefault("approvals", {})["mode"] = "manual"
+        print_success("Locked down: spark-cli toolset only, manual approvals.")
+
+    elif level == 1:
+        existing = [ts for ts in current_toolsets if ts not in _FULL_TOOLSETS and ts != "spark-cli"]
+        config["toolsets"] = ["spark-cli"] + _STANDARD_TOOLSETS + existing
+        config.setdefault("approvals", {})["mode"] = "manual"
+        print_success("Standard: common toolsets enabled, manual approvals.")
+        print_info("  Enabled: " + ", ".join(_STANDARD_TOOLSETS))
+
+    else:  # level == 2
+        existing = [ts for ts in current_toolsets if ts not in _FULL_TOOLSETS and ts != "spark-cli"]
+        config["toolsets"] = ["spark-cli"] + _FULL_TOOLSETS + existing
+        config.setdefault("approvals", {})["mode"] = "off"
+        print_success("Full / Yolo: all toolsets enabled, no approval prompts.")
+        print_warning("Commands will run without asking for confirmation.")
+
+    save_config(config)
+
+
+# =============================================================================
 # Section 4: Messaging Platforms (Gateway)
 # =============================================================================
 
@@ -2816,6 +2893,7 @@ SETUP_SECTIONS = [
     ("model", "Model & Provider", setup_model_provider),
     ("tts", "Text-to-Speech", setup_tts),
     ("terminal", "Terminal Backend", setup_terminal_backend),
+    ("permissions", "Permissions", setup_permissions),
     ("gateway", "Messaging Platforms (Gateway)", setup_gateway),
     ("tools", "Tools", setup_tools),
     ("agent", "Agent Settings", setup_agent_settings),
@@ -2828,6 +2906,7 @@ SETUP_SECTIONS = [
 RETURNING_USER_MENU_SECTION_KEYS = [
     "model",
     "terminal",
+    "permissions",
     "gateway",
     "tools",
     "agent",
@@ -2960,12 +3039,15 @@ def run_setup_wizard(args):
             "Full Setup - reconfigure everything",
             "Model & Provider",
             "Terminal Backend",
+            "Permissions",
             "Messaging Platforms (Gateway)",
             "Tools",
             "Agent Settings",
             "Exit",
         ]
         choice = prompt_choice("What would you like to do?", menu_choices, 0)
+
+        _exit_choice = len(menu_choices) - 1  # index of "Exit"
 
         if choice == 0:
             # Quick setup
@@ -2974,10 +3056,10 @@ def run_setup_wizard(args):
         elif choice == 1:
             # Full setup — fall through to run all sections
             pass
-        elif choice == 7:
+        elif choice == _exit_choice:
             print_info("Exiting. Run 'spark setup' again when ready.")
             return
-        elif 2 <= choice <= 6:
+        elif 2 <= choice < _exit_choice:
             # Individual section — map by key, not by position.
             # SETUP_SECTIONS includes TTS but the returning-user menu skips it,
             # so positional indexing (choice - 2) would dispatch the wrong section.
@@ -3030,19 +3112,22 @@ def run_setup_wizard(args):
     if not (migration_ran and _skip_configured_section(config, "terminal", "Terminal Backend")):
         setup_terminal_backend(config)
 
-    # Section 3: Agent Settings
+    # Section 3: Permissions
+    setup_permissions(config)
+
+    # Section 5: Agent Settings
     if not (migration_ran and _skip_configured_section(config, "agent", "Agent Settings")):
         setup_agent_settings(config)
 
-    # Section 4: Messaging Platforms
+    # Section 6: Messaging Platforms
     if not (migration_ran and _skip_configured_section(config, "gateway", "Messaging Platforms")):
         setup_gateway(config)
 
-    # Section 5: Tools
+    # Section 7: Tools
     if not (migration_ran and _skip_configured_section(config, "tools", "Tools")):
         setup_tools(config, first_install=not is_existing)
 
-    # Section 6: Memory Provider (holographic by default — local, no API key)
+    # Section 8: Memory Provider (holographic by default — local, no API key)
     if not (migration_ran and _skip_configured_section(config, "memory", "Memory Provider")):
         setup_memory(config)
 
@@ -3124,13 +3209,17 @@ def _run_first_time_quick_setup(config: dict, spark_home, is_existing: bool):
     # Step 1: Model & Provider (essential — skips rotation/vision/TTS)
     setup_model_provider(config, quick=True)
 
-    # Step 2: Apply defaults for everything else
+    # Step 2: Permissions — which toolsets the agent can use
+    print()
+    setup_permissions(config)
+
+    # Step 3: Apply defaults for everything else
     _apply_default_agent_settings(config)
     config.setdefault("terminal", {}).setdefault("backend", "local")
 
     save_config(config)
 
-    # Step 3: Offer messaging gateway setup
+    # Step 4: Offer messaging gateway setup
     print()
     gateway_choice = prompt_choice(
         "Connect a messaging platform? (Telegram, Discord, etc.)",
@@ -3203,6 +3292,14 @@ def _run_quick_setup(config: dict, spark_home):
         or missing_config
         or current_ver < latest_ver
     )
+
+    # Offer permissions setup if toolsets haven't been customised yet.
+    _current_toolsets = config.get("toolsets", ["spark-cli"])
+    _toolsets_at_default = _current_toolsets == ["spark-cli"] or _current_toolsets == []
+    if _toolsets_at_default:
+        print()
+        print_info("Agent permissions haven't been configured yet.")
+        setup_permissions(config)
 
     if not has_anything_missing:
         print_success("Everything is configured! Nothing to do.")

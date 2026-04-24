@@ -2053,7 +2053,7 @@ class SparkCLI:
         self._welcome_logo_ansi: Optional[str] = None
         self._welcome_logo_loaded = False
         self._welcome_splash_text = (
-            "Welcome to Spark Agent! Type your message or /help for commands."
+            "Welcome to Spark! Type your message or /help for commands."
         )
         self._welcome_splash_tip = ""
         self._welcome_splash_skills = ""
@@ -9252,7 +9252,7 @@ class SparkCLI:
             term_cols = max(40, int(shutil.get_terminal_size((120, 40)).columns))
         except Exception:
             term_cols = 120
-        return f"{max(14, term_cols // 5)}x"
+        return f"{max(4, int(term_cols // 20 * 1.5))}x"
 
     def _get_welcome_logo_ansi(self) -> str:
         """Render the startup logo via chafa and cache ANSI output."""
@@ -9377,7 +9377,7 @@ class SparkCLI:
             )
             widgets.append(
                 ConditionalContainer(
-                    Window(content=FormattedTextControl(""), height=3),
+                    Window(content=FormattedTextControl(""), height=1),
                     filter=Condition(lambda: self._should_show_welcome_splash()),
                 )
             )
@@ -9504,12 +9504,12 @@ class SparkCLI:
             _welcome_skin = get_active_skin()
             _welcome_text = _welcome_skin.get_branding(
                 "welcome",
-                "Welcome to Spark Agent! Type your message or /help for commands.",
+                "Welcome to Spark! Type your message or /help for commands.",
             )
             _welcome_color = _welcome_skin.get_color("banner_text", "#FFF8DC")
         except Exception:
             _welcome_text = (
-                "Welcome to Spark Agent! Type your message or /help for commands."
+                "Welcome to Spark! Type your message or /help for commands."
             )
             _welcome_color = "#FFF8DC"
         _tip = ""

@@ -46,6 +46,26 @@ Or while in a session:
 /tools enable rl
 ```
 
+## Permission Levels
+
+`spark setup permissions` (or the **Permissions** step in `spark setup`) sets both the active toolsets and the approval mode in one step:
+
+| Level | Toolsets enabled | Approval mode |
+|-------|-----------------|---------------|
+| **Locked down** | `spark-cli` only | `manual` |
+| **Standard** | `spark-cli` + terminal, file, web, code_execution, vision, skills, todo, memory, session_search, delegation, cronjob | `manual` |
+| **Full / Yolo** | Standard + browser, tts, image_gen, moa | `off` (no confirmation prompts) |
+
+You can also set these independently at any time:
+
+```bash
+spark tools                                      # toggle toolsets interactively
+spark config set approvals.mode off              # disable approval prompts
+spark setup permissions                          # re-run just the permissions step
+```
+
+---
+
 ## Core Toolsets
 
 | Toolset | Tools | Purpose |

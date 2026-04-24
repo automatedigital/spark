@@ -114,6 +114,7 @@ spark doctor --fix      # Auto-fix what the doctor can repair safely
 |---------|-------------|
 | `spark` | Interactive TUI (default) |
 | `spark setup` | Full interactive wizard (model, terminal backend, tools, messaging, …) |
+| `spark setup permissions` | Set agent permission level (locked down / standard / full) |
 | `spark model` | Switch provider or model |
 | `spark tools` | Enable/disable toolsets |
 | `spark gateway` | Messaging gateway (`--help` for start/stop/status/service) |
@@ -159,7 +160,7 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 | **Context** | Auto-loads project files like `AGENTS.md`, `.spark.md`, `SOUL.md`; `@` references for files, folders, and URLs. |
 | **Gateway** | Same agent on Telegram, Discord, Slack, WhatsApp, Signal, and [other platforms](./docs/chat-platforms/index.md). |
 | **Cron** | Schedule natural-language or cron-style jobs; deliver results to chat or email. |
-| **Safety** | Checkpoints before file edits, approval modes for risky commands, optional security scanning. |
+| **Safety** | Three permission levels (locked down / standard / full) set during setup or via `spark setup permissions`. Checkpoints before file edits, approval modes for risky commands, optional security scanning. |
 
 ---
 
