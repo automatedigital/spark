@@ -1,5 +1,8 @@
 <div align="center">
 
+<img src="assets/spark-header.jpg" alt="Spark Agent Header" width="100%" style="max-width:900px; border-radius: 10px; margin-bottom: 20px;" />
+
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/icon_small-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="assets/icon_small-light.png">
