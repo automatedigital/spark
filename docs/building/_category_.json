@@ -1,0 +1,8 @@
+{
+  "label": "Building on Spark",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "Extend Spark with custom tools, skills, providers, and platform adapters."
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "spark-agent",
+  "display_name": "Spark Agent",
+  "description": "AI agent by Automate Digital with 90+ tools, persistent memory, and multi-platform support",
+  "icon": "icon.svg",
+  "distribution": {
+    "type": "command",
+    "command": "spark",
+    "args": ["acp"]
+  }
+}

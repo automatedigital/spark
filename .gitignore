@@ -1,0 +1,76 @@
+/venv/
+/_pycache/
+*.pyc*
+__pycache__/
+.venv/
+.vscode/
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.development
+.env.test
+export*
+logs/
+data/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+tmp/
+temp_vision_images/
+temp_*/
+spark-*/*
+examples/
+tests/quick_test_dataset.jsonl
+tests/sample_dataset.jsonl
+run_datagen_kimik2-thinking.sh
+run_datagen_megascience_glm4-6.sh
+run_datagen_sonnet.sh
+source-data/*
+run_datagen_megascience_glm4-6.sh
+data/*
+node_modules/
+browser-use/
+agent-browser/
+# Private keys
+*.ppk
+*.pem
+privvy*
+images/
+__pycache__/
+*.egg-info/
+wandb/
+testlogs
+
+# CLI config (may contain sensitive SSH paths)
+cli-config.yaml
+
+# Skills Hub state (lives in ~/.spark/skills/.hub/ at runtime, but just in case)
+skills/.hub/
+ignored/
+.worktrees/
+environments/benchmarks/evals/
+
+# Python build artifacts
+dist/
+build/
+*.egg-link
+
+# Test coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Web UI build output
+spark_cli/web_dist/
+
+# Release script temp files
+.release_notes.md
+mini-swe-agent/
+
+# Nix
+.direnv/
+result
+website/static/api/skills-index.json
