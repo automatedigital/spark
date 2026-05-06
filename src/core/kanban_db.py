@@ -15,7 +15,6 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
@@ -365,6 +364,8 @@ def get_task(task_id: str) -> Optional[Dict[str, Any]]:
 
 def add_comment(task_id: str, body: str, author: Optional[str] = None) -> int:
     with _connect() as conn:
+        if not conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone():
+            raise ValueError(f"Task not found: {task_id}")
         cur = conn.execute(
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?,?,?,?)",
             (task_id, author or "user", body, _now()),
@@ -398,6 +399,13 @@ def add_link(parent_id: str, child_id: str) -> None:
     if parent_id == child_id:
         raise ValueError("Cannot link task to itself")
     with _connect() as conn:
+        missing = [
+            tid
+            for tid in (parent_id, child_id)
+            if not conn.execute("SELECT 1 FROM tasks WHERE id = ?", (tid,)).fetchone()
+        ]
+        if missing:
+            raise ValueError(f"Task not found: {', '.join(missing)}")
         if _would_create_cycle(conn, parent_id, child_id):
             raise ValueError("Dependency cycle detected")
         conn.execute(
@@ -649,6 +657,7 @@ def get_board(
             pat = f"%{search}%"
             params.extend([pat, pat, pat])
 
+        q += " ORDER BY priority DESC, updated_at DESC, created_at ASC"
         rows = conn.execute(q, params).fetchall()
         by_status: Dict[str, List[Dict[str, Any]]] = {s: [] for s in sorted(KANBAN_STATUSES)}
         assignees = set()
@@ -955,6 +964,39 @@ def list_ready_for_dispatch(board_slug: str = "default") -> List[Dict[str, Any]]
         return [dict(r) for r in rows]
 
 
+def preview_ready_for_dispatch(
+    *,
+    board_slug: str = "default",
+    max_tasks: int = 3,
+) -> Dict[str, Any]:
+    """Return dispatchable ready tasks plus assignees skipped by concurrency limits."""
+    ready = list_ready_for_dispatch(board_slug=board_slug)
+    selected: List[str] = []
+    blocked_by_assignee: List[str] = []
+    seen_assignee: set[str] = set()
+    for row in ready:
+        assignee = row.get("assignee") or ""
+        if not assignee:
+            continue
+        blocked = assignee in seen_assignee or tasks_running_for_assignee(
+            assignee, board_slug=board_slug
+        ) > 0
+        if blocked:
+            if assignee not in blocked_by_assignee:
+                blocked_by_assignee.append(assignee)
+            continue
+        if len(selected) < max_tasks:
+            selected.append(row["id"])
+            seen_assignee.add(assignee)
+        elif assignee not in blocked_by_assignee:
+            blocked_by_assignee.append(assignee)
+    return {
+        "dry_run": True,
+        "ready": selected,
+        "blocked_by_assignee": blocked_by_assignee,
+    }
+
+
 def tasks_running_for_assignee(assignee: str, board_slug: str = "default") -> int:
     with _connect() as conn:
         row = conn.execute(
@@ -973,7 +1015,9 @@ def bulk_patch(task_ids: Sequence[str], fields: Dict[str, Any]) -> Dict[str, Any
                 "status", "title", "body", "assignee", "priority", "tenant", "result", "in_triage"
             )}
             if ft:
-                patch_task(tid, **ft)
+                row = patch_task(tid, **ft)
+                if row is None:
+                    errors[tid] = "Task not found"
         except Exception as e:
             errors[tid] = str(e)
     return {"ok": len(errors) == 0, "errors": errors}

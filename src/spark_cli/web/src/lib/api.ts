@@ -258,22 +258,22 @@ export const api = {
   getKanbanTask: (id: string) =>
     fetchJSON<KanbanTaskDetail>(`/api/kanban/tasks/${encodeURIComponent(id)}`),
 
-  createKanbanTask: (body: Record<string, unknown>) =>
-    fetchJSON<Record<string, unknown>>("/api/kanban/tasks", {
+  createKanbanTask: (body: KanbanTaskCreate) =>
+    fetchJSON<KanbanTaskRow>("/api/kanban/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
 
-  patchKanbanTask: (id: string, body: Record<string, unknown>) =>
-    fetchJSON<Record<string, unknown>>(`/api/kanban/tasks/${encodeURIComponent(id)}`, {
+  patchKanbanTask: (id: string, body: KanbanTaskPatch) =>
+    fetchJSON<KanbanTaskRow>(`/api/kanban/tasks/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
 
-  bulkPatchKanbanTasks: (ids: string[], fields: Record<string, unknown>) =>
-    fetchJSON<unknown>("/api/kanban/tasks/bulk", {
+  bulkPatchKanbanTasks: (ids: string[], fields: KanbanBulkPatchFields) =>
+    fetchJSON<KanbanBulkPatchResponse>("/api/kanban/tasks/bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids, ...fields }),
@@ -303,10 +303,97 @@ export const api = {
     ),
 
   dispatchKanban: (max_tasks = 3, dry_run = false) =>
-    fetchJSON<{ ok?: boolean; claimed?: number; dry_run?: boolean; ready?: string[] }>(
+    fetchJSON<KanbanDispatchResponse>(
       `/api/kanban/dispatch?max_tasks=${max_tasks}&dry_run=${dry_run}`,
       { method: "POST" },
     ),
+
+  completeKanbanTask: (id: string, summary: string, result = "") =>
+    fetchJSON<KanbanTaskRow>(`/api/kanban/tasks/${encodeURIComponent(id)}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ summary, result, metadata: {} }),
+    }),
+
+  blockKanbanTask: (id: string, reason: string) =>
+    fetchJSON<KanbanTaskRow>(`/api/kanban/tasks/${encodeURIComponent(id)}/block`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    }),
+
+  unblockKanbanTask: (id: string) =>
+    fetchJSON<KanbanTaskRow>(`/api/kanban/tasks/${encodeURIComponent(id)}/unblock`, {
+      method: "POST",
+    }),
+
+  // Admin surfaces
+  getAdminActions: () => fetchJSON<AdminActionsResponse>("/api/admin/actions"),
+  runAdminAction: (id: string, args: Record<string, unknown> = {}, confirm = false) =>
+    fetchJSON<AdminRunStartResponse>(`/api/admin/actions/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ args, confirm }),
+    }),
+  getAdminRun: (runId: string) =>
+    fetchJSON<AdminRun>(`/api/admin/actions/runs/${encodeURIComponent(runId)}`),
+  getGatewayAdminStatus: () => fetchJSON<GatewayAdminStatus>("/api/gateway/status"),
+  controlGateway: (action: string, confirm = false) =>
+    fetchJSON<AdminRunStartResponse>("/api/gateway/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, confirm }),
+    }),
+  getProfiles: () => fetchJSON<ProfilesResponse>("/api/profiles"),
+  createProfile: (body: ProfileCreateRequest) =>
+    fetchJSON<{ ok: boolean; path: string; profiles: ProfileInfo[] }>("/api/profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  useProfile: (name: string) =>
+    fetchJSON<{ ok: boolean; active: string }>(`/api/profiles/${encodeURIComponent(name)}/use`, {
+      method: "POST",
+    }),
+  deleteProfile: (name: string, confirm = false) =>
+    fetchJSON<{ ok: boolean }>(`/api/profiles/${encodeURIComponent(name)}?confirm=${confirm}`, {
+      method: "DELETE",
+    }),
+  exportProfile: (name: string, output_path?: string, confirm = false) =>
+    fetchJSON<{ ok: boolean; path: string }>(`/api/profiles/${encodeURIComponent(name)}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ output_path, confirm }),
+    }),
+  importProfile: (archive_path: string, name?: string, confirm = false) =>
+    fetchJSON<{ ok: boolean; path: string }>("/api/profiles/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archive_path, name, confirm }),
+    }),
+  getPlugins: () => fetchJSON<PluginsResponse>("/api/plugins"),
+  runPluginAction: (action: string, name: string, confirm = false) =>
+    fetchJSON<AdminRunStartResponse>(`/api/plugins/${encodeURIComponent(action)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, confirm }),
+    }),
+  getMcpServers: () => fetchJSON<McpServersResponse>("/api/mcp/servers"),
+  addMcpServer: (body: McpServerCreate) =>
+    fetchJSON<{ ok: boolean; name: string; server: Record<string, unknown> }>("/api/mcp/servers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteMcpServer: (name: string, confirm = false) =>
+    fetchJSON<{ ok: boolean }>(`/api/mcp/servers/${encodeURIComponent(name)}?confirm=${confirm}`, {
+      method: "DELETE",
+    }),
+  testMcpServer: (name: string) =>
+    fetchJSON<AdminRunStartResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/test`, {
+      method: "POST",
+    }),
+  getDiagnosticsSummary: () => fetchJSON<DiagnosticsSummary>("/api/diagnostics/summary"),
 
   // OAuth provider management
   getOAuthProviders: () =>
@@ -413,6 +500,53 @@ export interface KanbanTaskRow {
   [key: string]: unknown;
 }
 
+export interface KanbanTaskCreate {
+  title: string;
+  body?: string;
+  board?: string;
+  assignee?: string | null;
+  tenant?: string | null;
+  priority?: number;
+  parents?: string[];
+  idempotency_key?: string | null;
+  workspace_kind?: string;
+  workspace_path?: string | null;
+  skills?: string[];
+  triage?: boolean;
+  max_runtime_seconds?: number;
+}
+
+export interface KanbanTaskPatch {
+  status?: string | null;
+  title?: string | null;
+  body?: string | null;
+  assignee?: string | null;
+  priority?: number | null;
+  tenant?: string | null;
+  result?: string | null;
+  in_triage?: boolean | null;
+}
+
+export interface KanbanBulkPatchFields {
+  status?: string | null;
+  assignee?: string | null;
+  priority?: number | null;
+}
+
+export interface KanbanBulkPatchResponse {
+  ok: boolean;
+  errors: Record<string, string>;
+}
+
+export interface KanbanDispatchResponse {
+  ok?: boolean;
+  claimed?: number;
+  task_ids?: string[];
+  dry_run?: boolean;
+  ready?: string[];
+  blocked_by_assignee?: string[];
+}
+
 export interface KanbanBoardResponse {
   board_slug: string;
   columns: Record<string, KanbanTaskRow[]>;
@@ -425,8 +559,22 @@ export interface KanbanTaskDetail extends KanbanTaskRow {
   parents: string[];
   children: string[];
   comments: Array<{ id: number; author?: string | null; body: string; created_at: number }>;
-  events: unknown[];
-  runs: unknown[];
+  events: Array<{
+    id: number;
+    kind: string;
+    payload_json?: string | null;
+    created_at: number;
+    run_id?: number | null;
+  }>;
+  runs: Array<{
+    id: number;
+    outcome: string;
+    profile?: string | null;
+    started_at: number;
+    ended_at?: number | null;
+    summary?: string | null;
+    error?: string | null;
+  }>;
   worker_context?: string;
 }
 
@@ -571,6 +719,126 @@ export interface ConversationModelEntry {
 
 export interface ConversationModelsResponse {
   models: ConversationModelEntry[];
+}
+
+export interface AdminActionMeta {
+  id: string;
+  label: string;
+  description: string;
+  risk: "low" | "medium" | "high" | string;
+  requires_confirmation: boolean;
+  long_running: boolean;
+  args_schema: Record<string, unknown>;
+  available: boolean;
+  unavailable_reason?: string | null;
+}
+
+export interface AdminActionsResponse {
+  ok: boolean;
+  actions: AdminActionMeta[];
+}
+
+export interface AdminRunStartResponse {
+  run_id: string;
+  status: "queued" | "running" | "done" | "failed";
+}
+
+export interface AdminRunOutputLine {
+  stream: string;
+  text: string;
+  ts: number;
+}
+
+export interface AdminRun {
+  run_id: string;
+  action_id: string;
+  args: Record<string, unknown>;
+  status: "queued" | "running" | "done" | "failed";
+  started_at?: number | null;
+  finished_at?: number | null;
+  exit_code?: number | null;
+  output_tail: AdminRunOutputLine[];
+  error?: string | null;
+}
+
+export interface GatewayAdminStatus {
+  ok: boolean;
+  running: boolean;
+  pid: number | null;
+  runtime: Record<string, unknown>;
+  platforms: Record<string, unknown>;
+  configured_platforms: Array<{ id: string; configured: boolean }>;
+  service_system: string;
+  last_error?: string | null;
+  state?: string | null;
+}
+
+export interface ProfileInfo {
+  name: string;
+  path: string;
+  is_default: boolean;
+  is_active: boolean;
+  gateway_running: boolean;
+  model?: string | null;
+  provider?: string | null;
+  has_env: boolean;
+  skill_count: number;
+  alias_path?: string | null;
+}
+
+export interface ProfilesResponse {
+  ok: boolean;
+  active: string;
+  profiles: ProfileInfo[];
+}
+
+export interface ProfileCreateRequest {
+  name: string;
+  clone_from?: string | null;
+  clone_config?: boolean;
+  clone_all?: boolean;
+  no_alias?: boolean;
+}
+
+export interface PluginInfo {
+  id: string;
+  name: string;
+  path: string;
+  description?: string | null;
+  version?: string | null;
+  enabled: boolean;
+}
+
+export interface PluginsResponse {
+  ok: boolean;
+  plugins: PluginInfo[];
+}
+
+export interface McpServersResponse {
+  ok: boolean;
+  servers: Record<string, Record<string, unknown>>;
+}
+
+export interface McpServerCreate {
+  name: string;
+  url?: string | null;
+  command?: string | null;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+export interface DiagnosticsSummary {
+  ok: boolean;
+  spark_home: string;
+  config_path: string;
+  env_path: string;
+  config_version?: number | null;
+  platform: string;
+  python: string;
+  missing_required_env: string[];
+  gateway_running: boolean;
+  dashboard_auth: { token_file: string; configured: boolean };
+  actions: AdminActionMeta[];
 }
 
 /** Payload shapes for /api/events chat.* topics */

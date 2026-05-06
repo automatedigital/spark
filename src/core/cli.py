@@ -7464,8 +7464,12 @@ class SparkCLI:
             from spark_cli.kanban_dispatch import run_dispatch_tick
 
             try:
-                n = asyncio.run(run_dispatch_tick(max_tasks=3))
-                print(f"  Dispatcher claimed/spawned up to {n} task(s).\n")
+                result = asyncio.run(run_dispatch_tick(max_tasks=3))
+                print(
+                    "  Dispatcher claimed/spawned "
+                    f"{result.get('claimed', 0)} task(s): "
+                    f"{', '.join(result.get('task_ids', [])) or '-'}\n"
+                )
             except Exception as e:
                 print(f"  Dispatch error: {e}\n")
             return

@@ -735,7 +735,7 @@ DEFAULT_CONFIG = {
     },
     # Multi-agent Kanban board (SQLite kanban.db under SPARK_HOME).
     "kanban": {
-        "dispatch_in_gateway": True,
+        "dispatch_in_gateway": False,
         "dispatch_interval_seconds": 60,
         "failure_limit": 5,
         "claim_ttl_seconds": 3600,
@@ -2380,7 +2380,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             changed = True
         if "kanban" not in config:
             config["kanban"] = {
-                "dispatch_in_gateway": True,
+                "dispatch_in_gateway": False,
                 "dispatch_interval_seconds": 60,
                 "failure_limit": 5,
                 "claim_ttl_seconds": 3600,

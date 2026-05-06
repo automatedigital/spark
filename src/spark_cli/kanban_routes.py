@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -48,6 +49,20 @@ class BulkPatchBody(BaseModel):
     status: Optional[str] = None
     assignee: Optional[str] = None
     priority: Optional[int] = None
+
+
+class BulkPatchResponse(BaseModel):
+    ok: bool
+    errors: Dict[str, str] = Field(default_factory=dict)
+
+
+class DispatchResponse(BaseModel):
+    ok: Optional[bool] = None
+    claimed: Optional[int] = None
+    task_ids: Optional[List[str]] = None
+    dry_run: Optional[bool] = None
+    ready: Optional[List[str]] = None
+    blocked_by_assignee: Optional[List[str]] = None
 
 
 class CommentBody(BaseModel):
@@ -119,6 +134,8 @@ async def task_create(body: TaskCreateBody):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except sqlite3.IntegrityError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.patch("/tasks/{task_id}")
@@ -142,7 +159,7 @@ async def task_patch(task_id: str, body: TaskPatchBody):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/tasks/bulk")
+@router.post("/tasks/bulk", response_model=BulkPatchResponse)
 async def task_bulk(body: BulkPatchBody):
     fields: Dict[str, Any] = {
         "status": body.status,
@@ -154,9 +171,10 @@ async def task_bulk(body: BulkPatchBody):
 
 @router.post("/tasks/{task_id}/comments")
 async def task_comment(task_id: str, body: CommentBody):
-    if not kb.get_task(task_id):
-        raise HTTPException(status_code=404, detail="Task not found")
-    cid = kb.add_comment(task_id, body.body, body.author)
+    try:
+        cid = kb.add_comment(task_id, body.body, body.author)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return {"ok": True, "id": cid}
 
 
@@ -166,6 +184,8 @@ async def link_add(body: LinkBody):
         kb.add_link(body.parent_id, body.child_id)
         return {"ok": True}
     except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except sqlite3.IntegrityError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -202,16 +222,18 @@ async def task_unblock(task_id: str):
     return row
 
 
-@router.post("/dispatch")
+@router.post(
+    "/dispatch",
+    response_model=DispatchResponse,
+    response_model_exclude_none=True,
+)
 async def dispatch_nudge(max_tasks: int = 3, dry_run: bool = False):
     """Manual dispatcher nudge (claims + spawns are handled in gateway)."""
     from spark_cli import kanban_dispatch as kd  # circular safe
 
     if dry_run:
-        ready = kb.list_ready_for_dispatch()
-        return {"dry_run": True, "ready": [r["id"] for r in ready[:max_tasks]]}
-    n = await kd.run_dispatch_tick(max_tasks=max_tasks)
-    return {"ok": True, "claimed": n}
+        return kb.preview_ready_for_dispatch(max_tasks=max_tasks)
+    return await kd.run_dispatch_tick(max_tasks=max_tasks)
 
 
 @router.get("/events")
@@ -250,4 +272,3 @@ async def kanban_events(request: Request, since: int = 0):
 
 def register_kanban_routes(app) -> None:
     app.include_router(router)
-

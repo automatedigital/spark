@@ -19,8 +19,8 @@ def _config() -> Dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-async def run_dispatch_tick(*, max_tasks: int = 3) -> int:
-    """Reclaim stale work, then claim & spawn up to ``max_tasks`` workers."""
+async def run_dispatch_tick(*, max_tasks: int = 3) -> Dict[str, Any]:
+    """Reclaim stale work, then claim and spawn up to ``max_tasks`` workers."""
     cfg = _config()
     board = str(cfg.get("default_board", "default"))
     claim_ttl = int(cfg.get("claim_ttl_seconds", 3600))
@@ -29,6 +29,7 @@ async def run_dispatch_tick(*, max_tasks: int = 3) -> int:
     kb.reclaim_stale_running(claim_ttl_seconds=claim_ttl, check_pid=True)
 
     claimed = 0
+    task_ids: List[str] = []
     ready = kb.list_ready_for_dispatch(board_slug=board)
     seen_assignee: set[str] = set()
 
@@ -65,8 +66,9 @@ async def run_dispatch_tick(*, max_tasks: int = 3) -> int:
             kb.set_worker_pid(tid, proc.pid)
             seen_assignee.add(assignee)
             claimed += 1
+            task_ids.append(tid)
         except Exception as e:
             _log.warning("Kanban spawn failed for %s: %s", tid, e)
             kb.record_spawn_failure(tid, str(e), failure_limit=fail_limit)
 
-    return claimed
+    return {"ok": True, "claimed": claimed, "task_ids": task_ids}

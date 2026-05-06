@@ -15,7 +15,7 @@
 
 A modular AI harness that runs in your terminal, connects to any LLM provider, and gets smarter over time. Learns from your sessions, adapts to your workflow, and bridges the terminal with messaging platforms like Telegram, Discord, and Slack.
 
-<img src="https://img.shields.io/badge/version-0.10.0-blue" alt="Version 0.10.0">
+<img src="https://img.shields.io/badge/version-0.10.1-blue" alt="Version 0.10.1">
 <a href="https://img.shields.io/github/commit-activity/m/automatedigital/spark">
   <img src="https://img.shields.io/github/commit-activity/m/automatedigital/spark?label=commits%20this%20month" alt="Commits this month" />
 </a>
@@ -30,7 +30,7 @@ A modular AI harness that runs in your terminal, connects to any LLM provider, a
 - **Works everywhere** — Same agent in the TUI, scheduled jobs, messaging bots, and [ACP-compatible editors](./docs/integrations/acp.md) (VS Code, Zed, JetBrains).
 - **Memory by default** — **Holographic** local memory is on by default, together with persistent, curated patterns (`MEMORY.md` / `USER.md`). Optional [memory provider plugins](./docs/memory/providers.md) (Mem0, Honcho, and others) let you swap backends when you need them.
 - **Coding-agent TUI** — File-aware context, tools, skills, checkpoints, and a polished terminal UI comparable in spirit to Claude Code or OpenCode-style workflows.
-- **Kanban + web dashboard** — Durable multi-agent board (SQLite `kanban.db`), `spark kanban` / `/kanban`, REST + SSE in the bundled dashboard (`spark dashboard`), optional embed alongside the gateway. Configure under `dashboard.*` and `kanban.*` in `config.yaml`.
+- **Task board + web dashboard** — Durable multi-agent task board (SQLite `kanban.db`), `spark kanban` / `/kanban`, REST + SSE in the bundled dashboard (`spark dashboard`), optional embed alongside the gateway, and an Admin area for bounded gateway/profile/diagnostic/plugin/MCP/backup/update control. Gateway worker dispatch is opt-in via `kanban.dispatch_in_gateway`. Configure under `dashboard.*` and `kanban.*` in `config.yaml`.
 - **Simple layout** — One install directory, config and state under `~/.spark/` (or a [profile](./docs/cli/profiles.md)), and a clear split between CLI, gateway, tools, and plugins.
 - **Straightforward onboarding** — One-line install; first launch runs interactive setup if you are not configured yet.
 
@@ -126,7 +126,7 @@ spark doctor --fix      # Auto-fix what the doctor can repair safely
 | `spark model` | Switch provider or model |
 | `spark tools` | Enable/disable toolsets |
 | `spark gateway` | Messaging gateway (`--help` for start/stop/status/service) |
-| `spark dashboard` | Web UI for status, config, logs, and Kanban (`dashboard.*` in config) |
+| `spark dashboard` | Web UI for status, config, keys, logs, task board, and Admin controls (`dashboard.*` in config) |
 | `spark kanban` | Inspect the board, create tasks, or run dispatcher ticks (`kanban` / `kanban --help`) |
 | `spark cron` | Scheduled tasks |
 | `spark doctor` | Diagnose configuration and dependencies |
@@ -149,7 +149,7 @@ Type **`/`** to see slash commands. Commonly used:
 /files        Fuzzy file picker — insert @path into your message
 /memory       Show stored memories
 /skills       Search and install skills
-/kanban       Board summary, task details, or dispatch from the TUI
+/kanban       Board summary, task details, or opt-in gateway dispatch
 /keys         Show keyboard shortcuts
 /clear        Clear screen, start a new session
 /undo         Remove last exchange
@@ -170,8 +170,8 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 | **Memory** | **Holographic** local store by default; optional backends (Mem0, Honcho, …) — see [Memory](./docs/memory.md) and [Memory providers](./docs/memory/providers.md). |
 | **Context** | Auto-loads project files like `AGENTS.md`, `.spark.md`, `SOUL.md`; `@` references for files, folders, and URLs. |
 | **Gateway** | Same agent on Telegram, Discord, Slack, WhatsApp, Signal, and [other platforms](./docs/chat-platforms/index.md). |
-| **Kanban** | Shared task board with worker claims, run history, and tooling for parallel agents (CLI, chat, dashboard API). |
-| **Dashboard** | Local web UI + API; can run standalone or with the gateway for LAN access (see `dashboard.token` / `SPARK_DASHBOARD_TOKEN`). |
+| **Task board** | Shared board with worker claims, run history, templates, task duplication/retry, conversation-to-task entry points, and tooling for parallel agents (CLI, chat, dashboard API). |
+| **Dashboard** | Local web UI + API; can run standalone or with the gateway for LAN access (see `dashboard.token` / `SPARK_DASHBOARD_TOKEN`). Includes an Admin section with allowlisted actions, confirmations, and live output for gateway control, profiles, diagnostics, plugins, MCP, backups, and updates. |
 | **Cron** | Schedule natural-language or cron-style jobs; deliver results to chat or email. |
 | **Safety** | Three permission levels (locked down / standard / full) set during setup or via `spark setup permissions`. Checkpoints before file edits, approval modes for risky commands, optional security scanning. |
 

@@ -1,18 +1,15 @@
 """Tests for spark_cli.web_server and related config utilities."""
 
 import os
-import json
-import tempfile
-from pathlib import Path
+import sys
+import time
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from spark_cli.config import (
-    DEFAULT_CONFIG,
     reload_env,
     redact_key,
-    _EXTRA_ENV_KEYS,
     OPTIONAL_ENV_VARS,
 )
 
@@ -118,6 +115,82 @@ class TestWebServerEndpoints:
         assert "columns" in data
         assert "triage" in data["columns"]
 
+    def test_kanban_task_create_patch_comment_and_link(self):
+        parent_resp = self.client.post(
+            "/api/kanban/tasks",
+            json={"title": "Parent web task", "assignee": "worker-a"},
+        )
+        child_resp = self.client.post(
+            "/api/kanban/tasks",
+            json={"title": "Child web task", "assignee": "worker-b"},
+        )
+        assert parent_resp.status_code == 200
+        assert child_resp.status_code == 200
+        parent = parent_resp.json()
+        child = child_resp.json()
+
+        patch_resp = self.client.patch(
+            f"/api/kanban/tasks/{child['id']}",
+            json={"status": "blocked", "priority": 7},
+        )
+        assert patch_resp.status_code == 200
+        assert patch_resp.json()["priority"] == 7
+
+        comment_resp = self.client.post(
+            f"/api/kanban/tasks/{child['id']}/comments",
+            json={"body": "Needs review", "author": "test"},
+        )
+        assert comment_resp.status_code == 200
+        assert comment_resp.json()["ok"] is True
+
+        link_resp = self.client.post(
+            "/api/kanban/links",
+            json={"parent_id": parent["id"], "child_id": child["id"]},
+        )
+        assert link_resp.status_code == 200
+        assert link_resp.json() == {"ok": True}
+
+    def test_kanban_bulk_patch_reports_partial_errors(self):
+        created = self.client.post(
+            "/api/kanban/tasks",
+            json={"title": "Bulk web task", "assignee": "worker-a"},
+        ).json()
+
+        resp = self.client.post(
+            "/api/kanban/tasks/bulk",
+            json={"ids": [created["id"], "missing"], "status": "done"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": False, "errors": {"missing": "Task not found"}}
+
+    def test_kanban_dispatch_dry_run_shape(self):
+        created = self.client.post(
+            "/api/kanban/tasks",
+            json={"title": "Ready dispatch web task", "assignee": "worker-a"},
+        ).json()
+
+        resp = self.client.post("/api/kanban/dispatch?max_tasks=3&dry_run=true")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert created["id"] in body["ready"]
+        assert "blocked_by_assignee" in body
+
+    def test_kanban_missing_comment_and_link_errors_are_clean(self):
+        comment_resp = self.client.post(
+            "/api/kanban/tasks/missing/comments",
+            json={"body": "Nope"},
+        )
+        assert comment_resp.status_code == 404
+
+        link_resp = self.client.post(
+            "/api/kanban/links",
+            json={"parent_id": "missing-a", "child_id": "missing-b"},
+        )
+        assert link_resp.status_code == 400
+
     def test_dashboard_auth_info_public(self):
         resp = self.client.get("/api/dashboard/auth/info")
         assert resp.status_code == 200
@@ -132,6 +205,64 @@ class TestWebServerEndpoints:
         assert "version" in data
         assert "spark_home" in data
         assert "active_sessions" in data
+
+    def test_admin_actions_metadata_and_confirmation_gate(self):
+        resp = self.client.get("/api/admin/actions")
+        assert resp.status_code == 200
+        actions = {item["id"]: item for item in resp.json()["actions"]}
+        assert "gateway.restart" in actions
+        assert actions["gateway.restart"]["requires_confirmation"] is True
+        assert "args_schema" in actions["diagnostics.debug"]
+
+        blocked = self.client.post("/api/admin/actions/gateway.restart", json={"confirm": False})
+        assert blocked.status_code == 400
+        assert "Confirmation required" in blocked.text
+
+    def test_admin_action_run_lifecycle(self, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        action = web_server.AdminAction(
+            "test.echo",
+            "Echo",
+            "Test action",
+            "low",
+            lambda _args: [sys.executable, "-c", "print('admin-ok')"],
+        )
+        monkeypatch.setitem(web_server.ADMIN_ACTIONS, "test.echo", action)
+
+        started = self.client.post("/api/admin/actions/test.echo", json={})
+        assert started.status_code == 200
+        run_id = started.json()["run_id"]
+
+        for _ in range(100):
+            state = self.client.get(f"/api/admin/actions/runs/{run_id}").json()
+            if state["status"] in {"done", "failed"}:
+                break
+            time.sleep(0.05)
+
+        assert state["status"] == "done"
+        assert any(line["text"] == "admin-ok" for line in state["output_tail"])
+
+    def test_admin_resource_endpoints(self):
+        gateway = self.client.get("/api/gateway/status")
+        assert gateway.status_code == 200
+        assert gateway.json()["ok"] is True
+
+        profiles = self.client.get("/api/profiles")
+        assert profiles.status_code == 200
+        assert "profiles" in profiles.json()
+
+        plugins = self.client.get("/api/plugins")
+        assert plugins.status_code == 200
+        assert "plugins" in plugins.json()
+
+        mcp = self.client.get("/api/mcp/servers")
+        assert mcp.status_code == 200
+        assert "servers" in mcp.json()
+
+        diag = self.client.get("/api/diagnostics/summary")
+        assert diag.status_code == 200
+        assert "actions" in diag.json()
 
     def test_get_status_filters_unconfigured_gateway_platforms(self, monkeypatch):
         import gateway.config as gateway_config
@@ -487,7 +618,7 @@ class TestConfigRoundTrip:
                 mismatches.append(f"{key}: expected bool, got {type(val).__name__}")
             elif expected == "list" and not isinstance(val, list):
                 mismatches.append(f"{key}: expected list, got {type(val).__name__}")
-        assert not mismatches, f"Type mismatches:\n" + "\n".join(mismatches)
+        assert not mismatches, "Type mismatches:\n" + "\n".join(mismatches)
 
 
 # ---------------------------------------------------------------------------

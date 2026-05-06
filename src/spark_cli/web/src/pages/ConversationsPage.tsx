@@ -55,12 +55,14 @@ function SessionCard({
   onDragStart,
   onDragEnd,
   onDelete,
+  onCreateTask,
 }: {
   session: SessionInfo;
   onClick: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
   onDelete: () => void;
+  onCreateTask: () => void;
 }) {
   const SourceIcon = SOURCE_ICONS[session.source ?? ""] ?? Globe;
   const hasTitle = session.title && session.title !== "Untitled";
@@ -87,6 +89,17 @@ function SessionCard({
           {session.is_active && (
             <span className="h-2 w-2 rounded-full bg-success animate-pulse mt-0.5" title="Active" />
           )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateTask();
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary p-0.5 rounded"
+            title="Create task from session"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
           <button
             type="button"
             onClick={(e) => {
@@ -133,6 +146,7 @@ export default function ConversationsPage() {
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<SessionSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
 
   const loadSessions = useCallback(() => {
     api
@@ -240,6 +254,30 @@ export default function ConversationsPage() {
     loadSessions();
   };
 
+  const createTaskForSession = async (session: SessionInfo) => {
+    try {
+      const title = session.title && session.title !== "Untitled" ? session.title : session.preview || session.id;
+      await api.createKanbanTask({
+        title: `Follow up: ${title}`.slice(0, 180),
+        body: [
+          `Source session: ${session.id}`,
+          session.model ? `Model: ${session.model}` : "",
+          session.source ? `Source: ${session.source}` : "",
+          "",
+          session.preview ?? "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        board: "default",
+        priority: 0,
+      });
+      setTaskNotice("Task created from conversation.");
+      setTimeout(() => setTaskNotice(null), 2500);
+    } catch (e) {
+      setTaskNotice(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const chatOpen = chatSessionId !== null || showNewChat;
 
   const listRows = searchQ.trim() ? searchResults : null;
@@ -312,6 +350,7 @@ export default function ConversationsPage() {
       </div>
 
       {searching && <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Searching…</p>}
+      {taskNotice && <p className="text-xs border border-border p-2 text-muted-foreground">{taskNotice}</p>}
 
       {view === "kanban" ? (
         <div className="flex gap-3 overflow-x-auto pb-2">
@@ -354,6 +393,7 @@ export default function ConversationsPage() {
                           setDragOverCol(null);
                         }}
                         onDelete={() => handleDelete(s.id)}
+                        onCreateTask={() => void createTaskForSession(s)}
                       />
                     ))
                   )}

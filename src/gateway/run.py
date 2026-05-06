@@ -1793,7 +1793,7 @@ class GatewayRunner:
             _kcfg = _scfg.get("kanban") or {}
             if not isinstance(_kcfg, dict):
                 _kcfg = {}
-            if _kcfg.get("dispatch_in_gateway", True):
+            if _kcfg.get("dispatch_in_gateway", False):
                 _interval = max(5, int(_kcfg.get("dispatch_interval_seconds", 60)))
 
                 async def _kanban_dispatch_loop() -> None:
@@ -6429,10 +6429,22 @@ class GatewayRunner:
 
         if sub == "dispatch":
             try:
+                from spark_cli.config import load_config
                 from spark_cli.kanban_dispatch import run_dispatch_tick
 
-                n = await run_dispatch_tick(max_tasks=3)
-                return f"Dispatcher claimed/spawned up to {n} task(s)."
+                cfg = load_config()
+                kcfg = cfg.get("kanban") if isinstance(cfg, dict) else {}
+                if not isinstance(kcfg, dict) or not kcfg.get("dispatch_in_gateway", False):
+                    return (
+                        "Kanban dispatch is disabled for the gateway. "
+                        "Set `kanban.dispatch_in_gateway: true` or run `spark kanban dispatch` locally."
+                    )
+                result = await run_dispatch_tick(max_tasks=3)
+                return (
+                    "Dispatcher claimed/spawned "
+                    f"{result.get('claimed', 0)} task(s): "
+                    f"{', '.join(result.get('task_ids', [])) or '-'}"
+                )
             except Exception as e:
                 return f"Dispatch error: {e}"
 

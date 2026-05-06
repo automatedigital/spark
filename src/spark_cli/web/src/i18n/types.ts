@@ -61,6 +61,7 @@ export interface Translations {
       logs: string;
       cron: string;
       skills: string;
+      admin: string;
       config: string;
       keys: string;
       board: string;

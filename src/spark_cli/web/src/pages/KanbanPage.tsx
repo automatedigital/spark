@@ -9,9 +9,44 @@ import {
 import { useI18n } from "@/i18n";
 
 const COLUMN_ORDER = ["triage", "todo", "ready", "running", "blocked", "done"] as const;
+const STATUS_OPTIONS = ["triage", "todo", "ready", "running", "blocked", "done", "archived"] as const;
+const TASK_TEMPLATES: Record<string, { title: string; body: string; priority: number }> = {
+  bug: {
+    title: "Fix: ",
+    body: "Problem:\n\nExpected behavior:\n\nReproduction:\n\nAcceptance criteria:\n",
+    priority: 2,
+  },
+  feature: {
+    title: "Build: ",
+    body: "Goal:\n\nScope:\n\nOut of scope:\n\nAcceptance criteria:\n",
+    priority: 1,
+  },
+  research: {
+    title: "Research: ",
+    body: "Question:\n\nSources to inspect:\n\nOutput expected:\n",
+    priority: 0,
+  },
+};
 
 function colLabel(key: string): string {
   return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function formatTime(value?: number | null): string {
+  if (!value) return "";
+  return new Date(value * 1000).toLocaleString();
+}
+
+function eventPayload(raw?: string | null): string {
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.entries(parsed)
+      .map(([k, v]) => `${k}: ${String(v)}`)
+      .join(" · ");
+  } catch {
+    return raw;
+  }
 }
 
 export default function KanbanPage() {
@@ -27,10 +62,19 @@ export default function KanbanPage() {
   const [detail, setDetail] = useState<KanbanTaskDetail | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
+  const [newTenant, setNewTenant] = useState("");
+  const [newPriority, setNewPriority] = useState(0);
   const [newBody, setNewBody] = useState("");
+  const [templateKey, setTemplateKey] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("todo");
+  const [dispatchPreview, setDispatchPreview] = useState<string[] | null>(null);
+  const [dispatchBlocked, setDispatchBlocked] = useState<string[]>([]);
+  const [completeSummary, setCompleteSummary] = useState("");
+  const [blockReason, setBlockReason] = useState("");
+  const [linkParentId, setLinkParentId] = useState("");
+  const [linkChildId, setLinkChildId] = useState("");
 
   const loadBoard = useCallback(async () => {
     setErr(null);
@@ -42,6 +86,8 @@ export default function KanbanPage() {
         q: search || null,
       });
       setBoard(b);
+      setDispatchPreview(null);
+      setDispatchBlocked([]);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -118,7 +164,14 @@ export default function KanbanPage() {
   const runBulk = async () => {
     if (selectedIds.size === 0) return;
     try {
-      await api.bulkPatchKanbanTasks(Array.from(selectedIds), { status: bulkStatus });
+      const result = await api.bulkPatchKanbanTasks(Array.from(selectedIds), { status: bulkStatus });
+      if (!result.ok) {
+        setErr(
+          Object.entries(result.errors)
+            .map(([id, msg]) => `${id}: ${msg}`)
+            .join("; "),
+        );
+      }
       setSelectedIds(new Set());
       void loadBoard();
     } catch (e) {
@@ -127,17 +180,59 @@ export default function KanbanPage() {
   };
 
   const createTask = async () => {
-    if (!newTitle.trim() || !newAssignee.trim()) return;
+    if (!newTitle.trim()) return;
     try {
       await api.createKanbanTask({
         title: newTitle.trim(),
         board: boardSlug,
         body: newBody,
-        assignee: newAssignee.trim(),
+        assignee: newAssignee.trim() || null,
+        tenant: newTenant.trim() || null,
+        priority: newPriority,
       });
       setNewTitle("");
       setNewAssignee("");
+      setNewTenant("");
+      setNewPriority(0);
       setNewBody("");
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const applyTemplate = (key: string) => {
+    setTemplateKey(key);
+    const template = TASK_TEMPLATES[key];
+    if (!template) return;
+    if (!newTitle.trim()) setNewTitle(template.title);
+    if (!newBody.trim()) setNewBody(template.body);
+    setNewPriority(template.priority);
+  };
+
+  const duplicateSelectedTask = async () => {
+    if (!detail) return;
+    try {
+      await api.createKanbanTask({
+        title: `Copy of ${detail.title}`,
+        board: detail.board_slug ?? boardSlug,
+        body: detail.body ?? "",
+        assignee: detail.assignee,
+        tenant: detail.tenant,
+        priority: detail.priority ?? 0,
+      });
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const retrySelectedTask = async () => {
+    if (!selectedId) return;
+    try {
+      await api.patchKanbanTask(selectedId, { status: "ready" });
+      await api.addKanbanComment(selectedId, "Retry requested from dashboard.", "web");
+      await openTask(selectedId);
       void loadBoard();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -157,7 +252,73 @@ export default function KanbanPage() {
 
   const nudgeDispatch = async () => {
     try {
-      await api.dispatchKanban(3, false);
+      const result = await api.dispatchKanban(3, dispatchPreview === null);
+      if (result.dry_run) {
+        setDispatchPreview(result.ready ?? []);
+        setDispatchBlocked(result.blocked_by_assignee ?? []);
+        return;
+      }
+      setDispatchPreview(null);
+      setDispatchBlocked([]);
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const patchSelectedTask = async (patch: Parameters<typeof api.patchKanbanTask>[1]) => {
+    if (!selectedId) return;
+    try {
+      await api.patchKanbanTask(selectedId, patch);
+      await openTask(selectedId);
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const completeSelectedTask = async () => {
+    if (!selectedId) return;
+    try {
+      await api.completeKanbanTask(selectedId, completeSummary.trim() || "Completed from dashboard");
+      setCompleteSummary("");
+      await openTask(selectedId);
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const blockSelectedTask = async () => {
+    if (!selectedId || !blockReason.trim()) return;
+    try {
+      await api.blockKanbanTask(selectedId, blockReason.trim());
+      setBlockReason("");
+      await openTask(selectedId);
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const unblockSelectedTask = async () => {
+    if (!selectedId) return;
+    try {
+      await api.unblockKanbanTask(selectedId);
+      await openTask(selectedId);
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const addLink = async () => {
+    if (!linkParentId.trim() || !linkChildId.trim()) return;
+    try {
+      await api.addKanbanLink(linkParentId.trim(), linkChildId.trim());
+      setLinkParentId("");
+      setLinkChildId("");
+      if (selectedId) await openTask(selectedId);
       void loadBoard();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -174,7 +335,7 @@ export default function KanbanPage() {
       <header className="flex flex-col gap-3 border border-border p-4 bg-background/80">
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <h1 className="font-display text-lg tracking-[0.15em] uppercase text-foreground">
-            {t.app.nav.kanban}
+            Task Board
           </h1>
           <div className="flex flex-wrap gap-2 items-center">
             <button
@@ -189,10 +350,30 @@ export default function KanbanPage() {
               className="px-3 py-1.5 text-xs font-display uppercase tracking-wider border border-accent text-accent hover:bg-accent/10"
               onClick={() => void nudgeDispatch()}
             >
-              Dispatch
+              {dispatchPreview === null ? "Preview dispatch" : "Confirm dispatch"}
             </button>
           </div>
         </div>
+        {dispatchPreview !== null && (
+          <div className="border border-accent/50 bg-accent/5 p-3 text-xs">
+            <div className="font-display uppercase tracking-wider text-accent">
+              Ready to dispatch: {dispatchPreview.length ? dispatchPreview.join(", ") : "none"}
+            </div>
+            {dispatchBlocked.length > 0 && (
+              <div className="mt-1 opacity-70">Skipped active assignees: {dispatchBlocked.join(", ")}</div>
+            )}
+            <button
+              type="button"
+              className="mt-2 opacity-70 underline"
+              onClick={() => {
+                setDispatchPreview(null);
+                setDispatchBlocked([]);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
           <label className="flex flex-col gap-1">
             <span className="opacity-60 text-xs uppercase tracking-wider">Board</span>
@@ -268,7 +449,17 @@ export default function KanbanPage() {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 border-t border-border pt-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2 border-t border-border pt-3">
+          <select
+            className="border border-border bg-background px-2 py-1"
+            value={templateKey}
+            onChange={(e) => applyTemplate(e.target.value)}
+          >
+            <option value="">Template</option>
+            <option value="bug">Bug</option>
+            <option value="feature">Feature</option>
+            <option value="research">Research</option>
+          </select>
           <input
             className="border border-border bg-background px-2 py-1"
             placeholder="New task title"
@@ -277,9 +468,22 @@ export default function KanbanPage() {
           />
           <input
             className="border border-border bg-background px-2 py-1"
-            placeholder="Assignee (profile name)"
+            placeholder="Assignee (worker label)"
             value={newAssignee}
             onChange={(e) => setNewAssignee(e.target.value)}
+          />
+          <input
+            className="border border-border bg-background px-2 py-1"
+            placeholder="Tenant"
+            value={newTenant}
+            onChange={(e) => setNewTenant(e.target.value)}
+          />
+          <input
+            className="border border-border bg-background px-2 py-1"
+            type="number"
+            placeholder="Priority"
+            value={newPriority}
+            onChange={(e) => setNewPriority(Number(e.target.value) || 0)}
           />
           <button
             type="button"
@@ -370,10 +574,122 @@ export default function KanbanPage() {
               <div>ID: {detail.id}</div>
               <div>Status: {detail.status}</div>
               <div>Assignee: {String(detail.assignee ?? "—")}</div>
+              <div>Priority: {String(detail.priority ?? 0)}</div>
+              <div>Tenant: {String(detail.tenant ?? "—")}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <label className="flex flex-col gap-1">
+                <span className="uppercase tracking-wider opacity-70">Status</span>
+                <select
+                  className="border border-border bg-background px-2 py-1"
+                  value={detail.status}
+                  onChange={(e) => void patchSelectedTask({ status: e.target.value })}
+                >
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {colLabel(status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="uppercase tracking-wider opacity-70">Priority</span>
+                <input
+                  key={`priority-${detail.id}-${detail.priority ?? 0}`}
+                  className="border border-border bg-background px-2 py-1"
+                  type="number"
+                  defaultValue={Number(detail.priority ?? 0)}
+                  onBlur={(e) => void patchSelectedTask({ priority: Number(e.target.value) || 0 })}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="uppercase tracking-wider opacity-70">Assignee</span>
+                <input
+                  key={`assignee-${detail.id}-${detail.assignee ?? ""}`}
+                  className="border border-border bg-background px-2 py-1"
+                  defaultValue={String(detail.assignee ?? "")}
+                  onBlur={(e) => void patchSelectedTask({ assignee: e.target.value })}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="uppercase tracking-wider opacity-70">Tenant</span>
+                <input
+                  key={`tenant-${detail.id}-${detail.tenant ?? ""}`}
+                  className="border border-border bg-background px-2 py-1"
+                  defaultValue={String(detail.tenant ?? "")}
+                  onBlur={(e) => void patchSelectedTask({ tenant: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <button
+                type="button"
+                className="px-2 py-1 border border-border"
+                onClick={() => void patchSelectedTask({ status: "archived" })}
+              >
+                Archive
+              </button>
+              <button type="button" className="px-2 py-1 border border-border" onClick={() => void unblockSelectedTask()}>
+                Unblock
+              </button>
+              <button type="button" className="px-2 py-1 border border-border" onClick={() => void retrySelectedTask()}>
+                Retry
+              </button>
+              <button type="button" className="px-2 py-1 border border-border" onClick={() => void duplicateSelectedTask()}>
+                Duplicate
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 text-xs">
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-border bg-background px-2 py-1"
+                  value={completeSummary}
+                  onChange={(e) => setCompleteSummary(e.target.value)}
+                  placeholder="Completion summary"
+                />
+                <button
+                  type="button"
+                  className="px-2 py-1 border border-border"
+                  onClick={() => void completeSelectedTask()}
+                >
+                  Complete
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-border bg-background px-2 py-1"
+                  value={blockReason}
+                  onChange={(e) => setBlockReason(e.target.value)}
+                  placeholder="Block reason"
+                />
+                <button type="button" className="px-2 py-1 border border-border" onClick={() => void blockSelectedTask()}>
+                  Block
+                </button>
+              </div>
             </div>
             <pre className="whitespace-pre-wrap opacity-90 text-xs border border-border p-2 max-h-40 overflow-y-auto">
               {detail.body || "(no description)"}
             </pre>
+            <div>
+              <div className="text-xs uppercase tracking-wider mb-2 opacity-70">Link Tasks</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <input
+                  className="border border-border bg-background px-2 py-1"
+                  value={linkParentId}
+                  onChange={(e) => setLinkParentId(e.target.value)}
+                  placeholder="Parent id"
+                />
+                <input
+                  className="border border-border bg-background px-2 py-1"
+                  value={linkChildId}
+                  onChange={(e) => setLinkChildId(e.target.value)}
+                  placeholder="Child id"
+                />
+                <button type="button" className="px-2 py-1 border border-border" onClick={() => void addLink()}>
+                  Link
+                </button>
+              </div>
+            </div>
             <div>
               <div className="text-xs uppercase tracking-wider mb-1 opacity-70">Parents</div>
               <ul className="text-xs space-y-1">
@@ -429,9 +745,27 @@ export default function KanbanPage() {
             </div>
             <div>
               <div className="text-xs uppercase tracking-wider mb-1 opacity-70">Runs</div>
-              <ul className="text-xs space-y-1 max-h-32 overflow-y-auto opacity-90">
-                {(detail.runs ?? []).map((r, idx) => (
-                  <li key={idx}>{JSON.stringify(r)}</li>
+              <ul className="text-xs space-y-2 max-h-36 overflow-y-auto opacity-90">
+                {(detail.runs ?? []).map((r) => (
+                  <li key={r.id} className="border border-border p-2">
+                    <div className="font-medium">{r.outcome}</div>
+                    <div className="opacity-60">
+                      {r.profile || "worker"} · {formatTime(r.started_at)}
+                    </div>
+                    {(r.summary || r.error) && <div className="mt-1">{r.summary || r.error}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider mb-1 opacity-70">Events</div>
+              <ul className="text-xs space-y-2 max-h-36 overflow-y-auto opacity-90">
+                {(detail.events ?? []).map((event) => (
+                  <li key={event.id} className="border border-border p-2">
+                    <div className="font-medium">{event.kind}</div>
+                    <div className="opacity-60">{formatTime(event.created_at)}</div>
+                    {eventPayload(event.payload_json) && <div className="mt-1">{eventPayload(event.payload_json)}</div>}
+                  </li>
                 ))}
               </ul>
             </div>

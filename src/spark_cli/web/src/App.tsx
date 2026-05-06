@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Package,
   Settings,
+  Shield,
 } from "lucide-react";
 import StatusPage from "@/pages/StatusPage";
 import ConfigPage from "@/pages/ConfigPage";
@@ -19,6 +20,7 @@ import AnalyticsPage from "@/pages/AnalyticsPage";
 import CronPage from "@/pages/CronPage";
 import SkillsPage from "@/pages/SkillsPage";
 import KanbanPage from "@/pages/KanbanPage";
+import AdminPage from "@/pages/AdminPage";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 
@@ -30,6 +32,7 @@ const NAV_ITEMS = [
   { id: "logs", labelKey: "logs" as const, icon: FileText },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
+  { id: "admin", labelKey: "admin" as const, icon: Shield },
   { id: "config", labelKey: "config" as const, icon: Settings },
   { id: "env", labelKey: "keys" as const, icon: KeyRound },
 ] as const;
@@ -44,6 +47,7 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   logs: LogsPage,
   cron: CronPage,
   skills: SkillsPage,
+  admin: AdminPage,
   config: ConfigPage,
   env: EnvPage,
 };

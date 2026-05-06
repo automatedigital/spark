@@ -5175,8 +5175,12 @@ def cmd_kanban(args):
         import asyncio
         from spark_cli.kanban_dispatch import run_dispatch_tick
 
-        n = asyncio.run(run_dispatch_tick(max_tasks=getattr(args, "max", 3)))
-        print(f"Dispatcher claimed/spawned up to {n} task(s).")
+        result = asyncio.run(run_dispatch_tick(max_tasks=getattr(args, "max", 3)))
+        print(
+            "Dispatcher claimed/spawned "
+            f"{result.get('claimed', 0)} task(s): "
+            f"{', '.join(result.get('task_ids', [])) or '-'}"
+        )
         return
 
     if action == "create":
@@ -7118,7 +7122,7 @@ Examples:
     _k_create.add_argument(
         "--assignee",
         required=True,
-        help="Profile/worker name (Spark profile or logical assignee)",
+        help="Logical worker label used for dispatch concurrency",
     )
     _k_create.add_argument("--body", default="")
     _k_create.add_argument("--priority", type=int, default=0)
