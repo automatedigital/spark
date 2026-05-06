@@ -4169,10 +4169,64 @@ def cmd_update(args):
         if sys.platform == "win32":
             use_zip_update = True
         else:
-            print("✗ Not a git repository. Please reinstall:")
-            print(
-                "  curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install.sh | bash"
+            from core.spark_constants import get_spark_home
+
+            spark_home = get_spark_home()
+            install_cmd = (
+                "curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install.sh "
+                "| bash -s -- --skip-setup"
             )
+            can_prompt = gateway_mode or (sys.stdin.isatty() and sys.stdout.isatty())
+
+            if spark_home.exists() and can_prompt:
+                print("⚠ Current Spark install is not a git checkout.")
+                print(f"  Found existing Spark home: {spark_home}")
+                print("  We can auto-migrate by reinstalling in place and preserving your data.")
+                print()
+
+                if gateway_mode:
+                    response = (
+                        _gateway_prompt(
+                            "Run auto-migrate installer now? [Y/n]",
+                            "y",
+                        )
+                        .strip()
+                        .lower()
+                    )
+                else:
+                    try:
+                        response = (
+                            input("Run auto-migrate installer now? [Y/n]: ")
+                            .strip()
+                            .lower()
+                        )
+                    except EOFError:
+                        response = "n"
+
+                if response in ("", "y", "yes"):
+                    print()
+                    print("→ Running installer to migrate and update...")
+                    result = subprocess.run(
+                        ["bash", "-lc", install_cmd],
+                        cwd=Path.home(),
+                    )
+                    if result.returncode == 0:
+                        print()
+                        print("✓ Migration/update complete!")
+                        return
+                    print()
+                    print("✗ Migration/update failed.")
+                    print("  You can retry manually with:")
+                    print(f"  {install_cmd}")
+                    sys.exit(result.returncode or 1)
+
+                print("Skipped.")
+                print("Run this manually when ready:")
+                print(f"  {install_cmd}")
+                sys.exit(1)
+
+            print("✗ Not a git repository. Please reinstall:")
+            print(f"  {install_cmd}")
             sys.exit(1)
 
     # On Windows, git can fail with "unable to write loose object file: Invalid argument"

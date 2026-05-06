@@ -2,11 +2,33 @@
 
 import subprocess
 from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from spark_cli.main import cmd_update, PROJECT_ROOT
+
+
+@pytest.fixture(autouse=True)
+def _mock_git_checkout_present(request):
+    """Most cmd_update tests target git update behavior, so mock .git as present."""
+    if "auto_migrate" in request.node.name:
+        yield
+        return
+
+    from pathlib import Path
+
+    real_exists = Path.exists
+    git_dir = PROJECT_ROOT / ".git"
+
+    def exists_side_effect(path_self):
+        if path_self == git_dir:
+            return True
+        return real_exists(path_self)
+
+    with patch("pathlib.Path.exists", autospec=True, side_effect=exists_side_effect):
+        yield
 
 
 def _make_run_side_effect(branch="main", verify_ok=True, commit_count="0"):
@@ -126,3 +148,35 @@ class TestCmdUpdateBranchFallback:
             mock_input.assert_not_called()
             captured = capsys.readouterr()
             assert "Non-interactive session" in captured.out
+
+    @patch("shutil.which", return_value=None)
+    @patch("subprocess.run")
+    @patch("builtins.input", return_value="y")
+    def test_update_offers_and_runs_auto_migrate_when_not_git(
+        self, _mock_input, mock_run, _mock_which, mock_args, capsys
+    ):
+        real_exists = Path.exists
+        fake_home = PROJECT_ROOT / "tests" / ".tmp-spark-home"
+
+        def exists_side_effect(path_self):
+            if path_self == (PROJECT_ROOT / ".git"):
+                return False
+            if path_self == fake_home:
+                return True
+            return real_exists(path_self)
+
+        mock_run.return_value = subprocess.CompletedProcess(
+            ["bash", "-lc", "installer"], 0, "", ""
+        )
+
+        with patch("pathlib.Path.exists", autospec=True, side_effect=exists_side_effect), patch(
+            "core.spark_constants.get_spark_home", return_value=fake_home
+        ), patch("spark_cli.main.sys.stdin.isatty", return_value=True), patch(
+            "spark_cli.main.sys.stdout.isatty", return_value=True
+        ):
+            cmd_update(mock_args)
+
+        commands = [" ".join(str(a) for a in c.args[0]) for c in mock_run.call_args_list]
+        assert any("curl -fsSL" in cmd and "install.sh" in cmd for cmd in commands)
+        captured = capsys.readouterr()
+        assert "Migration/update complete!" in captured.out
