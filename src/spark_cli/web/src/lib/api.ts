@@ -1,11 +1,44 @@
 const BASE = "";
 
+const DASHBOARD_TOKEN_KEY = "spark_dashboard_token";
+
 // Ephemeral session token for protected endpoints (reveal).
 // Fetched once on first reveal request and cached in memory.
 let _sessionToken: string | null = null;
 
+export function getDashboardToken(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(DASHBOARD_TOKEN_KEY);
+}
+
+export function setDashboardToken(token: string): void {
+  localStorage.setItem(DASHBOARD_TOKEN_KEY, token.trim());
+}
+
+export function clearDashboardToken(): void {
+  localStorage.removeItem(DASHBOARD_TOKEN_KEY);
+}
+
+/** Append dashboard auth for EventSource (no custom headers support). */
+export function sseUrl(path: string): string {
+  const t = getDashboardToken();
+  if (!t) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}dashboard_token=${encodeURIComponent(t)}`;
+}
+
+function authHeaders(base?: HeadersInit): Headers {
+  const h = new Headers(base);
+  const tok = getDashboardToken();
+  if (tok) h.set("Authorization", `Bearer ${tok}`);
+  return h;
+}
+
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, init);
+  const res = await fetch(`${BASE}${url}`, {
+    ...init,
+    headers: authHeaders(init?.headers),
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`${res.status}: ${text}`);
@@ -143,7 +176,7 @@ export const api = {
       },
     ),
   getConversationStream: (sessionId: string): EventSource =>
-    new EventSource(`/api/conversations/${encodeURIComponent(sessionId)}/stream`),
+    new EventSource(sseUrl(`/api/conversations/${encodeURIComponent(sessionId)}/stream`)),
 
   getConversationModels: () =>
     fetchJSON<ConversationModelsResponse>("/api/conversations/models"),
@@ -200,6 +233,79 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ choice, resolve_all: resolveAll }),
       },
+    ),
+
+  getDashboardAuthInfo: () =>
+    fetchJSON<DashboardAuthInfo>("/api/dashboard/auth/info"),
+
+  getKanbanBoard: (params: {
+    board?: string;
+    tenant?: string | null;
+    assignee?: string | null;
+    archived?: boolean;
+    q?: string | null;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params.board) qs.set("board", params.board);
+    if (params.tenant) qs.set("tenant", params.tenant);
+    if (params.assignee) qs.set("assignee", params.assignee);
+    if (params.archived) qs.set("archived", "true");
+    if (params.q) qs.set("q", params.q);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return fetchJSON<KanbanBoardResponse>(`/api/kanban/board${suffix}`);
+  },
+
+  getKanbanTask: (id: string) =>
+    fetchJSON<KanbanTaskDetail>(`/api/kanban/tasks/${encodeURIComponent(id)}`),
+
+  createKanbanTask: (body: Record<string, unknown>) =>
+    fetchJSON<Record<string, unknown>>("/api/kanban/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  patchKanbanTask: (id: string, body: Record<string, unknown>) =>
+    fetchJSON<Record<string, unknown>>(`/api/kanban/tasks/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  bulkPatchKanbanTasks: (ids: string[], fields: Record<string, unknown>) =>
+    fetchJSON<unknown>("/api/kanban/tasks/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, ...fields }),
+    }),
+
+  addKanbanComment: (taskId: string, body: string, author?: string) =>
+    fetchJSON<{ ok: boolean; id?: string }>(
+      `/api/kanban/tasks/${encodeURIComponent(taskId)}/comments`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body, author: author ?? "web" }),
+      },
+    ),
+
+  addKanbanLink: (parent_id: string, child_id: string) =>
+    fetchJSON<{ ok: boolean }>("/api/kanban/links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parent_id, child_id }),
+    }),
+
+  deleteKanbanLink: (parent_id: string, child_id: string) =>
+    fetchJSON<{ ok: boolean }>(
+      `/api/kanban/links?${new URLSearchParams({ parent_id, child_id }).toString()}`,
+      { method: "DELETE" },
+    ),
+
+  dispatchKanban: (max_tasks = 3, dry_run = false) =>
+    fetchJSON<{ ok?: boolean; claimed?: number; dry_run?: boolean; ready?: string[] }>(
+      `/api/kanban/dispatch?max_tasks=${max_tasks}&dry_run=${dry_run}`,
+      { method: "POST" },
     ),
 
   // OAuth provider management
@@ -281,6 +387,47 @@ export interface StatusResponse {
   latest_config_version: number;
   release_date: string;
   version: string;
+  dashboard_auth?: {
+    token_file: string;
+    require_auth_nonlocal: boolean;
+  };
+}
+
+export interface DashboardAuthInfo {
+  require_auth_nonlocal: boolean;
+  token_file: string;
+  hint: string;
+}
+
+export interface KanbanTaskRow {
+  id: string;
+  title: string;
+  body?: string | null;
+  status: string;
+  assignee?: string | null;
+  tenant?: string | null;
+  priority?: number;
+  in_triage?: number;
+  board_slug?: string;
+  result?: string | null;
+  [key: string]: unknown;
+}
+
+export interface KanbanBoardResponse {
+  board_slug: string;
+  columns: Record<string, KanbanTaskRow[]>;
+  assignees: string[];
+  tenants: string[];
+  boards: Array<Record<string, unknown>>;
+}
+
+export interface KanbanTaskDetail extends KanbanTaskRow {
+  parents: string[];
+  children: string[];
+  comments: Array<{ id: number; author?: string | null; body: string; created_at: number }>;
+  events: unknown[];
+  runs: unknown[];
+  worker_context?: string;
 }
 
 export interface SessionInfo {

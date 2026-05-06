@@ -56,6 +56,7 @@ export interface Translations {
       status: string;
       sessions: string;
       conversations: string;
+      kanban: string;
       analytics: string;
       logs: string;
       cron: string;

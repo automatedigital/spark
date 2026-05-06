@@ -56,6 +56,7 @@ export const en: Translations = {
       status: "Status",
       sessions: "Sessions",
       conversations: "Conversations",
+      kanban: "Kanban",
       analytics: "Analytics",
       logs: "Logs",
       cron: "Cron",

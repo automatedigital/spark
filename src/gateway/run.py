@@ -1744,6 +1744,82 @@ class GatewayRunner:
             )
         asyncio.create_task(self._platform_reconnect_watcher())
 
+        # Embedded web dashboard + Kanban dispatcher (`config.yaml` → dashboard / kanban).
+        try:
+            from spark_cli.config import load_config as _spark_load_config
+
+            _scfg = _spark_load_config()
+            if not isinstance(_scfg, dict):
+                _scfg = {}
+            _dash = _scfg.get("dashboard") or {}
+            if not isinstance(_dash, dict):
+                _dash = {}
+            if _dash.get("enabled_with_gateway", True):
+                _host = str(_dash.get("host", "0.0.0.0"))
+                _port = int(_dash.get("port", 9119))
+
+                async def _dashboard_server_task() -> None:
+                    from spark_cli.web_embed import run_dashboard_server
+
+                    try:
+                        await run_dashboard_server(_host, _port, open_browser=False)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        logger.error("Embedded dashboard server stopped: %s", e)
+
+                _dt = asyncio.create_task(_dashboard_server_task())
+                self._background_tasks.add(_dt)
+                _dt.add_done_callback(self._background_tasks.discard)
+                try:
+                    from core.spark_constants import display_spark_home
+
+                    _token_hint = f"{display_spark_home()}/dashboard.token"
+                except Exception:
+                    _token_hint = "~/.spark/dashboard.token (or profile path)"
+                _bind_hint = (
+                    f"http://127.0.0.1:{_port}"
+                    if _host in ("0.0.0.0", "::", "[::]")
+                    else f"http://{_host}:{_port}"
+                )
+                logger.info(
+                    "Web dashboard listening — open %s (bind %s:%s). Auth: %s or SPARK_DASHBOARD_TOKEN",
+                    _bind_hint,
+                    _host,
+                    _port,
+                    _token_hint,
+                )
+
+            _kcfg = _scfg.get("kanban") or {}
+            if not isinstance(_kcfg, dict):
+                _kcfg = {}
+            if _kcfg.get("dispatch_in_gateway", True):
+                _interval = max(5, int(_kcfg.get("dispatch_interval_seconds", 60)))
+
+                async def _kanban_dispatch_loop() -> None:
+                    from spark_cli.kanban_dispatch import run_dispatch_tick
+
+                    try:
+                        while self._running:
+                            try:
+                                await run_dispatch_tick(max_tasks=3)
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as e:
+                                logger.debug("Kanban dispatch tick error: %s", e)
+                            for _ in range(_interval):
+                                if not self._running:
+                                    return
+                                await asyncio.sleep(1)
+                    except asyncio.CancelledError:
+                        pass
+
+                _kt = asyncio.create_task(_kanban_dispatch_loop())
+                self._background_tasks.add(_kt)
+                _kt.add_done_callback(self._background_tasks.discard)
+        except Exception as e:
+            logger.warning("Embedded dashboard/dispatcher startup skipped: %s", e)
+
         logger.info("Press Ctrl+C to stop")
         
         return True
@@ -2015,6 +2091,12 @@ class GatewayRunner:
                 "Stopping gateway%s...",
                 " for restart" if self._restart_requested else "",
             )
+            try:
+                from spark_cli.web_embed import stop_dashboard_server
+
+                stop_dashboard_server()
+            except Exception:
+                pass
             self._running = False
             self._draining = True
 
@@ -2763,6 +2845,9 @@ class GatewayRunner:
 
         if canonical == "insights":
             return await self._handle_insights_command(event)
+
+        if canonical == "kanban":
+            return await self._handle_kanban_command(event)
 
         if canonical == "reload-mcp":
             return await self._handle_reload_mcp_command(event)
@@ -6310,6 +6395,63 @@ class GatewayRunner:
         except Exception as e:
             logger.error("Insights command error: %s", e, exc_info=True)
             return f"Error generating insights: {e}"
+
+    async def _handle_kanban_command(self, event: MessageEvent) -> str:
+        """Handle /kanban — board summary and lightweight task ops from chat."""
+        args = event.get_command_args().strip()
+        try:
+            from core import kanban_db as kb
+
+            kb.init_kanban_db()
+        except Exception as e:
+            return f"Kanban unavailable: {e}"
+
+        if not args:
+            board = kb.get_board(board_slug="default")
+            lines = ["📋 **Kanban** (board `default`)\n"]
+            for col in ("triage", "todo", "ready", "running", "blocked", "done"):
+                tasks = board["columns"].get(col, []) or []
+                lines.append(f"**{col}** ({len(tasks)})")
+                for t in tasks[:10]:
+                    tid = t.get("id", "")
+                    title = (t.get("title") or "")[:72]
+                    who = t.get("assignee") or "—"
+                    lines.append(f"  • `{tid}` **{title}** — _{who}_")
+                if len(tasks) > 10:
+                    lines.append(f"  _… +{len(tasks) - 10} more_")
+                lines.append("")
+            lines.append("Try `/kanban show <task_id>` or `/kanban dispatch`.")
+            return "\n".join(lines).strip()
+
+        parts = args.split(maxsplit=1)
+        sub = parts[0].lower()
+        rest = parts[1].strip() if len(parts) > 1 else ""
+
+        if sub == "dispatch":
+            try:
+                from spark_cli.kanban_dispatch import run_dispatch_tick
+
+                n = await run_dispatch_tick(max_tasks=3)
+                return f"Dispatcher claimed/spawned up to {n} task(s)."
+            except Exception as e:
+                return f"Dispatch error: {e}"
+
+        if sub == "show" and rest:
+            tid = rest.split()[0]
+            detail = kb.get_task_detail(tid)
+            if not detail:
+                return f"Task `{tid}` not found."
+            body = (detail.get("body") or "")[:1200]
+            return (
+                f"**{detail.get('title')}** (`{detail['id']}`)\n"
+                f"status: **{detail.get('status')}**  assignee: `{detail.get('assignee')}`\n\n"
+                f"{body}"
+            )
+
+        return (
+            "Unknown `/kanban` subcommand.\n"
+            "Try `/kanban`, `/kanban show <task_id>`, or `/kanban dispatch`."
+        )
 
     async def _handle_reload_mcp_command(self, event: MessageEvent) -> str:
         """Handle /reload-mcp command -- disconnect and reconnect all MCP servers."""

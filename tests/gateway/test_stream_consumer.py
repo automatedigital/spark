@@ -442,9 +442,9 @@ class TestSegmentBreakOnToolBoundary:
 
         consumer.on_delta("Hello")
         task = asyncio.create_task(consumer.run())
-        await asyncio.sleep(0.08)
+        await asyncio.sleep(0.15)
         consumer.on_delta(" world")
-        await asyncio.sleep(0.08)
+        await asyncio.sleep(0.15)
         consumer.finish()
         await task
 

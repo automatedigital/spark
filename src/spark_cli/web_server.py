@@ -45,6 +45,13 @@ from spark_cli.config import (
     redact_key,
 )
 from gateway.status import get_running_pid, read_runtime_status
+from spark_cli.dashboard_auth import (
+    dashboard_token_path,
+    ensure_dashboard_token_file,
+    get_configured_dashboard_secret,
+    validate_dashboard_request,
+)
+from spark_cli.kanban_routes import register_kanban_routes
 
 try:
     from fastapi import FastAPI, HTTPException, Request
@@ -52,6 +59,7 @@ try:
     from fastapi.responses import FileResponse, JSONResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
+    from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError:
     raise SystemExit(
         "Web UI requires fastapi and uvicorn.\n"
@@ -71,6 +79,7 @@ _web_streaming: set = set()  # session_id strings with an active agent turn
 async def _lifespan(_app: FastAPI):
     global _web_event_loop
     _web_event_loop = asyncio.get_running_loop()
+    ensure_dashboard_token_file()
     try:
         yield
     finally:
@@ -94,16 +103,58 @@ _reveal_timestamps: List[float] = []
 _REVEAL_MAX_PER_WINDOW = 5
 _REVEAL_WINDOW_SECONDS = 30
 
-# CORS: restrict to localhost origins only.  The web UI is intended to run
-# locally; binding to 0.0.0.0 with allow_origins=["*"] would let any website
-# read/modify config and secrets.
+# CORS: LAN dashboard mode uses bearer/token-file auth on API routes, so we
+# allow any Origin (no cookies). For untrusted networks, keep the dashboard
+# bound to a trusted interface/VPN and rotate SPARK_DASHBOARD_TOKEN.
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://[\w\-.]+(:\d+)?$|^null$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class DashboardAPIAuthMiddleware(BaseHTTPMiddleware):
+    """Require dashboard.token (or SPARK_DASHBOARD_TOKEN) for non-loopback API calls."""
+
+    _PUBLIC_PATHS = frozenset({"/api/dashboard/auth/info", "/api/status"})
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return await call_next(request)
+        if path in self._PUBLIC_PATHS:
+            return await call_next(request)
+        cfg = load_config()
+        dash = cfg.get("dashboard") if isinstance(cfg, dict) else {}
+        if not isinstance(dash, dict):
+            dash = {}
+        require = bool(dash.get("require_auth_nonlocal", True))
+        if not require:
+            return await call_next(request)
+        secret = get_configured_dashboard_secret()
+        if not secret:
+            secret = ensure_dashboard_token_file()
+        client_host = request.client.host if request.client else None
+        auth_header = request.headers.get("authorization")
+        qtoken = request.query_params.get("dashboard_token")
+        if request.method != "GET":
+            qtoken = None
+        if validate_dashboard_request(
+            client_host,
+            auth_header,
+            require_for_remote=True,
+            secret=secret,
+            query_token=qtoken,
+        ):
+            return await call_next(request)
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+
+app.add_middleware(DashboardAPIAuthMiddleware)
 
 
 def _json_safe(obj: Any, max_len: int = 12000) -> Any:
@@ -473,6 +524,11 @@ async def get_status():
     except Exception:
         pass
 
+    spark_cfg = load_config()
+    _dash = spark_cfg.get("dashboard") if isinstance(spark_cfg, dict) else {}
+    if not isinstance(_dash, dict):
+        _dash = {}
+
     return {
         "version": __version__,
         "release_date": __release_date__,
@@ -488,7 +544,41 @@ async def get_status():
         "gateway_exit_reason": gateway_exit_reason,
         "gateway_updated_at": gateway_updated_at,
         "active_sessions": active_sessions,
+        "dashboard_auth": {
+            "token_file": str(dashboard_token_path()),
+            "require_auth_nonlocal": bool(_dash.get("require_auth_nonlocal", True)),
+        },
     }
+
+
+@app.get("/api/dashboard/auth/info")
+async def dashboard_auth_info():
+    """Public metadata for wiring LAN clients (no secrets in response body)."""
+    cfg = load_config()
+    dash = cfg.get("dashboard") if isinstance(cfg, dict) else {}
+    if not isinstance(dash, dict):
+        dash = {}
+    return {
+        "require_auth_nonlocal": bool(dash.get("require_auth_nonlocal", True)),
+        "token_file": str(dashboard_token_path()),
+        "hint": "Use Authorization: Bearer <token>, or ?dashboard_token= for SSE. "
+        "Token is stored in token_file or SPARK_DASHBOARD_TOKEN.",
+    }
+
+
+def _reveal_authorized(request: Request) -> bool:
+    auth = request.headers.get("authorization", "")
+    if auth == f"Bearer {_SESSION_TOKEN}":
+        return True
+    secret = get_configured_dashboard_secret()
+    if not secret:
+        return False
+    from spark_cli.dashboard_auth import extract_bearer_token
+
+    tok = extract_bearer_token(auth)
+    if tok and secrets.compare_digest(tok, secret):
+        return True
+    return False
 
 
 @app.get("/api/sessions")
@@ -819,8 +909,7 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
     - Audit logging
     """
     # --- Token check ---
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {_SESSION_TOKEN}":
+    if not _reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     # --- Rate limit ---
@@ -2733,6 +2822,7 @@ def mount_spa(application: FastAPI):
         )
 
 
+register_kanban_routes(app)
 mount_spa(app)
 
 
@@ -2740,13 +2830,15 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
     """Start the web UI server."""
     import uvicorn
 
+    ensure_dashboard_token_file()
     if host not in ("127.0.0.1", "localhost", "::1"):
         import logging
 
         logging.warning(
-            "Binding to %s — the web UI exposes config and API keys. "
-            "Only bind to non-localhost if you trust all users on the network.",
+            "Binding to %s — enable dashboard.require_auth_nonlocal (default) and use %s "
+            "or SPARK_DASHBOARD_TOKEN for API access from other machines.",
             host,
+            dashboard_token_path(),
         )
 
     if open_browser:

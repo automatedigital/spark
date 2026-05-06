@@ -1,5 +1,15 @@
 import { useState, useEffect, useRef } from "react";
-import { Activity, BarChart3, Clock, FileText, Kanban, KeyRound, Package, Settings } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Clock,
+  FileText,
+  KeyRound,
+  LayoutGrid,
+  MessageSquare,
+  Package,
+  Settings,
+} from "lucide-react";
 import StatusPage from "@/pages/StatusPage";
 import ConfigPage from "@/pages/ConfigPage";
 import EnvPage from "@/pages/EnvPage";
@@ -8,11 +18,14 @@ import LogsPage from "@/pages/LogsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import CronPage from "@/pages/CronPage";
 import SkillsPage from "@/pages/SkillsPage";
+import KanbanPage from "@/pages/KanbanPage";
 import { useI18n } from "@/i18n";
+import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 
 const NAV_ITEMS = [
+  { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "status", labelKey: "status" as const, icon: Activity },
-  { id: "conversations", labelKey: "conversations" as const, icon: Kanban },
+  { id: "conversations", labelKey: "conversations" as const, icon: MessageSquare },
   { id: "analytics", labelKey: "analytics" as const, icon: BarChart3 },
   { id: "logs", labelKey: "logs" as const, icon: FileText },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
@@ -24,6 +37,7 @@ const NAV_ITEMS = [
 type PageId = (typeof NAV_ITEMS)[number]["id"];
 
 const PAGE_COMPONENTS: Record<PageId, React.FC> = {
+  kanban: KanbanPage,
   status: StatusPage,
   conversations: ConversationsPage,
   analytics: AnalyticsPage,
@@ -35,10 +49,34 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
 };
 
 export default function App() {
-  const [page, setPage] = useState<PageId>("status");
+  const [page, setPage] = useState<PageId>("kanban");
   const [animKey, setAnimKey] = useState(0);
   const initialRef = useRef(true);
   const { t } = useI18n();
+  const [authWall, setAuthWall] = useState(false);
+  const [tokenHint, setTokenHint] = useState<string | null>(null);
+  const [tokenInput, setTokenInput] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const info = await api.getDashboardAuthInfo();
+        if (!info.require_auth_nonlocal || getDashboardToken()) {
+          if (!cancelled) setAuthWall(false);
+          return;
+        }
+        const probe = await fetch("/api/config");
+        if (!cancelled) setAuthWall(probe.status === 401);
+        if (!cancelled) setTokenHint(info.token_file);
+      } catch {
+        if (!cancelled) setAuthWall(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     // Skip the animation key bump on initial mount to avoid re-mounting
@@ -60,6 +98,36 @@ export default function App() {
 
       {/* ---- Header with grid-border nav ---- */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-sm">
+        {authWall && (
+          <div className="border-b border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs flex flex-wrap gap-2 items-center justify-between">
+            <span>
+              Dashboard API requires a token (LAN). Paste the contents of{" "}
+              <code className="text-amber-200/90">{tokenHint ?? "dashboard.token"}</code> or set{" "}
+              <code className="text-amber-200/90">SPARK_DASHBOARD_TOKEN</code>.
+            </span>
+            <span className="flex gap-2 items-center">
+              <input
+                type="password"
+                className="border border-border bg-background px-2 py-1 min-w-[200px]"
+                placeholder="Bearer token"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+              />
+              <button
+                type="button"
+                className="px-2 py-1 border border-border uppercase tracking-wider"
+                onClick={() => {
+                  setDashboardToken(tokenInput);
+                  setAuthWall(false);
+                  setTokenInput("");
+                  window.location.reload();
+                }}
+              >
+                Save
+              </button>
+            </span>
+          </div>
+        )}
         <div className="mx-auto flex h-12 max-w-[1400px] items-stretch">
           {/* Brand — abbreviated on mobile */}
           <div className="flex items-center border-r border-border px-3 sm:px-5 shrink-0">

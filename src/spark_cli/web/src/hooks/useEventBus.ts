@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { sseUrl } from "@/lib/api";
 
 /** SSE envelope from GET /api/events */
 export interface SparkEventEnvelope {
@@ -41,7 +42,7 @@ function connectEventSource() {
   if (source?.readyState === EventSource.OPEN) return;
 
   source?.close();
-  const url = `/api/events?topics=${encodeURIComponent(topicsParam)}`;
+  const url = sseUrl(`/api/events?topics=${encodeURIComponent(topicsParam)}`);
   const es = new EventSource(url);
   source = es;
 

@@ -723,7 +723,26 @@ DEFAULT_CONFIG = {
         "force_ipv4": False,
     },
     # Config schema version - bump this when adding new required fields
-    "_config_version": 17,
+    # Web dashboard (FastAPI + React) — also embeds in gateway when enabled.
+    "dashboard": {
+        "enabled_with_gateway": True,
+        "host": "0.0.0.0",
+        "port": 9119,
+        # When true, API requests must be same-origin (Origin matches Host) or
+        # carry Authorization: Bearer <dashboard.token>. Loopback peers without
+        # Origin (e.g. curl) are allowed for local tooling.
+        "require_auth_nonlocal": True,
+    },
+    # Multi-agent Kanban board (SQLite kanban.db under SPARK_HOME).
+    "kanban": {
+        "dispatch_in_gateway": True,
+        "dispatch_interval_seconds": 60,
+        "failure_limit": 5,
+        "claim_ttl_seconds": 3600,
+        "max_runtime_seconds": 0,
+        "default_board": "default",
+    },
+    "_config_version": 18,
 }
 
 # =============================================================================
@@ -2346,6 +2365,33 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                         )
                     else:
                         print("  ✓ Removed unused compression.summary_* keys")
+
+    # ── Version 17 → 18: add dashboard + kanban defaults ──
+    if current_ver < 18:
+        config = read_raw_config()
+        changed = False
+        if "dashboard" not in config:
+            config["dashboard"] = {
+                "enabled_with_gateway": True,
+                "host": "0.0.0.0",
+                "port": 9119,
+                "require_auth_nonlocal": True,
+            }
+            changed = True
+        if "kanban" not in config:
+            config["kanban"] = {
+                "dispatch_in_gateway": True,
+                "dispatch_interval_seconds": 60,
+                "failure_limit": 5,
+                "claim_ttl_seconds": 3600,
+                "max_runtime_seconds": 0,
+                "default_board": "default",
+            }
+            changed = True
+        if changed:
+            save_config(config)
+            if not quiet:
+                print("  ✓ Added dashboard.* and kanban.* sections")
 
     if current_ver < latest_ver and not quiet:
         print(f"Config version: {current_ver} → {latest_ver}")

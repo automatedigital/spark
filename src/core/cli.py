@@ -6239,6 +6239,8 @@ class SparkCLI:
             self._show_usage()
         elif canonical == "insights":
             self._show_insights(cmd_original)
+        elif canonical == "kanban":
+            self._handle_kanban_slash(cmd_original)
         elif canonical == "debug":
             self._handle_debug_command()
         elif canonical == "paste":
@@ -7421,6 +7423,66 @@ class SparkCLI:
             db.close()
         except Exception as e:
             print(f"  Error generating insights: {e}")
+
+    def _handle_kanban_slash(self, command: str = "/kanban"):
+        """Show Kanban board summary or run lightweight subcommands."""
+        parts = command.split(maxsplit=1)
+        args = parts[1].strip() if len(parts) > 1 else ""
+        try:
+            from core import kanban_db as kb
+
+            kb.init_kanban_db()
+        except Exception as e:
+            print(f"  Kanban unavailable: {e}")
+            return
+
+        from core import kanban_db as kb
+
+        if not args:
+            board = kb.get_board(board_slug="default")
+            print("  📋 Kanban (board `default`)\n")
+            for col in ("triage", "todo", "ready", "running", "blocked", "done"):
+                tasks = board["columns"].get(col, []) or []
+                print(f"  {col} ({len(tasks)})")
+                for t in tasks[:10]:
+                    tid = t.get("id", "")
+                    title = (t.get("title") or "")[:72]
+                    who = t.get("assignee") or "—"
+                    print(f"    • {tid}  {title}  — {who}")
+                if len(tasks) > 10:
+                    print(f"    … +{len(tasks) - 10} more")
+                print()
+            print("  Try `/kanban show <task_id>` or `/kanban dispatch`.\n")
+            return
+
+        sub_parts = args.split(maxsplit=1)
+        sub = sub_parts[0].lower()
+        rest = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+
+        if sub == "dispatch":
+            import asyncio
+            from spark_cli.kanban_dispatch import run_dispatch_tick
+
+            try:
+                n = asyncio.run(run_dispatch_tick(max_tasks=3))
+                print(f"  Dispatcher claimed/spawned up to {n} task(s).\n")
+            except Exception as e:
+                print(f"  Dispatch error: {e}\n")
+            return
+
+        if sub == "show" and rest:
+            tid = rest.split()[0]
+            detail = kb.get_task_detail(tid)
+            if not detail:
+                print(f"  Task `{tid}` not found.\n")
+                return
+            body = (detail.get("body") or "")[:1600]
+            print(f"  {detail.get('title')} ({detail['id']})")
+            print(f"  status: {detail.get('status')}  assignee: {detail.get('assignee')}\n")
+            print(f"  {body}\n")
+            return
+
+        print("  Unknown /kanban subcommand. Try `/kanban`, `/kanban show <id>`, `/kanban dispatch`.\n")
 
     def _check_config_mcp_changes(self) -> None:
         """Detect mcp_servers changes in config.yaml and auto-reload MCP connections.

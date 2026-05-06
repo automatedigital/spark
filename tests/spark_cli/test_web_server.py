@@ -111,6 +111,20 @@ class TestWebServerEndpoints:
         from spark_cli.web_server import app
         self.client = TestClient(app)
 
+    def test_kanban_board_endpoint(self):
+        resp = self.client.get("/api/kanban/board")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "columns" in data
+        assert "triage" in data["columns"]
+
+    def test_dashboard_auth_info_public(self):
+        resp = self.client.get("/api/dashboard/auth/info")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "require_auth_nonlocal" in body
+        assert "token_file" in body
+
     def test_get_status(self):
         resp = self.client.get("/api/status")
         assert resp.status_code == 200

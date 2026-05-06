@@ -5158,6 +5158,65 @@ def cmd_profile(args):
             sys.exit(1)
 
 
+def cmd_kanban(args):
+    """CLI for durable Kanban board."""
+    import json as _json
+
+    from core import kanban_db as kb
+
+    kb.init_kanban_db()
+    action = getattr(args, "kanban_action", None) or "list"
+
+    if action == "init":
+        print(f"Kanban database ready at {kb.kanban_db_path()}")
+        return
+
+    if action == "dispatch":
+        import asyncio
+        from spark_cli.kanban_dispatch import run_dispatch_tick
+
+        n = asyncio.run(run_dispatch_tick(max_tasks=getattr(args, "max", 3)))
+        print(f"Dispatcher claimed/spawned up to {n} task(s).")
+        return
+
+    if action == "create":
+        row = kb.create_task(
+            title=args.title,
+            board_slug=args.board or "default",
+            body=getattr(args, "body", "") or "",
+            assignee=args.assignee,
+            tenant=getattr(args, "tenant", None),
+            priority=int(getattr(args, "priority", 0) or 0),
+            parent_ids=list(getattr(args, "parent", []) or []),
+        )
+        print(_json.dumps(row, indent=2, default=str))
+        return
+
+    if action == "show":
+        detail = kb.get_task_detail(args.task_id)
+        if not detail:
+            print(f"Task not found: {args.task_id}", file=sys.stderr)
+            sys.exit(1)
+        print(_json.dumps(detail, indent=2, default=str))
+        return
+
+    # list (default board view)
+    board = kb.get_board(
+        board_slug=getattr(args, "board", "default") or "default",
+        tenant=getattr(args, "tenant", None),
+        assignee=getattr(args, "filter_assignee", None),
+        include_archived=bool(getattr(args, "archived", False)),
+        search=getattr(args, "search", None),
+    )
+    for col in ("triage", "todo", "ready", "running", "blocked", "done"):
+        tasks = board["columns"].get(col, []) or []
+        print(f"\n## {col} ({len(tasks)})")
+        for t in tasks[:30]:
+            print(f"  {t['id']}\t{t.get('title', '')[:80]}\t@{t.get('assignee') or '-'}")
+        if len(tasks) > 30:
+            print(f"  … +{len(tasks) - 30} more")
+
+
 def cmd_dashboard(args):
     """Start the web UI server."""
     try:
@@ -7019,6 +7078,64 @@ Examples:
         help="Shell type (default: bash)",
     )
     completion_parser.set_defaults(func=cmd_completion)
+
+    # =========================================================================
+    # kanban command
+    # =========================================================================
+    kanban_parser = subparsers.add_parser(
+        "kanban",
+        help="Durable Kanban task board",
+        description="Inspect tasks, create work items, or nudge the dispatcher",
+    )
+    kanban_parser.add_argument(
+        "--board",
+        default="default",
+        help="Board slug (for list / create)",
+    )
+    kanban_parser.add_argument("--tenant", default=None, help="Filter tasks by tenant")
+    kanban_parser.add_argument(
+        "--filter-assignee",
+        dest="filter_assignee",
+        default=None,
+        metavar="NAME",
+        help="When listing, only tasks assigned to this profile/name",
+    )
+    kanban_parser.add_argument("--search", default=None, help="Search title/body/id")
+    kanban_parser.add_argument(
+        "--archived",
+        action="store_true",
+        help="Include archived tasks in list",
+    )
+    kanban_sub = kanban_parser.add_subparsers(dest="kanban_action", required=False)
+    kanban_sub.add_parser("init", help="Create kanban.db under SPARK_HOME if missing").set_defaults(
+        kanban_action="init"
+    )
+    _k_dispatch = kanban_sub.add_parser("dispatch", help="Run one dispatcher tick (spawn workers)")
+    _k_dispatch.add_argument("--max", type=int, default=3, metavar="N")
+    _k_dispatch.set_defaults(kanban_action="dispatch")
+    _k_create = kanban_sub.add_parser("create", help="Create a task")
+    _k_create.add_argument("--title", required=True)
+    _k_create.add_argument(
+        "--assignee",
+        required=True,
+        help="Profile/worker name (Spark profile or logical assignee)",
+    )
+    _k_create.add_argument("--body", default="")
+    _k_create.add_argument("--priority", type=int, default=0)
+    _k_create.add_argument(
+        "--parent",
+        action="append",
+        default=[],
+        metavar="TASK_ID",
+        help="Parent task id (repeat for multiple)",
+    )
+    _k_create.set_defaults(kanban_action="create")
+    _k_show = kanban_sub.add_parser("show", help="Print one task as JSON")
+    _k_show.add_argument("task_id", help="Task id")
+    _k_show.set_defaults(kanban_action="show")
+    _k_list = kanban_sub.add_parser("list", help="List tasks grouped by column")
+    _k_list.set_defaults(kanban_action="list")
+    kanban_parser.set_defaults(func=cmd_kanban)
 
     # =========================================================================
     # dashboard command

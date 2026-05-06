@@ -108,6 +108,10 @@ def _make_runner(adapter):
         thread_sessions_per_user=False,
         group_sessions_per_user=False,
         stt_enabled=False,
+        # Default gateway StreamingConfig enables token streaming; these tests
+        # focus on tool progress / interim commentary unless they pass streaming
+        # in config_data explicitly.
+        streaming=StreamingConfig(enabled=False, transport="off"),
     )
     return runner
 

@@ -393,7 +393,21 @@ TOOLSETS = {
         "description": "Gateway toolset - union of all messaging platform tools",
         "tools": [],
         "includes": ["spark-telegram", "spark-discord", "spark-whatsapp", "spark-slack", "spark-signal", "spark-bluebubbles", "spark-homeassistant", "spark-email", "spark-sms", "spark-mattermost", "spark-matrix", "spark-dingtalk", "spark-feishu", "spark-wecom", "spark-wecom-callback", "spark-weixin", "spark-qqbot", "spark-webhook"]
-    }
+    },
+
+    "kanban": {
+        "description": "Kanban worker tools — only available when SPARK_KANBAN_TASK is set",
+        "tools": [
+            "kanban_show",
+            "kanban_heartbeat",
+            "kanban_complete",
+            "kanban_block",
+            "kanban_comment",
+            "kanban_create",
+            "kanban_link",
+        ],
+        "includes": [],
+    },
 }
 
 
