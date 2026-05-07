@@ -269,42 +269,58 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "model": {
         "type": "string",
         "description": "SMART model for complex / coding tasks. Use `spark model` → Multi-model to configure SMART and FAST models together.",
-        "category": "models",
+        "category": "general",
+    },
+    "model_provider": {
+        "type": "string",
+        "description": "SMART model provider (for example openai-codex, openrouter, nous, anthropic, custom).",
+        "category": "general",
+    },
+    "model_base_url": {
+        "type": "string",
+        "description": "Optional SMART model base URL for custom or OpenAI-compatible providers.",
+        "category": "general",
+    },
+    "model_api_mode": {
+        "type": "select",
+        "description": "Optional SMART model API mode override.",
+        "options": ["", "chat_completions", "responses", "codex_responses"],
+        "category": "general",
     },
     "model_context_length": {
         "type": "number",
         "description": "Context window override (0 = auto-detect from model metadata)",
-        "category": "models",
+        "category": "general",
     },
     "smart_model_routing.enabled": {
         "description": "Enable Multi-model routing: keep the SMART model for complex work and route simple turns to the configured FAST model.",
-        "category": "models",
+        "category": "general",
     },
     "smart_model_routing.max_simple_chars": {
         "description": "Only route messages at or below this many characters to the FAST model.",
-        "category": "models",
+        "category": "general",
     },
     "smart_model_routing.max_simple_words": {
         "description": "Only route messages at or below this many words to the FAST model.",
-        "category": "models",
+        "category": "general",
     },
     "smart_model_routing.cheap_model.provider": {
         "description": "FAST model provider for simple requests (for example openai-codex, openrouter, nous, anthropic, custom).",
-        "category": "models",
+        "category": "general",
     },
     "smart_model_routing.cheap_model.model": {
         "description": "FAST model used for simple requests (for example gpt-5.4-mini).",
-        "category": "models",
+        "category": "general",
     },
     "smart_model_routing.cheap_model.base_url": {
         "description": "Optional FAST model base URL for custom or OpenAI-compatible providers.",
-        "category": "models",
+        "category": "general",
     },
     "smart_model_routing.cheap_model.api_mode": {
         "type": "select",
         "description": "Optional FAST model API mode override.",
         "options": ["", "chat_completions", "responses", "codex_responses"],
-        "category": "models",
+        "category": "general",
     },
     "terminal.backend": {
         "type": "select",
@@ -388,13 +404,12 @@ _CATEGORY_MERGE: Dict[str, str] = {
     "checkpoints": "agent",
     "approvals": "security",
     "human_delay": "display",
-    "smart_model_routing": "models",
+    "smart_model_routing": "general",
 }
 
 # Display order for tabs — unlisted categories sort alphabetically after these.
 _CATEGORY_ORDER = [
     "general",
-    "models",
     "agent",
     "terminal",
     "display",
@@ -472,14 +487,20 @@ def _build_schema_from_config(
 CONFIG_SCHEMA = _build_schema_from_config(DEFAULT_CONFIG)
 
 # Inject virtual fields that don't live in DEFAULT_CONFIG but are surfaced
-# by the normalize/denormalize cycle.  Insert model_context_length right after
-# the "model" key so it renders adjacent in the frontend.
-_mcl_entry = _SCHEMA_OVERRIDES["model_context_length"]
+# by the normalize/denormalize cycle. Insert model-related virtual fields
+# right after "model" so the frontend can render a coherent model editor.
+_model_virtual_entries = [
+    ("model_provider", _SCHEMA_OVERRIDES["model_provider"]),
+    ("model_base_url", _SCHEMA_OVERRIDES["model_base_url"]),
+    ("model_api_mode", _SCHEMA_OVERRIDES["model_api_mode"]),
+    ("model_context_length", _SCHEMA_OVERRIDES["model_context_length"]),
+]
 _ordered_schema: Dict[str, Dict[str, Any]] = {}
 for _k, _v in CONFIG_SCHEMA.items():
     _ordered_schema[_k] = _v
     if _k == "model":
-        _ordered_schema["model_context_length"] = _mcl_entry
+        for _virtual_key, _virtual_entry in _model_virtual_entries:
+            _ordered_schema[_virtual_key] = _virtual_entry
 CONFIG_SCHEMA = _ordered_schema
 
 
@@ -1358,8 +1379,14 @@ def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
         # Extract context_length before flattening the dict
         ctx_len = model_val.get("context_length", 0)
         config["model"] = model_val.get("default", model_val.get("name", ""))
+        config["model_provider"] = model_val.get("provider", "")
+        config["model_base_url"] = model_val.get("base_url", "")
+        config["model_api_mode"] = model_val.get("api_mode", "")
         config["model_context_length"] = ctx_len if isinstance(ctx_len, int) else 0
     else:
+        config["model_provider"] = ""
+        config["model_base_url"] = ""
+        config["model_api_mode"] = ""
         config["model_context_length"] = 0
     return config
 
@@ -1487,7 +1514,10 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     # with the stripped GET response, but be defensive)
     config.pop("_model_meta", None)
 
-    # Extract and remove model_context_length before processing model
+    # Extract and remove model virtual fields before processing model
+    model_provider = str(config.pop("model_provider", "") or "").strip()
+    model_base_url = str(config.pop("model_base_url", "") or "").strip()
+    model_api_mode = str(config.pop("model_api_mode", "") or "").strip()
     ctx_override = config.pop("model_context_length", 0)
     if not isinstance(ctx_override, int):
         try:
@@ -1497,27 +1527,38 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
 
     model_val = config.get("model")
     if isinstance(model_val, str) and model_val:
+        def _apply_model_virtuals(model_config: Dict[str, Any]) -> Dict[str, Any]:
+            model_config["default"] = model_val
+            if model_provider:
+                model_config["provider"] = model_provider
+            else:
+                model_config.pop("provider", None)
+            if model_base_url:
+                model_config["base_url"] = model_base_url
+            else:
+                model_config.pop("base_url", None)
+            if model_api_mode:
+                model_config["api_mode"] = model_api_mode
+            else:
+                model_config.pop("api_mode", None)
+            if ctx_override > 0:
+                model_config["context_length"] = ctx_override
+            else:
+                model_config.pop("context_length", None)
+            return model_config
+
         # Read the current disk config to recover model subkeys
         try:
             disk_config = load_config()
             disk_model = disk_config.get("model")
             if isinstance(disk_model, dict):
                 # Preserve all subkeys, update default with the new value
-                disk_model["default"] = model_val
-                # Write context_length into the model dict (0 = remove/auto)
-                if ctx_override > 0:
-                    disk_model["context_length"] = ctx_override
-                else:
-                    disk_model.pop("context_length", None)
-                config["model"] = disk_model
+                config["model"] = _apply_model_virtuals(disk_model)
             else:
-                # Model was previously a bare string — upgrade to dict if
-                # user is setting a context_length override
-                if ctx_override > 0:
-                    config["model"] = {
-                        "default": model_val,
-                        "context_length": ctx_override,
-                    }
+                # Model was previously a bare string — upgrade to dict if the
+                # user is setting any structured model metadata.
+                if ctx_override > 0 or model_provider or model_base_url or model_api_mode:
+                    config["model"] = _apply_model_virtuals({})
         except Exception:
             pass  # can't read disk config — just use the string form
     return config

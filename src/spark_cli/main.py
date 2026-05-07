@@ -1674,6 +1674,7 @@ def _model_flow_openai_codex(config, current_model=""):
     from spark_cli.auth import (
         get_codex_auth_status,
         get_model_routing_slot_selection,
+        resolve_codex_runtime_credentials,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
@@ -1698,15 +1699,29 @@ def _model_flow_openai_codex(config, current_model=""):
             print(f"Login failed: {exc}")
             return
 
-    # Keep the interactive picker responsive. Passing an access token here makes
-    # get_codex_model_ids() perform a live network fetch before TerminalMenu is
-    # shown, which can leave users staring at the "Picking for..." preamble for
-    # several seconds. The local Codex cache plus curated defaults are enough
-    # for the menu; users can still enter a custom model name.
-    codex_models = get_codex_model_ids()
+    _codex_token = None
+    try:
+        _codex_status = get_codex_auth_status()
+        if _codex_status.get("logged_in"):
+            _codex_token = _codex_status.get("api_key")
+    except Exception:
+        pass
+    if not _codex_token:
+        try:
+            _codex_creds = resolve_codex_runtime_credentials()
+            _codex_token = _codex_creds.get("api_key")
+        except Exception:
+            pass
+
+    # Use live Codex discovery for fresh model slugs, but keep the interactive
+    # picker responsive by bounding the request tightly. Slow or failed live
+    # discovery falls back to the local Codex cache plus curated defaults.
+    codex_models = get_codex_model_ids(access_token=_codex_token, api_timeout=1.5)
     picker_current_model = current_model
     if get_model_routing_slot_selection() == "fast" and "gpt-5.4-mini" in codex_models:
         picker_current_model = "gpt-5.4-mini"
+    elif current_model and current_model not in codex_models:
+        codex_models = [current_model, *codex_models]
 
     selected = _prompt_model_selection(codex_models, current_model=picker_current_model)
     if selected:

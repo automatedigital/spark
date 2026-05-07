@@ -20,7 +20,9 @@ import { AutoField } from "@/components/AutoField";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/i18n";
 
 /* ------------------------------------------------------------------ */
@@ -49,6 +51,30 @@ const CATEGORY_ICONS: Record<string, string> = {
 const SECTION_LABELS: Record<string, string> = {
   smart_model_routing: "Multi-model routing",
 };
+
+const MODEL_EDITOR_KEYS = new Set([
+  "model",
+  "model_provider",
+  "model_base_url",
+  "model_api_mode",
+  "model_context_length",
+  "smart_model_routing.enabled",
+  "smart_model_routing.max_simple_chars",
+  "smart_model_routing.max_simple_words",
+  "smart_model_routing.cheap_model.provider",
+  "smart_model_routing.cheap_model.model",
+  "smart_model_routing.cheap_model.base_url",
+  "smart_model_routing.cheap_model.api_mode",
+]);
+
+function textValue(value: unknown): string {
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function numberValue(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -148,9 +174,10 @@ export default function ConfigPage() {
   /* ---- Active tab fields ---- */
   const activeFields = useMemo(() => {
     if (!schema || isSearching) return [];
-    return Object.entries(schema).filter(
-      ([, s]) => String(s.category ?? "general") === activeCategory
-    );
+    return Object.entries(schema).filter(([key, s]) => {
+      if (activeCategory === "general" && MODEL_EDITOR_KEYS.has(key)) return false;
+      return String(s.category ?? "general") === activeCategory;
+    });
   }, [schema, activeCategory, isSearching]);
 
   /* ---- Handlers ---- */
@@ -211,6 +238,11 @@ export default function ConfigPage() {
     reader.readAsText(file);
   };
 
+  const updateConfigValue = (path: string, value: unknown) => {
+    if (!config) return;
+    setConfig(setNestedValue(config, path, value));
+  };
+
   /* ---- Loading ---- */
   if (!config || !schema) {
     return (
@@ -219,6 +251,163 @@ export default function ConfigPage() {
       </div>
     );
   }
+
+  const renderModelEditor = () => {
+    const multiModelEnabled = !!getNestedValue(config, "smart_model_routing.enabled");
+    const smartModel = textValue(getNestedValue(config, "model"));
+    const smartProvider = textValue(getNestedValue(config, "model_provider"));
+    const smartBaseUrl = textValue(getNestedValue(config, "model_base_url"));
+    const smartApiMode = textValue(getNestedValue(config, "model_api_mode"));
+    const contextLength = numberValue(getNestedValue(config, "model_context_length"));
+    const fastProvider = textValue(getNestedValue(config, "smart_model_routing.cheap_model.provider"));
+    const fastModel = textValue(getNestedValue(config, "smart_model_routing.cheap_model.model"));
+    const fastBaseUrl = textValue(getNestedValue(config, "smart_model_routing.cheap_model.base_url"));
+    const fastApiMode = textValue(getNestedValue(config, "smart_model_routing.cheap_model.api_mode"));
+    const maxSimpleChars = numberValue(getNestedValue(config, "smart_model_routing.max_simple_chars"), 160);
+    const maxSimpleWords = numberValue(getNestedValue(config, "smart_model_routing.max_simple_words"), 28);
+
+    return (
+      <div className="mb-3 border border-border bg-background/70">
+        <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+              Model
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Configure a single SMART model, or enable Multi-model routing with a SMART model for complex work and a FAST model for simple requests.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Label className="text-xs text-muted-foreground">
+              Multi-model
+            </Label>
+            <Switch
+              checked={multiModelEnabled}
+              onCheckedChange={(checked) => updateConfigValue("smart_model_routing.enabled", checked)}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-4">
+          <div className="grid gap-3 border border-border/80 bg-muted/10 p-3">
+            <div>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                SMART model
+              </h4>
+              <p className="mt-1 text-xs text-muted-foreground/80">
+                Used for complex prompts, coding tasks, tool-heavy work, and anything that does not qualify for FAST routing.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Provider</Label>
+                <Input
+                  value={smartProvider}
+                  onChange={(e) => updateConfigValue("model_provider", e.target.value)}
+                  placeholder="openai-codex"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Model</Label>
+                <Input
+                  value={smartModel}
+                  onChange={(e) => updateConfigValue("model", e.target.value)}
+                  placeholder="gpt-5.5"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Base URL</Label>
+                <Input
+                  value={smartBaseUrl}
+                  onChange={(e) => updateConfigValue("model_base_url", e.target.value)}
+                  placeholder="optional"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">API mode</Label>
+                <Input
+                  value={smartApiMode}
+                  onChange={(e) => updateConfigValue("model_api_mode", e.target.value)}
+                  placeholder="optional"
+                />
+              </div>
+              <div className="grid gap-1.5 md:col-span-2">
+                <Label className="text-xs">Context length override</Label>
+                <Input
+                  type="number"
+                  value={String(contextLength)}
+                  onChange={(e) => updateConfigValue("model_context_length", Number(e.target.value || 0))}
+                />
+              </div>
+            </div>
+          </div>
+
+          {multiModelEnabled && (
+            <div className="grid gap-3 border border-border/80 bg-muted/10 p-3">
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  FAST model
+                </h4>
+                <p className="mt-1 text-xs text-muted-foreground/80">
+                  Used only for short simple requests within the routing limits below.
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Provider</Label>
+                  <Input
+                    value={fastProvider}
+                    onChange={(e) => updateConfigValue("smart_model_routing.cheap_model.provider", e.target.value)}
+                    placeholder="openai-codex"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Model</Label>
+                  <Input
+                    value={fastModel}
+                    onChange={(e) => updateConfigValue("smart_model_routing.cheap_model.model", e.target.value)}
+                    placeholder="gpt-5.4-mini"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Base URL</Label>
+                  <Input
+                    value={fastBaseUrl}
+                    onChange={(e) => updateConfigValue("smart_model_routing.cheap_model.base_url", e.target.value)}
+                    placeholder="optional"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">API mode</Label>
+                  <Input
+                    value={fastApiMode}
+                    onChange={(e) => updateConfigValue("smart_model_routing.cheap_model.api_mode", e.target.value)}
+                    placeholder="optional"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Max simple characters</Label>
+                  <Input
+                    type="number"
+                    value={String(maxSimpleChars)}
+                    onChange={(e) => updateConfigValue("smart_model_routing.max_simple_chars", Number(e.target.value || 0))}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Max simple words</Label>
+                  <Input
+                    type="number"
+                    value={String(maxSimpleWords)}
+                    onChange={(e) => updateConfigValue("smart_model_routing.max_simple_words", Number(e.target.value || 0))}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   /* ---- Render field list (shared between search & normal) ---- */
   const renderFields = (fields: [string, Record<string, unknown>][], showCategory = false) => {
@@ -257,7 +446,7 @@ export default function ConfigPage() {
               schemaKey={key}
               schema={s}
               value={getNestedValue(config, key)}
-              onChange={(v) => setConfig(setNestedValue(config, key, v))}
+              onChange={(v) => updateConfigValue(key, v)}
             />
           </div>
         </div>
@@ -448,6 +637,7 @@ export default function ConfigPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="grid gap-2 px-4 pb-4">
+                  {activeCategory === "general" && renderModelEditor()}
                   {renderFields(activeFields)}
                 </CardContent>
               </Card>

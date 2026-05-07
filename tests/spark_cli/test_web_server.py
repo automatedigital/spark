@@ -841,6 +841,9 @@ class TestModelContextLength:
         }
         result = _normalize_config_for_web(cfg)
         assert result["model"] == "anthropic/claude-opus-4.6"
+        assert result["model_provider"] == "openrouter"
+        assert result["model_base_url"] == ""
+        assert result["model_api_mode"] == ""
         assert result["model_context_length"] == 200000
 
     def test_normalize_bare_string_model_yields_zero(self):
@@ -849,6 +852,9 @@ class TestModelContextLength:
 
         result = _normalize_config_for_web({"model": "anthropic/claude-sonnet-4"})
         assert result["model"] == "anthropic/claude-sonnet-4"
+        assert result["model_provider"] == ""
+        assert result["model_base_url"] == ""
+        assert result["model_api_mode"] == ""
         assert result["model_context_length"] == 0
 
     def test_normalize_dict_without_context_length_yields_zero(self):
@@ -950,6 +956,27 @@ class TestModelContextLength:
         assert isinstance(result["model"], dict)
         assert result["model"]["context_length"] == 32000
 
+    def test_denormalize_writes_model_virtual_fields(self):
+        from spark_cli.config import save_config
+        from spark_cli.web_server import _denormalize_config_from_web
+
+        save_config({"model": "gpt-5.5"})
+
+        result = _denormalize_config_from_web({
+            "model": "gpt-5.5",
+            "model_provider": "openai-codex",
+            "model_base_url": "https://chatgpt.com/backend-api/codex",
+            "model_api_mode": "codex_responses",
+            "model_context_length": 0,
+        })
+
+        assert result["model"] == {
+            "default": "gpt-5.5",
+            "provider": "openai-codex",
+            "base_url": "https://chatgpt.com/backend-api/codex",
+            "api_mode": "codex_responses",
+        }
+
 
 class TestModelContextLengthSchema:
     """Tests for model_context_length placement in CONFIG_SCHEMA."""
@@ -959,11 +986,14 @@ class TestModelContextLengthSchema:
         assert "model_context_length" in CONFIG_SCHEMA
 
     def test_schema_model_context_length_after_model(self):
-        """model_context_length should appear immediately after model in schema."""
+        """Model virtual fields should render together near the top."""
         from spark_cli.web_server import CONFIG_SCHEMA
         keys = list(CONFIG_SCHEMA.keys())
         model_idx = keys.index("model")
-        assert keys[model_idx + 1] == "model_context_length"
+        assert keys[model_idx + 1] == "model_provider"
+        assert keys[model_idx + 2] == "model_base_url"
+        assert keys[model_idx + 3] == "model_api_mode"
+        assert keys[model_idx + 4] == "model_context_length"
 
     def test_schema_model_context_length_is_number(self):
         from spark_cli.web_server import CONFIG_SCHEMA
@@ -971,15 +1001,16 @@ class TestModelContextLengthSchema:
         assert entry["type"] == "number"
         assert "category" in entry
 
-    def test_schema_has_models_category_for_multi_model_routing(self):
+    def test_schema_has_general_category_for_multi_model_routing(self):
         from spark_cli.web_server import CONFIG_SCHEMA
 
-        assert CONFIG_SCHEMA["model"]["category"] == "models"
-        assert CONFIG_SCHEMA["model_context_length"]["category"] == "models"
-        assert CONFIG_SCHEMA["smart_model_routing.enabled"]["category"] == "models"
+        assert CONFIG_SCHEMA["model"]["category"] == "general"
+        assert CONFIG_SCHEMA["model_provider"]["category"] == "general"
+        assert CONFIG_SCHEMA["model_context_length"]["category"] == "general"
+        assert CONFIG_SCHEMA["smart_model_routing.enabled"]["category"] == "general"
         assert (
             CONFIG_SCHEMA["smart_model_routing.cheap_model.model"]["category"]
-            == "models"
+            == "general"
         )
         assert "Multi-model" in CONFIG_SCHEMA["smart_model_routing.enabled"]["description"]
 
