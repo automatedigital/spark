@@ -5223,6 +5223,8 @@ def cmd_kanban(args):
 
 def cmd_dashboard(args):
     """Start the web UI server."""
+    from spark_cli.config import load_config
+
     try:
         import fastapi  # noqa: F401
         import uvicorn  # noqa: F401
@@ -5236,9 +5238,16 @@ def cmd_dashboard(args):
 
     from spark_cli.web_server import start_server
 
+    cfg = load_config()
+    dash = cfg.get("dashboard") if isinstance(cfg, dict) else {}
+    if not isinstance(dash, dict):
+        dash = {}
+    host = args.host if args.host is not None else str(dash.get("host", "0.0.0.0"))
+    port = args.port if args.port is not None else int(dash.get("port", 9119))
+
     start_server(
-        host=args.host,
-        port=args.port,
+        host=host,
+        port=port,
         open_browser=not args.no_open,
     )
 
@@ -7150,10 +7159,10 @@ Examples:
         description="Launch the Spark Agent web dashboard for managing config, API keys, and sessions",
     )
     dashboard_parser.add_argument(
-        "--port", type=int, default=9119, help="Port (default 9119)"
+        "--port", type=int, default=None, help="Port (default: dashboard.port, 9119)"
     )
     dashboard_parser.add_argument(
-        "--host", default="127.0.0.1", help="Host (default 127.0.0.1)"
+        "--host", default=None, help="Bind address (default: dashboard.host, 0.0.0.0)"
     )
     dashboard_parser.add_argument(
         "--no-open", action="store_true", help="Don't open browser automatically"

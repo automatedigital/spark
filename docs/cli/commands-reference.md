@@ -762,13 +762,14 @@ Launches a browser-based UI for config, API keys, and session monitoring. Requir
 
 | Option | Default | What it does |
 |--------|---------|-------------|
-| `--port` | `9119` | Port to run on |
-| `--host` | `127.0.0.1` | Bind address |
+| `--port` | `dashboard.port` (`9119`) | Port to run on |
+| `--host` | `dashboard.host` (`0.0.0.0`) | Bind address |
 | `--no-open` | - | Don't auto-open the browser |
 
 ```bash
-spark dashboard                         # Opens http://127.0.0.1:9119
+spark dashboard                         # Uses dashboard.host/dashboard.port
 spark dashboard --port 8080 --no-open  # Custom port, no browser
+spark dashboard --host 127.0.0.1       # Local-only
 ```
 
 See [Web Dashboard](/docs/integrations/web-dashboard) for full documentation.

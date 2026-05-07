@@ -95,7 +95,22 @@ spark tools             # Enable/disable toolsets
 
 Start with the defaults for the CLI; add web, browser, or MCP toolsets as needed.
 
-### 4. Diagnose any issues
+### 4. Open the Web UI
+
+```bash
+spark dashboard         # Starts the bundled Web UI on dashboard.host:dashboard.port
+```
+
+The bundled Web UI is configured by default. It can run standalone with
+`spark dashboard`, and the gateway exposes it by default when the gateway is
+running (`dashboard.enabled_with_gateway: true`). The default dashboard config
+binds to `0.0.0.0:9119` for LAN/VPS access; open it locally at
+`http://127.0.0.1:9119` or from another machine at `http://<host-or-ip>:9119`.
+Remote API calls require the token in `~/.spark/dashboard.token` or
+`SPARK_DASHBOARD_TOKEN`. Use it for status, config, API keys, logs, the task
+board, and Admin controls.
+
+### 5. Diagnose any issues
 
 ```bash
 spark doctor            # Diagnose environment and config issues
@@ -126,7 +141,7 @@ spark doctor --fix      # Auto-fix what the doctor can repair safely
 | `spark model` | Switch provider or model |
 | `spark tools` | Enable/disable toolsets |
 | `spark gateway` | Messaging gateway (`--help` for start/stop/status/service) |
-| `spark dashboard` | Web UI for status, config, keys, logs, task board, and Admin controls (`dashboard.*` in config) |
+| `spark dashboard` | Start the bundled Web UI for status, config, keys, logs, task board, and Admin controls; defaults to `dashboard.host` / `dashboard.port` (`0.0.0.0:9119` in new configs) |
 | `spark kanban` | Inspect the board, create tasks, or run dispatcher ticks (`kanban` / `kanban --help`) |
 | `spark cron` | Scheduled tasks |
 | `spark doctor` | Diagnose configuration and dependencies |

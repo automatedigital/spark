@@ -5,8 +5,8 @@ Provides a FastAPI backend serving the Vite/React frontend and REST API
 endpoints for managing configuration, environment variables, and sessions.
 
 Usage:
-    python -m spark_cli.main web          # Start on http://127.0.0.1:9119
-    python -m spark_cli.main web --port 8080
+    python -m spark_cli.main dashboard    # Start with dashboard.* config
+    python -m spark_cli.main dashboard --port 8080
 """
 
 import asyncio
@@ -3486,6 +3486,7 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
     import uvicorn
 
     ensure_dashboard_token_file()
+    browse_host = "127.0.0.1" if host in ("0.0.0.0", "::", "[::]") else host
     if host not in ("127.0.0.1", "localhost", "::1"):
         import logging
 
@@ -3504,9 +3505,9 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
             import time as _t
 
             _t.sleep(1.0)
-            webbrowser.open(f"http://{host}:{port}")
+            webbrowser.open(f"http://{browse_host}:{port}")
 
         threading.Thread(target=_open, daemon=True).start()
 
-    print(f"  Spark Web UI → http://{host}:{port}")
+    print(f"  Spark Web UI → http://{browse_host}:{port} (bind {host}:{port})")
     uvicorn.run(app, host=host, port=port, log_level="warning")

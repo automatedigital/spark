@@ -42,9 +42,11 @@ async def run_dashboard_server(
         import time
         import webbrowser
 
+        browse_host = "127.0.0.1" if host in ("0.0.0.0", "::", "[::]") else host
+
         def _open() -> None:
             time.sleep(0.8)
-            webbrowser.open(f"http://{host}:{port}")
+            webbrowser.open(f"http://{browse_host}:{port}")
 
         threading.Thread(target=_open, daemon=True).start()
 

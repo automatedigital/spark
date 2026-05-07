@@ -6,9 +6,11 @@ description: "Browser-based dashboard for managing configuration, API keys, sess
 
 # Web Dashboard
 
-Skip the YAML editing. `spark dashboard` opens a local browser UI where you manage your entire Spark installation — API keys, config, sessions, logs, cron jobs, skills — without touching a terminal.
+Skip the YAML editing. `spark dashboard` opens a browser UI where you manage your entire Spark installation — API keys, config, sessions, logs, cron jobs, skills — without touching a terminal.
 
-Everything runs on your machine. Nothing leaves localhost.
+Everything runs on your machine. New configs bind the dashboard to `0.0.0.0:9119`
+so it can be reached from your LAN or VPS network. Non-loopback API requests are
+protected by the dashboard token.
 
 ## Get Started in One Command
 
@@ -16,19 +18,22 @@ Everything runs on your machine. Nothing leaves localhost.
 spark dashboard
 ```
 
-Opens `http://127.0.0.1:9119` automatically. Stop it with `Ctrl-C`.
+Starts the server using `dashboard.host` and `dashboard.port` from
+`~/.spark/config.yaml` (`0.0.0.0:9119` by default in new configs). On the Spark
+machine, open `http://127.0.0.1:9119`; from another machine, open
+`http://<host-or-ip>:9119`. Stop it with `Ctrl-C`.
 
 **Startup options:**
 
 | Flag | Default | What it does |
 |------|---------|--------------|
-| `--port` | `9119` | Change the port |
-| `--host` | `127.0.0.1` | Bind address |
+| `--port` | `dashboard.port` (`9119`) | Change the port |
+| `--host` | `dashboard.host` (`0.0.0.0`) | Bind address |
 | `--no-open` | — | Don't auto-open the browser |
 
 ```bash
 spark dashboard --port 8080
-spark dashboard --host 0.0.0.0   # caution: exposes to your network
+spark dashboard --host 127.0.0.1 # local-only
 spark dashboard --no-open
 ```
 
@@ -146,7 +151,11 @@ Browse, search, and enable/disable skills loaded from `~/.spark/skills/`:
 - **Toolsets** — built-in toolsets with status, setup requirements, and included tools
 
 :::warning Security
-The dashboard reads and writes your `.env` file, including all API keys. It binds to `127.0.0.1` by default. If you bind to `0.0.0.0`, anyone on your network can view and modify your credentials. There is no built-in authentication.
+The dashboard reads and writes your `.env` file, including all API keys. When
+accessing it from another machine, protected API routes require
+`Authorization: Bearer <token>`; the SPA prompts for the token stored in
+`~/.spark/dashboard.token` (or `SPARK_DASHBOARD_TOKEN`). Keep the dashboard on a
+trusted LAN/VPN or bind it to `127.0.0.1` for local-only access.
 :::
 
 ---
@@ -226,7 +235,8 @@ The frontend calls these endpoints. You can call them too, for automation:
 
 ## CORS
 
-The server allows only localhost origins:
+The server allows HTTP origins and requires dashboard-token auth for non-loopback
+API requests by default. Common local development origins include:
 
 - `http://localhost:9119` / `http://127.0.0.1:9119`
 - `http://localhost:3000` / `http://127.0.0.1:3000`
