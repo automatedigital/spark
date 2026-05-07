@@ -463,10 +463,18 @@ DEFAULT_CONFIG = {
         "protect_last_n": 20,  # minimum recent messages to keep uncompressed
     },
     "smart_model_routing": {
+        # Multi-model routing: keep model.default as the SMART model for
+        # complex/coding work, and optionally route short simple turns to the
+        # FAST model below. Configure interactively with `spark model`.
         "enabled": False,
         "max_simple_chars": 160,
         "max_simple_words": 28,
-        "cheap_model": {},
+        "cheap_model": {
+            "provider": "",
+            "model": "",
+            "base_url": "",
+            "api_mode": "",
+        },
     },
     # Auxiliary model config — provider:model for each side task.
     # Format: provider is the provider name, model is the model slug.
@@ -1825,6 +1833,7 @@ _KNOWN_ROOT_KEYS = {
     "fallback_providers",
     "credential_pool_strategies",
     "toolsets",
+    "smart_model_routing",
     "agent",
     "terminal",
     "display",
@@ -2724,18 +2733,21 @@ _FALLBACK_COMMENT = """
 #   provider: openrouter
 #   model: anthropic/claude-sonnet-4
 #
-# ── Smart Model Routing ────────────────────────────────────────────────
-# Optional cheap-vs-strong routing for simple turns.
-# Keeps the primary model for complex work, but can route short/simple
-# messages to a cheaper model across providers.
+# ── Multi-Model Routing ────────────────────────────────────────────────
+# Optional SMART/FAST model routing for simple turns.
+# Keep `model.default` as the SMART model for complex/coding work, and route
+# short/simple requests to the FAST model below. The easiest way to configure
+# this is `spark model` → Multi-model.
 #
 # smart_model_routing:
 #   enabled: true
 #   max_simple_chars: 160
 #   max_simple_words: 28
 #   cheap_model:
-#     provider: openrouter
-#     model: google/gemini-2.5-flash
+#     provider: openai-codex
+#     model: gpt-5.4-mini
+#     base_url: ""
+#     api_mode: ""
 """
 
 
@@ -2768,18 +2780,21 @@ _COMMENTED_SECTIONS = """
 #   provider: openrouter
 #   model: anthropic/claude-sonnet-4
 #
-# ── Smart Model Routing ────────────────────────────────────────────────
-# Optional cheap-vs-strong routing for simple turns.
-# Keeps the primary model for complex work, but can route short/simple
-# messages to a cheaper model across providers.
+# ── Multi-Model Routing ────────────────────────────────────────────────
+# Optional SMART/FAST model routing for simple turns.
+# Keep `model.default` as the SMART model for complex/coding work, and route
+# short/simple requests to the FAST model below. The easiest way to configure
+# this is `spark model` → Multi-model.
 #
 # smart_model_routing:
 #   enabled: true
 #   max_simple_chars: 160
 #   max_simple_words: 28
 #   cheap_model:
-#     provider: openrouter
-#     model: google/gemini-2.5-flash
+#     provider: openai-codex
+#     model: gpt-5.4-mini
+#     base_url: ""
+#     api_mode: ""
 """
 
 

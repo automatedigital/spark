@@ -268,13 +268,43 @@ async def sse_events_bus(request: Request, topics: str = "sessions,chat"):
 _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "model": {
         "type": "string",
-        "description": "Default model (e.g. anthropic/claude-sonnet-4.6)",
-        "category": "general",
+        "description": "SMART model for complex / coding tasks. Use `spark model` → Multi-model to configure SMART and FAST models together.",
+        "category": "models",
     },
     "model_context_length": {
         "type": "number",
         "description": "Context window override (0 = auto-detect from model metadata)",
-        "category": "general",
+        "category": "models",
+    },
+    "smart_model_routing.enabled": {
+        "description": "Enable Multi-model routing: keep the SMART model for complex work and route simple turns to the configured FAST model.",
+        "category": "models",
+    },
+    "smart_model_routing.max_simple_chars": {
+        "description": "Only route messages at or below this many characters to the FAST model.",
+        "category": "models",
+    },
+    "smart_model_routing.max_simple_words": {
+        "description": "Only route messages at or below this many words to the FAST model.",
+        "category": "models",
+    },
+    "smart_model_routing.cheap_model.provider": {
+        "description": "FAST model provider for simple requests (for example openai-codex, openrouter, nous, anthropic, custom).",
+        "category": "models",
+    },
+    "smart_model_routing.cheap_model.model": {
+        "description": "FAST model used for simple requests (for example gpt-5.4-mini).",
+        "category": "models",
+    },
+    "smart_model_routing.cheap_model.base_url": {
+        "description": "Optional FAST model base URL for custom or OpenAI-compatible providers.",
+        "category": "models",
+    },
+    "smart_model_routing.cheap_model.api_mode": {
+        "type": "select",
+        "description": "Optional FAST model API mode override.",
+        "options": ["", "chat_completions", "responses", "codex_responses"],
+        "category": "models",
     },
     "terminal.backend": {
         "type": "select",
@@ -358,12 +388,13 @@ _CATEGORY_MERGE: Dict[str, str] = {
     "checkpoints": "agent",
     "approvals": "security",
     "human_delay": "display",
-    "smart_model_routing": "agent",
+    "smart_model_routing": "models",
 }
 
 # Display order for tabs — unlisted categories sort alphabetically after these.
 _CATEGORY_ORDER = [
     "general",
+    "models",
     "agent",
     "terminal",
     "display",

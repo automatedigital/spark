@@ -1673,6 +1673,7 @@ def _model_flow_openai_codex(config, current_model=""):
     """OpenAI Codex provider: ensure logged in, then pick model."""
     from spark_cli.auth import (
         get_codex_auth_status,
+        get_model_routing_slot_selection,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
@@ -1697,27 +1698,17 @@ def _model_flow_openai_codex(config, current_model=""):
             print(f"Login failed: {exc}")
             return
 
-    _codex_token = None
-    # Prefer credential pool (where `spark auth` stores device_code tokens),
-    # fall back to legacy provider state.
-    try:
-        _codex_status = get_codex_auth_status()
-        if _codex_status.get("logged_in"):
-            _codex_token = _codex_status.get("api_key")
-    except Exception:
-        pass
-    if not _codex_token:
-        try:
-            from spark_cli.auth import resolve_codex_runtime_credentials
+    # Keep the interactive picker responsive. Passing an access token here makes
+    # get_codex_model_ids() perform a live network fetch before TerminalMenu is
+    # shown, which can leave users staring at the "Picking for..." preamble for
+    # several seconds. The local Codex cache plus curated defaults are enough
+    # for the menu; users can still enter a custom model name.
+    codex_models = get_codex_model_ids()
+    picker_current_model = current_model
+    if get_model_routing_slot_selection() == "fast" and "gpt-5.4-mini" in codex_models:
+        picker_current_model = "gpt-5.4-mini"
 
-            _codex_creds = resolve_codex_runtime_credentials()
-            _codex_token = _codex_creds.get("api_key")
-        except Exception:
-            pass
-
-    codex_models = get_codex_model_ids(access_token=_codex_token)
-
-    selected = _prompt_model_selection(codex_models, current_model=current_model)
+    selected = _prompt_model_selection(codex_models, current_model=picker_current_model)
     if selected:
         _save_model_choice(selected)
         _update_config_for_provider("openai-codex", DEFAULT_CODEX_BASE_URL)

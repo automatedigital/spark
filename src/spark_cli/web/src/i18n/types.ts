@@ -207,6 +207,7 @@ export interface Translations {
     invalidJson: string;
     categories: {
       general: string;
+      models: string;
       agent: string;
       terminal: string;
       display: string;

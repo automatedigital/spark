@@ -462,9 +462,9 @@ class TestBuildSchemaFromConfig:
         assert "nested.key" in schema
 
     def test_top_level_scalars_get_general_category(self):
-        """Top-level scalar fields should be in 'general' category."""
+        """Top-level scalar fields should be in 'general' unless overridden."""
         from spark_cli.web_server import CONFIG_SCHEMA
-        assert CONFIG_SCHEMA["model"]["category"] == "general"
+        assert CONFIG_SCHEMA["toolsets"]["category"] == "general"
 
     def test_nested_keys_get_parent_category(self):
         """Nested fields should use the top-level parent as their category."""
@@ -970,6 +970,26 @@ class TestModelContextLengthSchema:
         entry = CONFIG_SCHEMA["model_context_length"]
         assert entry["type"] == "number"
         assert "category" in entry
+
+    def test_schema_has_models_category_for_multi_model_routing(self):
+        from spark_cli.web_server import CONFIG_SCHEMA
+
+        assert CONFIG_SCHEMA["model"]["category"] == "models"
+        assert CONFIG_SCHEMA["model_context_length"]["category"] == "models"
+        assert CONFIG_SCHEMA["smart_model_routing.enabled"]["category"] == "models"
+        assert (
+            CONFIG_SCHEMA["smart_model_routing.cheap_model.model"]["category"]
+            == "models"
+        )
+        assert "Multi-model" in CONFIG_SCHEMA["smart_model_routing.enabled"]["description"]
+
+    def test_schema_exposes_fast_model_fields(self):
+        from spark_cli.web_server import CONFIG_SCHEMA
+
+        assert "smart_model_routing.cheap_model.provider" in CONFIG_SCHEMA
+        assert "smart_model_routing.cheap_model.model" in CONFIG_SCHEMA
+        assert "smart_model_routing.cheap_model.base_url" in CONFIG_SCHEMA
+        assert "smart_model_routing.cheap_model.api_mode" in CONFIG_SCHEMA
 
 
 class TestModelInfoEndpoint:

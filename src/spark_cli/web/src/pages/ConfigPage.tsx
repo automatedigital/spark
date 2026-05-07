@@ -29,6 +29,7 @@ import { useI18n } from "@/i18n";
 
 const CATEGORY_ICONS: Record<string, string> = {
   general: "⚙️",
+  models: "🧭",
   agent: "🤖",
   terminal: "💻",
   display: "🎨",
@@ -43,6 +44,10 @@ const CATEGORY_ICONS: Record<string, string> = {
   logging: "📋",
   discord: "💬",
   auxiliary: "🔧",
+};
+
+const SECTION_LABELS: Record<string, string> = {
+  smart_model_routing: "Multi-model routing",
 };
 
 /* ------------------------------------------------------------------ */
@@ -242,7 +247,7 @@ export default function ConfigPage() {
           {showSection && (
             <div className="flex items-center gap-2 pt-4 pb-2 first:pt-0">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {section.replace(/_/g, " ")}
+                {SECTION_LABELS[section] ?? section.replace(/_/g, " ")}
               </span>
               <div className="flex-1 border-t border-border" />
             </div>

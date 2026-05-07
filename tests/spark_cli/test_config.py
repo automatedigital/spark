@@ -647,3 +647,16 @@ class TestInterimAssistantMessageConfig:
         assert raw["_config_version"] == 17
         assert raw["display"]["tool_progress"] == "off"
         assert raw["display"]["interim_assistant_messages"] is True
+
+
+class TestSmartModelRoutingConfig:
+    def test_default_config_exposes_fast_model_fields(self):
+        routing = DEFAULT_CONFIG["smart_model_routing"]
+
+        assert routing["enabled"] is False
+        assert routing["cheap_model"] == {
+            "provider": "",
+            "model": "",
+            "base_url": "",
+            "api_mode": "",
+        }

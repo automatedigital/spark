@@ -200,6 +200,7 @@ export const en: Translations = {
     invalidJson: "Invalid JSON file",
     categories: {
       general: "General",
+      models: "Models",
       agent: "Agent",
       terminal: "Terminal",
       display: "Display",
