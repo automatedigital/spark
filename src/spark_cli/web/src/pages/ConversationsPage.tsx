@@ -1,195 +1,176 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bot,
-  Clock,
-  Globe,
-  Hash,
-  Kanban,
-  LayoutList,
-  MessageCircle,
+  Check,
+  Edit3,
+  Loader2,
   MessageSquare,
   Plus,
   Search,
-  Terminal,
   Trash2,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { SessionInfo, SessionSearchResult } from "@/lib/api";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatPanel } from "@/components/ChatPanel";
 import { useEventBus } from "@/hooks/useEventBus";
-import { useI18n } from "@/i18n";
 
-type KanbanStatus = "backlog" | "active" | "review" | "done";
+const WEB_SOURCE = "web";
 
-const COLUMNS: { id: KanbanStatus; label: string; accent: string; bg: string }[] = [
-  { id: "backlog", label: "Backlog", accent: "text-muted-foreground", bg: "bg-secondary/20" },
-  { id: "active", label: "Active", accent: "text-primary", bg: "bg-primary/5" },
-  { id: "review", label: "Review", accent: "text-warning", bg: "bg-warning/5" },
-  { id: "done", label: "Done", accent: "text-success", bg: "bg-success/5" },
-];
-
-const SOURCE_ICONS: Record<string, typeof Terminal> = {
-  cli: Terminal,
-  telegram: MessageCircle,
-  discord: Hash,
-  slack: MessageSquare,
-  whatsapp: Globe,
-  web: Bot,
-  cron: Clock,
-};
-
-function getKanbanStatus(session: SessionInfo): KanbanStatus {
-  const status = session.kanban_status;
-  if (status === "active" || status === "review" || status === "done") return status;
-  return "backlog";
+function threadTitle(session: SessionInfo | null | undefined) {
+  if (!session) return "New thread";
+  const title = session.title?.trim();
+  if (title && title !== "Untitled") return title;
+  return session.preview?.trim() || "Untitled thread";
 }
 
-function SessionCard({
+function modelShort(model: string | null | undefined) {
+  return (model ?? "").split("/").pop() || "";
+}
+
+function ThreadRow({
   session,
-  onClick,
-  onDragStart,
-  onDragEnd,
+  active,
+  searchSnippet,
+  onOpen,
   onDelete,
-  onCreateTask,
 }: {
   session: SessionInfo;
-  onClick: () => void;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  active: boolean;
+  searchSnippet?: string;
+  onOpen: () => void;
   onDelete: () => void;
-  onCreateTask: () => void;
 }) {
-  const SourceIcon = SOURCE_ICONS[session.source ?? ""] ?? Globe;
-  const hasTitle = session.title && session.title !== "Untitled";
-  const modelShort = (session.model ?? "").split("/").pop() ?? "";
-  const cost = session.estimated_cost_usd;
-  const costStr =
-    cost != null && cost > 0 ? (cost < 0.001 ? "<$0.001" : `$${cost.toFixed(3)}`) : null;
-
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={onClick}
-      className="group relative cursor-pointer rounded-md border border-border bg-background p-3 shadow-sm hover:border-primary/30 hover:shadow-md transition-all select-none"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className={cn(
+        "group relative flex w-full min-w-0 items-start gap-3 border-b border-border px-3 py-3 text-left transition",
+        active ? "bg-primary/12" : "hover:bg-secondary/45",
+      )}
     >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <span
-          className={`text-xs truncate flex-1 ${hasTitle ? "font-medium" : "text-muted-foreground italic"}`}
-        >
-          {hasTitle ? session.title : session.preview ? session.preview.slice(0, 50) : "Untitled session"}
-        </span>
-        <div className="flex items-center gap-1 shrink-0">
-          {session.is_active && (
-            <span className="h-2 w-2 rounded-full bg-success animate-pulse mt-0.5" title="Active" />
-          )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateTask();
-            }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary p-0.5 rounded"
-            title="Create task from session"
-          >
-            <Plus className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5 rounded"
-            title="Delete session"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground flex-wrap">
-        <SourceIcon className="h-3 w-3 shrink-0" />
-        {modelShort && <span className="truncate max-w-[90px]">{modelShort}</span>}
-        <span className="text-border">·</span>
-        <span>{session.message_count} msgs</span>
-        {costStr && (
-          <>
-            <span className="text-border">·</span>
-            <span className="text-success/80">{costStr}</span>
-          </>
+      <span
+        className={cn(
+          "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-sm border",
+          session.is_active
+            ? "border-primary/45 bg-primary/18 text-primary"
+            : "border-border bg-secondary/60 text-muted-foreground",
         )}
-        <span className="text-border">·</span>
-        <span>{timeAgo(session.last_active)}</span>
-      </div>
-
-      <div className="absolute inset-0 rounded-md ring-1 ring-primary/0 group-hover:ring-primary/20 transition-all pointer-events-none" />
+      >
+        <MessageSquare className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-foreground">{threadTitle(session)}</span>
+          {session.is_active && (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_12px_rgba(255,163,43,0.8)]" />
+          )}
+        </span>
+        <span className="mt-1 block truncate text-xs text-muted-foreground">
+          {searchSnippet || session.preview || "No messages yet"}
+        </span>
+        <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+          {modelShort(session.model) && (
+            <>
+              <span className="truncate font-mono-ui max-w-[96px]">{modelShort(session.model)}</span>
+              <span className="text-border">·</span>
+            </>
+          )}
+          <span>{session.message_count} msgs</span>
+          <span className="text-border">·</span>
+          <span>{timeAgo(session.last_active)}</span>
+        </span>
+      </span>
+      <span
+        className="absolute right-2 top-2 opacity-0 transition group-hover:opacity-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+          title="Delete thread"
+          onClick={onDelete}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </span>
     </div>
   );
 }
 
 export default function ConversationsPage() {
-  const { t } = useI18n();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverCol, setDragOverCol] = useState<KanbanStatus | null>(null);
-  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-  const [showNewChat, setShowNewChat] = useState(false);
-  const [view, setView] = useState<"kanban" | "list">("kanban");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [newThread, setNewThread] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<SessionSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [taskNotice, setTaskNotice] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const loadSessions = useCallback(() => {
-    api
-      .getSessions(500, 0)
-      .then((resp) => setSessions(resp.sessions))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const loadThreads = useCallback(async () => {
+    const resp = await api.getSessions(500, 0, WEB_SOURCE);
+    setSessions(resp.sessions);
+    return resp.sessions;
   }, []);
 
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    let cancelled = false;
+    loadThreads()
+      .then((rows) => {
+        if (cancelled) return;
+        if (!selectedId && !newThread && rows.length > 0) setSelectedId(rows[0].id);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadThreads, newThread, selectedId]);
 
   useEventBus((env) => {
     if (env.topic !== "sessions.changed") return;
     const data = env.data as { action?: string; session_id?: string; session?: SessionInfo };
-    const action = data.action;
     const sid = data.session_id ?? "";
     const row = data.session;
 
-    if (action === "deleted" && sid) {
+    if (data.action === "deleted" && sid) {
       setSessions((prev) => prev.filter((s) => s.id !== sid));
-      if (chatSessionId === sid) {
-        setChatSessionId(null);
-        setShowNewChat(false);
+      if (selectedId === sid) {
+        setSelectedId(null);
+        setNewThread(false);
       }
       return;
     }
 
-    if (row && sid) {
+    if (row && row.source === WEB_SOURCE) {
       setSessions((prev) => {
-        const idx = prev.findIndex((s) => s.id === sid);
+        const idx = prev.findIndex((s) => s.id === row.id);
         if (idx >= 0) {
           const next = [...prev];
           next[idx] = { ...next[idx], ...row };
-          return next;
+          return next.sort((a, b) => b.last_active - a.last_active);
         }
         return [row, ...prev];
       });
-      return;
     }
-
-    if (sid) loadSessions();
   });
 
   useEffect(() => {
@@ -198,114 +179,117 @@ export default function ConversationsPage() {
       setSearchResults(null);
       return;
     }
-    const tmr = setTimeout(() => {
+    const t = setTimeout(() => {
       setSearching(true);
       api
-        .searchSessions(q, 40)
+        .searchSessions(q, 60, WEB_SOURCE)
         .then((r) => setSearchResults(r.results))
         .catch(() => setSearchResults([]))
         .finally(() => setSearching(false));
-    }, 280);
-    return () => clearTimeout(tmr);
+    }, 250);
+    return () => clearTimeout(t);
   }, [searchQ]);
 
-  const columnSessions = (status: KanbanStatus) => sessions.filter((s) => getKanbanStatus(s) === status);
+  const selectedSession = useMemo(
+    () => sessions.find((s) => s.id === selectedId) ?? null,
+    [selectedId, sessions],
+  );
 
-  const handleDrop = async (col: KanbanStatus) => {
-    if (!draggingId || draggingId === col) return;
-    setSessions((prev) => prev.map((s) => (s.id === draggingId ? { ...s, kanban_status: col } : s)));
-    try {
-      await api.patchSessionKanban(draggingId, col);
-    } catch {
-      loadSessions();
-    }
-    setDraggingId(null);
-    setDragOverCol(null);
+  const visibleThreads = useMemo(() => {
+    if (!searchResults) return sessions.map((session) => ({ session, snippet: undefined as string | undefined }));
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    const rows: Array<{ session: SessionInfo; snippet?: string }> = [];
+    searchResults.forEach((row) => {
+      const session = byId.get(row.session_id);
+      if (session) rows.push({ session, snippet: row.snippet });
+    });
+    return rows;
+  }, [searchResults, sessions]);
+
+  const openNewThread = () => {
+    setSelectedId(null);
+    setNewThread(true);
+    setEditingTitle(false);
   };
 
-  const handleDelete = async (sessionId: string) => {
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    if (chatSessionId === sessionId) closeChat();
-    try {
-      await api.deleteSession(sessionId);
-    } catch {
-      loadSessions();
-    }
-  };
-
-  const openChat = (sessionId: string) => {
-    setChatSessionId(sessionId);
-    setShowNewChat(false);
-  };
-
-  const openNewChat = () => {
-    setChatSessionId(null);
-    setShowNewChat(true);
-  };
-
-  const closeChat = () => {
-    setChatSessionId(null);
-    setShowNewChat(false);
+  const openThread = (id: string) => {
+    setSelectedId(id);
+    setNewThread(false);
+    setEditingTitle(false);
   };
 
   const handleSessionCreated = (id: string) => {
-    setChatSessionId(id);
-    setShowNewChat(false);
-    loadSessions();
+    setSelectedId(id);
+    setNewThread(false);
+    void loadThreads();
   };
 
-  const createTaskForSession = async (session: SessionInfo) => {
+  const handleDelete = async (id: string) => {
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (selectedId === id) {
+      setSelectedId(null);
+      setNewThread(false);
+    }
     try {
-      const title = session.title && session.title !== "Untitled" ? session.title : session.preview || session.id;
-      await api.createKanbanTask({
-        title: `Follow up: ${title}`.slice(0, 180),
-        body: [
-          `Source session: ${session.id}`,
-          session.model ? `Model: ${session.model}` : "",
-          session.source ? `Source: ${session.source}` : "",
-          "",
-          session.preview ?? "",
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        board: "default",
-        priority: 0,
-      });
-      setTaskNotice("Task created from conversation.");
-      setTimeout(() => setTaskNotice(null), 2500);
+      await api.deleteSession(id);
     } catch (e) {
-      setTaskNotice(e instanceof Error ? e.message : String(e));
+      setNotice(e instanceof Error ? e.message : String(e));
+      void loadThreads();
     }
   };
 
-  const chatOpen = chatSessionId !== null || showNewChat;
+  const beginRename = () => {
+    if (!selectedSession) return;
+    setTitleDraft(selectedSession.title || "");
+    setEditingTitle(true);
+  };
 
-  const listRows = searchQ.trim() ? searchResults : null;
+  const saveRename = async () => {
+    if (!selectedSession) return;
+    try {
+      await api.renameSession(selectedSession.id, titleDraft);
+      setEditingTitle(false);
+      void loadThreads();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const chatVisible = newThread || !!selectedId;
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className={`flex flex-col gap-4 ${chatOpen ? "mr-[480px]" : ""} transition-[margin] duration-300`}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-base font-semibold">{t.app.nav.conversations}</h1>
-          <Badge variant="secondary" className="text-xs">
-            {sessions.length}
-          </Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+    <div className="flex h-[calc(100vh-8.5rem)] min-h-[620px] overflow-hidden rounded-sm border border-border bg-card/75 shadow-2xl">
+      <aside className={cn("flex min-h-0 w-full flex-col border-r border-border md:w-[360px]", chatVisible && "hidden md:flex")}>
+        <div className="shrink-0 border-b border-border p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                <h1 className="truncate text-sm font-semibold">Threads</h1>
+                <Badge variant="secondary" className="h-5 text-[10px]">
+                  {sessions.length}
+                </Badge>
+              </div>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Web chat</p>
+            </div>
+            <Button size="sm" className="h-8 gap-1.5" onClick={openNewThread}>
+              <Plus className="h-3.5 w-3.5" />
+              New
+            </Button>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-8 h-9 text-sm"
-              placeholder={t.common.search}
+              className="h-9 pl-8 pr-8 text-sm"
+              placeholder="Search threads..."
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
             />
@@ -314,173 +298,113 @@ export default function ConversationsPage() {
                 type="button"
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 onClick={() => setSearchQ("")}
-                aria-label={t.common.clear}
+                aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-          <div className="flex rounded-md border border-border overflow-hidden">
-            <Button
-              type="button"
-              variant={view === "kanban" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-9 rounded-none gap-1"
-              onClick={() => setView("kanban")}
-            >
-              <Kanban className="h-3.5 w-3.5" />
-              Board
-            </Button>
-            <Button
-              type="button"
-              variant={view === "list" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-9 rounded-none gap-1"
-              onClick={() => setView("list")}
-            >
-              <LayoutList className="h-3.5 w-3.5" />
-              List
-            </Button>
-          </div>
-          <Button size="sm" className="h-9 gap-1.5" onClick={openNewChat}>
-            <Plus className="h-3.5 w-3.5" />
-            New conversation
-          </Button>
         </div>
-      </div>
 
-      {searching && <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Searching…</p>}
-      {taskNotice && <p className="text-xs border border-border p-2 text-muted-foreground">{taskNotice}</p>}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {searching && (
+            <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Searching
+            </div>
+          )}
+          {visibleThreads.length > 0 ? (
+            visibleThreads.map(({ session, snippet }) => (
+              <ThreadRow
+                key={session.id}
+                session={session}
+                searchSnippet={snippet}
+                active={!newThread && selectedId === session.id}
+                onOpen={() => openThread(session.id)}
+                onDelete={() => void handleDelete(session.id)}
+              />
+            ))
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center px-8 text-center text-muted-foreground">
+              <Bot className="mb-3 h-9 w-9 opacity-35" />
+              <p className="text-sm font-medium">{searchQ ? "No matching threads" : "No web chat threads yet"}</p>
+              <p className="mt-1 text-xs opacity-70">
+                {searchQ ? "Try a different search." : "Start a new thread to chat with Spark here."}
+              </p>
+            </div>
+          )}
+        </div>
+      </aside>
 
-      {view === "kanban" ? (
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {COLUMNS.map((col) => {
-            const colSessions = columnSessions(col.id);
-            const isOver = dragOverCol === col.id;
-            return (
-              <div
-                key={col.id}
-                className={`min-w-[240px] flex-1 flex flex-col rounded-lg border transition-colors ${
-                  isOver ? "border-primary/40 bg-primary/5" : "border-border " + col.bg
-                }`}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverCol(col.id);
-                }}
-                onDragLeave={() => setDragOverCol(null)}
-                onDrop={() => handleDrop(col.id)}
-              >
-                <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50">
-                  <span className={`text-xs font-semibold uppercase tracking-wider ${col.accent}`}>{col.label}</span>
-                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                    {colSessions.length}
-                  </Badge>
-                </div>
-                <div className="flex flex-col gap-2 p-2 flex-1 min-h-[120px]">
-                  {colSessions.length === 0 ? (
-                    <div className="flex items-center justify-center flex-1 py-6">
-                      <p className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Empty</p>
+      <section className={cn("min-w-0 flex-1 flex-col", chatVisible ? "flex" : "hidden md:flex")}>
+        {chatVisible ? (
+          <>
+            {selectedSession && (
+              <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
+                <div className="min-w-0 flex-1">
+                  {editingTitle ? (
+                    <div className="flex max-w-xl items-center gap-2">
+                      <Input
+                        className="h-8 text-sm"
+                        value={titleDraft}
+                        placeholder={selectedSession.preview || "Thread title"}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void saveRename();
+                          if (e.key === "Escape") setEditingTitle(false);
+                        }}
+                        autoFocus
+                      />
+                      <Button size="icon" className="h-8 w-8" onClick={() => void saveRename()}>
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTitle(false)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   ) : (
-                    colSessions.map((s) => (
-                      <SessionCard
-                        key={s.id}
-                        session={s}
-                        onClick={() => openChat(s.id)}
-                        onDragStart={() => setDraggingId(s.id)}
-                        onDragEnd={() => {
-                          setDraggingId(null);
-                          setDragOverCol(null);
-                        }}
-                        onDelete={() => handleDelete(s.id)}
-                        onCreateTask={() => void createTaskForSession(s)}
-                      />
-                    ))
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-medium">{threadTitle(selectedSession)}</p>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={beginRename}>
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 border border-border rounded-lg overflow-hidden">
-          {listRows
-            ? listRows.map((row) => {
-                const sid = row.session_id;
-                const sess = sessions.find((s) => s.id === sid);
-                return (
-                  <button
-                    key={sid}
-                    type="button"
-                    className="flex items-center justify-between px-4 py-3 border-b border-border last:border-b-0 hover:bg-secondary/30 text-left transition-colors"
-                    onClick={() => openChat(sid)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">
-                        {sess?.title || sess?.preview || sid}
-                      </p>
-                      {row.snippet ? (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{row.snippet}</p>
-                      ) : null}
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {sess ? `${sess.message_count} msgs · ${timeAgo(sess.last_active)}` : sid}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleDelete(sid);
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </button>
-                );
-              })
-            : sessions.map((display) => (
-                <button
-                  key={display.id}
-                  type="button"
-                  className="flex items-center justify-between px-4 py-3 border-b border-border last:border-b-0 hover:bg-secondary/30 text-left transition-colors"
-                  onClick={() => openChat(display.id)}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">
-                      {display.title || display.preview || display.id}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {display.message_count} msgs · {timeAgo(display.last_active)}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleDelete(display.id);
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </button>
-              ))}
-        </div>
-      )}
+            )}
+            <ChatPanel
+              sessionId={newThread ? null : selectedId}
+              sessionTitle={selectedSession ? threadTitle(selectedSession) : null}
+              onBack={() => {
+                setNewThread(false);
+                setSelectedId(null);
+              }}
+              onSessionCreated={handleSessionCreated}
+              onSessionUpdated={() => void loadThreads()}
+              className="min-h-0 flex-1"
+            />
+          </>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+            <MessageSquare className="mb-4 h-12 w-12 opacity-30" />
+            <p className="text-sm font-medium text-foreground">Select a thread</p>
+            <p className="mt-1 max-w-sm text-xs opacity-75">Open a web chat thread from the inbox or start a new one.</p>
+            <Button className="mt-5 h-9 gap-1.5" onClick={openNewThread}>
+              <Plus className="h-3.5 w-3.5" />
+              New thread
+            </Button>
+          </div>
+        )}
+      </section>
 
-      {sessions.length === 0 && !searchQ && (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <Clock className="h-8 w-8 mb-3 opacity-40" />
-          <p className="text-sm font-medium">No sessions yet</p>
-          <p className="text-xs mt-1 opacity-60">Start a conversation to see it here</p>
+      {notice && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-md rounded-sm border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl">
+          <button className="mr-2 text-muted-foreground hover:text-foreground" onClick={() => setNotice(null)}>
+            <X className="inline h-3.5 w-3.5" />
+          </button>
+          {notice}
         </div>
-      )}
-
-      {chatOpen && (
-        <ChatPanel sessionId={chatSessionId} onClose={closeChat} onSessionCreated={handleSessionCreated} />
       )}
     </div>
   );

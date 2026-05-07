@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ChevronLeft,
   X,
   Send,
   Bot,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { SessionMessage } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { Button } from "@/components/ui/button";
 import { useEventBus } from "@/hooks/useEventBus";
@@ -48,8 +50,12 @@ type ChatMessage =
 
 interface ChatPanelProps {
   sessionId: string | null;
-  onClose: () => void;
+  onClose?: () => void;
+  onBack?: () => void;
   onSessionCreated?: (id: string) => void;
+  onSessionUpdated?: (id: string) => void;
+  sessionTitle?: string | null;
+  className?: string;
 }
 
 function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
@@ -74,7 +80,15 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
   return out;
 }
 
-export function ChatPanel({ sessionId, onClose, onSessionCreated }: ChatPanelProps) {
+export function ChatPanel({
+  sessionId,
+  onClose,
+  onBack,
+  onSessionCreated,
+  onSessionUpdated,
+  sessionTitle,
+  className,
+}: ChatPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [model, setModel] = useState("");
@@ -235,6 +249,7 @@ export function ChatPanel({ sessionId, onClose, onSessionCreated }: ChatPanelPro
         setStatusLabel(null);
         const cur = activeSessionRef.current;
         if (cur) {
+          onSessionUpdated?.(cur);
           void api
             .getSessionMessages(cur)
             .then((resp) =>
@@ -279,7 +294,13 @@ export function ChatPanel({ sessionId, onClose, onSessionCreated }: ChatPanelPro
         onSessionCreated?.(sid);
       } else {
         activeSessionRef.current = sid;
-        await api.postConversationMessage(sid, text);
+        const resp = await api.postConversationMessage(sid, text);
+        if (resp.session_id && resp.session_id !== sid) {
+          sid = resp.session_id;
+          activeSessionRef.current = sid;
+          setActiveSessionId(sid);
+          onSessionCreated?.(sid);
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -387,11 +408,16 @@ export function ChatPanel({ sessionId, onClose, onSessionCreated }: ChatPanelPro
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col border-l border-border bg-background shadow-2xl">
+    <div className={cn("flex min-h-0 w-full flex-1 flex-col bg-background", className)}>
       <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0 gap-2">
+        {onBack && (
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={onBack}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        )}
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <span className="text-sm font-semibold truncate">
-            {activeSessionId ? "Conversation" : "New conversation"}
+            {activeSessionId ? sessionTitle || "Conversation" : "New thread"}
           </span>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusPill streaming={streaming} label={statusLabel} />
@@ -422,9 +448,11 @@ export function ChatPanel({ sessionId, onClose, onSessionCreated }: ChatPanelPro
               Stop
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          {onClose && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

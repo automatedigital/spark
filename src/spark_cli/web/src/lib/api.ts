@@ -55,14 +55,26 @@ async function getSessionToken(): Promise<string> {
 
 export const api = {
   getStatus: () => fetchJSON<StatusResponse>("/api/status"),
-  getSessions: (limit = 20, offset = 0) =>
-    fetchJSON<PaginatedSessions>(`/api/sessions?limit=${limit}&offset=${offset}`),
+  getSessions: (limit = 20, offset = 0, source?: string) => {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (source) qs.set("source", source);
+    return fetchJSON<PaginatedSessions>(`/api/sessions?${qs.toString()}`);
+  },
   getSessionMessages: (id: string) =>
     fetchJSON<SessionMessagesResponse>(`/api/sessions/${encodeURIComponent(id)}/messages`),
   deleteSession: (id: string) =>
     fetchJSON<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+  renameSession: (id: string, title: string) =>
+    fetchJSON<{ ok: boolean; session_id: string; title: string | null }>(
+      `/api/sessions/${encodeURIComponent(id)}/title`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      },
+    ),
   getLogs: (params: { file?: string; lines?: number; level?: string; component?: string }) => {
     const qs = new URLSearchParams();
     if (params.file) qs.set("file", params.file);
@@ -143,10 +155,11 @@ export const api = {
   getToolsets: () => fetchJSON<ToolsetInfo[]>("/api/tools/toolsets"),
 
   // Session search (FTS5)
-  searchSessions: (q: string, limit = 20) =>
-    fetchJSON<SessionSearchResponse>(
-      `/api/sessions/search?q=${encodeURIComponent(q)}&limit=${limit}`,
-    ),
+  searchSessions: (q: string, limit = 20, source?: string) => {
+    const qs = new URLSearchParams({ q, limit: String(limit) });
+    if (source) qs.set("source", source);
+    return fetchJSON<SessionSearchResponse>(`/api/sessions/search?${qs.toString()}`);
+  },
 
   // Kanban status management
   patchSessionKanban: (sessionId: string, status: string) =>

@@ -1,7 +1,6 @@
 """Tests for web UI SSE event bus and conversation control endpoints."""
 
 import asyncio
-import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -57,6 +56,109 @@ class TestConversationModels:
 
 
 class TestConversationControl:
+    def test_sessions_can_filter_to_web_source(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("web_session", source="web", model="m1")
+            db.create_session("web_child_session", source="web", model="m1", parent_session_id="web_session")
+            db.create_session("cli_session", source="cli", model="m1")
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/sessions?source=web&limit=20")
+        assert resp.status_code == 200
+        ids = {row["id"] for row in resp.json()["sessions"]}
+        assert "web_session" in ids
+        assert "web_child_session" in ids
+        assert "cli_session" not in ids
+        assert resp.json()["total"] == 2
+
+    def test_session_search_can_filter_to_web_source(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("web_search_session", source="web", model="m1")
+            db.append_message("web_search_session", "user", content="needle project")
+            db.create_session("cli_search_session", source="cli", model="m1")
+            db.append_message("cli_search_session", "user", content="needle project")
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/sessions/search?q=needle&source=web&limit=20")
+        assert resp.status_code == 200
+        ids = {row["session_id"] for row in resp.json()["results"]}
+        assert "web_search_session" in ids
+        assert "cli_search_session" not in ids
+
+    def test_session_title_patch(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("title_session", source="web", model="m1")
+        finally:
+            db.close()
+
+        resp = web_client.patch("/api/sessions/title_session/title", json={"title": "Renamed Thread"})
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "Renamed Thread"
+
+        db2 = SessionDB()
+        try:
+            assert db2.get_session("title_session")["title"] == "Renamed Thread"
+        finally:
+            db2.close()
+
+    def test_session_title_patch_rejects_duplicate(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("title_one", source="web", model="m1")
+            db.create_session("title_two", source="web", model="m1")
+            db.set_session_title("title_one", "Taken")
+        finally:
+            db.close()
+
+        resp = web_client.patch("/api/sessions/title_two/title", json={"title": "Taken"})
+        assert resp.status_code == 400
+
+    def test_conversation_message_rehydrates_stored_web_session(self, web_client, monkeypatch):
+        import core.run_agent as run_agent
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+                self.session_id = kwargs["session_id"]
+
+        db = SessionDB()
+        try:
+            db.create_session("stored_web", source="web", model="m1")
+            db.append_message("stored_web", "user", content="hello")
+            db.append_message("stored_web", "assistant", content="hi")
+        finally:
+            db.close()
+
+        captured = {}
+
+        def fake_run(agent, user_message, conversation_history=None):
+            captured["agent"] = agent
+            captured["user_message"] = user_message
+            captured["history"] = conversation_history
+
+        monkeypatch.setattr(run_agent, "AIAgent", FakeAgent)
+        monkeypatch.setattr(web_server, "_run_web_agent_turn", fake_run)
+
+        resp = web_client.post("/api/conversations/stored_web/messages", json={"message": "again"})
+        assert resp.status_code == 200
+        assert resp.json()["session_id"] == "stored_web"
+        assert "stored_web" in web_server._web_agents
+
     def test_interrupt_requires_agent(self, web_client):
         resp = web_client.post("/api/conversations/none/interrupt", json={})
         assert resp.status_code == 404

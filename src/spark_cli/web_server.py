@@ -1291,14 +1291,19 @@ def _reveal_authorized(request: Request) -> bool:
 
 
 @app.get("/api/sessions")
-async def get_sessions(limit: int = 20, offset: int = 0):
+async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] = None):
     try:
         from core.spark_state import SessionDB
 
         db = SessionDB()
         try:
-            sessions = db.list_sessions_rich(limit=limit, offset=offset)
-            total = db.session_count()
+            sessions = db.list_sessions_rich(
+                source=source,
+                limit=limit,
+                offset=offset,
+                include_children=(source == "web"),
+            )
+            total = db.session_count(source=source)
             now = time.time()
             for s in sessions:
                 s["is_active"] = (
@@ -1319,7 +1324,7 @@ async def get_sessions(limit: int = 20, offset: int = 0):
 
 
 @app.get("/api/sessions/search")
-async def search_sessions(q: str = "", limit: int = 20):
+async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = None):
     """Full-text search across session message content using FTS5."""
     if not q or not q.strip():
         return {"results": []}
@@ -1340,7 +1345,8 @@ async def search_sessions(q: str = "", limit: int = 20):
                 else:
                     terms.append(token + "*")
             prefix_query = " ".join(terms)
-            matches = db.search_messages(query=prefix_query, limit=limit)
+            source_filter = [source] if source else None
+            matches = db.search_messages(query=prefix_query, source_filter=source_filter, limit=limit)
             # Group by session_id — return unique sessions with their best snippet
             seen: dict = {}
             for m in matches:
@@ -2603,6 +2609,29 @@ async def get_session_messages(session_id: str):
         db.close()
 
 
+@app.patch("/api/sessions/{session_id}/title")
+async def update_session_title(session_id: str, body: dict[str, Any]):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        title = str(body.get("title", ""))
+        try:
+            updated = db.set_session_title(sid, title)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not updated:
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = db.get_session(sid)
+        _emit_sessions_changed("updated", sid, row)
+        return {"ok": True, "session_id": sid, "title": row.get("title") if row else None}
+    finally:
+        db.close()
+
+
 @app.delete("/api/sessions/{session_id}")
 async def delete_session_endpoint(session_id: str):
     from core.spark_state import SessionDB
@@ -2612,7 +2641,7 @@ async def delete_session_endpoint(session_id: str):
     try:
         if not db.delete_session(session_id):
             raise HTTPException(status_code=404, detail="Session not found")
-        _web_agents.pop(session_id, None)
+        _close_web_agent(session_id)
         _web_queues.pop(session_id, None)
         _web_streaming.discard(session_id)
         unregister_gateway_notify(session_id)
@@ -3051,7 +3080,7 @@ def _make_web_chat_callbacks(
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
-    conversation_history: Optional[List[Dict[str, Any]]] = None,
+    conversation_history: Optional[list[dict[str, Any]]] = None,
 ) -> None:
     from tools.approval import reset_current_session_key, set_current_session_key
 
@@ -3063,6 +3092,55 @@ def _run_web_agent_turn(
             agent.run_conversation(user_message)
     finally:
         reset_current_session_key(tok)
+
+
+def _close_web_agent(session_id: str) -> None:
+    agent = _web_agents.pop(session_id, None)
+    db = getattr(agent, "_session_db", None)
+    close = getattr(db, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
+
+
+def _default_web_chat_model() -> str:
+    cfg = load_config()
+    model_cfg = cfg.get("model", "")
+    if isinstance(model_cfg, dict):
+        return str(model_cfg.get("default", model_cfg.get("name", "")) or "")
+    return str(model_cfg) if model_cfg else ""
+
+
+def _new_web_agent(
+    *,
+    session_id: str,
+    model: str,
+    token_callback: Any,
+    tool_start_callback: Any,
+    tool_complete_callback: Any,
+    reasoning_callback: Any,
+    status_callback: Any,
+) -> Any:
+    from core.run_agent import AIAgent
+    from core.spark_state import SessionDB
+
+    _close_web_agent(session_id)
+    agent = AIAgent(
+        session_id=session_id,
+        model=model,
+        stream_delta_callback=token_callback,
+        tool_start_callback=tool_start_callback,
+        tool_complete_callback=tool_complete_callback,
+        reasoning_callback=reasoning_callback,
+        status_callback=status_callback,
+        quiet_mode=True,
+        platform="web",
+        session_db=SessionDB(),
+    )
+    _web_agents[session_id] = agent
+    return agent
 
 
 @app.patch("/api/sessions/{session_id}/kanban")
@@ -3136,7 +3214,6 @@ async def create_conversation(body: ConversationCreate):
     from datetime import datetime
 
     try:
-        from core.run_agent import AIAgent
         from tools.approval import register_gateway_notify, unregister_gateway_notify
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}")
@@ -3154,25 +3231,17 @@ async def create_conversation(body: ConversationCreate):
         status_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
-    cfg = load_config()
-    model_cfg = cfg.get("model", "")
-    if isinstance(model_cfg, dict):
-        default_model: str = model_cfg.get("default", model_cfg.get("name", ""))
-    else:
-        default_model = str(model_cfg) if model_cfg else ""
-    model = body.model or default_model
+    model = body.model or _default_web_chat_model()
 
     try:
-        agent = AIAgent(
+        _new_web_agent(
             session_id=session_id,
             model=model,
-            stream_delta_callback=token_callback,
+            token_callback=token_callback,
             tool_start_callback=tool_start_callback,
             tool_complete_callback=tool_complete_callback,
             reasoning_callback=reasoning_callback,
             status_callback=status_callback,
-            quiet_mode=True,
-            platform="web",
         )
     except (ValueError, Exception) as e:
         _web_queues.pop(session_id, None)
@@ -3197,7 +3266,6 @@ async def create_conversation(body: ConversationCreate):
     except Exception:
         _log.debug("session create emit failed", exc_info=True)
 
-    _web_agents[session_id] = agent
     message = body.message
 
     def _gw_notify(data: dict) -> None:
@@ -3227,16 +3295,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     """Send a follow-up message to an existing web chat session."""
     from tools.approval import register_gateway_notify, unregister_gateway_notify
 
-    agent = _web_agents.get(session_id)
-    if not agent:
-        raise HTTPException(
-            status_code=404,
-            detail="Session not in active memory. Start a new conversation.",
-        )
-
     queue: asyncio.Queue = asyncio.Queue()
-    _web_queues[session_id] = queue
-
     loop = asyncio.get_running_loop()
     (
         token_callback,
@@ -3246,11 +3305,56 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         status_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
-    agent.stream_delta_callback = token_callback
-    agent.tool_start_callback = tool_start_callback
-    agent.tool_complete_callback = tool_complete_callback
-    agent.reasoning_callback = reasoning_callback
-    agent.status_callback = status_callback
+    from core.spark_state import SessionDB
+
+    conversation_history: Optional[list[dict[str, Any]]] = None
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = db.get_session(sid)
+        if not row:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if row.get("source") != "web":
+            raise HTTPException(
+                status_code=400,
+                detail="Only web chat sessions can be resumed here.",
+            )
+        session_id = sid
+        (
+            token_callback,
+            tool_start_callback,
+            tool_complete_callback,
+            reasoning_callback,
+            status_callback,
+        ) = _make_web_chat_callbacks(session_id, queue, loop)
+        _web_queues[session_id] = queue
+        agent = _web_agents.get(session_id)
+        if agent:
+            agent.stream_delta_callback = token_callback
+            agent.tool_start_callback = tool_start_callback
+            agent.tool_complete_callback = tool_complete_callback
+            agent.reasoning_callback = reasoning_callback
+            agent.status_callback = status_callback
+        else:
+            conversation_history = db.get_messages_as_conversation(session_id)
+            model = row.get("model") or _default_web_chat_model()
+            agent = _new_web_agent(
+                session_id=session_id,
+                model=model,
+                token_callback=token_callback,
+                tool_start_callback=tool_start_callback,
+                tool_complete_callback=tool_complete_callback,
+                reasoning_callback=reasoning_callback,
+                status_callback=status_callback,
+            )
+        try:
+            db.reopen_session(session_id)
+        except Exception:
+            pass
+    finally:
+        db.close()
 
     message = body.message
 
@@ -3262,7 +3366,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         _web_streaming.add(session_id)
         try:
             await loop.run_in_executor(
-                None, lambda: _run_web_agent_turn(agent, message, None)
+                None, lambda: _run_web_agent_turn(agent, message, conversation_history)
             )
         except Exception:
             _log.exception("Web chat follow-up error session=%s", session_id)
