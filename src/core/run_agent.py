@@ -81,7 +81,7 @@ from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
     MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
-    build_nous_subscription_prompt,
+    APP_CREATION_GUIDANCE, build_nous_subscription_prompt,
 )
 from agent.model_metadata import (
     fetch_model_metadata,
@@ -3157,6 +3157,8 @@ class AIAgent:
             tool_guidance.append(SKILLS_GUIDANCE)
         if tool_guidance:
             prompt_parts.append(" ".join(tool_guidance))
+        if any(name in self.valid_tool_names for name in ("terminal", "write_file", "patch_file")):
+            prompt_parts.append(APP_CREATION_GUIDANCE)
 
         nous_subscription_prompt = build_nous_subscription_prompt(self.valid_tool_names)
         if nous_subscription_prompt:

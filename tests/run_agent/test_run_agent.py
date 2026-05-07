@@ -20,7 +20,7 @@ import pytest
 import core.run_agent as run_agent
 from core.run_agent import AIAgent
 from agent.error_classifier import FailoverReason
-from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
+from agent.prompt_builder import APP_CREATION_GUIDANCE, DEFAULT_AGENT_IDENTITY
 
 
 # ---------------------------------------------------------------------------
@@ -662,6 +662,26 @@ class TestBuildSystemPrompt:
 
         prompt = agent._build_system_prompt()
         assert MEMORY_GUIDANCE not in prompt
+
+    def test_includes_app_creation_defaults_when_file_or_terminal_tools_loaded(self):
+        tools = _make_tool_defs("terminal", "write_file")
+        with (
+            patch("core.run_agent.get_tool_definitions", return_value=tools),
+            patch("core.run_agent.check_toolset_requirements", return_value={}),
+            patch("core.run_agent.OpenAI"),
+        ):
+            agent = AIAgent(
+                api_key="test-k...7890",
+                quiet_mode=True,
+                skip_context_files=True,
+                skip_memory=True,
+            )
+
+        prompt = agent._build_system_prompt()
+
+        assert APP_CREATION_GUIDANCE in prompt
+        assert ".spark/workspace/" in prompt
+        assert "port 9119" in prompt
 
     def test_includes_datetime(self, agent):
         prompt = agent._build_system_prompt()

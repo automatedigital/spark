@@ -170,6 +170,17 @@ SKILLS_GUIDANCE = (
     "Skills that aren't maintained become liabilities."
 )
 
+APP_CREATION_GUIDANCE = (
+    "# App creation defaults\n"
+    "When the user asks you to create an app, website, game, dashboard, or other "
+    "runnable project without specifying a target directory, create it under "
+    "`.spark/workspace/` in the active workspace/backend cwd. Use a descriptive "
+    "subdirectory name for the project.\n"
+    "When bringing up a user-created app and the user did not specify a port, choose "
+    "an available port instead of assuming a fixed one. Do not use port 9119 for "
+    "user-created apps; it is reserved for Spark's built-in dashboard."
+)
+
 TOOL_USE_ENFORCEMENT_GUIDANCE = (
     "# Tool-use enforcement\n"
     "You MUST use your tools to take action — do not describe what you would do "
