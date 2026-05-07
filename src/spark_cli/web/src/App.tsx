@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import {
   Activity,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   Clock,
-  Command,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -53,8 +54,21 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   env: EnvPage,
 };
 
+function SparkLogo({ className = "" }: { className?: string }) {
+  return (
+    <img
+      src="/icon_small-dark.png"
+      alt=""
+      aria-hidden="true"
+      className={`block h-7 w-7 object-contain ${className}`}
+      draggable={false}
+    />
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState<PageId>("kanban");
+  const [navExpanded, setNavExpanded] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const initialRef = useRef(true);
   const { t } = useI18n();
@@ -118,14 +132,29 @@ export default function App() {
       <div className="noise-overlay" />
       <div className="warm-glow" />
 
-      <div className="relative z-2 grid min-h-screen grid-cols-1 md:grid-cols-[84px_1fr]">
-        <aside className="hidden border-r border-border bg-card/78 backdrop-blur-xl md:flex md:flex-col">
-          <div className="grid h-20 place-items-center border-b border-border">
-            <span className="grid h-10 w-10 place-items-center rounded-sm bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <Command className="h-5 w-5" />
+      <div className={`relative z-2 grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:248px]" : "[--sidebar-width:84px]"}`}>
+        <aside className="hidden min-w-0 border-r border-border bg-card/78 backdrop-blur-xl md:flex md:flex-col">
+          <div className={`flex h-20 items-center border-b border-border px-4 ${navExpanded ? "justify-between" : "justify-center"}`}>
+            <span className="grid h-10 w-10 place-items-center rounded-sm border border-primary/35 bg-background shadow-lg shadow-primary/20">
+              <SparkLogo />
             </span>
+            {navExpanded && (
+              <div className="min-w-0 flex-1 px-3">
+                <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
+                <div className="truncate text-xs text-muted-foreground">Web UI</div>
+              </div>
+            )}
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              title={navExpanded ? "Collapse navigation" : "Expand navigation"}
+              aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
+              onClick={() => setNavExpanded((value) => !value)}
+            >
+              {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
           </div>
-          <nav className="flex flex-1 flex-col items-center gap-2 px-3 py-4">
+          <nav className={`flex flex-1 flex-col gap-2 px-3 py-4 ${navExpanded ? "items-stretch" : "items-center"}`}>
             {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
               <button
                 key={id}
@@ -133,21 +162,24 @@ export default function App() {
                 title={t.app.nav[labelKey]}
                 aria-label={t.app.nav[labelKey]}
                 onClick={() => setPage(id)}
-                className={`group relative grid h-12 w-12 place-items-center rounded-sm border transition ${
+                className={`group relative flex h-12 items-center rounded-sm border transition ${
                   page === id
                     ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
                     : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
-                }`}
+                } ${navExpanded ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
               >
                 <Icon className="h-5 w-5" />
-                <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl group-hover:block">
+                {navExpanded && (
+                  <span className="truncate text-sm font-medium">{t.app.nav[labelKey]}</span>
+                )}
+                <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${navExpanded ? "hidden" : "hidden group-hover:block"}`}>
                   {t.app.nav[labelKey]}
                 </span>
               </button>
             ))}
           </nav>
-          <div className="border-t border-border p-3 text-center text-[0.62rem] uppercase tracking-[0.12em] text-muted-foreground">
-            Web UI
+          <div className={`border-t border-border p-3 text-[0.62rem] uppercase tracking-[0.12em] text-muted-foreground ${navExpanded ? "text-left" : "text-center"}`}>
+            {navExpanded ? t.app.footer.name : "Web UI"}
           </div>
         </aside>
 
@@ -155,8 +187,8 @@ export default function App() {
           <header className="sticky top-0 z-40 border-b border-border bg-background/82 backdrop-blur-xl">
             <div className="flex min-h-16 items-center gap-3 px-3 sm:px-6">
               <div className="flex items-center gap-3 md:hidden">
-                <span className="grid h-9 w-9 place-items-center rounded-sm bg-primary text-primary-foreground shadow-sm">
-                  <Command className="h-4 w-4" />
+                <span className="grid h-9 w-9 place-items-center rounded-sm border border-primary/35 bg-background shadow-sm shadow-primary/20">
+                  <SparkLogo className="h-6 w-6" />
                 </span>
                 <span className="font-collapse text-lg font-bold uppercase tracking-wide">Spark</span>
               </div>

@@ -17,26 +17,26 @@
 @font-face { font-family: "Mondwest"; src: url("/fonts/Mondwest-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 
 @theme {
-  /* ---- Spark palette (graphite, teal signal, cobalt depth) ---- */
+  /* ---- Spark palette (graphite, amber signal) ---- */
   --color-background: #080d10;
   --color-foreground: #e8f2ef;
   --color-card: #0f171a;
   --color-card-foreground: #e8f2ef;
-  --color-primary: #2dd4bf;
+  --color-primary: #ffa32b;
   --color-primary-foreground: #06100f;
   --color-secondary: #172326;
   --color-secondary-foreground: #e8f2ef;
   --color-muted: #111b1e;
   --color-muted-foreground: #8aa09e;
-  --color-accent: #60a5fa;
-  --color-accent-foreground: #ffffff;
+  --color-accent: #ffa32b;
+  --color-accent-foreground: #06100f;
   --color-destructive: #f97316;
   --color-destructive-foreground: #fff;
-  --color-success: #2dd4bf;
+  --color-success: #ffa32b;
   --color-warning: #f59e0b;
   --color-border: color-mix(in srgb, #d7fff8 13%, transparent);
   --color-input: color-mix(in srgb, #d7fff8 17%, transparent);
-  --color-ring: #2dd4bf;
+  --color-ring: #ffa32b;
   --color-popover: #111b1e;
   --color-popover-foreground: #e8f2ef;
 
@@ -172,7 +172,7 @@ code {
   background-image:
     linear-gradient(color-mix(in srgb, var(--color-primary) 6%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 6%, transparent) 1px, transparent 1px),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23bffcf2' filter='url(%23n)' opacity='0.16'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23ffa32b' filter='url(%23n)' opacity='0.13'/%3E%3C/svg%3E");
   background-size: 40px 40px, 40px 40px, 512px 512px;
   mask-image: linear-gradient(to bottom, black, transparent 70%);
 }
@@ -184,8 +184,8 @@ code {
   z-index: 99;
   opacity: 0.8;
   background:
-    radial-gradient(ellipse at 12% 0%, rgba(45, 212, 191, 0.20) 0%, rgba(45, 212, 191, 0) 42%),
-    radial-gradient(ellipse at 88% 6%, rgba(96, 165, 250, 0.14) 0%, rgba(96, 165, 250, 0) 38%),
+    radial-gradient(ellipse at 12% 0%, rgba(255, 163, 43, 0.20) 0%, rgba(255, 163, 43, 0) 42%),
+    radial-gradient(ellipse at 88% 6%, rgba(255, 205, 117, 0.10) 0%, rgba(255, 205, 117, 0) 38%),
     linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0));
 }
 

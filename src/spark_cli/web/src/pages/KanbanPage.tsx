@@ -47,11 +47,11 @@ function colLabel(key: string): string {
 
 const COLUMN_META: Record<string, { icon: ElementType; className: string }> = {
   triage: { icon: CircleDot, className: "text-slate-300 bg-slate-300/10" },
-  todo: { icon: ClipboardList, className: "text-blue-300 bg-blue-400/12" },
-  ready: { icon: Zap, className: "text-teal-200 bg-teal-300/12" },
-  running: { icon: PlayCircle, className: "text-indigo-200 bg-indigo-300/12" },
+  todo: { icon: ClipboardList, className: "text-amber-200 bg-amber-300/12" },
+  ready: { icon: Zap, className: "text-yellow-200 bg-yellow-300/12" },
+  running: { icon: PlayCircle, className: "text-orange-200 bg-orange-300/12" },
   blocked: { icon: XCircle, className: "text-orange-200 bg-orange-300/12" },
-  done: { icon: CheckCircle2, className: "text-emerald-200 bg-emerald-300/12" },
+  done: { icon: CheckCircle2, className: "text-lime-200 bg-lime-300/12" },
 };
 
 function formatTime(value?: number | null): string {
@@ -359,7 +359,7 @@ export default function KanbanPage() {
   return (
     <div className="flex flex-col gap-5 min-h-[60vh]">
       <header className="overflow-hidden rounded-sm border border-border bg-card/92 shadow-2xl shadow-black/20">
-        <div className="grid gap-4 border-b border-border bg-[linear-gradient(135deg,rgba(45,212,191,0.13),rgba(96,165,250,0.08)_48%,rgba(15,23,26,0.82))] p-5 lg:grid-cols-[1fr_auto]">
+        <div className="grid gap-4 border-b border-border bg-[linear-gradient(135deg,rgba(255,163,43,0.16),rgba(255,214,142,0.06)_48%,rgba(15,23,26,0.82))] p-5 lg:grid-cols-[1fr_auto]">
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               <ClipboardList className="h-4 w-4" />
@@ -498,7 +498,7 @@ export default function KanbanPage() {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 gap-3 border-t border-border bg-background/32 p-4 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 border-t border-border bg-background/32 p-4 md:grid-cols-2 xl:grid-cols-5">
           <select
             className="border border-border bg-background px-3 py-2 shadow-inner"
             value={templateKey}
