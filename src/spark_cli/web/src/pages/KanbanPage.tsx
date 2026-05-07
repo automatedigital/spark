@@ -1,4 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ElementType } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  CircleDot,
+  ClipboardList,
+  PlayCircle,
+  Search,
+  Timer,
+  UserRound,
+  XCircle,
+  Zap,
+} from "lucide-react";
 import {
   api,
   type KanbanBoardResponse,
@@ -31,6 +44,15 @@ const TASK_TEMPLATES: Record<string, { title: string; body: string; priority: nu
 function colLabel(key: string): string {
   return key.charAt(0).toUpperCase() + key.slice(1);
 }
+
+const COLUMN_META: Record<string, { icon: ElementType; className: string }> = {
+  triage: { icon: CircleDot, className: "text-slate-300 bg-slate-300/10" },
+  todo: { icon: ClipboardList, className: "text-blue-300 bg-blue-400/12" },
+  ready: { icon: Zap, className: "text-teal-200 bg-teal-300/12" },
+  running: { icon: PlayCircle, className: "text-indigo-200 bg-indigo-300/12" },
+  blocked: { icon: XCircle, className: "text-orange-200 bg-orange-300/12" },
+  done: { icon: CheckCircle2, className: "text-emerald-200 bg-emerald-300/12" },
+};
 
 function formatTime(value?: number | null): string {
   if (!value) return "";
@@ -329,34 +351,58 @@ export default function KanbanPage() {
     if (!board) return {} as Record<string, KanbanTaskRow[]>;
     return board.columns;
   }, [board]);
+  const totalTasks = useMemo(
+    () => COLUMN_ORDER.reduce((sum, col) => sum + (columnTasks[col]?.length ?? 0), 0),
+    [columnTasks],
+  );
 
   return (
-    <div className="flex flex-col gap-4 min-h-[60vh]">
-      <header className="flex flex-col gap-3 border border-border p-4 bg-background/80">
-        <div className="flex flex-wrap items-center gap-2 justify-between">
-          <h1 className="font-display text-lg tracking-[0.15em] uppercase text-foreground">
-            Task Board
-          </h1>
+    <div className="flex flex-col gap-5 min-h-[60vh]">
+      <header className="overflow-hidden rounded-sm border border-border bg-card/92 shadow-2xl shadow-black/20">
+        <div className="grid gap-4 border-b border-border bg-[linear-gradient(135deg,rgba(45,212,191,0.13),rgba(96,165,250,0.08)_48%,rgba(15,23,26,0.82))] p-5 lg:grid-cols-[1fr_auto]">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+              <ClipboardList className="h-4 w-4" />
+              Task Board
+            </div>
+            <h1 className="text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
+              Coordinate work across Spark profiles.
+            </h1>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full border border-border bg-background/55 px-3 py-1">
+                Board: {boardSlug || "default"}
+              </span>
+              <span className="rounded-full border border-border bg-background/55 px-3 py-1">
+                {totalTasks} visible tasks
+              </span>
+              {board?.assignees?.length ? (
+                <span className="rounded-full border border-border bg-background/55 px-3 py-1">
+                  {board.assignees.length} assignees
+                </span>
+              ) : null}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2 items-center">
             <button
               type="button"
-              className="px-3 py-1.5 text-xs font-display uppercase tracking-wider border border-border hover:bg-foreground/5"
+              className="px-3 py-2 text-xs font-semibold border border-border bg-background/70 hover:bg-secondary"
               onClick={() => void loadBoard()}
             >
               {t.common.refresh}
             </button>
             <button
               type="button"
-              className="px-3 py-1.5 text-xs font-display uppercase tracking-wider border border-accent text-accent hover:bg-accent/10"
+              className="inline-flex items-center gap-2 bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
               onClick={() => void nudgeDispatch()}
             >
+              <Zap className="h-4 w-4" />
               {dispatchPreview === null ? "Preview dispatch" : "Confirm dispatch"}
             </button>
           </div>
         </div>
         {dispatchPreview !== null && (
-          <div className="border border-accent/50 bg-accent/5 p-3 text-xs">
-            <div className="font-display uppercase tracking-wider text-accent">
+          <div className="m-4 rounded-sm border border-primary/25 bg-primary/10 p-3 text-xs">
+            <div className="font-semibold text-primary">
               Ready to dispatch: {dispatchPreview.length ? dispatchPreview.join(", ") : "none"}
             </div>
             {dispatchBlocked.length > 0 && (
@@ -374,28 +420,31 @@ export default function KanbanPage() {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+        <div className="grid grid-cols-1 gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <label className="flex flex-col gap-1">
-            <span className="opacity-60 text-xs uppercase tracking-wider">Board</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Board</span>
             <input
-              className="border border-border bg-background px-2 py-1"
+              className="border border-border bg-background px-3 py-2 shadow-inner"
               value={boardSlug}
               onChange={(e) => setBoardSlug(e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="opacity-60 text-xs uppercase tracking-wider">{t.common.search}</span>
-            <input
-              className="border border-border bg-background px-2 py-1"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Title, body, id"
-            />
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t.common.search}</span>
+            <span className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="w-full border border-border bg-background py-2 pl-9 pr-3 shadow-inner"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Title, body, id"
+              />
+            </span>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="opacity-60 text-xs uppercase tracking-wider">Tenant</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Tenant</span>
             <select
-              className="border border-border bg-background px-2 py-1"
+              className="border border-border bg-background px-3 py-2 shadow-inner"
               value={tenant}
               onChange={(e) => setTenant(e.target.value)}
             >
@@ -408,9 +457,9 @@ export default function KanbanPage() {
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="opacity-60 text-xs uppercase tracking-wider">Assignee</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Assignee</span>
             <select
-              className="border border-border bg-background px-2 py-1"
+              className="border border-border bg-background px-3 py-2 shadow-inner"
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
             >
@@ -424,10 +473,10 @@ export default function KanbanPage() {
           </label>
         </div>
         {selectedIds.size > 0 && (
-          <div className="flex flex-wrap gap-2 items-center text-sm border-t border-border pt-3">
+          <div className="mx-4 mb-4 flex flex-wrap gap-2 items-center rounded-sm border border-border bg-secondary/60 p-3 text-sm">
             <span>{selectedIds.size} selected</span>
             <select
-              className="border border-border bg-background px-2 py-1"
+              className="border border-border bg-background px-2 py-1.5"
               value={bulkStatus}
               onChange={(e) => setBulkStatus(e.target.value)}
             >
@@ -449,9 +498,9 @@ export default function KanbanPage() {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-2 border-t border-border pt-3">
+        <div className="grid grid-cols-1 gap-3 border-t border-border bg-background/32 p-4 md:grid-cols-5">
           <select
-            className="border border-border bg-background px-2 py-1"
+            className="border border-border bg-background px-3 py-2 shadow-inner"
             value={templateKey}
             onChange={(e) => applyTemplate(e.target.value)}
           >
@@ -461,25 +510,25 @@ export default function KanbanPage() {
             <option value="research">Research</option>
           </select>
           <input
-            className="border border-border bg-background px-2 py-1"
+            className="border border-border bg-background px-3 py-2 shadow-inner"
             placeholder="New task title"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
           />
           <input
-            className="border border-border bg-background px-2 py-1"
+            className="border border-border bg-background px-3 py-2 shadow-inner"
             placeholder="Assignee (worker label)"
             value={newAssignee}
             onChange={(e) => setNewAssignee(e.target.value)}
           />
           <input
-            className="border border-border bg-background px-2 py-1"
+            className="border border-border bg-background px-3 py-2 shadow-inner"
             placeholder="Tenant"
             value={newTenant}
             onChange={(e) => setNewTenant(e.target.value)}
           />
           <input
-            className="border border-border bg-background px-2 py-1"
+            className="border border-border bg-background px-3 py-2 shadow-inner"
             type="number"
             placeholder="Priority"
             value={newPriority}
@@ -487,14 +536,14 @@ export default function KanbanPage() {
           />
           <button
             type="button"
-            className="px-3 py-1.5 border border-border hover:bg-foreground/5"
+            className="border border-primary/25 bg-primary/10 px-3 py-2 font-semibold text-primary hover:bg-primary/15"
             onClick={() => void createTask()}
           >
             {t.common.create} task
           </button>
         </div>
         <textarea
-          className="w-full border border-border bg-background px-2 py-1 text-sm min-h-[52px]"
+          className="mx-4 mb-4 min-h-[64px] w-[calc(100%-2rem)] border border-border bg-background px-3 py-2 text-sm shadow-inner"
           placeholder="Description (optional)"
           value={newBody}
           onChange={(e) => setNewBody(e.target.value)}
@@ -503,30 +552,43 @@ export default function KanbanPage() {
 
       {loading && <p className="text-sm opacity-70">{t.common.loading}</p>}
       {err && (
-        <p className="text-sm text-red-400 border border-red-900/50 p-2" role="alert">
-          {err}
-        </p>
+        <div className="flex items-start gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{err.includes("401") ? "Dashboard token is missing or invalid. Reload and enter the token from dashboard.token." : err}</span>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3 items-start">
-        {COLUMN_ORDER.map((col) => (
+      <div className="grid grid-cols-1 gap-4 items-start md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        {COLUMN_ORDER.map((col) => {
+          const Icon = COLUMN_META[col].icon;
+          return (
           <section
             key={col}
-            className="border border-border bg-background/60 min-h-[280px] flex flex-col"
+            className="flex min-h-[320px] flex-col overflow-hidden rounded-sm border border-border bg-card/88 shadow-xl shadow-black/14"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => void onDropColumn(e, col)}
           >
-            <div className="px-2 py-2 border-b border-border font-display text-xs uppercase tracking-[0.12em] text-accent">
-              {colLabel(col)} ({columnTasks[col]?.length ?? 0})
+            <div className="flex items-center justify-between border-b border-border px-3 py-3">
+              <div className="flex items-center gap-2">
+                <span className={`grid h-7 w-7 place-items-center rounded-sm ${COLUMN_META[col].className}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-[0.08em] text-foreground">
+                  {colLabel(col)}
+                </span>
+              </div>
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+                {columnTasks[col]?.length ?? 0}
+              </span>
             </div>
-            <div className="flex flex-col gap-1 p-2 overflow-y-auto max-h-[62vh]">
+            <div className="flex flex-col gap-2 p-2 overflow-y-auto max-h-[62vh]">
               {(columnTasks[col] ?? []).map((task) => (
                 <div
                   key={task.id}
                   draggable
                   onDragStart={(e) => onDragStart(e, task.id)}
-                  className={`border px-2 py-2 cursor-grab active:cursor-grabbing text-sm ${
-                    selectedId === task.id ? "border-accent" : "border-border"
+                  className={`rounded-sm border px-3 py-3 cursor-grab active:cursor-grabbing text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                    selectedId === task.id ? "border-primary ring-2 ring-primary/15" : "border-border"
                   } bg-background/90`}
                   onClick={() => void openTask(task.id)}
                 >
@@ -542,8 +604,18 @@ export default function KanbanPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{task.title}</div>
-                      <div className="text-xs opacity-60 truncate">
-                        {task.id} · @{String(task.assignee ?? "—")}
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{task.id}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <UserRound className="h-3 w-3" />
+                          {String(task.assignee ?? "unassigned")}
+                        </span>
+                        {task.priority ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Timer className="h-3 w-3" />
+                            P{String(task.priority)}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -551,12 +623,12 @@ export default function KanbanPage() {
               ))}
             </div>
           </section>
-        ))}
+        )})}
       </div>
 
       {detail && (
-        <aside className="fixed inset-y-0 right-0 w-full sm:w-[420px] border-l border-border bg-background shadow-xl z-50 flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <aside className="fixed inset-y-0 right-0 w-full sm:w-[460px] border-l border-border bg-card shadow-2xl z-50 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/70">
             <h2 className="font-display text-sm uppercase tracking-wider truncate pr-2">{detail.title}</h2>
             <button
               type="button"

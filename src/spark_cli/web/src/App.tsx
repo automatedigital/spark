@@ -3,6 +3,7 @@ import {
   Activity,
   BarChart3,
   Clock,
+  Command,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -60,21 +61,29 @@ export default function App() {
   const [authWall, setAuthWall] = useState(false);
   const [tokenHint, setTokenHint] = useState<string | null>(null);
   const [tokenInput, setTokenInput] = useState("");
+  const [authChecking, setAuthChecking] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const info = await api.getDashboardAuthInfo();
-        if (!info.require_auth_nonlocal || getDashboardToken()) {
+        if (!cancelled) setTokenHint(info.token_file);
+        if (!info.require_auth_nonlocal) {
           if (!cancelled) setAuthWall(false);
           return;
         }
-        const probe = await fetch("/api/config");
+        const storedToken = getDashboardToken();
+        const probe = await fetch("/api/config", {
+          headers: storedToken
+            ? { Authorization: `Bearer ${storedToken}` }
+            : undefined,
+        });
         if (!cancelled) setAuthWall(probe.status === 401);
-        if (!cancelled) setTokenHint(info.token_file);
       } catch {
         if (!cancelled) setAuthWall(false);
+      } finally {
+        if (!cancelled) setAuthChecking(false);
       }
     })();
     return () => {
@@ -94,105 +103,161 @@ export default function App() {
 
   const PageComponent = PAGE_COMPONENTS[page];
 
+  const saveToken = () => {
+    const trimmed = tokenInput.trim();
+    if (!trimmed) return;
+    setDashboardToken(trimmed);
+    setAuthWall(false);
+    setTokenInput("");
+    window.location.reload();
+  };
+
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground overflow-x-hidden">
-      {/* Global grain + warm glow (matches landing page) */}
+    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+      {/* Global graphite texture + signal wash */}
       <div className="noise-overlay" />
       <div className="warm-glow" />
 
-      {/* ---- Header with grid-border nav ---- */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-sm">
-        {authWall && (
-          <div className="border-b border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs flex flex-wrap gap-2 items-center justify-between">
-            <span>
-              Dashboard API requires a token (LAN). Paste the contents of{" "}
-              <code className="text-amber-200/90">{tokenHint ?? "dashboard.token"}</code> or set{" "}
-              <code className="text-amber-200/90">SPARK_DASHBOARD_TOKEN</code>.
-            </span>
-            <span className="flex gap-2 items-center">
-              <input
-                type="password"
-                className="border border-border bg-background px-2 py-1 min-w-[200px]"
-                placeholder="Bearer token"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-              />
-              <button
-                type="button"
-                className="px-2 py-1 border border-border uppercase tracking-wider"
-                onClick={() => {
-                  setDashboardToken(tokenInput);
-                  setAuthWall(false);
-                  setTokenInput("");
-                  window.location.reload();
-                }}
-              >
-                Save
-              </button>
+      <div className="relative z-2 grid min-h-screen grid-cols-1 md:grid-cols-[84px_1fr]">
+        <aside className="hidden border-r border-border bg-card/78 backdrop-blur-xl md:flex md:flex-col">
+          <div className="grid h-20 place-items-center border-b border-border">
+            <span className="grid h-10 w-10 place-items-center rounded-sm bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+              <Command className="h-5 w-5" />
             </span>
           </div>
-        )}
-        <div className="mx-auto flex h-12 max-w-[1400px] items-stretch">
-          {/* Brand — abbreviated on mobile */}
-          <div className="flex items-center border-r border-border px-3 sm:px-5 shrink-0">
-            <span className="font-collapse text-lg sm:text-xl font-bold tracking-wider uppercase blend-lighter">
-              Spark
-            </span>
-          </div>
-
-          {/* Nav — icons only on mobile, icon+label on sm+ */}
-          <nav className="flex items-stretch overflow-x-auto scrollbar-none">
+          <nav className="flex flex-1 flex-col items-center gap-2 px-3 py-4">
             {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
+                title={t.app.nav[labelKey]}
+                aria-label={t.app.nav[labelKey]}
                 onClick={() => setPage(id)}
-                className={`group relative inline-flex items-center gap-1 sm:gap-1.5 border-r border-border px-2.5 sm:px-4 py-2 font-display text-[0.65rem] sm:text-[0.8rem] tracking-[0.12em] uppercase whitespace-nowrap transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                className={`group relative grid h-12 w-12 place-items-center rounded-sm border transition ${
                   page === id
-                    ? "text-accent"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
+                    : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
                 }`}
               >
-                <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5 shrink-0" />
-                <span className="hidden sm:inline">{t.app.nav[labelKey]}</span>
-                {/* Hover highlight */}
-                <span className="absolute inset-0 bg-foreground pointer-events-none transition-opacity duration-150 group-hover:opacity-5 opacity-0" />
-                {/* Active indicator */}
-                {page === id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-px bg-accent" />
-                )}
+                <Icon className="h-5 w-5" />
+                <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl group-hover:block">
+                  {t.app.nav[labelKey]}
+                </span>
               </button>
             ))}
           </nav>
-
-          {/* Right side: version badge */}
-          <div className="ml-auto flex items-center px-2 sm:px-4">
-            <span className="hidden sm:inline font-display text-[0.7rem] tracking-[0.15em] uppercase opacity-50">
-              {t.app.webUi}
-            </span>
+          <div className="border-t border-border p-3 text-center text-[0.62rem] uppercase tracking-[0.12em] text-muted-foreground">
+            Web UI
           </div>
-        </div>
-      </header>
+        </aside>
 
-      <main
-        key={animKey}
-        className="relative z-2 mx-auto w-full max-w-[1400px] flex-1 px-3 sm:px-6 py-4 sm:py-8"
-        style={{ animation: "fade-in 150ms ease-out" }}
-      >
-        <PageComponent />
-      </main>
+        <div className="flex min-w-0 flex-col">
+          <header className="sticky top-0 z-40 border-b border-border bg-background/82 backdrop-blur-xl">
+            <div className="flex min-h-16 items-center gap-3 px-3 sm:px-6">
+              <div className="flex items-center gap-3 md:hidden">
+                <span className="grid h-9 w-9 place-items-center rounded-sm bg-primary text-primary-foreground shadow-sm">
+                  <Command className="h-4 w-4" />
+                </span>
+                <span className="font-collapse text-lg font-bold uppercase tracking-wide">Spark</span>
+              </div>
+              <div className="hidden md:block">
+                <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Spark</div>
+                <div className="text-sm font-semibold text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "kanban"]}</div>
+              </div>
+              <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-sm border border-border bg-card/70 p-1 shadow-inner scrollbar-none md:hidden">
+                {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    title={t.app.nav[labelKey]}
+                    onClick={() => setPage(id)}
+                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
+                      page === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </button>
+                ))}
+              </nav>
+              <div className="ml-auto hidden items-center gap-2 md:flex">
+                <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_18px_rgba(20,184,166,0.75)]" />
+                <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t.app.webUi}</span>
+              </div>
+            </div>
+          </header>
 
-      {/* ---- Footer ---- */}
-      <footer className="relative z-2 border-t border-border">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-3 sm:px-6 py-3">
-          <span className="font-display text-[0.7rem] sm:text-[0.8rem] tracking-[0.12em] uppercase opacity-50">
-            {t.app.footer.name}
-          </span>
-          <span className="font-display text-[0.6rem] sm:text-[0.7rem] tracking-[0.15em] uppercase text-foreground/40">
-            {t.app.footer.org}
-          </span>
+          <main
+            key={animKey}
+            className="relative mx-auto w-full max-w-[1480px] flex-1 px-3 py-4 sm:px-6 sm:py-8"
+            style={{ animation: "fade-in 150ms ease-out" }}
+          >
+            {authChecking ? (
+              <div className="mx-auto mt-24 max-w-md rounded-sm border border-border bg-card/90 p-6 text-sm text-muted-foreground shadow-2xl">
+                Checking dashboard access...
+              </div>
+            ) : authWall ? (
+              <section className="mx-auto mt-16 grid max-w-5xl grid-cols-1 overflow-hidden rounded-sm border border-border bg-card shadow-2xl md:grid-cols-[1.1fr_0.9fr]">
+                <div className="p-7 sm:p-10">
+                  <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/12 px-3 py-1 text-xs font-medium text-primary">
+                    LAN access locked
+                  </div>
+                  <h1 className="max-w-xl text-3xl font-semibold leading-tight tracking-normal text-foreground sm:text-4xl">
+                    Enter your Spark dashboard token to unlock this browser.
+                  </h1>
+                  <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
+                    Remote dashboard sessions need the token from the Spark host. Paste the contents of{" "}
+                    <code>{tokenHint ?? "~/.spark/dashboard.token"}</code>. The token is stored only in this browser.
+                  </p>
+                  <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="password"
+                      className="h-11 min-w-0 flex-1 rounded-sm border border-input bg-background px-3 text-sm shadow-inner outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      placeholder="Dashboard token"
+                      value={tokenInput}
+                      onChange={(e) => setTokenInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveToken();
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="h-11 rounded-sm bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                      onClick={saveToken}
+                    >
+                      Unlock
+                    </button>
+                  </div>
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    Server-side alternative: set <code>SPARK_DASHBOARD_TOKEN</code> and restart the gateway.
+                  </p>
+                </div>
+                <div className="auth-panel hidden border-l border-border bg-secondary/60 p-8 md:block">
+                  <div className="grid h-full content-between">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Spark Web UI
+                      </div>
+                      <div className="mt-8 space-y-3">
+                        {["Tasks", "Conversations", "Config", "Admin"].map((label) => (
+                          <div key={label} className="rounded-sm border border-border bg-background/70 px-4 py-3 text-sm shadow-sm">
+                            {label}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-xs leading-5 text-muted-foreground">
+                      Protected routes are not loaded until this token is present, so the board no longer fills with API errors.
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <PageComponent />
+            )}
+          </main>
         </div>
-      </footer>
+      </div>
     </div>
   );
 }
