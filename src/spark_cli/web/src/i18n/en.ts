@@ -55,7 +55,7 @@ export const en: Translations = {
     nav: {
       status: "Status",
       sessions: "Sessions",
-      conversations: "Conversations",
+      conversations: "Chat",
       kanban: "Tasks",
       analytics: "Analytics",
       logs: "Logs",

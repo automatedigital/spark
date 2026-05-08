@@ -32,6 +32,14 @@ function modelShort(model: string | null | undefined) {
   return (model ?? "").split("/").pop() || "";
 }
 
+function sourceLabel(source: string | null | undefined) {
+  const s = (source ?? "").toLowerCase();
+  if (s === "cli") return "TUI";
+  if (s === "web") return "Web";
+  if (!s) return "Unknown";
+  return s.replace(/(^|[_-])(\w)/g, (_, sep: string, chr: string) => `${sep ? " " : ""}${chr.toUpperCase()}`);
+}
+
 function optimisticThread(id: string, initialMessage?: string): SessionInfo {
   const now = Date.now() / 1000;
   return {
@@ -109,6 +117,8 @@ function ThreadRow({
               <span className="text-border">·</span>
             </>
           )}
+          <span>{sourceLabel(session.source)}</span>
+          <span className="text-border">·</span>
           <span>{session.message_count} msgs</span>
           <span className="text-border">·</span>
           <span>{timeAgo(session.last_active)}</span>
@@ -145,7 +155,7 @@ export default function ConversationsPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadThreads = useCallback(async () => {
-    const resp = await api.getSessions(500, 0, WEB_SOURCE);
+    const resp = await api.getSessions(500, 0);
     setSessions(resp.sessions);
     return resp.sessions;
   }, []);
@@ -166,6 +176,13 @@ export default function ConversationsPage() {
     };
   }, [loadThreads]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!searchQ.trim()) void loadThreads();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [loadThreads, searchQ]);
+
   useEventBus((env) => {
     if (env.topic !== "sessions.changed") return;
     const data = env.data as { action?: string; session_id?: string; session?: SessionInfo };
@@ -181,7 +198,7 @@ export default function ConversationsPage() {
       return;
     }
 
-    if (row && row.source === WEB_SOURCE) {
+    if (row) {
       setSessions((prev) => {
         const idx = prev.findIndex((s) => s.id === row.id);
         if (idx >= 0) {
@@ -210,7 +227,7 @@ export default function ConversationsPage() {
     const t = setTimeout(() => {
       setSearching(true);
       api
-        .searchSessions(q, 60, WEB_SOURCE)
+        .searchSessions(q, 60)
         .then((r) => setSearchResults(r.results))
         .catch(() => setSearchResults([]))
         .finally(() => setSearching(false));
@@ -319,7 +336,7 @@ export default function ConversationsPage() {
                   {sessions.length}
                 </Badge>
               </div>
-              <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Web chat</p>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">All chats</p>
             </div>
             <Button size="sm" className="h-8 gap-1.5" onClick={openNewThread}>
               <Plus className="h-3.5 w-3.5" />
@@ -368,9 +385,9 @@ export default function ConversationsPage() {
           ) : (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center text-muted-foreground">
               <Bot className="mb-3 h-9 w-9 opacity-35" />
-              <p className="text-sm font-medium">{searchQ ? "No matching threads" : "No web chat threads yet"}</p>
+              <p className="text-sm font-medium">{searchQ ? "No matching chats" : "No chats yet"}</p>
               <p className="mt-1 text-xs opacity-70">
-                {searchQ ? "Try a different search." : "Start a new thread to chat with Spark here."}
+                {searchQ ? "Try a different search." : "Start a new chat with Spark here."}
               </p>
             </div>
           )}
@@ -429,8 +446,8 @@ export default function ConversationsPage() {
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
             <MessageSquare className="mb-4 h-12 w-12 opacity-30" />
-            <p className="text-sm font-medium text-foreground">Select a thread</p>
-            <p className="mt-1 max-w-sm text-xs opacity-75">Open a web chat thread from the inbox or start a new one.</p>
+            <p className="text-sm font-medium text-foreground">Select a chat</p>
+            <p className="mt-1 max-w-sm text-xs opacity-75">Open any previous Spark chat from the inbox or start a new one.</p>
             <Button className="mt-5 h-9 gap-1.5" onClick={openNewThread}>
               <Plus className="h-3.5 w-3.5" />
               New thread

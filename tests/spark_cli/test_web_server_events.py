@@ -159,6 +159,39 @@ class TestConversationControl:
         assert resp.json()["session_id"] == "stored_web"
         assert "stored_web" in web_server._web_agents
 
+    def test_conversation_message_rehydrates_non_web_session(self, web_client, monkeypatch):
+        import core.run_agent as run_agent
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+                self.session_id = kwargs["session_id"]
+
+        db = SessionDB()
+        try:
+            db.create_session("stored_cli", source="cli", model="m1")
+            db.append_message("stored_cli", "user", content="hello from tui")
+            db.append_message("stored_cli", "assistant", content="hi")
+        finally:
+            db.close()
+
+        captured = {}
+
+        def fake_run(agent, user_message, conversation_history=None):
+            captured["agent"] = agent
+            captured["user_message"] = user_message
+            captured["history"] = conversation_history
+
+        monkeypatch.setattr(run_agent, "AIAgent", FakeAgent)
+        monkeypatch.setattr(web_server, "_run_web_agent_turn", fake_run)
+
+        resp = web_client.post("/api/conversations/stored_cli/messages", json={"message": "continue"})
+        assert resp.status_code == 200
+        assert resp.json()["session_id"] == "stored_cli"
+        assert "stored_cli" in web_server._web_agents
+
     def test_web_turn_fallback_persists_missing_messages(self, web_client):
         import spark_cli.web_server as web_server
         from core.spark_state import SessionDB

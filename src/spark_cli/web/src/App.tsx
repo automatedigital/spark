@@ -271,7 +271,7 @@ export default function App() {
                         Spark Web UI
                       </div>
                       <div className="mt-8 space-y-3">
-                        {["Tasks", "Conversations", "Config", "Admin"].map((label) => (
+                        {["Tasks", "Chat", "Config", "Admin"].map((label) => (
                           <div key={label} className="rounded-sm border border-border bg-background/70 px-4 py-3 text-sm shadow-sm">
                             {label}
                           </div>

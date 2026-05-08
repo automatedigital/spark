@@ -3380,11 +3380,6 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         row = db.get_session(sid)
         if not row:
             raise HTTPException(status_code=404, detail="Session not found")
-        if row.get("source") != "web":
-            raise HTTPException(
-                status_code=400,
-                detail="Only web chat sessions can be resumed here.",
-            )
         session_id = sid
         (
             token_callback,
