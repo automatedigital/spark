@@ -566,6 +566,7 @@ def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tm
 
     sync_calls = []
     profile_syncs = []
+    dashboard_home = tmp_path / "dashboard-home"
 
     def fake_sync_skills(quiet=True):
         sync_calls.append(quiet)
@@ -595,6 +596,11 @@ def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tm
             "user_modified": [],
         },
     )
+    monkeypatch.setattr(
+        spark_main,
+        "_running_dashboard_spark_homes",
+        lambda: [dashboard_home],
+    )
 
     side_effect, _recorded = _make_update_side_effect(commit_count="0")
     monkeypatch.setattr(spark_main.subprocess, "run", side_effect)
@@ -602,13 +608,17 @@ def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tm
     spark_main.cmd_update(SimpleNamespace())
 
     assert sync_calls == [True]
-    assert profile_syncs == [(tmp_path / ".spark" / "profiles" / "dashboard", True)]
+    assert profile_syncs == [
+        (tmp_path / ".spark" / "profiles" / "dashboard", True),
+        (dashboard_home, True),
+    ]
     out = capsys.readouterr().out
     assert "Already up to date" in out
     assert "Syncing bundled skills" in out
     assert "design-md, frontend-design" in out
     assert "Syncing bundled skills to other profiles" in out
     assert "dashboard: +1 new, ↑1 updated" in out
+    assert "Syncing bundled skills to running dashboard homes" in out
 
 
 def test_cmd_update_no_checkout_when_already_on_main(monkeypatch, tmp_path):

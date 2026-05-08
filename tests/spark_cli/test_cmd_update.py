@@ -168,15 +168,25 @@ class TestCmdUpdateBranchFallback:
         mock_run.return_value = subprocess.CompletedProcess(
             ["bash", "-lc", "installer"], 0, "", ""
         )
+        sync_calls = []
 
         with patch("pathlib.Path.exists", autospec=True, side_effect=exists_side_effect), patch(
             "core.spark_constants.get_spark_home", return_value=fake_home
         ), patch("spark_cli.main.sys.stdin.isatty", return_value=True), patch(
             "spark_cli.main.sys.stdout.isatty", return_value=True
+        ), patch(
+            "spark_cli.main._sync_bundled_skills_for_update",
+            side_effect=lambda: sync_calls.append(True),
         ):
             cmd_update(mock_args)
 
         commands = [" ".join(str(a) for a in c.args[0]) for c in mock_run.call_args_list]
         assert any("curl -fsSL" in cmd and "install.sh" in cmd for cmd in commands)
+        installer_call = next(
+            c for c in mock_run.call_args_list
+            if "curl -fsSL" in " ".join(str(a) for a in c.args[0])
+        )
+        assert installer_call.kwargs["env"]["SPARK_HOME"] == str(fake_home)
+        assert sync_calls == [True]
         captured = capsys.readouterr()
         assert "Migration/update complete!" in captured.out

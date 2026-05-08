@@ -15,6 +15,7 @@ def test_install_scripts_are_valid_shell():
 def test_installer_syncs_bundled_skills_via_module():
     content = INSTALL_SCRIPT.read_text(encoding="utf-8")
 
+    assert 'SPARK_HOME="${SPARK_HOME:-$HOME/.spark}"' in content
     assert "-m tools.skills_sync" in content
     assert "tools/skills_sync.py" not in content
     assert "find \"$INSTALL_DIR/skills\" -name SKILL.md" in content

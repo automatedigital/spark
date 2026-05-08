@@ -3639,6 +3639,7 @@ def _sync_bundled_skills_for_update(*, include_profiles: bool = True) -> None:
 
 def _sync_bundled_skills_to_other_profiles_for_update() -> None:
     """Sync bundled skills to all known non-active profiles during update."""
+    synced_paths: set[Path] = set()
     try:
         from spark_cli.profiles import (
             get_active_profile_name,
@@ -3653,6 +3654,7 @@ def _sync_bundled_skills_to_other_profiles_for_update() -> None:
             print("→ Syncing bundled skills to other profiles...")
             for p in other_profiles:
                 try:
+                    synced_paths.add(p.path.resolve())
                     r = seed_profile_skills(p.path, quiet=True)
                     if r:
                         copied = len(r.get("copied", []))
@@ -3673,6 +3675,137 @@ def _sync_bundled_skills_to_other_profiles_for_update() -> None:
                     print(f"  {p.name}: error ({pe})")
     except Exception:
         pass  # profiles module not available or no profiles
+
+    _sync_bundled_skills_to_dashboard_homes_for_update(synced_paths)
+
+
+def _running_dashboard_spark_homes() -> list[Path]:
+    """Return SPARK_HOME values for running dashboard processes."""
+    homes: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add_home(raw: str) -> None:
+        if not raw:
+            return
+        path = Path(raw).expanduser()
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved not in seen:
+            seen.add(resolved)
+            homes.append(path)
+
+    def _home_from_proc(pid: int) -> str:
+        try:
+            data = Path(f"/proc/{pid}/environ").read_bytes()
+        except OSError:
+            return ""
+        for item in data.split(b"\0"):
+            if item.startswith(b"SPARK_HOME="):
+                return item.split(b"=", 1)[1].decode(errors="ignore")
+        return ""
+
+    patterns = (
+        "spark_cli.main dashboard",
+        "spark_cli/main.py dashboard",
+        "spark dashboard",
+        "spark_cli.web_server",
+    )
+
+    try:
+        result = subprocess.run(
+            ["ps", "eww", "-ax", "-o", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return homes
+
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        parts = stripped.split(None, 1)
+        if len(parts) != 2:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        if pid == os.getpid():
+            continue
+        command = parts[1]
+        if not any(pattern in command for pattern in patterns):
+            continue
+
+        proc_home = _home_from_proc(pid)
+        if proc_home:
+            _add_home(proc_home)
+            continue
+
+        marker = "SPARK_HOME="
+        if marker in command:
+            raw = command.split(marker, 1)[1].split(None, 1)[0]
+            _add_home(raw)
+
+    return homes
+
+
+def _sync_bundled_skills_to_dashboard_homes_for_update(
+    already_synced: set[Path] | None = None,
+) -> None:
+    """Sync bundled skills into SPARK_HOME directories used by running dashboards."""
+    homes = _running_dashboard_spark_homes()
+    if not homes:
+        return
+
+    already = already_synced or set()
+    try:
+        from core.spark_constants import get_spark_home
+
+        already.add(get_spark_home().resolve())
+    except Exception:
+        pass
+
+    pending: list[Path] = []
+    for home in homes:
+        try:
+            resolved = home.resolve()
+        except OSError:
+            resolved = home
+        if resolved not in already:
+            already.add(resolved)
+            pending.append(home)
+
+    if not pending:
+        return
+
+    try:
+        from spark_cli.profiles import seed_profile_skills
+    except Exception:
+        return
+
+    print()
+    print("→ Syncing bundled skills to running dashboard homes...")
+    for home in pending:
+        try:
+            r = seed_profile_skills(home, quiet=True)
+            if r:
+                copied = len(r.get("copied", []))
+                updated = len(r.get("updated", []))
+                parts = []
+                if copied:
+                    parts.append(f"+{copied} new")
+                if updated:
+                    parts.append(f"↑{updated} updated")
+                status = ", ".join(parts) if parts else "up to date"
+            else:
+                status = "sync failed"
+            print(f"  {home}: {status}")
+        except Exception as exc:
+            print(f"  {home}: error ({exc})")
 
 
 def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
@@ -4310,8 +4443,10 @@ def cmd_update(args):
                     result = subprocess.run(
                         ["bash", "-lc", install_cmd],
                         cwd=Path.home(),
+                        env={**os.environ, "SPARK_HOME": str(spark_home)},
                     )
                     if result.returncode == 0:
+                        _sync_bundled_skills_for_update()
                         print()
                         print("✓ Migration/update complete!")
                         return

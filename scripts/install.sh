@@ -28,7 +28,7 @@ BOLD='\033[1m'
 # Configuration
 REPO_URL_SSH="git@github.com:automatedigital/spark.git"
 REPO_URL_HTTPS="https://github.com/automatedigital/spark.git"
-SPARK_HOME="$HOME/.spark"
+SPARK_HOME="${SPARK_HOME:-$HOME/.spark}"
 INSTALL_DIR="${SPARK_INSTALL_DIR:-$SPARK_HOME/spark-agent}"
 PYTHON_VERSION="3.11"
 NODE_VERSION="22"
