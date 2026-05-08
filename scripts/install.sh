@@ -673,6 +673,90 @@ show_manual_install_hint() {
     esac
 }
 
+sync_bundled_skills_to_home() {
+    local target_home="$1"
+    local label="${2:-$target_home}"
+    local sync_python
+
+    if [ -z "$target_home" ]; then
+        return 0
+    fi
+
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
+        sync_python="$INSTALL_DIR/venv/bin/python"
+    else
+        sync_python="$PYTHON_PATH"
+    fi
+
+    mkdir -p "$target_home/skills"
+
+    if SPARK_HOME="$target_home" "$sync_python" -m tools.skills_sync 2>/dev/null; then
+        log_success "Skills synced to $label"
+        return 0
+    fi
+
+    # Fallback: merge missing bundled skills without overwriting user edits.
+    if [ -d "$INSTALL_DIR/skills" ]; then
+        while IFS= read -r skill_md; do
+            skill_dir="$(dirname "$skill_md")"
+            rel_dir="${skill_dir#$INSTALL_DIR/skills/}"
+            dest_dir="$target_home/skills/$rel_dir"
+            if [ ! -e "$dest_dir" ]; then
+                mkdir -p "$(dirname "$dest_dir")"
+                cp -R "$skill_dir" "$dest_dir" 2>/dev/null || true
+            fi
+        done < <(find "$INSTALL_DIR/skills" -name SKILL.md -type f 2>/dev/null)
+
+        while IFS= read -r desc_md; do
+            rel_file="${desc_md#$INSTALL_DIR/skills/}"
+            dest_file="$target_home/skills/$rel_file"
+            if [ ! -e "$dest_file" ]; then
+                mkdir -p "$(dirname "$dest_file")"
+                cp "$desc_md" "$dest_file" 2>/dev/null || true
+            fi
+        done < <(find "$INSTALL_DIR/skills" -name DESCRIPTION.md -type f 2>/dev/null)
+
+        log_success "Missing bundled skills copied to $label"
+    fi
+}
+
+sync_running_dashboard_skill_homes() {
+    command -v ps >/dev/null 2>&1 || return 0
+
+    local seen=":$SPARK_HOME:"
+    local line pid command env_home target_home
+    while IFS= read -r line; do
+        pid="${line%% *}"
+        command="${line#* }"
+        if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+            continue
+        fi
+        case "$command" in
+            *"spark_cli.main dashboard"*|*"spark_cli/main.py dashboard"*|*"spark dashboard"*|*"spark_cli.web_server"*) ;;
+            *) continue ;;
+        esac
+
+        env_home=""
+        if [ -r "/proc/$pid/environ" ]; then
+            env_home="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | awk -F= '$1=="SPARK_HOME"{print substr($0,12); exit}')"
+        fi
+        if [ -n "$env_home" ]; then
+            target_home="$env_home"
+        elif [[ "$command" == *"SPARK_HOME="* ]]; then
+            target_home="${command#*SPARK_HOME=}"
+            target_home="${target_home%% *}"
+        else
+            continue
+        fi
+
+        if [ -z "$target_home" ] || [[ "$seen" == *":$target_home:"* ]]; then
+            continue
+        fi
+        seen="${seen}${target_home}:"
+        sync_bundled_skills_to_home "$target_home" "dashboard SPARK_HOME $target_home"
+    done < <(ps eww -ax -o pid=,command= 2>/dev/null || true)
+}
+
 # ============================================================================
 # Installation
 # ============================================================================
@@ -1070,39 +1154,13 @@ SOUL_EOF
 
     # Seed bundled skills into ~/.spark/skills/ (manifest-based, one-time per skill)
     log_info "Syncing bundled skills to ~/.spark/skills/ ..."
+    sync_bundled_skills_to_home "$SPARK_HOME" "~/.spark/skills/"
+
     local sync_python
     if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
         sync_python="$INSTALL_DIR/venv/bin/python"
     else
         sync_python="$PYTHON_PATH"
-    fi
-
-    if SPARK_HOME="$SPARK_HOME" "$sync_python" -m tools.skills_sync 2>/dev/null; then
-        log_success "Skills synced to ~/.spark/skills/"
-    else
-        # Fallback: merge missing bundled skills without overwriting user edits.
-        if [ -d "$INSTALL_DIR/skills" ]; then
-            while IFS= read -r skill_md; do
-                skill_dir="$(dirname "$skill_md")"
-                rel_dir="${skill_dir#$INSTALL_DIR/skills/}"
-                dest_dir="$SPARK_HOME/skills/$rel_dir"
-                if [ ! -e "$dest_dir" ]; then
-                    mkdir -p "$(dirname "$dest_dir")"
-                    cp -R "$skill_dir" "$dest_dir" 2>/dev/null || true
-                fi
-            done < <(find "$INSTALL_DIR/skills" -name SKILL.md -type f 2>/dev/null)
-
-            while IFS= read -r desc_md; do
-                rel_file="${desc_md#$INSTALL_DIR/skills/}"
-                dest_file="$SPARK_HOME/skills/$rel_file"
-                if [ ! -e "$dest_file" ]; then
-                    mkdir -p "$(dirname "$dest_file")"
-                    cp "$desc_md" "$dest_file" 2>/dev/null || true
-                fi
-            done < <(find "$INSTALL_DIR/skills" -name DESCRIPTION.md -type f 2>/dev/null)
-
-            log_success "Missing bundled skills copied to ~/.spark/skills/"
-        fi
     fi
 
     # Also seed every known profile. Auto-migrate can be launched from the
@@ -1116,6 +1174,11 @@ for profile in list_profiles():
     if profile.name != active:
         seed_profile_skills(profile.path, quiet=True)
 PY
+
+    # Finally, seed any SPARK_HOME currently used by a running standalone
+    # dashboard. This covers old dashboard processes whose environment differs
+    # from the shell running auto-migrate.
+    sync_running_dashboard_skill_homes
 }
 
 install_node_deps() {

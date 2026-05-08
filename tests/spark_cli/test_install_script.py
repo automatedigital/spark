@@ -21,6 +21,8 @@ def test_installer_syncs_bundled_skills_via_module():
     assert "find \"$INSTALL_DIR/skills\" -name SKILL.md" in content
     assert "Missing bundled skills copied" in content
     assert "seed_profile_skills" in content
+    assert "sync_running_dashboard_skill_homes" in content
+    assert "dashboard SPARK_HOME" in content
 
 
 def test_legacy_setup_script_syncs_missing_bundled_skills():
