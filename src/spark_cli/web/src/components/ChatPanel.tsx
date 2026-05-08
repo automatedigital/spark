@@ -22,7 +22,6 @@ import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
 import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
 import { StatusPill } from "@/components/chat/StatusPill";
-import { ModelPicker } from "@/components/chat/ModelPicker";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
@@ -91,7 +90,6 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [model, setModel] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -102,18 +100,8 @@ export function ChatPanel({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
-  const isNewChat = sessionId === null;
 
   activeSessionRef.current = activeSessionId;
-
-  useEffect(() => {
-    if (isNewChat) {
-      fetch("/api/conversations/config")
-        .then((r) => r.json())
-        .then((d: { default_model?: string }) => setModel(d.default_model ?? ""))
-        .catch(() => {});
-    }
-  }, [isNewChat]);
 
   useEffect(() => {
     setActiveSessionId(sessionId);
@@ -263,11 +251,6 @@ export function ChatPanel({
         }
         break;
       }
-      case "chat.model_changed": {
-        const m = String((data as { model?: string }).model ?? "");
-        if (m) setModel(m);
-        break;
-      }
       default:
         break;
     }
@@ -287,7 +270,7 @@ export function ChatPanel({
       let sid = activeSessionId;
 
       if (!sid) {
-        const resp = await api.postConversation(text, model || undefined);
+        const resp = await api.postConversation(text);
         sid = resp.session_id;
         activeSessionRef.current = sid;
         setActiveSessionId(sid);
@@ -325,16 +308,6 @@ export function ChatPanel({
       await api.interruptConversation(sid);
     } catch {
       /* ignore */
-    }
-  };
-
-  const switchModel = async () => {
-    const sid = activeSessionId;
-    if (!sid || !model.trim() || streaming) return;
-    try {
-      await api.switchConversationModel(sid, model.trim());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -455,23 +428,6 @@ export function ChatPanel({
           )}
         </div>
       </div>
-
-      {(isNewChat || activeSessionId) && (
-        <div className="border-b border-border px-4 py-3 shrink-0 space-y-2">
-          <ModelPicker value={model} onChange={setModel} disabled={streaming && !!activeSessionId} />
-          {activeSessionId && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-7 text-xs w-full"
-              disabled={streaming || !model.trim()}
-              onClick={switchModel}
-            >
-              Apply model next turn
-            </Button>
-          )}
-        </div>
-      )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {loadingHistory ? (
