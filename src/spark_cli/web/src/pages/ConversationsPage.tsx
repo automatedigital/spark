@@ -32,6 +32,27 @@ function modelShort(model: string | null | undefined) {
   return (model ?? "").split("/").pop() || "";
 }
 
+function optimisticThread(id: string, initialMessage?: string): SessionInfo {
+  const now = Date.now() / 1000;
+  return {
+    id,
+    source: WEB_SOURCE,
+    model: null,
+    title: null,
+    started_at: now,
+    ended_at: null,
+    last_active: now,
+    is_active: true,
+    message_count: initialMessage ? 1 : 0,
+    tool_call_count: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    preview: initialMessage?.trim() || null,
+    kanban_status: null,
+    estimated_cost_usd: null,
+  };
+}
+
 function ThreadRow({
   session,
   active,
@@ -165,7 +186,14 @@ export default function ConversationsPage() {
         const idx = prev.findIndex((s) => s.id === row.id);
         if (idx >= 0) {
           const next = [...prev];
-          next[idx] = { ...next[idx], ...row };
+          const existing = next[idx];
+          next[idx] = {
+            ...existing,
+            ...row,
+            preview: row.preview?.trim() ? row.preview : existing.preview,
+            message_count: Math.max(row.message_count ?? 0, existing.message_count ?? 0),
+            is_active: typeof row.is_active === "boolean" ? row.is_active : existing.is_active,
+          };
           return next.sort((a, b) => b.last_active - a.last_active);
         }
         return [row, ...prev];
@@ -218,10 +246,23 @@ export default function ConversationsPage() {
     setEditingTitle(false);
   };
 
-  const handleSessionCreated = (id: string) => {
+  const handleSessionCreated = (id: string, initialMessage?: string) => {
     setSelectedId(id);
     setNewThread(false);
-    void loadThreads();
+    setSessions((prev) => {
+      const next = optimisticThread(id, initialMessage);
+      const existing = prev.find((s) => s.id === id);
+      if (!existing) return [next, ...prev];
+      return [
+        {
+          ...existing,
+          preview: existing.preview?.trim() ? existing.preview : next.preview,
+          message_count: Math.max(existing.message_count ?? 0, next.message_count),
+          is_active: true,
+        },
+        ...prev.filter((s) => s.id !== id),
+      ];
+    });
   };
 
   const handleDelete = async (id: string) => {

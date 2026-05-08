@@ -3143,6 +3143,21 @@ def _new_web_agent(
     return agent
 
 
+def _emit_web_session_updated(session_id: str) -> None:
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            row = db.get_session(session_id)
+            if row:
+                _emit_sessions_changed("updated", session_id, row)
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("session update emit failed session=%s", session_id, exc_info=True)
+
+
 @app.patch("/api/sessions/{session_id}/kanban")
 async def update_session_kanban(session_id: str, body: KanbanUpdate):
     if body.status not in _KANBAN_STATUSES:
@@ -3234,7 +3249,7 @@ async def create_conversation(body: ConversationCreate):
     model = body.model or _default_web_chat_model()
 
     try:
-        _new_web_agent(
+        agent = _new_web_agent(
             session_id=session_id,
             model=model,
             token_callback=token_callback,
@@ -3283,6 +3298,7 @@ async def create_conversation(body: ConversationCreate):
         finally:
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
+            _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", {}, session_id)
 
@@ -3373,6 +3389,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         finally:
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
+            _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", {}, session_id)
 

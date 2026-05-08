@@ -51,7 +51,7 @@ interface ChatPanelProps {
   sessionId: string | null;
   onClose?: () => void;
   onBack?: () => void;
-  onSessionCreated?: (id: string) => void;
+  onSessionCreated?: (id: string, initialMessage?: string) => void;
   onSessionUpdated?: (id: string) => void;
   sessionTitle?: string | null;
   className?: string;
@@ -100,10 +100,15 @@ export function ChatPanel({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
+  const streamingRef = useRef(false);
 
   activeSessionRef.current = activeSessionId;
+  streamingRef.current = streaming;
 
   useEffect(() => {
+    if (sessionId && sessionId === activeSessionRef.current && streamingRef.current) {
+      return;
+    }
     setActiveSessionId(sessionId);
     setChatMessages([]);
     setError(null);
@@ -117,7 +122,7 @@ export function ChatPanel({
           const mapped = sessionMessagesToChat(
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
-          setChatMessages(mapped);
+          setChatMessages((prev) => (mapped.length === 0 && prev.length > 0 ? prev : mapped));
         })
         .catch(() => setError("Failed to load conversation history."))
         .finally(() => setLoadingHistory(false));
@@ -240,13 +245,12 @@ export function ChatPanel({
           onSessionUpdated?.(cur);
           void api
             .getSessionMessages(cur)
-            .then((resp) =>
-              setChatMessages(
-                sessionMessagesToChat(
-                  resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-                ),
-              ),
-            )
+            .then((resp) => {
+              const mapped = sessionMessagesToChat(
+                resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+              );
+              setChatMessages((prev) => (mapped.length === 0 && prev.length > 0 ? prev : mapped));
+            })
             .catch(() => {});
         }
         break;
@@ -274,7 +278,7 @@ export function ChatPanel({
         sid = resp.session_id;
         activeSessionRef.current = sid;
         setActiveSessionId(sid);
-        onSessionCreated?.(sid);
+        onSessionCreated?.(sid, text);
       } else {
         activeSessionRef.current = sid;
         const resp = await api.postConversationMessage(sid, text);
@@ -282,7 +286,7 @@ export function ChatPanel({
           sid = resp.session_id;
           activeSessionRef.current = sid;
           setActiveSessionId(sid);
-          onSessionCreated?.(sid);
+          onSessionCreated?.(sid, text);
         }
       }
     } catch (err) {
