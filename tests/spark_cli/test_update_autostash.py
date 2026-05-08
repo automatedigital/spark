@@ -558,12 +558,14 @@ def test_cmd_update_restores_stash_and_branch_when_already_up_to_date(monkeypatc
 
 def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tmp_path, capsys):
     """Even without git commits to pull, update should seed new bundled skills."""
+    import spark_cli.profiles as profiles
     import tools.skills_sync as skills_sync
 
     _setup_update_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
 
     sync_calls = []
+    profile_syncs = []
 
     def fake_sync_skills(quiet=True):
         sync_calls.append(quiet)
@@ -575,6 +577,24 @@ def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tm
         }
 
     monkeypatch.setattr(skills_sync, "sync_skills", fake_sync_skills)
+    monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
+    monkeypatch.setattr(
+        profiles,
+        "list_profiles",
+        lambda: [
+            SimpleNamespace(name="default", path=tmp_path / ".spark"),
+            SimpleNamespace(name="dashboard", path=tmp_path / ".spark" / "profiles" / "dashboard"),
+        ],
+    )
+    monkeypatch.setattr(
+        profiles,
+        "seed_profile_skills",
+        lambda path, quiet=True: profile_syncs.append((path, quiet)) or {
+            "copied": ["design-md"],
+            "updated": ["frontend-design"],
+            "user_modified": [],
+        },
+    )
 
     side_effect, _recorded = _make_update_side_effect(commit_count="0")
     monkeypatch.setattr(spark_main.subprocess, "run", side_effect)
@@ -582,10 +602,13 @@ def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tm
     spark_main.cmd_update(SimpleNamespace())
 
     assert sync_calls == [True]
+    assert profile_syncs == [(tmp_path / ".spark" / "profiles" / "dashboard", True)]
     out = capsys.readouterr().out
     assert "Already up to date" in out
     assert "Syncing bundled skills" in out
     assert "design-md, frontend-design" in out
+    assert "Syncing bundled skills to other profiles" in out
+    assert "dashboard: +1 new, ↑1 updated" in out
 
 
 def test_cmd_update_no_checkout_when_already_on_main(monkeypatch, tmp_path):

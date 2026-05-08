@@ -2822,7 +2822,13 @@ class SkillToggle(BaseModel):
 @app.get("/api/skills")
 async def get_skills():
     from tools.skills_tool import _find_all_skills
+    from tools.skills_sync import sync_skills
     from spark_cli.skills_config import get_disabled_skills
+
+    try:
+        sync_skills(quiet=True)
+    except Exception:
+        pass
 
     config = load_config()
     disabled = get_disabled_skills(config)

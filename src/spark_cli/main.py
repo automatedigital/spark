@@ -3610,7 +3610,7 @@ def _update_via_zip(args):
     print("✓ Update complete!")
 
 
-def _sync_bundled_skills_for_update() -> None:
+def _sync_bundled_skills_for_update(*, include_profiles: bool = True) -> None:
     """Sync bundled skills during update and print the usual update summary."""
     try:
         from tools.skills_sync import sync_skills
@@ -3632,6 +3632,47 @@ def _sync_bundled_skills_for_update() -> None:
             print("  ✓ Skills are up to date")
     except Exception as e:
         logger.debug("Skills sync during update failed: %s", e)
+
+    if include_profiles:
+        _sync_bundled_skills_to_other_profiles_for_update()
+
+
+def _sync_bundled_skills_to_other_profiles_for_update() -> None:
+    """Sync bundled skills to all known non-active profiles during update."""
+    try:
+        from spark_cli.profiles import (
+            get_active_profile_name,
+            list_profiles,
+            seed_profile_skills,
+        )
+
+        active = get_active_profile_name()
+        other_profiles = [p for p in list_profiles() if p.name != active]
+        if other_profiles:
+            print()
+            print("→ Syncing bundled skills to other profiles...")
+            for p in other_profiles:
+                try:
+                    r = seed_profile_skills(p.path, quiet=True)
+                    if r:
+                        copied = len(r.get("copied", []))
+                        updated = len(r.get("updated", []))
+                        modified = len(r.get("user_modified", []))
+                        parts = []
+                        if copied:
+                            parts.append(f"+{copied} new")
+                        if updated:
+                            parts.append(f"↑{updated} updated")
+                        if modified:
+                            parts.append(f"~{modified} user-modified")
+                        status = ", ".join(parts) if parts else "up to date"
+                    else:
+                        status = "sync failed"
+                    print(f"  {p.name}: {status}")
+                except Exception as pe:
+                    print(f"  {p.name}: error ({pe})")
+    except Exception:
+        pass  # profiles module not available or no profiles
 
 
 def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
@@ -4548,42 +4589,6 @@ def cmd_update(args):
 
         # Sync bundled skills (copies new, updates changed, respects user deletions)
         _sync_bundled_skills_for_update()
-
-        # Sync bundled skills to all other profiles
-        try:
-            from spark_cli.profiles import (
-                list_profiles,
-                get_active_profile_name,
-                seed_profile_skills,
-            )
-
-            active = get_active_profile_name()
-            other_profiles = [p for p in list_profiles() if p.name != active]
-            if other_profiles:
-                print()
-                print("→ Syncing bundled skills to other profiles...")
-                for p in other_profiles:
-                    try:
-                        r = seed_profile_skills(p.path, quiet=True)
-                        if r:
-                            copied = len(r.get("copied", []))
-                            updated = len(r.get("updated", []))
-                            modified = len(r.get("user_modified", []))
-                            parts = []
-                            if copied:
-                                parts.append(f"+{copied} new")
-                            if updated:
-                                parts.append(f"↑{updated} updated")
-                            if modified:
-                                parts.append(f"~{modified} user-modified")
-                            status = ", ".join(parts) if parts else "up to date"
-                        else:
-                            status = "sync failed"
-                        print(f"  {p.name}: {status}")
-                    except Exception as pe:
-                        print(f"  {p.name}: error ({pe})")
-        except Exception:
-            pass  # profiles module not available or no profiles
 
         # Sync Honcho host blocks to all profiles
         try:

@@ -669,9 +669,12 @@ class TestNewEndpoints:
             assert "enabled" in skills[0]
 
     def test_skills_list_includes_disabled_skills(self, monkeypatch):
+        import tools.skills_sync as skills_sync
         import tools.skills_tool as skills_tool
         import spark_cli.skills_config as skills_config
         import spark_cli.web_server as web_server
+
+        sync_calls = []
 
         def _fake_find_all_skills(*, skip_disabled=False):
             if skip_disabled:
@@ -685,6 +688,7 @@ class TestNewEndpoints:
                 {"name": "active-skill", "description": "active", "category": "demo"},
             ]
 
+        monkeypatch.setattr(skills_sync, "sync_skills", lambda quiet=True: sync_calls.append(quiet) or {})
         monkeypatch.setattr(skills_tool, "_find_all_skills", _fake_find_all_skills)
         monkeypatch.setattr(skills_config, "get_disabled_skills", lambda config: {"disabled-skill"})
         monkeypatch.setattr(web_server, "load_config", lambda: {"skills": {"disabled": ["disabled-skill"]}})
@@ -692,6 +696,7 @@ class TestNewEndpoints:
         resp = self.client.get("/api/skills")
 
         assert resp.status_code == 200
+        assert sync_calls == [True]
         assert resp.json() == [
             {
                 "name": "active-skill",
