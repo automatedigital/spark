@@ -3688,6 +3688,34 @@ def _print_stash_cleanup_guidance(
         )
 
 
+def _reset_generated_web_assets(git_cmd: list[str], cwd: Path) -> bool:
+    """Keep built dashboard assets aligned with the updated source tree.
+
+    ``spark update`` preserves local changes by stashing and restoring them.
+    That is correct for user-edited files, but ``src/spark_cli/web_dist`` is
+    generated, tracked output.  Restoring an old local build there can make the
+    dashboard serve stale JavaScript after a successful update.
+    """
+    web_dist = cwd / "src" / "spark_cli" / "web_dist"
+    if not web_dist.exists():
+        return False
+    restore = subprocess.run(
+        git_cmd + ["restore", "--source=HEAD", "--", "src/spark_cli/web_dist"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if restore.returncode != 0:
+        return False
+    clean = subprocess.run(
+        git_cmd + ["clean", "-fd", "--", "src/spark_cli/web_dist"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    return clean.returncode == 0
+
+
 def _restore_stashed_changes(
     git_cmd: list[str],
     cwd: Path,
@@ -3793,6 +3821,8 @@ def _restore_stashed_changes(
 
     print("⚠ Local changes were restored on top of the updated codebase.")
     print("  Review `git diff` / `git status` if Spark behaves unexpectedly.")
+    if _reset_generated_web_assets(git_cmd, cwd):
+        print("  ✓ Reset generated dashboard assets to the updated bundle")
     return True
 
 

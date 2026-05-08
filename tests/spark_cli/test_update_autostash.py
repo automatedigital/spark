@@ -3,7 +3,6 @@ from subprocess import CalledProcessError
 from types import SimpleNamespace
 
 import pytest
-
 from spark_cli import config as spark_config
 from spark_cli import main as spark_main
 
@@ -141,6 +140,32 @@ def test_restore_stashed_changes_applies_without_prompt_when_disabled(monkeypatc
     assert calls[2][0] == ["git", "stash", "list", "--format=%gd %H"]
     assert calls[3][0] == ["git", "stash", "drop", "stash@{0}"]
     assert "Restore local changes now?" not in capsys.readouterr().out
+
+
+def test_reset_generated_web_assets_restores_tracked_bundle_and_cleans_untracked(tmp_path):
+    repo = tmp_path
+    subprocess = spark_main.subprocess
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+
+    web_dist = repo / "src" / "spark_cli" / "web_dist"
+    assets = web_dist / "assets"
+    assets.mkdir(parents=True)
+    index = web_dist / "index.html"
+    bundle = assets / "index-new.js"
+    index.write_text('<script src="/assets/index-new.js"></script>', encoding="utf-8")
+    bundle.write_text("new", encoding="utf-8")
+    subprocess.run(["git", "add", "src/spark_cli/web_dist"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "bundle"], cwd=repo, check=True, capture_output=True)
+
+    index.write_text('<script src="/assets/index-old.js"></script>', encoding="utf-8")
+    (assets / "index-old.js").write_text("old", encoding="utf-8")
+
+    assert spark_main._reset_generated_web_assets(["git"], repo) is True
+    assert index.read_text(encoding="utf-8") == '<script src="/assets/index-new.js"></script>'
+    assert bundle.read_text(encoding="utf-8") == "new"
+    assert not (assets / "index-old.js").exists()
 
 
 
