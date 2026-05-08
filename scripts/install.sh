@@ -1070,15 +1070,52 @@ SOUL_EOF
 
     # Seed bundled skills into ~/.spark/skills/ (manifest-based, one-time per skill)
     log_info "Syncing bundled skills to ~/.spark/skills/ ..."
-    if "$INSTALL_DIR/venv/bin/python" "$INSTALL_DIR/tools/skills_sync.py" 2>/dev/null; then
+    local sync_python
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
+        sync_python="$INSTALL_DIR/venv/bin/python"
+    else
+        sync_python="$PYTHON_PATH"
+    fi
+
+    if SPARK_HOME="$SPARK_HOME" "$sync_python" -m tools.skills_sync 2>/dev/null; then
         log_success "Skills synced to ~/.spark/skills/"
     else
-        # Fallback: simple directory copy if Python sync fails
-        if [ -d "$INSTALL_DIR/skills" ] && [ ! "$(ls -A "$SPARK_HOME/skills/" 2>/dev/null | grep -v '.bundled_manifest')" ]; then
-            cp -r "$INSTALL_DIR/skills/"* "$SPARK_HOME/skills/" 2>/dev/null || true
-            log_success "Skills copied to ~/.spark/skills/"
+        # Fallback: merge missing bundled skills without overwriting user edits.
+        if [ -d "$INSTALL_DIR/skills" ]; then
+            while IFS= read -r skill_md; do
+                skill_dir="$(dirname "$skill_md")"
+                rel_dir="${skill_dir#$INSTALL_DIR/skills/}"
+                dest_dir="$SPARK_HOME/skills/$rel_dir"
+                if [ ! -e "$dest_dir" ]; then
+                    mkdir -p "$(dirname "$dest_dir")"
+                    cp -R "$skill_dir" "$dest_dir" 2>/dev/null || true
+                fi
+            done < <(find "$INSTALL_DIR/skills" -name SKILL.md -type f 2>/dev/null)
+
+            while IFS= read -r desc_md; do
+                rel_file="${desc_md#$INSTALL_DIR/skills/}"
+                dest_file="$SPARK_HOME/skills/$rel_file"
+                if [ ! -e "$dest_file" ]; then
+                    mkdir -p "$(dirname "$dest_file")"
+                    cp "$desc_md" "$dest_file" 2>/dev/null || true
+                fi
+            done < <(find "$INSTALL_DIR/skills" -name DESCRIPTION.md -type f 2>/dev/null)
+
+            log_success "Missing bundled skills copied to ~/.spark/skills/"
         fi
     fi
+
+    # Also seed every known profile. Auto-migrate can be launched from the
+    # default install while dashboard/gateway runs under a profile-specific
+    # SPARK_HOME, so all profiles need the same bundled skill refresh.
+    SPARK_HOME="$SPARK_HOME" "$sync_python" - <<'PY' 2>/dev/null || true
+from spark_cli.profiles import get_active_profile_name, list_profiles, seed_profile_skills
+
+active = get_active_profile_name()
+for profile in list_profiles():
+    if profile.name != active:
+        seed_profile_skills(profile.path, quiet=True)
+PY
 }
 
 install_node_deps() {

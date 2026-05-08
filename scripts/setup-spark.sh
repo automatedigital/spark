@@ -341,13 +341,31 @@ mkdir -p "$SPARK_SKILLS_DIR"
 
 echo ""
 echo "Syncing bundled skills to ~/.spark/skills/ ..."
-if "$SCRIPT_DIR/venv/bin/python" "$SCRIPT_DIR/tools/skills_sync.py" 2>/dev/null; then
+if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$SCRIPT_DIR/venv/bin/python" -m tools.skills_sync 2>/dev/null; then
     echo -e "${GREEN}OK${NC} Skills synced"
 else
-    # Fallback: copy if sync script fails (missing deps, etc.)
+    # Fallback: merge missing bundled skills without overwriting user edits.
     if [ -d "$SCRIPT_DIR/skills" ]; then
-        cp -rn "$SCRIPT_DIR/skills/"* "$SPARK_SKILLS_DIR/" 2>/dev/null || true
-        echo -e "${GREEN}OK${NC} Skills copied"
+        while IFS= read -r skill_md; do
+            skill_dir="$(dirname "$skill_md")"
+            rel_dir="${skill_dir#$SCRIPT_DIR/skills/}"
+            dest_dir="$SPARK_SKILLS_DIR/$rel_dir"
+            if [ ! -e "$dest_dir" ]; then
+                mkdir -p "$(dirname "$dest_dir")"
+                cp -R "$skill_dir" "$dest_dir" 2>/dev/null || true
+            fi
+        done < <(find "$SCRIPT_DIR/skills" -name SKILL.md -type f 2>/dev/null)
+
+        while IFS= read -r desc_md; do
+            rel_file="${desc_md#$SCRIPT_DIR/skills/}"
+            dest_file="$SPARK_SKILLS_DIR/$rel_file"
+            if [ ! -e "$dest_file" ]; then
+                mkdir -p "$(dirname "$dest_file")"
+                cp "$desc_md" "$dest_file" 2>/dev/null || true
+            fi
+        done < <(find "$SCRIPT_DIR/skills" -name DESCRIPTION.md -type f 2>/dev/null)
+
+        echo -e "${GREEN}OK${NC} Missing bundled skills copied"
     fi
 fi
 
