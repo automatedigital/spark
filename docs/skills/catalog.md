@@ -48,13 +48,15 @@ Run stateful, iterative Python in a live Jupyter kernel.
 
 ## creative
 
-Generate ASCII art, diagrams, and generative visual content.
+Generate ASCII art, diagrams, frontend interfaces, design systems, and generative visual content.
 
 | Skill | What you can do | Path |
 |-------|----------------|------|
 | `ascii-art` | Create ASCII art with pyfiglet (571 fonts), cowsay, boxes, toilet, image-to-ascii, remote APIs, and LLM fallback. No API keys needed. | `creative/ascii-art` |
 | `ascii-video` | Convert video, audio, images, or generative input into colored ASCII video output (MP4, GIF, image sequence). | `creative/ascii-video` |
+| `design-md` | Create, apply, audit, and validate Google `DESIGN.md` design-system files, including tokens, rationale sections, linting, diffs, and exports. | `creative/design-md` |
 | `excalidraw` | Generate `.excalidraw` files for architecture diagrams, flowcharts, sequence diagrams, and concept maps — open at excalidraw.com or share via link. | `creative/excalidraw` |
+| `frontend-design` | Create distinctive, production-grade frontend interfaces with high-quality typography, color, layout, motion, and visual polish. | `creative/frontend-design` |
 | `p5js` | Build interactive and generative art with p5.js, render to images or video via headless browser, and serve live previews. | `creative/p5js` |
 
 ---

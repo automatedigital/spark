@@ -1,3 +1,3 @@
 ---
-description: Creative content generation — ASCII art, hand-drawn style diagrams, and visual design tools.
+description: Creative content generation, frontend design, design-system guidance, ASCII art, diagrams, and generative visual tools.
 ---

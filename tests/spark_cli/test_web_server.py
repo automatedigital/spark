@@ -677,7 +677,9 @@ class TestNewEndpoints:
             if skip_disabled:
                 return [
                     {"name": "active-skill", "description": "active", "category": "demo"},
+                    {"name": "design-md", "description": "design", "category": "creative"},
                     {"name": "disabled-skill", "description": "disabled", "category": "demo"},
+                    {"name": "frontend-design", "description": "frontend", "category": "creative"},
                 ]
             return [
                 {"name": "active-skill", "description": "active", "category": "demo"},
@@ -698,10 +700,22 @@ class TestNewEndpoints:
                 "enabled": True,
             },
             {
+                "name": "design-md",
+                "description": "design",
+                "category": "creative",
+                "enabled": True,
+            },
+            {
                 "name": "disabled-skill",
                 "description": "disabled",
                 "category": "demo",
                 "enabled": False,
+            },
+            {
+                "name": "frontend-design",
+                "description": "frontend",
+                "category": "creative",
+                "enabled": True,
             },
         ]
 

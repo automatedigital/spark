@@ -232,6 +232,30 @@ class TestSyncSkills:
         assert len(manifest["new-skill"]) == 32
         assert len(manifest["old-skill"]) == 32
 
+    def test_bundled_design_skills_copy_enabled_by_default(self, tmp_path):
+        """New bundled design skills are synced and not disabled by default."""
+        from spark_cli.skills_config import get_disabled_skills
+
+        bundled = tmp_path / "bundled_skills"
+        for skill_name in ("design-md", "frontend-design"):
+            skill_dir = bundled / "creative" / skill_name
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                f"---\nname: {skill_name}\ndescription: {skill_name}\n---\n# {skill_name}\n"
+            )
+
+        skills_dir = tmp_path / "user_skills"
+        manifest_file = skills_dir / ".bundled_manifest"
+
+        with self._patches(bundled, skills_dir, manifest_file):
+            result = sync_skills(quiet=True)
+
+        assert set(result["copied"]) == {"design-md", "frontend-design"}
+        assert (skills_dir / "creative" / "design-md" / "SKILL.md").exists()
+        assert (skills_dir / "creative" / "frontend-design" / "SKILL.md").exists()
+        assert "design-md" not in get_disabled_skills({"skills": {}})
+        assert "frontend-design" not in get_disabled_skills({"skills": {}})
+
     def test_user_deleted_skill_not_re_added(self, tmp_path):
         """Skill in manifest but not on disk = user deleted it. Don't re-add."""
         bundled = self._setup_bundled(tmp_path)
