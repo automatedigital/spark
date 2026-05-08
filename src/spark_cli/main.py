@@ -3610,6 +3610,30 @@ def _update_via_zip(args):
     print("✓ Update complete!")
 
 
+def _sync_bundled_skills_for_update() -> None:
+    """Sync bundled skills during update and print the usual update summary."""
+    try:
+        from tools.skills_sync import sync_skills
+
+        print()
+        print("→ Syncing bundled skills...")
+        result = sync_skills(quiet=True)
+        if result["copied"]:
+            print(f"  + {len(result['copied'])} new: {', '.join(result['copied'])}")
+        if result.get("updated"):
+            print(
+                f"  ↑ {len(result['updated'])} updated: {', '.join(result['updated'])}"
+            )
+        if result.get("user_modified"):
+            print(f"  ~ {len(result['user_modified'])} user-modified (kept)")
+        if result.get("cleaned"):
+            print(f"  − {len(result['cleaned'])} removed from manifest")
+        if not result["copied"] and not result.get("updated"):
+            print("  ✓ Skills are up to date")
+    except Exception as e:
+        logger.debug("Skills sync during update failed: %s", e)
+
+
 def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
     status = subprocess.run(
         git_cmd + ["status", "--porcelain"],
@@ -4394,6 +4418,7 @@ def cmd_update(args):
                     check=False,
                 )
             print("✓ Already up to date!")
+            _sync_bundled_skills_for_update()
             return
 
         print(f"→ Found {commit_count} new commit(s)")
@@ -4522,26 +4547,7 @@ def cmd_update(args):
             pass  # non-fatal — worst case a lazy import fails gracefully
 
         # Sync bundled skills (copies new, updates changed, respects user deletions)
-        try:
-            from tools.skills_sync import sync_skills
-
-            print()
-            print("→ Syncing bundled skills...")
-            result = sync_skills(quiet=True)
-            if result["copied"]:
-                print(f"  + {len(result['copied'])} new: {', '.join(result['copied'])}")
-            if result.get("updated"):
-                print(
-                    f"  ↑ {len(result['updated'])} updated: {', '.join(result['updated'])}"
-                )
-            if result.get("user_modified"):
-                print(f"  ~ {len(result['user_modified'])} user-modified (kept)")
-            if result.get("cleaned"):
-                print(f"  − {len(result['cleaned'])} removed from manifest")
-            if not result["copied"] and not result.get("updated"):
-                print("  ✓ Skills are up to date")
-        except Exception as e:
-            logger.debug("Skills sync during update failed: %s", e)
+        _sync_bundled_skills_for_update()
 
         # Sync bundled skills to all other profiles
         try:
