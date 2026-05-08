@@ -9,9 +9,7 @@ the semantics by reimplementing the relevant config bridge snippet and
 asserting the expected env var outcomes.
 """
 
-import os
 import json
-import pytest
 
 
 def _simulate_config_bridge(cfg: dict, initial_env: dict | None = None):
@@ -53,11 +51,13 @@ def _simulate_config_bridge(cfg: dict, initial_env: dict | None = None):
             if isinstance(alias_val, str) and alias_val.strip():
                 env[alias_env] = alias_val.strip()
 
-    # --- Replicate lines 144-147: MESSAGING_CWD fallback ---
+    # --- Replicate gateway cwd fallback ---
     configured_cwd = env.get("TERMINAL_CWD", "")
     if not configured_cwd or configured_cwd in (".", "auto", "cwd"):
-        messaging_cwd = env.get("MESSAGING_CWD") or "/root"  # Path.home() for root
-        env["TERMINAL_CWD"] = messaging_cwd
+        messaging_cwd = env.get("MESSAGING_CWD")
+        if not messaging_cwd or messaging_cwd.strip() in (".", "auto", "cwd"):
+            messaging_cwd = "/root/.spark/workspace"
+        env["TERMINAL_CWD"] = messaging_cwd.strip()
 
     return env
 
@@ -103,10 +103,10 @@ class TestTopLevelCwdAlias:
         result = _simulate_config_bridge(cfg, {"MESSAGING_CWD": "/home.spark/projects"})
         assert result["TERMINAL_CWD"] == "/home.spark/projects"
 
-    def test_no_cwd_no_messaging_cwd_falls_back_to_home(self):
+    def test_no_cwd_no_messaging_cwd_falls_back_to_spark_workspace(self):
         cfg = {}
         result = _simulate_config_bridge(cfg)
-        assert result["TERMINAL_CWD"] == "/root"  # Path.home() for root user
+        assert result["TERMINAL_CWD"] == "/root/.spark/workspace"
 
     def test_dot_cwd_triggers_messaging_fallback(self):
         """cwd: '.' should trigger MESSAGING_CWD fallback."""

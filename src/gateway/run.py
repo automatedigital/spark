@@ -75,7 +75,7 @@ _ensure_ssl_certs()
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Resolve Spark home directory (respects SPARK_HOME override)
-from core.spark_constants import get_spark_home
+from core.spark_constants import get_spark_home, get_spark_workspace
 from core.utils import atomic_yaml_write, is_truthy_value
 _spark_home = get_spark_home()
 
@@ -134,6 +134,17 @@ if _config_path.exists():
                         os.environ[_env_var] = json.dumps(_val)
                     else:
                         os.environ[_env_var] = str(_val)
+        # Top-level aliases kept for compatibility with older config docs and
+        # migration output. Nested terminal.* settings still take precedence.
+        _top_level_terminal_aliases = {
+            "cwd": "TERMINAL_CWD",
+            "backend": "TERMINAL_ENV",
+        }
+        for _alias_key, _alias_env in _top_level_terminal_aliases.items():
+            if _alias_env not in os.environ:
+                _alias_val = _cfg.get(_alias_key)
+                if isinstance(_alias_val, str) and _alias_val.strip():
+                    os.environ[_alias_env] = _alias_val.strip()
         # Compression config is read directly from config.yaml by run_agent.py
         # and auxiliary_client.py — no env var bridging needed.
         # Auxiliary model/direct-endpoint overrides (vision, web_extract).
@@ -232,11 +243,18 @@ os.environ["SPARK_EXEC_ASK"] = "1"
 
 # Set terminal working directory for messaging platforms.
 # If the user set an explicit path in config.yaml (not "." or "auto"),
-# respect it. Otherwise use MESSAGING_CWD or default to home directory.
+# respect it. Otherwise use MESSAGING_CWD or the profile workspace.
 _configured_cwd = os.environ.get("TERMINAL_CWD", "")
 if not _configured_cwd or _configured_cwd in (".", "auto", "cwd"):
-    messaging_cwd = os.getenv("MESSAGING_CWD") or str(Path.home())
-    os.environ["TERMINAL_CWD"] = messaging_cwd
+    messaging_cwd = os.getenv("MESSAGING_CWD")
+    if not messaging_cwd or messaging_cwd.strip() in (".", "auto", "cwd"):
+        _workspace = get_spark_workspace()
+        try:
+            _workspace.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        messaging_cwd = str(_workspace)
+    os.environ["TERMINAL_CWD"] = messaging_cwd.strip()
 
 from gateway.config import (
     Platform,

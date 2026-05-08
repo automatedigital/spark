@@ -17,6 +17,11 @@ def get_spark_home() -> Path:
     return Path(os.getenv("SPARK_HOME", Path.home() / ".spark"))
 
 
+def get_spark_workspace() -> Path:
+    """Return the profile-scoped default workspace directory."""
+    return get_spark_home() / "workspace"
+
+
 def get_default_spark_root() -> Path:
     """Return the root Spark directory for profile-level operations.
 
@@ -109,6 +114,15 @@ def display_spark_home() -> str:
         return "~/" + str(home.relative_to(Path.home()))
     except ValueError:
         return str(home)
+
+
+def display_spark_workspace() -> str:
+    """Return a user-friendly display string for the default workspace."""
+    workspace = get_spark_workspace()
+    try:
+        return "~/" + str(workspace.relative_to(Path.home()))
+    except ValueError:
+        return str(workspace)
 
 
 def get_subprocess_home() -> str | None:

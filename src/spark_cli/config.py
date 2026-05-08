@@ -1508,7 +1508,7 @@ OPTIONAL_ENV_VARS = {
     # ── Agent settings ──
     "MESSAGING_CWD": {
         "description": "Working directory for terminal commands via messaging",
-        "prompt": "Messaging working directory (default: home)",
+        "prompt": "Messaging working directory (default: Spark workspace)",
         "url": None,
         "password": False,
         "category": "setting",

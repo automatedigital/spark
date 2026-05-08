@@ -874,7 +874,7 @@ See also: [Personality & SOUL.md](/docs/personality) and [Context Files](/docs/t
 | Context | Default |
 |---------|---------|
 | **CLI (`spark`)** | Current directory where you run the command |
-| **Messaging gateway** | Home directory `~` (override with `MESSAGING_CWD`) |
+| **Messaging gateway** | Spark workspace `~/.spark/workspace` (override with `MESSAGING_CWD`) |
 | **Docker / Singularity / Modal / SSH** | User's home directory inside the container |
 
 ```bash

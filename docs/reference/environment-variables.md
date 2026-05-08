@@ -413,7 +413,7 @@ Each platform needs its own token. Set only the ones you use.
 | `API_SERVER_PORT` | API server port (default: `8642`) |
 | `API_SERVER_HOST` | Bind address (default: `127.0.0.1`). Use `0.0.0.0` only with `API_SERVER_KEY` set. |
 | `API_SERVER_MODEL_NAME` | Model name advertised on `/v1/models`. Useful for multi-user setups. |
-| `MESSAGING_CWD` | Working directory for terminal commands in messaging mode (default: `~`) |
+| `MESSAGING_CWD` | Working directory for terminal commands in messaging mode (default: `~/.spark/workspace`) |
 | `GATEWAY_ALLOWED_USERS` | Comma-separated user IDs across all platforms |
 | `GATEWAY_ALLOW_ALL_USERS` | Skip all allowlists (`true`/`false`, default: `false`) |
 

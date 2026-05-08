@@ -688,6 +688,12 @@ class TestBuildSystemPrompt:
         assert "frontend-design" in prompt
         assert "port 9119" in prompt
 
+    def test_includes_default_workspace_guidance(self, agent):
+        prompt = agent._build_system_prompt()
+        assert "Spark's default personal workspace" in prompt
+        assert "workspace" in prompt
+        assert "Spark's install/source directory" in prompt
+
     def test_includes_datetime(self, agent):
         prompt = agent._build_system_prompt()
         # Should contain current date info like "Conversation started:"

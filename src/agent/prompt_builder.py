@@ -11,8 +11,6 @@ import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
-
-from core.spark_constants import get_spark_home, get_skills_dir, is_wsl
 from typing import Optional
 
 from agent.skill_utils import (
@@ -23,6 +21,13 @@ from agent.skill_utils import (
     iter_skill_index_files,
     parse_frontmatter,
     skill_matches_platform,
+)
+from core.spark_constants import (
+    display_spark_workspace,
+    get_skills_dir,
+    get_spark_home,
+    get_spark_workspace,
+    is_wsl,
 )
 from core.utils import atomic_json_write
 
@@ -189,6 +194,23 @@ APP_CREATION_GUIDANCE = (
     "an available port instead of assuming a fixed one. Do not use port 9119 for "
     "user-created apps; it is reserved for Spark's built-in dashboard."
 )
+
+
+def build_workspace_guidance() -> str:
+    """Describe Spark's profile-scoped default workspace for the agent."""
+    workspace = get_spark_workspace()
+    return (
+        "# Workspace defaults\n"
+        f"Spark's default personal workspace is `{display_spark_workspace()}/` "
+        f"(absolute path: `{workspace}`). When the user asks about \"your workspace\", "
+        "the current workspace, or where to put created content without naming a "
+        "different destination, interpret that as this directory. Prefer creating "
+        "and organizing user-owned files under this workspace. Do not confuse the "
+        "default workspace with Spark's install/source directory or the process "
+        "working directory. If the user explicitly names a different project, repo, "
+        "or absolute path, use that path for the task."
+    )
+
 
 TOOL_USE_ENFORCEMENT_GUIDANCE = (
     "# Tool-use enforcement\n"
