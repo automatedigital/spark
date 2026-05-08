@@ -3081,15 +3081,14 @@ def _run_web_agent_turn(
     agent: Any,
     user_message: str,
     conversation_history: Optional[list[dict[str, Any]]] = None,
-) -> None:
+) -> Any:
     from tools.approval import reset_current_session_key, set_current_session_key
 
     tok = set_current_session_key(agent.session_id)
     try:
         if conversation_history is not None:
-            agent.run_conversation(user_message, conversation_history=conversation_history)
-        else:
-            agent.run_conversation(user_message)
+            return agent.run_conversation(user_message, conversation_history=conversation_history)
+        return agent.run_conversation(user_message)
     finally:
         reset_current_session_key(tok)
 
@@ -3156,6 +3155,52 @@ def _emit_web_session_updated(session_id: str) -> None:
             db.close()
     except Exception:
         _log.debug("session update emit failed session=%s", session_id, exc_info=True)
+
+
+def _extract_final_response(result: Any) -> str:
+    if isinstance(result, dict):
+        final = result.get("final_response")
+        return final if isinstance(final, str) else ""
+    return ""
+
+
+def _persist_web_turn_if_missing(
+    session_id: str,
+    user_message: str,
+    result: Any,
+    before_message_count: int,
+) -> None:
+    """Persist a web turn if the agent did not write it to SQLite itself."""
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            messages = db.get_messages(session_id)
+            if len(messages) > before_message_count:
+                return
+            db.append_message(session_id, "user", content=user_message)
+            final_response = _extract_final_response(result).strip()
+            if final_response:
+                db.append_message(session_id, "assistant", content=final_response)
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("web turn fallback persist failed session=%s", session_id, exc_info=True)
+
+
+def _session_message_count(session_id: str) -> int:
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            return len(db.get_messages(session_id))
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("session message count failed session=%s", session_id, exc_info=True)
+        return 0
 
 
 @app.patch("/api/sessions/{session_id}/kanban")
@@ -3289,8 +3334,10 @@ async def create_conversation(body: ConversationCreate):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _web_streaming.add(session_id)
+        before_message_count = _session_message_count(session_id)
+        result = None
         try:
-            await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None, lambda: _run_web_agent_turn(agent, message, None)
             )
         except Exception:
@@ -3298,6 +3345,7 @@ async def create_conversation(body: ConversationCreate):
         finally:
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
+            _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", {}, session_id)
@@ -3380,8 +3428,10 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _web_streaming.add(session_id)
+        before_message_count = _session_message_count(session_id)
+        result = None
         try:
-            await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None, lambda: _run_web_agent_turn(agent, message, conversation_history)
             )
         except Exception:
@@ -3389,6 +3439,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         finally:
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
+            _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", {}, session_id)

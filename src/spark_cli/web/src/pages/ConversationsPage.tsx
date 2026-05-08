@@ -155,7 +155,7 @@ export default function ConversationsPage() {
     loadThreads()
       .then((rows) => {
         if (cancelled) return;
-        if (!selectedId && !newThread && rows.length > 0) setSelectedId(rows[0].id);
+        if (rows.length > 0) setSelectedId(rows[0].id);
       })
       .catch(() => {})
       .finally(() => {
@@ -164,7 +164,7 @@ export default function ConversationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadThreads, newThread, selectedId]);
+  }, [loadThreads]);
 
   useEventBus((env) => {
     if (env.topic !== "sessions.changed") return;

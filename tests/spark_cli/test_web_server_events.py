@@ -159,6 +159,61 @@ class TestConversationControl:
         assert resp.json()["session_id"] == "stored_web"
         assert "stored_web" in web_server._web_agents
 
+    def test_web_turn_fallback_persists_missing_messages(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("fallback_web", source="web", model="m1")
+        finally:
+            db.close()
+
+        web_server._persist_web_turn_if_missing(
+            "fallback_web",
+            "Tell me a joke",
+            {"final_response": "A small deterministic reply."},
+            before_message_count=0,
+        )
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("fallback_web")
+            row = db2.list_sessions_rich(source="web", limit=10)[0]
+            assert [m["role"] for m in msgs] == ["user", "assistant"]
+            assert msgs[0]["content"] == "Tell me a joke"
+            assert msgs[1]["content"] == "A small deterministic reply."
+            assert row["preview"] == "Tell me a joke"
+            assert row["message_count"] == 2
+        finally:
+            db2.close()
+
+    def test_web_turn_fallback_does_not_duplicate_persisted_turn(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("already_persisted_web", source="web", model="m1")
+            db.append_message("already_persisted_web", "user", content="Already saved")
+        finally:
+            db.close()
+
+        web_server._persist_web_turn_if_missing(
+            "already_persisted_web",
+            "Already saved",
+            {"final_response": "Should not be added"},
+            before_message_count=0,
+        )
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("already_persisted_web")
+            assert len(msgs) == 1
+            assert msgs[0]["content"] == "Already saved"
+        finally:
+            db2.close()
+
     def test_interrupt_requires_agent(self, web_client):
         resp = web_client.post("/api/conversations/none/interrupt", json={})
         assert resp.status_code == 404
