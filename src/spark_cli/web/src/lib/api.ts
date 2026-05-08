@@ -637,6 +637,7 @@ export interface SessionMessage {
   tool_name?: string;
   tool_call_id?: string;
   timestamp?: number;
+  reasoning?: string | null;
 }
 
 export interface SessionMessagesResponse {

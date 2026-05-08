@@ -63,6 +63,10 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
     if (m.role === "user") {
       out.push({ id: nid(), role: "user", content: m.content ?? "", sessionIdx: i });
     } else if (m.role === "assistant") {
+      const reasoning = m.reasoning?.trim();
+      if (reasoning) {
+        out.push({ id: nid(), role: "reasoning", text: reasoning });
+      }
       out.push({ id: nid(), role: "assistant", content: m.content ?? "" });
     } else if (m.role === "tool") {
       out.push({
@@ -205,8 +209,21 @@ export function ChatPanel({
       }
       case "chat.reasoning": {
         const text = String((data as { text?: string }).text ?? "");
-        if (text)
-          setChatMessages((prev) => [...prev, { id: nid(), role: "reasoning", text }]);
+        if (text) {
+          setChatMessages((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              const row = next[i];
+              if (row.role === "assistant") break;
+              if (row.role === "reasoning") {
+                next[i] = { ...row, text: row.text ? `${row.text}\n${text}` : text };
+                return next;
+              }
+            }
+            next.push({ id: nid(), role: "reasoning", text });
+            return next;
+          });
+        }
         break;
       }
       case "chat.status": {
