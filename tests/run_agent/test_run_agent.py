@@ -681,6 +681,11 @@ class TestBuildSystemPrompt:
 
         assert APP_CREATION_GUIDANCE in prompt
         assert ".spark/workspace/" in prompt
+        assert "src/spark_cli/web/" in prompt
+        assert "src/spark_cli/web_server.py" in prompt
+        assert "explicitly asks to change Spark's own built-in dashboard" in prompt
+        assert "design-md" in prompt
+        assert "frontend-design" in prompt
         assert "port 9119" in prompt
 
     def test_includes_datetime(self, agent):
