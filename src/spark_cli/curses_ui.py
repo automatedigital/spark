@@ -10,6 +10,19 @@ from typing import Callable, List, Optional, Set
 from spark_cli.colors import Colors, color
 
 
+def _resolve_checklist_enter(
+    chosen: set[int],
+    cursor: int,
+    *,
+    enter_selects_current: bool = False,
+) -> set[int]:
+    """Return the checklist result for an Enter key press."""
+    result = set(chosen)
+    if enter_selects_current:
+        result.add(cursor)
+    return result
+
+
 def flush_stdin() -> None:
     """Flush any stray bytes from the stdin input buffer.
 
@@ -39,6 +52,7 @@ def curses_checklist(
     *,
     cancel_returns: Set[int] | None = None,
     status_fn: Optional[Callable[[Set[int]], str]] = None,
+    enter_selects_current: bool = False,
 ) -> Set[int]:
     """Curses multi-select checklist. Returns set of selected indices.
 
@@ -50,6 +64,8 @@ def curses_checklist(
         status_fn: Optional callback ``f(chosen_indices) -> str`` whose return
             value is rendered on the bottom row of the terminal.  Use this for
             live aggregate info (e.g. estimated token counts).
+        enter_selects_current: When true, Enter adds the highlighted item to
+            the selected set before confirming.
     """
     if cancel_returns is None:
         cancel_returns = set(selected)
@@ -90,7 +106,11 @@ def curses_checklist(
                     stdscr.addnstr(0, 0, title, max_x - 1, hattr)
                     stdscr.addnstr(
                         1, 0,
-                        "  ↑↓ navigate  SPACE toggle  ENTER confirm  ESC cancel",
+                        (
+                            "  ↑↓ navigate  SPACE toggle  ENTER select+confirm  ESC cancel"
+                            if enter_selects_current
+                            else "  ↑↓ navigate  SPACE toggle  ENTER confirm  ESC cancel"
+                        ),
                         max_x - 1, curses.A_DIM,
                     )
                 except curses.error:
@@ -146,7 +166,11 @@ def curses_checklist(
                 elif key == ord(" "):
                     chosen.symmetric_difference_update({cursor})
                 elif key in (curses.KEY_ENTER, 10, 13):
-                    result_holder[0] = set(chosen)
+                    result_holder[0] = _resolve_checklist_enter(
+                        chosen,
+                        cursor,
+                        enter_selects_current=enter_selects_current,
+                    )
                     return
                 elif key in (27, ord("q")):
                     result_holder[0] = cancel_returns

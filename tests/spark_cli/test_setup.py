@@ -181,6 +181,28 @@ def test_setup_gateway_skips_service_install_when_systemctl_missing(monkeypatch,
     assert "spark gateway" in out
 
 
+def test_setup_gateway_uses_enter_to_select_highlighted_platform(monkeypatch):
+    call = {}
+
+    def fake_prompt_checklist(title, items, pre_selected=None, **kwargs):
+        call["title"] = title
+        call["items"] = items
+        call["pre_selected"] = pre_selected
+        call.update(kwargs)
+        return []
+
+    monkeypatch.setattr(setup_mod, "get_env_value", lambda _key: "")
+    monkeypatch.setattr(setup_mod, "prompt_checklist", fake_prompt_checklist)
+    monkeypatch.setattr(setup_mod, "setup_http_api", lambda _config: None)
+
+    setup_mod.setup_gateway({})
+
+    assert call["title"] == "Select platforms to configure:"
+    assert call["items"][0] == "Telegram"
+    assert call["pre_selected"] == []
+    assert call["enter_selects_current"] is True
+
+
 def test_setup_gateway_in_container_shows_docker_guidance(monkeypatch, capsys):
     """setup_gateway() in a Docker container shows Docker-specific restart instructions."""
     env = {

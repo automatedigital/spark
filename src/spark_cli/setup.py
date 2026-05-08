@@ -288,14 +288,20 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
         print_error("Please enter 'y' or 'n'")
 
 
-def prompt_checklist(title: str, items: list, pre_selected: list = None) -> list:
+def prompt_checklist(
+    title: str,
+    items: list,
+    pre_selected: list = None,
+    *,
+    enter_selects_current: bool = False,
+) -> list:
     """
     Display a multi-select checklist and return the indices of selected items.
 
     Each item in `items` is a display string. `pre_selected` is a list of
-    indices that should be checked by default. A "Continue →" option is
-    appended at the end — the user toggles items with Space and confirms
-    with Enter on "Continue →".
+    indices that should be checked by default. The user toggles items with
+    Space and confirms with Enter. When `enter_selects_current` is true,
+    Enter first selects the highlighted item, then confirms.
 
     Falls back to a numbered toggle interface when simple_term_menu is
     unavailable.
@@ -313,6 +319,7 @@ def prompt_checklist(title: str, items: list, pre_selected: list = None) -> list
         items,
         set(pre_selected),
         cancel_returns=set(pre_selected),
+        enter_selects_current=enter_selects_current,
     )
     return sorted(chosen)
 
@@ -2326,7 +2333,7 @@ def setup_gateway(config: dict):
     """Configure messaging platform integrations."""
     print_header("Messaging Platforms")
     print_info("Connect to messaging platforms to chat with Spark from anywhere.")
-    print_info("Toggle with Space, confirm with Enter.")
+    print_info("Press Enter to select the highlighted platform, or Space to select multiple.")
     print()
 
     # Build checklist items, pre-selecting already-configured platforms
@@ -2342,7 +2349,12 @@ def setup_gateway(config: dict):
         if is_configured:
             pre_selected.append(i)
 
-    selected = prompt_checklist("Select platforms to configure:", items, pre_selected)
+    selected = prompt_checklist(
+        "Select platforms to configure:",
+        items,
+        pre_selected,
+        enter_selects_current=True,
+    )
 
     if not selected:
         print_info("No platforms selected. Run 'spark setup gateway' later to configure.")
