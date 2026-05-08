@@ -539,9 +539,13 @@ class TestGetBundledDir:
         monkeypatch.delenv("SPARK_BUNDLED_SKILLS", raising=False)
         result = _get_bundled_dir()
         assert result.name == "skills"
+        assert (result / "creative" / "design-md" / "SKILL.md").exists()
+        assert (result / "creative" / "frontend-design" / "SKILL.md").exists()
 
     def test_env_var_empty_string_ignored(self, monkeypatch):
         """Empty SPARK_BUNDLED_SKILLS should fall back to default."""
         monkeypatch.setenv("SPARK_BUNDLED_SKILLS", "")
         result = _get_bundled_dir()
         assert result.name == "skills"
+        assert (result / "creative" / "design-md" / "SKILL.md").exists()
+        assert (result / "creative" / "frontend-design" / "SKILL.md").exists()

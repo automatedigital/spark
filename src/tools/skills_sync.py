@@ -46,7 +46,14 @@ def _get_bundled_dir() -> Path:
     env_override = os.getenv("SPARK_BUNDLED_SKILLS")
     if env_override:
         return Path(env_override)
-    return Path(__file__).parent.parent / "skills"
+    # __file__ is src/tools/skills_sync.py in source installs, so the bundled
+    # library is at repo-root skills/, not src/skills/.
+    source_tree = Path(__file__).resolve().parents[2] / "skills"
+    if source_tree.exists():
+        return source_tree
+
+    # Fallback for unusual packaging layouts that place skills beside src.
+    return Path(__file__).resolve().parent.parent / "skills"
 
 
 def _read_manifest() -> Dict[str, str]:
