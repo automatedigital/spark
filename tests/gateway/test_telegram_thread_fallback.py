@@ -153,6 +153,32 @@ async def test_send_without_thread_id_unaffected():
     assert result.success is True
     assert len(call_log) == 1
     assert call_log[0]["message_thread_id"] is None
+    assert call_log[0].get("direct_messages_topic_id") is None
+
+
+@pytest.mark.asyncio
+async def test_send_uses_direct_messages_topic_id_for_private_thread():
+    """Private Telegram Threaded Mode replies must include direct_messages_topic_id."""
+    adapter = _make_adapter()
+
+    call_log = []
+
+    async def mock_send_message(**kwargs):
+        call_log.append(dict(kwargs))
+        return SimpleNamespace(message_id=8261)
+
+    adapter._bot = SimpleNamespace(send_message=mock_send_message)
+
+    result = await adapter.send(
+        chat_id="123",
+        content="test message",
+        metadata={"thread_id": "8260", "direct_messages_topic_id": "8260"},
+    )
+
+    assert result.success is True
+    assert len(call_log) == 1
+    assert call_log[0]["message_thread_id"] == 8260
+    assert call_log[0]["direct_messages_topic_id"] == 8260
 
 
 @pytest.mark.asyncio

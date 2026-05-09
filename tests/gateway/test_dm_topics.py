@@ -406,7 +406,8 @@ def test_cache_dm_topic_from_message_no_overwrite():
 
 
 def _make_mock_message(chat_id=111, chat_type="private", text="hello", thread_id=None,
-                       user_id=42, user_name="Test User", forum_topic_created=None):
+                       user_id=42, user_name="Test User", forum_topic_created=None,
+                       direct_messages_topic_id=None):
     """Create a mock Telegram Message for _build_message_event tests."""
     chat = SimpleNamespace(
         id=chat_id,
@@ -431,6 +432,10 @@ def _make_mock_message(chat_id=111, chat_type="private", text="hello", thread_id
         reply_to_message=None,
         date=None,
         forum_topic_created=forum_topic_created,
+        direct_messages_topic=(
+            SimpleNamespace(topic_id=direct_messages_topic_id)
+            if direct_messages_topic_id is not None else None
+        ),
     )
     return msg
 
@@ -489,7 +494,26 @@ def test_build_message_event_no_auto_skill_without_thread():
     assert event.auto_skill is None
 
 
-# ── _build_message_event: group_topics skill binding ──
+def test_build_message_event_uses_direct_messages_topic_id_for_private_thread():
+    """Telegram private Threaded Mode should route by direct_messages_topic.topic_id."""
+    from gateway.platforms.base import MessageType
+    from gateway.session import build_session_key
+
+    adapter = _make_adapter()
+    adapter._reload_dm_topics_from_config = lambda: None
+
+    msg = _make_mock_message(
+        chat_id=111,
+        thread_id=None,
+        direct_messages_topic_id=8260,
+        text="reply in this topic",
+    )
+    event = adapter._build_message_event(msg, MessageType.TEXT)
+
+    assert event.source.thread_id == "8260"
+    assert event.source.direct_messages_topic_id == "8260"
+    assert build_session_key(event.source) == "agent:main:telegram:dm:111:8260"
+
 
 # The telegram mock sets sys.modules["telegram.constants"] = telegram_mod (root mock),
 # so `from telegram.constants import ChatType` in telegram.py resolves to
@@ -497,6 +521,26 @@ def test_build_message_event_no_auto_skill_without_thread():
 # the same ChatType object the production code sees so equality checks work.
 from telegram.constants import ChatType as _ChatType  # noqa: E402
 
+
+def test_build_message_event_preserves_forum_thread_for_group_topic():
+    """Supergroup/forum topics should continue to use message_thread_id."""
+    from gateway.platforms.base import MessageType
+
+    adapter = _make_adapter()
+    msg = _make_mock_message(
+        chat_id=-1001234567890,
+        chat_type=_ChatType.SUPERGROUP,
+        thread_id=17585,
+        direct_messages_topic_id=None,
+        text="forum topic",
+    )
+    event = adapter._build_message_event(msg, MessageType.TEXT)
+
+    assert event.source.thread_id == "17585"
+    assert event.source.direct_messages_topic_id is None
+
+
+# ── _build_message_event: group_topics skill binding ──
 
 def test_group_topic_skill_binding():
     """Group topic with skill config should set auto_skill on the event."""

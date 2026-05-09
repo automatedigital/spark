@@ -48,7 +48,12 @@ class DummyTelegramAdapter(BasePlatformAdapter):
         self.processing_hooks.append(("complete", event.message_id, outcome))
 
 
-def _make_event(chat_id: str, thread_id: str, message_id: str = "1") -> MessageEvent:
+def _make_event(
+    chat_id: str,
+    thread_id: str,
+    message_id: str = "1",
+    direct_messages_topic_id: str | None = None,
+) -> MessageEvent:
     return MessageEvent(
         text="hello",
         source=SessionSource(
@@ -56,6 +61,7 @@ def _make_event(chat_id: str, thread_id: str, message_id: str = "1") -> MessageE
             chat_id=chat_id,
             chat_type="group",
             thread_id=thread_id,
+            direct_messages_topic_id=direct_messages_topic_id,
         ),
         message_id=message_id,
     )
@@ -143,6 +149,45 @@ class TestBasePlatformTopicSessions:
         assert adapter.processing_hooks == [
             ("start", "1"),
             ("complete", "1", ProcessingOutcome.SUCCESS),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_process_message_background_preserves_direct_topic_metadata(self):
+        adapter = DummyTelegramAdapter()
+        typing_calls = []
+
+        async def handler(_event):
+            await asyncio.sleep(0)
+            return "ack"
+
+        async def hold_typing(_chat_id, interval=2.0, metadata=None):
+            typing_calls.append({"chat_id": _chat_id, "metadata": metadata})
+            await asyncio.Event().wait()
+
+        adapter.set_message_handler(handler)
+        adapter._keep_typing = hold_typing
+
+        event = _make_event("111", "8260", direct_messages_topic_id="8260")
+        event.source.chat_type = "dm"
+        await adapter._process_message_background(event, build_session_key(event.source))
+
+        expected_metadata = {
+            "thread_id": "8260",
+            "direct_messages_topic_id": "8260",
+        }
+        assert adapter.sent == [
+            {
+                "chat_id": "111",
+                "content": "ack",
+                "reply_to": "1",
+                "metadata": expected_metadata,
+            }
+        ]
+        assert typing_calls == [
+            {
+                "chat_id": "111",
+                "metadata": expected_metadata,
+            }
         ]
 
     @pytest.mark.asyncio
