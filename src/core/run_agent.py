@@ -8044,6 +8044,7 @@ class AIAgent:
         final_response = None
         interrupted = False
         codex_ack_continuations = 0
+        codex_incomplete_visible_text = ""
         length_continue_retries = 0
         truncated_tool_call_retries = 0
         truncated_response_prefix = ""
@@ -9791,6 +9792,24 @@ class AIAgent:
                     self._codex_incomplete_retries += 1
 
                     interim_msg = self._build_assistant_message(assistant_message, finish_reason)
+                    interim_visible_text = self._strip_think_blocks(
+                        interim_msg.get("content") or ""
+                    ).strip()
+                    if interim_visible_text:
+                        if not codex_incomplete_visible_text:
+                            codex_incomplete_visible_text = interim_visible_text
+                        elif interim_visible_text == codex_incomplete_visible_text:
+                            pass
+                        elif interim_visible_text.startswith(codex_incomplete_visible_text):
+                            codex_incomplete_visible_text = interim_visible_text
+                        elif not codex_incomplete_visible_text.endswith(interim_visible_text):
+                            separator = (
+                                ""
+                                if codex_incomplete_visible_text.endswith(("\n", " "))
+                                else "\n\n"
+                            )
+                            codex_incomplete_visible_text += separator + interim_visible_text
+
                     interim_has_content = bool((interim_msg.get("content") or "").strip())
                     interim_has_reasoning = bool(interim_msg.get("reasoning", "").strip()) if isinstance(interim_msg.get("reasoning"), str) else False
                     interim_has_codex_reasoning = bool(interim_msg.get("codex_reasoning_items"))
@@ -9824,6 +9843,20 @@ class AIAgent:
                         continue
 
                     self._codex_incomplete_retries = 0
+                    if codex_incomplete_visible_text:
+                        self._persist_session(messages, conversation_history)
+                        return {
+                            "final_response": codex_incomplete_visible_text,
+                            "messages": messages,
+                            "api_calls": api_call_count,
+                            "completed": False,
+                            "partial": True,
+                            "error": (
+                                "Codex response remained incomplete after 3 "
+                                "continuation attempts; returning visible partial response"
+                            ),
+                        }
+
                     self._persist_session(messages, conversation_history)
                     return {
                         "final_response": None,

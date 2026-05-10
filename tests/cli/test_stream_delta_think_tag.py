@@ -1,9 +1,9 @@
 """Tests for _stream_delta's handling of <think> tags in prose vs real reasoning blocks."""
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+import re
+import sys
 
-import pytest
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def _make_cli_stub():
@@ -38,6 +38,41 @@ def _make_cli_stub():
     cli._stream_reasoning_delta = mock_reasoning
 
     return cli
+
+
+def _make_real_streaming_cli_stub(width=44):
+    """Create a SparkCLI-like object that uses the real stream renderer."""
+    from core.cli import SparkCLI
+
+    cli = SparkCLI.__new__(SparkCLI)
+    cli.show_reasoning = False
+    cli._invalidate = lambda *args, **kwargs: None
+    cli._get_tui_terminal_width = lambda default=(80, 24): width
+    SparkCLI._reset_stream_state(cli)
+    return cli
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+def _content_lines_from_stream_prints(calls):
+    """Return non-border response lines passed to _cprint."""
+    lines = []
+    for call in calls:
+        plain = _strip_ansi(call.args[0])
+        stripped = plain.strip()
+        if stripped.startswith("+-") or (
+            stripped.startswith("+")
+            and stripped.endswith("+")
+            and set(stripped) <= {"+", "-"}
+        ):
+            continue
+        lines.append(plain)
+    return lines
 
 
 class TestThinkTagInProse:
@@ -136,3 +171,87 @@ class TestFlushRecovery:
         assert not cli._in_reasoning_block
         full = "".join(cli._emitted)
         assert "Launch production" in full
+
+
+class TestLosslessStreamRendering:
+    """Long streamed text should be rendered with append-only complete lines."""
+
+    def test_long_genesis_style_paragraph_is_lossless(self):
+        cli = _make_real_streaming_cli_stub(width=42)
+        text = (
+            "The Beginning 1 In the beginning God created the heavens and the earth. "
+            "2 Now the earth was formless and empty, darkness was over the surface "
+            "of the deep, and the Spirit of God was hovering over the waters. "
+            "3 And God said, Let there be light, and there was light."
+        )
+        chunks = [text[i : i + 9] for i in range(0, len(text), 9)]
+
+        from unittest.mock import patch
+        import shutil
+
+        with patch.object(
+            shutil, "get_terminal_size", return_value=os.terminal_size((42, 24))
+        ), patch("core.cli._cprint") as cprint:
+            for chunk in chunks:
+                cli._stream_delta(chunk)
+            cli._flush_stream()
+
+        content_lines = _content_lines_from_stream_prints(cprint.call_args_list)
+        assert "".join(content_lines) == text
+        assert all(cli._status_bar_display_width(line) <= 41 for line in content_lines)
+
+    def test_smart_quotes_and_em_dash_are_lossless(self):
+        cli = _make_real_streaming_cli_stub(width=36)
+        text = "God said, “Let there be light,” and there was evening—the first day."
+
+        from unittest.mock import patch
+        import shutil
+
+        with patch.object(
+            shutil, "get_terminal_size", return_value=os.terminal_size((36, 24))
+        ), patch("core.cli._cprint") as cprint:
+            for chunk in [text[:11], text[11:29], text[29:]]:
+                cli._stream_delta(chunk)
+            cli._flush_stream()
+
+        content_lines = _content_lines_from_stream_prints(cprint.call_args_list)
+        assert "".join(content_lines) == text
+        assert all(cli._status_bar_display_width(line) <= 35 for line in content_lines)
+
+    def test_explicit_newlines_are_flushed_as_distinct_lines(self):
+        cli = _make_real_streaming_cli_stub(width=50)
+        text = "Alpha\n\nBeta\nGamma"
+
+        from unittest.mock import patch
+        import shutil
+
+        with patch.object(
+            shutil, "get_terminal_size", return_value=os.terminal_size((50, 24))
+        ), patch("core.cli._cprint") as cprint:
+            cli._stream_delta(text[:7])
+            cli._stream_delta(text[7:])
+            cli._flush_stream()
+
+        assert _content_lines_from_stream_prints(cprint.call_args_list) == [
+            "Alpha",
+            "",
+            "Beta",
+            "Gamma",
+        ]
+
+    def test_none_boundary_flushes_and_resets_without_losing_text(self):
+        cli = _make_real_streaming_cli_stub(width=28)
+
+        from unittest.mock import patch
+        import shutil
+
+        with patch.object(
+            shutil, "get_terminal_size", return_value=os.terminal_size((28, 24))
+        ), patch("core.cli._cprint") as cprint:
+            cli._stream_delta("First response text")
+            cli._stream_delta(None)
+            cli._stream_delta("Second response text")
+            cli._flush_stream()
+
+        content = "".join(_content_lines_from_stream_prints(cprint.call_args_list))
+        assert content == "First response textSecond response text"

@@ -786,7 +786,9 @@ def test_run_conversation_codex_continues_after_incomplete_interim_message(monke
         _codex_tool_call_response(),
         _codex_message_response("Architecture summary complete."),
     ]
-    monkeypatch.setattr(agent, "_interruptible_api_call", lambda api_kwargs: responses.pop(0))
+    monkeypatch.setattr(
+        agent, "_interruptible_api_call", lambda api_kwargs: responses.pop(0)
+    )
 
     def _fake_execute_tool_calls(assistant_message, messages, effective_task_id):
         for call in assistant_message.tool_calls:
@@ -811,6 +813,29 @@ def test_run_conversation_codex_continues_after_incomplete_interim_message(monke
         for msg in result["messages"]
     )
     assert any(msg.get("role") == "tool" and msg.get("tool_call_id") == "call_1" for msg in result["messages"])
+
+
+def test_run_conversation_codex_returns_visible_partial_after_incomplete_exhaustion(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    responses = [
+        _codex_incomplete_message_response("The Beginning"),
+        _codex_incomplete_message_response(
+            "The Beginning\n\n1 In the beginning God created the heavens and the earth."
+        ),
+        _codex_incomplete_message_response(
+            "The Beginning\n\n1 In the beginning God created the heavens and the earth."
+        ),
+    ]
+    monkeypatch.setattr(agent, "_interruptible_api_call", lambda api_kwargs: responses.pop(0))
+
+    result = agent.run_conversation("type these words exactly")
+
+    assert result["completed"] is False
+    assert result["partial"] is True
+    assert result["final_response"] == (
+        "The Beginning\n\n1 In the beginning God created the heavens and the earth."
+    )
+    assert "returning visible partial response" in result["error"]
 
 
 def test_normalize_codex_response_marks_commentary_only_message_as_incomplete(monkeypatch):

@@ -2888,33 +2888,78 @@ class SparkCLI:
             _cprint(f"\n{_ACCENT}+-{label}{'-' * max(fill - 1, 0)}+{_RST}")
 
         self._stream_buf += text
+        self._drain_stream_buffer(final=False)
 
-        # Emit complete lines, keep partial remainder in buffer
+    def _print_stream_line(self, line: str) -> None:
+        """Print one complete streamed response line."""
         _tc = getattr(self, "_stream_text_ansi", "")
+        _cprint(f"{_tc}{line}{_RST}" if _tc else line)
+
+    @classmethod
+    def _split_stream_line_for_width(
+        cls, text: str, max_width: int
+    ) -> tuple[str, str]:
+        """Split ``text`` into one printable row plus the remaining suffix.
+
+        The split preserves every character exactly.  It prefers natural
+        boundaries so long prose wraps cleanly, but hard-splits an overlong
+        word when needed to prevent the terminal from doing implicit wrapping.
+        """
+        if not text:
+            return "", ""
+        max_width = max(1, max_width)
+        if cls._status_bar_display_width(text) <= max_width:
+            return text, ""
+
+        width = 0
+        last_boundary = 0
+        boundary_chars = set(" \t.,;:!?)]}\"'") | {"-", "–", "—", "”", "’"}
+        for idx, ch in enumerate(text):
+            ch_width = cls._status_bar_display_width(ch)
+            if width + ch_width > max_width:
+                split_at = last_boundary if last_boundary > 0 else idx
+                if split_at <= 0:
+                    split_at = idx + 1
+                return text[:split_at], text[split_at:]
+            width += ch_width
+            if ch in boundary_chars:
+                last_boundary = idx + 1
+
+        return text, ""
+
+    def _stream_content_width(self) -> int:
+        """Return a conservative width for streamed response lines."""
+        try:
+            width = self._get_tui_terminal_width()
+        except Exception:
+            width = shutil.get_terminal_size((80, 24)).columns
+        # Leave one column of breathing room so terminal auto-wrap never races
+        # prompt_toolkit's repaint of the fixed input/status area.
+        return max(20, width - 1)
+
+    def _drain_stream_buffer(self, *, final: bool) -> None:
+        """Print complete streamed lines without live mid-line writes."""
+        max_width = self._stream_content_width()
+
         while "\n" in self._stream_buf:
             line, self._stream_buf = self._stream_buf.split("\n", 1)
-            if getattr(self, "_stream_mid_line", False):
-                # A previous partial flush was printed without a newline;
-                # the newline-terminated line completes it.
-                _pt_print(_PT_ANSI(f"{_tc}{line}{_RST}" if _tc else line))
-            else:
-                _cprint(f"{_tc}{line}{_RST}" if _tc else line)
-            self._stream_mid_line = False
+            self._print_stream_line(line)
 
-        # Progressively flush partial lines so long paragraphs without
-        # newlines still appear as tokens arrive. Threshold: 64 chars or
-        # 80 ms since the last partial flush.
-        import time as _time
-        _now = _time.monotonic()
-        _last_partial = getattr(self, "_stream_partial_flush_time", 0.0)
-        if self._stream_buf and (
-            len(self._stream_buf) >= 64 or _now - _last_partial >= 0.08
+        while self._stream_buf and (
+            final or self._status_bar_display_width(self._stream_buf) > max_width
         ):
-            _partial = self._stream_buf
-            self._stream_buf = ""
-            self._stream_partial_flush_time = _now
-            self._stream_mid_line = True
-            _pt_print(_PT_ANSI(f"{_tc}{_partial}" if _tc else _partial), end="")
+            line, rest = self._split_stream_line_for_width(
+                self._stream_buf, max_width
+            )
+            if not line and not rest:
+                break
+            self._print_stream_line(line)
+            self._stream_buf = rest
+            if (
+                not final
+                and self._status_bar_display_width(self._stream_buf) <= max_width
+            ):
+                break
 
     def _flush_stream(self) -> None:
         """Emit any remaining partial line from the stream buffer and close the box."""
@@ -2931,20 +2976,8 @@ class SparkCLI:
         # Close reasoning box if still open (in case no content tokens arrived)
         self._close_reasoning_box()
 
-        _tc = getattr(self, "_stream_text_ansi", "")
         if self._stream_buf:
-            if getattr(self, "_stream_mid_line", False):
-                # Complete the partial line that was already written without a newline
-                _pt_print(_PT_ANSI(f"{_tc}{self._stream_buf}{_RST}" if _tc else self._stream_buf))
-            else:
-                _cprint(f"{_tc}{self._stream_buf}{_RST}" if _tc else self._stream_buf)
-            self._stream_buf = ""
-            self._stream_mid_line = False
-        elif getattr(self, "_stream_mid_line", False):
-            # Partial content was flushed but nothing remains — emit newline to
-            # terminate the line so the box-close starts on a fresh line.
-            _pt_print(_PT_ANSI(""))
-            self._stream_mid_line = False
+            self._drain_stream_buffer(final=True)
 
         # Close the response box
         if self._stream_box_opened:
@@ -2960,8 +2993,6 @@ class SparkCLI:
         self._stream_prefilt = ""
         self._in_reasoning_block = False
         self._stream_last_was_newline = True
-        self._stream_mid_line = False
-        self._stream_partial_flush_time = 0.0
         self._reasoning_box_opened = False
         self._reasoning_buf = ""
         self._reasoning_preview_buf = ""
