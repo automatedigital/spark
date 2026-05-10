@@ -447,13 +447,12 @@ def run_doctor(args):
                 soul_path.write_text(DEFAULT_SOUL_MD, encoding="utf-8")
             except Exception:
                 soul_path.write_text(
-                    "# Spark Agent — Personal Context\n\n"
-                    "## Identity\n\n\n"
-                    "## Preferences\n\n\n"
-                    "## Projects\n\n",
+                    "# Spark Agent - Base Soul\n\n"
+                    "You are Spark Agent, an intelligent AI assistant. "
+                    "Be warm, direct, honest, and useful.\n",
                     encoding="utf-8",
                 )
-            check_ok(f"Created {_DHH}/SOUL.md with structured template")
+            check_ok(f"Created {_DHH}/SOUL.md with base identity")
             fixed_count += 1
     
     # Check memory directory

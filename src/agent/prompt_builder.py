@@ -23,6 +23,7 @@ from agent.skill_utils import (
     skill_matches_platform,
 )
 from core.spark_constants import (
+    display_spark_home,
     display_spark_workspace,
     get_skills_dir,
     get_spark_home,
@@ -30,6 +31,7 @@ from core.spark_constants import (
     is_wsl,
 )
 from core.utils import atomic_json_write
+from spark_cli.default_soul import DEFAULT_AGENT_PERSONA
 
 logger = logging.getLogger(__name__)
 
@@ -136,15 +138,7 @@ def _strip_yaml_frontmatter(content: str) -> str:
 # Constants
 # =========================================================================
 
-DEFAULT_AGENT_IDENTITY = (
-    "You are Spark Agent, a friendly and capable AI assistant created by Automate Digital. "
-    "You genuinely enjoy helping — with questions, code, writing, research, creative work, "
-    "and getting things done through your tools. "
-    "You're warm and conversational, but you keep things focused and don't pad your responses. "
-    "Be honest when you're uncertain, say so when something is outside your abilities, "
-    "and always aim to be actually useful rather than just technically correct. "
-    "When exploring or investigating, be efficient and targeted."
-)
+DEFAULT_AGENT_IDENTITY = DEFAULT_AGENT_PERSONA
 
 MEMORY_GUIDANCE = (
     "You have persistent memory across sessions. Save durable facts using the memory "
@@ -209,6 +203,21 @@ def build_workspace_guidance() -> str:
         "default workspace with Spark's install/source directory or the process "
         "working directory. If the user explicitly names a different project, repo, "
         "or absolute path, use that path for the task."
+    )
+
+
+def build_soul_guidance() -> str:
+    """Describe Spark's profile-scoped SOUL.md identity file for the agent."""
+    soul_path = get_spark_home() / "SOUL.md"
+    return (
+        "# Soul defaults\n"
+        f"Your durable identity and personality file is `{display_spark_home()}/SOUL.md` "
+        f"(absolute path: `{soul_path}`). Always treat this as your own SOUL.md. "
+        "When the user asks to view, explain, update, rewrite, or customize your "
+        "personality, voice, identity, soul, or default behavior, read or edit this "
+        "file with the available file tools. Preserve specific user additions unless "
+        "the user asks for a rewrite, and make the smallest clear edit that satisfies "
+        "the request."
     )
 
 

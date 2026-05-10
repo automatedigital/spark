@@ -81,7 +81,8 @@ from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
     MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
-    APP_CREATION_GUIDANCE, build_nous_subscription_prompt, build_workspace_guidance,
+    APP_CREATION_GUIDANCE, build_nous_subscription_prompt, build_soul_guidance,
+    build_workspace_guidance,
 )
 from agent.model_metadata import (
     fetch_model_metadata,
@@ -3147,6 +3148,7 @@ class AIAgent:
             # Fallback to hardcoded identity
             prompt_parts = [DEFAULT_AGENT_IDENTITY]
 
+        prompt_parts.append(build_soul_guidance())
         prompt_parts.append(build_workspace_guidance())
 
         # Tool-aware behavioral guidance: only inject when the tools are loaded

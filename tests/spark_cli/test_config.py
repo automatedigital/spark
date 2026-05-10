@@ -24,6 +24,7 @@ from spark_cli.config import (
     sanitize_env_file,
     _sanitize_env_lines,
 )
+from spark_cli.default_soul import DEFAULT_SOUL_MD
 
 
 class TestGetSparkHome:
@@ -53,7 +54,7 @@ class TestEnsureSparkHome:
             ensure_spark_home()
             soul_path = tmp_path / "SOUL.md"
             assert soul_path.exists()
-            assert soul_path.read_text(encoding="utf-8").strip() != ""
+            assert soul_path.read_text(encoding="utf-8").strip() == DEFAULT_SOUL_MD.strip()
 
     def test_does_not_overwrite_existing_soul_md(self, tmp_path):
         with patch.dict(os.environ, {"SPARK_HOME": str(tmp_path)}):
@@ -61,6 +62,52 @@ class TestEnsureSparkHome:
             soul_path.write_text("custom soul", encoding="utf-8")
             ensure_spark_home()
             assert soul_path.read_text(encoding="utf-8") == "custom soul"
+
+    def test_replaces_unedited_legacy_soul_md(self, tmp_path):
+        legacy_soul = """\
+# Spark Agent — Personal Context
+
+## Identity
+
+<!-- Who you are. Your role, background, or any context that helps Spark assist you better. -->
+
+## Preferences
+
+<!-- How you like to work. Communication style, tools you use, things to avoid. -->
+
+## Projects
+
+<!-- What you're currently working on. Active repos, goals, or ongoing context. -->
+
+## Workspace
+
+All files and content you create for the user must be saved inside
+`~/.spark/workspace/`.
+"""
+        with patch.dict(os.environ, {"SPARK_HOME": str(tmp_path)}):
+            soul_path = tmp_path / "SOUL.md"
+            soul_path.write_text(legacy_soul, encoding="utf-8")
+            ensure_spark_home()
+            assert soul_path.read_text(encoding="utf-8").strip() == DEFAULT_SOUL_MD.strip()
+
+    def test_preserves_edited_legacy_soul_md(self, tmp_path):
+        edited_soul = """\
+# Spark Agent — Personal Context
+
+## Identity
+
+I prefer terse answers.
+
+## Workspace
+
+All files and content you create for the user must be saved inside
+`~/.spark/workspace/`.
+"""
+        with patch.dict(os.environ, {"SPARK_HOME": str(tmp_path)}):
+            soul_path = tmp_path / "SOUL.md"
+            soul_path.write_text(edited_soul, encoding="utf-8")
+            ensure_spark_home()
+            assert soul_path.read_text(encoding="utf-8") == edited_soul
 
 
 class TestLoadConfigDefaults:

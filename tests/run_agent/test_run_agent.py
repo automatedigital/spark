@@ -20,7 +20,11 @@ import pytest
 import core.run_agent as run_agent
 from core.run_agent import AIAgent
 from agent.error_classifier import FailoverReason
-from agent.prompt_builder import APP_CREATION_GUIDANCE, DEFAULT_AGENT_IDENTITY
+from agent.prompt_builder import (
+    APP_CREATION_GUIDANCE,
+    DEFAULT_AGENT_IDENTITY,
+    build_soul_guidance,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -646,6 +650,10 @@ class TestBuildSystemPrompt:
     def test_always_has_identity(self, agent):
         prompt = agent._build_system_prompt()
         assert DEFAULT_AGENT_IDENTITY in prompt
+
+    def test_always_has_soul_guidance(self, agent):
+        prompt = agent._build_system_prompt()
+        assert build_soul_guidance() in prompt
 
     def test_includes_system_message(self, agent):
         prompt = agent._build_system_prompt(system_message="Custom instruction")

@@ -19,6 +19,7 @@ from agent.prompt_builder import (
     build_nous_subscription_prompt,
     build_context_files_prompt,
     build_environment_hints,
+    build_soul_guidance,
     CONTEXT_FILE_MAX_CHARS,
     DEFAULT_AGENT_IDENTITY,
     TOOL_USE_ENFORCEMENT_GUIDANCE,
@@ -29,6 +30,7 @@ from agent.prompt_builder import (
     PLATFORM_HINTS,
     WSL_ENVIRONMENT_HINT,
 )
+from spark_cli.default_soul import DEFAULT_SOUL_MD
 from spark_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
 
 
@@ -514,13 +516,13 @@ class TestBuildContextFilesPrompt:
         assert "If SOUL.md is present" not in result
         assert "## SOUL.md" not in result
 
-    def test_empty_soul_md_adds_nothing(self, tmp_path, monkeypatch):
+    def test_empty_soul_md_uses_base_soul(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SPARK_HOME", str(tmp_path / "spark_home"))
         spark_home = tmp_path / "spark_home"
         spark_home.mkdir()
         (spark_home / "SOUL.md").write_text("\n\n", encoding="utf-8")
         result = build_context_files_prompt(cwd=str(tmp_path))
-        assert result == ""
+        assert DEFAULT_SOUL_MD.strip() in result
 
     def test_blocks_injection_in_agents_md(self, tmp_path):
         (tmp_path / "AGENTS.md").write_text(
@@ -763,6 +765,19 @@ class TestStripYamlFrontmatter:
 class TestPromptBuilderConstants:
     def test_default_identity_non_empty(self):
         assert len(DEFAULT_AGENT_IDENTITY) > 50
+
+    def test_default_identity_uses_base_soul(self):
+        assert DEFAULT_AGENT_IDENTITY == DEFAULT_SOUL_MD.strip()
+
+    def test_soul_guidance_points_to_active_soul_file(self, monkeypatch, tmp_path):
+        spark_home = tmp_path / "spark_home"
+        monkeypatch.setenv("SPARK_HOME", str(spark_home))
+
+        guidance = build_soul_guidance()
+
+        assert "# Soul defaults" in guidance
+        assert str(spark_home / "SOUL.md") in guidance
+        assert "edit this file" in guidance
 
     def test_platform_hints_known_platforms(self):
         assert "whatsapp" in PLATFORM_HINTS
@@ -1032,6 +1047,3 @@ class TestOpenAIModelExecutionGuidance:
 # =========================================================================
 # Budget warning history stripping
 # =========================================================================
-
-
-
