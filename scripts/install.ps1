@@ -662,23 +662,17 @@ function Copy-ConfigTemplates {
     # Create SOUL.md if it doesn't exist (global persona file)
     $soulPath = "$SparkHome\SOUL.md"
     if (-not (Test-Path $soulPath)) {
-        @"
-# Spark Agent Persona
+        $bundledSoulPath = "$InstallDir\SOUL.md"
+        if (Test-Path $bundledSoulPath) {
+            Copy-Item $bundledSoulPath $soulPath
+        } else {
+            @"
+# Spark Agent - Base Soul
 
-<!-- 
-This file defines the agent's personality and tone.
-The agent will embody whatever you write here.
-Edit this to customize how Spark communicates with you.
-
-Examples:
-  - "You are a warm, playful assistant who uses kaomoji occasionally."
-  - "You are a concise technical expert. No fluff, just facts."
-  - "You speak like a friendly coworker who happens to know everything."
-
-This file is loaded fresh each message -- no restart needed.
-Delete the contents (or this file) to use the default personality.
--->
+You are Spark Agent, an intelligent AI assistant created by Automate Digital.
+Be warm, direct, honest, and useful.
 "@ | Set-Content -Path $soulPath -Encoding UTF8
+        }
         Write-Success "Created ~/.spark/SOUL.md (edit to customize personality)"
     }
     

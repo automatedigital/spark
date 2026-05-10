@@ -3612,6 +3612,8 @@ def _update_via_zip(args):
 
 def _sync_bundled_skills_for_update(*, include_profiles: bool = True) -> None:
     """Sync bundled skills during update and print the usual update summary."""
+    _sync_default_soul_for_update(include_profiles=include_profiles)
+
     try:
         from tools.skills_sync import sync_skills
 
@@ -3635,6 +3637,55 @@ def _sync_bundled_skills_for_update(*, include_profiles: bool = True) -> None:
 
     if include_profiles:
         _sync_bundled_skills_to_other_profiles_for_update()
+
+
+def _sync_default_soul_for_update(*, include_profiles: bool = True) -> None:
+    """Ensure the base SOUL.md exists after update without overwriting user edits."""
+    try:
+        from core.spark_constants import get_spark_home
+        from spark_cli.config import ensure_spark_home
+        from spark_cli.default_soul import read_default_soul_md, should_replace_with_default_soul
+
+        ensure_spark_home()
+        active_home = get_spark_home().resolve()
+        seeded = []
+        default_soul = read_default_soul_md() + "\n"
+
+        def _seed_soul(home: Path) -> None:
+            soul_path = home / "SOUL.md"
+            try:
+                if soul_path.exists() and not should_replace_with_default_soul(
+                    soul_path.read_text(encoding="utf-8")
+                ):
+                    return
+                soul_path.parent.mkdir(parents=True, exist_ok=True)
+                before = soul_path.read_text(encoding="utf-8") if soul_path.exists() else ""
+                if before == default_soul:
+                    return
+                soul_path.write_text(default_soul, encoding="utf-8")
+                seeded.append(soul_path)
+            except OSError:
+                return
+
+        _seed_soul(active_home)
+
+        if include_profiles:
+            try:
+                from spark_cli.profiles import list_profiles
+
+                for profile in list_profiles():
+                    profile_home = profile.path.resolve()
+                    if profile_home != active_home:
+                        _seed_soul(profile_home)
+            except Exception:
+                pass
+
+        if seeded:
+            print()
+            print("→ Ensuring default SOUL.md...")
+            print(f"  ✓ Seeded {len(seeded)} SOUL.md file(s)")
+    except Exception as e:
+        logger.debug("Default SOUL.md sync during update failed: %s", e)
 
 
 def _sync_bundled_skills_to_other_profiles_for_update() -> None:

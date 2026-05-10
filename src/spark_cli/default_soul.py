@@ -1,5 +1,7 @@
 """Default SOUL.md seeded into SPARK_HOME and used as the base identity."""
 
+from pathlib import Path
+
 # Base identity written to ~/.spark/SOUL.md when it doesn't yet exist.
 # Users can edit this file to personalize their assistant, but the default is
 # intentionally meaningful on its own because it is injected into the system
@@ -38,6 +40,22 @@ Specific user edits should be treated as stronger than the default base voice.
 # intentionally skipped. Keep this synchronized with the seeded base so Spark
 # has the same default soul in every startup path.
 DEFAULT_AGENT_PERSONA = DEFAULT_SOUL_MD.strip()
+
+
+def get_bundled_soul_path() -> Path:
+    """Return the checked-in base SOUL.md path."""
+    return Path(__file__).resolve().parents[2] / "SOUL.md"
+
+
+def read_default_soul_md() -> str:
+    """Read the checked-in default SOUL.md, falling back to the embedded copy."""
+    try:
+        content = get_bundled_soul_path().read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    except OSError:
+        pass
+    return DEFAULT_SOUL_MD.strip()
 
 
 def should_replace_with_default_soul(content: str) -> bool:

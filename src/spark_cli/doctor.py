@@ -443,8 +443,8 @@ def run_doctor(args):
         if should_fix:
             soul_path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                from spark_cli.default_soul import DEFAULT_SOUL_MD
-                soul_path.write_text(DEFAULT_SOUL_MD, encoding="utf-8")
+                from spark_cli.default_soul import read_default_soul_md
+                soul_path.write_text(read_default_soul_md() + "\n", encoding="utf-8")
             except Exception:
                 soul_path.write_text(
                     "# Spark Agent - Base Soul\n\n"

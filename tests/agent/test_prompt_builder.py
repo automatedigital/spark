@@ -30,7 +30,7 @@ from agent.prompt_builder import (
     PLATFORM_HINTS,
     WSL_ENVIRONMENT_HINT,
 )
-from spark_cli.default_soul import DEFAULT_SOUL_MD
+from spark_cli.default_soul import read_default_soul_md
 from spark_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
 
 
@@ -522,7 +522,7 @@ class TestBuildContextFilesPrompt:
         spark_home.mkdir()
         (spark_home / "SOUL.md").write_text("\n\n", encoding="utf-8")
         result = build_context_files_prompt(cwd=str(tmp_path))
-        assert DEFAULT_SOUL_MD.strip() in result
+        assert read_default_soul_md() in result
 
     def test_blocks_injection_in_agents_md(self, tmp_path):
         (tmp_path / "AGENTS.md").write_text(
@@ -767,7 +767,7 @@ class TestPromptBuilderConstants:
         assert len(DEFAULT_AGENT_IDENTITY) > 50
 
     def test_default_identity_uses_base_soul(self):
-        assert DEFAULT_AGENT_IDENTITY == DEFAULT_SOUL_MD.strip()
+        assert DEFAULT_AGENT_IDENTITY == read_default_soul_md()
 
     def test_soul_guidance_points_to_active_soul_file(self, monkeypatch, tmp_path):
         spark_home = tmp_path / "spark_home"

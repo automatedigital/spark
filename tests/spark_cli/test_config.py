@@ -24,7 +24,7 @@ from spark_cli.config import (
     sanitize_env_file,
     _sanitize_env_lines,
 )
-from spark_cli.default_soul import DEFAULT_SOUL_MD
+from spark_cli.default_soul import read_default_soul_md
 
 
 class TestGetSparkHome:
@@ -54,7 +54,7 @@ class TestEnsureSparkHome:
             ensure_spark_home()
             soul_path = tmp_path / "SOUL.md"
             assert soul_path.exists()
-            assert soul_path.read_text(encoding="utf-8").strip() == DEFAULT_SOUL_MD.strip()
+            assert soul_path.read_text(encoding="utf-8").strip() == read_default_soul_md()
 
     def test_does_not_overwrite_existing_soul_md(self, tmp_path):
         with patch.dict(os.environ, {"SPARK_HOME": str(tmp_path)}):
@@ -88,7 +88,7 @@ All files and content you create for the user must be saved inside
             soul_path = tmp_path / "SOUL.md"
             soul_path.write_text(legacy_soul, encoding="utf-8")
             ensure_spark_home()
-            assert soul_path.read_text(encoding="utf-8").strip() == DEFAULT_SOUL_MD.strip()
+            assert soul_path.read_text(encoding="utf-8").strip() == read_default_soul_md()
 
     def test_preserves_edited_legacy_soul_md(self, tmp_path):
         edited_soul = """\

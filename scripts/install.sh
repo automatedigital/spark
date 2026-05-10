@@ -1109,44 +1109,16 @@ copy_config_templates() {
 
     # Create SOUL.md if it doesn't exist (global persona file)
     if [ ! -f "$SPARK_HOME/SOUL.md" ]; then
-        cat > "$SPARK_HOME/SOUL.md" << 'SOUL_EOF'
-# Spark Agent — Personal Context
+        if [ -f "$INSTALL_DIR/SOUL.md" ]; then
+            cp "$INSTALL_DIR/SOUL.md" "$SPARK_HOME/SOUL.md"
+        else
+            cat > "$SPARK_HOME/SOUL.md" << 'SOUL_EOF'
+# Spark Agent - Base Soul
 
-<!--
-This file is loaded into every conversation. Write here so Spark always knows who you are,
-how you like to work, and what you're building. Edit freely — changes take effect immediately,
-no restart needed. Delete sections you don't need.
--->
-
-## Identity
-
-<!-- Who you are. Your role, background, or any context that helps Spark assist you better. -->
-<!-- Example: "I'm a senior backend engineer working at a fintech startup." -->
-
-
-## Preferences
-
-<!-- How you like to work. Communication style, tools you use, things to avoid. -->
-<!-- Examples: -->
-<!--   - Keep answers concise. No hand-holding. -->
-<!--   - I prefer TypeScript over JavaScript. -->
-<!--   - Use pnpm, not npm. -->
-<!--   - Never add comments to code unless I ask. -->
-
-
-## Projects
-
-<!-- What you're currently working on. Active repos, goals, or ongoing context. -->
-<!-- Examples: -->
-<!--   - Working on `~/code/myapp` — a Next.js + tRPC SaaS app. -->
-<!--   - Learning Rust. Stick to idioms from "The Book". -->
-
-
-## Personality
-
-<!-- Optional: override the default agent tone/style. -->
-<!-- Example: "Be direct and technical. Skip the pleasantries." -->
+You are Spark Agent, an intelligent AI assistant created by Automate Digital.
+Be warm, direct, honest, and useful.
 SOUL_EOF
+        fi
         log_success "Created ~/.spark/SOUL.md (edit to customize your assistant)"
     fi
 

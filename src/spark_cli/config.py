@@ -102,7 +102,7 @@ _EXTRA_ENV_KEYS = frozenset(
 import yaml
 
 from spark_cli.colors import Colors, color
-from spark_cli.default_soul import DEFAULT_SOUL_MD, should_replace_with_default_soul
+from spark_cli.default_soul import read_default_soul_md, should_replace_with_default_soul
 
 
 # =============================================================================
@@ -316,7 +316,7 @@ def _ensure_default_soul_md(home: Path) -> None:
                 return
         except OSError:
             return
-    soul_path.write_text(DEFAULT_SOUL_MD, encoding="utf-8")
+    soul_path.write_text(read_default_soul_md() + "\n", encoding="utf-8")
     _secure_file(soul_path)
 
 
