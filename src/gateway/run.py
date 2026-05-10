@@ -337,13 +337,13 @@ _AGENT_PENDING_SENTINEL = object()
 def _resolve_runtime_agent_kwargs() -> dict:
     """Resolve provider credentials for gateway-created AIAgent instances."""
     from spark_cli.runtime_provider import (
-        resolve_runtime_provider,
         format_runtime_provider_error,
+        resolve_runtime_provider,
     )
 
     try:
         runtime = resolve_runtime_provider(
-            requested=os.getenv("SPARK_INFERENCE_PROVIDER"),
+            requested=None,
         )
     except Exception as exc:
         raise RuntimeError(format_runtime_provider_error(exc)) from exc
@@ -604,6 +604,9 @@ class GatewayRunner:
         # Per-session model overrides from /model command.
         # Key: session_key, Value: dict with model/provider/api_key/base_url/api_mode
         self._session_model_overrides: Dict[str, Dict[str, str]] = {}
+        self._last_config_fingerprint = self._gateway_config_fingerprint(
+            _load_gateway_config()
+        )
         # Track pending exec approvals per session
         # Key: session_key, Value: {"command": str, "pattern_key": str, ...}
         self._pending_approvals: Dict[str, Dict[str, Any]] = {}
@@ -938,6 +941,57 @@ class GatewayRunner:
                 pass
 
         return model, runtime_kwargs
+
+    @staticmethod
+    def _gateway_config_fingerprint(config: Optional[dict]) -> str:
+        """Return a stable fingerprint for live gateway config refreshes."""
+        try:
+            return json.dumps(config or {}, sort_keys=True, default=str)
+        except Exception:
+            return repr(config)
+
+    def _refresh_live_config_state(self, user_config: Optional[dict]) -> None:
+        """Apply config.yaml changes made while the gateway is already running.
+
+        The gateway caches AIAgent instances for prompt caching and also supports
+        session-scoped ``/model`` overrides.  If ``spark model`` or the web UI
+        updates config.yaml out-of-process, those in-memory choices must yield to
+        the universal config before the next Telegram/Discord/etc. turn.
+        """
+        fingerprint = self._gateway_config_fingerprint(user_config)
+        previous = getattr(self, "_last_config_fingerprint", None)
+        if previous is None:
+            self._last_config_fingerprint = fingerprint
+            return
+        if fingerprint == previous:
+            return
+
+        self._last_config_fingerprint = fingerprint
+        if getattr(self, "_session_model_overrides", None):
+            self._session_model_overrides.clear()
+        if getattr(self, "_pending_model_notes", None):
+            self._pending_model_notes.clear()
+
+        cache_lock = getattr(self, "_agent_cache_lock", None)
+        cache = getattr(self, "_agent_cache", None)
+        if cache is not None:
+            if cache_lock:
+                with cache_lock:
+                    cache.clear()
+            else:
+                cache.clear()
+
+        try:
+            self._provider_routing = self._load_provider_routing()
+            self._fallback_model = self._load_fallback_model()
+            self._smart_model_routing = self._load_smart_model_routing()
+            self._reasoning_config = self._load_reasoning_config()
+            self._service_tier = self._load_service_tier()
+            self._show_reasoning = self._load_show_reasoning()
+            self._busy_input_mode = self._load_busy_input_mode()
+            self._restart_drain_timeout = self._load_restart_drain_timeout()
+        except Exception as exc:
+            logger.debug("Live config refresh partially failed: %s", exc)
 
     def _resolve_turn_agent_config(self, user_message: str, model: str, runtime_kwargs: dict) -> dict:
         from agent.smart_model_routing import resolve_turn_route
@@ -4394,6 +4448,7 @@ class GatewayRunner:
         from spark_cli.providers import get_label
 
         raw_args = event.get_command_args().strip()
+        self._refresh_live_config_state(_load_gateway_config())
 
         # Parse --provider and --global flags
         model_input, explicit_provider, persist_global = parse_model_flags(raw_args)
@@ -5448,6 +5503,7 @@ class GatewayRunner:
 
         try:
             user_config = _load_gateway_config()
+            self._refresh_live_config_state(user_config)
             model, runtime_kwargs = self._resolve_session_agent_runtime(
                 source=source,
                 user_config=user_config,
@@ -5620,6 +5676,7 @@ class GatewayRunner:
 
         try:
             user_config = _load_gateway_config()
+            self._refresh_live_config_state(user_config)
             model, runtime_kwargs = self._resolve_session_agent_runtime(
                 source=source,
                 session_key=session_key,
@@ -5831,6 +5888,7 @@ class GatewayRunner:
         self._service_tier = self._load_service_tier()
 
         user_config = _load_gateway_config()
+        self._refresh_live_config_state(user_config)
         model = _resolve_gateway_model(user_config)
         if not model_supports_fast_mode(model):
             return "⚡ /fast is only available for OpenAI models that support Priority Processing."
@@ -6000,7 +6058,6 @@ class GatewayRunner:
                 for m in history
                 if m.get("role") in ("user", "assistant") and m.get("content")
             ]
-            original_count = len(msgs)
             approx_tokens = estimate_messages_tokens_rough(msgs)
 
             tmp_agent = AIAgent(
@@ -7611,6 +7668,7 @@ class GatewayRunner:
         import queue
         
         user_config = _load_gateway_config()
+        self._refresh_live_config_state(user_config)
         platform_key = _platform_config_key(source.platform)
 
         from spark_cli.tools_config import _get_platform_tools

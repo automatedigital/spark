@@ -15,8 +15,6 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.session import SessionEntry, SessionSource, build_session_key
 
@@ -243,3 +241,67 @@ class TestIsIntentionalModelSwitch:
         }
 
         assert runner._is_intentional_model_switch(sk, "gpt-5.4") is False
+
+
+def test_live_config_refresh_clears_stale_session_model_overrides():
+    """A `spark model` config change must beat old Telegram /model overrides."""
+    runner = _make_runner()
+    sk = build_session_key(_make_source())
+
+    runner._last_config_fingerprint = runner._gateway_config_fingerprint(
+        {
+            "model": {
+                "default": "old-model",
+                "provider": "openrouter",
+            }
+        }
+    )
+    runner._session_model_overrides[sk] = {
+        "model": "stale-session-model",
+        "provider": "openrouter",
+        "api_key": "key",
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_mode": "chat_completions",
+    }
+    runner._pending_model_notes[sk] = "stale note"
+    runner._agent_cache[sk] = (object(), "old-signature")
+
+    runner._refresh_live_config_state(
+        {
+            "model": {
+                "default": "new-universal-model",
+                "provider": "anthropic",
+            }
+        }
+    )
+
+    assert runner._session_model_overrides == {}
+    assert runner._pending_model_notes == {}
+    assert runner._agent_cache == {}
+
+
+def test_gateway_runtime_resolution_defers_to_config_provider(monkeypatch):
+    """Gateway should not pass stale SPARK_INFERENCE_PROVIDER into resolution."""
+    from gateway.run import _resolve_runtime_agent_kwargs
+
+    captured = {}
+
+    def fake_resolve_runtime_provider(*, requested=None):
+        captured["requested"] = requested
+        return {
+            "api_key": "key",
+            "base_url": "https://example.test/v1",
+            "provider": "anthropic",
+            "api_mode": "anthropic_messages",
+        }
+
+    monkeypatch.setenv("SPARK_INFERENCE_PROVIDER", "openrouter")
+    monkeypatch.setattr(
+        "spark_cli.runtime_provider.resolve_runtime_provider",
+        fake_resolve_runtime_provider,
+    )
+
+    runtime = _resolve_runtime_agent_kwargs()
+
+    assert captured["requested"] is None
+    assert runtime["provider"] == "anthropic"
