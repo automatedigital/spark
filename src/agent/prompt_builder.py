@@ -213,11 +213,13 @@ def build_soul_guidance() -> str:
         "# Soul defaults\n"
         f"Your durable identity and personality file is `{display_spark_home()}/SOUL.md` "
         f"(absolute path: `{soul_path}`). Always treat this as your own SOUL.md. "
-        "When the user asks to view, explain, update, rewrite, or customize your "
-        "personality, voice, identity, soul, or default behavior, read or edit this "
-        "file with the available file tools. Preserve specific user additions unless "
-        "the user asks for a rewrite, and make the smallest clear edit that satisfies "
-        "the request."
+        "This file is user-owned configuration, not a secret system prompt. When the "
+        "user asks what your current SOUL.md says, use read_file on the absolute path "
+        "and share the file contents. When the user asks to update, rewrite, or "
+        "customize your personality, voice, identity, soul, or default behavior, edit "
+        "this file with the available file tools. Preserve specific user additions "
+        "unless the user asks for a rewrite, and make the smallest clear edit that "
+        "satisfies the request."
     )
 
 
@@ -947,7 +949,10 @@ def load_soul_md() -> Optional[str]:
         content = soul_path.read_text(encoding="utf-8").strip()
         if not content:
             return None
-        content = _scan_context_content(content, "SOUL.md")
+        # SOUL.md is profile-scoped user configuration, not untrusted project
+        # context. It is intentionally allowed to define the agent's voice and
+        # should remain readable/editable when the user asks about it. Keep the
+        # prompt-injection scanner for project context files such as AGENTS.md.
         content = _truncate_content(content, "SOUL.md")
         return content
     except Exception as e:
