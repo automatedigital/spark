@@ -634,6 +634,7 @@ def _skill_should_show(
 def build_skills_system_prompt(
     available_tools: "set[str] | None" = None,
     available_toolsets: "set[str] | None" = None,
+    lazy: bool = False,
 ) -> str:
     """Build a compact skill index for the system prompt.
 
@@ -648,12 +649,35 @@ def build_skills_system_prompt(
     scanned alongside the local ``~/.spark/skills/`` directory.  External dirs
     are read-only — they appear in the index but new skills are always created
     in the local dir.  Local skills take precedence when names collide.
+
+    When *lazy* is True, returns a single-line hint pointing the model at
+    ``skills_list`` instead of expanding every skill's description inline.
+    Saves ~2k tokens on the cold-boot prompt at the cost of one extra
+    tool call on sessions that actually want a skill.
     """
     skills_dir = get_skills_dir()
     external_dirs = get_all_skills_dirs()[1:]  # skip local (index 0)
 
     if not skills_dir.exists() and not external_dirs:
         return ""
+
+    if lazy:
+        try:
+            count = 0
+            for d in [skills_dir, *external_dirs]:
+                if d.exists():
+                    count += sum(1 for _ in iter_skill_index_files(d, "SKILL.md"))
+        except Exception:
+            count = 0
+        if count == 0:
+            return ""
+        return (
+            "## Skills\n"
+            f"{count} skills are installed. Call skills_list() to see what's "
+            "available before tackling a task — skills encode specialized "
+            "workflows, API details, and the user's preferred approach. "
+            "Load one with skill_view(name) when it matches."
+        )
 
     # ── Layer 1: in-process LRU cache ─────────────────────────────────
     # Include the resolved platform so per-platform disabled-skill lists

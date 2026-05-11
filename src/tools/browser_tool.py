@@ -624,6 +624,20 @@ atexit.register(_stop_browser_cleanup_thread)
 
 BROWSER_TOOL_SCHEMAS = [
     {
+        "name": "browser_open",
+        "description": "Open a URL in the browser. This is the entry point for browser automation — call it first to navigate to a page and unlock the rest of the browser toolset (browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_vision, browser_console) for the remainder of this session. Returns a compact page snapshot with interactive ref IDs. For simple information retrieval, prefer web_search or web_extract (faster, cheaper) — only use the browser when you need to interact with a page.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to navigate to (e.g., 'https://example.com')"
+                }
+            },
+            "required": ["url"]
+        }
+    },
+    {
         "name": "browser_navigate",
         "description": "Navigate to a URL in the browser. Initializes the session and loads the page. Must be called before other browser tools. For simple information retrieval, prefer web_search or web_extract (faster, cheaper). Use browser tools when you need to interact with a page (click, fill forms, dynamic content). Returns a compact page snapshot with interactive elements and ref IDs — no need to call browser_snapshot separately after navigating.",
         "parameters": {
@@ -2216,6 +2230,29 @@ def cleanup_all_browsers() -> None:
 # Requirements Check
 # ============================================================================
 
+# Session-level activation flag: browser sub-tools (snapshot/click/type/…)
+# are gated behind a successful browser_open call so they don't bloat the
+# default tool schema. The flag persists for the lifetime of the process
+# and toggles back to False only on explicit reset (tests).
+_browser_session_active: bool = False
+
+
+def _activate_browser_session() -> None:
+    global _browser_session_active
+    _browser_session_active = True
+
+
+def _reset_browser_session() -> None:
+    """Test helper — deactivate the session-level browser gate."""
+    global _browser_session_active
+    _browser_session_active = False
+
+
+def check_browser_active() -> bool:
+    """True only after browser_open has activated the toolset this session."""
+    return _browser_session_active and check_browser_requirements()
+
+
 def check_browser_requirements() -> bool:
     """
     Check if browser tool requirements are met.
@@ -2303,12 +2340,30 @@ from tools.registry import registry, tool_error
 
 _BROWSER_SCHEMA_MAP = {s["name"]: s for s in BROWSER_TOOL_SCHEMAS}
 
+
+def _browser_open_handler(args, **kw):
+    url = args.get("url", "")
+    if not url:
+        return tool_error("browser_open requires a 'url' argument")
+    result = browser_navigate(url=url, task_id=kw.get("task_id"))
+    _activate_browser_session()
+    return result
+
+
+registry.register(
+    name="browser_open",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_open"],
+    handler=_browser_open_handler,
+    check_fn=check_browser_requirements,
+    emoji="🌐",
+)
 registry.register(
     name="browser_navigate",
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_navigate"],
     handler=lambda args, **kw: browser_navigate(url=args.get("url", ""), task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="🌐",
 )
 registry.register(
@@ -2317,7 +2372,7 @@ registry.register(
     schema=_BROWSER_SCHEMA_MAP["browser_snapshot"],
     handler=lambda args, **kw: browser_snapshot(
         full=args.get("full", False), task_id=kw.get("task_id"), user_task=kw.get("user_task")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="📸",
 )
 registry.register(
@@ -2325,7 +2380,7 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_click"],
     handler=lambda args, **kw: browser_click(ref=args.get("ref", ""), task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="👆",
 )
 registry.register(
@@ -2333,7 +2388,7 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_type"],
     handler=lambda args, **kw: browser_type(ref=args.get("ref", ""), text=args.get("text", ""), task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="⌨️",
 )
 registry.register(
@@ -2341,7 +2396,7 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_scroll"],
     handler=lambda args, **kw: browser_scroll(direction=args.get("direction", "down"), task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="📜",
 )
 registry.register(
@@ -2349,7 +2404,7 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_back"],
     handler=lambda args, **kw: browser_back(task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="◀️",
 )
 registry.register(
@@ -2357,7 +2412,7 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_press"],
     handler=lambda args, **kw: browser_press(key=args.get("key", ""), task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="⌨️",
 )
 
@@ -2366,7 +2421,7 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_get_images"],
     handler=lambda args, **kw: browser_get_images(task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="🖼️",
 )
 registry.register(
@@ -2374,7 +2429,7 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_vision"],
     handler=lambda args, **kw: browser_vision(question=args.get("question", ""), annotate=args.get("annotate", False), task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="👁️",
 )
 registry.register(
@@ -2382,6 +2437,6 @@ registry.register(
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_console"],
     handler=lambda args, **kw: browser_console(clear=args.get("clear", False), expression=args.get("expression"), task_id=kw.get("task_id")),
-    check_fn=check_browser_requirements,
+    check_fn=check_browser_active,
     emoji="🖥️",
 )

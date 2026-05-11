@@ -37,15 +37,15 @@ _SPARK_CORE_TOOLS = [
     "read_file", "write_file", "patch", "search_files",
     # Vision + image generation
     "vision_analyze", "image_generate",
+    # NOTE: text_to_speech and cronjob are intentionally omitted from the
+    # default tool surface to keep the cold-boot schema small. Users opt in
+    # via `/toolset tts` or `/toolset cronjob`, or by adding them to
+    # `toolsets:` in their config.
     # Skills
     "skills_list", "skill_view", "skill_manage",
-    # Browser automation
-    "browser_navigate", "browser_snapshot", "browser_click",
-    "browser_type", "browser_scroll", "browser_back",
-    "browser_press", "browser_get_images",
-    "browser_vision", "browser_console",
-    # Text-to-speech
-    "text_to_speech",
+    # Browser automation — entry point only; sub-tools (snapshot/click/type/…)
+    # are gated behind a check_fn and activated once browser_open is called.
+    "browser_open",
     # Planning & memory
     "todo", "memory",
     # Session history search
@@ -54,8 +54,6 @@ _SPARK_CORE_TOOLS = [
     "clarify",
     # Code execution + delegation
     "execute_code", "delegate_task",
-    # Cronjob management
-    "cronjob",
     # Cross-platform messaging (gated on gateway running via check_fn)
     "send_message",
     # Home Assistant smart home control (gated on HASS_TOKEN via check_fn)
@@ -112,6 +110,7 @@ TOOLSETS = {
     "browser": {
         "description": "Browser automation for web interaction (navigate, click, type, scroll, iframes, hold-click) with web search for finding URLs",
         "tools": [
+            "browser_open",
             "browser_navigate", "browser_snapshot", "browser_click",
             "browser_type", "browser_scroll", "browser_back",
             "browser_press", "browser_get_images",

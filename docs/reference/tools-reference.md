@@ -6,9 +6,9 @@ description: "Authoritative reference for Spark built-in tools, grouped by tools
 
 # Built-in Tools Reference
 
-Every built-in tool Spark ships with, organized by toolset. 47 tools total. Availability depends on your platform, configured credentials, and enabled toolsets.
+Every built-in tool Spark ships with, organized by toolset. 48 tools total. Availability depends on your platform, configured credentials, and enabled toolsets.
 
-**Quick counts:** 10 browser tools, 4 file tools, 10 RL tools, 4 Home Assistant tools, 2 terminal tools, 2 web tools, and 15 standalone tools across other toolsets.
+**Quick counts:** 11 browser tools (1 entry point + 10 sub-tools activated on first use), 4 file tools, 10 RL tools, 4 Home Assistant tools, 2 terminal tools, 2 web tools, and 15 standalone tools across other toolsets.
 
 :::tip MCP Tools
 Spark can also load tools dynamically from MCP servers. MCP tools appear with a server-name prefix (e.g., `github_create_issue` for the `github` MCP server). See [MCP Integration](/docs/tools/mcp) for configuration.
@@ -18,15 +18,16 @@ Spark can also load tools dynamically from MCP servers. MCP tools appear with a 
 
 | Tool | Description | Requires |
 |------|-------------|----------|
-| `browser_back` | Navigate back to the previous page in browser history. Requires `browser_navigate` first. | — |
-| `browser_click` | Click an element by its ref ID from the snapshot (e.g., `@e5`). Ref IDs appear in square brackets in snapshot output. Requires `browser_navigate` and `browser_snapshot` first. | — |
+| `browser_open` | Open a URL in the browser. **This is the entry point** — calling it activates the full browser toolset for the rest of the session. For simple information retrieval, prefer `web_search` or `web_extract` — they're faster and cheaper. Use browser tools when you need interactive control. | agent-browser CLI |
+| `browser_back` | Navigate back to the previous page in browser history. Requires `browser_open` first. | — |
+| `browser_click` | Click an element by its ref ID from the snapshot (e.g., `@e5`). Ref IDs appear in square brackets in snapshot output. Requires `browser_open` first. | — |
 | `browser_console` | Get browser console output and JavaScript errors from the current page. Returns `console.log`/`warn`/`error`/`info` messages and uncaught JS exceptions. Useful for detecting silent errors, failed API calls, and application warnings. | — |
-| `browser_get_images` | List all images on the current page with URLs and alt text. Good for finding images to pass to the vision tool. Requires `browser_navigate` first. | — |
-| `browser_navigate` | Load a URL in the browser. Initializes the session. Must be called before other browser tools. For simple information retrieval, prefer `web_search` or `web_extract` — they're faster and cheaper. Use browser tools when you need interactive control. | — |
-| `browser_press` | Press a keyboard key. Useful for submitting forms (Enter), navigation (Tab), or keyboard shortcuts. Requires `browser_navigate` first. | — |
-| `browser_scroll` | Scroll the page up or down to reveal content outside the current viewport. Requires `browser_navigate` first. | — |
+| `browser_get_images` | List all images on the current page with URLs and alt text. Good for finding images to pass to the vision tool. Requires `browser_open` first. | — |
+| `browser_navigate` | Navigate to a URL within an active browser session. Requires `browser_open` first. | — |
+| `browser_press` | Press a keyboard key. Useful for submitting forms (Enter), navigation (Tab), or keyboard shortcuts. Requires `browser_open` first. | — |
+| `browser_scroll` | Scroll the page up or down to reveal content outside the current viewport. Requires `browser_open` first. | — |
 | `browser_snapshot` | Get a text-based accessibility tree snapshot of the current page. Returns interactive elements with ref IDs (`@e1`, `@e2`, etc.) for use with `browser_click` and `browser_type`. `full=false` (default): compact view. `full=true`: complete tree. | — |
-| `browser_type` | Type text into an input field by ref ID. Clears the field first, then types. Requires `browser_navigate` and `browser_snapshot` first. | — |
+| `browser_type` | Type text into an input field by ref ID. Clears the field first, then types. Requires `browser_open` first. | — |
 | `browser_vision` | Screenshot the current page and analyze it with vision AI. Use when you need to visually understand layout — especially for CAPTCHAs, visual verification challenges, or when the text snapshot is insufficient. | — |
 
 ## `clarify` toolset

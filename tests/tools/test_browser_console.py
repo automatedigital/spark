@@ -124,9 +124,12 @@ class TestBrowserConsoleToolsetWiring:
         from core.toolsets import TOOLSETS
         assert "browser_console" in TOOLSETS["browser"]["tools"]
 
-    def test_in_spark_core_tools(self):
+    def test_browser_open_in_spark_core_tools(self):
+        # Browser sub-tools are now gated behind browser_open activation;
+        # only the entry-point tool is in the default toolset.
         from core.toolsets import _SPARK_CORE_TOOLS
-        assert "browser_console" in _SPARK_CORE_TOOLS
+        assert "browser_open" in _SPARK_CORE_TOOLS
+        assert "browser_console" not in _SPARK_CORE_TOOLS
 
     def test_in_legacy_toolset_map(self):
         from core.model_tools import _LEGACY_TOOLSET_MAP

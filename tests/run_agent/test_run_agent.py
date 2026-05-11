@@ -659,11 +659,14 @@ class TestBuildSystemPrompt:
         prompt = agent._build_system_prompt(system_message="Custom instruction")
         assert "Custom instruction" in prompt
 
-    def test_memory_guidance_when_memory_tool_loaded(self, agent_with_memory_tool):
+    def test_memory_guidance_not_in_prompt(self, agent_with_memory_tool):
+        # MEMORY_GUIDANCE was deduplicated against the memory tool's own
+        # description — the system prompt no longer injects it, saving
+        # ~160 tokens of cached prefix.
         from agent.prompt_builder import MEMORY_GUIDANCE
 
         prompt = agent_with_memory_tool._build_system_prompt()
-        assert MEMORY_GUIDANCE in prompt
+        assert MEMORY_GUIDANCE not in prompt
 
     def test_no_memory_guidance_without_tool(self, agent):
         from agent.prompt_builder import MEMORY_GUIDANCE

@@ -3151,14 +3151,15 @@ class AIAgent:
         prompt_parts.append(build_soul_guidance())
         prompt_parts.append(build_workspace_guidance())
 
-        # Tool-aware behavioral guidance: only inject when the tools are loaded
+        # Tool-aware behavioral guidance: only inject when the tools are loaded.
+        # MEMORY_GUIDANCE and SKILLS_GUIDANCE are intentionally omitted — their
+        # content duplicates what's already in the memory/skill_manage tool
+        # descriptions, costing ~220 tokens of cache space for no behavioral
+        # difference. session_search has no equivalent tool-side guidance,
+        # so keep it.
         tool_guidance = []
-        if "memory" in self.valid_tool_names:
-            tool_guidance.append(MEMORY_GUIDANCE)
         if "session_search" in self.valid_tool_names:
             tool_guidance.append(SESSION_SEARCH_GUIDANCE)
-        if "skill_manage" in self.valid_tool_names:
-            tool_guidance.append(SKILLS_GUIDANCE)
         if tool_guidance:
             prompt_parts.append(" ".join(tool_guidance))
         if any(name in self.valid_tool_names for name in ("terminal", "write_file", "patch_file")):
@@ -3245,9 +3246,11 @@ class AIAgent:
                 )
                 if toolset
             }
+            _eager_skills = os.getenv("SPARK_SKILLS_INDEX", "").lower() == "eager"
             skills_prompt = build_skills_system_prompt(
                 available_tools=self.valid_tool_names,
                 available_toolsets=avail_toolsets,
+                lazy=not _eager_skills,
             )
         else:
             skills_prompt = ""
@@ -6903,6 +6906,37 @@ class AIAgent:
         finally:
             self._executing_tools = False
 
+    def _on_tool_dispatched(self, function_name: str) -> None:
+        """Hook fired once a tool finishes dispatching.
+
+        Currently used by ``browser_open`` to swap the slimmed default tool
+        set for the full browser toolset for the remainder of the session.
+        Safe to call after every tool — it's a no-op unless activation state
+        has actually changed since the last refresh.
+        """
+        if function_name != "browser_open":
+            return
+        try:
+            from tools.browser_tool import _browser_session_active
+        except Exception:
+            return
+        if not _browser_session_active:
+            return
+        # Cheap idempotency check: only rebuild self.tools if a browser
+        # sub-tool isn't already present.
+        if any(t.get("function", {}).get("name") == "browser_snapshot" for t in (self.tools or [])):
+            return
+        try:
+            refreshed = get_tool_definitions(
+                enabled_toolsets=self.enabled_toolsets,
+                disabled_toolsets=self.disabled_toolsets,
+                quiet_mode=True,
+            )
+        except Exception:
+            return
+        self.tools = refreshed
+        self.valid_tool_names = {t["function"]["name"] for t in refreshed}
+
     def _invoke_tool(self, function_name: str, function_args: dict, effective_task_id: str,
                      tool_call_id: Optional[str] = None) -> str:
         """Invoke a single tool and return the result string. No display logic.
@@ -6923,72 +6957,75 @@ class AIAgent:
         if block_message is not None:
             return json.dumps({"error": block_message}, ensure_ascii=False)
 
-        if function_name == "todo":
-            from tools.todo_tool import todo_tool as _todo_tool
-            return _todo_tool(
-                todos=function_args.get("todos"),
-                merge=function_args.get("merge", False),
-                store=self._todo_store,
-            )
-        elif function_name == "session_search":
-            if not self._session_db:
-                return json.dumps({"success": False, "error": "Session database not available."})
-            from tools.session_search_tool import session_search as _session_search
-            return _session_search(
-                query=function_args.get("query", ""),
-                role_filter=function_args.get("role_filter"),
-                limit=function_args.get("limit", 3),
-                db=self._session_db,
-                current_session_id=self.session_id,
-            )
-        elif function_name == "memory":
-            target = function_args.get("target", "memory")
-            from tools.memory_tool import memory_tool as _memory_tool
-            result = _memory_tool(
-                action=function_args.get("action"),
-                target=target,
-                content=function_args.get("content"),
-                old_text=function_args.get("old_text"),
-                store=self._memory_store,
-            )
-            # Bridge: notify external memory provider of built-in memory writes
-            if self._memory_manager and function_args.get("action") in ("add", "replace"):
-                try:
-                    self._memory_manager.on_memory_write(
-                        function_args.get("action", ""),
-                        target,
-                        function_args.get("content", ""),
-                    )
-                except Exception:
-                    pass
-            return result
-        elif self._memory_manager and self._memory_manager.has_tool(function_name):
-            return self._memory_manager.handle_tool_call(function_name, function_args)
-        elif function_name == "clarify":
-            from tools.clarify_tool import clarify_tool as _clarify_tool
-            return _clarify_tool(
-                question=function_args.get("question", ""),
-                choices=function_args.get("choices"),
-                callback=self.clarify_callback,
-            )
-        elif function_name == "delegate_task":
-            from tools.delegate_tool import delegate_task as _delegate_task
-            return _delegate_task(
-                goal=function_args.get("goal"),
-                context=function_args.get("context"),
-                toolsets=function_args.get("toolsets"),
-                tasks=function_args.get("tasks"),
-                max_iterations=function_args.get("max_iterations"),
-                parent_agent=self,
-            )
-        else:
-            return handle_function_call(
-                function_name, function_args, effective_task_id,
-                tool_call_id=tool_call_id,
-                session_id=self.session_id or "",
-                enabled_tools=list(self.valid_tool_names) if self.valid_tool_names else None,
-                skip_pre_tool_call_hook=True,
-            )
+        try:
+            if function_name == "todo":
+                from tools.todo_tool import todo_tool as _todo_tool
+                return _todo_tool(
+                    todos=function_args.get("todos"),
+                    merge=function_args.get("merge", False),
+                    store=self._todo_store,
+                )
+            elif function_name == "session_search":
+                if not self._session_db:
+                    return json.dumps({"success": False, "error": "Session database not available."})
+                from tools.session_search_tool import session_search as _session_search
+                return _session_search(
+                    query=function_args.get("query", ""),
+                    role_filter=function_args.get("role_filter"),
+                    limit=function_args.get("limit", 3),
+                    db=self._session_db,
+                    current_session_id=self.session_id,
+                )
+            elif function_name == "memory":
+                target = function_args.get("target", "memory")
+                from tools.memory_tool import memory_tool as _memory_tool
+                result = _memory_tool(
+                    action=function_args.get("action"),
+                    target=target,
+                    content=function_args.get("content"),
+                    old_text=function_args.get("old_text"),
+                    store=self._memory_store,
+                )
+                # Bridge: notify external memory provider of built-in memory writes
+                if self._memory_manager and function_args.get("action") in ("add", "replace"):
+                    try:
+                        self._memory_manager.on_memory_write(
+                            function_args.get("action", ""),
+                            target,
+                            function_args.get("content", ""),
+                        )
+                    except Exception:
+                        pass
+                return result
+            elif self._memory_manager and self._memory_manager.has_tool(function_name):
+                return self._memory_manager.handle_tool_call(function_name, function_args)
+            elif function_name == "clarify":
+                from tools.clarify_tool import clarify_tool as _clarify_tool
+                return _clarify_tool(
+                    question=function_args.get("question", ""),
+                    choices=function_args.get("choices"),
+                    callback=self.clarify_callback,
+                )
+            elif function_name == "delegate_task":
+                from tools.delegate_tool import delegate_task as _delegate_task
+                return _delegate_task(
+                    goal=function_args.get("goal"),
+                    context=function_args.get("context"),
+                    toolsets=function_args.get("toolsets"),
+                    tasks=function_args.get("tasks"),
+                    max_iterations=function_args.get("max_iterations"),
+                    parent_agent=self,
+                )
+            else:
+                return handle_function_call(
+                    function_name, function_args, effective_task_id,
+                    tool_call_id=tool_call_id,
+                    session_id=self.session_id or "",
+                    enabled_tools=list(self.valid_tool_names) if self.valid_tool_names else None,
+                    skip_pre_tool_call_hook=True,
+                )
+        finally:
+            self._on_tool_dispatched(function_name)
 
     def _execute_tool_calls_concurrent(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
         """Execute multiple tool calls concurrently using a thread pool.
@@ -7482,6 +7519,8 @@ class AIAgent:
                     function_result = f"Error executing tool '{function_name}': {tool_error}"
                     logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
                 tool_duration = time.time() - tool_start_time
+
+            self._on_tool_dispatched(function_name)
 
             result_preview = function_result if self.verbose_logging else (
                 function_result[:200] if len(function_result) > 200 else function_result

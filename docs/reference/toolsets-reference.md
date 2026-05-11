@@ -53,7 +53,7 @@ Or while in a session:
 | Level | Toolsets enabled | Approval mode |
 |-------|-----------------|---------------|
 | **Locked down** | `spark-cli` only | `manual` |
-| **Standard** | `spark-cli` + terminal, file, web, code_execution, vision, skills, todo, memory, session_search, delegation, cronjob | `manual` |
+| **Standard** | `spark-cli` + terminal, file, web, code_execution, vision, skills, todo, memory, session_search, delegation | `manual` |
 | **Full / Yolo** | Standard + browser, tts, image_gen, moa | `off` (no confirmation prompts) |
 
 You can also set these independently at any time:
@@ -70,7 +70,7 @@ spark setup permissions                          # re-run just the permissions s
 
 | Toolset | Tools | Purpose |
 |---------|-------|---------|
-| `browser` | `browser_back`, `browser_click`, `browser_console`, `browser_get_images`, `browser_navigate`, `browser_press`, `browser_scroll`, `browser_snapshot`, `browser_type`, `browser_vision`, `web_search` | Full browser automation. Includes `web_search` as a fallback for quick lookups. |
+| `browser` | `browser_open` (entry point), `browser_back`, `browser_click`, `browser_console`, `browser_get_images`, `browser_navigate`, `browser_press`, `browser_scroll`, `browser_snapshot`, `browser_type`, `browser_vision`, `web_search` | Full browser automation. Call `browser_open` to activate the session; the remaining sub-tools become available automatically. Includes `web_search` as a fallback for quick lookups. |
 | `clarify` | `clarify` | Ask the user a question when the agent needs input before proceeding. |
 | `code_execution` | `execute_code` | Run Python scripts that call Spark tools programmatically. |
 | `cronjob` | `cronjob` | Schedule and manage recurring tasks. |
@@ -106,7 +106,7 @@ Platform toolsets define the complete tool configuration for a deployment target
 
 | Toolset | Differences from `spark-cli` |
 |---------|-------------------------------|
-| `spark-cli` | Full toolset — all 36 tools including `clarify`. Default for interactive CLI sessions. |
+| `spark-cli` | Default for interactive CLI sessions — 25 tools by default. Browser sub-tools activate on first `browser_open` call; `tts` and `cronjob` are opt-in via `/toolset tts` or `/toolset cronjob`. |
 | `spark-acp` | Drops `clarify`, `cronjob`, `image_generate`, `send_message`, `text_to_speech`, and Home Assistant tools. Focused on coding tasks in IDE context. |
 | `spark-api-server` | Drops `clarify`, `send_message`, and `text_to_speech`. Keeps everything else — suitable for programmatic access where user interaction isn't possible. |
 | `spark-telegram` | Same as `spark-cli`. |
