@@ -1,27 +1,13 @@
-"""Tests that gateway /model switch persists across messages.
-
-The gateway /model command stores session overrides in
-``_session_model_overrides``.  These must:
-
-1. Be applied in ``run_sync()`` so the next agent uses the switched model.
-2. Not be mistaken for fallback activation (which evicts the cached agent).
-3. Survive across multiple messages until /reset clears them.
-
-Tests exercise the real ``_apply_session_model_override()`` and
-``_is_intentional_model_switch()`` methods on ``GatewayRunner``.
-"""
+"""Tests for universal model config sync in the gateway."""
 
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.session import SessionEntry, SessionSource, build_session_key
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _make_source() -> SessionSource:
@@ -32,6 +18,12 @@ def _make_source() -> SessionSource:
         user_name="tester",
         chat_type="dm",
     )
+
+
+def _make_event(text: str):
+    from gateway.platforms.base import MessageEvent
+
+    return MessageEvent(text=text, source=_make_source(), message_id="m1")
 
 
 def _make_runner():
@@ -58,6 +50,7 @@ def _make_runner():
     runner._agent_cache_lock = None
     runner._effective_model = None
     runner._effective_provider = None
+    runner._last_config_fingerprint = None
     runner.session_store = MagicMock()
     session_key = build_session_key(_make_source())
     session_entry = SessionEntry(
@@ -69,178 +62,38 @@ def _make_runner():
         chat_type="dm",
     )
     runner.session_store.get_or_create_session.return_value = session_entry
+    runner.session_store._generate_session_key.return_value = session_key
     runner.session_store._entries = {session_key: session_entry}
     return runner
 
 
-# ---------------------------------------------------------------------------
-# Tests: _apply_session_model_override
-# ---------------------------------------------------------------------------
+def test_session_model_override_is_ignored():
+    """Stale per-session overrides must not beat universal config/runtime."""
+    runner = _make_runner()
+    sk = build_session_key(_make_source())
+    runtime = {
+        "provider": "anthropic",
+        "api_key": "ant-key",
+        "base_url": "https://api.anthropic.com",
+        "api_mode": "anthropic_messages",
+    }
+    runner._session_model_overrides[sk] = {
+        "model": "stale-session-model",
+        "provider": "openrouter",
+        "api_key": "or-key",
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_mode": "chat_completions",
+    }
 
+    model, resolved = runner._apply_session_model_override(
+        sk,
+        "claude-current",
+        dict(runtime),
+    )
 
-class TestApplySessionModelOverride:
-    """Verify _apply_session_model_override replaces config defaults."""
-
-    def test_override_replaces_all_fields(self):
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        runner._session_model_overrides[sk] = {
-            "model": "gpt-5.4-turbo",
-            "provider": "openrouter",
-            "api_key": "or-key-123",
-            "base_url": "https://openrouter.ai/api/v1",
-            "api_mode": "chat_completions",
-        }
-
-        model, rt = runner._apply_session_model_override(
-            sk,
-            "anthropic/claude-sonnet-4",
-            {"provider": "anthropic", "api_key": "ant-key", "base_url": "https://api.anthropic.com", "api_mode": "anthropic_messages"},
-        )
-
-        assert model == "gpt-5.4-turbo"
-        assert rt["provider"] == "openrouter"
-        assert rt["api_key"] == "or-key-123"
-        assert rt["base_url"] == "https://openrouter.ai/api/v1"
-        assert rt["api_mode"] == "chat_completions"
-
-    def test_no_override_returns_originals(self):
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        orig_model = "anthropic/claude-sonnet-4"
-        orig_rt = {"provider": "anthropic", "api_key": "key", "base_url": "https://api.anthropic.com", "api_mode": "anthropic_messages"}
-
-        model, rt = runner._apply_session_model_override(sk, orig_model, dict(orig_rt))
-
-        assert model == orig_model
-        assert rt == orig_rt
-
-    def test_none_values_do_not_overwrite(self):
-        """Override with None api_key/base_url should preserve config defaults."""
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        runner._session_model_overrides[sk] = {
-            "model": "gpt-5.4",
-            "provider": "openai",
-            "api_key": None,
-            "base_url": None,
-            "api_mode": "chat_completions",
-        }
-
-        model, rt = runner._apply_session_model_override(
-            sk,
-            "anthropic/claude-sonnet-4",
-            {"provider": "anthropic", "api_key": "ant-key", "base_url": "https://api.anthropic.com", "api_mode": "anthropic_messages"},
-        )
-
-        assert model == "gpt-5.4"
-        assert rt["provider"] == "openai"
-        assert rt["api_key"] == "ant-key"  # preserved — None didn't overwrite
-        assert rt["base_url"] == "https://api.anthropic.com"  # preserved
-        assert rt["api_mode"] == "chat_completions"  # overwritten (not None)
-
-    def test_empty_string_overwrites(self):
-        """Empty string is not None — it should overwrite the config value."""
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        runner._session_model_overrides[sk] = {
-            "model": "local-model",
-            "provider": "custom",
-            "api_key": "local-key",
-            "base_url": "",
-            "api_mode": "chat_completions",
-        }
-
-        _, rt = runner._apply_session_model_override(
-            sk,
-            "anthropic/claude-sonnet-4",
-            {"provider": "anthropic", "api_key": "ant-key", "base_url": "https://api.anthropic.com", "api_mode": "anthropic_messages"},
-        )
-
-        assert rt["base_url"] == ""  # empty string overwrites
-
-    def test_different_session_key_not_affected(self):
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-        other_sk = "other_session"
-
-        runner._session_model_overrides[other_sk] = {
-            "model": "gpt-5.4",
-            "provider": "openai",
-            "api_key": "key",
-            "base_url": "",
-            "api_mode": "chat_completions",
-        }
-
-        model, rt = runner._apply_session_model_override(
-            sk,
-            "anthropic/claude-sonnet-4",
-            {"provider": "anthropic", "api_key": "ant-key", "base_url": "url", "api_mode": "anthropic_messages"},
-        )
-
-        assert model == "anthropic/claude-sonnet-4"  # unchanged — wrong session key
-
-
-# ---------------------------------------------------------------------------
-# Tests: _is_intentional_model_switch
-# ---------------------------------------------------------------------------
-
-
-class TestIsIntentionalModelSwitch:
-    """Verify fallback detection respects intentional /model overrides."""
-
-    def test_matches_override(self):
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        runner._session_model_overrides[sk] = {
-            "model": "gpt-5.4",
-            "provider": "openai",
-            "api_key": "key",
-            "base_url": "",
-            "api_mode": "chat_completions",
-        }
-
-        assert runner._is_intentional_model_switch(sk, "gpt-5.4") is True
-
-    def test_no_override_returns_false(self):
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        assert runner._is_intentional_model_switch(sk, "gpt-5.4") is False
-
-    def test_different_model_returns_false(self):
-        """Agent fell back to a different model than the override."""
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        runner._session_model_overrides[sk] = {
-            "model": "gpt-5.4",
-            "provider": "openai",
-            "api_key": "key",
-            "base_url": "",
-            "api_mode": "chat_completions",
-        }
-
-        assert runner._is_intentional_model_switch(sk, "gpt-5.4-mini") is False
-
-    def test_wrong_session_key(self):
-        runner = _make_runner()
-        sk = build_session_key(_make_source())
-
-        runner._session_model_overrides["other_session"] = {
-            "model": "gpt-5.4",
-            "provider": "openai",
-            "api_key": "key",
-            "base_url": "",
-            "api_mode": "chat_completions",
-        }
-
-        assert runner._is_intentional_model_switch(sk, "gpt-5.4") is False
+    assert model == "claude-current"
+    assert resolved == runtime
+    assert runner._is_intentional_model_switch(sk, "stale-session-model") is False
 
 
 def test_live_config_refresh_clears_stale_session_model_overrides():
@@ -249,12 +102,7 @@ def test_live_config_refresh_clears_stale_session_model_overrides():
     sk = build_session_key(_make_source())
 
     runner._last_config_fingerprint = runner._gateway_config_fingerprint(
-        {
-            "model": {
-                "default": "old-model",
-                "provider": "openrouter",
-            }
-        }
+        {"model": {"default": "old-model", "provider": "openrouter"}}
     )
     runner._session_model_overrides[sk] = {
         "model": "stale-session-model",
@@ -267,12 +115,7 @@ def test_live_config_refresh_clears_stale_session_model_overrides():
     runner._agent_cache[sk] = (object(), "old-signature")
 
     runner._refresh_live_config_state(
-        {
-            "model": {
-                "default": "new-universal-model",
-                "provider": "anthropic",
-            }
-        }
+        {"model": {"default": "new-universal-model", "provider": "anthropic"}}
     )
 
     assert runner._session_model_overrides == {}
@@ -305,3 +148,49 @@ def test_gateway_runtime_resolution_defers_to_config_provider(monkeypatch):
 
     assert captured["requested"] is None
     assert runtime["provider"] == "anthropic"
+
+
+@pytest.mark.asyncio
+async def test_model_command_persists_globally_and_clears_cache(monkeypatch):
+    """Telegram /model should save config.yaml, not a session override."""
+    from spark_cli.model_switch import ModelSwitchResult
+
+    runner = _make_runner()
+    sk = build_session_key(_make_source())
+    runner._agent_cache[sk] = (object(), "old")
+
+    monkeypatch.setattr(
+        "gateway.run._load_gateway_config",
+        lambda: {"model": {"default": "old", "provider": "openrouter"}},
+    )
+    monkeypatch.setattr(
+        "spark_cli.model_switch.switch_model",
+        lambda **_kw: ModelSwitchResult(
+            success=True,
+            new_model="new-global",
+            target_provider="anthropic",
+            api_key="key",
+            base_url="https://api.anthropic.com",
+            api_mode="anthropic_messages",
+            provider_label="Anthropic",
+        ),
+    )
+    saved = {}
+
+    def fake_write(result):
+        saved["model"] = result.new_model
+        return {
+            "model": {
+                "default": result.new_model,
+                "provider": result.target_provider,
+            }
+        }
+
+    monkeypatch.setattr("spark_cli.model_config.write_model_switch_result", fake_write)
+
+    response = await runner._handle_model_command(_make_event("/model sonnet"))
+
+    assert "Saved to config.yaml" in response
+    assert saved["model"] == "new-global"
+    assert runner._session_model_overrides == {}
+    assert runner._agent_cache == {}

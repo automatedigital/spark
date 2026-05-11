@@ -1574,6 +1574,9 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
 async def update_config(body: ConfigUpdate):
     try:
         save_config(_denormalize_config_from_web(body.config))
+        for sid in list(_web_agents.keys()):
+            if sid not in _web_streaming:
+                _close_web_agent(sid)
         return {"ok": True}
     except Exception:
         _log.exception("PUT /api/config failed")
@@ -2912,6 +2915,9 @@ async def update_config_raw(body: RawConfigUpdate):
         if not isinstance(parsed, dict):
             raise HTTPException(status_code=400, detail="YAML must be a mapping")
         save_config(parsed)
+        for sid in list(_web_agents.keys()):
+            if sid not in _web_streaming:
+                _close_web_agent(sid)
         return {"ok": True}
     except yaml.YAMLError as e:
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
@@ -2994,6 +3000,7 @@ _KANBAN_STATUSES = {"backlog", "active", "review", "done"}
 # In-memory state for web chat sessions
 _web_queues: Dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
 _web_agents: Dict[str, Any] = {}             # session_id → AIAgent (multi-turn context)
+_web_agent_signatures: Dict[str, Any] = {}    # session_id → effective model/runtime signature
 
 
 class KanbanUpdate(BaseModel):
@@ -3101,6 +3108,7 @@ def _run_web_agent_turn(
 
 def _close_web_agent(session_id: str) -> None:
     agent = _web_agents.pop(session_id, None)
+    _web_agent_signatures.pop(session_id, None)
     db = getattr(agent, "_session_db", None)
     close = getattr(db, "close", None)
     if callable(close):
@@ -3111,17 +3119,72 @@ def _close_web_agent(session_id: str) -> None:
 
 
 def _default_web_chat_model() -> str:
+    from spark_cli.model_config import read_global_model_config
+
+    return read_global_model_config().model
+
+
+def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
+    """Resolve the effective global model/runtime for one web chat turn."""
+    from agent.smart_model_routing import resolve_turn_route
+    from spark_cli.model_config import read_global_model_config
+    from spark_cli.runtime_provider import resolve_runtime_provider
+
     cfg = load_config()
-    model_cfg = cfg.get("model", "")
-    if isinstance(model_cfg, dict):
-        return str(model_cfg.get("default", model_cfg.get("name", "")) or "")
-    return str(model_cfg) if model_cfg else ""
+    model_cfg = read_global_model_config(cfg)
+    runtime = resolve_runtime_provider(requested=None)
+    model = model_cfg.model
+    if not model and runtime.get("provider"):
+        try:
+            from spark_cli.models import get_default_model_for_provider
+
+            model = get_default_model_for_provider(runtime["provider"])
+        except Exception:
+            pass
+
+    primary = {
+        "model": model,
+        "api_key": runtime.get("api_key"),
+        "base_url": runtime.get("base_url"),
+        "provider": runtime.get("provider"),
+        "api_mode": runtime.get("api_mode"),
+        "command": runtime.get("command"),
+        "args": list(runtime.get("args") or []),
+        "credential_pool": runtime.get("credential_pool"),
+    }
+    route = resolve_turn_route(
+        user_message,
+        cfg.get("smart_model_routing", {}) or {},
+        primary,
+    )
+    route["request_overrides"] = None
+    return route
+
+
+def _update_web_session_model(session_id: str, model: str) -> None:
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db._conn.execute(
+                "UPDATE sessions SET model = ? WHERE id = ?",
+                (model, session_id),
+            )
+            db._conn.commit()
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("session model update failed session=%s", session_id, exc_info=True)
 
 
 def _new_web_agent(
     *,
     session_id: str,
     model: str,
+    runtime: Optional[dict[str, Any]] = None,
+    request_overrides: Optional[dict[str, Any]] = None,
+    signature: Any = None,
     token_callback: Any,
     tool_start_callback: Any,
     tool_complete_callback: Any,
@@ -3132,9 +3195,18 @@ def _new_web_agent(
     from core.spark_state import SessionDB
 
     _close_web_agent(session_id)
+    runtime = runtime or {}
     agent = AIAgent(
         session_id=session_id,
         model=model,
+        api_key=runtime.get("api_key"),
+        base_url=runtime.get("base_url"),
+        provider=runtime.get("provider"),
+        api_mode=runtime.get("api_mode"),
+        command=runtime.get("command"),
+        args=list(runtime.get("args") or []),
+        credential_pool=runtime.get("credential_pool"),
+        request_overrides=request_overrides,
         stream_delta_callback=token_callback,
         tool_start_callback=tool_start_callback,
         tool_complete_callback=tool_complete_callback,
@@ -3145,6 +3217,7 @@ def _new_web_agent(
         session_db=SessionDB(),
     )
     _web_agents[session_id] = agent
+    _web_agent_signatures[session_id] = signature
     return agent
 
 
@@ -3249,15 +3322,10 @@ async def update_session_kanban(session_id: str, body: KanbanUpdate):
 @app.get("/api/conversations/config")
 async def get_conversation_config():
     """Return the default model for web chat conversations."""
-    cfg = load_config()
-    model_cfg = cfg.get("model", "")
-    if isinstance(model_cfg, dict):
-        default_model: str = model_cfg.get("default", model_cfg.get("name", ""))
-        provider: str = model_cfg.get("provider", "")
-    else:
-        default_model = str(model_cfg) if model_cfg else ""
-        provider = ""
-    return {"default_model": default_model, "provider": provider}
+    from spark_cli.model_config import read_global_model_config
+
+    model_cfg = read_global_model_config()
+    return {"default_model": model_cfg.model, "provider": model_cfg.provider}
 
 
 @app.get("/api/conversations/models")
@@ -3297,12 +3365,20 @@ async def create_conversation(body: ConversationCreate):
         status_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
-    model = body.model or _default_web_chat_model()
+    if body.model:
+        from spark_cli.model_config import write_global_model_config
+
+        write_global_model_config(model=body.model)
+    turn_route = _resolve_web_turn_route(body.message)
+    model = turn_route["model"]
 
     try:
         agent = _new_web_agent(
             session_id=session_id,
             model=model,
+            runtime=turn_route["runtime"],
+            request_overrides=turn_route.get("request_overrides"),
+            signature=turn_route["signature"],
             token_callback=token_callback,
             tool_start_callback=tool_start_callback,
             tool_complete_callback=tool_complete_callback,
@@ -3395,25 +3471,30 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             status_callback,
         ) = _make_web_chat_callbacks(session_id, queue, loop)
         _web_queues[session_id] = queue
+        turn_route = _resolve_web_turn_route(body.message)
         agent = _web_agents.get(session_id)
-        if agent:
+        if agent and _web_agent_signatures.get(session_id) == turn_route["signature"]:
             agent.stream_delta_callback = token_callback
             agent.tool_start_callback = tool_start_callback
             agent.tool_complete_callback = tool_complete_callback
             agent.reasoning_callback = reasoning_callback
             agent.status_callback = status_callback
+            agent.request_overrides = turn_route.get("request_overrides")
         else:
             conversation_history = db.get_messages_as_conversation(session_id)
-            model = row.get("model") or _default_web_chat_model()
             agent = _new_web_agent(
                 session_id=session_id,
-                model=model,
+                model=turn_route["model"],
+                runtime=turn_route["runtime"],
+                request_overrides=turn_route.get("request_overrides"),
+                signature=turn_route["signature"],
                 token_callback=token_callback,
                 tool_start_callback=tool_start_callback,
                 tool_complete_callback=tool_complete_callback,
                 reasoning_callback=reasoning_callback,
                 status_callback=status_callback,
             )
+        _update_web_session_model(session_id, turn_route["model"])
         try:
             db.reopen_session(session_id)
         except Exception:
@@ -3472,12 +3553,32 @@ async def switch_conversation_model(session_id: str, body: ConversationModelBody
         raise HTTPException(
             status_code=409, detail="Cannot switch model while a turn is running."
         )
-    agent = _web_agents.get(session_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Session not in active memory.")
-    agent.model = body.model
-    _publish_event("chat.model_changed", {"model": body.model}, session_id)
-    return {"ok": True, "session_id": session_id, "model": body.model}
+    from spark_cli.config import get_compatible_custom_providers
+    from spark_cli.model_config import read_global_model_config, write_model_switch_result
+    from spark_cli.model_switch import switch_model
+
+    cfg = load_config()
+    current = read_global_model_config(cfg)
+    result = switch_model(
+        raw_input=body.model,
+        current_provider=current.provider,
+        current_model=current.model,
+        current_base_url=current.base_url,
+        current_api_key="",
+        is_global=True,
+        user_providers=cfg.get("providers"),
+        custom_providers=get_compatible_custom_providers(cfg),
+    )
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error_message)
+
+    write_model_switch_result(result)
+    for sid in list(_web_agents.keys()):
+        if sid not in _web_streaming:
+            _close_web_agent(sid)
+    _update_web_session_model(session_id, result.new_model)
+    _publish_event("chat.model_changed", {"model": result.new_model}, session_id)
+    return {"ok": True, "session_id": session_id, "model": result.new_model}
 
 
 @app.post("/api/conversations/{session_id}/fork")
@@ -3533,8 +3634,6 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
     from tools.approval import register_gateway_notify, unregister_gateway_notify
 
     agent = _web_agents.get(session_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Session not in active memory.")
     if session_id in _web_streaming:
         raise HTTPException(status_code=409, detail="A turn is already running.")
 
@@ -3602,11 +3701,28 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         reasoning_callback,
         status_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
-    agent.stream_delta_callback = token_callback
-    agent.tool_start_callback = tool_start_callback
-    agent.tool_complete_callback = tool_complete_callback
-    agent.reasoning_callback = reasoning_callback
-    agent.status_callback = status_callback
+    turn_route = _resolve_web_turn_route(user_msg)
+    if agent and _web_agent_signatures.get(session_id) == turn_route["signature"]:
+        agent.stream_delta_callback = token_callback
+        agent.tool_start_callback = tool_start_callback
+        agent.tool_complete_callback = tool_complete_callback
+        agent.reasoning_callback = reasoning_callback
+        agent.status_callback = status_callback
+        agent.request_overrides = turn_route.get("request_overrides")
+    else:
+        agent = _new_web_agent(
+            session_id=session_id,
+            model=turn_route["model"],
+            runtime=turn_route["runtime"],
+            request_overrides=turn_route.get("request_overrides"),
+            signature=turn_route["signature"],
+            token_callback=token_callback,
+            tool_start_callback=tool_start_callback,
+            tool_complete_callback=tool_complete_callback,
+            reasoning_callback=reasoning_callback,
+            status_callback=status_callback,
+        )
+    _update_web_session_model(session_id, turn_route["model"])
 
     def _gw_notify(data: dict) -> None:
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)

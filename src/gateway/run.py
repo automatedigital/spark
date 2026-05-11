@@ -875,54 +875,9 @@ class GatewayRunner:
         session_key: Optional[str] = None,
         user_config: Optional[dict] = None,
     ) -> tuple[str, dict]:
-        """Resolve model/runtime for a session, honoring session-scoped /model overrides.
-
-        If the session override already contains a complete provider bundle
-        (provider/api_key/base_url/api_mode), prefer it directly instead of
-        resolving fresh global runtime state first.
-        """
-        resolved_session_key = session_key
-        if not resolved_session_key and source is not None:
-            try:
-                resolved_session_key = self._session_key_for_source(source)
-            except Exception:
-                resolved_session_key = None
-
+        """Resolve model/runtime from the universal config for a gateway session."""
         model = _resolve_gateway_model(user_config)
-        override = self._session_model_overrides.get(resolved_session_key) if resolved_session_key else None
-        if override:
-            override_model = override.get("model", model)
-            override_runtime = {
-                "provider": override.get("provider"),
-                "api_key": override.get("api_key"),
-                "base_url": override.get("base_url"),
-                "api_mode": override.get("api_mode"),
-            }
-            if override_runtime.get("api_key"):
-                logger.debug(
-                    "Session model override (fast): session=%s config_model=%s -> override_model=%s provider=%s",
-                    (resolved_session_key or "")[:30], model, override_model,
-                    override_runtime.get("provider"),
-                )
-                return override_model, override_runtime
-            # Override exists but has no api_key — fall through to env-based
-            # resolution and apply model/provider from the override on top.
-            logger.debug(
-                "Session model override (no api_key, fallback): session=%s config_model=%s override_model=%s",
-                (resolved_session_key or "")[:30], model, override_model,
-            )
-        else:
-            logger.debug(
-                "No session model override: session=%s config_model=%s override_keys=%s",
-                (resolved_session_key or "")[:30], model,
-                list(self._session_model_overrides.keys())[:5] if self._session_model_overrides else "[]",
-            )
-
         runtime_kwargs = _resolve_runtime_agent_kwargs()
-        if override and resolved_session_key:
-            model, runtime_kwargs = self._apply_session_model_override(
-                resolved_session_key, model, runtime_kwargs
-            )
 
         # When the config has no model.default but a provider was resolved
         # (e.g. user ran `spark auth add openai-codex` without `spark model`),
@@ -4431,63 +4386,46 @@ class GatewayRunner:
         return "\n".join(lines)
     
     async def _handle_model_command(self, event: MessageEvent) -> Optional[str]:
-        """Handle /model command — switch model for this session.
+        """Handle /model command — switch the universal model config.
 
         Supports:
           /model                              — interactive picker (Telegram/Discord) or text list
-          /model <name>                       — switch for this session only
-          /model <name> --global              — switch and persist to config.yaml
+          /model <name>                       — switch and persist to config.yaml
+          /model <name> --global              — accepted for compatibility
           /model <name> --provider <provider> — switch provider + model
           /model --provider <provider>        — switch to provider, auto-detect model
         """
-        import yaml
         from spark_cli.model_switch import (
             switch_model as _switch_model, parse_model_flags,
             list_authenticated_providers,
         )
+        from spark_cli.model_config import read_global_model_config, write_model_switch_result
         from spark_cli.providers import get_label
 
         raw_args = event.get_command_args().strip()
-        self._refresh_live_config_state(_load_gateway_config())
+        cfg = _load_gateway_config()
+        self._refresh_live_config_state(cfg)
 
         # Parse --provider and --global flags
-        model_input, explicit_provider, persist_global = parse_model_flags(raw_args)
+        model_input, explicit_provider, _persist_global = parse_model_flags(raw_args)
 
         # Read current model/provider from config
-        current_model = ""
-        current_provider = "openrouter"
-        current_base_url = ""
+        model_cfg = read_global_model_config(cfg)
+        current_model = model_cfg.model
+        current_provider = model_cfg.provider or "openrouter"
+        current_base_url = model_cfg.base_url
         current_api_key = ""
         user_provs = None
         custom_provs = None
-        config_path = _spark_home / "config.yaml"
+        user_provs = cfg.get("providers")
         try:
-            if config_path.exists():
-                with open(config_path, encoding="utf-8") as f:
-                    cfg = yaml.safe_load(f) or {}
-                model_cfg = cfg.get("model", {})
-                if isinstance(model_cfg, dict):
-                    current_model = model_cfg.get("default", "")
-                    current_provider = model_cfg.get("provider", current_provider)
-                    current_base_url = model_cfg.get("base_url", "")
-                user_provs = cfg.get("providers")
-                try:
-                    from spark_cli.config import get_compatible_custom_providers
-                    custom_provs = get_compatible_custom_providers(cfg)
-                except Exception:
-                    custom_provs = cfg.get("custom_providers")
+            from spark_cli.config import get_compatible_custom_providers
+            custom_provs = get_compatible_custom_providers(cfg)
         except Exception:
-            pass
+            custom_provs = cfg.get("custom_providers")
 
-        # Check for session override
         source = event.source
         session_key = self._session_key_for_source(source)
-        override = self._session_model_overrides.get(session_key, {})
-        if override:
-            current_model = override.get("model", current_model)
-            current_provider = override.get("provider", current_provider)
-            current_base_url = override.get("base_url", current_base_url)
-            current_api_key = override.get("api_key", current_api_key)
 
         # No args: show interactive picker (Telegram/Discord) or text list
         if not model_input and not explicit_provider:
@@ -4529,7 +4467,7 @@ class GatewayRunner:
                             current_model=_cur_model,
                             current_base_url=_cur_base_url,
                             current_api_key=_cur_api_key,
-                            is_global=False,
+                            is_global=True,
                             explicit_provider=provider_slug,
                             user_providers=user_provs,
                             custom_providers=custom_provs,
@@ -4537,44 +4475,8 @@ class GatewayRunner:
                         if not result.success:
                             return f"Error: {result.error_message}"
 
-                        # Update cached agent in-place
-                        cached_entry = None
-                        _cache_lock = getattr(_self, "_agent_cache_lock", None)
-                        _cache = getattr(_self, "_agent_cache", None)
-                        if _cache_lock and _cache is not None:
-                            with _cache_lock:
-                                cached_entry = _cache.get(_session_key)
-                        if cached_entry and cached_entry[0] is not None:
-                            try:
-                                cached_entry[0].switch_model(
-                                    new_model=result.new_model,
-                                    new_provider=result.target_provider,
-                                    api_key=result.api_key,
-                                    base_url=result.base_url,
-                                    api_mode=result.api_mode,
-                                )
-                            except Exception as exc:
-                                logger.warning("Picker model switch failed for cached agent: %s", exc)
-
-                        # Store model note + session override
-                        if not hasattr(_self, "_pending_model_notes"):
-                            _self._pending_model_notes = {}
-                        _self._pending_model_notes[_session_key] = (
-                            f"[Note: model was just switched from {_cur_model} to {result.new_model} "
-                            f"via {result.provider_label or result.target_provider}. "
-                            f"Adjust your self-identification accordingly.]"
-                        )
-                        _self._session_model_overrides[_session_key] = {
-                            "model": result.new_model,
-                            "provider": result.target_provider,
-                            "api_key": result.api_key,
-                            "base_url": result.base_url,
-                            "api_mode": result.api_mode,
-                        }
-
-                        # Evict cached agent so the next turn creates a fresh
-                        # agent from the override rather than relying on the
-                        # stale cache signature to trigger a rebuild.
+                        saved_cfg = write_model_switch_result(result)
+                        _self._refresh_live_config_state(saved_cfg)
                         _self._evict_cached_agent(_session_key)
 
                         # Build confirmation text
@@ -4590,7 +4492,7 @@ class GatewayRunner:
                             if mi.has_cost_data():
                                 lines.append(f"Cost: {mi.format_cost()}")
                             lines.append(f"Capabilities: {mi.format_capabilities()}")
-                        lines.append("_(session only — use `/model <name> --global` to persist)_")
+                        lines.append("Saved to config.yaml")
                         return "\n".join(lines)
 
                     metadata = BasePlatformAdapter.source_metadata(source)
@@ -4632,7 +4534,6 @@ class GatewayRunner:
 
             lines.append("`/model <name>` — switch model")
             lines.append("`/model <name> --provider <slug>` — switch provider")
-            lines.append("`/model <name> --global` — persist")
             return "\n".join(lines)
 
         # Perform the switch
@@ -4642,7 +4543,7 @@ class GatewayRunner:
             current_model=current_model,
             current_base_url=current_base_url,
             current_api_key=current_api_key,
-            is_global=persist_global,
+            is_global=True,
             explicit_provider=explicit_provider,
             user_providers=user_provs,
             custom_providers=custom_provs,
@@ -4651,66 +4552,9 @@ class GatewayRunner:
         if not result.success:
             return f"Error: {result.error_message}"
 
-        # If there's a cached agent, update it in-place
-        cached_entry = None
-        _cache_lock = getattr(self, "_agent_cache_lock", None)
-        _cache = getattr(self, "_agent_cache", None)
-        if _cache_lock and _cache is not None:
-            with _cache_lock:
-                cached_entry = _cache.get(session_key)
-
-        if cached_entry and cached_entry[0] is not None:
-            try:
-                cached_entry[0].switch_model(
-                    new_model=result.new_model,
-                    new_provider=result.target_provider,
-                    api_key=result.api_key,
-                    base_url=result.base_url,
-                    api_mode=result.api_mode,
-                )
-            except Exception as exc:
-                logger.warning("In-place model switch failed for cached agent: %s", exc)
-
-        # Store a note to prepend to the next user message so the model
-        # knows about the switch (avoids system messages mid-history).
-        if not hasattr(self, "_pending_model_notes"):
-            self._pending_model_notes = {}
-        self._pending_model_notes[session_key] = (
-            f"[Note: model was just switched from {current_model} to {result.new_model} "
-            f"via {result.provider_label or result.target_provider}. "
-            f"Adjust your self-identification accordingly.]"
-        )
-
-        # Store session override so next agent creation uses the new model
-        self._session_model_overrides[session_key] = {
-            "model": result.new_model,
-            "provider": result.target_provider,
-            "api_key": result.api_key,
-            "base_url": result.base_url,
-            "api_mode": result.api_mode,
-        }
-
-        # Evict cached agent so the next turn creates a fresh agent from the
-        # override rather than relying on cache signature mismatch detection.
+        saved_cfg = write_model_switch_result(result)
+        self._refresh_live_config_state(saved_cfg)
         self._evict_cached_agent(session_key)
-
-        # Persist to config if --global
-        if persist_global:
-            try:
-                if config_path.exists():
-                    with open(config_path, encoding="utf-8") as f:
-                        cfg = yaml.safe_load(f) or {}
-                else:
-                    cfg = {}
-                model_cfg = cfg.setdefault("model", {})
-                model_cfg["default"] = result.new_model
-                model_cfg["provider"] = result.target_provider
-                if result.base_url:
-                    model_cfg["base_url"] = result.base_url
-                from spark_cli.config import save_config
-                save_config(cfg)
-            except Exception as e:
-                logger.warning("Failed to persist model switch: %s", e)
 
         # Build confirmation message with full metadata
         provider_label = result.provider_label or result.target_provider
@@ -4751,10 +4595,7 @@ class GatewayRunner:
         if result.warning_message:
             lines.append(f"Warning: {result.warning_message}")
 
-        if persist_global:
-            lines.append("Saved to config.yaml (`--global`)")
-        else:
-            lines.append("_(session only -- add `--global` to persist)_")
+        lines.append("Saved to config.yaml")
 
         return "\n".join(lines)
 
@@ -7611,28 +7452,12 @@ class GatewayRunner:
     def _apply_session_model_override(
         self, session_key: str, model: str, runtime_kwargs: dict
     ) -> tuple:
-        """Apply /model session overrides if present, returning (model, runtime_kwargs).
-
-        The gateway /model command stores per-session overrides in
-        ``_session_model_overrides``.  These must take precedence over
-        config.yaml defaults so the switched model is actually used for
-        subsequent messages.  Fields with ``None`` values are skipped so
-        partial overrides don't clobber valid config defaults.
-        """
-        override = self._session_model_overrides.get(session_key)
-        if not override:
-            return model, runtime_kwargs
-        model = override.get("model", model)
-        for key in ("provider", "api_key", "base_url", "api_mode"):
-            val = override.get(key)
-            if val is not None:
-                runtime_kwargs[key] = val
+        """Deprecated no-op kept for compatibility with older tests/callers."""
         return model, runtime_kwargs
 
     def _is_intentional_model_switch(self, session_key: str, agent_model: str) -> bool:
-        """Return True if *agent_model* matches an active /model session override."""
-        override = self._session_model_overrides.get(session_key)
-        return override is not None and override.get("model") == agent_model
+        """Session model overrides are no longer used for normal /model switches."""
+        return False
 
     def _evict_cached_agent(self, session_key: str) -> None:
         """Remove a cached agent for a session (called on /new, /model, etc)."""

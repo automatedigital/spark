@@ -1,10 +1,4 @@
-"""Regression tests for session-scoped model/provider overrides in gateway agents.
-
-These cover the bug where `/model ...` stored a session override, but fresh
-agent constructions still resolved model/provider from global config/runtime.
-That let helper agents (and cache-miss main agents) route GPT-5.4 to the wrong
-provider, e.g. Spark Portal instead of OpenAI Codex.
-"""
+"""Regression tests for gateway routing through universal model config."""
 
 import asyncio
 import sys
@@ -48,6 +42,7 @@ def _make_runner():
     runner._show_reasoning = False
     runner._provider_routing = {}
     runner._fallback_model = None
+    runner._smart_model_routing = {}
     runner._service_tier = None
     runner._running_agents = {}
     runner._running_agents_ts = {}
@@ -58,6 +53,7 @@ def _make_runner():
     runner._pending_approvals = {}
     runner._agent_cache = {}
     runner._agent_cache_lock = threading.Lock()
+    runner._last_config_fingerprint = None
     runner._get_or_create_gateway_honcho = lambda session_key: (None, None)
     runner.hooks = MagicMock()
     runner.hooks.emit = AsyncMock()
@@ -65,31 +61,34 @@ def _make_runner():
     return runner
 
 
-def _codex_override():
+def _runtime():
     return {
-        "model": "gpt-5.4",
         "provider": "openai-codex",
         "api_key": "***",
         "base_url": "https://chatgpt.com/backend-api/codex",
         "api_mode": "codex_responses",
+        "command": None,
+        "args": [],
+        "credential_pool": None,
     }
 
 
-def _explode_runtime_resolution():
-    raise AssertionError(
-        "global runtime resolution should not run when a complete session override exists"
-    )
-
-
-def test_run_agent_prefers_session_override_over_global_runtime(monkeypatch):
-    monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
-    monkeypatch.setattr(gateway_run, "load_dotenv", lambda *args, **kwargs: None)
-    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", _explode_runtime_resolution)
-
+def _install_fake_agent(monkeypatch):
     fake_run_agent = types.ModuleType("run_agent")
     fake_run_agent.AIAgent = _CapturingAgent
     monkeypatch.setitem(sys.modules, "run_agent", fake_run_agent)
     monkeypatch.setitem(sys.modules, "core.run_agent", fake_run_agent)
+
+
+def test_run_agent_uses_universal_config_runtime(monkeypatch):
+    monkeypatch.setattr(
+        gateway_run,
+        "_load_gateway_config",
+        lambda: {"model": {"default": "gpt-5.4", "provider": "openai-codex"}},
+    )
+    monkeypatch.setattr(gateway_run, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", _runtime)
+    _install_fake_agent(monkeypatch)
 
     _CapturingAgent.last_init = None
     runner = _make_runner()
@@ -101,8 +100,6 @@ def test_run_agent_prefers_session_override_over_global_runtime(monkeypatch):
         chat_type="dm",
         user_id="user-1",
     )
-    session_key = "agent:main:local:dm"
-    runner._session_model_overrides[session_key] = _codex_override()
 
     result = asyncio.run(
         runner._run_agent(
@@ -111,7 +108,7 @@ def test_run_agent_prefers_session_override_over_global_runtime(monkeypatch):
             history=[],
             source=source,
             session_id="session-1",
-            session_key=session_key,
+            session_key="agent:main:local:dm",
         )
     )
 
@@ -125,14 +122,14 @@ def test_run_agent_prefers_session_override_over_global_runtime(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_background_task_prefers_session_override_over_global_runtime(monkeypatch):
-    monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
-    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", _explode_runtime_resolution)
-
-    fake_run_agent = types.ModuleType("run_agent")
-    fake_run_agent.AIAgent = _CapturingAgent
-    monkeypatch.setitem(sys.modules, "run_agent", fake_run_agent)
-    monkeypatch.setitem(sys.modules, "core.run_agent", fake_run_agent)
+async def test_background_task_uses_universal_config_runtime(monkeypatch):
+    monkeypatch.setattr(
+        gateway_run,
+        "_load_gateway_config",
+        lambda: {"model": {"default": "gpt-5.4", "provider": "openai-codex"}},
+    )
+    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", _runtime)
+    _install_fake_agent(monkeypatch)
 
     _CapturingAgent.last_init = None
     runner = _make_runner()
@@ -149,8 +146,6 @@ async def test_background_task_prefers_session_override_over_global_runtime(monk
         chat_id="67890",
         user_name="testuser",
     )
-    session_key = runner._session_key_for_source(source)
-    runner._session_model_overrides[session_key] = _codex_override()
 
     await runner._run_background_task("say hello", source, "bg_test")
 

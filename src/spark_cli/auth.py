@@ -3065,15 +3065,9 @@ def _save_model_choice(model_id: str) -> None:
     The model is stored in config.yaml only — NOT in .env.  This avoids
     conflicts in multi-agent setups where env vars would stomp each other.
     """
-    from spark_cli.config import save_config, load_config
+    from spark_cli.model_config import write_global_model_config
 
-    config = load_config()
-    # Always use dict format so provider/base_url can be stored alongside
-    if isinstance(config.get("model"), dict):
-        config["model"]["default"] = model_id
-    else:
-        config["model"] = {"default": model_id}
-    save_config(config)
+    write_global_model_config(model=model_id)
 
 
 def login_command(args) -> None:

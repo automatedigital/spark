@@ -5228,13 +5228,13 @@ class SparkCLI:
             _cprint("    Prompt caching: enabled")
         if result.warning_message:
             _cprint(f"    WARN {result.warning_message}")
-        if persist_global:
-            save_config_value("model.default", result.new_model)
-            if result.provider_changed:
-                save_config_value("model.provider", result.target_provider)
-            _cprint("    Saved to config.yaml (--global)")
-        else:
-            _cprint("    (session only - add --global to persist)")
+        try:
+            from spark_cli.model_config import write_model_switch_result
+
+            write_model_switch_result(result)
+            _cprint("    Saved to config.yaml")
+        except Exception as exc:
+            _cprint(f"    WARN Failed to save model config: {exc}")
 
     def _handle_model_picker_selection(self, persist_global: bool = False) -> None:
         state = self._model_picker_state
@@ -5295,7 +5295,7 @@ class SparkCLI:
                     current_model=self.model or "",
                     current_base_url=self.base_url or "",
                     current_api_key=self.api_key or "",
-                    is_global=persist_global,
+                    is_global=True,
                     explicit_provider=provider_data.get("slug"),
                     user_providers=state.get("user_provs"),
                     custom_providers=state.get("custom_provs"),
@@ -5306,12 +5306,12 @@ class SparkCLI:
             self._close_model_picker()
 
     def _handle_model_switch(self, cmd_original: str):
-        """Handle /model command - switch model for this session.
+        """Handle /model command - switch the universal model config.
 
         Supports:
           /model                              - show current model + usage hints
-          /model <name>                       - switch for this session only
-          /model <name> --global              - switch and persist to config.yaml
+          /model <name>                       - switch and persist to config.yaml
+          /model <name> --global              - accepted for compatibility
           /model <name> --provider <provider> - switch provider + model
           /model --provider <provider>        - switch to provider, auto-detect model
         """
@@ -5453,7 +5453,7 @@ class SparkCLI:
             current_model=self.model or "",
             current_base_url=self.base_url or "",
             current_api_key=self.api_key or "",
-            is_global=persist_global,
+            is_global=True,
             explicit_provider=explicit_provider,
             user_providers=user_provs,
             custom_providers=custom_provs,
@@ -5546,13 +5546,13 @@ class SparkCLI:
             _cprint(f"    WARN {result.warning_message}")
 
         # Persistence
-        if persist_global:
-            save_config_value("model.default", result.new_model)
-            if result.provider_changed:
-                save_config_value("model.provider", result.target_provider)
-            _cprint("    Saved to config.yaml (--global)")
-        else:
-            _cprint("    (session only - add --global to persist)")
+        try:
+            from spark_cli.model_config import write_model_switch_result
+
+            write_model_switch_result(result)
+            _cprint("    Saved to config.yaml")
+        except Exception as exc:
+            _cprint(f"    WARN Failed to save model config: {exc}")
 
     def _should_handle_model_command_inline(
         self, text: str, has_images: bool = False

@@ -69,6 +69,41 @@ class TestSaveModelChoiceAlwaysDict:
 
 
 class TestProviderPersistsAfterModelSave:
+    def test_simple_ollama_selection_disables_routing_and_persists(self, config_home):
+        """`spark model` Simple + Ollama should update the universal config."""
+        import yaml
+        from types import SimpleNamespace
+
+        (config_home / "config.yaml").write_text(
+            "model:\n"
+            "  default: gpt-5.4-mini\n"
+            "  provider: openai-codex\n"
+            "smart_model_routing:\n"
+            "  enabled: true\n"
+            "  cheap_model:\n"
+            "    provider: openai-codex\n"
+            "    model: gpt-5.4-mini\n"
+        )
+
+        from spark_cli.main import select_provider_and_model
+
+        with patch("spark_cli.main._prompt_provider_choice", side_effect=[0, 0]), \
+             patch(
+                 "spark_cli.models.CANONICAL_PROVIDERS",
+                 [SimpleNamespace(slug="ollama", tui_desc="Ollama")],
+             ), \
+             patch("spark_cli.models.probe_api_models", return_value={"models": ["qwen3:6.7b"]}), \
+             patch("spark_cli.main._save_custom_provider"), \
+             patch("spark_cli.auth.deactivate_provider"), \
+             patch("builtins.input", side_effect=["", ""]):
+            select_provider_and_model()
+
+        config = yaml.safe_load((config_home / "config.yaml").read_text()) or {}
+        assert config["smart_model_routing"]["enabled"] is False
+        assert config["model"]["default"] == "qwen3:6.7b"
+        assert config["model"]["provider"] == "ollama"
+        assert config["model"]["base_url"] == "http://localhost:11434/v1"
+
     def test_api_key_provider_saved_when_model_was_string(self, config_home, monkeypatch):
         """_model_flow_api_key_provider must persist the provider even when
         config.model started as a plain string."""

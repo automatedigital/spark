@@ -15,6 +15,12 @@ def web_client(monkeypatch, tmp_path):
 
     monkeypatch.setenv("SPARK_HOME", str(tmp_path / ".spark"))
     (tmp_path / ".spark").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".spark" / "config.yaml").write_text(
+        "model:\n"
+        "  default: test-model\n"
+        "  provider: ollama\n"
+        "  base_url: http://localhost:11434/v1\n"
+    )
 
     import spark_cli.web_server as web_server
 
@@ -22,6 +28,7 @@ def web_client(monkeypatch, tmp_path):
     web_server._event_subscribers.clear()
     web_server._web_streaming.clear()
     web_server._web_agents.clear()
+    web_server._web_agent_signatures.clear()
     web_server._web_queues.clear()
 
     return TestClient(web_server.app)
@@ -158,6 +165,7 @@ class TestConversationControl:
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_web"
         assert "stored_web" in web_server._web_agents
+        assert web_server._web_agents["stored_web"].model == "test-model"
 
     def test_conversation_message_rehydrates_non_web_session(self, web_client, monkeypatch):
         import core.run_agent as run_agent
@@ -191,6 +199,7 @@ class TestConversationControl:
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_cli"
         assert "stored_cli" in web_server._web_agents
+        assert web_server._web_agents["stored_cli"].model == "test-model"
 
     def test_web_turn_fallback_persists_missing_messages(self, web_client):
         import spark_cli.web_server as web_server
@@ -270,15 +279,33 @@ class TestConversationControl:
         assert resp.status_code == 409
         web_server._web_streaming.discard("s1")
 
-    def test_model_switch_updates_agent(self, web_client, monkeypatch):
+    def test_model_switch_persists_global_and_closes_cached_agent(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
+        from spark_cli.model_switch import ModelSwitchResult
 
         agent = MagicMock()
         agent.model = "old"
         web_server._web_agents["s1"] = agent
+        saved = {}
+
+        monkeypatch.setattr(
+            "spark_cli.model_switch.switch_model",
+            lambda **_kw: ModelSwitchResult(
+                success=True,
+                new_model="new/model",
+                target_provider="openrouter",
+            ),
+        )
+
+        def fake_write(result):
+            saved["model"] = result.new_model
+            return {"model": {"default": result.new_model, "provider": result.target_provider}}
+
+        monkeypatch.setattr("spark_cli.model_config.write_model_switch_result", fake_write)
         resp = web_client.post("/api/conversations/s1/model", json={"model": "new/model"})
         assert resp.status_code == 200
-        assert agent.model == "new/model"
+        assert saved["model"] == "new/model"
+        assert "s1" not in web_server._web_agents
 
     def test_approval_no_pending(self, web_client):
         resp = web_client.post("/api/conversations/s1/approval", json={"choice": "once"})
