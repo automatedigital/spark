@@ -2912,6 +2912,12 @@ class GatewayRunner:
         if canonical == "voice":
             return await self._handle_voice_command(event)
 
+        if canonical == "dream":
+            return await self._handle_dream_command(event)
+
+        if canonical == "goal":
+            return await self._handle_goal_command(event)
+
         if self._draining:
             return f"⏳ Gateway is {self._status_action_gerund()} and is not accepting new work right now."
 
@@ -5631,6 +5637,182 @@ class GatewayRunner:
                 )
             except Exception:
                 pass
+
+    async def _handle_dream_command(self, event: MessageEvent) -> str:
+        """Handle /dream — reflective consolidation pass over sessions + memory."""
+        from core import dream as dream_mod
+
+        args = event.get_command_args().strip()
+        sub = args.split()[0].lower() if args else ""
+
+        def _format_ts(ts):
+            if not ts:
+                return "never"
+            try:
+                return datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                return str(ts)
+
+        def _status_text() -> str:
+            state = dream_mod.get_state()
+            sched = dream_mod.get_schedule()
+            sched_state = (
+                f"daily at {int(sched.get('hour', 3)):02d}:00"
+                if sched.get("enabled") else "disabled"
+            )
+            return (
+                "🌙 Dream Status\n"
+                f"  Last run:   {_format_ts(state.get('last_run_at'))}\n"
+                f"  Total runs: {state.get('total_runs', 0)}\n"
+                f"  Schedule:   {sched_state}"
+            )
+
+        if sub == "status":
+            return _status_text()
+
+        if sub == "schedule":
+            sched = await asyncio.to_thread(dream_mod.configure_schedule, True)
+            return f"✅ Daily dreams scheduled (hour={sched['hour']:02d}). Use /dream unschedule to disable."
+
+        if sub == "unschedule":
+            await asyncio.to_thread(dream_mod.configure_schedule, False)
+            return "✅ Daily dreams disabled."
+
+        if sub == "review":
+            import json as _json
+            path = dream_mod._pending_removals_path()
+            if not path.exists():
+                return "No facts queued for removal."
+            try:
+                items = _json.loads(path.read_text())
+            except (OSError, _json.JSONDecodeError):
+                items = []
+            if not items:
+                return "No facts queued for removal."
+            lines = [f"{len(items)} fact(s) flagged stale by past dreams:"]
+            for it in items[:20]:
+                lines.append(f"  [{it.get('fact_id')}] {it.get('reason', '')} ({it.get('queued_at', '')})")
+            if len(items) > 20:
+                lines.append(f"  ... and {len(items) - 20} more.")
+            return "\n".join(lines)
+
+        if sub == "now":
+            result = await asyncio.to_thread(dream_mod.run_dream)
+            if result.error:
+                return f"❌ Dream failed: {result.error}"
+            out = [
+                "🌙 Dream complete.",
+                f"  Sessions scanned:   {result.sessions_scanned}",
+                f"  Facts inspected:    {result.facts_scanned}",
+                f"  Insights added:     {result.insights_added}",
+                f"  Consolidations:     {result.consolidations_applied}",
+                f"  Stale flagged:      {result.stale_queued}",
+            ]
+            if result.wiki_entry:
+                out.append(f"  Wiki entry written: {result.wiki_entry}")
+            return "\n".join(out)
+
+        if sub == "":
+            return (
+                "Usage: /dream <now|schedule|unschedule|status|review>\n"
+                "  now         Run a reflection pass immediately\n"
+                "  schedule    Enable daily dreams\n"
+                "  unschedule  Disable daily dreams\n"
+                "  status      Show last run + schedule\n"
+                "  review      List facts flagged stale by past dreams\n\n"
+                + _status_text()
+            )
+
+        return f"Unknown /dream subcommand: {sub}\nAvailable: now, schedule, unschedule, status, review"
+
+    async def _handle_goal_command(self, event: MessageEvent) -> str:
+        """Handle /goal — durable cross-session objective tracking via Kanban board."""
+        import re as _re
+        from core import goal as goal_mod
+
+        args = event.get_command_args().strip()
+        tokens = args.split(None, 1) if args else []
+        sub = tokens[0].lower() if tokens else ""
+        _SUBCOMMANDS = {"status", "pause", "resume", "clear", "done", "history"}
+
+        def _status_text() -> str:
+            goal = goal_mod.get_active_goal()
+            if goal is None:
+                return (
+                    "🎯 Goal Status\n"
+                    "  No active goal. Set one with: /goal <objective>\n"
+                    "  Manage goals in Dashboard → Tasks (board: goals)"
+                )
+            state = "PAUSED" if goal.get("paused") else "ACTIVE"
+            lines = [
+                "🎯 Goal Status",
+                f"  State:     {state}",
+                f"  Objective: {goal.get('text', '')}",
+            ]
+            if goal.get("stopping_condition"):
+                lines.append(f"  Done when: {goal['stopping_condition']}")
+            lines.append(f"  Task ID:   {goal.get('id', '')}")
+            lines.append(f"  Set at:    {goal.get('set_at', 'unknown')}")
+            return "\n".join(lines)
+
+        if sub == "" or sub == "status":
+            if sub == "":
+                return (
+                    "Usage: /goal <objective>\n"
+                    "  Optional stopping condition: /goal <objective> -- <done when>\n"
+                    "  Subcommands: status, pause, resume, done, clear, history\n\n"
+                    + _status_text()
+                )
+            return _status_text()
+
+        if sub == "pause":
+            goal = goal_mod.pause_goal()
+            return f"⏸ Goal paused: {goal.get('text', '')}" if goal else "No active goal to pause."
+
+        if sub == "resume":
+            goal = goal_mod.resume_goal()
+            return f"▶️ Goal resumed: {goal.get('text', '')}" if goal else "No paused goal to resume."
+
+        if sub == "done":
+            goal = goal_mod.done_goal()
+            return f"✅ Goal done: {goal.get('text', '')}" if goal else "No active goal to mark done."
+
+        if sub == "clear":
+            goal = goal_mod.clear_goal()
+            return f"🗑 Goal cleared: {goal.get('text', '')}" if goal else "No active goal to clear."
+
+        if sub == "history":
+            history = goal_mod.get_history()
+            if not history:
+                return "No past goals yet."
+            lines = [f"Past goals ({len(history)} total, most recent first):"]
+            for i, g in enumerate(history[:10], 1):
+                status = g.get("status", "?")
+                text = g.get("text", "")
+                lines.append(f"  {i:2}. [{status}] {text}")
+            if len(history) > 10:
+                lines.append(f"  ... and {len(history) - 10} more (Dashboard → Tasks, board: goals).")
+            return "\n".join(lines)
+
+        # Non-subcommand → set a new goal objective.
+        sep_match = _re.search(r"\s+(?:--|when:|done when:)\s+", args, _re.IGNORECASE)
+        if sep_match:
+            objective = args[:sep_match.start()].strip()
+            stopping = args[sep_match.end():].strip()
+        else:
+            objective = args
+            stopping = ""
+
+        if not objective:
+            return _status_text()
+
+        goal = goal_mod.set_goal(objective, stopping_condition=stopping)
+        lines = [f"🎯 Goal set: {goal['text']}"]
+        if goal.get("stopping_condition"):
+            lines.append(f"  Done when: {goal['stopping_condition']}")
+        lines.append(f"  Task ID:  {goal.get('id', '')}")
+        lines.append("  Spark will pursue this across every session until /goal done or /goal clear.")
+        return "\n".join(lines)
 
     async def _handle_reasoning_command(self, event: MessageEvent) -> str:
         """Handle /reasoning command — manage reasoning effort and display toggle.
