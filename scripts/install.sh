@@ -1317,51 +1317,35 @@ maybe_start_gateway() {
         fi
     fi
 
-    if ! [ -e /dev/tty ]; then
-        log_info "Gateway setup skipped (no terminal available). Run 'spark gateway install' later."
-        return 0
-    fi
-
     echo ""
-    if [ "$DISTRO" = "termux" ]; then
-        read -p "Would you like to start the gateway in the background? [Y/n] " -n 1 -r < /dev/tty
-    else
-        read -p "Would you like to install the gateway as a background service? [Y/n] " -n 1 -r < /dev/tty
-    fi
-    echo
+    SPARK_CMD="$(get_spark_command_path)"
 
-    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
-        SPARK_CMD="$(get_spark_command_path)"
-
-        if [ "$DISTRO" != "termux" ] && command -v systemctl &> /dev/null; then
-            log_info "Installing systemd service..."
-            if $SPARK_CMD gateway install 2>/dev/null; then
-                log_success "Gateway service installed"
-                if $SPARK_CMD gateway start 2>/dev/null; then
-                    log_success "Gateway started! Your bot is now online."
-                else
-                    log_warn "Service installed but failed to start. Try: spark gateway start"
-                fi
+    if [ "$DISTRO" != "termux" ] && command -v systemctl &> /dev/null; then
+        log_info "Installing gateway as a background service..."
+        if $SPARK_CMD gateway install 2>/dev/null; then
+            log_success "Gateway service installed"
+            if $SPARK_CMD gateway start 2>/dev/null; then
+                log_success "Gateway started! Your bot is now online."
             else
-                log_warn "Systemd install failed. You can start manually: spark gateway"
+                log_warn "Service installed but failed to start. Try: spark gateway start"
             fi
         else
-            if [ "$DISTRO" = "termux" ]; then
-                log_info "Termux detected - starting gateway in best-effort background mode..."
-            else
-                log_info "systemd not available - starting gateway in background..."
-            fi
-            nohup $SPARK_CMD gateway > "$SPARK_HOME/logs/gateway.log" 2>&1 &
-            GATEWAY_PID=$!
-            log_success "Gateway started (PID $GATEWAY_PID). Logs: ~/.spark/logs/gateway.log"
-            log_info "To stop: kill $GATEWAY_PID"
-            log_info "To restart later: spark gateway"
-            if [ "$DISTRO" = "termux" ]; then
-                log_warn "Android may stop background processes when Termux is suspended or the system reclaims resources."
-            fi
+            log_warn "Systemd install failed. You can start manually: spark gateway"
         fi
     else
-        log_info "Skipped. Start the gateway later with: spark gateway"
+        if [ "$DISTRO" = "termux" ]; then
+            log_info "Termux detected - starting gateway in best-effort background mode..."
+        else
+            log_info "systemd not available - starting gateway in background..."
+        fi
+        nohup $SPARK_CMD gateway > "$SPARK_HOME/logs/gateway.log" 2>&1 &
+        GATEWAY_PID=$!
+        log_success "Gateway started (PID $GATEWAY_PID). Logs: ~/.spark/logs/gateway.log"
+        log_info "To stop: kill $GATEWAY_PID"
+        log_info "To restart later: spark gateway"
+        if [ "$DISTRO" = "termux" ]; then
+            log_warn "Android may stop background processes when Termux is suspended or the system reclaims resources."
+        fi
     fi
 }
 
