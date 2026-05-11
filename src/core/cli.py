@@ -5982,6 +5982,133 @@ class SparkCLI:
         print(f"(._.) Unknown cron command: {subcommand}")
         print("  Available: list, add, edit, pause, resume, run, remove")
 
+    def _handle_dream_command(self, cmd: str):
+        """Handle /dream — reflective consolidation pass over sessions + memory."""
+        import shlex
+        from core import dream as dream_mod
+
+        tokens = shlex.split(cmd)
+        sub = tokens[1].lower() if len(tokens) > 1 else ""
+
+        def _format_ts(ts):
+            if not ts:
+                return "never"
+            try:
+                from datetime import datetime
+                return datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                return str(ts)
+
+        def _show_status():
+            state = dream_mod.get_state()
+            sched = dream_mod.get_schedule()
+            print()
+            print("+" + "-" * 60 + "+")
+            print("|" + " " * 22 + "Dream Status" + " " * 26 + "|")
+            print("+" + "-" * 60 + "+")
+            print(f"  Last run:   {_format_ts(state.get('last_run_at'))}")
+            print(f"  Total runs: {state.get('total_runs', 0)}")
+            sched_state = "daily at {:02d}:00".format(int(sched.get("hour", 3))) \
+                if sched.get("enabled") else "disabled"
+            print(f"  Schedule:   {sched_state}")
+            wiki = dream_mod._resolve_wiki_path() / "dreams"
+            print(f"  Wiki:       {wiki}")
+            print()
+
+        def _run_pass():
+            print()
+            print("(•‿•) Dreaming — reading sessions and consolidating memory...")
+            print("  This may take a minute or two.")
+            result = dream_mod.run_dream()
+            print()
+            if result.error:
+                print(f"(._.) Dream failed: {result.error}")
+                return
+            print(f"  Sessions scanned:     {result.sessions_scanned}")
+            print(f"  Facts inspected:      {result.facts_scanned}")
+            print(f"  Insights added:       {result.insights_added}")
+            print(f"  Consolidations:       {result.consolidations_applied}")
+            print(f"  Stale flagged:        {result.stale_queued}")
+            if result.wiki_entry:
+                print(f"  Wiki entry written:   {result.wiki_entry}")
+            print()
+
+        def _first_run_choice() -> int:
+            try:
+                from spark_cli.setup import prompt_choice
+            except ImportError:
+                print("(._.) Interactive prompts unavailable. Use /dream now or /dream schedule.")
+                return -1
+            print()
+            print("This is your first dream. Spark can reflect on past sessions")
+            print("and consolidate memory into your llm-wiki. How would you like")
+            print("to use it?")
+            print()
+            return prompt_choice(
+                "Choose how to run /dream",
+                ["Run once now", "Run now + schedule daily", "Schedule daily only", "Cancel"],
+                default=0,
+            )
+
+        if sub in ("", "now"):
+            state = dream_mod.get_state()
+            if not state.get("first_run_completed") and sub != "now":
+                choice = _first_run_choice()
+                if choice == 0:
+                    _run_pass()
+                elif choice == 1:
+                    dream_mod.configure_schedule(True)
+                    print("  Scheduled: daily.")
+                    _run_pass()
+                elif choice == 2:
+                    dream_mod.configure_schedule(True)
+                    print("  Scheduled: daily. Run /dream now to trigger one immediately.")
+                else:
+                    print("  Cancelled.")
+                return
+            _run_pass()
+            return
+
+        if sub == "schedule":
+            sched = dream_mod.configure_schedule(True)
+            print(
+                f"  Daily dreams scheduled (hour={sched['hour']:02d}). "
+                "Run /dream unschedule to disable."
+            )
+            return
+
+        if sub == "unschedule":
+            dream_mod.configure_schedule(False)
+            print("  Daily dreams disabled.")
+            return
+
+        if sub == "status":
+            _show_status()
+            return
+
+        if sub == "review":
+            import json as _json
+            path = dream_mod._pending_removals_path()
+            if not path.exists():
+                print("  No facts queued for removal.")
+                return
+            try:
+                items = _json.loads(path.read_text())
+            except (OSError, _json.JSONDecodeError):
+                items = []
+            if not items:
+                print("  No facts queued for removal.")
+                return
+            print(f"  {len(items)} fact(s) flagged stale by past dreams:")
+            for it in items:
+                print(f"    [{it.get('fact_id')}] {it.get('reason', '')} ({it.get('queued_at', '')})")
+            print()
+            print("  Use /memory to inspect or remove these facts.")
+            return
+
+        print(f"(._.) Unknown dream command: {sub}")
+        print("  Available: now, schedule, unschedule, status, review")
+
     def _handle_skills_command(self, cmd: str):
         """Handle /skills slash command - delegates to spark_cli.skills_hub."""
         from spark_cli.skills_hub import handle_skills_slash
@@ -6245,6 +6372,8 @@ class SparkCLI:
             self.save_conversation()
         elif canonical == "cron":
             self._handle_cron_command(cmd_original)
+        elif canonical == "dream":
+            self._handle_dream_command(cmd_original)
         elif canonical == "skills":
             with self._busy_command(self._slow_command_status(cmd_original)):
                 self._handle_skills_command(cmd_original)

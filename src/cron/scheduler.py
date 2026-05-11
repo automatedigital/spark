@@ -928,6 +928,13 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
         return 0
 
     try:
+        # Dream pass — runs at most once per day if scheduled. Cheap when not due.
+        try:
+            from core import dream as _dream
+            _dream.scheduler_tick()
+        except Exception as _dream_err:
+            logger.debug("Dream scheduler tick skipped: %s", _dream_err)
+
         due_jobs = get_due_jobs()
 
         if verbose and not due_jobs:

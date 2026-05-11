@@ -163,6 +163,7 @@ Type **`/`** to see slash commands. Commonly used:
 /sessions     Browse and resume past sessions
 /files        Fuzzy file picker — insert @path into your message
 /memory       Show stored memories
+/dream        Reflect on past sessions and consolidate memory (run once or schedule daily)
 /skills       Search and install skills
 /kanban       Board summary, task details, or opt-in gateway dispatch
 /keys         Show keyboard shortcuts
@@ -183,6 +184,7 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 | **Tools** | Terminal, files, web search, browser automation, vision, MCP, delegation, code execution, and more — grouped into [toolsets](./docs/reference/toolsets-reference.md) you can toggle per platform. |
 | **Skills** | Shareable instruction packs ([agentskills.io](https://agentskills.io/specification)-compatible); browse and install from the TUI with `/skills`. |
 | **Memory** | **Holographic** local store by default; optional backends (Mem0, Honcho, …) — see [Memory](./docs/memory.md) and [Memory providers](./docs/memory/providers.md). |
+| **Dream** | `/dream` — offline reflection pass that mines recent session transcripts + the holographic store via a single LLM synthesis call, adds insights back to memory, merges duplicates, and writes a human-readable summary to the llm-wiki under `dreams/`. Runs on demand or on a daily schedule. |
 | **Context** | Auto-loads project files like `AGENTS.md`, `.spark.md`, `SOUL.md`; `@` references for files, folders, and URLs. |
 | **Gateway** | Same agent on Telegram, Discord, Slack, WhatsApp, Signal, and [other platforms](./docs/chat-platforms/index.md). |
 | **Task board** | Shared board with worker claims, run history, templates, task duplication/retry, conversation-to-task entry points, and tooling for parallel agents (CLI, chat, dashboard API). |

@@ -101,6 +101,10 @@ COMMAND_REGISTRY: list[CommandDef] = [
                aliases=("f",), cli_only=True),
     CommandDef("memory", "Show recent memory entries written by the agent", "Tools & Skills",
                aliases=("mem",), cli_only=True),
+    CommandDef("dream", "Reflect on past sessions and consolidate memory into the llm-wiki",
+               "Tools & Skills", cli_only=True,
+               args_hint="[now|schedule|unschedule|status|review]",
+               subcommands=("now", "schedule", "unschedule", "status", "review")),
     CommandDef("keys", "Show keyboard shortcuts reference", "Info",
                aliases=("shortcuts", "bindings"), cli_only=True),
 

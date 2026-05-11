@@ -544,6 +544,13 @@ DEFAULT_CONFIG = {
             "api_key": "",
             "timeout": 30,
         },
+        "dream": {
+            "provider": "auto",
+            "model": "",  # capable model recommended; defaults to main model when empty
+            "base_url": "",
+            "api_key": "",
+            "timeout": 600,  # seconds — synthesis over many transcripts can be slow
+        },
     },
     "display": {
         "compact": False,
@@ -754,7 +761,7 @@ DEFAULT_CONFIG = {
         "max_runtime_seconds": 0,
         "default_board": "default",
     },
-    "_config_version": 18,
+    "_config_version": 19,
 }
 
 # =============================================================================
