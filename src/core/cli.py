@@ -6109,6 +6109,128 @@ class SparkCLI:
         print(f"(._.) Unknown dream command: {sub}")
         print("  Available: now, schedule, unschedule, status, review")
 
+    def _handle_goal_command(self, cmd: str):
+        """Handle /goal — durable cross-session objective tracking via Kanban board."""
+        import re as _re
+        import shlex
+        from core import goal as goal_mod
+
+        tokens = shlex.split(cmd)
+        sub = tokens[1].lower() if len(tokens) > 1 else ""
+        rest = " ".join(tokens[1:]).strip() if len(tokens) > 1 else ""
+
+        _SUBCOMMANDS = {"status", "pause", "resume", "clear", "done", "history"}
+
+        def _invalidate():
+            if hasattr(self, "agent") and hasattr(self.agent, "_invalidate_system_prompt"):
+                self.agent._invalidate_system_prompt()
+
+        def _show_status():
+            goal = goal_mod.get_active_goal()
+            print()
+            print("+" + "-" * 60 + "+")
+            print("|" + " " * 23 + "Goal Status" + " " * 26 + "|")
+            print("+" + "-" * 60 + "+")
+            if goal is None:
+                print("  No active goal. Set one with: /goal <objective>")
+                print("  Manage goals in the Dashboard → Tasks (board: goals)")
+            else:
+                state = "PAUSED" if goal.get("paused") else "ACTIVE"
+                print(f"  State:     {state}")
+                print(f"  Objective: {goal.get('text', '')}")
+                if goal.get("stopping_condition"):
+                    print(f"  Done when: {goal['stopping_condition']}")
+                print(f"  Task ID:   {goal.get('id', '')}  (goals board in Dashboard)")
+                print(f"  Set at:    {goal.get('set_at', 'unknown')}")
+            print()
+
+        if sub in ("", "status"):
+            _show_status()
+            return
+
+        if sub == "pause":
+            goal = goal_mod.pause_goal()
+            if goal is None:
+                print("  No active goal to pause.")
+            else:
+                print(f"  Goal paused: {goal.get('text', '')}")
+                _invalidate()
+            return
+
+        if sub == "resume":
+            goal = goal_mod.resume_goal()
+            if goal is None:
+                print("  No paused goal to resume.")
+            else:
+                print(f"  Goal resumed: {goal.get('text', '')}")
+                _invalidate()
+            return
+
+        if sub == "done":
+            goal = goal_mod.done_goal()
+            if goal is None:
+                print("  No active goal to mark done.")
+            else:
+                print(f"  Goal done: {goal.get('text', '')}")
+                _invalidate()
+            return
+
+        if sub == "clear":
+            goal = goal_mod.clear_goal()
+            if goal is None:
+                print("  No active goal to clear.")
+            else:
+                print(f"  Goal cleared: {goal.get('text', '')}")
+                _invalidate()
+            return
+
+        if sub == "history":
+            history = goal_mod.get_history()
+            if not history:
+                print("  No past goals yet.")
+                return
+            print()
+            print(f"  Past goals ({len(history)} total, most recent first):")
+            for i, g in enumerate(history[:10], 1):
+                status = g.get("status", "?")
+                text = g.get("text", "")
+                tid = g.get("id", "")
+                set_at = g.get("set_at", "")
+                print(f"  {i:2}. [{status}] {text}")
+                if tid:
+                    print(f"       id: {tid}  set: {set_at}")
+            if len(history) > 10:
+                print(f"  ... and {len(history) - 10} more (view in Dashboard → Tasks, board: goals).")
+            print()
+            return
+
+        # Any non-subcommand text sets a new goal objective.
+        # Optional stopping condition after " -- " or "when:" / "done when:"
+        sep_match = _re.search(r"\s+(?:--|when:|done when:)\s+", rest, _re.IGNORECASE)
+        if sep_match:
+            objective = rest[:sep_match.start()].strip()
+            stopping = rest[sep_match.end():].strip()
+        else:
+            objective = rest
+            stopping = ""
+
+        if not objective:
+            print("  Usage: /goal <objective>")
+            print("  Optional stopping condition: /goal <objective> -- <done when>")
+            print("  Subcommands: status, pause, resume, done, clear, history")
+            _show_status()
+            return
+
+        goal = goal_mod.set_goal(objective, stopping_condition=stopping)
+        print()
+        print(f"  Goal set: {goal['text']}")
+        if goal.get("stopping_condition"):
+            print(f"  Done when: {goal['stopping_condition']}")
+        print(f"  Task ID:  {goal.get('id', '')}  — visible in Dashboard → Tasks (board: goals)")
+        print("  Spark will pursue this goal across every session until you /goal done or /goal clear.")
+        print()
+        _invalidate()
+
     def _handle_skills_command(self, cmd: str):
         """Handle /skills slash command - delegates to spark_cli.skills_hub."""
         from spark_cli.skills_hub import handle_skills_slash
@@ -6374,6 +6496,8 @@ class SparkCLI:
             self._handle_cron_command(cmd_original)
         elif canonical == "dream":
             self._handle_dream_command(cmd_original)
+        elif canonical == "goal":
+            self._handle_goal_command(cmd_original)
         elif canonical == "skills":
             with self._busy_command(self._slow_command_status(cmd_original)):
                 self._handle_skills_command(cmd_original)

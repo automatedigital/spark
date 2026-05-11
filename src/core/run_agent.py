@@ -3218,6 +3218,15 @@ class AIAgent:
                 if user_block:
                     prompt_parts.append(user_block)
 
+        # Active goal — injected so every turn is aware of the durable objective
+        try:
+            from core.goal import get_goal_block
+            _goal_block = get_goal_block()
+            if _goal_block:
+                prompt_parts.append(_goal_block)
+        except Exception:
+            pass
+
         # External memory provider system prompt block (additive to built-in)
         if self._memory_manager:
             try:

@@ -164,6 +164,7 @@ Type **`/`** to see slash commands. Commonly used:
 /files        Fuzzy file picker — insert @path into your message
 /memory       Show stored memories
 /dream        Reflect on past sessions and consolidate memory (run once or schedule daily)
+/goal         Set a durable objective Spark works toward across every session
 /skills       Search and install skills
 /kanban       Board summary, task details, or opt-in gateway dispatch
 /keys         Show keyboard shortcuts
@@ -185,6 +186,7 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 | **Skills** | Shareable instruction packs ([agentskills.io](https://agentskills.io/specification)-compatible); browse and install from the TUI with `/skills`. |
 | **Memory** | **Holographic** local store by default; optional backends (Mem0, Honcho, …) — see [Memory](./docs/memory.md) and [Memory providers](./docs/memory/providers.md). |
 | **Dream** | `/dream` — offline reflection pass that mines recent session transcripts + the holographic store via a single LLM synthesis call, adds insights back to memory, merges duplicates, and writes a human-readable summary to the llm-wiki under `dreams/`. Runs on demand or on a daily schedule. |
+| **Goal tracking** | `/goal <objective>` — set a durable, verifiable objective that Spark works toward across every session until you mark it done. Goals are backed by the Kanban board (`goals` board), so they're visible and manageable in the Dashboard in real time. Supports stopping conditions (`-- <done when>`), pause/resume, and a full history. |
 | **Context** | Auto-loads project files like `AGENTS.md`, `.spark.md`, `SOUL.md`; `@` references for files, folders, and URLs. |
 | **Gateway** | Same agent on Telegram, Discord, Slack, WhatsApp, Signal, and [other platforms](./docs/chat-platforms/index.md). |
 | **Task board** | Shared board with worker claims, run history, templates, task duplication/retry, conversation-to-task entry points, and tooling for parallel agents (CLI, chat, dashboard API). |

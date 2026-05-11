@@ -385,6 +385,14 @@ export default function KanbanPage() {
           <div className="flex flex-wrap gap-2 items-center">
             <button
               type="button"
+              className={`px-3 py-2 text-xs font-semibold border ${boardSlug === "goals" ? "border-primary bg-primary/15 text-primary" : "border-border bg-background/70 hover:bg-secondary"}`}
+              onClick={() => setBoardSlug(boardSlug === "goals" ? "default" : "goals")}
+              title="Switch to Goals board — objectives set via /goal"
+            >
+              🎯 {boardSlug === "goals" ? "Tasks" : "Goals"}
+            </button>
+            <button
+              type="button"
               className="px-3 py-2 text-xs font-semibold border border-border bg-background/70 hover:bg-secondary"
               onClick={() => void loadBoard()}
             >

@@ -105,6 +105,10 @@ COMMAND_REGISTRY: list[CommandDef] = [
                "Tools & Skills", cli_only=True,
                args_hint="[now|schedule|unschedule|status|review]",
                subcommands=("now", "schedule", "unschedule", "status", "review")),
+    CommandDef("goal", "Set or manage a durable objective pursued across sessions",
+               "Tools & Skills", cli_only=True,
+               args_hint="[<objective>|status|pause|resume|clear|history]",
+               subcommands=("status", "pause", "resume", "clear", "history")),
     CommandDef("keys", "Show keyboard shortcuts reference", "Info",
                aliases=("shortcuts", "bindings"), cli_only=True),
 

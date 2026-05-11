@@ -64,6 +64,8 @@ Type `/` in the CLI to open the autocomplete menu. Built-in commands are case-in
 | `/toolsets` | List available toolsets |
 | `/browser [connect\|disconnect\|status]` | Manage local Chrome CDP connection. `connect` attaches browser tools to a running Chrome instance (default: `ws://localhost:9222`). `disconnect` detaches. `status` shows current connection. Auto-launches Chrome if no debugger is detected. |
 | `/skills` | Search, install, inspect, or manage skills from online registries |
+| `/dream [now\|schedule\|unschedule\|status\|review]` | Offline reflection pass over recent sessions and memory. See [Dream](#dream). |
+| `/goal [<objective>\|status\|pause\|resume\|done\|clear\|history]` | Set or manage a durable objective Spark pursues across every session. Backed by the Kanban board — manageable in the Dashboard in real time. See [Goal tracking](#goal-tracking). |
 | `/cron` | Manage scheduled tasks (list, add/create, edit, pause, resume, run, remove) |
 | `/reload-mcp` (alias: `/reload_mcp`) | Reload MCP servers from config.yaml |
 | `/reload` | Reload `.env` variables into the running session — picks up new API keys without restarting |
@@ -151,6 +153,84 @@ These commands work inside Telegram, Discord, Slack, WhatsApp, Signal, Email, an
 | `/debug` | Upload debug report (system info + logs) and get shareable links |
 | `/help` | Show messaging help |
 | `/<skill-name>` | Invoke any installed skill by name |
+
+## Dream
+
+`/dream` runs an offline reflective consolidation pass over recent session transcripts and the holographic memory store. A single LLM synthesis call extracts durable insights, merges semantically-duplicate facts, and writes a human-readable journal entry to the llm-wiki under `dreams/`.
+
+| Subcommand | What it does |
+|-----------|--------------|
+| `/dream` or `/dream now` | Run a pass immediately (prompts on first run) |
+| `/dream schedule` | Enable daily automatic runs (fires at 03:00 local by default) |
+| `/dream unschedule` | Disable the daily schedule |
+| `/dream status` | Show last run time, total runs, schedule state, and wiki path |
+| `/dream review` | List facts flagged as potentially stale — confirm removal with `/memory` |
+
+## Goal tracking
+
+`/goal` sets a **durable, verifiable objective** that Spark actively pursues across every session until you mark it done or clear it. The active goal is injected into the agent's system prompt at the start of every conversation, so the model always knows what you're working toward.
+
+Goals are backed by the **Kanban board** (`goals` board in `kanban.db`). This means goal state is shared with the Dashboard — drag a card to a new column and the CLI picks it up immediately, and vice versa.
+
+### Setting a goal
+
+```
+/goal Ship the payment service refactor
+```
+
+With an optional stopping condition (the test Spark uses to know when it's done):
+
+```
+/goal Ship the payment service refactor -- all CI green and deployed to staging
+```
+
+The `--` separator works; so do `when:` and `done when:` as alternatives.
+
+### Subcommands
+
+| Subcommand | What it does |
+|-----------|--------------|
+| `/goal` or `/goal status` | Show the active goal, task ID, and Dashboard link |
+| `/goal pause` | Pause the goal — Spark acknowledges it but stops actively pursuing it |
+| `/goal resume` | Resume a paused goal |
+| `/goal done` | Mark the active goal complete and move it to the done column |
+| `/goal clear` | Archive the active goal without marking it done |
+| `/goal history` | Show recent completed and cleared goals |
+
+### Dashboard integration
+
+Open the Dashboard → **Tasks** page and click the **🎯 Goals** button (top-right of the board header) to switch to the goals board. From there you can:
+
+- **Drag cards** between columns to change goal state (todo → blocked = pause, blocked → todo = resume, any → done = complete)
+- **Edit the title** (objective) or **body** (stopping condition) inline in the task detail panel
+- **View the full event log** — every state change from both the CLI and the Dashboard is recorded
+
+The board slug is `goals` if you prefer to type it manually in the Board input field.
+
+### How the agent uses the goal
+
+The active goal is prepended to the system prompt as:
+
+```
+## Active Goal
+**Objective:** Ship the payment service refactor
+**Done when:** all CI green and deployed to staging
+**Board task:** t_abc123 (goals board)
+
+Keep this goal in mind across every reply. When the user's request is
+unrelated, complete it as asked and note any progress or blockers toward
+the goal. Do not declare the goal complete unless the stopping condition
+is explicitly met.
+```
+
+When you set or change a goal mid-session, the system prompt is invalidated and rebuilt on the next turn — no restart needed.
+
+### Tips
+
+- **One active goal at a time.** Setting a new goal archives the previous one automatically.
+- **Paused goals stay visible** in the Dashboard (blocked column) so you can track them without losing context.
+- **Stopping conditions** are the key to good goals. Vague objectives like "improve performance" are hard to complete; specific ones like "p95 latency below 200ms on the checkout endpoint" give Spark a clear finish line.
+- **Break big goals into Kanban tasks.** Use `/kanban` or the Dashboard to create child tasks under a goal and dispatch workers to tackle them in parallel.
 
 ## Notes
 
