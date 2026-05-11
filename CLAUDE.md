@@ -104,6 +104,26 @@ Tests must not write to `~/.spark/`. The `_isolate_spark_home` autouse fixture i
 
 Skins are pure data in `src/spark_cli/skin_engine.py` (`_BUILTIN_SKINS` dict) or user YAML at `~/.spark/skins/<name>.yaml`. No code changes needed for new skins. Activate with `/skin <name>` or `display.skin` in config.
 
+## Git Workflow
+
+All changes go through pull requests — never push directly to `main`.
+
+```bash
+# Start work on a feature branch
+git checkout -b feat/short-description
+
+# When ready to ship
+git push -u origin feat/short-description
+gh pr create --repo automatedigital/spark --base main --title "..." --body "..."
+```
+
+Branch naming: `feat/`, `fix/`, `chore/`, `docs/` prefix. Keep it short and kebab-case.
+
+When the user runs `/createpr` (or asks to create a PR):
+1. Check which branch is active — if on `main`, ask the user what branch name to use and create it first.
+2. Stage and commit any uncommitted changes.
+3. Push the branch and open the PR against `main`.
+
 ## User State (not in repo)
 
 ```

@@ -1324,16 +1324,14 @@ maybe_start_gateway() {
 
     echo ""
     if [ "$DISTRO" = "termux" ]; then
-        read -p "Would you like to start the gateway in the background? [Y/n] " -n 1 -r < /dev/tty
+        log_info "Starting the gateway in the background..."
     else
-        read -p "Would you like to install the gateway as a background service? [Y/n] " -n 1 -r < /dev/tty
+        log_info "Installing the gateway as a background service..."
     fi
-    echo
 
-    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
-        SPARK_CMD="$(get_spark_command_path)"
+    SPARK_CMD="$(get_spark_command_path)"
 
-        if [ "$DISTRO" != "termux" ] && command -v systemctl &> /dev/null; then
+    if [ "$DISTRO" != "termux" ] && command -v systemctl &> /dev/null; then
             log_info "Installing systemd service..."
             if $SPARK_CMD gateway install 2>/dev/null; then
                 log_success "Gateway service installed"
@@ -1359,9 +1357,6 @@ maybe_start_gateway() {
             if [ "$DISTRO" = "termux" ]; then
                 log_warn "Android may stop background processes when Termux is suspended or the system reclaims resources."
             fi
-        fi
-    else
-        log_info "Skipped. Start the gateway later with: spark gateway"
     fi
 }
 
