@@ -10,6 +10,15 @@ You need at least one inference provider to use Spark. This page covers every su
 
 Run `spark model` to switch providers interactively, or edit `config.yaml` directly.
 
+The same command also manages model reasoning effort. The default is `medium` when unset:
+
+```bash
+spark model reasoning          # show current effort
+spark model reasoning high     # none|minimal|low|medium|high|xhigh
+```
+
+You can also choose **Reasoning** from the first `spark model` menu. Spark applies this setting only where the selected provider/model supports reasoning controls; unsupported models ignore it safely.
+
 ## Provider Quick Reference
 
 | Provider | How to set up |

@@ -95,6 +95,21 @@ Common examples:
 
 Full reference: [Slash Commands Reference](../cli/slash-commands.md) · [Voice Mode](../voice/voice-mode.md)
 
+## Model and Reasoning
+
+Use `spark model` outside the chat UI to choose the default provider/model. The first menu lets you pick simple one-model mode, multi-model routing, or reasoning effort.
+
+Reasoning effort controls the default thinking depth sent to models that support reasoning controls. It defaults to `medium` when unset.
+
+```bash
+spark model reasoning              # show current effort
+spark model reasoning low          # lower-cost default
+spark model reasoning high         # deeper default
+spark model reasoning none         # disable reasoning controls
+```
+
+Valid levels are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. In an active TUI session, `/reasoning <level>` changes the same setting and `/reasoning show` or `/reasoning hide` controls whether reasoning text is displayed.
+
 ## Multiline input
 
 Two ways to write multiline messages:

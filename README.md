@@ -83,9 +83,15 @@ spark                   # Starts the interactive TUI; runs setup on first launch
 
 ```bash
 spark model             # Switch provider or model
+spark model reasoning   # Show or set reasoning effort
 ```
 
 Spark expects a model with **at least ~64K tokens** of context for reliable multi-step tool use.
+Reasoning effort defaults to **medium**. Set it from the model picker, or directly:
+
+```bash
+spark model reasoning high    # none|minimal|low|medium|high|xhigh
+```
 
 ### 3. Enable toolsets
 
@@ -139,6 +145,7 @@ spark doctor --fix      # Auto-fix what the doctor can repair safely
 | `spark setup` | Full interactive wizard (model, terminal backend, tools, messaging, …) |
 | `spark setup permissions` | Set agent permission level (locked down / standard / full) |
 | `spark model` | Switch provider or model |
+| `spark model reasoning [level]` | Show or set reasoning effort (`medium` by default) |
 | `spark tools` | Enable/disable toolsets |
 | `spark gateway` | Messaging gateway (`--help` for start/stop/status/service) |
 | `spark dashboard` | Start the bundled Web UI for status, config, keys, logs, task board, and Admin controls; defaults to `dashboard.host` / `dashboard.port` (`0.0.0.0:9119` in new configs) |
@@ -160,6 +167,7 @@ Type **`/`** to see slash commands. Commonly used:
 
 ```
 /model        Switch AI model for this session
+/reasoning    Show or set reasoning effort/display in this session
 /sessions     Browse and resume past sessions
 /files        Fuzzy file picker — insert @path into your message
 /memory       Show stored memories

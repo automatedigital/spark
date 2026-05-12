@@ -24,6 +24,13 @@ spark model    # pick a provider and model
 spark doctor   # confirm keys and dependencies are good
 ```
 
+`spark model` can also configure reasoning effort. The default is `medium`.
+
+```bash
+spark model reasoning high    # none|minimal|low|medium|high|xhigh
+spark model reasoning         # show the current setting
+```
+
 ## Step 3 — Start chatting
 
 ```bash
@@ -63,6 +70,7 @@ Pick what sounds useful and follow the link:
 |---------|---------|
 | `spark` | Open the chat interface |
 | `spark setup` | Walk through full configuration |
+| `spark model` | Pick a provider, model, multi-model routing mode, or reasoning effort |
 | `spark tools` | Manage which toolsets are active |
 | `spark gateway` | Set up messaging platform connections |
 | `spark update` | Update to the latest version |

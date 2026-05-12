@@ -357,6 +357,8 @@ auxiliary:
 
 ## Reasoning Effort
 
+Spark can send a reasoning-effort preference to providers and models that support thinking controls:
+
 ```yaml
 agent:
   reasoning_effort: ""   # empty = medium (default). Options: none, minimal, low, medium, high, xhigh
@@ -364,7 +366,15 @@ agent:
 
 Unset defaults to `"medium"` — a good balance for most tasks. Higher effort improves complex reasoning at the cost of more tokens and latency.
 
-Change it at runtime with `/reasoning`:
+Configure it from the model picker or direct command:
+
+```bash
+spark model                  # choose Reasoning from the first menu
+spark model reasoning high   # set default effort
+spark model reasoning        # show current setting
+```
+
+Change it inside a running chat with `/reasoning`:
 
 ```
 /reasoning           # Show current level
@@ -373,6 +383,8 @@ Change it at runtime with `/reasoning`:
 /reasoning show      # Show model thinking above each response
 /reasoning hide      # Hide model thinking
 ```
+
+`display.show_reasoning` only controls whether returned reasoning text is shown in the UI; it does not change model thinking depth.
 
 ---
 

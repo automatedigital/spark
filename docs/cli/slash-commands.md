@@ -136,7 +136,7 @@ These commands work inside Telegram, Discord, Slack, WhatsApp, Signal, Email, an
 | `/resume [name]` | Resume a previously named session |
 | `/usage` | Show token usage, estimated cost breakdown (input/output), context window state, and session duration |
 | `/insights [days]` | Show usage analytics |
-| `/reasoning [level\|show\|hide]` | Change reasoning effort or toggle reasoning display |
+| `/reasoning [level\|show\|hide]` | Change reasoning effort or toggle reasoning display. Levels: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`; unset defaults to `medium`. |
 | `/voice [on\|off\|tts\|join\|channel\|leave\|status]` | Control spoken replies in chat. `join`/`channel`/`leave` manage Discord voice-channel mode. |
 | `/rollback [number]` | List or restore filesystem checkpoints |
 | `/snapshot [create\|restore <id>\|prune]` (alias: `/snap`) | Create or restore state snapshots of Spark config/state |
