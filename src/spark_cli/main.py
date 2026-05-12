@@ -4965,7 +4965,9 @@ def cmd_update(args):
             killed_pids = set()
 
             # --- Systemd services (Linux) ---
-            # Discover all spark-gateway* units (default + profiles)
+            # Use list-unit-files so we find installed units regardless of
+            # state (active, failed, stopped). list-units only shows active
+            # units and misses a gateway that crashed after the previous update.
             if supports_systemd_services():
                 try:
                     _ensure_user_systemd_env()
@@ -4980,7 +4982,7 @@ def cmd_update(args):
                         result = subprocess.run(
                             scope_cmd
                             + [
-                                "list-units",
+                                "list-unit-files",
                                 "spark-gateway*",
                                 "--plain",
                                 "--no-legend",
@@ -4994,32 +4996,24 @@ def cmd_update(args):
                             parts = line.split()
                             if not parts:
                                 continue
-                            unit = parts[
-                                0
-                            ]  # e.g. spark-gateway.service or spark-gateway-coder.service
+                            unit = parts[0]
                             if not unit.endswith(".service"):
                                 continue
                             svc_name = unit.removesuffix(".service")
-                            # Check if active
-                            check = subprocess.run(
-                                scope_cmd + ["is-active", svc_name],
+                            # restart works whether the service is active,
+                            # stopped, or failed — no is-active guard needed.
+                            restart = subprocess.run(
+                                scope_cmd + ["restart", svc_name],
                                 capture_output=True,
                                 text=True,
-                                timeout=5,
+                                timeout=30,
                             )
-                            if check.stdout.strip() == "active":
-                                restart = subprocess.run(
-                                    scope_cmd + ["restart", svc_name],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=15,
+                            if restart.returncode == 0:
+                                restarted_services.append(svc_name)
+                            else:
+                                print(
+                                    f"  ⚠ Failed to restart {svc_name}: {restart.stderr.strip()}"
                                 )
-                                if restart.returncode == 0:
-                                    restarted_services.append(svc_name)
-                                else:
-                                    print(
-                                        f"  ⚠ Failed to restart {svc_name}: {restart.stderr.strip()}"
-                                    )
                     except (FileNotFoundError, subprocess.TimeoutExpired):
                         pass
 
@@ -5051,9 +5045,9 @@ def cmd_update(args):
                     pass
 
             # --- Manual (non-service) gateways ---
-            # Kill any remaining gateway processes not managed by a service.
-            # Exclude PIDs that belong to just-restarted services so we don't
-            # immediately kill the process that systemd/launchd just spawned.
+            # Kill any remaining gateway processes not managed by a service,
+            # then immediately restart them in the background so the user
+            # doesn't have to restart manually after every update.
             service_pids = _get_service_pids()
             manual_pids = find_gateway_pids(
                 exclude_pids=service_pids, all_profiles=True
@@ -5065,18 +5059,31 @@ def cmd_update(args):
                 except (ProcessLookupError, PermissionError):
                     pass
 
-            if restarted_services or killed_pids:
+            if killed_pids:
+                # Brief pause so the old process releases its port/socket
+                import time as _time
+                _time.sleep(1)
+                log_path = get_spark_home() / "logs" / "gateway.log"
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    spark_bin = shutil.which("spark") or sys.executable
+                    with open(log_path, "a") as _log:
+                        subprocess.Popen(
+                            [spark_bin, "gateway", "run"],
+                            stdout=_log,
+                            stderr=_log,
+                            start_new_session=True,
+                            cwd=PROJECT_ROOT,
+                        )
+                    restarted_services.append("gateway (background)")
+                except Exception as _e:
+                    print(f"  ⚠ Could not auto-restart gateway: {_e}")
+                    print("    Restart manually: spark gateway run")
+
+            if restarted_services:
                 print()
                 for svc in restarted_services:
                     print(f"  ✓ Restarted {svc}")
-                if killed_pids:
-                    print(f"  → Stopped {len(killed_pids)} manual gateway process(es)")
-                    print("    Restart manually: spark gateway run")
-                    # Also restart for each profile if needed
-                    if len(killed_pids) > 1:
-                        print(
-                            "    (or: spark -p <profile> gateway run  for each profile)"
-                        )
 
             if not restarted_services and not killed_pids:
                 # No gateways were running — nothing to do
