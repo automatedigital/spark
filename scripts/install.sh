@@ -1336,7 +1336,20 @@ maybe_start_gateway() {
         if $SPARK_CMD gateway install 2>/dev/null; then
             log_success "Gateway service installed"
             if $SPARK_CMD gateway restart 2>/dev/null; then
-                log_success "Gateway restarted with latest packages! Your bot is now online."
+                log_success "Gateway restarted with latest packages!"
+                log_info "Waiting for gateway to initialize..."
+                sleep 7
+                if systemctl --user is-active --quiet spark-gateway.service 2>/dev/null; then
+                    RECENT_LOGS=$(journalctl --user -u spark-gateway.service -n 50 --no-pager 2>/dev/null || true)
+                    if echo "$RECENT_LOGS" | grep -q "not installed\|No adapter available"; then
+                        log_warn "Gateway is running but some messaging adapters didn't load."
+                        log_warn "Check status: spark gateway status"
+                    else
+                        log_success "Your bot is online!"
+                    fi
+                else
+                    log_warn "Gateway may still be starting. Check: spark gateway status"
+                fi
             else
                 log_warn "Service installed but failed to restart. Try: spark gateway restart"
             fi
