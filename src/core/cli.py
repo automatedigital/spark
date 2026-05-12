@@ -10807,7 +10807,7 @@ class SparkCLI:
             else:
                 elapsed_str = ""
 
-            return [("class:hint", f"  {spin_frame} {verb}  {txt}{elapsed_str}")]
+            return [("class:hint", f"  {spin_frame} {verb}{elapsed_str}")]
 
         def get_spinner_height():
             return cli_ref._spinner_widget_height()
