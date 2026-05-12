@@ -4862,9 +4862,22 @@ def cmd_update(args):
         missing_config = get_missing_config_fields()
         current_ver, latest_ver = check_config_version()
 
-        needs_migration = missing_env or missing_config or current_ver < latest_ver
+        # Always auto-apply version bump migrations — they only add new keys
+        # with safe defaults and never prompt for user input, so they are safe
+        # to run unconditionally in any context (gateway, non-interactive SSH,
+        # cron). Without this, gateways on VPS miss new required config sections
+        # (e.g. dashboard:, kanban:) after spark update and fail to start.
+        if current_ver < latest_ver:
+            print()
+            results = migrate_config(interactive=False, quiet=False)
+            if results["env_added"] or results["config_added"]:
+                print()
+                print("✓ Configuration updated!")
 
-        if needs_migration:
+        # For missing env vars / optional new config keys, prompt only when
+        # there is an interactive terminal — never block a headless update.
+        needs_interactive = missing_env or missing_config
+        if needs_interactive:
             print()
             if missing_env:
                 print(
@@ -4883,9 +4896,9 @@ def cmd_update(args):
                     .lower()
                 )
             elif not (sys.stdin.isatty() and sys.stdout.isatty()):
-                print("  ℹ Non-interactive session — skipping config migration prompt.")
+                print("  ℹ Non-interactive session — skipping config prompts.")
                 print(
-                    "    Run 'spark config migrate' later to apply any new config/env options."
+                    "    Run 'spark config migrate' later to configure new options."
                 )
                 response = "n"
             else:
@@ -4900,10 +4913,7 @@ def cmd_update(args):
 
             if response in ("", "y", "yes"):
                 print()
-                # In gateway mode, run auto-migrations only (no input() prompts
-                # for API keys which would hang the detached process).
                 results = migrate_config(interactive=not gateway_mode, quiet=False)
-
                 if results["env_added"] or results["config_added"]:
                     print()
                     print("✓ Configuration updated!")
@@ -4912,7 +4922,7 @@ def cmd_update(args):
             else:
                 print()
                 print("Skipped. Run 'spark config migrate' later to configure.")
-        else:
+        elif current_ver >= latest_ver:
             print("  ✓ Configuration is up to date")
 
         print()
