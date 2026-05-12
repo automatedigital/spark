@@ -954,10 +954,12 @@ install_deps() {
     fi
 
     # Install the main package in editable mode with all extras.
-    # Try [all] first, fall back to base install if extras have issues.
+    # Try [all] first; if it fails (e.g. discord.py[voice] needs native audio
+    # libs not present on a headless VPS), fall back to base + per-extra retries
+    # so that critical extras like telegram and web are never silently dropped.
     ALL_INSTALL_LOG=$(mktemp)
     if ! $UV_CMD pip install -e ".[all]" 2>"$ALL_INSTALL_LOG"; then
-        log_warn "Full install (.[all]) failed, trying base install..."
+        log_warn "Full install (.[all]) failed — retrying extras individually..."
         log_info "Reason: $(tail -5 "$ALL_INSTALL_LOG" | head -3)"
         rm -f "$ALL_INSTALL_LOG"
         if ! $UV_CMD pip install -e "."; then
@@ -966,6 +968,15 @@ install_deps() {
             log_info "Then re-run: cd $INSTALL_DIR && uv pip install -e '.[all]'"
             exit 1
         fi
+        # Retry each optional extra independently so a failure in one (e.g.
+        # discord.py[voice] needing libopus) doesn't silently skip the others.
+        for EXTRA in telegram web cron mcp honcho acp pty slack sms homeassistant mistral feishu dingtalk discord voice modal daytona; do
+            if $UV_CMD pip install -e ".[$EXTRA]" >/dev/null 2>&1; then
+                log_success "  + [$EXTRA] installed"
+            else
+                log_warn "  ~ [$EXTRA] skipped (optional, missing native deps)"
+            fi
+        done
     else
         rm -f "$ALL_INSTALL_LOG"
     fi
@@ -1324,10 +1335,10 @@ maybe_start_gateway() {
         log_info "Installing gateway as a background service..."
         if $SPARK_CMD gateway install 2>/dev/null; then
             log_success "Gateway service installed"
-            if $SPARK_CMD gateway start 2>/dev/null; then
-                log_success "Gateway started! Your bot is now online."
+            if $SPARK_CMD gateway restart 2>/dev/null; then
+                log_success "Gateway restarted with latest packages! Your bot is now online."
             else
-                log_warn "Service installed but failed to start. Try: spark gateway start"
+                log_warn "Service installed but failed to restart. Try: spark gateway restart"
             fi
         else
             log_warn "Systemd install failed. You can start manually: spark gateway"
