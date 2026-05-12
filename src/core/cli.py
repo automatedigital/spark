@@ -6237,6 +6237,38 @@ class SparkCLI:
 
         handle_skills_slash(cmd, ChatConsole())
 
+    def _handle_reset_skills_command(self):
+        """Handle /reset-skills — remove hub-installed/custom skills, restore bundled."""
+        _cprint(
+            f"{_ACCENT}This will remove all hub-installed and custom skills "
+            f"and restore Spark's bundled defaults.{_RST}"
+        )
+        _cprint(f"{_DIM}Your bundled skills will be reset to their factory state.{_RST}")
+        try:
+            confirm = input("Continue? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            _cprint("Cancelled.")
+            return
+        if confirm != "y":
+            _cprint("Cancelled.")
+            return
+        try:
+            from tools.skills_sync import reset_skills
+            _cprint("Resetting skills...")
+            result = reset_skills()
+            if result["removed"]:
+                _cprint(f"  − Removed {len(result['removed'])}: {', '.join(result['removed'])}")
+            else:
+                _cprint("  (no custom or hub-installed skills to remove)")
+            if result["restored"]:
+                _cprint(f"  ✓ Restored {len(result['restored'])} bundled skills")
+            if result["errors"]:
+                for err in result["errors"]:
+                    _cprint(f"  ! {err}")
+            _cprint("Skills reset complete.")
+        except Exception as e:
+            _cprint(f"Reset failed: {e}")
+
     def _show_gateway_status(self):
         """Show status of the gateway and connected messaging platforms."""
         from gateway.config import load_gateway_config, Platform
@@ -6501,6 +6533,8 @@ class SparkCLI:
         elif canonical == "skills":
             with self._busy_command(self._slow_command_status(cmd_original)):
                 self._handle_skills_command(cmd_original)
+        elif canonical == "reset-skills":
+            self._handle_reset_skills_command()
         elif canonical == "platforms":
             self._show_gateway_status()
         elif canonical == "status":
@@ -6710,8 +6744,10 @@ class SparkCLI:
                     if full_name == typed_base:
                         # Already an exact token - no expansion possible; fall through
                         _cprint(f"\033[1;31mUnknown command: {cmd_lower}{_RST}")
+                        _skill_name = typed_base.lstrip("/")
                         _cprint(
-                            f"{_DIM}{_ACCENT}Type /help for available commands{_RST}"
+                            f"{_DIM}{_ACCENT}Type /help for available commands, "
+                            f"or search for a skill: /skills search {_skill_name}{_RST}"
                         )
                     else:
                         remainder = cmd_original.strip()[len(typed_base) :]
@@ -6722,7 +6758,11 @@ class SparkCLI:
                     _cprint(f"{_DIM}Did you mean: {', '.join(sorted(matches))}?{_RST}")
                 else:
                     _cprint(f"\033[1;31mUnknown command: {cmd_lower}{_RST}")
-                    _cprint(f"{_DIM}{_ACCENT}Type /help for available commands{_RST}")
+                    _skill_name = typed_base.lstrip("/")
+                    _cprint(
+                        f"{_DIM}{_ACCENT}Type /help for available commands, "
+                        f"or search for a skill: /skills search {_skill_name}{_RST}"
+                    )
 
         return True
 

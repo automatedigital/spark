@@ -1266,3 +1266,66 @@ registry.register(
     check_fn=check_skills_requirements,
     emoji="📚",
 )
+
+
+def _skills_hub_search(args: dict, **_kw) -> str:
+    """Search skills.sh and other registries for installable skills."""
+    query = args.get("query", "").strip()
+    limit = min(int(args.get("limit", 8)), 20)
+    if not query:
+        return json.dumps({"error": "query is required"})
+    try:
+        from tools.skills_hub import create_source_router, unified_search
+        sources = create_source_router()
+        results = unified_search(query, sources, limit=limit)
+    except Exception as e:
+        return json.dumps({"error": f"Search failed: {e}"})
+    if not results:
+        return json.dumps({
+            "results": [],
+            "message": f"No skills found for '{query}'. Try different keywords.",
+        })
+    items = [
+        {
+            "name": m.name,
+            "description": m.description,
+            "source": m.source,
+            "identifier": m.identifier,
+            "install_cmd": f"/skills install {m.identifier}",
+        }
+        for m in results
+    ]
+    return json.dumps({"results": items, "total": len(items)}, ensure_ascii=False)
+
+
+SKILLS_HUB_SEARCH_SCHEMA = {
+    "name": "skills_hub_search",
+    "description": (
+        "Search skills.sh and other skill registries for installable skills. "
+        "Use this when the user asks for something you cannot do with your current tools or skills. "
+        "Search for a skill that adds the needed capability, present the top results, "
+        "and ask whether to install one with `/skills install <identifier>`."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Keywords describing the capability or skill needed",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of results to return (default 8, max 20)",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
+registry.register(
+    name="skills_hub_search",
+    toolset="skills",
+    schema=SKILLS_HUB_SEARCH_SCHEMA,
+    handler=_skills_hub_search,
+    emoji="🔍",
+)
