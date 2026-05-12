@@ -5084,6 +5084,30 @@ def cmd_update(args):
                 print()
                 for svc in restarted_services:
                     print(f"  ✓ Restarted {svc}")
+                # Wait for the gateway to initialize, then verify adapters loaded.
+                import time as _time
+                _time.sleep(7)
+                try:
+                    if supports_systemd_services():
+                        _ensure_user_systemd_env()
+                        jctl = subprocess.run(
+                            ["journalctl", "--user", "-u", "spark-gateway", "-n", "50", "--no-pager"],
+                            capture_output=True, text=True, timeout=10,
+                        )
+                        is_active = subprocess.run(
+                            ["systemctl", "--user", "is-active", "spark-gateway"],
+                            capture_output=True, text=True, timeout=5,
+                        )
+                        if is_active.stdout.strip() == "active":
+                            if "not installed" in jctl.stdout or "No adapter available" in jctl.stdout:
+                                print("  ⚠ Gateway running but some adapters didn't load")
+                                print("    Run: spark gateway status")
+                            else:
+                                print("  ✓ Gateway initialized — your bot is online")
+                        else:
+                            print("  ⚠ Gateway may still be starting — run: spark gateway status")
+                except Exception:
+                    pass
 
             if not restarted_services and not killed_pids:
                 # No gateways were running — nothing to do
