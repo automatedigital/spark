@@ -1044,8 +1044,65 @@ def cmd_setup(args):
 
 def cmd_model(args):
     """Select default model — starts with provider selection, then model picker."""
+    if getattr(args, "model_action", None) == "reasoning":
+        cmd_model_reasoning(getattr(args, "reasoning_effort", None))
+        return
     _require_tty("model")
     select_provider_and_model(args=args)
+
+
+def _format_reasoning_effort(config) -> str:
+    effort = _current_reasoning_effort(config)
+    if not effort:
+        return "medium (default)"
+    if effort == "none":
+        return "none (disabled)"
+    return effort
+
+
+def _save_reasoning_effort(effort: str) -> bool:
+    from core.spark_constants import parse_reasoning_effort
+    from spark_cli.config import load_config, save_config
+
+    normalized = str(effort or "").strip().lower()
+    if parse_reasoning_effort(normalized) is None:
+        print("Invalid reasoning effort.")
+        print("Valid levels: none, minimal, low, medium, high, xhigh")
+        return False
+
+    config = load_config()
+    _set_reasoning_effort(config, normalized)
+    save_config(config)
+    print(f"Reasoning effort set to: {_format_reasoning_effort(config)}")
+    return True
+
+
+def cmd_model_reasoning(effort: str | None = None) -> None:
+    """Show or set the default model reasoning effort."""
+    from spark_cli.config import load_config
+
+    if effort:
+        _save_reasoning_effort(effort)
+        return
+
+    config = load_config()
+    print(f"Current reasoning effort: {_format_reasoning_effort(config)}")
+    print("Usage: spark model reasoning <none|minimal|low|medium|high|xhigh>")
+
+
+def _prompt_and_save_reasoning_effort() -> None:
+    from spark_cli.config import load_config
+
+    config = load_config()
+    current_effort = _current_reasoning_effort(config)
+    selected = _prompt_reasoning_effort_selection(
+        ("minimal", "low", "medium", "high", "xhigh"),
+        current_effort=current_effort,
+    )
+    if selected is None:
+        print("No change.")
+        return
+    _save_reasoning_effort(selected)
 
 
 def _do_multi_model_selection(args=None) -> None:
@@ -1138,6 +1195,7 @@ def select_provider_and_model(
         _mode_choices = [
             "Simple          — one model for all requests",
             "Multi-model     — fast model for general requests, smart model for complex ones",
+            "Reasoning       — set model thinking effort",
         ]
         _mode_default = 1 if _current_mode_multi else 0
         print()
@@ -1148,6 +1206,9 @@ def select_provider_and_model(
             return
         if _mode_idx == 1:
             _do_multi_model_selection(args=args)
+            return
+        if _mode_idx == 2:
+            _prompt_and_save_reasoning_effort()
             return
         else:
             # Simple mode — disable any existing multi-model routing
@@ -5730,6 +5791,17 @@ For more help on a command:
         "model",
         help="Select default model and provider",
         description="Interactively select your inference provider and default model",
+    )
+    model_parser.add_argument(
+        "model_action",
+        nargs="?",
+        choices=("reasoning",),
+        help="Optional model configuration action",
+    )
+    model_parser.add_argument(
+        "reasoning_effort",
+        nargs="?",
+        help="Reasoning effort for 'spark model reasoning' (none, minimal, low, medium, high, xhigh)",
     )
     model_parser.add_argument(
         "--portal-url",

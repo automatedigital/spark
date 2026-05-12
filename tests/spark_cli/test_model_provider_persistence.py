@@ -6,8 +6,7 @@ isinstance(model, dict)) to silently fail — leaving the provider unset and
 falling back to auto-detection.
 """
 
-import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -66,6 +65,29 @@ class TestSaveModelChoiceAlwaysDict:
         assert isinstance(model, dict)
         assert model["default"] == "new-model"
         assert model["provider"] == "openrouter"  # preserved
+
+    def test_spark_model_reasoning_sets_agent_effort(self, config_home, capsys):
+        """`spark model reasoning <level>` should persist agent.reasoning_effort."""
+        import yaml
+
+        from spark_cli.main import cmd_model_reasoning
+
+        assert cmd_model_reasoning("high") is None
+
+        config = yaml.safe_load((config_home / "config.yaml").read_text())
+        assert config["agent"]["reasoning_effort"] == "high"
+        assert "Reasoning effort set to: high" in capsys.readouterr().out
+
+    def test_spark_model_reasoning_rejects_invalid_effort(self, config_home, capsys):
+        import yaml
+
+        from spark_cli.main import cmd_model_reasoning
+
+        cmd_model_reasoning("banana")
+
+        config = yaml.safe_load((config_home / "config.yaml").read_text())
+        assert "agent" not in config
+        assert "Invalid reasoning effort" in capsys.readouterr().out
 
 
 class TestProviderPersistsAfterModelSave:
