@@ -308,6 +308,68 @@ def sync_skills(quiet: bool = False) -> dict:
     }
 
 
+def reset_skills(*, dry_run: bool = False) -> dict:
+    """Remove all hub-installed and user-created skills; restore bundled defaults.
+
+    Bundled skills are identified by the manifest at SKILLS_DIR/.bundled_manifest.
+    Any skill directory present on disk but not listed in the manifest is treated
+    as hub-installed or user-created and will be removed.
+
+    After removal the manifest is cleared so that sync_skills() re-seeds every
+    bundled skill fresh, restoring any user-modified bundled skills as well.
+
+    Returns:
+        dict with keys: removed (list of str), restored (list of str), errors (list of str)
+    """
+    if not SKILLS_DIR.exists():
+        return {"removed": [], "restored": [], "errors": []}
+
+    manifest = _read_manifest()
+    bundled_names = set(manifest.keys())
+
+    removed: List[str] = []
+    errors: List[str] = []
+
+    # Walk SKILLS_DIR for all SKILL.md files, collect non-bundled skill dirs.
+    for skill_md in SKILLS_DIR.rglob("SKILL.md"):
+        path_str = str(skill_md)
+        if "/.hub/" in path_str or "/.git/" in path_str or "/.github/" in path_str:
+            continue
+        skill_dir = skill_md.parent
+        skill_name = _read_skill_name(skill_md, skill_dir.name)
+        if skill_name not in bundled_names:
+            if not dry_run:
+                try:
+                    shutil.rmtree(skill_dir)
+                except OSError as e:
+                    errors.append(f"{skill_name}: {e}")
+                    continue
+            removed.append(skill_name)
+
+    if not dry_run:
+        # Remove any empty category dirs left behind (don't touch hidden dirs or files)
+        for entry in list(SKILLS_DIR.iterdir()):
+            if entry.name.startswith(".") or not entry.is_dir():
+                continue
+            # Remove if it no longer contains any SKILL.md (i.e., all skills removed)
+            if not any(entry.rglob("SKILL.md")):
+                try:
+                    shutil.rmtree(entry)
+                except OSError as e:
+                    errors.append(f"{entry.name}: {e}")
+
+        # Clear manifest so sync_skills re-seeds everything from scratch
+        _write_manifest({})
+
+        # Re-sync all bundled skills fresh
+        sync_result = sync_skills(quiet=True)
+        restored = sync_result.get("copied", []) + sync_result.get("updated", [])
+    else:
+        restored = []
+
+    return {"removed": removed, "restored": restored, "errors": errors}
+
+
 if __name__ == "__main__":
     print("Syncing bundled skills into ~/.spark/skills/ ...")
     result = sync_skills(quiet=False)

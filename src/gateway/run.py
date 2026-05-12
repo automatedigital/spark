@@ -2918,6 +2918,31 @@ class GatewayRunner:
         if canonical == "goal":
             return await self._handle_goal_command(event)
 
+        if canonical == "reset-skills":
+            args_text = event.get_command_args().strip().lower()
+            if args_text != "confirm":
+                return (
+                    "⚠️ This will remove all hub-installed and custom skills, "
+                    "restoring Spark's bundled defaults.\n"
+                    "Send `/reset-skills confirm` to proceed."
+                )
+            try:
+                from tools.skills_sync import reset_skills
+                result = reset_skills()
+                lines = ["Skills reset complete."]
+                if result["removed"]:
+                    lines.append(f"− Removed: {', '.join(result['removed'])}")
+                else:
+                    lines.append("(no custom or hub-installed skills to remove)")
+                if result["restored"]:
+                    lines.append(f"✓ Restored: {', '.join(result['restored'])} bundled skills")
+                if result["errors"]:
+                    lines.extend(f"! {e}" for e in result["errors"])
+                return "\n".join(lines)
+            except Exception as e:
+                logger.exception("reset-skills failed")
+                return f"Reset failed: {e}"
+
         if self._draining:
             return f"⏳ Gateway is {self._status_action_gerund()} and is not accepting new work right now."
 
@@ -3038,9 +3063,8 @@ class GatewayRunner:
                         )
                         return (
                             f"Unknown command `/{command}`. "
-                            f"Type /commands to see what's available, "
-                            f"or resend without the leading slash to send "
-                            f"as a regular message."
+                            f"Try `/skills search {command}` to find a skill that adds this capability, "
+                            f"or `/commands` to see what's available."
                         )
             except Exception as e:
                 logger.debug("Skill command check failed (non-fatal): %s", e)

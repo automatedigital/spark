@@ -676,7 +676,10 @@ def build_skills_system_prompt(
             f"{count} skills are installed. Call skills_list() to see what's "
             "available before tackling a task — skills encode specialized "
             "workflows, API details, and the user's preferred approach. "
-            "Load one with skill_view(name) when it matches."
+            "Load one with skill_view(name) when it matches.\n"
+            "When you cannot fulfill a request with your current tools or skills, "
+            "call skills_hub_search(query) to search for an installable skill, "
+            "present the results, and ask whether to install one."
         )
 
     # ── Layer 1: in-process LRU cache ─────────────────────────────────
@@ -858,7 +861,13 @@ def build_skills_system_prompt(
             "\n"
             "<available_skills>\n"
             + "\n".join(index_lines) + "\n"
-            "</available_skills>"
+            "</available_skills>\n"
+            "\n"
+            "When a user asks for something you cannot do with your current tools or skills, "
+            "call skills_hub_search(query) to search skills.sh and other registries for an "
+            "installable skill that adds that capability. Present the top results and ask "
+            "whether to install one with `/skills install <identifier>`. "
+            "Do not just say you can't help — always offer to search first."
         )
 
     # ── Store in LRU cache ────────────────────────────────────────────
