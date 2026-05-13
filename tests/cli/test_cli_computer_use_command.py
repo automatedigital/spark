@@ -55,8 +55,10 @@ class TestComputerUseCommand:
         cli_obj.agent._invalidate_system_prompt.assert_called_once()
         cli_obj._pending_input.put.assert_called_once()
         queued = cli_obj._pending_input.put.call_args[0][0]
-        assert "[SYSTEM:" in queued
-        assert "click OK" in queued
+        assert queued == "click OK"
+        assert len(cli_obj.conversation_history) == 1
+        assert "[SYSTEM:" in cli_obj.conversation_history[0]["content"]
+        assert "click OK" not in cli_obj.conversation_history[0]["content"]
 
     def test_macos_without_task_appends_history(self):
         cli_obj = _make_cli_with_agent()
@@ -96,9 +98,11 @@ class TestComputerUseCommand:
                             )
         cli_obj._pending_input.put.assert_called_once()
         queued = cli_obj._pending_input.put.call_args[0][0]
-        assert "MUST use computer_use" not in queued
-        assert "not available" in queued.lower() or "missing" in queued.lower()
-        assert "do something in Notion" in queued
+        assert queued == "do something in Notion"
+        assert len(cli_obj.conversation_history) == 1
+        hidden = cli_obj.conversation_history[0]["content"]
+        assert "MUST use computer_use" not in hidden
+        assert "not available" in hidden.lower() or "missing" in hidden.lower()
 
     def test_macos_no_task_without_tool_no_history(self):
         cli_obj = _make_cli_with_agent()

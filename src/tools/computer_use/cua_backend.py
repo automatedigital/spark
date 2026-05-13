@@ -97,6 +97,15 @@ def cua_driver_install_command() -> str:
     )
 
 
+def _cua_timeout_message() -> str:
+    return (
+        "cua-driver did not respond within "
+        f"{int(_CALL_TIMEOUT)}s. Start the CuaDriver daemon and grant macOS "
+        "Accessibility + Screen Recording permissions, then retry: "
+        "open -n -g -a CuaDriver --args serve && cua-driver check_permissions"
+    )
+
+
 # Timeout in seconds for MCP tool calls
 _CALL_TIMEOUT = float(os.environ.get("SPARK_CUA_TIMEOUT", "30"))
 
@@ -170,7 +179,7 @@ class _AsyncBridge:
         self._started.set()
         self._loop.run_forever()
 
-    def run(self, coro, timeout: float = _CALL_TIMEOUT) -> Any:
+    def run(self, coro, timeout: float = _CALL_TIMEOUT + 5) -> Any:
         """Submit *coro* to the bridge loop and block until done."""
         if not self._loop or not self._thread or not self._thread.is_alive():
             self.start()
@@ -212,11 +221,15 @@ class _CuaDriverSession:
             stderr=subprocess.PIPE,
         )
         # MCP initialize handshake
-        await self._send_request("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "spark-agent", "version": "1.0"},
-        })
+        try:
+            await self._send_request_with_timeout("initialize", {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "spark-agent", "version": "1.0"},
+            })
+        except TimeoutError:
+            self._terminate_process()
+            raise
 
     async def _send_request(self, method: str, params: Dict) -> Dict:
         self._request_id += 1
@@ -230,10 +243,14 @@ class _CuaDriverSession:
 
         loop = asyncio.get_event_loop()
 
+        def _write_and_flush() -> None:
+            self._process.stdin.write(msg.encode())
+            self._process.stdin.flush()
+
         # Write in executor to avoid blocking
         await loop.run_in_executor(
             None,
-            lambda: self._process.stdin.write(msg.encode()) or self._process.stdin.flush()
+            _write_and_flush,
         )
 
         # Read response line
@@ -241,6 +258,29 @@ class _CuaDriverSession:
         if not raw:
             raise RuntimeError("cua-driver process closed stdout")
         return json.loads(raw.decode())
+
+    async def _send_request_with_timeout(self, method: str, params: Dict) -> Dict:
+        try:
+            return await asyncio.wait_for(
+                self._send_request(method, params),
+                timeout=_CALL_TIMEOUT,
+            )
+        except asyncio.TimeoutError as e:
+            raise TimeoutError(_cua_timeout_message()) from e
+
+    def _terminate_process(self) -> None:
+        proc = self._process
+        self._process = None
+        if not proc or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
     async def call_tool(self, name: str, args: Dict) -> Dict[str, Any]:
         """Call a cua-driver MCP tool and return a normalised result dict.
@@ -254,11 +294,20 @@ class _CuaDriverSession:
             }
         """
         async with self._lock:
-            await self._ensure_started()
-            resp = await self._send_request("tools/call", {
-                "name": name,
-                "arguments": args,
-            })
+            try:
+                await self._ensure_started()
+                resp = await self._send_request_with_timeout("tools/call", {
+                    "name": name,
+                    "arguments": args,
+                })
+            except TimeoutError as e:
+                self._terminate_process()
+                return {
+                    "data": str(e),
+                    "images": [],
+                    "structuredContent": None,
+                    "isError": True,
+                }
 
         if "error" in resp:
             return {"data": resp["error"].get("message", "Unknown error"),

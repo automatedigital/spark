@@ -7182,19 +7182,17 @@ class SparkCLI:
         )
 
         if cu_resolves:
-            body = (
-                f"{sys_msg_force}\n\nUser request:\n{user_tail}"
-                if user_tail
-                else sys_msg_force
-            )
+            body = sys_msg_force
         elif user_tail:
-            body = f"{sys_msg_soft}\n\nUser request:\n{user_tail}"
+            body = sys_msg_soft
         else:
             body = ""
 
         if user_tail:
             if hasattr(self, "_pending_input"):
-                self._pending_input.put(body)
+                if body:
+                    self.conversation_history.append({"role": "user", "content": body})
+                self._pending_input.put(user_tail)
                 if cu_resolves:
                     _cprint("  Computer-use mode — task queued for the agent.")
                 else:
