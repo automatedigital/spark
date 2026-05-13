@@ -630,6 +630,17 @@ def run_doctor(args):
                 " — or: brew install cua-driver"
             )
 
+    # Piper (local neural TTS)
+    try:
+        import importlib.util as _ilu
+        _piper_ok = _ilu.find_spec("piper") is not None
+    except Exception:
+        _piper_ok = False
+    if _piper_ok:
+        check_ok("piper-tts", "(local TTS, no API key required)")
+    else:
+        check_info("piper-tts not installed (optional, enables local TTS: pip install piper-tts)")
+
     # Node.js + agent-browser (for browser automation tools)
     if shutil.which("node"):
         check_ok("Node.js")

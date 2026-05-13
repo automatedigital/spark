@@ -1157,6 +1157,12 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
         if isinstance(metadata, dict):
             result["metadata"] = metadata
 
+        try:
+            from tools.skill_usage import bump_view
+            bump_view(skill_dir.name if skill_dir else name)
+        except Exception:
+            pass
+
         return json.dumps(result, ensure_ascii=False)
 
     except Exception as e:

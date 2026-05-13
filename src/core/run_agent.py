@@ -10729,6 +10729,16 @@ class AIAgent:
         except Exception as exc:
             logger.warning("on_session_end hook failed: %s", exc)
 
+        # Skill curator — best-effort, daemon thread, never blocks the turn.
+        # Only fires for user-facing platforms (not subagents/curator forks).
+        _plat = getattr(self, "platform", None) or ""
+        if _plat not in ("curator", "delegate"):
+            try:
+                from agent.curator import maybe_run_curator as _maybe_curator
+                _maybe_curator()
+            except Exception:
+                pass
+
         return result
 
     def chat(self, message: str, stream_callback: Optional[callable] = None) -> str:

@@ -65,6 +65,7 @@ export interface Translations {
       config: string;
       keys: string;
       board: string;
+      workspace: string;
     };
   };
 

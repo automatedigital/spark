@@ -884,6 +884,16 @@ def build_skills_system_prompt(
             "Do not just say you can't help — always offer to search first."
         )
 
+    # ── Record skill usage for analytics ─────────────────────────────
+    if skills_by_category:
+        try:
+            from tools.skill_usage import bump_use
+            for cat_skills in skills_by_category.values():
+                for name, _desc in cat_skills:
+                    bump_use(name)
+        except Exception:
+            pass
+
     # ── Store in LRU cache ────────────────────────────────────────────
     with _SKILLS_PROMPT_CACHE_LOCK:
         _SKILLS_PROMPT_CACHE[cache_key] = result
