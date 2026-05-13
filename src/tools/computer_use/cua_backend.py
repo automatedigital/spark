@@ -391,14 +391,19 @@ class CuaDriverBackend:
             windows = _parse_windows(windows_result)
             target = _select_window(windows, app)
             if not target:
-                launch = await _session.call_tool("launch_app", {"name": app})
+                launch = await _session.call_tool(
+                    "launch_app",
+                    {"name": _normalize_app_query(app)},
+                )
                 if launch["isError"]:
                     raise RuntimeError(f"launch_app failed: {launch['data']}")
                 windows = _parse_launch_windows(launch)
-                target = _select_window(windows, app) or (windows[0] if windows else None)
-            if not target:
+                target = _select_window(windows, app)
+                if not target and len(windows) == 1 and _valid_window_target(windows[0]):
+                    target = windows[0]
+            if not target or not _valid_window_target(target):
                 raise RuntimeError(
-                    f"No window found for app '{app}'. "
+                    f"No usable window found for app '{app}' (need pid and window_id). "
                     f"Running apps: {[_window_app(w) for w in windows]}"
                 )
             self._active_pid = target.get("pid")
@@ -666,6 +671,31 @@ def _window_id(window: Dict) -> Optional[int]:
     return window.get("window_id") or window.get("windowId")
 
 
+def _valid_window_target(window: Dict) -> bool:
+    return window.get("pid") is not None and _window_id(window) is not None
+
+
+def _normalize_app_query(app: str) -> str:
+    app = app.strip()
+    if app.lower().endswith(".app"):
+        app = app[:-4]
+    return app.strip()
+
+
+def _app_match_score(window: Dict, app: str) -> Optional[tuple[int, int]]:
+    query = _normalize_app_query(app).lower()
+    name = _normalize_app_query(_window_app(window)).lower()
+    if not query or not name:
+        return None
+    if name == query:
+        return (0, len(name))
+    if name.startswith(query):
+        return (1, len(name))
+    if query in name:
+        return (2, len(name))
+    return None
+
+
 def _parse_key_combo(keys: str) -> List[str]:
     aliases = {
         "command": "cmd",
@@ -696,13 +726,13 @@ def _select_window(windows: List[Dict], app: str) -> Optional[Dict]:
     Matches by case-insensitive substring.  Among matches, prefers the
     window with the lowest z-index (frontmost on macOS).
     """
-    app_lower = app.lower()
-    matches = [
-        w for w in windows
-        if app_lower in _window_app(w).lower()
-    ]
+    matches = []
+    for w in windows:
+        score = _app_match_score(w, app)
+        if score is not None and _valid_window_target(w):
+            matches.append((score, w))
     if not matches:
         return None
-    # Lower z-index = closer to front
-    matches.sort(key=lambda w: w.get("zIndex", w.get("z_index", 9999)))
-    return matches[0]
+    # Prefer exact app-name matches before prefix/substrings, then lower z-index.
+    matches.sort(key=lambda item: (*item[0], item[1].get("zIndex", item[1].get("z_index", 9999))))
+    return matches[0][1]

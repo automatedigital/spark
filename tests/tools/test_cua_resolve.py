@@ -96,6 +96,33 @@ def test_cua_window_helpers_accept_current_api_shape():
     assert cb._window_id(target) == 789
 
 
+def test_cua_select_window_prefers_exact_app_over_substring():
+    from tools.computer_use import cua_backend as cb
+
+    windows = [
+        {"pid": 111, "app_name": "Notion Calendar", "window_id": 222, "z_index": 0},
+        {"pid": 333, "app_name": "Notion", "window_id": 444, "z_index": 5},
+    ]
+
+    target = cb._select_window(windows, "Notion")
+
+    assert cb._window_app(target) == "Notion"
+    assert cb._window_id(target) == 444
+
+
+def test_cua_select_window_ignores_candidates_without_ids():
+    from tools.computer_use import cua_backend as cb
+
+    windows = [
+        {"app_name": "Notion"},
+        {"pid": 333, "app_name": "Notion", "window_id": 444},
+    ]
+
+    target = cb._select_window(windows, "Notion.app")
+
+    assert cb._window_id(target) == 444
+
+
 def test_cua_key_combo_parses_schema_format():
     from tools.computer_use import cua_backend as cb
 
