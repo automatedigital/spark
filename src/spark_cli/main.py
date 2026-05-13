@@ -4487,10 +4487,7 @@ def _install_python_dependencies_with_optional_fallback(
 
 
 def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> None:
-    """On macOS, offer computer_use: install cua-driver if needed and enable CLI toolset.
-
-    Skips when already configured, or when non-interactive (unless gateway_mode with input_fn).
-    """
+    """On macOS, offer to install cua-driver and enable the CLI computer_use toolset."""
     import shutil
 
     if sys.platform != "darwin":
@@ -4510,12 +4507,16 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
 
     print()
     print("ℹ  macOS Computer Use controls native apps (background desktop automation).")
-    print("   This installs cua-driver into your Spark venv when needed, and enables the")
+    print("   If enabled, this installs cua-driver for this Spark Python and enables the")
     print("   computer_use toolset for the CLI (saved in config.yaml).")
     print()
 
     if gateway_mode and input_fn is not None:
-        response = input_fn("Enable computer use for this Mac? [Y/n]", "y").strip().lower()
+        response = (
+            input_fn("Enable computer use for this Mac? [Y/n]", "y")
+            .strip()
+            .lower()
+        )
     else:
         try:
             response = input("Enable computer use for this Mac? [Y/n]: ").strip().lower()
@@ -4524,19 +4525,21 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
             response = "n"
 
     if response in ("n", "no"):
-        print("  Skipped. Enable later with: spark tools → computer_use — or spark update")
+        print("  Skipped. Enable later with: spark update or spark tools.")
         return
 
-    had_cua = shutil.which("cua-driver") is not None
     try:
-        _exe = Path(sys.executable).resolve()
-        if _exe.parent.name == "bin":
-            had_cua = had_cua or (_exe.parent / "cua-driver").is_file()
-    except OSError:
-        pass
+        from tools.computer_use.cua_backend import (
+            cua_driver_install_command,
+            cua_driver_resolution_hint,
+            is_available as _cua_is_available,
+        )
+    except Exception:
+        print("  ⚠ Could not load computer_use module — not enabling.")
+        return
 
-    if not had_cua:
-        print("→ Installing cua-driver...")
+    if not _cua_is_available():
+        print(f"→ Installing cua-driver with: {cua_driver_install_command()}")
         venv_root = None
         try:
             _exe = Path(sys.executable).resolve()
@@ -4563,20 +4566,20 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
                 text=True,
             )
         if result.returncode != 0:
-            print("  ⚠ cua-driver install failed — computer_use will not work until it is installed.")
+            print(
+                "  ⚠ cua-driver install failed — computer_use will not work "
+                "until it is installed."
+            )
             if result.stderr.strip():
                 print(f"    {result.stderr.strip().splitlines()[0]}")
-            print("    Fix: cd ~/.spark/spark-agent && VIRTUAL_ENV=$PWD/venv uv pip install cua-driver")
+            print(f"    Fix: {cua_driver_install_command()}")
             return
 
-    try:
-        from tools.computer_use.cua_backend import is_available as _cua_is_available
-    except Exception:
-        print("  ⚠ Could not load computer_use module — not enabling.")
-        return
-
     if not _cua_is_available():
-        print("  ⚠ cua-driver still not found next to this Python — not enabling computer_use.")
+        print("  ⚠ cua-driver still not found for this Spark Python — not enabling computer_use.")
+        hint = cua_driver_resolution_hint()
+        if hint:
+            print(hint)
         return
 
     enable_computer_use_cli_toolset()
@@ -4803,6 +4806,7 @@ def cmd_update(args):
                     check=False,
                 )
             print("✓ Already up to date!")
+            _maybe_offer_cua_driver(gateway_mode=gateway_mode, input_fn=gw_input_fn)
             _sync_bundled_skills_for_update()
             return
 
@@ -4916,7 +4920,7 @@ def cmd_update(args):
         # Build web UI frontend (optional — requires npm)
         _build_web_ui(Path(__file__).parent / "web")
 
-        # Offer cua-driver install on macOS if not yet installed
+        # Ensure cua-driver install on macOS if not yet installed.
         _maybe_offer_cua_driver(gateway_mode=gateway_mode, input_fn=gw_input_fn)
 
         print()

@@ -1273,7 +1273,7 @@ maybe_install_cua_driver() {
 
     echo ""
     log_info "macOS Computer Use: native desktop control via cua-driver (optional)."
-    log_info "If you enable it, we install cua-driver into the Spark venv and turn on the CLI toolset."
+    log_info "If enabled, we install cua-driver and turn on the CLI toolset."
 
     local reply
     if [ "$IS_INTERACTIVE" = true ]; then
@@ -1293,6 +1293,9 @@ maybe_install_cua_driver() {
         had_cua=true
     fi
     if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/cua-driver" ]; then
+        had_cua=true
+    fi
+    if [ -x "$HOME/.local/bin/cua-driver" ] || [ -x "/opt/homebrew/bin/cua-driver" ] || [ -x "/usr/local/bin/cua-driver" ]; then
         had_cua=true
     fi
 
@@ -1329,6 +1332,9 @@ maybe_install_cua_driver() {
     if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/cua-driver" ]; then
         cua_resolved=true
     fi
+    if [ -x "$HOME/.local/bin/cua-driver" ] || [ -x "/opt/homebrew/bin/cua-driver" ] || [ -x "/usr/local/bin/cua-driver" ]; then
+        cua_resolved=true
+    fi
 
     if [ "$cua_resolved" = false ]; then
         log_warn "cua-driver not available — not enabling computer_use in config."
@@ -1343,15 +1349,17 @@ maybe_install_cua_driver() {
     fi
 
     log_success "cua-driver ready"
+    local config_python="$PYTHON_PATH"
     if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
-        if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" \
-            "$INSTALL_DIR/venv/bin/python" -c \
-            "from spark_cli.tools_config import enable_computer_use_cli_toolset; enable_computer_use_cli_toolset()" 2>/dev/null
-        then
-            log_success "computer_use toolset enabled for CLI (restart spark if it is running)"
-        else
-            log_warn "Could not update config — run: spark tools and enable computer_use"
-        fi
+        config_python="$INSTALL_DIR/venv/bin/python"
+    fi
+    if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" \
+        "$config_python" -c \
+        "from spark_cli.tools_config import enable_computer_use_cli_toolset; enable_computer_use_cli_toolset()" 2>/dev/null
+    then
+        log_success "computer_use toolset enabled for CLI (restart spark if it is running)"
+    else
+        log_warn "Could not update config — run: spark tools and enable computer_use"
     fi
 }
 

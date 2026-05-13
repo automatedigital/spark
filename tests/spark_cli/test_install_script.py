@@ -32,3 +32,16 @@ def test_legacy_setup_script_syncs_missing_bundled_skills():
     assert "tools/skills_sync.py" not in content
     assert "find \"$SCRIPT_DIR/skills\" -name SKILL.md" in content
     assert "Missing bundled skills copied" in content
+
+
+def test_installer_prompts_before_computer_use_install():
+    content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+    start = content.index("maybe_install_cua_driver()")
+    end = content.index("run_setup_wizard()", start)
+    function_body = content[start:end]
+
+    assert "maybe_install_cua_driver()" in function_body
+    assert '[ "$OS" = "macos" ] || return 0' in function_body
+    assert "Enable computer use for this Mac? [Y/n]" in function_body
+    assert "read -p" in function_body
+    assert "Skipped computer_use." in function_body

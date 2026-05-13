@@ -607,17 +607,22 @@ def run_doctor(args):
     import platform as _platform
     if _platform.system() == "Darwin":
         try:
-            from tools.computer_use.cua_backend import is_available as _cua_available
+            from tools.computer_use.cua_backend import (
+                cua_driver_install_command as _cua_install_command,
+                is_available as _cua_available,
+            )
             _ok = _cua_available()
         except Exception:
             _ok = bool(shutil.which("cua-driver"))
+
+            def _cua_install_command():
+                return f"{sys.executable} -m pip install cua-driver"
         if _ok:
             check_ok("cua-driver", "(macOS background computer-use)")
         else:
             check_warn("cua-driver not found", "(optional, enables computer_use toolset)")
-            _code = SPARK_HOME / "spark-agent"
             check_info(
-                f"Install: cd {_code} && VIRTUAL_ENV={_code}/venv uv pip install cua-driver"
+                f"Install: {_cua_install_command()}"
                 " — or: brew install cua-driver"
             )
 

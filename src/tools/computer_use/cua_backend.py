@@ -27,7 +27,7 @@ import shutil
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -85,7 +85,15 @@ def cua_driver_resolution_hint() -> str:
     lines.append(
         f"  Override: export SPARK_CUA_DRIVER_BIN=/path/to/{_CUA_BINARY}"
     )
+    lines.append(f"  Install for this Spark: {cua_driver_install_command()}")
     return "\n".join(lines)
+
+
+def cua_driver_install_command() -> str:
+    """Return the exact pip command for the Python running this Spark process."""
+    import shlex
+
+    return f"{shlex.quote(sys.executable)} -m pip install cua-driver"
 
 
 # Timeout in seconds for MCP tool calls
