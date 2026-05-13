@@ -603,6 +603,15 @@ def run_doctor(args):
             check_fail("daytona SDK not installed", "(pip install daytona)")
             issues.append("Install daytona SDK: pip install daytona")
 
+    # cua-driver (macOS background computer-use)
+    import platform as _platform
+    if _platform.system() == "Darwin":
+        if shutil.which("cua-driver"):
+            check_ok("cua-driver", "(macOS background computer-use)")
+        else:
+            check_warn("cua-driver not found", "(optional, enables computer_use toolset)")
+            check_info("Install: pip install cua-driver  or  brew install cua-driver")
+
     # Node.js + agent-browser (for browser automation tools)
     if shutil.which("node"):
         check_ok("Node.js")

@@ -4486,6 +4486,48 @@ def _install_python_dependencies_with_optional_fallback(
         )
 
 
+def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> None:
+    """On macOS, offer to install cua-driver if not already present."""
+    if sys.platform != "darwin":
+        return
+    if shutil.which("cua-driver"):
+        return
+
+    # Only prompt when interactive (tty available)
+    can_prompt = gateway_mode or (sys.stdin.isatty() and sys.stdout.isatty())
+    if not can_prompt:
+        return
+
+    print()
+    print("ℹ  cua-driver enables background macOS desktop control (computer_use toolset).")
+    print("   Lets Spark click, type, and scroll in native apps without stealing your cursor.")
+    print()
+
+    if gateway_mode and input_fn is not None:
+        response = input_fn("Install cua-driver? [y/N]", "n").strip().lower()
+    else:
+        try:
+            response = input("Install cua-driver for macOS computer-use? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            response = "n"
+
+    if response not in ("y", "yes"):
+        print("  Skipped. Install later with: pip install cua-driver")
+        return
+
+    print("→ Installing cua-driver...")
+    pip_cmd = [sys.executable, "-m", "pip", "install", "cua-driver", "--quiet"]
+    result = subprocess.run(pip_cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        print("  ✓ cua-driver installed — enable with: /toolset computer_use")
+    else:
+        print("  ✗ cua-driver install failed.")
+        if result.stderr.strip():
+            print(f"    {result.stderr.strip().splitlines()[0]}")
+        print("    Install manually: pip install cua-driver")
+
+
 def cmd_update(args):
     """Update Spark Agent to the latest version."""
     import shutil
@@ -4818,6 +4860,9 @@ def cmd_update(args):
 
         # Build web UI frontend (optional — requires npm)
         _build_web_ui(Path(__file__).parent / "web")
+
+        # Offer cua-driver install on macOS if not yet installed
+        _maybe_offer_cua_driver(gateway_mode=gateway_mode, input_fn=gw_input_fn)
 
         print()
         print("✓ Code updated!")

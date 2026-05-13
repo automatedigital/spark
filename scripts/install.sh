@@ -1255,6 +1255,62 @@ install_node_deps() {
     fi
 }
 
+maybe_install_cua_driver() {
+    # Only relevant on macOS
+    [ "$OS" = "macos" ] || return 0
+
+    # Skip if already installed
+    if command -v cua-driver &> /dev/null; then
+        log_success "cua-driver already installed (computer-use enabled)"
+        return 0
+    fi
+
+    # Need a terminal to ask
+    local tty_available=false
+    if [ "$IS_INTERACTIVE" = true ]; then
+        tty_available=true
+    elif [ -e /dev/tty ]; then
+        tty_available=true
+    fi
+
+    if [ "$tty_available" = false ]; then
+        log_info "Skipping cua-driver prompt (non-interactive). Install later with: pip install cua-driver"
+        return 0
+    fi
+
+    echo ""
+    log_info "cua-driver enables background macOS desktop control (computer_use toolset)."
+    log_info "It lets Spark click, type, and scroll in native apps without stealing your cursor."
+
+    local reply
+    if [ "$IS_INTERACTIVE" = true ]; then
+        read -p "Install cua-driver for macOS computer-use? [y/N] " -n 1 -r reply
+    else
+        read -p "Install cua-driver for macOS computer-use? [y/N] " -n 1 -r reply < /dev/tty
+    fi
+    echo
+
+    if [[ ! $reply =~ ^[Yy]$ ]]; then
+        log_info "Skipped. Install later with: pip install cua-driver"
+        return 0
+    fi
+
+    log_info "Installing cua-driver..."
+
+    local pip_python
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
+        pip_python="$INSTALL_DIR/venv/bin/python"
+    else
+        pip_python="$PYTHON_PATH"
+    fi
+
+    if "$pip_python" -m pip install cua-driver --quiet; then
+        log_success "cua-driver installed (enable with: /toolset computer_use)"
+    else
+        log_warn "cua-driver install failed. Try manually: pip install cua-driver"
+    fi
+}
+
 run_setup_wizard() {
     if [ "$RUN_SETUP" = false ]; then
         log_info "Skipping setup wizard (--skip-setup)"
@@ -1469,6 +1525,7 @@ main() {
     install_node_deps
     setup_path
     copy_config_templates
+    maybe_install_cua_driver
     run_setup_wizard
     maybe_start_gateway
 

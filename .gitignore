@@ -1,4 +1,5 @@
 /venv/
+/dev/
 /_pycache/
 *.pyc*
 __pycache__/

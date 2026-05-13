@@ -200,6 +200,16 @@ TOOLSETS = {
         "includes": []
     },
 
+    "computer_use": {
+        "description": (
+            "macOS background desktop control via cua-driver — screenshot, click, type, "
+            "key combos, scroll, drag without stealing cursor focus or switching Spaces. "
+            "Requires cua-driver on PATH (macOS only)."
+        ),
+        "tools": ["computer_use"],
+        "includes": []
+    },
+
 
     # Scenario-specific toolsets
     
