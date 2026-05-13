@@ -1,45 +1,29 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  Activity,
-  BarChart3,
   ChevronLeft,
   ChevronRight,
   Clock,
-  FileText,
   FolderOpen,
-  KeyRound,
   LayoutGrid,
   MessageSquare,
   Package,
   Settings,
-  Shield,
 } from "lucide-react";
-import StatusPage from "@/pages/StatusPage";
-import ConfigPage from "@/pages/ConfigPage";
-import EnvPage from "@/pages/EnvPage";
 import ConversationsPage from "@/pages/ConversationsPage";
-import LogsPage from "@/pages/LogsPage";
-import AnalyticsPage from "@/pages/AnalyticsPage";
 import CronPage from "@/pages/CronPage";
-import SkillsPage from "@/pages/SkillsPage";
 import KanbanPage from "@/pages/KanbanPage";
-import AdminPage from "@/pages/AdminPage";
+import SkillsPage from "@/pages/SkillsPage";
 import WorkspacePage from "@/pages/WorkspacePage";
+import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 
 const NAV_ITEMS = [
   { id: "workspace", labelKey: "workspace" as const, icon: FolderOpen },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
-  { id: "status", labelKey: "status" as const, icon: Activity },
   { id: "conversations", labelKey: "conversations" as const, icon: MessageSquare },
-  { id: "analytics", labelKey: "analytics" as const, icon: BarChart3 },
-  { id: "logs", labelKey: "logs" as const, icon: FileText },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
-  { id: "admin", labelKey: "admin" as const, icon: Shield },
-  { id: "config", labelKey: "config" as const, icon: Settings },
-  { id: "env", labelKey: "keys" as const, icon: KeyRound },
 ] as const;
 
 type PageId = (typeof NAV_ITEMS)[number]["id"];
@@ -47,15 +31,9 @@ type PageId = (typeof NAV_ITEMS)[number]["id"];
 const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   kanban: KanbanPage,
   workspace: WorkspacePage,
-  status: StatusPage,
   conversations: ConversationsPage,
-  analytics: AnalyticsPage,
-  logs: LogsPage,
   cron: CronPage,
   skills: SkillsPage,
-  admin: AdminPage,
-  config: ConfigPage,
-  env: EnvPage,
 };
 
 function SparkLogo({ className = "" }: { className?: string }) {
@@ -74,6 +52,7 @@ export default function App() {
   const [page, setPage] = useState<PageId>("kanban");
   const [navExpanded, setNavExpanded] = useState(false);
   const [animKey, setAnimKey] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const initialRef = useRef(true);
   const { t } = useI18n();
   const [authWall, setAuthWall] = useState(false);
@@ -110,8 +89,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Skip the animation key bump on initial mount to avoid re-mounting
-    // the default page component (which causes duplicate API requests).
     if (initialRef.current) {
       initialRef.current = false;
       return;
@@ -182,6 +159,30 @@ export default function App() {
               </button>
             ))}
           </nav>
+
+          {/* Settings button */}
+          <div className={`border-t border-border px-3 py-3 ${navExpanded ? "items-stretch" : "flex justify-center"}`}>
+            <button
+              type="button"
+              title="Settings"
+              aria-label="Settings"
+              onClick={() => setSettingsOpen(true)}
+              className={`group relative flex h-12 items-center rounded-sm border transition ${
+                settingsOpen
+                  ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
+                  : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
+              } ${navExpanded ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+            >
+              <Settings className="h-5 w-5" />
+              {navExpanded && (
+                <span className="truncate text-sm font-medium">Settings</span>
+              )}
+              <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${navExpanded ? "hidden" : "hidden group-hover:block"}`}>
+                Settings
+              </span>
+            </button>
+          </div>
+
           <div className={`border-t border-border p-3 text-[0.62rem] uppercase tracking-[0.12em] text-muted-foreground ${navExpanded ? "text-left" : "text-center"}`}>
             {navExpanded ? t.app.footer.name : "Web UI"}
           </div>
@@ -200,6 +201,7 @@ export default function App() {
                 <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Spark</div>
                 <div className="text-sm font-semibold text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "kanban"]}</div>
               </div>
+              {/* Mobile nav */}
               <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-sm border border-border bg-card/70 p-1 shadow-inner scrollbar-none md:hidden">
                 {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
                   <button
@@ -214,6 +216,17 @@ export default function App() {
                     <Icon className="h-4 w-4" />
                   </button>
                 ))}
+                {/* Settings button for mobile */}
+                <button
+                  type="button"
+                  title="Settings"
+                  onClick={() => setSettingsOpen(true)}
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
+                    settingsOpen ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
               </nav>
               <div className="ml-auto hidden items-center gap-2 md:flex">
                 <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_18px_rgba(20,184,166,0.75)]" />
@@ -294,6 +307,8 @@ export default function App() {
           </main>
         </div>
       </div>
+
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
