@@ -7131,14 +7131,29 @@ class SparkCLI:
         enable_computer_use_cli_toolset()
         self.enabled_toolsets = _get_platform_tools(load_config(), "cli")
 
+        _disabled = (
+            self.agent.disabled_toolsets
+            if self.agent is not None
+            else None
+        )
+        try:
+            _defs = get_tool_definitions(
+                enabled_toolsets=self.enabled_toolsets,
+                disabled_toolsets=_disabled,
+                quiet_mode=True,
+            )
+        except Exception as e:
+            _cprint(f"  WARN  Could not resolve tools: {e}")
+            _defs = []
+
+        cu_resolves = any(
+            t.get("function", {}).get("name") == "computer_use" for t in (_defs or [])
+        )
+
         if self.agent is not None:
             self.agent.enabled_toolsets = self.enabled_toolsets
             try:
-                self.agent.tools = get_tool_definitions(
-                    enabled_toolsets=self.enabled_toolsets,
-                    disabled_toolsets=self.agent.disabled_toolsets,
-                    quiet_mode=True,
-                )
+                self.agent.tools = _defs
                 self.agent.valid_tool_names = (
                     {t["function"]["name"] for t in self.agent.tools}
                     if self.agent.tools
@@ -7149,8 +7164,8 @@ class SparkCLI:
             if hasattr(self.agent, "_invalidate_system_prompt"):
                 self.agent._invalidate_system_prompt()
 
-        sys_msg = (
-            "[SYSTEM: computer_use is now in your tool list for this session. "
+        sys_msg_force = (
+            "[SYSTEM: computer_use is in your tool list for this session. "
             "For the user's native macOS desktop / Notion.app / Slack.app / Finder "
             "(non-web) request, you MUST use computer_use: action=capture with "
             "app=<substring> first, then click/type/key using element indices from "
@@ -7158,15 +7173,37 @@ class SparkCLI:
             "workflows. Do NOT drive the GUI via terminal (osascript, screencapture, "
             "OCR, or coordinate clicks on screenshots).]"
         )
-        body = f"{sys_msg}\n\nUser request:\n{user_tail}" if user_tail else sys_msg
+        sys_msg_soft = (
+            "[Note: /computer-use was run but the computer_use tool is not available "
+            "in this session (the cua-driver binary is missing or not discoverable). "
+            "Install it in the same venv as Spark: uv pip install cua-driver — then "
+            "run /computer-use again. For this message only, use whatever tools you "
+            "have to help the user; do not refuse the task because computer_use is missing.]"
+        )
+
+        if cu_resolves:
+            body = (
+                f"{sys_msg_force}\n\nUser request:\n{user_tail}"
+                if user_tail
+                else sys_msg_force
+            )
+        elif user_tail:
+            body = f"{sys_msg_soft}\n\nUser request:\n{user_tail}"
+        else:
+            body = ""
 
         if user_tail:
             if hasattr(self, "_pending_input"):
                 self._pending_input.put(body)
-                _cprint("  Computer-use mode — task queued for the agent.")
+                if cu_resolves:
+                    _cprint("  Computer-use mode — task queued for the agent.")
+                else:
+                    _cprint(
+                        "  Task queued without computer_use (see cua-driver note above)."
+                    )
             else:
                 _cprint("  Computer-use enabled but input queue is unavailable.")
-        else:
+        elif cu_resolves:
             self.conversation_history.append({"role": "user", "content": body})
             if self.agent is not None:
                 try:
@@ -7179,11 +7216,7 @@ class SparkCLI:
             _cprint(
                 "  Computer-use enabled. Describe the desktop task in your next message."
             )
-
-        cu_loaded = bool(
-            self.agent and "computer_use" in getattr(self.agent, "valid_tool_names", set())
-        )
-        if not cu_loaded:
+        else:
             try:
                 from tools.computer_use.cua_backend import is_available as _cua_ok
             except Exception:
@@ -7191,11 +7224,14 @@ class SparkCLI:
                     return False
             if not _cua_ok():
                 _cprint(
-                    "  Tip: Install cua-driver in this venv: uv pip install cua-driver"
+                    "  computer_use is enabled in config but cua-driver was not found."
+                )
+                _cprint(
+                    "  Install: uv pip install cua-driver  (same Python venv as spark)"
                 )
             else:
                 _cprint(
-                    "  Note: computer_use did not load (check tools / platform_toolsets)."
+                    "  computer_use did not load — check platform_toolsets / tool errors."
                 )
 
     def _handle_browser_command(self, cmd: str):

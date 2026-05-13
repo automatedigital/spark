@@ -73,3 +73,46 @@ class TestComputerUseCommand:
         assert "computer_use" in cli_obj.conversation_history[0]["content"]
         cli_obj._pending_input.put.assert_not_called()
         cli_obj.agent._persist_session.assert_called_once()
+
+    def test_macos_missing_cua_queues_fallback_not_force_system(self):
+        cli_obj = _make_cli_with_agent()
+        with patch("platform.system", return_value="Darwin"):
+            with patch("spark_cli.tools_config.enable_computer_use_cli_toolset"):
+                with patch(
+                    "spark_cli.tools_config._get_platform_tools",
+                    return_value=["computer_use", "terminal"],
+                ):
+                    with patch("core.model_tools.get_tool_definitions") as gt:
+                        gt.return_value = [{"function": {"name": "terminal"}}]
+                        with patch(
+                            "tools.computer_use.cua_backend.is_available",
+                            return_value=False,
+                        ):
+                            assert (
+                                cli_obj.process_command(
+                                    "/computer-use do something in Notion"
+                                )
+                                is True
+                            )
+        cli_obj._pending_input.put.assert_called_once()
+        queued = cli_obj._pending_input.put.call_args[0][0]
+        assert "MUST use computer_use" not in queued
+        assert "not available" in queued.lower() or "missing" in queued.lower()
+        assert "do something in Notion" in queued
+
+    def test_macos_no_task_without_tool_no_history(self):
+        cli_obj = _make_cli_with_agent()
+        with patch("platform.system", return_value="Darwin"):
+            with patch("spark_cli.tools_config.enable_computer_use_cli_toolset"):
+                with patch(
+                    "spark_cli.tools_config._get_platform_tools",
+                    return_value=["computer_use"],
+                ):
+                    with patch("core.model_tools.get_tool_definitions") as gt:
+                        gt.return_value = []
+                        with patch(
+                            "tools.computer_use.cua_backend.is_available",
+                            return_value=False,
+                        ):
+                            assert cli_obj.process_command("/computer-use") is True
+        assert cli_obj.conversation_history == []
