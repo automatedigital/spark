@@ -638,7 +638,7 @@ export default function WorkspacePage() {
 
   return (
     <div
-      className="grid h-[calc(100vh-4rem)] overflow-hidden rounded-sm border border-border -mx-3 sm:-mx-6 -my-4 sm:-my-8"
+      className="grid flex-1 overflow-hidden rounded-sm border border-border"
       style={{ gridTemplateColumns: "240px 300px 1fr" }}
     >
       {/* Left: project list */}

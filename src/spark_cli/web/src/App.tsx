@@ -237,7 +237,7 @@ export default function App() {
 
           <main
             key={animKey}
-            className="relative mx-auto w-full max-w-[1480px] flex-1 px-3 py-4 sm:px-6 sm:py-8"
+            className={page === "workspace" ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto w-full max-w-[1480px] flex-1 px-3 py-4 sm:px-6 sm:py-8"}
             style={{ animation: "fade-in 150ms ease-out" }}
           >
             {authChecking ? (
