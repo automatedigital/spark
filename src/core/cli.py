@@ -7199,7 +7199,7 @@ class SparkCLI:
                     _cprint("  Computer-use mode — task queued for the agent.")
                 else:
                     _cprint(
-                        "  Task queued without computer_use (see cua-driver note above)."
+                        "  Task queued without computer_use — diagnostics below."
                     )
             else:
                 _cprint("  Computer-use enabled but input queue is unavailable.")
@@ -7217,22 +7217,20 @@ class SparkCLI:
                 "  Computer-use enabled. Describe the desktop task in your next message."
             )
         else:
+            _cprint(
+                "  computer_use is not available until cua-driver can be found "
+                "(see diagnostics below)."
+            )
+
+        if not cu_resolves:
             try:
-                from tools.computer_use.cua_backend import is_available as _cua_ok
+                from tools.computer_use.cua_backend import cua_driver_resolution_hint
+
+                _hint = cua_driver_resolution_hint()
+                if _hint:
+                    _cprint(_hint)
             except Exception:
-                def _cua_ok():
-                    return False
-            if not _cua_ok():
-                _cprint(
-                    "  computer_use is enabled in config but cua-driver was not found."
-                )
-                _cprint(
-                    "  Install: uv pip install cua-driver  (same Python venv as spark)"
-                )
-            else:
-                _cprint(
-                    "  computer_use did not load — check platform_toolsets / tool errors."
-                )
+                pass
 
     def _handle_browser_command(self, cmd: str):
         """Handle /browser connect|disconnect|status - manage live Chrome CDP connection."""

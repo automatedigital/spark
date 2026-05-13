@@ -39,6 +39,8 @@ _CUA_BINARY = os.environ.get("SPARK_CUA_DRIVER_BIN", "cua-driver")
 
 def _resolve_cua_binary() -> Optional[str]:
     """Return executable path for cua-driver, or None."""
+    import platform
+
     p = Path(_CUA_BINARY)
     if p.is_file():
         return str(p.resolve())
@@ -49,7 +51,41 @@ def _resolve_cua_binary() -> Optional[str]:
     venv_bin = Path(sys.executable).resolve().parent / _CUA_BINARY
     if venv_bin.is_file():
         return str(venv_bin)
+    # User / Homebrew installs often land outside the active PATH (GUI apps, minimal env)
+    if platform.system() == "Darwin":
+        for candidate in (
+            Path.home() / ".local" / "bin" / _CUA_BINARY,
+            Path("/opt/homebrew/bin") / _CUA_BINARY,
+            Path("/usr/local/bin") / _CUA_BINARY,
+        ):
+            try:
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    return str(candidate.resolve())
+            except OSError:
+                continue
     return None
+
+
+def cua_driver_resolution_hint() -> str:
+    """Short diagnostic for humans when computer_use is unavailable on macOS."""
+    import platform
+
+    if platform.system() != "Darwin":
+        return ""
+    exe = sys.executable
+    beside = Path(exe).resolve().parent / _CUA_BINARY
+    lines = [
+        f"  Spark Python: {exe}",
+        f"  Look(ed) for `{_CUA_BINARY}` beside it: {beside}"
+        f" {'(exists)' if beside.is_file() else '(missing)'}",
+    ]
+    w = shutil.which(_CUA_BINARY)
+    if w:
+        lines.append(f"  Also on PATH: {w}")
+    lines.append(
+        f"  Override: export SPARK_CUA_DRIVER_BIN=/path/to/{_CUA_BINARY}"
+    )
+    return "\n".join(lines)
 
 
 # Timeout in seconds for MCP tool calls
