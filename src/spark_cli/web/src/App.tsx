@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clock,
   FileText,
+  FolderOpen,
   KeyRound,
   LayoutGrid,
   MessageSquare,
@@ -23,11 +24,13 @@ import CronPage from "@/pages/CronPage";
 import SkillsPage from "@/pages/SkillsPage";
 import KanbanPage from "@/pages/KanbanPage";
 import AdminPage from "@/pages/AdminPage";
+import WorkspacePage from "@/pages/WorkspacePage";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 
 const NAV_ITEMS = [
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
+  { id: "workspace", labelKey: "workspace" as const, icon: FolderOpen },
   { id: "status", labelKey: "status" as const, icon: Activity },
   { id: "conversations", labelKey: "conversations" as const, icon: MessageSquare },
   { id: "analytics", labelKey: "analytics" as const, icon: BarChart3 },
@@ -43,6 +46,7 @@ type PageId = (typeof NAV_ITEMS)[number]["id"];
 
 const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   kanban: KanbanPage,
+  workspace: WorkspacePage,
   status: StatusPage,
   conversations: ConversationsPage,
   analytics: AnalyticsPage,

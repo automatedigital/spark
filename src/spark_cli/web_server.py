@@ -56,6 +56,7 @@ from spark_cli.dashboard_auth import (
     validate_dashboard_request,
 )
 from spark_cli.kanban_routes import register_kanban_routes
+from spark_cli.workspace_routes import register_workspace_routes
 
 try:
     from fastapi import FastAPI, HTTPException, Request
@@ -3870,6 +3871,138 @@ def mount_spa(application: FastAPI):
 
 
 register_kanban_routes(app)
+register_workspace_routes(app)
+
+
+# ── Workspace conversation endpoints ─────────────────────────────────────────
+
+
+class WorkspaceConvCreate(BaseModel):
+    message: str
+    model: Optional[str] = None
+
+
+@app.post("/api/workspace/projects/{slug}/conversations")
+async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
+    """Start a Spark agent conversation scoped to a workspace project."""
+    from datetime import datetime
+
+    try:
+        from tools.approval import register_gateway_notify, unregister_gateway_notify
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}")
+
+    from spark_cli.workspace_routes import _project_dir
+
+    project_dir = _project_dir(slug)
+    source = f"workspace:{slug}"
+
+    session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    queue: asyncio.Queue = asyncio.Queue()
+    _web_queues[session_id] = queue
+
+    loop = asyncio.get_running_loop()
+    (
+        token_callback,
+        tool_start_callback,
+        tool_complete_callback,
+        reasoning_callback,
+        status_callback,
+    ) = _make_web_chat_callbacks(session_id, queue, loop)
+
+    if body.model:
+        from spark_cli.model_config import write_global_model_config
+
+        write_global_model_config(model=body.model)
+    turn_route = _resolve_web_turn_route(body.message)
+    model = turn_route["model"]
+
+    try:
+        agent = _new_web_agent(
+            session_id=session_id,
+            model=model,
+            runtime=turn_route["runtime"],
+            request_overrides=turn_route.get("request_overrides"),
+            signature=turn_route["signature"],
+            token_callback=token_callback,
+            tool_start_callback=tool_start_callback,
+            tool_complete_callback=tool_complete_callback,
+            reasoning_callback=reasoning_callback,
+            status_callback=status_callback,
+        )
+    except (ValueError, Exception) as e:
+        _web_queues.pop(session_id, None)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        from core.spark_state import SessionDB as _SessionDB
+
+        _db = _SessionDB()
+        try:
+            _db._conn.execute(
+                "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
+                "VALUES (?, ?, ?, ?, 'active')",
+                (session_id, source, model, time.time()),
+            )
+            _db._conn.commit()
+            row = _db.get_session(session_id)
+            if row:
+                _emit_sessions_changed("created", session_id, row)
+        finally:
+            _db.close()
+    except Exception:
+        _log.debug("workspace session create emit failed", exc_info=True)
+
+    context_prefix = f"[Project: {slug} | Path: {project_dir}]\n\n"
+    message = context_prefix + body.message
+
+    def _gw_notify(data: dict) -> None:
+        _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
+
+    async def run_agent_task() -> None:
+        register_gateway_notify(session_id, _gw_notify)
+        _web_streaming.add(session_id)
+        before_message_count = _session_message_count(session_id)
+        result = None
+        try:
+            result = await loop.run_in_executor(
+                None, lambda: _run_web_agent_turn(agent, message, None)
+            )
+        except Exception:
+            _log.exception("Workspace chat agent error session=%s slug=%s", session_id, slug)
+        finally:
+            _web_streaming.discard(session_id)
+            unregister_gateway_notify(session_id)
+            _persist_web_turn_if_missing(session_id, message, result, before_message_count)
+            _emit_web_session_updated(session_id)
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+            _publish_event("chat.turn_done", {}, session_id)
+
+    asyncio.create_task(run_agent_task())
+    return {"session_id": session_id, "ok": True, "source": source}
+
+
+@app.get("/api/workspace/projects/{slug}/conversations")
+async def list_workspace_conversations(slug: str, limit: int = 30, offset: int = 0):
+    """List chat sessions for a workspace project."""
+    from core.spark_state import SessionDB
+
+    source = f"workspace:{slug}"
+    db = SessionDB()
+    try:
+        sessions = db.list_sessions_rich(limit=limit, offset=offset, source=source)
+        total = db.session_count(source=source)
+        now = time.time()
+        for s in sessions:
+            s["is_active"] = (
+                s.get("ended_at") is None
+                and (now - s.get("last_active", s.get("started_at", 0))) < 300
+            )
+    finally:
+        db.close()
+    return {"sessions": sessions, "total": total, "limit": limit, "offset": offset}
+
+
 mount_spa(app)
 
 

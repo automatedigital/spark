@@ -465,6 +465,67 @@ export const api = {
       },
     );
   },
+
+  // Workspace
+  listWorkspaceProjects: () =>
+    fetchJSON<WorkspaceProjectsResponse>("/api/workspace/projects"),
+
+  createWorkspaceProject: (name: string) =>
+    fetchJSON<{ ok: boolean; slug: string; name: string; path: string }>("/api/workspace/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
+
+  getWorkspaceFileTree: (slug: string) =>
+    fetchJSON<WorkspaceTreeResponse>(`/api/workspace/projects/${encodeURIComponent(slug)}/tree`),
+
+  getWorkspaceFile: (slug: string, path: string) => {
+    const qs = new URLSearchParams({ path });
+    return fetchJSON<WorkspaceFileContent>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/file?${qs}`,
+    );
+  },
+
+  uploadWorkspaceFiles: async (slug: string, files: File[], path = "") => {
+    const form = new FormData();
+    for (const f of files) form.append("files", f);
+    const qs = path ? `?path=${encodeURIComponent(path)}` : "";
+    const res = await fetch(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/upload${qs}`,
+      { method: "POST", headers: authHeaders(), body: form },
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.json() as Promise<{ ok: boolean; saved: Array<{ filename: string; size: number }> }>;
+  },
+
+  deleteWorkspaceFile: (slug: string, path: string) => {
+    const qs = new URLSearchParams({ path });
+    return fetchJSON<{ ok: boolean; deleted: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/file?${qs}`,
+      { method: "DELETE" },
+    );
+  },
+
+  startWorkspaceConversation: (slug: string, message: string, model?: string) =>
+    fetchJSON<{ session_id: string; ok: boolean; source: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/conversations`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, model }),
+      },
+    ),
+
+  listWorkspaceConversations: (slug: string, limit = 30, offset = 0) => {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    return fetchJSON<PaginatedSessions>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/conversations?${qs}`,
+    );
+  },
 };
 
 export interface PlatformStatus {
@@ -999,4 +1060,41 @@ export interface OAuthPollResponse {
   status: "pending" | "approved" | "denied" | "expired" | "error";
   error_message?: string | null;
   expires_at?: number | null;
+}
+
+// ── Workspace types ───────────────────────────────────────────────────────
+
+export interface WorkspaceProject {
+  slug: string;
+  name: string;
+  path: string;
+  mtime: number;
+  file_count: number;
+}
+
+export interface WorkspaceProjectsResponse {
+  projects: WorkspaceProject[];
+}
+
+export interface WorkspaceFileNode {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+  size?: number;
+  mtime?: number;
+  mime?: string;
+  children?: WorkspaceFileNode[];
+}
+
+export interface WorkspaceTreeResponse {
+  slug: string;
+  path: string;
+  tree: WorkspaceFileNode[];
+}
+
+export interface WorkspaceFileContent {
+  path: string;
+  content: string;
+  mime: string;
+  size: number;
 }
