@@ -34,7 +34,7 @@ COMPUTER_USE_SCHEMA = {
                     "capture: screenshot + AX-tree element list (required first step). "
                     "click: click an element or coordinate. "
                     "type: type text into focused element. "
-                    "key: send key combo e.g. 'cmd+s', 'return', 'shift+delete'. "
+                    "key: send key combo e.g. 'cmd+p', 'return', 'shift+delete'. "
                     "scroll: scroll in a direction. "
                     "drag: drag from one point to another. "
                     "set_value: set dropdown/popup value by element index. "
@@ -64,11 +64,11 @@ COMPUTER_USE_SCHEMA = {
             },
             "x": {
                 "type": "number",
-                "description": "Screen x-coordinate (pixels from left).",
+                "description": "Window-local screenshot x-coordinate.",
             },
             "y": {
                 "type": "number",
-                "description": "Screen y-coordinate (pixels from top).",
+                "description": "Window-local screenshot y-coordinate.",
             },
             "text": {
                 "type": "string",

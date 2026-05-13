@@ -71,3 +71,34 @@ def test_computer_use_dispatch_accepts_task_id(monkeypatch):
 
     assert "error" not in result
     assert result["apps"] == [{"pid": 123, "name": "Notion"}]
+
+
+def test_cua_window_helpers_accept_current_api_shape():
+    from tools.computer_use import cua_backend as cb
+
+    windows = cb._parse_windows(
+        {
+            "structuredContent": {
+                "windows": [
+                    {
+                        "pid": 456,
+                        "app_name": "Notion",
+                        "window_id": 789,
+                        "z_index": 1,
+                    }
+                ]
+            }
+        }
+    )
+    target = cb._select_window(windows, "notion")
+
+    assert cb._window_app(target) == "Notion"
+    assert cb._window_id(target) == 789
+
+
+def test_cua_key_combo_parses_schema_format():
+    from tools.computer_use import cua_backend as cb
+
+    assert cb._parse_key_combo("cmd+p") == ["cmd", "p"]
+    assert cb._parse_key_combo("shift+delete") == ["shift", "delete"]
+    assert cb._parse_key_combo("return") == ["return"]

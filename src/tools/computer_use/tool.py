@@ -131,11 +131,15 @@ def _capture_result(capture: CaptureResult) -> str:
         "mode": capture.mode,
         "app": capture.app,
         "window_title": capture.window_title,
+        "pid": capture.pid,
+        "window_id": capture.window_id,
         "width": capture.width,
         "height": capture.height,
         "element_count": len(capture.elements),
         "elements": capture.elements,
     }
+    if capture.tree_markdown:
+        payload["tree_markdown"] = capture.tree_markdown
     if capture.png_b64:
         # Truncate for JSON transport; full image is accessible via vision_analyze
         payload["screenshot_b64"] = capture.png_b64

@@ -7171,7 +7171,9 @@ class SparkCLI:
             "app=<substring> first, then click/type/key using element indices from "
             "the capture. Do NOT use browser_open or browser_* for logged-in desktop "
             "workflows. Do NOT drive the GUI via terminal (osascript, screencapture, "
-            "OCR, or coordinate clicks on screenshots).]"
+            "OCR, or coordinate clicks on screenshots). If computer_use returns an "
+            "error, report that error to the user and stop; do not fall back to shell, "
+            "browser, filesystem search, or local app database inspection.]"
         )
         sys_msg_soft = (
             "[Note: /computer-use was run but the computer_use tool is not available "

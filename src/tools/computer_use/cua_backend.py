@@ -135,6 +135,9 @@ class CaptureResult:
     elements: List[Dict]               # AX-tree element dicts from cua-driver
     app: Optional[str]
     window_title: Optional[str]
+    pid: Optional[int] = None
+    window_id: Optional[int] = None
+    tree_markdown: Optional[str] = None
 
 
 @dataclass
@@ -259,11 +262,16 @@ class _CuaDriverSession:
             raise RuntimeError("cua-driver process closed stdout")
         return json.loads(raw.decode())
 
-    async def _send_request_with_timeout(self, method: str, params: Dict) -> Dict:
+    async def _send_request_with_timeout(
+        self,
+        method: str,
+        params: Dict,
+        timeout: float = _CALL_TIMEOUT,
+    ) -> Dict:
         try:
             return await asyncio.wait_for(
                 self._send_request(method, params),
-                timeout=_CALL_TIMEOUT,
+                timeout=timeout,
             )
         except asyncio.TimeoutError as e:
             raise TimeoutError(_cua_timeout_message()) from e
@@ -296,10 +304,15 @@ class _CuaDriverSession:
         async with self._lock:
             try:
                 await self._ensure_started()
-                resp = await self._send_request_with_timeout("tools/call", {
-                    "name": name,
-                    "arguments": args,
-                })
+                timeout = 5 if name in {"list_apps", "list_windows"} else _CALL_TIMEOUT
+                resp = await self._send_request_with_timeout(
+                    "tools/call",
+                    {
+                        "name": name,
+                        "arguments": args,
+                    },
+                    timeout=timeout,
+                )
             except TimeoutError as e:
                 self._terminate_process()
                 return {
@@ -378,26 +391,34 @@ class CuaDriverBackend:
             windows = _parse_windows(windows_result)
             target = _select_window(windows, app)
             if not target:
+                launch = await _session.call_tool("launch_app", {"name": app})
+                if launch["isError"]:
+                    raise RuntimeError(f"launch_app failed: {launch['data']}")
+                windows = _parse_launch_windows(launch)
+                target = _select_window(windows, app) or (windows[0] if windows else None)
+            if not target:
                 raise RuntimeError(
                     f"No window found for app '{app}'. "
-                    f"Running apps: {[w.get('app', '') for w in windows]}"
+                    f"Running apps: {[_window_app(w) for w in windows]}"
                 )
             self._active_pid = target.get("pid")
-            self._active_window_id = target.get("windowId")
-            self._active_app = target.get("app")
+            self._active_window_id = _window_id(target)
+            self._active_app = _window_app(target)
 
-        capture_args: Dict[str, Any] = {"mode": mode}
+        capture_args: Dict[str, Any] = {}
         if self._active_pid is not None:
             capture_args["pid"] = self._active_pid
         if self._active_window_id is not None:
-            capture_args["windowId"] = self._active_window_id
+            capture_args["window_id"] = self._active_window_id
 
-        result = await _session.call_tool("capture", capture_args)
+        result = await _session.call_tool("get_window_state", capture_args)
         if result["isError"]:
             raise RuntimeError(f"capture failed: {result['data']}")
 
         structured = result.get("structuredContent") or {}
-        elements = structured.get("elements", [])
+        elements = structured.get("elements") or _parse_elements_from_markdown(
+            structured.get("tree_markdown") or result.get("data") or ""
+        )
         # Try parsing elements from text if structured content absent
         if not elements and result["data"]:
             try:
@@ -408,12 +429,15 @@ class CuaDriverBackend:
 
         return CaptureResult(
             mode=mode,
-            width=structured.get("width", 0),
-            height=structured.get("height", 0),
+            width=structured.get("screenshot_width", structured.get("width", 0)),
+            height=structured.get("screenshot_height", structured.get("height", 0)),
             png_b64=result["images"][0] if result["images"] else None,
             elements=elements,
             app=self._active_app,
-            window_title=structured.get("windowTitle"),
+            window_title=structured.get("window_title") or structured.get("windowTitle"),
+            pid=self._active_pid,
+            window_id=self._active_window_id,
+            tree_markdown=structured.get("tree_markdown") or result.get("data"),
         )
 
     # ------------------------------------------------------------------
@@ -428,24 +452,26 @@ class CuaDriverBackend:
         button: str = "left",
         click_count: int = 1,
     ) -> ActionResult:
-        return _bridge.run(self._action_async("click", {
+        args: Dict[str, Any] = {
             "pid": self._active_pid,
-            "windowId": self._active_window_id,
-            "element": element,
+            "window_id": self._active_window_id,
+            "element_index": element,
             "x": x,
             "y": y,
-            "button": button,
-            "clickCount": click_count,
-        }))
+            "count": click_count,
+        }
+        if button == "right" and element is not None:
+            args["action"] = "show_menu"
+        return _bridge.run(self._action_async("click", args))
 
     # ------------------------------------------------------------------
     # Type text
     # ------------------------------------------------------------------
 
     def type_text(self, text: str) -> ActionResult:
-        return _bridge.run(self._action_async("type", {
+        return _bridge.run(self._action_async("type_text", {
             "pid": self._active_pid,
-            "windowId": self._active_window_id,
+            "window_id": self._active_window_id,
             "text": text,
         }))
 
@@ -454,10 +480,17 @@ class CuaDriverBackend:
     # ------------------------------------------------------------------
 
     def key(self, keys: str) -> ActionResult:
-        return _bridge.run(self._action_async("key", {
+        normalized = _parse_key_combo(keys)
+        if len(normalized) > 1:
+            return _bridge.run(self._action_async("hotkey", {
+                "pid": self._active_pid,
+                "window_id": self._active_window_id,
+                "keys": normalized,
+            }))
+        return _bridge.run(self._action_async("press_key", {
             "pid": self._active_pid,
-            "windowId": self._active_window_id,
-            "keys": keys,
+            "window_id": self._active_window_id,
+            "key": normalized[0],
         }))
 
     # ------------------------------------------------------------------
@@ -474,12 +507,10 @@ class CuaDriverBackend:
     ) -> ActionResult:
         return _bridge.run(self._action_async("scroll", {
             "pid": self._active_pid,
-            "windowId": self._active_window_id,
+            "window_id": self._active_window_id,
             "direction": direction,
             "amount": amount,
-            "element": element,
-            "x": x,
-            "y": y,
+            "element_index": element,
         }))
 
     # ------------------------------------------------------------------
@@ -495,11 +526,11 @@ class CuaDriverBackend:
     ) -> ActionResult:
         return _bridge.run(self._action_async("drag", {
             "pid": self._active_pid,
-            "windowId": self._active_window_id,
-            "startX": start_x,
-            "startY": start_y,
-            "endX": end_x,
-            "endY": end_y,
+            "window_id": self._active_window_id,
+            "from_x": start_x,
+            "from_y": start_y,
+            "to_x": end_x,
+            "to_y": end_y,
         }))
 
     # ------------------------------------------------------------------
@@ -507,10 +538,10 @@ class CuaDriverBackend:
     # ------------------------------------------------------------------
 
     def set_value(self, value: str, element: int) -> ActionResult:
-        return _bridge.run(self._action_async("setValue", {
+        return _bridge.run(self._action_async("set_value", {
             "pid": self._active_pid,
-            "windowId": self._active_window_id,
-            "element": element,
+            "window_id": self._active_window_id,
+            "element_index": element,
             "value": value,
         }))
 
@@ -544,8 +575,8 @@ class CuaDriverBackend:
                 message=f"No window found for app '{app}'"
             )
         self._active_pid = target.get("pid")
-        self._active_window_id = target.get("windowId")
-        self._active_app = target.get("app")
+        self._active_window_id = _window_id(target)
+        self._active_app = _window_app(target)
         return ActionResult(
             success=True,
             message=f"Context set to {self._active_app} (pid={self._active_pid})",
@@ -565,7 +596,7 @@ class CuaDriverBackend:
         windows = _parse_windows(result)
         seen = {}
         for w in windows:
-            app = w.get("app", "")
+            app = _window_app(w)
             if app and app not in seen:
                 seen[app] = True
         return sorted(seen.keys())
@@ -606,6 +637,53 @@ def _parse_windows(result: Dict) -> List[Dict]:
     return []
 
 
+def _parse_launch_windows(result: Dict) -> List[Dict]:
+    """Extract windows returned by launch_app."""
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict):
+        return structured.get("windows", [])
+    if result.get("data"):
+        try:
+            parsed = json.loads(result["data"])
+            if isinstance(parsed, dict):
+                return parsed.get("windows", [])
+        except (json.JSONDecodeError, AttributeError):
+            pass
+    return []
+
+
+def _window_app(window: Dict) -> str:
+    return str(window.get("app") or window.get("app_name") or window.get("name") or "")
+
+
+def _window_id(window: Dict) -> Optional[int]:
+    return window.get("window_id") or window.get("windowId")
+
+
+def _parse_key_combo(keys: str) -> List[str]:
+    aliases = {
+        "command": "cmd",
+        "control": "ctrl",
+        "alt": "option",
+        "enter": "return",
+    }
+    parts = [
+        aliases.get(part.strip().lower(), part.strip().lower())
+        for part in keys.replace("+", " ").split()
+        if part.strip()
+    ]
+    return parts or [keys.strip().lower()]
+
+
+def _parse_elements_from_markdown(markdown: str) -> List[Dict[str, Any]]:
+    import re
+
+    elements = []
+    for match in re.finditer(r"\[(?:element_index\s+)?(\d+)\]\s*(.+)", markdown):
+        elements.append({"index": int(match.group(1)), "description": match.group(2).strip()})
+    return elements
+
+
 def _select_window(windows: List[Dict], app: str) -> Optional[Dict]:
     """Return the best-matching window for *app*.
 
@@ -615,10 +693,10 @@ def _select_window(windows: List[Dict], app: str) -> Optional[Dict]:
     app_lower = app.lower()
     matches = [
         w for w in windows
-        if app_lower in w.get("app", "").lower()
+        if app_lower in _window_app(w).lower()
     ]
     if not matches:
         return None
     # Lower z-index = closer to front
-    matches.sort(key=lambda w: w.get("zIndex", 9999))
+    matches.sort(key=lambda w: w.get("zIndex", w.get("z_index", 9999)))
     return matches[0]
