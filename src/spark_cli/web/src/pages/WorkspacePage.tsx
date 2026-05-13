@@ -42,7 +42,7 @@ function FileNodeRow({
   selectedPath: string | null;
   onDelete: (node: WorkspaceFileNode) => void;
 }) {
-  const [expanded, setExpanded] = useState(depth < 2);
+  const [expanded, setExpanded] = useState(false);
   const isDir = node.type === "dir";
   const isSelected = node.path === selectedPath;
 
@@ -520,16 +520,14 @@ function ProjectChatPanel({ slug }: { slug: string }) {
 
       {activeId ? (
         /* Active thread chat */
-        <div className="flex-1 overflow-hidden">
-          <ChatPanel
-            sessionId={activeId}
-            sessionTitle={activeThread?.title ?? activeThread?.preview ?? "Thread"}
-            onBack={() => setActiveId(null)}
-            onSessionCreated={(id) => setActiveId(id)}
-            onSessionUpdated={() => loadThreads()}
-            className="h-full"
-          />
-        </div>
+        <ChatPanel
+          sessionId={activeId}
+          sessionTitle={activeThread?.title ?? activeThread?.preview ?? "Thread"}
+          onBack={() => setActiveId(null)}
+          onSessionCreated={(id) => setActiveId(id)}
+          onSessionUpdated={() => loadThreads()}
+          className="min-h-0 flex-1"
+        />
       ) : (
         /* Thread list + new thread input */
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -640,7 +638,7 @@ export default function WorkspacePage() {
 
   return (
     <div
-      className="grid h-[calc(100vh-4rem)] overflow-hidden rounded-sm border border-border"
+      className="grid h-[calc(100vh-6rem)] sm:h-[calc(100vh-8rem)] overflow-hidden rounded-sm border border-border"
       style={{ gridTemplateColumns: "240px 300px 1fr" }}
     >
       {/* Left: project list */}

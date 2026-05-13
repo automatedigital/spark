@@ -17,6 +17,7 @@ import {
   type KanbanBoardResponse,
   type KanbanTaskDetail,
   type KanbanTaskRow,
+  type WorkspaceProject,
   sseUrl,
 } from "@/lib/api";
 import { useI18n } from "@/i18n";
@@ -97,6 +98,8 @@ export default function KanbanPage() {
   const [blockReason, setBlockReason] = useState("");
   const [linkParentId, setLinkParentId] = useState("");
   const [linkChildId, setLinkChildId] = useState("");
+  const [workspaceProjects, setWorkspaceProjects] = useState<WorkspaceProject[]>([]);
+  const [newWorkspaceSlug, setNewWorkspaceSlug] = useState("");
 
   const loadBoard = useCallback(async () => {
     setErr(null);
@@ -144,6 +147,12 @@ export default function KanbanPage() {
       es.close();
     };
     return () => es.close();
+  }, []);
+
+  useEffect(() => {
+    api.listWorkspaceProjects()
+      .then((res) => setWorkspaceProjects(res.projects))
+      .catch(() => {});
   }, []);
 
   const openTask = async (id: string) => {
@@ -204,6 +213,7 @@ export default function KanbanPage() {
   const createTask = async () => {
     if (!newTitle.trim()) return;
     try {
+      const selectedProject = workspaceProjects.find((p) => p.slug === newWorkspaceSlug);
       await api.createKanbanTask({
         title: newTitle.trim(),
         board: boardSlug,
@@ -211,12 +221,14 @@ export default function KanbanPage() {
         assignee: newAssignee.trim() || null,
         tenant: newTenant.trim() || null,
         priority: newPriority,
+        workspace_path: selectedProject?.path ?? null,
       });
       setNewTitle("");
       setNewAssignee("");
       setNewTenant("");
       setNewPriority(0);
       setNewBody("");
+      setNewWorkspaceSlug("");
       void loadBoard();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -506,7 +518,7 @@ export default function KanbanPage() {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 gap-3 border-t border-border bg-background/32 p-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 border-t border-border bg-background/32 p-4 md:grid-cols-2 xl:grid-cols-6">
           <select
             className="border border-border bg-background px-3 py-2 shadow-inner"
             value={templateKey}
@@ -516,6 +528,16 @@ export default function KanbanPage() {
             <option value="bug">Bug</option>
             <option value="feature">Feature</option>
             <option value="research">Research</option>
+          </select>
+          <select
+            className="border border-border bg-background px-3 py-2 shadow-inner"
+            value={newWorkspaceSlug}
+            onChange={(e) => setNewWorkspaceSlug(e.target.value)}
+          >
+            <option value="">Project (optional)</option>
+            {workspaceProjects.map((p) => (
+              <option key={p.slug} value={p.slug}>{p.name}</option>
+            ))}
           </select>
           <input
             className="border border-border bg-background px-3 py-2 shadow-inner"
@@ -656,6 +678,13 @@ export default function KanbanPage() {
               <div>Assignee: {String(detail.assignee ?? "—")}</div>
               <div>Priority: {String(detail.priority ?? 0)}</div>
               <div>Tenant: {String(detail.tenant ?? "—")}</div>
+              {detail.workspace_path && (
+                <div>
+                  Project:{" "}
+                  {workspaceProjects.find((p) => p.path === detail.workspace_path)?.name ??
+                    String(detail.workspace_path)}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <label className="flex flex-col gap-1">
@@ -699,6 +728,25 @@ export default function KanbanPage() {
                   defaultValue={String(detail.tenant ?? "")}
                   onBlur={(e) => void patchSelectedTask({ tenant: e.target.value })}
                 />
+              </label>
+              <label className="flex flex-col col-span-2 gap-1">
+                <span className="uppercase tracking-wider opacity-70">Workspace Project</span>
+                <select
+                  key={`workspace-${detail.id}-${String(detail.workspace_path ?? "")}`}
+                  className="border border-border bg-background px-2 py-1"
+                  defaultValue={
+                    workspaceProjects.find((p) => p.path === detail.workspace_path)?.slug ?? ""
+                  }
+                  onChange={(e) => {
+                    const proj = workspaceProjects.find((p) => p.slug === e.target.value);
+                    void patchSelectedTask({ workspace_path: proj?.path ?? null });
+                  }}
+                >
+                  <option value="">— none —</option>
+                  {workspaceProjects.map((p) => (
+                    <option key={p.slug} value={p.slug}>{p.name}</option>
+                  ))}
+                </select>
               </label>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">

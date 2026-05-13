@@ -29,8 +29,8 @@ import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 
 const NAV_ITEMS = [
-  { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "workspace", labelKey: "workspace" as const, icon: FolderOpen },
+  { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "status", labelKey: "status" as const, icon: Activity },
   { id: "conversations", labelKey: "conversations" as const, icon: MessageSquare },
   { id: "analytics", labelKey: "analytics" as const, icon: BarChart3 },
