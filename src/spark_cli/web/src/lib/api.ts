@@ -601,6 +601,7 @@ export interface KanbanTaskPatch {
   tenant?: string | null;
   result?: string | null;
   in_triage?: boolean | null;
+  workspace_path?: string | null;
 }
 
 export interface KanbanBulkPatchFields {
