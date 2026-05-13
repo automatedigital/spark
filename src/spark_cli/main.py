@@ -4599,6 +4599,32 @@ def cmd_update(args):
             )
             can_prompt = gateway_mode or (sys.stdin.isatty() and sys.stdout.isatty())
 
+            # If spark-agent is a git checkout, check whether updates exist before
+            # prompting for anything — avoid spurious auto-migrate when already current.
+            agent_git_dir = spark_home / "spark-agent" / ".git"
+            if agent_git_dir.exists():
+                try:
+                    subprocess.run(
+                        ["git", "fetch", "origin", "--quiet"],
+                        cwd=str(spark_home / "spark-agent"),
+                        capture_output=True,
+                        timeout=15,
+                        check=False,
+                    )
+                    rev_result = subprocess.run(
+                        ["git", "rev-list", "--count", "HEAD..origin/main"],
+                        cwd=str(spark_home / "spark-agent"),
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        check=False,
+                    )
+                    if rev_result.returncode == 0 and int(rev_result.stdout.strip()) == 0:
+                        print("Up to date.")
+                        return
+                except Exception:
+                    pass  # Offline or unexpected error — fall through to normal path
+
             if spark_home.exists() and can_prompt:
                 print(f"  Found existing Spark home: {spark_home}")
                 print("  We can auto-migrate by reinstalling in place and preserving your data.")
