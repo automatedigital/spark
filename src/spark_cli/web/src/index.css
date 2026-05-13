@@ -173,12 +173,12 @@ code {
   position: fixed;
   z-index: 0;
   border-radius: 50%;
-  width: 700px;
-  height: 700px;
-  background: radial-gradient(circle, rgba(253, 166, 50, 0.10) 0%, rgba(253, 166, 50, 0.04) 40%, transparent 70%);
+  width: 1100px;
+  height: 1100px;
+  background: radial-gradient(circle, rgba(253, 166, 50, 0.13) 0%, rgba(253, 166, 50, 0.05) 45%, transparent 70%);
   transform: translate(-50%, -50%);
-  transition: left 1s cubic-bezier(0.23, 1, 0.32, 1), top 1s cubic-bezier(0.23, 1, 0.32, 1);
-  filter: blur(32px);
+  transition: left 2.4s cubic-bezier(0.16, 1, 0.3, 1), top 2.4s cubic-bezier(0.16, 1, 0.3, 1);
+  filter: blur(60px);
 }
 
 .noise-overlay {

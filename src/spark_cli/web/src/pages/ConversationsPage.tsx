@@ -324,8 +324,8 @@ export default function ConversationsPage() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden border-t border-border bg-card/75">
-      <aside className={cn("flex min-h-0 w-full flex-col border-r border-border md:w-[360px]", chatVisible && "hidden md:flex")}>
+    <div className="flex h-full max-h-screen min-h-0 overflow-hidden border-t border-border bg-card/75">
+      <aside className={cn("flex min-h-0 w-full flex-col border-r border-border md:w-[360px] overflow-hidden", chatVisible && "hidden md:flex")}>
         <div className="shrink-0 border-b border-border p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="min-w-0">
