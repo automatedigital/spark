@@ -4581,9 +4581,6 @@ def cmd_update(args):
         else None
     )
 
-    print("S Updating Spark Agent...")
-    print()
-
     # Try git-based update first, fall back to ZIP download on Windows
     # when git file I/O is broken (antivirus, NTFS filter drivers, etc.)
     use_zip_update = False
@@ -4603,7 +4600,6 @@ def cmd_update(args):
             can_prompt = gateway_mode or (sys.stdin.isatty() and sys.stdout.isatty())
 
             if spark_home.exists() and can_prompt:
-                print("⚠ Current Spark install is not a git checkout.")
                 print(f"  Found existing Spark home: {spark_home}")
                 print("  We can auto-migrate by reinstalling in place and preserving your data.")
                 print()
@@ -4693,7 +4689,6 @@ def cmd_update(args):
 
     # Fetch and pull
     try:
-        print("→ Fetching updates...")
         fetch_result = subprocess.run(
             git_cmd + ["fetch", "origin"],
             cwd=PROJECT_ROOT,
@@ -4783,11 +4778,11 @@ def cmd_update(args):
                     text=True,
                     check=False,
                 )
-            print("✓ Already up to date!")
-            _maybe_offer_cua_driver(gateway_mode=gateway_mode, input_fn=gw_input_fn)
-            _sync_bundled_skills_for_update()
+            print("Up to date.")
             return
 
+        print("S Updating Spark Agent...")
+        print()
         print(f"→ Found {commit_count} new commit(s)")
 
         print("→ Pulling updates...")
