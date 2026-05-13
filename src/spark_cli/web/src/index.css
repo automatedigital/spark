@@ -59,6 +59,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ---- Pointer cursor for all interactive elements ---- */
+button, a, [role="button"], [tabindex]:not([tabindex="-1"]), select, label[for], summary {
+  cursor: pointer;
+}
+
 /* ---- Selection ---- */
 ::selection {
   background: color-mix(in srgb, var(--color-primary) 34%, transparent);

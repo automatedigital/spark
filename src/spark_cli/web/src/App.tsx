@@ -165,19 +165,21 @@ export default function App() {
           <div className={`flex h-20 items-center border-b border-border px-4 ${sidebarOpen ? "justify-between" : "justify-center"}`}>
             <button
               type="button"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-sm transition hover:opacity-75"
+              className={`flex shrink-0 items-center gap-0 rounded-sm transition hover:opacity-75 cursor-pointer ${sidebarOpen ? "h-10 w-auto" : "h-10 w-10 justify-center"}`}
               title="Go to Workspace"
               aria-label="Go to Workspace"
               onClick={() => navigateTo("workspace")}
             >
-              <SparkLogo />
-            </button>
-            {sidebarOpen && (
-              <div className="min-w-0 flex-1 px-3">
-                <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
-                <div className="truncate text-xs text-muted-foreground">Web UI</div>
+              <div className="grid h-10 w-10 shrink-0 place-items-center">
+                <SparkLogo />
               </div>
-            )}
+              {sidebarOpen && (
+                <div className="min-w-0 flex-1 px-3 text-left">
+                  <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
+                  <div className="truncate text-xs text-muted-foreground">Web UI</div>
+                </div>
+              )}
+            </button>
             <button
               type="button"
               className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
