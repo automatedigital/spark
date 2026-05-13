@@ -55,7 +55,10 @@ export default function App() {
     const saved = localStorage.getItem("spark-active-page");
     return (saved && NAV_ITEMS.some((item) => item.id === saved)) ? (saved as PageId) : "workspace";
   });
-  const [navExpanded, setNavExpanded] = useState(false);
+  const [navExpanded, setNavExpanded] = useState(() => {
+    const saved = localStorage.getItem("spark-nav-expanded");
+    return saved === null ? true : saved === "true";
+  });
   const [navHovered, setNavHovered] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -78,6 +81,12 @@ export default function App() {
   const navigateTo = (id: PageId) => {
     setPage(id);
     localStorage.setItem("spark-active-page", id);
+  };
+
+  const toggleNav = (value: boolean) => {
+    setNavExpanded(value);
+    setNavHovered(false);
+    localStorage.setItem("spark-nav-expanded", String(value));
   };
 
   useEffect(() => {
@@ -154,9 +163,15 @@ export default function App() {
           }`}
         >
           <div className={`flex h-20 items-center border-b border-border px-4 ${sidebarOpen ? "justify-between" : "justify-center"}`}>
-            <span className="grid h-10 w-10 shrink-0 place-items-center">
+            <button
+              type="button"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-sm transition hover:opacity-75"
+              title="Go to Workspace"
+              aria-label="Go to Workspace"
+              onClick={() => navigateTo("workspace")}
+            >
               <SparkLogo />
-            </span>
+            </button>
             {sidebarOpen && (
               <div className="min-w-0 flex-1 px-3">
                 <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
@@ -168,7 +183,7 @@ export default function App() {
               className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
               title={navExpanded ? "Collapse navigation" : "Expand navigation"}
               aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
-              onClick={() => { setNavExpanded((v) => !v); setNavHovered(false); }}
+              onClick={() => toggleNav(!navExpanded)}
             >
               {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
@@ -265,7 +280,7 @@ export default function App() {
                 </button>
               </nav>
               <div className="ml-auto hidden items-center gap-2 md:flex">
-                <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_18px_rgba(253,166,50,0.8)]" />
+                <span className="h-2 w-2 rounded-full bg-[#22c55e] shadow-[0_0_14px_rgba(34,197,94,0.8)]" />
                 <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t.app.webUi}</span>
               </div>
             </div>
