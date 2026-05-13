@@ -50,7 +50,7 @@ export default function SettingsPanel({ onClose, initialTab = "status" }: Settin
         aria-hidden="true"
       />
       <div
-        className="fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-background shadow-2xl md:w-[min(960px,92vw)]"
+        className="fixed inset-0 z-50 flex flex-col bg-background shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
