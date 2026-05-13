@@ -1303,25 +1303,8 @@ maybe_install_cua_driver() {
     if [ "$had_cua" = false ]; then
         log_info "Installing cua-driver..."
         install_ok=false
-        if [ "$DISTRO" != "termux" ] && [ -n "${UV_CMD:-}" ] && [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
-            if (
-                cd "$INSTALL_DIR" || exit 1
-                export VIRTUAL_ENV="$INSTALL_DIR/venv"
-                $UV_CMD pip install cua-driver --quiet
-            ); then
-                install_ok=true
-            fi
-        fi
-        if [ "$install_ok" = false ]; then
-            local pip_python
-            if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
-                pip_python="$INSTALL_DIR/venv/bin/python"
-            else
-                pip_python="$PYTHON_PATH"
-            fi
-            if "$pip_python" -m pip install cua-driver --quiet 2>/dev/null; then
-                install_ok=true
-            fi
+        if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"; then
+            install_ok=true
         fi
     fi
 
@@ -1339,11 +1322,7 @@ maybe_install_cua_driver() {
     if [ "$cua_resolved" = false ]; then
         log_warn "cua-driver not available — not enabling computer_use in config."
         if [ "$install_ok" = false ]; then
-            if [ -n "${UV_CMD:-}" ] && [ "$USE_VENV" = true ]; then
-                log_info "Try: cd $INSTALL_DIR && VIRTUAL_ENV=$INSTALL_DIR/venv $UV_CMD pip install cua-driver"
-            else
-                log_info "Try: pip install cua-driver"
-            fi
+            log_info "Try: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)\""
         fi
         return 0
     fi

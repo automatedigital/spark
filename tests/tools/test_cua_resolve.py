@@ -37,7 +37,7 @@ def test_is_available_finds_cua_in_dot_local_bin(tmp_path, monkeypatch, darwin):
     assert is_available() is True
 
 
-def test_resolution_hint_uses_running_python_for_install(tmp_path, monkeypatch, darwin):
+def test_resolution_hint_uses_official_cua_installer(tmp_path, monkeypatch, darwin):
     fake_py = tmp_path / "conda" / "bin" / "python3"
     fake_py.parent.mkdir(parents=True)
     fake_py.touch()
@@ -50,4 +50,5 @@ def test_resolution_hint_uses_running_python_for_install(tmp_path, monkeypatch, 
     hint = cb.cua_driver_resolution_hint()
 
     assert f"Spark Python: {fake_py}" in hint
-    assert f"Install for this Spark: {fake_py} -m pip install cua-driver" in hint
+    assert "Install cua-driver: /bin/bash -c" in hint
+    assert "raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh" in hint

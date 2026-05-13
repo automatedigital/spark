@@ -7176,7 +7176,7 @@ class SparkCLI:
         sys_msg_soft = (
             "[Note: /computer-use was run but the computer_use tool is not available "
             "in this session (the cua-driver binary is missing or not discoverable). "
-            "Install it for the Spark Python shown in the CLI diagnostics — then "
+            "Install cua-driver using the command shown in the CLI diagnostics — then "
             "run /computer-use again. For this message only, use whatever tools you "
             "have to help the user; do not refuse the task because computer_use is missing.]"
         )

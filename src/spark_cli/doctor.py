@@ -616,7 +616,11 @@ def run_doctor(args):
             _ok = bool(shutil.which("cua-driver"))
 
             def _cua_install_command():
-                return f"{sys.executable} -m pip install cua-driver"
+                return (
+                    '/bin/bash -c "$(curl -fsSL '
+                    "https://raw.githubusercontent.com/trycua/cua/main/libs/"
+                    'cua-driver/scripts/install.sh)"'
+                )
         if _ok:
             check_ok("cua-driver", "(macOS background computer-use)")
         else:

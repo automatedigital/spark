@@ -110,9 +110,11 @@ def handle_computer_use(args: Dict[str, Any]) -> str:
         return tool_error(f"Unknown action: {action!r}")
 
     except FileNotFoundError:
+        from tools.computer_use.cua_backend import cua_driver_install_command
+
         return tool_error(
             "cua-driver not found. Install it to use computer_use: "
-            "pip install cua-driver  (macOS only)"
+            f"{cua_driver_install_command()}"
         )
     except Exception as e:
         logger.exception("computer_use error (action=%s): %s", action, e)

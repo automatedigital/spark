@@ -47,7 +47,7 @@ def _resolve_cua_binary() -> Optional[str]:
     which = shutil.which(_CUA_BINARY)
     if which:
         return which
-    # pip/uv install into the same venv as Spark (often not on user PATH)
+    # Legacy installs may place cua-driver beside the Python running Spark.
     venv_bin = Path(sys.executable).resolve().parent / _CUA_BINARY
     if venv_bin.is_file():
         return str(venv_bin)
@@ -85,15 +85,16 @@ def cua_driver_resolution_hint() -> str:
     lines.append(
         f"  Override: export SPARK_CUA_DRIVER_BIN=/path/to/{_CUA_BINARY}"
     )
-    lines.append(f"  Install for this Spark: {cua_driver_install_command()}")
+    lines.append(f"  Install cua-driver: {cua_driver_install_command()}")
     return "\n".join(lines)
 
 
 def cua_driver_install_command() -> str:
-    """Return the exact pip command for the Python running this Spark process."""
-    import shlex
-
-    return f"{shlex.quote(sys.executable)} -m pip install cua-driver"
+    """Return the official macOS installer command for Cua Driver."""
+    return (
+        '/bin/bash -c "$(curl -fsSL '
+        'https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"'
+    )
 
 
 # Timeout in seconds for MCP tool calls

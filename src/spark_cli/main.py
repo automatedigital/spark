@@ -4488,8 +4488,6 @@ def _install_python_dependencies_with_optional_fallback(
 
 def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> None:
     """On macOS, offer to install cua-driver and enable the CLI computer_use toolset."""
-    import shutil
-
     if sys.platform != "darwin":
         return
 
@@ -4507,7 +4505,7 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
 
     print()
     print("ℹ  macOS Computer Use controls native apps (background desktop automation).")
-    print("   If enabled, this installs cua-driver for this Spark Python and enables the")
+    print("   If enabled, this installs CuaDriver.app and enables the")
     print("   computer_use toolset for the CLI (saved in config.yaml).")
     print()
 
@@ -4540,31 +4538,11 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
 
     if not _cua_is_available():
         print(f"→ Installing cua-driver with: {cua_driver_install_command()}")
-        venv_root = None
-        try:
-            _exe = Path(sys.executable).resolve()
-            if _exe.parent.name == "bin":
-                _cfg = _exe.parent.parent / "pyvenv.cfg"
-                if _cfg.is_file():
-                    venv_root = str(_exe.parent.parent)
-        except OSError:
-            venv_root = None
-
-        uv_bin = shutil.which("uv")
-        result = None
-        if uv_bin and venv_root:
-            result = subprocess.run(
-                [uv_bin, "pip", "install", "cua-driver", "--quiet"],
-                env={**os.environ, "VIRTUAL_ENV": venv_root},
-                capture_output=True,
-                text=True,
-            )
-        if result is None or result.returncode != 0:
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "cua-driver", "--quiet"],
-                capture_output=True,
-                text=True,
-            )
+        result = subprocess.run(
+            ["bash", "-lc", cua_driver_install_command()],
+            capture_output=True,
+            text=True,
+        )
         if result.returncode != 0:
             print(
                 "  ⚠ cua-driver install failed — computer_use will not work "

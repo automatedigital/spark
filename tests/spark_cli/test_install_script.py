@@ -45,3 +45,5 @@ def test_installer_prompts_before_computer_use_install():
     assert "Enable computer use for this Mac? [Y/n]" in function_body
     assert "read -p" in function_body
     assert "Skipped computer_use." in function_body
+    assert "raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh" in function_body
+    assert "pip install cua-driver" not in function_body
