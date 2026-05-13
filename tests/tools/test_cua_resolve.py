@@ -1,5 +1,6 @@
 """Tests for cua-driver binary resolution (computer_use availability)."""
 
+import json
 import sys
 
 import pytest
@@ -52,3 +53,21 @@ def test_resolution_hint_uses_official_cua_installer(tmp_path, monkeypatch, darw
     assert f"Spark Python: {fake_py}" in hint
     assert "Install cua-driver: /bin/bash -c" in hint
     assert "raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh" in hint
+
+
+def test_computer_use_dispatch_accepts_task_id(monkeypatch):
+    from tools.computer_use import tool as computer_use_tool
+    from tools.registry import registry
+
+    monkeypatch.setattr(
+        computer_use_tool._backend,
+        "list_apps",
+        lambda: [{"pid": 123, "name": "Notion"}],
+    )
+
+    result = json.loads(
+        registry.dispatch("computer_use", {"action": "list_apps"}, task_id="task-123")
+    )
+
+    assert "error" not in result
+    assert result["apps"] == [{"pid": 123, "name": "Notion"}]
