@@ -102,3 +102,11 @@ def test_cua_key_combo_parses_schema_format():
     assert cb._parse_key_combo("cmd+p") == ["cmd", "p"]
     assert cb._parse_key_combo("shift+delete") == ["shift", "delete"]
     assert cb._parse_key_combo("return") == ["return"]
+
+
+def test_capture_without_app_requires_active_context():
+    from tools.computer_use.cua_backend import CuaDriverBackend
+
+    backend = CuaDriverBackend()
+    with pytest.raises(RuntimeError, match="capture requires app"):
+        backend.capture()

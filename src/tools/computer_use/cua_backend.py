@@ -404,6 +404,12 @@ class CuaDriverBackend:
             self._active_pid = target.get("pid")
             self._active_window_id = _window_id(target)
             self._active_app = _window_app(target)
+        elif self._active_pid is None:
+            raise RuntimeError(
+                "capture requires app=<name> before any active window has been selected. "
+                "Retry with action='capture' and app set to the native app name, "
+                "for example app='Notion'."
+            )
 
         capture_args: Dict[str, Any] = {}
         if self._active_pid is not None:

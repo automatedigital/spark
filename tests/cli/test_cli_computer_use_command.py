@@ -60,6 +60,29 @@ class TestComputerUseCommand:
         assert "[SYSTEM:" in cli_obj.conversation_history[0]["content"]
         assert "click OK" not in cli_obj.conversation_history[0]["content"]
 
+    def test_macos_computer_use_hidden_prompt_infers_target_app(self):
+        cli_obj = _make_cli_with_agent()
+        with patch("platform.system", return_value="Darwin"):
+            with patch("spark_cli.tools_config.enable_computer_use_cli_toolset"):
+                with patch(
+                    "spark_cli.tools_config._get_platform_tools",
+                    return_value=["computer_use", "terminal"],
+                ):
+                    with patch("core.model_tools.get_tool_definitions") as gt:
+                        gt.return_value = [{"function": {"name": "computer_use"}}]
+                        assert (
+                            cli_obj.process_command(
+                                "/computer-use Open Notion and press Cmd+P"
+                            )
+                            is True
+                        )
+
+        queued = cli_obj._pending_input.put.call_args[0][0]
+        hidden = cli_obj.conversation_history[0]["content"]
+        assert queued == "Open Notion and press Cmd+P"
+        assert "app='Notion'" in hidden
+        assert "Never call action='capture' without app" in hidden
+
     def test_macos_without_task_appends_history(self):
         cli_obj = _make_cli_with_agent()
         with patch("platform.system", return_value="Darwin"):

@@ -7164,6 +7164,41 @@ class SparkCLI:
             if hasattr(self.agent, "_invalidate_system_prompt"):
                 self.agent._invalidate_system_prompt()
 
+        def _infer_computer_use_app(text: str) -> str | None:
+            import re
+
+            known_apps = (
+                "Notion",
+                "Slack",
+                "Finder",
+                "Notes",
+                "Safari",
+                "Chrome",
+                "Cursor",
+                "Terminal",
+                "Calendar",
+                "Mail",
+            )
+            lowered = text.lower()
+            for app_name in known_apps:
+                if app_name.lower() in lowered:
+                    return app_name
+            match = re.search(r"\bopen\s+([A-Z][A-Za-z0-9 ._-]{1,40})", text)
+            if match:
+                return match.group(1).strip().strip(".")
+            return None
+
+        target_app = _infer_computer_use_app(user_tail)
+        first_capture = (
+            f" For this request, the target app appears to be {target_app!r}; "
+            f"your first computer_use call MUST be action='capture' with app={target_app!r}. "
+            "Never call action='capture' without app until a successful app capture has selected "
+            "a pid/window_id."
+            if target_app
+            else " Your first computer_use call MUST be action='capture' with app=<native app name>. "
+            "Never call action='capture' without app until a successful app capture has selected "
+            "a pid/window_id."
+        )
         sys_msg_force = (
             "[SYSTEM: computer_use is in your tool list for this session. "
             "For the user's native macOS desktop / Notion.app / Slack.app / Finder "
@@ -7173,7 +7208,7 @@ class SparkCLI:
             "workflows. Do NOT drive the GUI via terminal (osascript, screencapture, "
             "OCR, or coordinate clicks on screenshots). If computer_use returns an "
             "error, report that error to the user and stop; do not fall back to shell, "
-            "browser, filesystem search, or local app database inspection.]"
+            f"browser, filesystem search, or local app database inspection.{first_capture}]"
         )
         sys_msg_soft = (
             "[Note: /computer-use was run but the computer_use tool is not available "
