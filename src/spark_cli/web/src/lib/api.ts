@@ -466,6 +466,9 @@ export const api = {
     );
   },
 
+  // Slash commands list (gateway-available only)
+  getCommands: () => fetchJSON<SlashCommand[]>("/api/commands"),
+
   // Workspace
   listWorkspaceProjects: () =>
     fetchJSON<WorkspaceProjectsResponse>("/api/workspace/projects"),
@@ -1091,6 +1094,14 @@ export interface WorkspaceTreeResponse {
   slug: string;
   path: string;
   tree: WorkspaceFileNode[];
+}
+
+export interface SlashCommand {
+  name: string;
+  description: string;
+  category: string;
+  aliases?: string[];
+  args_hint?: string | null;
 }
 
 export interface WorkspaceFileContent {

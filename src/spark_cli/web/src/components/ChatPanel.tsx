@@ -2,16 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   X,
-  Send,
   Bot,
   User,
   Loader2,
-  Square,
   GitFork,
   RotateCcw,
   Copy,
   Pencil,
 } from "lucide-react";
+// Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api } from "@/lib/api";
 import type { SessionMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -22,6 +21,9 @@ import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
 import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
 import { StatusPill } from "@/components/chat/StatusPill";
+import { PromptBar } from "@/components/chat/PromptBar";
+import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
+import type { SessionStats } from "@/components/chat/SessionInfoBar";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
@@ -37,6 +39,8 @@ type ChatMessage =
       args: Record<string, unknown>;
       result?: string;
       done?: boolean;
+      startedAt?: number;
+      endedAt?: number;
     }
   | { id: string; role: "reasoning"; text: string }
   | {
@@ -101,6 +105,7 @@ export function ChatPanel({
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
+  const [sessionStats, setSessionStats] = useState<SessionStats>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
@@ -118,6 +123,7 @@ export function ChatPanel({
     setError(null);
     setStatusLabel(null);
     setEditingUser(null);
+    setSessionStats({});
     if (sessionId) {
       setLoadingHistory(true);
       api
@@ -183,6 +189,7 @@ export function ChatPanel({
             name: String(data.name ?? "tool"),
             args: (data.args as Record<string, unknown>) ?? {},
             done: false,
+            startedAt: typeof data.ts === "number" ? data.ts : undefined,
           },
         ]);
         setStatusLabel(`Tool: ${String(data.name ?? "")}`);
@@ -199,6 +206,7 @@ export function ChatPanel({
                 ...row,
                 result: String(data.result ?? ""),
                 done: true,
+                endedAt: typeof data.ts === "number" ? data.ts : undefined,
               };
               break;
             }
@@ -257,6 +265,20 @@ export function ChatPanel({
         finalizeAssistant();
         setStreaming(false);
         setStatusLabel(null);
+        // Extract token/cost stats from the richer payload
+        {
+          const tokens = data.tokens as Record<string, number> | undefined;
+          const cost = typeof data.cost_usd === "number" ? data.cost_usd : undefined;
+          const model = typeof data.model === "string" ? data.model : undefined;
+          setSessionStats((prev) => ({
+            model: model ?? prev.model,
+            inputTokens: (prev.inputTokens ?? 0) + (tokens?.input ?? 0),
+            outputTokens: (prev.outputTokens ?? 0) + (tokens?.output ?? 0),
+            cacheReadTokens: (prev.cacheReadTokens ?? 0) + (tokens?.cache_read ?? 0),
+            costUsd: (prev.costUsd ?? 0) + (cost ?? 0),
+            turnCount: (prev.turnCount ?? 0) + 1,
+          }));
+        }
         const cur = activeSessionRef.current;
         if (cur) {
           onSessionUpdated?.(cur);
@@ -312,13 +334,6 @@ export function ChatPanel({
       setChatMessages((prev) => prev.filter((m, i) => i < prev.length - 1 || m.role !== "user"));
       setStreaming(false);
       setStatusLabel(null);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
     }
   };
 
@@ -436,12 +451,6 @@ export function ChatPanel({
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {streaming && activeSessionId && (
-            <Button variant="destructive" size="sm" className="h-7 gap-1 text-xs" onClick={stop}>
-              <Square className="h-3 w-3" />
-              Stop
-            </Button>
-          )}
           {onClose && (
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -549,7 +558,14 @@ export function ChatPanel({
               if (msg.role === "tool") {
                 return (
                   <div key={msg.id} className="pl-9">
-                    <ToolCallBubble name={msg.name} args={msg.args} result={msg.result} done={msg.done} />
+                    <ToolCallBubble
+                      name={msg.name}
+                      args={msg.args}
+                      result={msg.result}
+                      done={msg.done}
+                      startedAt={msg.startedAt}
+                      endedAt={msg.endedAt}
+                    />
                   </div>
                 );
               }
@@ -619,33 +635,16 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="border-t border-border px-4 py-3 shrink-0">
-        <div className="flex gap-2 items-end">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={streaming}
-            placeholder={streaming ? "Agent is responding…" : "Message… (Enter to send, Shift+Enter newline)"}
-            rows={1}
-            className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 min-h-[40px] max-h-[160px] overflow-y-auto"
-            style={{ height: "auto" }}
-            onInput={(e) => {
-              const el = e.currentTarget;
-              el.style.height = "auto";
-              el.style.height = Math.min(el.scrollHeight, 160) + "px";
-            }}
-          />
-          <Button
-            size="icon"
-            className="h-10 w-10 shrink-0"
-            disabled={!input.trim() || streaming}
-            onClick={() => void sendMessage()}
-          >
-            {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
-        </div>
-      </div>
+      <SessionInfoBar stats={sessionStats} />
+
+      <PromptBar
+        input={input}
+        setInput={setInput}
+        streaming={streaming}
+        onSend={() => void sendMessage()}
+        onStop={() => void stop()}
+        disabled={!!editingUser}
+      />
     </div>
   );
 }

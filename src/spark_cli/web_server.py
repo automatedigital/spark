@@ -3087,7 +3087,7 @@ def _make_web_chat_callbacks(
     def tool_start_callback(tid: str, name: str, args: Any) -> None:
         _publish_event(
             "chat.tool_start",
-            {"id": tid, "name": name, "args": _json_safe(args)},
+            {"id": tid, "name": name, "args": _json_safe(args), "ts": time.time()},
             session_id,
         )
 
@@ -3099,6 +3099,7 @@ def _make_web_chat_callbacks(
                 "name": name,
                 "args": _json_safe(args),
                 "result": _truncate_str(result),
+                "ts": time.time(),
             },
             session_id,
         )
@@ -3120,6 +3121,21 @@ def _make_web_chat_callbacks(
         reasoning_callback,
         status_callback,
     )
+
+
+def _turn_done_payload(result: Any) -> Dict[str, Any]:
+    """Extract token/cost stats from a run_conversation() result for chat.turn_done."""
+    if not isinstance(result, dict):
+        return {}
+    return {
+        "tokens": {
+            "input": result.get("input_tokens", 0) or 0,
+            "output": result.get("output_tokens", 0) or 0,
+            "cache_read": result.get("cache_read_tokens", 0) or 0,
+        },
+        "cost_usd": result.get("estimated_cost_usd"),
+        "model": result.get("model"),
+    }
 
 
 def _run_web_agent_turn(
@@ -3351,6 +3367,27 @@ async def update_session_kanban(session_id: str, body: KanbanUpdate):
 # ---------------------------------------------------------------------------
 
 
+@app.get("/api/commands")
+async def get_slash_commands():
+    """Return gateway-available slash commands for the web UI command palette."""
+    from spark_cli.commands import COMMAND_REGISTRY
+
+    out = []
+    for cmd in COMMAND_REGISTRY:
+        if cmd.cli_only:
+            continue
+        out.append(
+            {
+                "name": cmd.name,
+                "description": cmd.description,
+                "category": cmd.category,
+                "aliases": list(cmd.aliases) if cmd.aliases else [],
+                "args_hint": cmd.args_hint,
+            }
+        )
+    return out
+
+
 @app.get("/api/conversations/config")
 async def get_conversation_config():
     """Return the default model for web chat conversations."""
@@ -3462,7 +3499,7 @@ async def create_conversation(body: ConversationCreate):
             _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", {}, session_id)
+            _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
 
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
@@ -3556,7 +3593,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", {}, session_id)
+            _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
 
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
@@ -3773,7 +3810,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", {}, session_id)
+            _publish_event("chat.turn_done", {}, session_id)  # retry — result not captured
 
     asyncio.create_task(run_agent_task())
     return {"ok": True, "session_id": session_id}
@@ -3976,7 +4013,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", {}, session_id)
+            _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
 
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True, "source": source}

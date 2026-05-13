@@ -678,11 +678,11 @@ export default function KanbanPage() {
               <div>Assignee: {String(detail.assignee ?? "—")}</div>
               <div>Priority: {String(detail.priority ?? 0)}</div>
               <div>Tenant: {String(detail.tenant ?? "—")}</div>
-              {detail.workspace_path && (
+              {!!detail.workspace_path && (
                 <div>
                   Project:{" "}
-                  {workspaceProjects.find((p) => p.path === detail.workspace_path)?.name ??
-                    String(detail.workspace_path)}
+                  {String(workspaceProjects.find((p) => p.path === detail.workspace_path)?.name ??
+                    detail.workspace_path)}
                 </div>
               )}
             </div>

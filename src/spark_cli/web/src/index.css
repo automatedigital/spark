@@ -238,6 +238,35 @@ button {
   border-radius: 4px;
 }
 
+/* ---- highlight.js token colours (dark amber theme) ---- */
+.hljs { color: #f0ece4; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag { color: #FDA632; }
+.hljs-string,
+.hljs-attr,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition { color: #a8d8a8; }
+.hljs-title,
+.hljs-section { color: #e8d5a3; font-weight: bold; }
+.hljs-variable,
+.hljs-template-variable { color: #ffc875; }
+.hljs-type,
+.hljs-class .hljs-title { color: #f7c87e; }
+.hljs-comment,
+.hljs-quote { color: #6b6b60; font-style: italic; }
+.hljs-number,
+.hljs-literal,
+.hljs-meta { color: #cb9cf2; }
+.hljs-params { color: #c4cfde; }
+.hljs-deletion { color: #f97316; }
+.hljs-link { text-decoration: underline; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
+
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   *,
