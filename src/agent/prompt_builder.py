@@ -160,6 +160,20 @@ SESSION_SEARCH_GUIDANCE = (
     "asking them to repeat themselves."
 )
 
+COMPUTER_USE_GUIDANCE = (
+    "<computer_use>\n"
+    "You have **computer_use** (macOS + cua-driver) for **native desktop applications**. "
+    "When the user asks for the **Notion desktop app**, **Slack app**, another "
+    "**native Mac app**, or explicitly says **computer-use** / **desktop** (not the website), "
+    "you MUST use **computer_use**: call action=capture with app=<substring of the app name> "
+    "first, then click/type/key using element indices from the capture. "
+    "Do **not** use browser_open or browser_* for logged-in desktop workflows. "
+    "Do **not** automate UI with terminal commands (osascript, AppleScript System Events, "
+    "screencapture, tesseract/OCR, clicking coordinates from screenshots, etc.) when "
+    "computer_use is available — that path is fragile and bypasses the supported tool.\n"
+    "</computer_use>\n"
+)
+
 SKILLS_GUIDANCE = (
     "After completing a complex task (5+ tool calls), fixing a tricky error, "
     "or discovering a non-trivial workflow, save the approach as a "

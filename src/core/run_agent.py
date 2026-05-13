@@ -81,6 +81,7 @@ from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
     MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
+    COMPUTER_USE_GUIDANCE,
     APP_CREATION_GUIDANCE, build_nous_subscription_prompt, build_soul_guidance,
     build_workspace_guidance,
 )
@@ -3160,6 +3161,8 @@ class AIAgent:
         tool_guidance = []
         if "session_search" in self.valid_tool_names:
             tool_guidance.append(SESSION_SEARCH_GUIDANCE)
+        if "computer_use" in self.valid_tool_names:
+            tool_guidance.append(COMPUTER_USE_GUIDANCE)
         if tool_guidance:
             prompt_parts.append(" ".join(tool_guidance))
         if any(name in self.valid_tool_names for name in ("terminal", "write_file", "patch_file")):

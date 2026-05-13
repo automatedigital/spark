@@ -6575,6 +6575,8 @@ class SparkCLI:
                 self._reload_mcp()
         elif canonical == "browser":
             self._handle_browser_command(cmd_original)
+        elif canonical == "computer-use":
+            self._handle_computer_use_command(cmd_original)
         elif canonical == "plugins":
             try:
                 from spark_cli.plugins import get_plugin_manager
@@ -7102,6 +7104,99 @@ class SparkCLI:
             return True
         except Exception:
             return False
+
+    def _handle_computer_use_command(self, cmd_original: str) -> None:
+        """Enable computer_use for CLI, refresh the tool list, optionally queue a task.
+
+        Mirrors /tools enable computer_use + agent refresh without resetting the
+        session. Optionally accepts trailing text as the desktop task (queued like
+        /plan).
+        """
+        import platform
+
+        if platform.system() != "Darwin":
+            _cprint("  computer_use is only available on macOS.")
+            return
+
+        parts = cmd_original.split(None, 1)
+        user_tail = parts[1].strip() if len(parts) > 1 else ""
+
+        from core.model_tools import get_tool_definitions
+        from spark_cli.config import load_config
+        from spark_cli.tools_config import (
+            _get_platform_tools,
+            enable_computer_use_cli_toolset,
+        )
+
+        enable_computer_use_cli_toolset()
+        self.enabled_toolsets = _get_platform_tools(load_config(), "cli")
+
+        if self.agent is not None:
+            self.agent.enabled_toolsets = self.enabled_toolsets
+            try:
+                self.agent.tools = get_tool_definitions(
+                    enabled_toolsets=self.enabled_toolsets,
+                    disabled_toolsets=self.agent.disabled_toolsets,
+                    quiet_mode=True,
+                )
+                self.agent.valid_tool_names = (
+                    {t["function"]["name"] for t in self.agent.tools}
+                    if self.agent.tools
+                    else set()
+                )
+            except Exception as e:
+                _cprint(f"  WARN  Could not refresh tools: {e}")
+            if hasattr(self.agent, "_invalidate_system_prompt"):
+                self.agent._invalidate_system_prompt()
+
+        sys_msg = (
+            "[SYSTEM: computer_use is now in your tool list for this session. "
+            "For the user's native macOS desktop / Notion.app / Slack.app / Finder "
+            "(non-web) request, you MUST use computer_use: action=capture with "
+            "app=<substring> first, then click/type/key using element indices from "
+            "the capture. Do NOT use browser_open or browser_* for logged-in desktop "
+            "workflows. Do NOT drive the GUI via terminal (osascript, screencapture, "
+            "OCR, or coordinate clicks on screenshots).]"
+        )
+        body = f"{sys_msg}\n\nUser request:\n{user_tail}" if user_tail else sys_msg
+
+        if user_tail:
+            if hasattr(self, "_pending_input"):
+                self._pending_input.put(body)
+                _cprint("  Computer-use mode — task queued for the agent.")
+            else:
+                _cprint("  Computer-use enabled but input queue is unavailable.")
+        else:
+            self.conversation_history.append({"role": "user", "content": body})
+            if self.agent is not None:
+                try:
+                    self.agent._persist_session(
+                        self.conversation_history,
+                        self.conversation_history,
+                    )
+                except Exception:
+                    pass
+            _cprint(
+                "  Computer-use enabled. Describe the desktop task in your next message."
+            )
+
+        cu_loaded = bool(
+            self.agent and "computer_use" in getattr(self.agent, "valid_tool_names", set())
+        )
+        if not cu_loaded:
+            try:
+                from tools.computer_use.cua_backend import is_available as _cua_ok
+            except Exception:
+                def _cua_ok():
+                    return False
+            if not _cua_ok():
+                _cprint(
+                    "  Tip: Install cua-driver in this venv: uv pip install cua-driver"
+                )
+            else:
+                _cprint(
+                    "  Note: computer_use did not load (check tools / platform_toolsets)."
+                )
 
     def _handle_browser_command(self, cmd: str):
         """Handle /browser connect|disconnect|status - manage live Chrome CDP connection."""

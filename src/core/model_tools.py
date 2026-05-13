@@ -342,6 +342,35 @@ def get_tool_definitions(
                     }
                     break
 
+    # When computer_use is available, steer away from browser + shell UI hacks
+    # for native Mac app workflows (models default strongly to browser_open + terminal).
+    if "computer_use" in available_tool_names:
+        _cu_tool_hint = (
+            "**Priority on Mac:** For native desktop apps and 'computer-use' requests, "
+            "use this tool first — not the browser and not terminal/osascript/screencapture.\n\n"
+        )
+        _browser_suffix = (
+            " On macOS, for **native app** (not website) workflows, use **computer_use** "
+            "when it is in your tool list — not this browser tool."
+        )
+        for i, td in enumerate(filtered_tools):
+            fn = td.get("function", {}).get("name")
+            if fn == "computer_use":
+                desc = td["function"].get("description", "")
+                filtered_tools[i] = {
+                    "type": "function",
+                    "function": {
+                        **td["function"],
+                        "description": _cu_tool_hint + desc,
+                    },
+                }
+            elif fn == "browser_open":
+                desc = td["function"].get("description", "")
+                filtered_tools[i] = {
+                    "type": "function",
+                    "function": {**td["function"], "description": desc + _browser_suffix},
+                }
+
     if not quiet_mode:
         if filtered_tools:
             tool_names = [t["function"]["name"] for t in filtered_tools]

@@ -3,6 +3,10 @@
 COMPUTER_USE_SCHEMA = {
     "name": "computer_use",
     "description": (
+        "**Use this for native macOS desktop apps** (Notion app, Slack app, Finder, etc.) and "
+        "when the user says computer-use, desktop app, or not the browser/website. "
+        "Do NOT substitute browser_open or terminal GUI automation (osascript, screencapture, "
+        "vision on screenshots). "
         "Control macOS desktop apps in the background via cua-driver. "
         "Does NOT steal cursor focus or switch Spaces. "
         "Start every task with action='capture' (app=<name>) to select the target window "

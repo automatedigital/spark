@@ -164,6 +164,14 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("browser", "Connect browser tools to your live Chrome via CDP", "Tools & Skills",
                cli_only=True, args_hint="[connect|disconnect|status]",
                subcommands=("connect", "disconnect", "status")),
+    CommandDef(
+        "computer-use",
+        "Enable macOS computer_use (cua-driver) and prioritize native desktop UI",
+        "Tools & Skills",
+        cli_only=True,
+        aliases=("cu", "desktop-use"),
+        args_hint="[task]",
+    ),
     CommandDef("plugins", "List installed plugins and their status",
                "Tools & Skills", cli_only=True),
 
