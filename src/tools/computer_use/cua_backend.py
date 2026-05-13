@@ -25,14 +25,32 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # cua-driver binary name on PATH
 _CUA_BINARY = os.environ.get("SPARK_CUA_DRIVER_BIN", "cua-driver")
+
+
+def _resolve_cua_binary() -> Optional[str]:
+    """Return executable path for cua-driver, or None."""
+    p = Path(_CUA_BINARY)
+    if p.is_file():
+        return str(p.resolve())
+    which = shutil.which(_CUA_BINARY)
+    if which:
+        return which
+    # pip/uv install into the same venv as Spark (often not on user PATH)
+    venv_bin = Path(sys.executable).resolve().parent / _CUA_BINARY
+    if venv_bin.is_file():
+        return str(venv_bin)
+    return None
+
 
 # Timeout in seconds for MCP tool calls
 _CALL_TIMEOUT = float(os.environ.get("SPARK_CUA_TIMEOUT", "30"))
@@ -47,7 +65,7 @@ def is_available() -> bool:
     import platform
     if platform.system() != "Darwin":
         return False
-    return shutil.which(_CUA_BINARY) is not None
+    return _resolve_cua_binary() is not None
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +157,11 @@ class _CuaDriverSession:
         if self._process and self._process.poll() is None:
             return
         logger.debug("Starting cua-driver subprocess")
+        bin_path = _resolve_cua_binary()
+        if not bin_path:
+            raise RuntimeError("cua-driver not found")
         self._process = subprocess.Popen(
-            [_CUA_BINARY, "mcp"],
+            [bin_path, "mcp"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

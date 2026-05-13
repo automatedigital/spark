@@ -1256,16 +1256,9 @@ install_node_deps() {
 }
 
 maybe_install_cua_driver() {
-    # Only relevant on macOS
+    # macOS only — ask before installing cua-driver and enabling computer_use in config.
     [ "$OS" = "macos" ] || return 0
 
-    # Skip if already installed
-    if command -v cua-driver &> /dev/null; then
-        log_success "cua-driver already installed (computer-use enabled)"
-        return 0
-    fi
-
-    # Need a terminal to ask
     local tty_available=false
     if [ "$IS_INTERACTIVE" = true ]; then
         tty_available=true
@@ -1274,40 +1267,91 @@ maybe_install_cua_driver() {
     fi
 
     if [ "$tty_available" = false ]; then
-        log_info "Skipping cua-driver prompt (non-interactive). Install later with: pip install cua-driver"
+        log_info "Skipping macOS computer_use prompt (non-interactive install)."
         return 0
     fi
 
     echo ""
-    log_info "cua-driver enables background macOS desktop control (computer_use toolset)."
-    log_info "It lets Spark click, type, and scroll in native apps without stealing your cursor."
+    log_info "macOS Computer Use: native desktop control via cua-driver (optional)."
+    log_info "If you enable it, we install cua-driver into the Spark venv and turn on the CLI toolset."
 
     local reply
     if [ "$IS_INTERACTIVE" = true ]; then
-        read -p "Install cua-driver for macOS computer-use? [y/N] " -n 1 -r reply
+        read -p "Enable computer use for this Mac? [Y/n] " -n 1 -r reply
     else
-        read -p "Install cua-driver for macOS computer-use? [y/N] " -n 1 -r reply < /dev/tty
+        read -p "Enable computer use for this Mac? [Y/n] " -n 1 -r reply < /dev/tty
     fi
     echo
 
-    if [[ ! $reply =~ ^[Yy]$ ]]; then
-        log_info "Skipped. Install later with: pip install cua-driver"
+    if [[ $reply =~ ^[Nn]$ ]]; then
+        log_info "Skipped computer_use."
         return 0
     fi
 
-    log_info "Installing cua-driver..."
-
-    local pip_python
-    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
-        pip_python="$INSTALL_DIR/venv/bin/python"
-    else
-        pip_python="$PYTHON_PATH"
+    local had_cua=false
+    if command -v cua-driver &> /dev/null; then
+        had_cua=true
+    fi
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/cua-driver" ]; then
+        had_cua=true
     fi
 
-    if "$pip_python" -m pip install cua-driver --quiet; then
-        log_success "cua-driver installed (enable with: /toolset computer_use)"
-    else
-        log_warn "cua-driver install failed. Try manually: pip install cua-driver"
+    local install_ok=$had_cua
+    if [ "$had_cua" = false ]; then
+        log_info "Installing cua-driver..."
+        install_ok=false
+        if [ "$DISTRO" != "termux" ] && [ -n "${UV_CMD:-}" ] && [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
+            if (
+                cd "$INSTALL_DIR" || exit 1
+                export VIRTUAL_ENV="$INSTALL_DIR/venv"
+                $UV_CMD pip install cua-driver --quiet
+            ); then
+                install_ok=true
+            fi
+        fi
+        if [ "$install_ok" = false ]; then
+            local pip_python
+            if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
+                pip_python="$INSTALL_DIR/venv/bin/python"
+            else
+                pip_python="$PYTHON_PATH"
+            fi
+            if "$pip_python" -m pip install cua-driver --quiet 2>/dev/null; then
+                install_ok=true
+            fi
+        fi
+    fi
+
+    local cua_resolved=false
+    if command -v cua-driver &> /dev/null; then
+        cua_resolved=true
+    fi
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/cua-driver" ]; then
+        cua_resolved=true
+    fi
+
+    if [ "$cua_resolved" = false ]; then
+        log_warn "cua-driver not available — not enabling computer_use in config."
+        if [ "$install_ok" = false ]; then
+            if [ -n "${UV_CMD:-}" ] && [ "$USE_VENV" = true ]; then
+                log_info "Try: cd $INSTALL_DIR && VIRTUAL_ENV=$INSTALL_DIR/venv $UV_CMD pip install cua-driver"
+            else
+                log_info "Try: pip install cua-driver"
+            fi
+        fi
+        return 0
+    fi
+
+    log_success "cua-driver ready"
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
+        if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" \
+            "$INSTALL_DIR/venv/bin/python" -c \
+            "from spark_cli.tools_config import enable_computer_use_cli_toolset; enable_computer_use_cli_toolset()" 2>/dev/null
+        then
+            log_success "computer_use toolset enabled for CLI (restart spark if it is running)"
+        else
+            log_warn "Could not update config — run: spark tools and enable computer_use"
+        fi
     fi
 }
 

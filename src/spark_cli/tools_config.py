@@ -62,6 +62,7 @@ CONFIGURABLE_TOOLSETS = [
     ("session_search",  "🔎 Session Search",            "search past conversations"),
     ("clarify",         "❓ Clarifying Questions",      "clarify"),
     ("delegation",      "👥 Task Delegation",           "delegate_task"),
+    ("computer_use",    "🖥️ macOS Desktop (Computer Use)", "Native UI via cua-driver (macOS only)"),
     ("cronjob",         "⏰ Cron Jobs",                 "create/list/update/pause/resume/run, with optional attached skills"),
     ("rl",              "🧪 RL Training",               "Tinker-Atropos training tools"),
     ("homeassistant",    "🏠 Home Assistant",           "smart home device control"),
@@ -70,7 +71,7 @@ CONFIGURABLE_TOOLSETS = [
 # Toolsets that are OFF by default for new installs.
 # They're still in _SPARK_CORE_TOOLS (available at runtime if enabled),
 # but the setup checklist won't pre-select them for first-time users.
-_DEFAULT_OFF_TOOLSETS = {"moa", "homeassistant", "rl"}
+_DEFAULT_OFF_TOOLSETS = {"moa", "homeassistant", "rl", "computer_use"}
 
 
 def _get_effective_configurable_toolsets():
@@ -605,6 +606,28 @@ def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: Set[
         config["known_plugin_toolsets"][platform] = sorted(plugin_keys)
 
     save_config(config)
+
+
+def cli_computer_use_fully_ready() -> bool:
+    """True on macOS when cua-driver is available and computer_use is enabled for CLI."""
+    import sys
+
+    if sys.platform != "darwin":
+        return True
+    try:
+        from tools.computer_use.cua_backend import is_available
+    except Exception:
+        return False
+    if not is_available():
+        return False
+    config = load_config()
+    return "computer_use" in _get_platform_tools(config, "cli", include_default_mcp_servers=False)
+
+
+def enable_computer_use_cli_toolset() -> None:
+    """Add computer_use to CLI platform_toolsets and save config."""
+    config = load_config()
+    _apply_toolset_change(config, "cli", ["computer_use"], "enable")
 
 
 def _toolset_has_keys(ts_key: str, config: dict = None) -> bool:

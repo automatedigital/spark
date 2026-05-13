@@ -4487,45 +4487,100 @@ def _install_python_dependencies_with_optional_fallback(
 
 
 def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> None:
-    """On macOS, offer to install cua-driver if not already present."""
+    """On macOS, offer computer_use: install cua-driver if needed and enable CLI toolset.
+
+    Skips when already configured, or when non-interactive (unless gateway_mode with input_fn).
+    """
+    import shutil
+
     if sys.platform != "darwin":
         return
-    if shutil.which("cua-driver"):
+
+    from spark_cli.tools_config import (
+        cli_computer_use_fully_ready,
+        enable_computer_use_cli_toolset,
+    )
+
+    if cli_computer_use_fully_ready():
         return
 
-    # Only prompt when interactive (tty available)
     can_prompt = gateway_mode or (sys.stdin.isatty() and sys.stdout.isatty())
     if not can_prompt:
         return
 
     print()
-    print("ℹ  cua-driver enables background macOS desktop control (computer_use toolset).")
-    print("   Lets Spark click, type, and scroll in native apps without stealing your cursor.")
+    print("ℹ  macOS Computer Use controls native apps (background desktop automation).")
+    print("   This installs cua-driver into your Spark venv when needed, and enables the")
+    print("   computer_use toolset for the CLI (saved in config.yaml).")
     print()
 
     if gateway_mode and input_fn is not None:
-        response = input_fn("Install cua-driver? [y/N]", "n").strip().lower()
+        response = input_fn("Enable computer use for this Mac? [Y/n]", "y").strip().lower()
     else:
         try:
-            response = input("Install cua-driver for macOS computer-use? [y/N]: ").strip().lower()
+            response = input("Enable computer use for this Mac? [Y/n]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             response = "n"
 
-    if response not in ("y", "yes"):
-        print("  Skipped. Install later with: pip install cua-driver")
+    if response in ("n", "no"):
+        print("  Skipped. Enable later with: spark tools → computer_use — or spark update")
         return
 
-    print("→ Installing cua-driver...")
-    pip_cmd = [sys.executable, "-m", "pip", "install", "cua-driver", "--quiet"]
-    result = subprocess.run(pip_cmd, capture_output=True, text=True)
-    if result.returncode == 0:
-        print("  ✓ cua-driver installed — enable with: /toolset computer_use")
-    else:
-        print("  ✗ cua-driver install failed.")
-        if result.stderr.strip():
-            print(f"    {result.stderr.strip().splitlines()[0]}")
-        print("    Install manually: pip install cua-driver")
+    had_cua = shutil.which("cua-driver") is not None
+    try:
+        _exe = Path(sys.executable).resolve()
+        if _exe.parent.name == "bin":
+            had_cua = had_cua or (_exe.parent / "cua-driver").is_file()
+    except OSError:
+        pass
+
+    if not had_cua:
+        print("→ Installing cua-driver...")
+        venv_root = None
+        try:
+            _exe = Path(sys.executable).resolve()
+            if _exe.parent.name == "bin":
+                _cfg = _exe.parent.parent / "pyvenv.cfg"
+                if _cfg.is_file():
+                    venv_root = str(_exe.parent.parent)
+        except OSError:
+            venv_root = None
+
+        uv_bin = shutil.which("uv")
+        result = None
+        if uv_bin and venv_root:
+            result = subprocess.run(
+                [uv_bin, "pip", "install", "cua-driver", "--quiet"],
+                env={**os.environ, "VIRTUAL_ENV": venv_root},
+                capture_output=True,
+                text=True,
+            )
+        if result is None or result.returncode != 0:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "cua-driver", "--quiet"],
+                capture_output=True,
+                text=True,
+            )
+        if result.returncode != 0:
+            print("  ⚠ cua-driver install failed — computer_use will not work until it is installed.")
+            if result.stderr.strip():
+                print(f"    {result.stderr.strip().splitlines()[0]}")
+            print("    Fix: cd ~/.spark/spark-agent && VIRTUAL_ENV=$PWD/venv uv pip install cua-driver")
+            return
+
+    try:
+        from tools.computer_use.cua_backend import is_available as _cua_is_available
+    except Exception:
+        print("  ⚠ Could not load computer_use module — not enabling.")
+        return
+
+    if not _cua_is_available():
+        print("  ⚠ cua-driver still not found next to this Python — not enabling computer_use.")
+        return
+
+    enable_computer_use_cli_toolset()
+    print("  ✓ computer_use enabled for the CLI (restart spark if it was already running).")
 
 
 def cmd_update(args):
