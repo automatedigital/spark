@@ -642,6 +642,14 @@ def skill_manage(
             clear_skills_system_prompt_cache(clear_snapshot=True)
         except Exception:
             pass
+        try:
+            from tools.skill_usage import mark_agent_created, bump_patch
+            if action == "create":
+                mark_agent_created(name)
+            elif action in ("patch", "edit"):
+                bump_patch(name)
+        except Exception:
+            pass
 
     return json.dumps(result, ensure_ascii=False)
 

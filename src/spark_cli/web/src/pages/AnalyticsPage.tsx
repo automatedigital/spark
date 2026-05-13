@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   BarChart3,
+  BookOpen,
   Cpu,
   Hash,
   TrendingUp,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AnalyticsResponse, AnalyticsDailyEntry, AnalyticsModelEntry } from "@/lib/api";
+import type { AnalyticsResponse, AnalyticsDailyEntry, AnalyticsModelEntry, SkillsAnalyticsResponse, SkillUsageEntry } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n";
@@ -227,9 +228,60 @@ function ModelTable({ models }: { models: AnalyticsModelEntry[] }) {
   );
 }
 
+function TopSkillsTable({ skills, lifecycle }: { skills: SkillUsageEntry[]; lifecycle: SkillsAnalyticsResponse["lifecycle_counts"] }) {
+  if (skills.length === 0) return null;
+  const stateColor = (s: string) =>
+    s === "active" ? "text-emerald-400" : s === "stale" ? "text-yellow-400" : "text-muted-foreground";
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base">Top Skills by Activity</CardTitle>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="text-emerald-400 font-medium">{lifecycle.active} active</span>
+            <span className="text-yellow-400 font-medium">{lifecycle.stale} stale</span>
+            <span>{lifecycle.archived} archived</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-muted-foreground text-xs">
+                <th className="text-left py-2 pr-4 font-medium">Skill</th>
+                <th className="text-right py-2 px-4 font-medium">Uses</th>
+                <th className="text-right py-2 px-4 font-medium">Views</th>
+                <th className="text-right py-2 px-4 font-medium">Patches</th>
+                <th className="text-right py-2 pl-4 font-medium">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {skills.map((s) => (
+                <tr key={s.name} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
+                  <td className="py-2 pr-4 font-mono-ui text-xs">{s.name}</td>
+                  <td className="text-right py-2 px-4 text-[#ffe6cb]">{s.use_count}</td>
+                  <td className="text-right py-2 px-4 text-muted-foreground">{s.view_count}</td>
+                  <td className="text-right py-2 px-4 text-muted-foreground">{s.patch_count}</td>
+                  <td className={`text-right py-2 pl-4 text-xs ${stateColor(s.state)}`}>{s.state}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AnalyticsPage() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<AnalyticsResponse | null>(null);
+  const [skillsData, setSkillsData] = useState<SkillsAnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { t } = useI18n();
@@ -237,9 +289,14 @@ export default function AnalyticsPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    api
-      .getAnalytics(days)
-      .then(setData)
+    Promise.all([
+      api.getAnalytics(days),
+      api.getSkillsAnalytics(),
+    ])
+      .then(([usage, skills]) => {
+        setData(usage);
+        setSkillsData(skills);
+      })
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
   }, [days]);
@@ -310,6 +367,11 @@ export default function AnalyticsPage() {
           {/* Tables */}
           <DailyTable daily={data.daily} />
           <ModelTable models={data.by_model} />
+
+          {/* Skills analytics */}
+          {skillsData && (
+            <TopSkillsTable skills={skillsData.top_skills} lifecycle={skillsData.lifecycle_counts} />
+          )}
         </>
       )}
 

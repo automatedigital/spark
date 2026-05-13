@@ -2836,8 +2836,27 @@ async def get_skills():
     config = load_config()
     disabled = get_disabled_skills(config)
     skills = _find_all_skills(skip_disabled=True)
+
+    usage_by_name: dict = {}
+    try:
+        from tools.skill_usage import all_records
+        usage_by_name = all_records()
+    except Exception:
+        pass
+
     for s in skills:
         s["enabled"] = s["name"] not in disabled
+        rec = usage_by_name.get(s["name"])
+        if rec:
+            s["use_count"] = int(rec.get("use_count") or 0)
+            s["view_count"] = int(rec.get("view_count") or 0)
+            s["patch_count"] = int(rec.get("patch_count") or 0)
+            s["skill_state"] = rec.get("state", "active")
+        else:
+            s["use_count"] = 0
+            s["view_count"] = 0
+            s["patch_count"] = 0
+            s["skill_state"] = "active"
     return skills
 
 
@@ -2989,6 +3008,18 @@ async def get_usage_analytics(days: int = 30):
         }
     finally:
         db.close()
+
+
+@app.get("/api/analytics/skills")
+async def get_skills_analytics(limit: int = 20):
+    try:
+        from tools.skill_usage import top_skills, lifecycle_counts
+        return {
+            "top_skills": top_skills(limit=limit),
+            "lifecycle_counts": lifecycle_counts(),
+        }
+    except Exception as e:
+        return {"top_skills": [], "lifecycle_counts": {"active": 0, "stale": 0, "archived": 0}, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------

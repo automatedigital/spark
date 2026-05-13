@@ -85,6 +85,8 @@ export const api = {
   },
   getAnalytics: (days: number) =>
     fetchJSON<AnalyticsResponse>(`/api/analytics/usage?days=${days}`),
+  getSkillsAnalytics: (limit = 20) =>
+    fetchJSON<SkillsAnalyticsResponse>(`/api/analytics/skills?limit=${limit}`),
   getConfig: () => fetchJSON<Record<string, unknown>>("/api/config"),
   getDefaults: () => fetchJSON<Record<string, unknown>>("/api/config/defaults"),
   getSchema: () => fetchJSON<{ fields: Record<string, unknown>; category_order: string[] }>("/api/config/schema"),
@@ -702,6 +704,32 @@ export interface SkillInfo {
   description: string;
   category: string;
   enabled: boolean;
+  use_count: number;
+  view_count: number;
+  patch_count: number;
+  skill_state: string;
+}
+
+export interface SkillUsageEntry {
+  name: string;
+  state: string;
+  created_by: string | null;
+  activity_count: number;
+  use_count: number;
+  view_count: number;
+  patch_count: number;
+  last_activity_at: string | null;
+}
+
+export interface SkillLifecycleCounts {
+  active: number;
+  stale: number;
+  archived: number;
+}
+
+export interface SkillsAnalyticsResponse {
+  top_skills: SkillUsageEntry[];
+  lifecycle_counts: SkillLifecycleCounts;
 }
 
 export interface ToolsetInfo {

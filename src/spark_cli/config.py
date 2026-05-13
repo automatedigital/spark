@@ -575,7 +575,7 @@ DEFAULT_CONFIG = {
     },
     # Text-to-speech configuration
     "tts": {
-        "provider": "edge",  # "edge" (free) | "elevenlabs" (premium) | "openai" | "minimax" | "mistral" | "neutts" (local)
+        "provider": "edge",  # "edge" (free) | "elevenlabs" (premium) | "openai" | "minimax" | "mistral" | "neutts" (local) | "piper" (local)
         "edge": {
             "voice": "en-US-AriaNeural",
             # Popular: AriaNeural, JennyNeural, AndrewNeural, BrianNeural, SoniaNeural
@@ -598,6 +598,15 @@ DEFAULT_CONFIG = {
             "ref_text": "",  # Path to reference voice transcript (empty = bundled default)
             "model": "neuphonic/neutts-air-q4-gguf",  # HuggingFace model repo
             "device": "cpu",  # cpu, cuda, or mps
+        },
+        # Piper: local neural VITS TTS, no API key required, 44+ languages.
+        # Install with: pip install piper-tts
+        # Voice models are downloaded automatically to ~/.spark/cache/piper-voices/ on first use.
+        # Browse voices: https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md
+        "piper": {
+            "voice": "en_US-lessac-medium",  # e.g. en_US-hfc_female, en_US-lessac-medium, en_GB-alan-medium
+            "voices_dir": "",  # Override download dir (empty = ~/.spark/cache/piper-voices/)
+            "use_cuda": False,  # Enable GPU acceleration (requires CUDA)
         },
     },
     "stt": {
@@ -646,6 +655,16 @@ DEFAULT_CONFIG = {
         # "openviking", "mem0", "hindsight", "retaindb", "byterover".
         # Only ONE external provider is allowed at a time.
         "provider": "holographic",
+    },
+    # Skill curator — background maintenance of agent-created skills.
+    # Runs in an idle window after the configured interval.
+    # Use /curator status|pause|resume|run to manage.
+    "curator": {
+        "enabled": True,
+        "interval_hours": 168,   # 7 days between curator passes
+        "min_idle_hours": 2,     # only trigger when the agent has been idle this long
+        "stale_after_days": 30,  # mark skills stale after N days without use
+        "archive_after_days": 90,  # archive stale skills after N more days
     },
     # Subagent delegation — override the provider:model used by delegate_task
     # so child agents can run on a different (cheaper/faster) provider and model.

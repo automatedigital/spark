@@ -6109,6 +6109,53 @@ class SparkCLI:
         print(f"(._.) Unknown dream command: {sub}")
         print("  Available: now, schedule, unschedule, status, review")
 
+    def _handle_curator_command(self, cmd: str):
+        """Handle /curator — background skill maintenance."""
+        import shlex
+        tokens = shlex.split(cmd)
+        sub = tokens[1].lower() if len(tokens) > 1 else "status"
+
+        try:
+            from agent import curator as curator_mod
+        except Exception as e:
+            print(f"(._.) curator module not available: {e}")
+            return
+
+        if sub == "status":
+            state = curator_mod.load_state()
+            enabled = curator_mod.is_enabled()
+            paused = state.get("paused", False)
+            last_run = state.get("last_run_at") or "never"
+            last_summary = state.get("last_run_summary") or "(none)"
+            run_count = state.get("run_count", 0)
+            interval_h = curator_mod.get_interval_hours()
+            print(f"  Curator: {'PAUSED' if paused else 'active' if enabled else 'disabled'}")
+            print(f"  Interval: every {interval_h}h")
+            print(f"  Last run: {last_run}  (run #{run_count})")
+            print(f"  Last summary: {last_summary}")
+        elif sub == "pause":
+            curator_mod.set_paused(True)
+            print("  Curator paused. Resume with /curator resume")
+        elif sub == "resume":
+            curator_mod.set_paused(False)
+            print("  Curator resumed.")
+        elif sub == "run":
+            dry = "--dry-run" in tokens
+            print("  Starting curator review" + (" (dry-run)" if dry else "") + "…")
+
+            def _on_summary(msg: str):
+                self.console.print(f"  {msg}")
+
+            curator_mod.run_curator_review(
+                on_summary=_on_summary,
+                synchronous=False,
+                dry_run=dry,
+            )
+            print("  Curator running in background. Check /curator status for results.")
+        else:
+            print(f"(._.) Unknown curator command: {sub}")
+            print("  Available: status, pause, resume, run [--dry-run]")
+
     def _handle_goal_command(self, cmd: str):
         """Handle /goal — durable cross-session objective tracking via Kanban board."""
         import re as _re
@@ -6528,6 +6575,8 @@ class SparkCLI:
             self._handle_cron_command(cmd_original)
         elif canonical == "dream":
             self._handle_dream_command(cmd_original)
+        elif canonical == "curator":
+            self._handle_curator_command(cmd_original)
         elif canonical == "goal":
             self._handle_goal_command(cmd_original)
         elif canonical == "skills":

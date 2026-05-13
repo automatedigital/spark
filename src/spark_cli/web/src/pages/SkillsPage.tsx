@@ -349,6 +349,20 @@ export default function SkillsPage() {
                               >
                                 {skill.name}
                               </span>
+                              {(skill.use_count > 0 || skill.view_count > 0) && (
+                                <span className="flex items-center gap-1">
+                                  {skill.use_count > 0 && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-[#ffe6cb] border-[#ffe6cb]/30">
+                                      {skill.use_count}u
+                                    </Badge>
+                                  )}
+                                  {skill.view_count > 0 && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">
+                                      {skill.view_count}v
+                                    </Badge>
+                                  )}
+                                </span>
+                              )}
                             </div>
                             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                               {skill.description || t.skills.noDescription}
