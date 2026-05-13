@@ -17,28 +17,28 @@
 @font-face { font-family: "Mondwest"; src: url("/fonts/Mondwest-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 
 @theme {
-  /* ---- Spark palette (graphite, amber signal) ---- */
-  --color-background: #080d10;
-  --color-foreground: #e8f2ef;
-  --color-card: #0f171a;
-  --color-card-foreground: #e8f2ef;
-  --color-primary: #ffa32b;
-  --color-primary-foreground: #06100f;
-  --color-secondary: #172326;
-  --color-secondary-foreground: #e8f2ef;
-  --color-muted: #111b1e;
-  --color-muted-foreground: #8aa09e;
-  --color-accent: #ffa32b;
-  --color-accent-foreground: #06100f;
+  /* ---- Spark palette (#FDA632 amber + #272727 graphite) ---- */
+  --color-background: #1a1a1a;
+  --color-foreground: #f0ece4;
+  --color-card: #272727;
+  --color-card-foreground: #f0ece4;
+  --color-primary: #FDA632;
+  --color-primary-foreground: #0e0b06;
+  --color-secondary: #2e2e2e;
+  --color-secondary-foreground: #f0ece4;
+  --color-muted: #212121;
+  --color-muted-foreground: #8a8880;
+  --color-accent: #FDA632;
+  --color-accent-foreground: #0e0b06;
   --color-destructive: #f97316;
   --color-destructive-foreground: #fff;
-  --color-success: #ffa32b;
+  --color-success: #FDA632;
   --color-warning: #f59e0b;
-  --color-border: color-mix(in srgb, #d7fff8 13%, transparent);
-  --color-input: color-mix(in srgb, #d7fff8 17%, transparent);
-  --color-ring: #ffa32b;
-  --color-popover: #111b1e;
-  --color-popover-foreground: #e8f2ef;
+  --color-border: color-mix(in srgb, #ffffff 10%, transparent);
+  --color-input: color-mix(in srgb, #ffffff 13%, transparent);
+  --color-ring: #FDA632;
+  --color-popover: #212121;
+  --color-popover-foreground: #f0ece4;
 
   /* ---- Font stacks ---- */
   --font-sans: "Avenir Next", "Segoe UI", sans-serif;
@@ -167,16 +167,30 @@ code {
   background: repeating-conic-gradient(currentColor 0% 25%, #0000 0% 50%) 0 0 / 2px 2px;
 }
 
+/* ---- Cursor-following blob ---- */
+.cursor-blob {
+  pointer-events: none;
+  position: fixed;
+  z-index: 0;
+  border-radius: 50%;
+  width: 700px;
+  height: 700px;
+  background: radial-gradient(circle, rgba(253, 166, 50, 0.10) 0%, rgba(253, 166, 50, 0.04) 40%, transparent 70%);
+  transform: translate(-50%, -50%);
+  transition: left 1s cubic-bezier(0.23, 1, 0.32, 1), top 1s cubic-bezier(0.23, 1, 0.32, 1);
+  filter: blur(32px);
+}
+
 .noise-overlay {
   pointer-events: none;
   position: fixed;
   inset: 0;
   z-index: 101;
-  opacity: 0.25;
+  opacity: 0.2;
   background-image:
-    linear-gradient(color-mix(in srgb, var(--color-primary) 6%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 6%, transparent) 1px, transparent 1px),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23ffa32b' filter='url(%23n)' opacity='0.13'/%3E%3C/svg%3E");
+    linear-gradient(color-mix(in srgb, var(--color-primary) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 5%, transparent) 1px, transparent 1px),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23FDA632' filter='url(%23n)' opacity='0.11'/%3E%3C/svg%3E");
   background-size: 40px 40px, 40px 40px, 512px 512px;
   mask-image: linear-gradient(to bottom, black, transparent 70%);
 }
@@ -186,11 +200,11 @@ code {
   position: fixed;
   inset: 0;
   z-index: 99;
-  opacity: 0.8;
+  opacity: 0.7;
   background:
-    radial-gradient(ellipse at 12% 0%, rgba(255, 163, 43, 0.20) 0%, rgba(255, 163, 43, 0) 42%),
-    radial-gradient(ellipse at 88% 6%, rgba(255, 205, 117, 0.10) 0%, rgba(255, 205, 117, 0) 38%),
-    linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0));
+    radial-gradient(ellipse at 12% 0%, rgba(253, 166, 50, 0.18) 0%, rgba(253, 166, 50, 0) 42%),
+    radial-gradient(ellipse at 88% 6%, rgba(253, 200, 100, 0.08) 0%, rgba(253, 200, 100, 0) 38%),
+    linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
 }
 
 .auth-panel {

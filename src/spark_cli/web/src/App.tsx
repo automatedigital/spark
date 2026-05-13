@@ -36,6 +36,8 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   skills: SkillsPage,
 };
 
+const FULL_WIDTH_PAGES = new Set<PageId>(["workspace", "conversations"]);
+
 function SparkLogo({ className = "" }: { className?: string }) {
   return (
     <img
@@ -49,8 +51,12 @@ function SparkLogo({ className = "" }: { className?: string }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState<PageId>("kanban");
+  const [page, setPage] = useState<PageId>(() => {
+    const saved = localStorage.getItem("spark-active-page");
+    return (saved && NAV_ITEMS.some((item) => item.id === saved)) ? (saved as PageId) : "workspace";
+  });
   const [navExpanded, setNavExpanded] = useState(false);
+  const [navHovered, setNavHovered] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initialRef = useRef(true);
@@ -59,6 +65,20 @@ export default function App() {
   const [tokenHint, setTokenHint] = useState<string | null>(null);
   const [tokenInput, setTokenInput] = useState("");
   const [authChecking, setAuthChecking] = useState(true);
+  const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setBlobPos({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
+  const navigateTo = (id: PageId) => {
+    setPage(id);
+    localStorage.setItem("spark-active-page", id);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +116,8 @@ export default function App() {
     setAnimKey((k) => k + 1);
   }, [page]);
 
+  const sidebarOpen = navExpanded || navHovered;
+
   const PageComponent = PAGE_COMPONENTS[page];
 
   const saveToken = () => {
@@ -109,17 +131,33 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+      {/* Cursor-following glow blob */}
+      <div
+        className="cursor-blob"
+        style={{ left: blobPos.x, top: blobPos.y }}
+        aria-hidden="true"
+      />
       {/* Global graphite texture + signal wash */}
       <div className="noise-overlay" />
       <div className="warm-glow" />
 
       <div className={`relative z-2 grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:248px]" : "[--sidebar-width:84px]"}`}>
-        <aside className="hidden min-w-0 border-r border-border bg-card/78 backdrop-blur-xl md:flex md:flex-col">
-          <div className={`flex h-20 items-center border-b border-border px-4 ${navExpanded ? "justify-between" : "justify-center"}`}>
-            <span className="grid h-10 w-10 place-items-center rounded-sm border border-primary/35 bg-background shadow-lg shadow-primary/20">
+        <aside
+          onMouseEnter={() => !navExpanded && setNavHovered(true)}
+          onMouseLeave={() => setNavHovered(false)}
+          className={`hidden min-w-0 border-r border-border bg-card/78 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
+            navHovered && !navExpanded
+              ? " absolute left-0 top-0 bottom-0 z-50 w-[248px] shadow-2xl shadow-black/50"
+              : sidebarOpen
+              ? " w-[248px]"
+              : " w-[84px]"
+          }`}
+        >
+          <div className={`flex h-20 items-center border-b border-border px-4 ${sidebarOpen ? "justify-between" : "justify-center"}`}>
+            <span className="grid h-10 w-10 shrink-0 place-items-center">
               <SparkLogo />
             </span>
-            {navExpanded && (
+            {sidebarOpen && (
               <div className="min-w-0 flex-1 px-3">
                 <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
                 <div className="truncate text-xs text-muted-foreground">Web UI</div>
@@ -127,33 +165,33 @@ export default function App() {
             )}
             <button
               type="button"
-              className="grid h-8 w-8 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
               title={navExpanded ? "Collapse navigation" : "Expand navigation"}
               aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
-              onClick={() => setNavExpanded((value) => !value)}
+              onClick={() => { setNavExpanded((v) => !v); setNavHovered(false); }}
             >
               {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
           </div>
-          <nav className={`flex flex-1 flex-col gap-2 px-3 py-4 ${navExpanded ? "items-stretch" : "items-center"}`}>
+          <nav className={`flex flex-1 flex-col gap-2 px-3 py-4 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
             {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 title={t.app.nav[labelKey]}
                 aria-label={t.app.nav[labelKey]}
-                onClick={() => setPage(id)}
+                onClick={() => navigateTo(id)}
                 className={`group relative flex h-12 items-center rounded-sm border transition ${
                   page === id
                     ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
                     : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
-                } ${navExpanded ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                } ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
               >
-                <Icon className="h-5 w-5" />
-                {navExpanded && (
+                <Icon className="h-5 w-5 shrink-0" />
+                {sidebarOpen && (
                   <span className="truncate text-sm font-medium">{t.app.nav[labelKey]}</span>
                 )}
-                <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${navExpanded ? "hidden" : "hidden group-hover:block"}`}>
+                <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                   {t.app.nav[labelKey]}
                 </span>
               </button>
@@ -161,7 +199,7 @@ export default function App() {
           </nav>
 
           {/* Settings button */}
-          <div className={`border-t border-border px-3 py-3 ${navExpanded ? "items-stretch" : "flex justify-center"}`}>
+          <div className={`border-t border-border px-3 py-3 ${sidebarOpen ? "items-stretch" : "flex justify-center"}`}>
             <button
               type="button"
               title="Settings"
@@ -171,20 +209,20 @@ export default function App() {
                 settingsOpen
                   ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
                   : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
-              } ${navExpanded ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+              } ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
             >
-              <Settings className="h-5 w-5" />
-              {navExpanded && (
+              <Settings className="h-5 w-5 shrink-0" />
+              {sidebarOpen && (
                 <span className="truncate text-sm font-medium">Settings</span>
               )}
-              <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${navExpanded ? "hidden" : "hidden group-hover:block"}`}>
+              <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                 Settings
               </span>
             </button>
           </div>
 
-          <div className={`border-t border-border p-3 text-[0.62rem] uppercase tracking-[0.12em] text-muted-foreground ${navExpanded ? "text-left" : "text-center"}`}>
-            {navExpanded ? t.app.footer.name : "Web UI"}
+          <div className={`border-t border-border p-3 text-[0.62rem] uppercase tracking-[0.12em] text-muted-foreground ${sidebarOpen ? "text-left" : "text-center"}`}>
+            {sidebarOpen ? t.app.footer.name : ""}
           </div>
         </aside>
 
@@ -192,14 +230,12 @@ export default function App() {
           <header className="sticky top-0 z-40 border-b border-border bg-background/82 backdrop-blur-xl">
             <div className="flex min-h-16 items-center gap-3 px-3 sm:px-6">
               <div className="flex items-center gap-3 md:hidden">
-                <span className="grid h-9 w-9 place-items-center rounded-sm border border-primary/35 bg-background shadow-sm shadow-primary/20">
-                  <SparkLogo className="h-6 w-6" />
-                </span>
+                <SparkLogo className="h-6 w-6" />
                 <span className="font-collapse text-lg font-bold uppercase tracking-wide">Spark</span>
               </div>
               <div className="hidden md:block">
                 <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Spark</div>
-                <div className="text-sm font-semibold text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "kanban"]}</div>
+                <div className="text-sm font-semibold text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "workspace"]}</div>
               </div>
               {/* Mobile nav */}
               <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-sm border border-border bg-card/70 p-1 shadow-inner scrollbar-none md:hidden">
@@ -208,7 +244,7 @@ export default function App() {
                     key={id}
                     type="button"
                     title={t.app.nav[labelKey]}
-                    onClick={() => setPage(id)}
+                    onClick={() => navigateTo(id)}
                     className={`grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
                       page === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`}
@@ -229,7 +265,7 @@ export default function App() {
                 </button>
               </nav>
               <div className="ml-auto hidden items-center gap-2 md:flex">
-                <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_18px_rgba(20,184,166,0.75)]" />
+                <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_18px_rgba(253,166,50,0.8)]" />
                 <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t.app.webUi}</span>
               </div>
             </div>
@@ -237,7 +273,7 @@ export default function App() {
 
           <main
             key={animKey}
-            className={page === "workspace" ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto w-full max-w-[1480px] flex-1 px-3 py-4 sm:px-6 sm:py-8"}
+            className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto w-full max-w-[1480px] flex-1 px-3 py-4 sm:px-6 sm:py-8"}
             style={{ animation: "fade-in 150ms ease-out" }}
           >
             {authChecking ? (
