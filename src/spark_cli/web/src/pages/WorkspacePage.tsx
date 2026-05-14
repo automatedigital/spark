@@ -7,6 +7,7 @@ import {
   Film,
   Folder,
   FolderOpen,
+  GripVertical,
   Image,
   Loader2,
   MessageSquare,
@@ -212,8 +213,13 @@ function ResizeDivider({ onDrag }: { onDrag: (delta: number) => void }) {
   return (
     <div
       onMouseDown={handleMouseDown}
-      className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 active:bg-primary/60 transition-colors"
-    />
+      className="group relative flex w-3 shrink-0 cursor-col-resize items-center justify-center"
+    >
+      {/* visible 1px rule */}
+      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-primary/50 group-active:bg-primary/70" />
+      {/* grip handle — appears on hover */}
+      <GripVertical className="relative z-10 h-4 w-4 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 group-active:text-primary/70" />
+    </div>
   );
 }
 
@@ -934,7 +940,7 @@ export default function WorkspacePage() {
       <ResizeDivider onDrag={handleCenterDrag} />
 
       {/* Right: chat + file viewer tabs */}
-      <div className="flex-1 min-w-0 overflow-hidden">
+      <div className="flex-1 min-w-[280px] overflow-hidden">
         {activeSlug ? (
           <RightPanel
             key={`right-${activeSlug}`}
