@@ -573,21 +573,37 @@ def _write_wiki_entry(payload: dict, sources: list[str], counts: dict) -> Path:
 
 def _open_holographic_store():
     """Open the user's holographic memory store. Returns None on failure."""
+    import sqlite3 as _sqlite3
     try:
         from plugins.memory.holographic.store import MemoryStore as HoloStore
     except ImportError as e:
         logger.warning("Holographic store unavailable: %s", e)
         return None
-    return HoloStore()
+    try:
+        return HoloStore()
+    except _sqlite3.DatabaseError as e:
+        logger.warning("Holographic store DB error (%s). Run 'spark update' to repair.", e)
+        return None
+    except Exception as e:
+        logger.warning("Failed to open holographic store: %s", e)
+        return None
 
 
 def _open_session_db():
+    import sqlite3 as _sqlite3
     try:
         from core.spark_state import SessionDB
     except ImportError as e:
         logger.warning("SessionDB unavailable: %s", e)
         return None
-    return SessionDB(db_path=get_spark_home() / "state.db")
+    try:
+        return SessionDB(db_path=get_spark_home() / "state.db")
+    except _sqlite3.DatabaseError as e:
+        logger.warning("Session DB error (%s). Run 'spark update' to repair.", e)
+        return None
+    except Exception as e:
+        logger.warning("Failed to open session DB: %s", e)
+        return None
 
 
 def run_dream(*, since: float | None = None, dry_run: bool = False) -> DreamResult:

@@ -4564,6 +4564,42 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
     print("  ✓ computer_use enabled for the CLI (restart spark if it was already running).")
 
 
+def _ensure_dream_databases() -> None:
+    """Initialize holographic memory store DB for /dream, if needed.
+
+    Called from cmd_update so /dream works out of the box. Non-fatal.
+    If memory_store.db is corrupt, renames it to .bak and recreates it.
+    Does NOT touch state.db — that is managed by SessionDB on startup.
+    """
+    import sqlite3
+
+    try:
+        from plugins.memory.holographic.store import MemoryStore as HoloStore
+    except ImportError:
+        return  # plugin not present — nothing to do
+
+    from core.spark_constants import get_spark_home
+    holo_path = get_spark_home() / "memory_store.db"
+
+    try:
+        store = HoloStore(db_path=str(holo_path))
+        store.close()
+        print("  ✓ Dream databases ready")
+    except sqlite3.DatabaseError:
+        try:
+            if holo_path.exists():
+                bak = holo_path.with_suffix(".db.bak")
+                holo_path.rename(bak)
+                print(f"  ⚠  Corrupt memory_store.db backed up to {bak.name}")
+            store = HoloStore(db_path=str(holo_path))
+            store.close()
+            print("  ✓ Dream database repaired")
+        except Exception as repair_err:
+            print(f"  ⚠  Could not repair holographic store: {repair_err}")
+    except Exception as e:
+        print(f"  ⚠  Could not initialize dream database: {e}")
+
+
 def cmd_update(args):
     """Update Spark Agent to the latest version."""
     import shutil
@@ -4949,6 +4985,11 @@ def cmd_update(args):
                 print(f"\n-> Honcho: synced {synced} profile(s)")
         except Exception:
             pass  # honcho plugin not installed or not configured
+
+        # Ensure dream-related databases are initialized
+        print()
+        print("→ Initializing dream databases...")
+        _ensure_dream_databases()
 
         # Check for config migrations
         print()
