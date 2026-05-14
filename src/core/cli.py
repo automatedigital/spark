@@ -6017,7 +6017,7 @@ class SparkCLI:
 
         def _run_pass():
             print()
-            print("(•‿•) Dreaming — reading sessions and consolidating memory...")
+            print("Dreaming — reading sessions and consolidating memory...")
             print("  This may take a minute or two.")
             result = dream_mod.run_dream()
             print()
