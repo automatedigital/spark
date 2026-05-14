@@ -600,8 +600,18 @@ def _open_holographic_store():
     try:
         return HoloStore(), None
     except _sqlite3.DatabaseError as e:
-        logger.warning("Holographic store DB error (%s). Run 'spark update' to repair.", e)
-        return None, f"database error: {e}"
+        # DB file is corrupt — back it up and recreate automatically.
+        logger.warning("Holographic store DB corrupt (%s) — attempting auto-repair.", e)
+        try:
+            _holo_path = get_spark_home() / "memory_store.db"
+            if _holo_path.exists():
+                _bak = _holo_path.with_suffix(".db.bak")
+                _holo_path.rename(_bak)
+                logger.info("Backed up corrupt memory_store.db to %s", _bak.name)
+            return HoloStore(), None
+        except Exception as _repair_err:
+            logger.warning("Auto-repair failed: %s", _repair_err)
+            return None, f"database corrupt and repair failed: {_repair_err}"
     except Exception as e:
         logger.warning("Failed to open holographic store: %s", e)
         return None, str(e)
