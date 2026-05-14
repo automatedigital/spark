@@ -50,6 +50,7 @@ class CommandDef:
     cli_only: bool = False             # only available in CLI
     gateway_only: bool = False         # only available in gateway/messaging
     gateway_config_gate: str | None = None  # config dotpath; when truthy, overrides cli_only for gateway
+    web_available: bool = False        # available in web UI even when cli_only (returns text instead of TUI)
 
 
 # ---------------------------------------------------------------------------
@@ -63,9 +64,9 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("clear", "Clear screen and start a new session", "Session",
                cli_only=True),
     CommandDef("history", "Show conversation history", "Session",
-               cli_only=True),
+               cli_only=True, web_available=True),
     CommandDef("save", "Save the current conversation", "Session",
-               cli_only=True),
+               cli_only=True, web_available=True),
     CommandDef("retry", "Retry the last message (resend to agent)", "Session"),
     CommandDef("undo", "Remove the last user/assistant exchange", "Session"),
     CommandDef("title", "Set a title for the current session", "Session",
@@ -95,12 +96,12 @@ COMMAND_REGISTRY: list[CommandDef] = [
                gateway_only=True, aliases=("set-home",)),
     CommandDef("resume", "Resume a previously-named session", "Session",
                args_hint="[name]"),
-    CommandDef("sessions", "Browse and resume recent sessions (fuzzy search)", "Session",
-               aliases=("sess",), cli_only=True),
-    CommandDef("files", "Fuzzy file picker — inserts @path into your next message", "Tools & Skills",
-               aliases=("f",), cli_only=True),
+    CommandDef("sessions", "Browse and resume recent sessions", "Session",
+               aliases=("sess",), cli_only=True, web_available=True),
+    CommandDef("files", "List workspace files (use @path in message to reference)", "Tools & Skills",
+               aliases=("f",), cli_only=True, web_available=True),
     CommandDef("memory", "Show recent memory entries written by the agent", "Tools & Skills",
-               aliases=("mem",), cli_only=True),
+               aliases=("mem",), cli_only=True, web_available=True),
     CommandDef("dream", "Reflect on past sessions and consolidate memory into the llm-wiki",
                "Tools & Skills",
                args_hint="[now|schedule|unschedule|status|review]",
@@ -118,7 +119,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
 
     # Configuration
     CommandDef("config", "Show current configuration", "Configuration",
-               cli_only=True),
+               cli_only=True, web_available=True),
     CommandDef("model", "Switch model for this session", "Configuration", args_hint="[model] [--global]"),
     CommandDef("provider", "Show available providers and current provider",
                "Configuration"),
@@ -145,16 +146,16 @@ COMMAND_REGISTRY: list[CommandDef] = [
 
     # Tools & Skills
     CommandDef("tools", "Manage tools: /tools [list|disable|enable] [name...]", "Tools & Skills",
-               args_hint="[list|disable|enable] [name...]", cli_only=True),
+               args_hint="[list|disable|enable] [name...]", cli_only=True, web_available=True),
     CommandDef("toolsets", "List available toolsets", "Tools & Skills",
-               cli_only=True),
+               cli_only=True, web_available=True),
     CommandDef("skills", "Search, install, inspect, or manage skills",
-               "Tools & Skills", cli_only=True,
+               "Tools & Skills", cli_only=True, web_available=True,
                subcommands=("search", "browse", "inspect", "install")),
     CommandDef("reset-skills", "Remove hub-installed/custom skills and restore bundled defaults",
                "Tools & Skills", cli_only=False),
     CommandDef("cron", "Manage scheduled tasks", "Tools & Skills",
-               cli_only=True, args_hint="[subcommand]",
+               cli_only=True, web_available=True, args_hint="[subcommand]",
                subcommands=("list", "add", "create", "edit", "pause", "resume", "run", "remove")),
     CommandDef(
         "kanban",
@@ -177,7 +178,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
         args_hint="[task]",
     ),
     CommandDef("plugins", "List installed plugins and their status",
-               "Tools & Skills", cli_only=True),
+               "Tools & Skills", cli_only=True, web_available=True),
 
     # Info
     CommandDef("commands", "Browse all commands and skills (paginated)", "Info",
@@ -284,7 +285,7 @@ for _cmd in COMMAND_REGISTRY:
 GATEWAY_KNOWN_COMMANDS: frozenset[str] = frozenset(
     name
     for cmd in COMMAND_REGISTRY
-    if not cmd.cli_only or cmd.gateway_config_gate
+    if not cmd.cli_only or cmd.gateway_config_gate or cmd.web_available
     for name in (cmd.name, *cmd.aliases)
 )
 

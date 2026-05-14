@@ -3369,12 +3369,14 @@ async def update_session_kanban(session_id: str, body: KanbanUpdate):
 
 @app.get("/api/commands")
 async def get_slash_commands():
-    """Return gateway-available slash commands for the web UI command palette."""
+    """Return all web-available slash commands and installed skills for the command palette."""
     from spark_cli.commands import COMMAND_REGISTRY
 
     out = []
     for cmd in COMMAND_REGISTRY:
-        if cmd.cli_only:
+        if cmd.cli_only and not cmd.web_available:
+            continue
+        if cmd.gateway_only:
             continue
         out.append(
             {
@@ -3382,9 +3384,28 @@ async def get_slash_commands():
                 "description": cmd.description,
                 "category": cmd.category,
                 "aliases": list(cmd.aliases) if cmd.aliases else [],
-                "args_hint": cmd.args_hint,
+                "args_hint": cmd.args_hint or "",
             }
         )
+
+    # Append installed skills so they show up in the slash command menu
+    try:
+        from agent.skill_commands import get_skill_commands
+        skill_cmds = get_skill_commands()
+        for cmd_key, info in sorted(skill_cmds.items()):
+            name = cmd_key.lstrip("/")
+            out.append(
+                {
+                    "name": name,
+                    "description": info.get("description", "Skill"),
+                    "category": "Skills",
+                    "aliases": [],
+                    "args_hint": info.get("args_hint", "") or "",
+                }
+            )
+    except Exception:
+        pass
+
     return out
 
 

@@ -17,7 +17,7 @@ function fuzzyMatch(query: string, cmd: SlashCommand): boolean {
   return false;
 }
 
-const CATEGORY_ORDER = ["Session", "Configuration", "Tools & Skills", "Info"];
+const CATEGORY_ORDER = ["Session", "Configuration", "Tools & Skills", "Skills", "Info"];
 
 export function SlashCommandMenu({ query, onSelect, onClose }: SlashCommandMenuProps) {
   const [commands, setCommands] = useState<SlashCommand[]>([]);

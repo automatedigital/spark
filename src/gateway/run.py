@@ -2943,6 +2943,39 @@ class GatewayRunner:
                 logger.exception("reset-skills failed")
                 return f"Reset failed: {e}"
 
+        if canonical == "history":
+            return await self._handle_history_command(event)
+
+        if canonical == "memory":
+            return await self._handle_memory_gateway_command(event)
+
+        if canonical == "sessions":
+            return await self._handle_sessions_gateway_command(event)
+
+        if canonical == "config":
+            return await self._handle_config_command(event)
+
+        if canonical == "tools":
+            return await self._handle_tools_gateway_command(event)
+
+        if canonical == "toolsets":
+            return await self._handle_toolsets_command(event)
+
+        if canonical == "skills":
+            return await self._handle_skills_gateway_command(event)
+
+        if canonical == "cron":
+            return await self._handle_cron_gateway_command(event)
+
+        if canonical == "plugins":
+            return await self._handle_plugins_command(event)
+
+        if canonical == "files":
+            return await self._handle_files_gateway_command(event)
+
+        if canonical == "save":
+            return await self._handle_save_command(event)
+
         if self._draining:
             return f"⏳ Gateway is {self._status_action_gerund()} and is not accepting new work right now."
 
@@ -5270,6 +5303,306 @@ class GatewayRunner:
 
         except Exception as e:
             logger.warning("Post-stream media extraction failed: %s", e)
+
+    async def _handle_history_command(self, event: MessageEvent) -> str:
+        """Handle /history — show conversation history as formatted text."""
+        source = event.source
+        session_entry = self.session_store.get_or_create_session(source)
+        history = self.session_store.load_transcript(session_entry.session_id)
+
+        user_assistant = [m for m in history if m.get("role") in ("user", "assistant")]
+        if not user_assistant:
+            return "No conversation history yet."
+
+        lines = [f"**Conversation history** ({len(user_assistant)} messages)\n"]
+        for msg in user_assistant[-40:]:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                parts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
+                content = " ".join(parts)
+            label = "**You**" if role == "user" else "**Spark**"
+            snippet = str(content)[:300].replace("\n", " ")
+            if len(str(content)) > 300:
+                snippet += "…"
+            lines.append(f"{label}: {snippet}")
+        return "\n".join(lines)
+
+    async def _handle_memory_gateway_command(self, event: MessageEvent) -> str:
+        """Handle /memory — show memory files as text."""
+        from core.spark_constants import get_spark_home
+        try:
+            memories_dir = get_spark_home() / "memories"
+            if not memories_dir.exists():
+                return "No memories directory found. Memory is built automatically as you chat."
+            sections = []
+            for fname in ("MEMORY.md", "USER.md", "FEEDBACK.md"):
+                fpath = memories_dir / fname
+                if fpath.exists():
+                    content = fpath.read_text(encoding="utf-8").strip()
+                    if content:
+                        lines = content.splitlines()
+                        preview = "\n".join(lines[:40])
+                        if len(lines) > 40:
+                            preview += f"\n… ({len(lines) - 40} more lines)"
+                        sections.append(f"**{fname}**\n```\n{preview}\n```")
+            if not sections:
+                return "Memory files exist but are empty — memories accumulate as you chat."
+            return "\n\n".join(sections)
+        except Exception as e:
+            return f"Could not read memories: {e}"
+
+    async def _handle_sessions_gateway_command(self, event: MessageEvent) -> str:
+        """Handle /sessions — list recent sessions as text."""
+        if not self._session_db:
+            return "Session database not available."
+        try:
+            sessions = self._session_db.list_sessions_rich(limit=20)
+        except Exception as e:
+            return f"Could not load sessions: {e}"
+        if not sessions:
+            return "No sessions found."
+        lines = ["**Recent sessions** (use `/resume <id>` to switch)\n"]
+        for s in sessions:
+            sid = s.get("id", "")
+            title = s.get("title") or "(untitled)"
+            ts = s.get("updated_at") or s.get("created_at") or ""
+            if ts:
+                try:
+                    from datetime import datetime
+                    if isinstance(ts, str):
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    else:
+                        dt = ts
+                    ts = dt.strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    ts = str(ts)
+            turns = s.get("turn_count", "?")
+            lines.append(f"• `{sid[:16]}…` — {title} ({turns} turns, {ts})")
+        return "\n".join(lines)
+
+    async def _handle_config_command(self, event: MessageEvent) -> str:
+        """Handle /config — show current configuration."""
+        try:
+            from spark_cli.config import load_config
+            import yaml
+            cfg = load_config()
+            if hasattr(cfg, "_data"):
+                data = cfg._data
+            elif isinstance(cfg, dict):
+                data = cfg
+            else:
+                data = dict(cfg) if cfg else {}
+            safe = {}
+            secret_keys = {"api_key", "token", "secret", "password", "webhook"}
+            for k, v in data.items():
+                if any(s in str(k).lower() for s in secret_keys):
+                    safe[k] = "***"
+                else:
+                    safe[k] = v
+            return f"**Current configuration:**\n```yaml\n{yaml.dump(safe, default_flow_style=False).strip()}\n```"
+        except Exception as e:
+            return f"Could not read config: {e}"
+
+    async def _handle_tools_gateway_command(self, event: MessageEvent) -> str:
+        """Handle /tools [list|disable|enable] — manage tools from web UI."""
+        import shlex
+        args = event.get_command_args().strip()
+        try:
+            tokens = shlex.split(args) if args else []
+        except ValueError:
+            tokens = args.split() if args else []
+
+        subcommand = tokens[0] if tokens else ""
+
+        if subcommand in ("disable", "enable"):
+            names = tokens[1:]
+            if not names:
+                return f"Usage: `/tools {subcommand} <name> [name …]`"
+            try:
+                from argparse import Namespace
+                from spark_cli.tools_config import tools_disable_enable_command
+                import io, sys
+                buf = io.StringIO()
+                old_stdout = sys.stdout
+                sys.stdout = buf
+                try:
+                    tools_disable_enable_command(Namespace(tools_action=subcommand, names=names, platform="gateway"))
+                finally:
+                    sys.stdout = old_stdout
+                output = buf.getvalue().strip() or f"Tools {subcommand}d: {', '.join(names)}"
+                return output
+            except Exception as e:
+                return f"Failed to {subcommand} tools: {e}"
+
+        # Default: list all tools
+        try:
+            from core.model_tools import get_tool_definitions
+            tools = get_tool_definitions(quiet_mode=True)
+            if not tools:
+                return "No tools currently loaded."
+            lines = [f"**Active tools** ({len(tools)} total)\n"]
+            for t in sorted(tools, key=lambda x: x.get("function", {}).get("name", "")):
+                name = t.get("function", {}).get("name", "?")
+                desc = t.get("function", {}).get("description", "")
+                short = desc.split(".")[0][:80] if desc else ""
+                lines.append(f"• `{name}` — {short}")
+            lines.append("\nUse `/tools disable <name>` or `/tools enable <name>` to toggle.")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Could not list tools: {e}"
+
+    async def _handle_toolsets_command(self, event: MessageEvent) -> str:
+        """Handle /toolsets — list available toolsets."""
+        try:
+            from tools.toolsets import get_all_toolsets, get_toolset_info
+            from spark_cli.config import load_config
+            from spark_cli.tools_config import _get_platform_tools
+            cfg = load_config()
+            enabled = set(_get_platform_tools(cfg, "gateway") or [])
+            all_toolsets = get_all_toolsets()
+            if not all_toolsets:
+                return "No toolsets found."
+            lines = ["**Available toolsets**\n"]
+            for name in sorted(all_toolsets.keys()):
+                info = get_toolset_info(name)
+                if info:
+                    count = info.get("tool_count", "?")
+                    desc = info.get("description", "")
+                    marker = "✓" if name in enabled else "○"
+                    lines.append(f"{marker} **{name}** [{count} tools] — {desc}")
+            lines.append("\n✓ = currently enabled")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Could not list toolsets: {e}"
+
+    async def _handle_skills_gateway_command(self, event: MessageEvent) -> str:
+        """Handle /skills [search <query>] — list or search available skills."""
+        args = event.get_command_args().strip()
+        parts = args.split(maxsplit=1)
+        subcommand = parts[0].lower() if parts else ""
+        query = parts[1] if len(parts) > 1 else ""
+
+        try:
+            from agent.skill_commands import get_skill_commands
+            skill_cmds = get_skill_commands()
+        except Exception as e:
+            return f"Could not load skills: {e}"
+
+        if not skill_cmds:
+            return "No skills installed."
+
+        if subcommand == "search" and query:
+            q = query.lower()
+            matches = {k: v for k, v in skill_cmds.items()
+                       if q in k.lower() or q in v.get("description", "").lower()}
+            if not matches:
+                return f"No skills matching `{query}`."
+            lines = [f"**Skills matching '{query}':**\n"]
+        else:
+            matches = skill_cmds
+            lines = [f"**Installed skills** ({len(matches)} total)\n"]
+
+        for cmd_key in sorted(matches.keys()):
+            info = matches[cmd_key]
+            desc = info.get("description", "")
+            short = desc.split("\n")[0][:80] if desc else ""
+            lines.append(f"• `{cmd_key}` — {short}")
+
+        lines.append("\nType the skill command directly to invoke it (e.g. `/review`).")
+        return "\n".join(lines)
+
+    async def _handle_cron_gateway_command(self, event: MessageEvent) -> str:
+        """Handle /cron [list] — list scheduled tasks."""
+        try:
+            from tools.cronjob_tools import cronjob as cronjob_tool
+            import json
+            result = json.loads(cronjob_tool(action="list"))
+            jobs = result.get("jobs", []) if isinstance(result, dict) else []
+            if not jobs:
+                return "No scheduled tasks. Use `/cron add` via the CLI to create one."
+            lines = [f"**Scheduled tasks** ({len(jobs)} total)\n"]
+            for job in jobs:
+                name = job.get("name") or job.get("id", "?")
+                schedule = job.get("schedule", "?")
+                status = job.get("status", "active")
+                prompt = job.get("prompt", "")
+                short_prompt = prompt[:60] + ("…" if len(prompt) > 60 else "") if prompt else ""
+                lines.append(f"• **{name}** `{schedule}` [{status}]{' — ' + short_prompt if short_prompt else ''}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Could not list cron tasks: {e}"
+
+    async def _handle_plugins_command(self, event: MessageEvent) -> str:
+        """Handle /plugins — list installed plugins."""
+        try:
+            from spark_cli.plugins import get_plugin_manager
+            mgr = get_plugin_manager()
+            plugins = mgr.list_plugins()
+            if not plugins:
+                from core.spark_constants import display_spark_home
+                return (
+                    "No plugins installed.\n"
+                    f"Drop plugin directories into `{display_spark_home()}/plugins/` to get started."
+                )
+            lines = [f"**Installed plugins** ({len(plugins)} total)\n"]
+            for p in plugins:
+                status = "✓" if p.get("enabled") else "✗"
+                name = p.get("name", "?")
+                version = f" v{p['version']}" if p.get("version") else ""
+                tools = f"{p['tools']} tools" if p.get("tools") else ""
+                hooks = f"{p['hooks']} hooks" if p.get("hooks") else ""
+                parts = [x for x in [tools, hooks] if x]
+                detail = f" ({', '.join(parts)})" if parts else ""
+                error = f" — ⚠ {p['error']}" if p.get("error") else ""
+                lines.append(f"{status} **{name}**{version}{detail}{error}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Plugin system error: {e}"
+
+    async def _handle_files_gateway_command(self, event: MessageEvent) -> str:
+        """Handle /files — list workspace files."""
+        import os
+        import glob
+        try:
+            cwd = os.environ.get("TERMINAL_CWD", os.getcwd())
+            files = sorted(glob.glob("**/*", recursive=True, root_dir=cwd))
+            files = [f for f in files if os.path.isfile(os.path.join(cwd, f)) and not any(
+                seg.startswith(".") or seg in ("__pycache__", "node_modules", ".git")
+                for seg in f.split(os.sep)
+            )][:100]
+            if not files:
+                return f"No files found in workspace: `{cwd}`"
+            lines = [f"**Workspace files** in `{cwd}` ({len(files)} shown)\n"]
+            lines.extend(f"• `{f}`" for f in files[:50])
+            if len(files) > 50:
+                lines.append(f"… and {len(files) - 50} more")
+            lines.append("\nReference files in your message with `@path/to/file`.")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Could not list files: {e}"
+
+    async def _handle_save_command(self, event: MessageEvent) -> str:
+        """Handle /save — save conversation transcript to a file."""
+        import json
+        from datetime import datetime
+        from core.spark_constants import get_spark_home
+        source = event.source
+        session_entry = self.session_store.get_or_create_session(source)
+        history = self.session_store.load_transcript(session_entry.session_id)
+        if not history:
+            return "Nothing to save — conversation is empty."
+        try:
+            save_dir = get_spark_home() / "saved_conversations"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            sid_short = session_entry.session_id[:8]
+            filename = f"conversation_{ts}_{sid_short}.json"
+            path = save_dir / filename
+            path.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
+            return f"✓ Conversation saved to `{path}`"
+        except Exception as e:
+            return f"Could not save conversation: {e}"
 
     async def _handle_rollback_command(self, event: MessageEvent) -> str:
         """Handle /rollback command — list or restore filesystem checkpoints."""
