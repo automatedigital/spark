@@ -139,7 +139,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="h-screen overflow-hidden bg-background text-foreground">
       {/* Cursor-following glow blob */}
       <div
         className="cursor-blob"
@@ -150,7 +150,7 @@ export default function App() {
       <div className="noise-overlay" />
       <div className="warm-glow" />
 
-      <div className={`relative z-2 grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:248px]" : "[--sidebar-width:84px]"}`}>
+      <div className={`relative z-2 grid h-full grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:248px]" : "[--sidebar-width:84px]"}`}>
         <aside
           onMouseEnter={() => !navExpanded && setNavHovered(true)}
           onMouseLeave={() => setNavHovered(false)}
@@ -243,7 +243,7 @@ export default function App() {
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-col">
+        <div className="flex min-w-0 flex-col h-full overflow-hidden">
           <header className="sticky top-0 z-40 border-b border-border bg-background/82 backdrop-blur-xl">
             <div className="flex min-h-16 items-center gap-3 px-3 sm:px-6">
               <div className="flex items-center gap-3 md:hidden">
