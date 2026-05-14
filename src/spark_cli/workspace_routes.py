@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from spark_cli.config import get_spark_home
@@ -160,6 +160,19 @@ def read_project_file(slug: str, path: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(exc))
     mime, _ = mimetypes.guess_type(file_path.name)
     return {"path": path, "content": content, "mime": mime or "text/plain", "size": size}
+
+
+@router.get("/projects/{slug}/raw-file")
+def read_project_file_raw(slug: str, path: str = Query(...)):
+    """Serve a project file with its native MIME type (binary-safe)."""
+    project_dir = _project_dir(slug)
+    file_path = _safe_path(project_dir, path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
+    if file_path.is_dir():
+        raise HTTPException(status_code=400, detail="Path is a directory")
+    mime, _ = mimetypes.guess_type(file_path.name)
+    return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
 @router.post("/projects/{slug}/upload")
