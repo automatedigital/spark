@@ -1781,10 +1781,16 @@ class TelegramAdapter(BasePlatformAdapter):
         """Send typing indicator."""
         if self._bot:
             try:
+                topic_kwargs = self._telegram_topic_kwargs(metadata)
+                # send_chat_action only accepts message_thread_id, not direct_messages_topic_id
+                chat_action_kwargs = {
+                    k: v for k, v in topic_kwargs.items()
+                    if k in ("message_thread_id",) and v is not None
+                }
                 await self._bot.send_chat_action(
                     chat_id=int(chat_id),
                     action="typing",
-                    **self._telegram_topic_kwargs(metadata),
+                    **chat_action_kwargs,
                 )
             except Exception as e:
                 # Typing failures are non-fatal; log at debug level only.
