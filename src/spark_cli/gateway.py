@@ -816,8 +816,9 @@ def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) 
     python_path = get_python_path()
     working_dir = str(PROJECT_ROOT)
     detected_venv = _detect_venv_dir()
-    venv_dir = str(detected_venv) if detected_venv else str(PROJECT_ROOT / "venv")
-    venv_bin = str(detected_venv / "bin") if detected_venv else str(PROJECT_ROOT / "venv" / "bin")
+    _venv_fallback = PROJECT_ROOT.parent / ".venv"
+    venv_dir = str(detected_venv) if detected_venv else str(_venv_fallback)
+    venv_bin = str(detected_venv / "bin") if detected_venv else str(_venv_fallback / "bin")
     node_bin = str(PROJECT_ROOT / "node_modules" / ".bin")
 
     path_entries = [venv_bin, node_bin]
@@ -1235,8 +1236,9 @@ def generate_launchd_plist() -> str:
     # the systemd unit), then capture the user's full shell PATH so every
     # user-installed tool (node, ffmpeg, …) is reachable.
     detected_venv = _detect_venv_dir()
-    venv_bin = str(detected_venv / "bin") if detected_venv else str(PROJECT_ROOT / "venv" / "bin")
-    venv_dir = str(detected_venv) if detected_venv else str(PROJECT_ROOT / "venv")
+    _venv_fallback = PROJECT_ROOT.parent / ".venv"
+    venv_bin = str(detected_venv / "bin") if detected_venv else str(_venv_fallback / "bin")
+    venv_dir = str(detected_venv) if detected_venv else str(_venv_fallback)
     node_bin = str(PROJECT_ROOT / "node_modules" / ".bin")
     # Resolve the directory containing the node binary (e.g. Homebrew, nvm)
     # so it's explicitly in PATH even if the user's shell PATH changes later.

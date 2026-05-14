@@ -141,21 +141,21 @@ fi
 
 echo -e "${CYAN}->${NC} Setting up virtual environment..."
 
-if [ -d "venv" ]; then
+if [ -d ".venv" ]; then
     echo -e "${CYAN}->${NC} Removing old venv..."
-    rm -rf venv
+    rm -rf .venv
 fi
 
 if is_termux; then
-    "$PYTHON_PATH" -m venv venv
+    "$PYTHON_PATH" -m venv .venv
     echo -e "${GREEN}OK${NC} venv created with stdlib venv"
 else
-    $UV_CMD venv venv --python "$PYTHON_VERSION"
+    $UV_CMD venv .venv --python "$PYTHON_VERSION"
     echo -e "${GREEN}OK${NC} venv created (Python $PYTHON_VERSION)"
 fi
 
-export VIRTUAL_ENV="$SCRIPT_DIR/venv"
-SETUP_PYTHON="$SCRIPT_DIR/venv/bin/python"
+export VIRTUAL_ENV="$SCRIPT_DIR/.venv"
+SETUP_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 
 # ============================================================================
 # Dependencies
@@ -181,7 +181,7 @@ else
     # fall back to pip install for compatibility or when lockfile is stale.
     if [ -f "uv.lock" ]; then
         echo -e "${CYAN}->${NC} Using uv.lock for hash-verified installation..."
-        UV_PROJECT_ENVIRONMENT="$SCRIPT_DIR/venv" $UV_CMD sync --all-extras --locked 2>/dev/null && \
+        UV_PROJECT_ENVIRONMENT="$SCRIPT_DIR/.venv" $UV_CMD sync --all-extras --locked 2>/dev/null && \
             echo -e "${GREEN}OK${NC} Dependencies installed (lockfile verified)" || {
             echo -e "${YELLOW}WARN${NC} Lockfile install failed (may be outdated), falling back to pip install..."
             $UV_CMD pip install -e ".[all]" || $UV_CMD pip install -e "."
@@ -284,7 +284,7 @@ fi
 
 echo -e "${CYAN}->${NC} Setting up spark command..."
 
-SPARK_BIN="$SCRIPT_DIR/venv/bin/spark"
+SPARK_BIN="$SCRIPT_DIR/.venv/bin/spark"
 COMMAND_LINK_DIR="$(get_command_link_dir)"
 COMMAND_LINK_DISPLAY_DIR="$(get_command_link_display_dir)"
 mkdir -p "$COMMAND_LINK_DIR"
@@ -341,7 +341,7 @@ mkdir -p "$SPARK_SKILLS_DIR"
 
 echo ""
 echo "Syncing bundled skills to ~/.spark/skills/ ..."
-if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$SCRIPT_DIR/venv/bin/python" -m tools.skills_sync 2>/dev/null; then
+if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$SCRIPT_DIR/.venv/bin/python" -m tools.skills_sync 2>/dev/null; then
     echo -e "${GREEN}OK${NC} Skills synced"
 else
     # Fallback: merge missing bundled skills without overwriting user edits.
@@ -413,5 +413,5 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
     echo ""
     # Run directly with venv Python (no activation needed)
-    "$SCRIPT_DIR/venv/bin/python" -m spark_cli.main setup
+    "$SCRIPT_DIR/.venv/bin/python" -m spark_cli.main setup
 fi

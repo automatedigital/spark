@@ -3581,7 +3581,7 @@ def _update_via_zip(args):
                     break
 
         # Copy updated files over existing installation, preserving venv/node_modules/.git
-        preserve = {"venv", "node_modules", ".git", ".env"}
+        preserve = {"venv", ".venv", "node_modules", ".git", ".env"}
         update_count = 0
         for item in os.listdir(extracted):
             if item in preserve:
@@ -3620,7 +3620,7 @@ def _update_via_zip(args):
 
     uv_bin = shutil.which("uv")
     if uv_bin:
-        uv_env = {**os.environ, "VIRTUAL_ENV": str(PROJECT_ROOT / "venv")}
+        uv_env = {**os.environ, "VIRTUAL_ENV": str(_detect_venv())}
         _install_python_dependencies_with_optional_fallback([uv_bin, "pip"], env=uv_env)
     else:
         # Use sys.executable to explicitly call the venv's pip module,
@@ -4564,6 +4564,32 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
     print("  ✓ computer_use enabled for the CLI (restart spark if it was already running).")
 
 
+def _detect_venv() -> "Path":
+    """Return the venv directory to install into.
+
+    Uses ``sys.prefix`` when already running inside a virtualenv (the normal
+    case when the user runs ``spark update`` from their installed spark command).
+    Falls back to probing common names under the repo root.
+
+    Note: ``PROJECT_ROOT`` is ``src/``; the repo root (where the venv lives)
+    is ``PROJECT_ROOT.parent``.
+    """
+    import sys as _sys
+
+    # If we're already inside the target venv, use it directly.
+    if _sys.prefix != _sys.base_prefix:
+        return Path(_sys.prefix)
+
+    # Fallback: probe the repo root for common venv directory names.
+    _repo_root = PROJECT_ROOT.parent
+    for candidate in (".venv", "venv"):
+        venv = _repo_root / candidate
+        if venv.is_dir():
+            return venv
+
+    return _repo_root / ".venv"
+
+
 def _ensure_dream_databases() -> None:
     """Initialize holographic memory store DB for /dream, if needed.
 
@@ -4571,12 +4597,21 @@ def _ensure_dream_databases() -> None:
     If memory_store.db is corrupt, renames it to .bak and recreates it.
     Does NOT touch state.db — that is managed by SessionDB on startup.
     """
+    import sys
     import sqlite3
+    from pathlib import Path as _Path
+
+    # Ensure src/ is in sys.path so plugin packages are importable.
+    # main.py lives at src/spark_cli/main.py — src/ is two levels up.
+    _src = str(_Path(__file__).resolve().parent.parent)
+    if _src not in sys.path:
+        sys.path.insert(0, _src)
 
     try:
         from plugins.memory.holographic.store import MemoryStore as HoloStore
-    except ImportError:
-        return  # plugin not present — nothing to do
+    except ImportError as e:
+        print(f"  ⚠  Holographic plugin not importable: {e}")
+        return
 
     from core.spark_constants import get_spark_home
     holo_path = get_spark_home() / "memory_store.db"
@@ -4917,7 +4952,7 @@ def cmd_update(args):
         print("→ Updating Python dependencies...")
         uv_bin = shutil.which("uv")
         if uv_bin:
-            uv_env = {**os.environ, "VIRTUAL_ENV": str(PROJECT_ROOT / "venv")}
+            uv_env = {**os.environ, "VIRTUAL_ENV": str(_detect_venv())}
             _install_python_dependencies_with_optional_fallback(
                 [uv_bin, "pip"], env=uv_env
             )

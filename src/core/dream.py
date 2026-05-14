@@ -572,25 +572,50 @@ def _write_wiki_entry(payload: dict, sources: list[str], counts: dict) -> Path:
 # ---------------------------------------------------------------------------
 
 def _open_holographic_store():
-    """Open the user's holographic memory store. Returns None on failure."""
+    """Open the user's holographic memory store.
+
+    Returns ``(store, None)`` on success or ``(None, error_str)`` on failure.
+    Ensures ``src/`` is in sys.path before importing so the plugin packages
+    (agent, tools, plugins.*) are always importable regardless of venv state.
+    """
     import sqlite3 as _sqlite3
+    import sys
+
+    # dream.py lives at src/core/dream.py — src/ is two levels up.
+    # Inserting it guarantees plugin imports work even when the editable
+    # install's .pth file is stale (e.g. after spark update used the wrong venv).
+    _src = str(Path(__file__).resolve().parent.parent)
+    if _src not in sys.path:
+        sys.path.insert(0, _src)
+
     try:
         from plugins.memory.holographic.store import MemoryStore as HoloStore
     except ImportError as e:
         logger.warning("Holographic store unavailable: %s", e)
-        return None
+        return None, str(e)
+    except Exception as e:
+        logger.warning("Failed to import holographic store: %s", e)
+        return None, str(e)
+
     try:
-        return HoloStore()
+        return HoloStore(), None
     except _sqlite3.DatabaseError as e:
         logger.warning("Holographic store DB error (%s). Run 'spark update' to repair.", e)
-        return None
+        return None, f"database error: {e}"
     except Exception as e:
         logger.warning("Failed to open holographic store: %s", e)
-        return None
+        return None, str(e)
 
 
 def _open_session_db():
+    """Open the session database. Returns the SessionDB or None on failure."""
     import sqlite3 as _sqlite3
+    import sys
+
+    _src = str(Path(__file__).resolve().parent.parent)
+    if _src not in sys.path:
+        sys.path.insert(0, _src)
+
     try:
         from core.spark_state import SessionDB
     except ImportError as e:
@@ -625,9 +650,12 @@ def run_dream(*, since: float | None = None, dry_run: bool = False) -> DreamResu
     if since is None:
         since = state.get("last_run_at")
 
-    store = _open_holographic_store()
+    store, _holo_err = _open_holographic_store()
     if store is None:
-        result.error = "holographic store unavailable"
+        result.error = (
+            f"holographic store unavailable: {_holo_err}"
+            if _holo_err else "holographic store unavailable"
+        )
         return result
 
     session_db = _open_session_db()

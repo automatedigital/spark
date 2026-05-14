@@ -682,8 +682,8 @@ sync_bundled_skills_to_home() {
         return 0
     fi
 
-    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
-        sync_python="$INSTALL_DIR/venv/bin/python"
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
+        sync_python="$INSTALL_DIR/.venv/bin/python"
     else
         sync_python="$PYTHON_PATH"
     fi
@@ -852,25 +852,25 @@ setup_venv() {
     if [ "$DISTRO" = "termux" ]; then
         log_info "Creating virtual environment with Termux Python..."
 
-        if [ -d "venv" ]; then
+        if [ -d ".venv" ]; then
             log_info "Virtual environment already exists, recreating..."
-            rm -rf venv
+            rm -rf .venv
         fi
 
-        "$PYTHON_PATH" -m venv venv
-        log_success "Virtual environment ready ($(./venv/bin/python --version 2>/dev/null))"
+        "$PYTHON_PATH" -m venv .venv
+        log_success "Virtual environment ready ($(./.venv/bin/python --version 2>/dev/null))"
         return 0
     fi
 
     log_info "Creating virtual environment with Python $PYTHON_VERSION..."
 
-    if [ -d "venv" ]; then
+    if [ -d ".venv" ]; then
         log_info "Virtual environment already exists, recreating..."
-        rm -rf venv
+        rm -rf .venv
     fi
 
     # uv creates the venv and pins the Python version in one step
-    $UV_CMD venv venv --python "$PYTHON_VERSION"
+    $UV_CMD venv .venv --python "$PYTHON_VERSION"
 
     log_success "Virtual environment ready (Python $PYTHON_VERSION)"
 }
@@ -880,8 +880,8 @@ install_deps() {
 
     if [ "$DISTRO" = "termux" ]; then
         if [ "$USE_VENV" = true ]; then
-            export VIRTUAL_ENV="$INSTALL_DIR/venv"
-            PIP_PYTHON="$INSTALL_DIR/venv/bin/python"
+            export VIRTUAL_ENV="$INSTALL_DIR/.venv"
+            PIP_PYTHON="$INSTALL_DIR/.venv/bin/python"
         else
             PIP_PYTHON="$PYTHON_PATH"
         fi
@@ -920,7 +920,7 @@ install_deps() {
 
     if [ "$USE_VENV" = true ]; then
         # Tell uv to install into our venv (no need to activate)
-        export VIRTUAL_ENV="$INSTALL_DIR/venv"
+        export VIRTUAL_ENV="$INSTALL_DIR/.venv"
     fi
 
     # On Debian/Ubuntu (including WSL), some Python packages need build tools.
@@ -997,7 +997,7 @@ setup_path() {
     log_info "Setting up spark command..."
 
     if [ "$USE_VENV" = true ]; then
-        SPARK_BIN="$INSTALL_DIR/venv/bin/spark"
+        SPARK_BIN="$INSTALL_DIR/.venv/bin/spark"
     else
         SPARK_BIN="$(which spark 2>/dev/null || echo "")"
         if [ -z "$SPARK_BIN" ]; then
@@ -1140,8 +1140,8 @@ SOUL_EOF
     sync_bundled_skills_to_home "$SPARK_HOME" "~/.spark/skills/"
 
     local sync_python
-    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
-        sync_python="$INSTALL_DIR/venv/bin/python"
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
+        sync_python="$INSTALL_DIR/.venv/bin/python"
     else
         sync_python="$PYTHON_PATH"
     fi
@@ -1292,7 +1292,7 @@ maybe_install_cua_driver() {
     if command -v cua-driver &> /dev/null; then
         had_cua=true
     fi
-    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/cua-driver" ]; then
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/cua-driver" ]; then
         had_cua=true
     fi
     if [ -x "$HOME/.local/bin/cua-driver" ] || [ -x "/opt/homebrew/bin/cua-driver" ] || [ -x "/usr/local/bin/cua-driver" ]; then
@@ -1312,7 +1312,7 @@ maybe_install_cua_driver() {
     if command -v cua-driver &> /dev/null; then
         cua_resolved=true
     fi
-    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/cua-driver" ]; then
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/cua-driver" ]; then
         cua_resolved=true
     fi
     if [ -x "$HOME/.local/bin/cua-driver" ] || [ -x "/opt/homebrew/bin/cua-driver" ] || [ -x "/usr/local/bin/cua-driver" ]; then
@@ -1329,8 +1329,8 @@ maybe_install_cua_driver() {
 
     log_success "cua-driver ready"
     local config_python="$PYTHON_PATH"
-    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
-        config_python="$INSTALL_DIR/venv/bin/python"
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
+        config_python="$INSTALL_DIR/.venv/bin/python"
     fi
     if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" \
         "$config_python" -c \
@@ -1365,7 +1365,7 @@ run_setup_wizard() {
     # Run spark setup using the venv Python directly (no activation needed).
     # Redirect stdin from /dev/tty so interactive prompts work when piped from curl.
     if [ "$USE_VENV" = true ]; then
-        "$INSTALL_DIR/venv/bin/python" -m spark_cli.main setup < /dev/tty
+        "$INSTALL_DIR/.venv/bin/python" -m spark_cli.main setup < /dev/tty
     else
         python -m spark_cli.main setup < /dev/tty
     fi
