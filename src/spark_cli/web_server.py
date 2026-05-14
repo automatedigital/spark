@@ -3138,6 +3138,396 @@ def _turn_done_payload(result: Any) -> Dict[str, Any]:
     }
 
 
+def _execute_web_slash_command(session_id: str, message: str) -> "str | None":
+    """Handle a slash command from the web UI. Returns response text, or None to fall through to the agent."""
+    if not message.startswith("/"):
+        return None
+
+    from spark_cli.commands import resolve_command
+
+    raw_parts = message[1:].split(maxsplit=1)
+    cmd_name = raw_parts[0].lower() if raw_parts else ""
+    args = raw_parts[1] if len(raw_parts) > 1 else ""
+
+    if not cmd_name:
+        return None
+
+    cmd_def = resolve_command(cmd_name)
+    if not cmd_def:
+        return None  # Unknown command — let the agent handle it
+
+    if cmd_def.gateway_only:
+        return None  # Gateway-only — agent handles naturally
+
+    if cmd_def.cli_only and not cmd_def.web_available:
+        return f"`/{cmd_def.name}` is only available in the CLI."
+
+    canonical = cmd_def.name
+
+    if canonical in ("new", "reset"):
+        return "To start a new conversation, click **New thread** in the sidebar."
+
+    if canonical == "help":
+        return _web_cmd_help()
+    if canonical == "history":
+        return _web_cmd_history(session_id)
+    if canonical == "memory":
+        return _web_cmd_memory()
+    if canonical == "sessions":
+        return _web_cmd_sessions()
+    if canonical == "config":
+        return _web_cmd_config()
+    if canonical == "tools":
+        return _web_cmd_tools(args)
+    if canonical == "toolsets":
+        return _web_cmd_toolsets()
+    if canonical == "skills":
+        return _web_cmd_skills(args)
+    if canonical == "cron":
+        return _web_cmd_cron()
+    if canonical == "plugins":
+        return _web_cmd_plugins()
+    if canonical == "files":
+        return _web_cmd_files()
+    if canonical == "save":
+        return _web_cmd_save(session_id)
+    if canonical == "status":
+        return _web_cmd_status(session_id)
+
+    return None  # Other web-available commands fall through to the agent
+
+
+def _web_cmd_help() -> str:
+    from spark_cli.commands import COMMAND_REGISTRY
+    lines = ["**Available commands**\n"]
+    by_cat: dict[str, list] = {}
+    for cmd in COMMAND_REGISTRY:
+        if cmd.gateway_only:
+            continue
+        if cmd.cli_only and not cmd.web_available:
+            continue
+        by_cat.setdefault(cmd.category, []).append(cmd)
+    for cat, cmds in by_cat.items():
+        lines.append(f"**{cat}**")
+        for cmd in cmds:
+            hint = f" `{cmd.args_hint}`" if cmd.args_hint else ""
+            lines.append(f"• `/{cmd.name}`{hint} — {cmd.description}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _web_cmd_history(session_id: str) -> str:
+    try:
+        from core.spark_state import SessionDB
+        db = SessionDB()
+        try:
+            messages = db.get_messages(session_id)
+        finally:
+            db.close()
+    except Exception as e:
+        return f"Could not load history: {e}"
+    user_assistant = [m for m in messages if m.get("role") in ("user", "assistant")]
+    if not user_assistant:
+        return "No conversation history yet."
+    lines = [f"**Conversation history** ({len(user_assistant)} messages)\n"]
+    for msg in user_assistant[-40:]:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            parts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
+            content = " ".join(parts)
+        label = "**You**" if role == "user" else "**Spark**"
+        snippet = str(content)[:300].replace("\n", " ")
+        if len(str(content)) > 300:
+            snippet += "…"
+        lines.append(f"{label}: {snippet}")
+    return "\n".join(lines)
+
+
+def _web_cmd_memory() -> str:
+    from core.spark_constants import get_spark_home
+    try:
+        memories_dir = get_spark_home() / "memories"
+        if not memories_dir.exists():
+            return "No memories directory found. Memory is built automatically as you chat."
+        sections = []
+        for fname in ("MEMORY.md", "USER.md", "FEEDBACK.md"):
+            fpath = memories_dir / fname
+            if fpath.exists():
+                content = fpath.read_text(encoding="utf-8").strip()
+                if content:
+                    lines = content.splitlines()
+                    preview = "\n".join(lines[:40])
+                    if len(lines) > 40:
+                        preview += f"\n… ({len(lines) - 40} more lines)"
+                    sections.append(f"**{fname}**\n```\n{preview}\n```")
+        if not sections:
+            return "Memory files exist but are empty — memories accumulate as you chat."
+        return "\n\n".join(sections)
+    except Exception as e:
+        return f"Could not read memories: {e}"
+
+
+def _web_cmd_sessions() -> str:
+    try:
+        from core.spark_state import SessionDB
+        db = SessionDB()
+        try:
+            sessions = db.list_sessions_rich(limit=20)
+        finally:
+            db.close()
+    except Exception as e:
+        return f"Could not load sessions: {e}"
+    if not sessions:
+        return "No sessions found."
+    lines = ["**Recent sessions**\n"]
+    for s in sessions:
+        sid = s.get("id", "")
+        title = s.get("title") or "(untitled)"
+        ts = s.get("updated_at") or s.get("created_at") or ""
+        if ts:
+            try:
+                from datetime import datetime
+                if isinstance(ts, (int, float)):
+                    ts = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+                elif isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                ts = str(ts)
+        turns = s.get("turn_count", "?")
+        lines.append(f"• `{sid[:16]}…` — {title} ({turns} turns, {ts})")
+    return "\n".join(lines)
+
+
+def _web_cmd_config() -> str:
+    try:
+        import yaml
+        cfg = load_config()
+        data = cfg._data if hasattr(cfg, "_data") else (dict(cfg) if isinstance(cfg, dict) else {})
+        safe = {}
+        secret_keys = {"api_key", "token", "secret", "password", "webhook"}
+        for k, v in data.items():
+            safe[k] = "***" if any(s in str(k).lower() for s in secret_keys) else v
+        return f"**Current configuration:**\n```yaml\n{yaml.dump(safe, default_flow_style=False).strip()}\n```"
+    except Exception as e:
+        return f"Could not read config: {e}"
+
+
+def _web_cmd_tools(args: str) -> str:
+    import shlex
+    try:
+        tokens = shlex.split(args) if args else []
+    except ValueError:
+        tokens = args.split() if args else []
+    subcommand = tokens[0] if tokens else ""
+    if subcommand in ("disable", "enable"):
+        names = tokens[1:]
+        if not names:
+            return f"Usage: `/tools {subcommand} <name> [name …]`"
+        try:
+            import io, sys
+            from argparse import Namespace
+            from spark_cli.tools_config import tools_disable_enable_command
+            buf = io.StringIO()
+            old_stdout, sys.stdout = sys.stdout, buf
+            try:
+                tools_disable_enable_command(Namespace(tools_action=subcommand, names=names, platform="web"))
+            finally:
+                sys.stdout = old_stdout
+            return buf.getvalue().strip() or f"Tools {subcommand}d: {', '.join(names)}"
+        except Exception as e:
+            return f"Failed to {subcommand} tools: {e}"
+    try:
+        from core.model_tools import get_tool_definitions
+        tools = get_tool_definitions(quiet_mode=True)
+        if not tools:
+            return "No tools currently loaded."
+        lines = [f"**Active tools** ({len(tools)} total)\n"]
+        for t in sorted(tools, key=lambda x: x.get("function", {}).get("name", "")):
+            name = t.get("function", {}).get("name", "?")
+            desc = t.get("function", {}).get("description", "")
+            lines.append(f"• `{name}` — {desc.split('.')[0][:80] if desc else ''}")
+        lines.append("\nUse `/tools disable <name>` or `/tools enable <name>` to toggle.")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not list tools: {e}"
+
+
+def _web_cmd_toolsets() -> str:
+    try:
+        from tools.toolsets import get_all_toolsets, get_toolset_info
+        from spark_cli.tools_config import _get_platform_tools
+        cfg = load_config()
+        enabled = set(_get_platform_tools(cfg, "web") or [])
+        all_toolsets = get_all_toolsets()
+        if not all_toolsets:
+            return "No toolsets found."
+        lines = ["**Available toolsets**\n"]
+        for name in sorted(all_toolsets.keys()):
+            info = get_toolset_info(name)
+            if info:
+                count = info.get("tool_count", "?")
+                desc = info.get("description", "")
+                marker = "✓" if name in enabled else "○"
+                lines.append(f"{marker} **{name}** [{count} tools] — {desc}")
+        lines.append("\n✓ = currently enabled")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not list toolsets: {e}"
+
+
+def _web_cmd_skills(args: str) -> str:
+    parts = args.split(maxsplit=1)
+    subcommand = parts[0].lower() if parts else ""
+    query = parts[1] if len(parts) > 1 else ""
+    try:
+        from agent.skill_commands import get_skill_commands
+        skill_cmds = get_skill_commands()
+    except Exception as e:
+        return f"Could not load skills: {e}"
+    if not skill_cmds:
+        return "No skills installed."
+    if subcommand == "search" and query:
+        q = query.lower()
+        matches = {k: v for k, v in skill_cmds.items()
+                   if q in k.lower() or q in v.get("description", "").lower()}
+        if not matches:
+            return f"No skills matching `{query}`."
+        lines = [f"**Skills matching '{query}':**\n"]
+    else:
+        matches = skill_cmds
+        lines = [f"**Installed skills** ({len(matches)} total)\n"]
+    for cmd_key in sorted(matches.keys()):
+        info = matches[cmd_key]
+        desc = info.get("description", "")
+        lines.append(f"• `{cmd_key}` — {desc.split(chr(10))[0][:80] if desc else ''}")
+    lines.append("\nType the skill command directly to invoke it.")
+    return "\n".join(lines)
+
+
+def _web_cmd_cron() -> str:
+    try:
+        import json
+        from tools.cronjob_tools import cronjob as cronjob_tool
+        result = json.loads(cronjob_tool(action="list"))
+        jobs = result.get("jobs", []) if isinstance(result, dict) else []
+        if not jobs:
+            return "No scheduled tasks."
+        lines = [f"**Scheduled tasks** ({len(jobs)} total)\n"]
+        for job in jobs:
+            name = job.get("name") or job.get("id", "?")
+            schedule = job.get("schedule", "?")
+            status = job.get("status", "active")
+            prompt = job.get("prompt", "")
+            short_prompt = prompt[:60] + ("…" if len(prompt) > 60 else "") if prompt else ""
+            lines.append(f"• **{name}** `{schedule}` [{status}]{' — ' + short_prompt if short_prompt else ''}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not list cron tasks: {e}"
+
+
+def _web_cmd_plugins() -> str:
+    try:
+        from spark_cli.plugins import get_plugin_manager
+        mgr = get_plugin_manager()
+        plugins = mgr.list_plugins()
+        if not plugins:
+            from core.spark_constants import display_spark_home
+            return f"No plugins installed.\nDrop plugin directories into `{display_spark_home()}/plugins/` to get started."
+        lines = [f"**Installed plugins** ({len(plugins)} total)\n"]
+        for p in plugins:
+            status = "✓" if p.get("enabled") else "✗"
+            name = p.get("name", "?")
+            version = f" v{p['version']}" if p.get("version") else ""
+            tools = f"{p['tools']} tools" if p.get("tools") else ""
+            hooks = f"{p['hooks']} hooks" if p.get("hooks") else ""
+            detail_parts = [x for x in [tools, hooks] if x]
+            detail = f" ({', '.join(detail_parts)})" if detail_parts else ""
+            error = f" — ⚠ {p['error']}" if p.get("error") else ""
+            lines.append(f"{status} **{name}**{version}{detail}{error}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Plugin system error: {e}"
+
+
+def _web_cmd_files() -> str:
+    import glob
+    import os
+    try:
+        cwd = os.environ.get("TERMINAL_CWD", os.getcwd())
+        files = sorted(glob.glob("**/*", recursive=True, root_dir=cwd))
+        files = [f for f in files if os.path.isfile(os.path.join(cwd, f)) and not any(
+            seg.startswith(".") or seg in ("__pycache__", "node_modules", ".git")
+            for seg in f.split(os.sep)
+        )][:100]
+        if not files:
+            return f"No files found in workspace: `{cwd}`"
+        lines = [f"**Workspace files** in `{cwd}` ({len(files)} shown)\n"]
+        lines.extend(f"• `{f}`" for f in files[:50])
+        if len(files) > 50:
+            lines.append(f"… and {len(files) - 50} more")
+        lines.append("\nReference files in your message with `@path/to/file`.")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not list files: {e}"
+
+
+def _web_cmd_save(session_id: str) -> str:
+    import json
+    from datetime import datetime
+    from core.spark_constants import get_spark_home
+    try:
+        from core.spark_state import SessionDB
+        db = SessionDB()
+        try:
+            history = db.get_messages(session_id)
+        finally:
+            db.close()
+    except Exception as e:
+        return f"Could not load conversation: {e}"
+    if not history:
+        return "Nothing to save — conversation is empty."
+    try:
+        save_dir = get_spark_home() / "saved_conversations"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"conversation_{ts}_{session_id[:8]}.json"
+        path = save_dir / filename
+        path.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
+        return f"✓ Conversation saved to `{path}`"
+    except Exception as e:
+        return f"Could not save conversation: {e}"
+
+
+def _web_cmd_status(session_id: str) -> str:
+    try:
+        from core.spark_state import SessionDB
+        db = SessionDB()
+        try:
+            row = db.get_session(session_id)
+            messages = db.get_messages(session_id)
+        finally:
+            db.close()
+    except Exception as e:
+        return f"Could not load session: {e}"
+    if not row:
+        return f"Session `{session_id}` not found."
+    title = row.get("title") or "(untitled)"
+    model = row.get("model") or "unknown"
+    source = row.get("source") or "web"
+    turn_count = sum(1 for m in messages if m.get("role") == "user")
+    lines = [
+        f"**Session status**\n",
+        f"• **ID:** `{session_id}`",
+        f"• **Title:** {title}",
+        f"• **Model:** {model}",
+        f"• **Source:** {source}",
+        f"• **Turns:** {turn_count}",
+        f"• **Messages:** {len(messages)}",
+    ]
+    return "\n".join(lines)
+
+
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
@@ -3509,9 +3899,14 @@ async def create_conversation(body: ConversationCreate):
         before_message_count = _session_message_count(session_id)
         result = None
         try:
-            result = await loop.run_in_executor(
-                None, lambda: _run_web_agent_turn(agent, message, None)
-            )
+            slash_text = _execute_web_slash_command(session_id, message)
+            if slash_text is not None:
+                _publish_event("chat.token", {"t": slash_text}, session_id)
+                result = {"final_response": slash_text}
+            else:
+                result = await loop.run_in_executor(
+                    None, lambda: _run_web_agent_turn(agent, message, None)
+                )
         except Exception:
             _log.exception("Web chat agent error session=%s", session_id)
         finally:
@@ -3603,9 +3998,14 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         before_message_count = _session_message_count(session_id)
         result = None
         try:
-            result = await loop.run_in_executor(
-                None, lambda: _run_web_agent_turn(agent, message, conversation_history)
-            )
+            slash_text = _execute_web_slash_command(session_id, message)
+            if slash_text is not None:
+                _publish_event("chat.token", {"t": slash_text}, session_id)
+                result = {"final_response": slash_text}
+            else:
+                result = await loop.run_in_executor(
+                    None, lambda: _run_web_agent_turn(agent, message, conversation_history)
+                )
         except Exception:
             _log.exception("Web chat follow-up error session=%s", session_id)
         finally:
@@ -4017,21 +4417,30 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     def _gw_notify(data: dict) -> None:
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
 
+    raw_message = body.message
+
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _web_streaming.add(session_id)
         before_message_count = _session_message_count(session_id)
         result = None
+        slash_text = None
         try:
-            result = await loop.run_in_executor(
-                None, lambda: _run_web_agent_turn(agent, message, None)
-            )
+            slash_text = _execute_web_slash_command(session_id, raw_message)
+            if slash_text is not None:
+                _publish_event("chat.token", {"t": slash_text}, session_id)
+                result = {"final_response": slash_text}
+            else:
+                result = await loop.run_in_executor(
+                    None, lambda: _run_web_agent_turn(agent, message, None)
+                )
         except Exception:
             _log.exception("Workspace chat agent error session=%s slug=%s", session_id, slug)
         finally:
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
-            _persist_web_turn_if_missing(session_id, message, result, before_message_count)
+            persist_msg = raw_message if slash_text is not None else message
+            _persist_web_turn_if_missing(session_id, persist_msg, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
