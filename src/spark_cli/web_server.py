@@ -388,6 +388,12 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "API service tier (OpenAI/Anthropic)",
         "options": ["", "auto", "default", "flex"],
     },
+    "agent.reasoning_effort": {
+        "type": "select",
+        "description": "Global reasoning effort for the model. Only takes effect on reasoning-capable models. Empty = model default (usually medium).",
+        "options": ["", "minimal", "low", "medium", "high", "xhigh"],
+        "category": "general",
+    },
     "delegation.reasoning_effort": {
         "type": "select",
         "description": "Reasoning effort for delegated subagents",

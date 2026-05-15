@@ -397,6 +397,10 @@ DEFAULT_CONFIG = {
         # Sends a status message every N seconds so the user knows the
         # agent hasn't died during long tasks.  0 = disable notifications.
         "gateway_notify_interval": 600,
+        # Global reasoning effort for the main agent (empty = model default).
+        # Values: "minimal", "low", "medium", "high", "xhigh", or "" to let the
+        # model decide.  Only takes effect on reasoning-capable models.
+        "reasoning_effort": "",
     },
     "terminal": {
         "backend": "local",

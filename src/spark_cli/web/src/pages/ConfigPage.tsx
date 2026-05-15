@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectOption } from "@/components/ui/select";
 import { useI18n } from "@/i18n";
 
 /* ------------------------------------------------------------------ */
@@ -58,6 +59,7 @@ const MODEL_EDITOR_KEYS = new Set([
   "model_base_url",
   "model_api_mode",
   "model_context_length",
+  "agent.reasoning_effort",
   "smart_model_routing.enabled",
   "smart_model_routing.max_simple_chars",
   "smart_model_routing.max_simple_words",
@@ -66,6 +68,15 @@ const MODEL_EDITOR_KEYS = new Set([
   "smart_model_routing.cheap_model.base_url",
   "smart_model_routing.cheap_model.api_mode",
 ]);
+
+const REASONING_EFFORT_OPTIONS = [
+  { value: "", label: "Default" },
+  { value: "minimal", label: "Minimal" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Max" },
+];
 
 function textValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
@@ -259,6 +270,7 @@ export default function ConfigPage() {
     const smartBaseUrl = textValue(getNestedValue(config, "model_base_url"));
     const smartApiMode = textValue(getNestedValue(config, "model_api_mode"));
     const contextLength = numberValue(getNestedValue(config, "model_context_length"));
+    const reasoningEffort = textValue(getNestedValue(config, "agent.reasoning_effort"));
     const fastProvider = textValue(getNestedValue(config, "smart_model_routing.cheap_model.provider"));
     const fastModel = textValue(getNestedValue(config, "smart_model_routing.cheap_model.model"));
     const fastBaseUrl = textValue(getNestedValue(config, "smart_model_routing.cheap_model.base_url"));
@@ -338,6 +350,29 @@ export default function ConfigPage() {
                   value={String(contextLength)}
                   onChange={(e) => updateConfigValue("model_context_length", Number(e.target.value || 0))}
                 />
+              </div>
+              <div className="grid gap-1.5 md:col-span-2">
+                <Label className="text-xs">Reasoning level</Label>
+                <p className="text-xs text-muted-foreground/70">
+                  Only applies to reasoning-capable models. Default lets the model decide (typically medium).
+                </p>
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {REASONING_EFFORT_OPTIONS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => updateConfigValue("agent.reasoning_effort", value)}
+                      className={[
+                        "px-3 py-1 text-xs border transition-colors",
+                        reasoningEffort === value
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border bg-transparent text-muted-foreground hover:border-foreground/50 hover:text-foreground",
+                      ].join(" ")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
