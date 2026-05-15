@@ -135,7 +135,7 @@ export default function App() {
         if (!cancelled && result.update_available) {
           setUpdateAvailable(true);
           if (result.commits_behind != null) {
-            setLatestVersion(`${result.commits_behind} commit${result.commits_behind === 1 ? "" : "s"} ahead`);
+            setLatestVersion(`${result.commits_behind} new commit${result.commits_behind === 1 ? "" : "s"}`);
           }
         }
       } catch {
