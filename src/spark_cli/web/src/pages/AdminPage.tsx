@@ -5,11 +5,9 @@ import {
   Boxes,
   CheckCircle2,
   Database,
-  Download,
   HardDrive,
   Play,
   Plug,
-  RefreshCw,
   Search,
   Server,
   Shield,
@@ -28,7 +26,7 @@ import {
   type ProfileInfo,
 } from "@/lib/api";
 
-type TabId = "setup" | "gateway" | "profiles" | "diagnostics" | "plugins" | "mcp" | "backups" | "updates";
+type TabId = "setup" | "gateway" | "profiles" | "diagnostics" | "plugins" | "mcp" | "backups";
 
 const TABS: Array<{ id: TabId; label: string; icon: typeof Shield }> = [
   { id: "setup", label: "Setup", icon: Shield },
@@ -38,7 +36,6 @@ const TABS: Array<{ id: TabId; label: string; icon: typeof Shield }> = [
   { id: "plugins", label: "Plugins", icon: Boxes },
   { id: "mcp", label: "MCP", icon: Plug },
   { id: "backups", label: "Backups", icon: Archive },
-  { id: "updates", label: "Updates", icon: Download },
 ];
 
 function riskClass(risk: string): string {
@@ -402,12 +399,12 @@ export default function AdminPage() {
         </section>
       )}
 
-      {(tab === "backups" || tab === "updates") && (
+      {tab === "backups" && (
         <section className="border border-border bg-background/70 p-4">
           <div className="flex flex-wrap gap-2">
-            {(tab === "backups" ? actions.filter((a) => a.id.startsWith("backup.")) : actions.filter((a) => a.id.startsWith("update."))).map((action) => (
+            {actions.filter((a) => a.id.startsWith("backup.")).map((action) => (
               <ShellButton key={action.id} tone={action.risk === "high" ? "danger" : "normal"} onClick={() => void runActionWithPrompt(action)}>
-                {tab === "backups" ? <Upload className="inline h-3.5 w-3.5 mr-1" /> : <RefreshCw className="inline h-3.5 w-3.5 mr-1" />}
+                <Upload className="inline h-3.5 w-3.5 mr-1" />
                 {action.label}
               </ShellButton>
             ))}
