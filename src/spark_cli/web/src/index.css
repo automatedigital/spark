@@ -146,6 +146,11 @@ code {
   to   { opacity: 0; transform: translateX(16px); }
 }
 
+@keyframes progress-slide {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+
 /* ---- Plus-lighter blend for headings ---- */
 .blend-lighter {
   mix-blend-mode: plus-lighter;

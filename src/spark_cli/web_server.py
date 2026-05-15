@@ -808,6 +808,7 @@ def _run_admin_action(run_id: str, action: AdminAction, args: dict) -> None:
         _queue_admin_event(run_id, {"type": "output", "stream": "system", "text": " ".join(cmd)})
         env = os.environ.copy()
         env["PYTHONPATH"] = str(PROJECT_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+        env["PYTHONUNBUFFERED"] = "1"
         proc = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_ROOT),

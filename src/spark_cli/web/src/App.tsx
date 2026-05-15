@@ -77,8 +77,9 @@ export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "running" | "restarting" | "done" | "failed">("idle");
   const [updateOutput, setUpdateOutput] = useState<string[]>([]);
+  const outputScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -153,6 +154,28 @@ export default function App() {
     setAnimKey((k) => k + 1);
   }, [page]);
 
+  // Auto-scroll output to bottom as new lines arrive
+  useEffect(() => {
+    if (outputScrollRef.current) {
+      outputScrollRef.current.scrollTop = outputScrollRef.current.scrollHeight;
+    }
+  }, [updateOutput]);
+
+  // Poll for server coming back after a restart
+  useEffect(() => {
+    if (updateStatus !== "restarting") return;
+    const interval = setInterval(async () => {
+      try {
+        await api.getStatus();
+        setUpdateStatus("done");
+        setUpdateAvailable(false);
+      } catch {
+        // still restarting
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [updateStatus]);
+
   const sidebarOpen = navExpanded || navHovered;
 
   const PageComponent = PAGE_COMPONENTS[page];
@@ -189,8 +212,9 @@ export default function App() {
         }
       };
       es.onerror = () => {
-        setUpdateStatus("failed");
         es.close();
+        // Server likely restarted mid-update — poll until it comes back
+        setUpdateStatus((prev) => prev === "running" ? "restarting" : prev);
       };
     } catch (e) {
       setUpdateOutput([String(e)]);
@@ -459,32 +483,52 @@ export default function App() {
             </div>
 
             {/* Body */}
-            <div className="px-5 py-4">
+            <div className="px-5 py-4 flex flex-col gap-3">
               {updateStatus === "idle" && (
                 <p className="text-sm text-muted-foreground">
-                  A new version of Spark is available. The update will pull the latest changes and reinstall the package. After the update completes you can restart the web UI.
+                  A new version of Spark is available. The update will pull the latest changes and reinstall the package. The web UI may restart automatically.
                 </p>
               )}
 
-              {(updateStatus === "running" || updateOutput.length > 0) && (
-                <div className="mt-1 h-56 overflow-y-auto rounded-sm border border-border bg-background/60 p-3 font-mono text-xs text-muted-foreground">
-                  {updateOutput.length === 0 ? (
-                    <span className="animate-pulse">Starting update…</span>
-                  ) : (
-                    updateOutput.map((line, i) => (
-                      <div key={i} className="leading-5 whitespace-pre-wrap break-all">{line}</div>
-                    ))
+              {(updateStatus === "running" || updateStatus === "restarting" || updateOutput.length > 0) && (
+                <>
+                  <div
+                    ref={outputScrollRef}
+                    className="h-52 overflow-y-auto rounded-sm border border-border bg-background/60 p-3 font-mono text-xs text-muted-foreground"
+                  >
+                    {updateOutput.length === 0 ? (
+                      <span className="animate-pulse">Starting update…</span>
+                    ) : (
+                      updateOutput.map((line, i) => (
+                        <div key={i} className="leading-5 whitespace-pre-wrap break-all">{line}</div>
+                      ))
+                    )}
+                  </div>
+                  {/* Indeterminate progress bar */}
+                  {(updateStatus === "running" || updateStatus === "restarting") && (
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-border">
+                      <div
+                        className="h-full w-2/5 rounded-full bg-amber-500"
+                        style={{ animation: "progress-slide 1.6s ease-in-out infinite" }}
+                      />
+                    </div>
                   )}
-                </div>
+                  {updateStatus === "restarting" && (
+                    <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Server is restarting — waiting for it to come back…
+                    </p>
+                  )}
+                </>
               )}
 
               {updateStatus === "done" && (
-                <p className="mt-3 text-sm text-emerald-400">
-                  Update complete. Restart the web UI to load the new version.
+                <p className="text-sm text-emerald-400">
+                  Update complete. Reload to load the new version.
                 </p>
               )}
               {updateStatus === "failed" && (
-                <p className="mt-3 text-sm text-red-400">
+                <p className="text-sm text-red-400">
                   Update failed. Check the output above for details.
                 </p>
               )}
@@ -517,14 +561,20 @@ export default function App() {
                   Updating…
                 </span>
               )}
+              {updateStatus === "restarting" && (
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Waiting for server…
+                </span>
+              )}
               {updateStatus === "done" && (
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="flex h-9 items-center gap-2 rounded-sm bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+                  className="flex h-9 items-center gap-2 rounded-sm bg-amber-500 px-4 text-xs font-semibold text-black transition hover:bg-amber-400"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
-                  Restart &amp; Reload
+                  Reload
                 </button>
               )}
               {updateStatus === "failed" && (
