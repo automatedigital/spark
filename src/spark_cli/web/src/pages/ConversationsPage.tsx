@@ -7,38 +7,19 @@ import {
   MessageSquare,
   Plus,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { SessionInfo, SessionSearchResult } from "@/lib/api";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatPanel } from "@/components/ChatPanel";
 import { useEventBus } from "@/hooks/useEventBus";
+import { ThreadRow, threadTitle } from "@/components/chat/ThreadRow";
 
 const WEB_SOURCE = "web";
-
-function threadTitle(session: SessionInfo | null | undefined) {
-  if (!session) return "New thread";
-  const title = session.title?.trim();
-  if (title && title !== "Untitled") return title;
-  return session.preview?.trim() || "Untitled thread";
-}
-
-function modelShort(model: string | null | undefined) {
-  return (model ?? "").split("/").pop() || "";
-}
-
-function sourceLabel(source: string | null | undefined) {
-  const s = (source ?? "").toLowerCase();
-  if (s === "cli") return "TUI";
-  if (s === "web") return "Web";
-  if (!s) return "Unknown";
-  return s.replace(/(^|[_-])(\w)/g, (_, sep: string, chr: string) => `${sep ? " " : ""}${chr.toUpperCase()}`);
-}
 
 function optimisticThread(id: string, initialMessage?: string): SessionInfo {
   const now = Date.now() / 1000;
@@ -59,87 +40,6 @@ function optimisticThread(id: string, initialMessage?: string): SessionInfo {
     kanban_status: null,
     estimated_cost_usd: null,
   };
-}
-
-function ThreadRow({
-  session,
-  active,
-  searchSnippet,
-  onOpen,
-  onDelete,
-}: {
-  session: SessionInfo;
-  active: boolean;
-  searchSnippet?: string;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className={cn(
-        "group relative flex w-full min-w-0 items-start gap-3 border-b border-border px-3 py-3 text-left transition",
-        active ? "bg-primary/12" : "hover:bg-secondary/45",
-      )}
-    >
-      <span
-        className={cn(
-          "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-sm border",
-          session.is_active
-            ? "border-primary/45 bg-primary/18 text-primary"
-            : "border-border bg-secondary/60 text-muted-foreground",
-        )}
-      >
-        <MessageSquare className="h-4 w-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">{threadTitle(session)}</span>
-          {session.is_active && (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_12px_rgba(255,163,43,0.8)]" />
-          )}
-        </span>
-        <span className="mt-1 block truncate text-xs text-muted-foreground">
-          {searchSnippet || session.preview || "No messages yet"}
-        </span>
-        <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
-          {modelShort(session.model) && (
-            <>
-              <span className="truncate font-mono-ui max-w-[96px]">{modelShort(session.model)}</span>
-              <span className="text-border">·</span>
-            </>
-          )}
-          <span>{sourceLabel(session.source)}</span>
-          <span className="text-border">·</span>
-          <span>{session.message_count} msgs</span>
-          <span className="text-border">·</span>
-          <span>{timeAgo(session.last_active)}</span>
-        </span>
-      </span>
-      <span
-        className="absolute right-2 top-2 opacity-0 transition group-hover:opacity-100"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-          title="Delete thread"
-          onClick={onDelete}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </span>
-    </div>
-  );
 }
 
 export default function ConversationsPage() {

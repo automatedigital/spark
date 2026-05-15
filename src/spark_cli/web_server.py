@@ -4523,8 +4523,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         finally:
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
-            persist_msg = raw_message if slash_text is not None else message
-            _persist_web_turn_if_missing(session_id, persist_msg, result, before_message_count)
+            _persist_web_turn_if_missing(session_id, raw_message, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result), session_id)

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Check,
   ChevronDown,
   ChevronRight,
+  Edit3,
   File,
   FileText,
   Film,
@@ -12,6 +14,7 @@ import {
   Loader2,
   MessageSquare,
   Plus,
+  Search,
   Send,
   Trash2,
   Upload,
@@ -23,12 +26,13 @@ import type {
   WorkspaceFileNode,
   WorkspaceProject,
 } from "@/lib/api";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatPanel } from "@/components/ChatPanel";
 import { useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
+import { ThreadRow, threadTitle } from "@/components/chat/ThreadRow";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -594,6 +598,9 @@ function RightPanel({
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [startMsg, setStartMsg] = useState("");
   const [startingThread, setStartingThread] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadThreads = useCallback(async () => {
@@ -611,6 +618,7 @@ function RightPanel({
   useEffect(() => {
     setActiveId(null);
     setThreads([]);
+    setSearchQ("");
     loadThreads();
   }, [slug, loadThreads]);
 
@@ -643,13 +651,50 @@ function RightPanel({
     }
   };
 
+  const handleDelete = async (id: string) => {
+    setThreads((prev) => prev.filter((t) => t.id !== id));
+    if (activeId === id) setActiveId(null);
+    try {
+      await api.deleteSession(id);
+    } catch (e) {
+      console.error("Delete thread failed", e);
+      loadThreads();
+    }
+  };
+
+  const beginRename = () => {
+    if (!activeThread) return;
+    setTitleDraft(activeThread.title || "");
+    setEditingTitle(true);
+  };
+
+  const saveRename = async () => {
+    if (!activeThread) return;
+    try {
+      await api.renameSession(activeThread.id, titleDraft);
+      setEditingTitle(false);
+      void loadThreads();
+    } catch (e) {
+      console.error("Rename failed", e);
+    }
+  };
+
+  const visibleThreads = searchQ.trim()
+    ? threads.filter((t) => {
+        const q = searchQ.toLowerCase();
+        return (
+          t.title?.toLowerCase().includes(q) ||
+          t.preview?.toLowerCase().includes(q)
+        );
+      })
+    : threads;
+
   const activeThread = threads.find((t) => t.id === activeId) ?? null;
 
   return (
     <div className="flex h-full flex-col">
       {/* Tab bar */}
       <div className="flex items-center border-b border-border bg-card/60 overflow-x-auto shrink-0">
-        {/* Chat tab — permanent */}
         <button
           type="button"
           className={cn(
@@ -664,7 +709,6 @@ function RightPanel({
           Chat
         </button>
 
-        {/* File tabs */}
         {fileTabs.map((tab) => (
           <div
             key={tab.id}
@@ -700,19 +744,59 @@ function RightPanel({
             return tab ? <FileViewer tab={tab} slug={slug} /> : null;
           })()
         ) : (
-          /* Chat content */
           <div className="flex h-full flex-col">
             {/* Chat header */}
-            <div className="flex items-center justify-between border-b border-border bg-card/60 px-3 py-2">
-              <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                {activeId ? "Thread" : "Threads"}
-              </span>
+            <div className="flex items-center justify-between border-b border-border bg-card/60 px-3 py-2 shrink-0">
+              {activeId && activeThread ? (
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {editingTitle ? (
+                    <>
+                      <Input
+                        className="h-7 flex-1 text-xs"
+                        value={titleDraft}
+                        placeholder={activeThread.preview || "Thread title"}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void saveRename();
+                          if (e.key === "Escape") setEditingTitle(false);
+                        }}
+                        autoFocus
+                      />
+                      <Button size="icon" className="h-7 w-7 shrink-0" onClick={() => void saveRename()}>
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setEditingTitle(false)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="truncate text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                        {threadTitle(activeThread)}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0 text-muted-foreground"
+                        title="Rename thread"
+                        onClick={beginRename}
+                      >
+                        <Edit3 className="h-3 w-3" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                  Threads
+                </span>
+              )}
               {activeId && (
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-6 gap-1 px-2 text-xs"
-                  onClick={() => setActiveId(null)}
+                  className="h-6 shrink-0 gap-1 px-2 text-xs"
+                  onClick={() => { setActiveId(null); setEditingTitle(false); }}
                 >
                   <MessageSquare className="h-3 w-3" />
                   All threads
@@ -723,51 +807,65 @@ function RightPanel({
             {activeId ? (
               <ChatPanel
                 sessionId={activeId}
-                sessionTitle={activeThread?.title ?? activeThread?.preview ?? "Thread"}
-                onBack={() => setActiveId(null)}
+                sessionTitle={threadTitle(activeThread)}
+                onBack={() => { setActiveId(null); setEditingTitle(false); }}
                 onSessionCreated={(id) => setActiveId(id)}
                 onSessionUpdated={() => loadThreads()}
                 className="min-h-0 flex-1"
               />
             ) : (
               <div className="flex flex-1 flex-col overflow-hidden">
-                {/* Thread list — hidden when empty */}
-                {(loadingThreads || threads.length > 0) && (
-                  <div className="flex-1 overflow-y-auto">
-                    {loadingThreads && threads.length === 0 && (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      </div>
-                    )}
-                    {threads.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setActiveId(t.id)}
-                        className="w-full border-b border-border/50 px-3 py-2.5 text-left transition hover:bg-secondary"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="truncate text-xs font-medium text-foreground">
-                            {t.title?.trim() || t.preview?.trim() || "Untitled thread"}
-                          </p>
-                          {t.is_active && (
-                            <span className="mt-0.5 shrink-0 h-1.5 w-1.5 rounded-full bg-success" />
-                          )}
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-2 text-[0.65rem] text-muted-foreground/60">
-                          <span>{timeAgo(t.last_active)}</span>
-                          <span>·</span>
-                          <span>{t.message_count} msgs</span>
-                        </div>
-                      </button>
-                    ))}
+                {/* Search bar — only when there are threads */}
+                {threads.length > 0 && (
+                  <div className="shrink-0 border-b border-border p-2">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        className="h-8 pl-8 pr-7 text-xs"
+                        placeholder="Search threads…"
+                        value={searchQ}
+                        onChange={(e) => setSearchQ(e.target.value)}
+                      />
+                      {searchQ && (
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setSearchQ("")}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
+                {/* Thread list */}
+                <div className="flex-1 overflow-y-auto">
+                  {loadingThreads && threads.length === 0 && (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  {visibleThreads.map((t) => (
+                    <ThreadRow
+                      key={t.id}
+                      session={t}
+                      active={activeId === t.id}
+                      onOpen={() => setActiveId(t.id)}
+                      onDelete={() => void handleDelete(t.id)}
+                    />
+                  ))}
+                  {!loadingThreads && visibleThreads.length === 0 && threads.length > 0 && (
+                    <p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+                      No matching threads
+                    </p>
+                  )}
+                </div>
+
                 {/* New thread input */}
                 <div className={cn(
-                  "border-t border-border bg-card/40 p-3",
-                  threads.length === 0 && !loadingThreads && "flex-1 flex flex-col justify-center border-t-0",
+                  "shrink-0 border-t border-border bg-card/40 p-3",
+                  threads.length === 0 && !loadingThreads && "flex flex-1 flex-col justify-center border-t-0",
                 )}>
                   {threads.length === 0 && !loadingThreads && (
                     <p className="mb-3 text-center text-xs text-muted-foreground/50">
