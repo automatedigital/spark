@@ -52,52 +52,59 @@ export default function SettingsPanel({ onClose, initialTab = "status" }: Settin
         aria-hidden="true"
       />
       <div
-        className="fixed inset-0 z-50 flex flex-col bg-background shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-        style={{ animation: "slide-in-right 180ms ease-out" }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        aria-hidden="true"
+        onClick={onClose}
       >
-        {/* Header */}
-        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-xl">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Settings
-          </span>
-          <div className="ml-2 flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-none">
-            {SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => handleTabChange(id)}
-                className={`flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-3 text-xs font-medium transition ${
-                  activeTab === id
-                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </button>
-            ))}
+        <div
+          className="flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
+          style={{ animation: "fade-in 150ms ease-out" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-xl">
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Settings
+            </span>
+            <div className="ml-2 flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-none">
+              {SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => handleTabChange(id)}
+                  className={`flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-3 text-xs font-medium transition ${
+                    activeTab === id
+                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              onClick={onClose}
+              aria-label="Close settings"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            className="ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-            onClick={onClose}
-            aria-label="Close settings"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div
-            key={animKey}
-            className="mx-auto w-full max-w-[1480px] px-3 py-4 sm:px-6 sm:py-8"
-            style={{ animation: "fade-in 120ms ease-out" }}
-          >
-            <ActiveComponent />
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto">
+            <div
+              key={animKey}
+              className="mx-auto w-full px-3 py-4 sm:px-6 sm:py-8"
+              style={{ animation: "fade-in 120ms ease-out" }}
+            >
+              <ActiveComponent />
+            </div>
           </div>
         </div>
       </div>
