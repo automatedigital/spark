@@ -594,6 +594,7 @@ function RightPanel({
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [startMsg, setStartMsg] = useState("");
   const [startingThread, setStartingThread] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const loadThreads = useCallback(async () => {
     setLoadingThreads(true);
@@ -612,6 +613,12 @@ function RightPanel({
     setThreads([]);
     loadThreads();
   }, [slug, loadThreads]);
+
+  useEffect(() => {
+    if (!loadingThreads && threads.length === 0 && !activeId) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [loadingThreads, threads.length, activeId]);
 
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic === "sessions.changed") {
@@ -724,49 +731,57 @@ function RightPanel({
               />
             ) : (
               <div className="flex flex-1 flex-col overflow-hidden">
-                {/* Thread list */}
-                <div className="flex-1 overflow-y-auto">
-                  {loadingThreads && threads.length === 0 && (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
-                  {!loadingThreads && threads.length === 0 && (
-                    <p className="px-4 py-8 text-center text-xs text-muted-foreground/60">
-                      No threads yet. Start a conversation below.
-                    </p>
-                  )}
-                  {threads.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setActiveId(t.id)}
-                      className="w-full border-b border-border/50 px-3 py-2.5 text-left transition hover:bg-secondary"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="truncate text-xs font-medium text-foreground">
-                          {t.title?.trim() || t.preview?.trim() || "Untitled thread"}
-                        </p>
-                        {t.is_active && (
-                          <span className="mt-0.5 shrink-0 h-1.5 w-1.5 rounded-full bg-success" />
-                        )}
+                {/* Thread list — hidden when empty */}
+                {(loadingThreads || threads.length > 0) && (
+                  <div className="flex-1 overflow-y-auto">
+                    {loadingThreads && threads.length === 0 && (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       </div>
-                      <div className="mt-0.5 flex items-center gap-2 text-[0.65rem] text-muted-foreground/60">
-                        <span>{timeAgo(t.last_active)}</span>
-                        <span>·</span>
-                        <span>{t.message_count} msgs</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                    )}
+                    {threads.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setActiveId(t.id)}
+                        className="w-full border-b border-border/50 px-3 py-2.5 text-left transition hover:bg-secondary"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="truncate text-xs font-medium text-foreground">
+                            {t.title?.trim() || t.preview?.trim() || "Untitled thread"}
+                          </p>
+                          {t.is_active && (
+                            <span className="mt-0.5 shrink-0 h-1.5 w-1.5 rounded-full bg-success" />
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[0.65rem] text-muted-foreground/60">
+                          <span>{timeAgo(t.last_active)}</span>
+                          <span>·</span>
+                          <span>{t.message_count} msgs</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* New thread input */}
-                <div className="border-t border-border bg-card/40 p-3">
-                  <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                    New thread
-                  </p>
+                <div className={cn(
+                  "border-t border-border bg-card/40 p-3",
+                  threads.length === 0 && !loadingThreads && "flex-1 flex flex-col justify-center border-t-0",
+                )}>
+                  {threads.length === 0 && !loadingThreads && (
+                    <p className="mb-3 text-center text-xs text-muted-foreground/50">
+                      Start a conversation about this project
+                    </p>
+                  )}
+                  {threads.length > 0 && (
+                    <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                      New thread
+                    </p>
+                  )}
                   <div className="flex gap-2">
                     <Input
+                      ref={inputRef}
                       value={startMsg}
                       onChange={(e) => setStartMsg(e.target.value)}
                       placeholder="Ask Spark about this project…"

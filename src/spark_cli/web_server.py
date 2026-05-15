@@ -4447,10 +4447,12 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
 
         _db = _SessionDB()
         try:
+            raw_title = body.message.strip()
+            title = raw_title[:60] + ("…" if len(raw_title) > 60 else "")
             _db._conn.execute(
-                "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
-                "VALUES (?, ?, ?, ?, 'active')",
-                (session_id, source, model, time.time()),
+                "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status, title) "
+                "VALUES (?, ?, ?, ?, 'active', ?)",
+                (session_id, source, model, time.time(), title),
             )
             _db._conn.commit()
         finally:
