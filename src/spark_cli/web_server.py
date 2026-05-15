@@ -632,7 +632,9 @@ def _update_command(check_only: bool) -> List[str]:
     # without waiting for user input when stdin is not a TTY.
     try:
         from core.spark_constants import get_spark_home
-        (get_spark_home() / ".update_response").write_text("y")
+        spark_home = get_spark_home()
+        (spark_home / ".update_response").write_text("y")
+        (spark_home / ".update_check").unlink(missing_ok=True)
     except Exception:
         pass
     return _spark_command("update", "--gateway")
