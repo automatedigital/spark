@@ -58,6 +58,7 @@ interface ChatPanelProps {
   onSessionCreated?: (id: string, initialMessage?: string) => void;
   onSessionUpdated?: (id: string) => void;
   sessionTitle?: string | null;
+  initialMessage?: string;
   className?: string;
 }
 
@@ -106,6 +107,7 @@ export function ChatPanel({
   onSessionCreated,
   onSessionUpdated,
   sessionTitle,
+  initialMessage,
   className,
 }: ChatPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -131,7 +133,10 @@ export function ChatPanel({
       return;
     }
     setActiveSessionId(sessionId);
-    setChatMessages([]);
+    const optimistic: ChatMessage[] = initialMessage
+      ? [{ id: nid(), role: "user", content: initialMessage }]
+      : [];
+    setChatMessages(optimistic);
     setError(null);
     setStatusLabel(null);
     setEditingUser(null);
@@ -149,7 +154,7 @@ export function ChatPanel({
         .catch(() => setError("Failed to load conversation history."))
         .finally(() => setLoadingHistory(false));
     }
-  }, [sessionId]);
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

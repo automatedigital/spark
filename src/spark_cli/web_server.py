@@ -3745,6 +3745,24 @@ def _extract_final_response(result: Any) -> str:
     return ""
 
 
+def _strip_user_message_prefix(session_id: str, prefix: str, raw_message: str) -> None:
+    """After the agent saves a user message with a context prefix, replace it with the clean version."""
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db._conn.execute(
+                "UPDATE messages SET content = ? WHERE session_id = ? AND role = 'user' AND content = ?",
+                (raw_message, session_id, prefix + raw_message),
+            )
+            db._conn.commit()
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("strip user message prefix failed session=%s", session_id, exc_info=True)
+
+
 def _persist_web_turn_if_missing(
     session_id: str,
     user_message: str,
@@ -4523,6 +4541,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         finally:
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
+            _strip_user_message_prefix(session_id, context_prefix, raw_message)
             _persist_web_turn_if_missing(session_id, raw_message, result, before_message_count)
             _emit_web_session_updated(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)

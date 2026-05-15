@@ -595,6 +595,7 @@ function RightPanel({
 }) {
   const [threads, setThreads] = useState<SessionInfo[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [pendingInitialMsg, setPendingInitialMsg] = useState<string | null>(null);
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [startMsg, setStartMsg] = useState("");
   const [startingThread, setStartingThread] = useState(false);
@@ -642,6 +643,7 @@ function RightPanel({
     try {
       const res = await api.startWorkspaceConversation(slug, msg);
       setStartMsg("");
+      setPendingInitialMsg(msg);
       setActiveId(res.session_id);
       await loadThreads();
     } catch (e) {
@@ -808,7 +810,8 @@ function RightPanel({
               <ChatPanel
                 sessionId={activeId}
                 sessionTitle={threadTitle(activeThread)}
-                onBack={() => { setActiveId(null); setEditingTitle(false); }}
+                initialMessage={pendingInitialMsg ?? undefined}
+                onBack={() => { setActiveId(null); setEditingTitle(false); setPendingInitialMsg(null); }}
                 onSessionCreated={(id) => setActiveId(id)}
                 onSessionUpdated={() => loadThreads()}
                 className="min-h-0 flex-1"
@@ -851,7 +854,7 @@ function RightPanel({
                       key={t.id}
                       session={t}
                       active={activeId === t.id}
-                      onOpen={() => setActiveId(t.id)}
+                      onOpen={() => { setPendingInitialMsg(null); setActiveId(t.id); }}
                       onDelete={() => void handleDelete(t.id)}
                     />
                   ))}
