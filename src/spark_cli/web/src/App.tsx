@@ -22,21 +22,6 @@ import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken, sseUrl } from "@/lib/api";
 
-const GITHUB_REPO = "automatedigital/spark";
-
-function parseVersion(v: string): number[] {
-  return v.replace(/^v/, "").split(".").map(Number);
-}
-
-function isNewer(latest: string, current: string): boolean {
-  const a = parseVersion(latest);
-  const b = parseVersion(current);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const diff = (a[i] ?? 0) - (b[i] ?? 0);
-    if (diff !== 0) return diff > 0;
-  }
-  return false;
-}
 
 const NAV_ITEMS = [
   { id: "workspace", labelKey: "workspace" as const, icon: FolderOpen },
@@ -146,17 +131,12 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [status, ghResp] = await Promise.all([
-          api.getStatus(),
-          fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`),
-        ]);
-        if (cancelled) return;
-        if (!ghResp.ok) return;
-        const gh = await ghResp.json() as { tag_name?: string };
-        const tag = gh.tag_name ?? "";
-        if (tag && isNewer(tag, status.version)) {
-          setLatestVersion(tag.replace(/^v/, ""));
+        const result = await api.checkForUpdate();
+        if (!cancelled && result.update_available) {
           setUpdateAvailable(true);
+          if (result.commits_behind != null) {
+            setLatestVersion(`${result.commits_behind} commit${result.commits_behind === 1 ? "" : "s"} ahead`);
+          }
         }
       } catch {
         // silently ignore — update check is best-effort
@@ -300,7 +280,7 @@ export default function App() {
             {updateAvailable && (
               <button
                 type="button"
-                title={`Update available: v${latestVersion}`}
+                title="Update available"
                 aria-label="Update Spark"
                 onClick={() => { setUpdateModalOpen(true); setUpdateStatus("idle"); setUpdateOutput([]); }}
                 className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
@@ -310,7 +290,7 @@ export default function App() {
                   <span className="truncate text-sm font-medium">Update available</span>
                 )}
                 <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
-                  Update to v{latestVersion}
+                  Update available{latestVersion ? ` · ${latestVersion}` : ""}
                 </span>
               </button>
             )}
@@ -464,7 +444,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <Download className="h-4 w-4 text-amber-400" />
                 <span className="text-sm font-semibold text-foreground">
-                  Update Spark{latestVersion ? ` to v${latestVersion}` : ""}
+                  Update Spark{latestVersion ? ` (${latestVersion})` : ""}
                 </span>
               </div>
               {updateStatus !== "running" && (

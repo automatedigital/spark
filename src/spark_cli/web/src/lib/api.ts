@@ -418,6 +418,7 @@ export const api = {
       method: "POST",
     }),
   getDiagnosticsSummary: () => fetchJSON<DiagnosticsSummary>("/api/diagnostics/summary"),
+  checkForUpdate: () => fetchJSON<{ update_available: boolean; commits_behind: number | null }>("/api/update/check"),
 
   // OAuth provider management
   getOAuthProviders: () =>

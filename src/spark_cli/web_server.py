@@ -626,7 +626,16 @@ def _gateway_command(action: str) -> List[str]:
 
 
 def _update_command(check_only: bool) -> List[str]:
-    return _spark_command("version") if check_only else _spark_command("update")
+    if check_only:
+        return _spark_command("version")
+    # Pre-write "y" so _gateway_prompt auto-accepts the "run installer?" question
+    # without waiting for user input when stdin is not a TTY.
+    try:
+        from core.spark_constants import get_spark_home
+        (get_spark_home() / ".update_response").write_text("y")
+    except Exception:
+        pass
+    return _spark_command("update", "--gateway")
 
 
 def _debug_command(args: Dict[str, Any]) -> List[str]:
@@ -968,6 +977,24 @@ async def get_status():
             "require_auth_nonlocal": bool(_dash.get("require_auth_nonlocal", True)),
         },
     }
+
+
+@app.get("/api/update/check")
+async def check_update_available():
+    """Check whether a Spark update is available (commits behind origin/main)."""
+    import asyncio
+
+    try:
+        from spark_cli.banner import check_for_updates
+
+        loop = asyncio.get_event_loop()
+        behind = await loop.run_in_executor(None, check_for_updates)
+        return {
+            "update_available": bool(behind and behind > 0),
+            "commits_behind": behind,
+        }
+    except Exception:
+        return {"update_available": False, "commits_behind": None}
 
 
 @app.get("/api/admin/actions")
