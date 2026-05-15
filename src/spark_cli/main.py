@@ -3456,8 +3456,16 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     prompt_path = home / ".update_prompt.json"
     response_path = home / ".update_response"
 
-    # Clean any stale response file
-    response_path.unlink(missing_ok=True)
+    # If a response was pre-written (e.g. by the web UI before launching the subprocess),
+    # use it immediately without overwriting the prompt file.
+    if response_path.exists():
+        try:
+            answer = response_path.read_text().strip()
+            response_path.unlink(missing_ok=True)
+            prompt_path.unlink(missing_ok=True)
+            return answer if answer else default
+        except (OSError, ValueError):
+            pass
 
     payload = {
         "prompt": prompt_text,
