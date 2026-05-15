@@ -3689,6 +3689,7 @@ def _new_web_agent(
     tool_complete_callback: Any,
     reasoning_callback: Any,
     status_callback: Any,
+    working_dir: Optional[str] = None,
 ) -> Any:
     from core.run_agent import AIAgent
     from core.spark_state import SessionDB
@@ -3714,6 +3715,7 @@ def _new_web_agent(
         quiet_mode=True,
         platform="web",
         session_db=SessionDB(),
+        working_dir=working_dir,
     )
     _web_agents[session_id] = agent
     _web_agent_signatures[session_id] = signature
@@ -4436,6 +4438,25 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     turn_route = _resolve_web_turn_route(body.message)
     model = turn_route["model"]
 
+    # Pre-insert the session with the correct workspace source BEFORE creating the
+    # agent. AIAgent.__init__ calls create_session(source="web") via INSERT OR IGNORE,
+    # so we must claim the row first to ensure list_workspace_conversations can find it.
+    try:
+        from core.spark_state import SessionDB as _SessionDB
+
+        _db = _SessionDB()
+        try:
+            _db._conn.execute(
+                "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
+                "VALUES (?, ?, ?, ?, 'active')",
+                (session_id, source, model, time.time()),
+            )
+            _db._conn.commit()
+        finally:
+            _db.close()
+    except Exception:
+        _log.debug("workspace session pre-insert failed", exc_info=True)
+
     try:
         agent = _new_web_agent(
             session_id=session_id,
@@ -4448,6 +4469,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             tool_complete_callback=tool_complete_callback,
             reasoning_callback=reasoning_callback,
             status_callback=status_callback,
+            working_dir=str(project_dir),
+        )
+        agent.ephemeral_system_prompt = (
+            f"Working directory: {project_dir}\n"
+            "All file operations, terminal commands, and searches default to this directory."
         )
     except (ValueError, Exception) as e:
         _web_queues.pop(session_id, None)
@@ -4458,12 +4484,6 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
 
         _db = _SessionDB()
         try:
-            _db._conn.execute(
-                "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
-                "VALUES (?, ?, ?, ?, 'active')",
-                (session_id, source, model, time.time()),
-            )
-            _db._conn.commit()
             row = _db.get_session(session_id)
             if row:
                 _emit_sessions_changed("created", session_id, row)

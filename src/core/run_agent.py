@@ -606,6 +606,7 @@ class AIAgent:
         checkpoint_max_snapshots: int = 50,
         pass_session_id: bool = False,
         persist_session: bool = True,
+        working_dir: str = None,
     ):
         """
         Initialize the AI Agent.
@@ -658,6 +659,7 @@ class AIAgent:
         self.verbose_logging = verbose_logging
         self.quiet_mode = quiet_mode
         self.ephemeral_system_prompt = ephemeral_system_prompt
+        self.working_dir: str | None = working_dir
         self.platform = platform  # "cli", "telegram", "discord", "whatsapp", etc.
         self._user_id = user_id  # Platform user identifier (gateway sessions)
         # Pluggable print function — CLI replaces this with _cprint so that
@@ -1414,7 +1416,7 @@ class AIAgent:
                 logger.debug("Context engine on_session_start: %s", _ce_err)
 
         self._subdirectory_hints = SubdirectoryHintTracker(
-            working_dir=os.getenv("TERMINAL_CWD") or None,
+            working_dir=self.working_dir or os.getenv("TERMINAL_CWD") or None,
         )
         self._user_turn_count = 0
 
@@ -3265,7 +3267,7 @@ class AIAgent:
             # mode).  The gateway process runs from the spark-agent install
             # dir, so os.getcwd() would pick up the repo's AGENTS.md and
             # other dev files — inflating token usage by ~10k for no benefit.
-            _context_cwd = os.getenv("TERMINAL_CWD") or None
+            _context_cwd = self.working_dir or os.getenv("TERMINAL_CWD") or None
             context_files_prompt = build_context_files_prompt(
                 cwd=_context_cwd, skip_soul=_soul_loaded)
             if context_files_prompt:
@@ -6940,6 +6942,24 @@ class AIAgent:
         self.tools = refreshed
         self.valid_tool_names = {t["function"]["name"] for t in refreshed}
 
+    def _inject_working_dir(self, function_name: str, function_args: dict) -> dict:
+        """Prepend self.working_dir to relative paths in tool args for workspace sessions."""
+        wd = self.working_dir
+        if not wd:
+            return function_args
+        if function_name == "terminal":
+            if not function_args.get("workdir"):
+                return {**function_args, "workdir": wd}
+        elif function_name == "search_files":
+            path = function_args.get("path", ".")
+            if not os.path.isabs(str(path)):
+                return {**function_args, "path": os.path.normpath(os.path.join(wd, path))}
+        elif function_name in ("read_file", "write_file", "patch"):
+            path = function_args.get("path", "")
+            if path and not os.path.isabs(str(path)):
+                return {**function_args, "path": os.path.normpath(os.path.join(wd, path))}
+        return function_args
+
     def _invoke_tool(self, function_name: str, function_args: dict, effective_task_id: str,
                      tool_call_id: Optional[str] = None) -> str:
         """Invoke a single tool and return the result string. No display logic.
@@ -6948,6 +6968,7 @@ class AIAgent:
         tools. Used by the concurrent execution path; the sequential path retains
         its own inline invocation for backward-compatible display handling.
         """
+        function_args = self._inject_working_dir(function_name, function_args)
         # Check plugin hooks for a block directive before executing anything.
         block_message: Optional[str] = None
         try:
@@ -7265,6 +7286,7 @@ class AIAgent:
                 function_args = {}
             if not isinstance(function_args, dict):
                 function_args = {}
+            function_args = self._inject_working_dir(function_name, function_args)
 
             # Check plugin hooks for a block directive before executing.
             _block_msg: Optional[str] = None
