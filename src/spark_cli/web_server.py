@@ -638,17 +638,18 @@ def _gateway_command(action: str) -> List[str]:
 
 
 def _update_command(check_only: bool) -> List[str]:
-    if check_only:
-        return _spark_command("version")
-    # Pre-write "y" so _gateway_prompt auto-accepts the "run installer?" question
-    # without waiting for user input when stdin is not a TTY.
     try:
         from core.spark_constants import get_spark_home
         spark_home = get_spark_home()
-        (spark_home / ".update_response").write_text("y")
+        # Always clear the cache so we do a fresh git fetch, not a stale 6-hour result
         (spark_home / ".update_check").unlink(missing_ok=True)
+        if not check_only:
+            # Pre-write "y" so _gateway_prompt auto-accepts the "run installer?" question
+            (spark_home / ".update_response").write_text("y")
     except Exception:
         pass
+    if check_only:
+        return _spark_command("version")
     return _spark_command("update", "--gateway")
 
 
