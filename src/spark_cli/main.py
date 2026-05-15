@@ -3498,6 +3498,29 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     return default
 
 
+def _find_npm() -> Optional[str]:
+    """Find npm, checking PATH then common nvm/system locations."""
+    import shutil
+    import glob
+
+    npm = shutil.which("npm")
+    if npm:
+        return npm
+    # nvm installs npm outside the default subprocess PATH
+    candidates = sorted(
+        glob.glob(str(Path.home() / ".nvm/versions/node/*/bin/npm")),
+        reverse=True,  # newest version first
+    )
+    for c in candidates:
+        if Path(c).exists():
+            return c
+    # Homebrew and common system locations
+    for c in ["/usr/local/bin/npm", "/opt/homebrew/bin/npm", "/usr/bin/npm"]:
+        if Path(c).exists():
+            return c
+    return None
+
+
 def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     """Build the web UI frontend if npm is available.
 
@@ -3510,13 +3533,14 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     """
     if not (web_dir / "package.json").exists():
         return True
-    import shutil
 
-    npm = shutil.which("npm")
+    npm = _find_npm()
     if not npm:
         if fatal:
             print("Web UI frontend not built and npm is not available.")
             print("Install Node.js, then run:  cd web && npm install && npm run build")
+        else:
+            print("  ⚠ npm not found — web UI not rebuilt (install Node.js to enable)")
         return not fatal
     print("→ Building web UI...")
     r1 = subprocess.run([npm, "install", "--silent"], cwd=web_dir, capture_output=True)
