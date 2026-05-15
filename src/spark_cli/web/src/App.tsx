@@ -3,11 +3,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Download,
   FolderOpen,
   LayoutGrid,
+  Loader2,
   MessageSquare,
   Package,
+  RefreshCw,
   Settings,
+  X,
 } from "lucide-react";
 import ConversationsPage from "@/pages/ConversationsPage";
 import CronPage from "@/pages/CronPage";
@@ -16,7 +20,23 @@ import SkillsPage from "@/pages/SkillsPage";
 import WorkspacePage from "@/pages/WorkspacePage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
-import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
+import { api, getDashboardToken, setDashboardToken, sseUrl } from "@/lib/api";
+
+const GITHUB_REPO = "automatedigital/spark";
+
+function parseVersion(v: string): number[] {
+  return v.replace(/^v/, "").split(".").map(Number);
+}
+
+function isNewer(latest: string, current: string): boolean {
+  const a = parseVersion(latest);
+  const b = parseVersion(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
 
 const NAV_ITEMS = [
   { id: "workspace", labelKey: "workspace" as const, icon: FolderOpen },
@@ -69,6 +89,11 @@ export default function App() {
   const [tokenInput, setTokenInput] = useState("");
   const [authChecking, setAuthChecking] = useState(true);
   const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [updateOutput, setUpdateOutput] = useState<string[]>([]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -118,6 +143,29 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [status, ghResp] = await Promise.all([
+          api.getStatus(),
+          fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`),
+        ]);
+        if (cancelled) return;
+        if (!ghResp.ok) return;
+        const gh = await ghResp.json() as { tag_name?: string };
+        const tag = gh.tag_name ?? "";
+        if (tag && isNewer(tag, status.version)) {
+          setLatestVersion(tag.replace(/^v/, ""));
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // silently ignore — update check is best-effort
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (initialRef.current) {
       initialRef.current = false;
       return;
@@ -136,6 +184,38 @@ export default function App() {
     setAuthWall(false);
     setTokenInput("");
     window.location.reload();
+  };
+
+  const startUpdate = async () => {
+    setUpdateStatus("running");
+    setUpdateOutput([]);
+    try {
+      const resp = await api.runAdminAction("update.run", {}, true);
+      const es = new EventSource(sseUrl(`/api/admin/actions/runs/${encodeURIComponent(resp.run_id)}/stream`));
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data) as { type?: string; status?: string; stream?: string; text?: string; run?: { status?: string } };
+          if (data.type === "output" && data.text != null) {
+            setUpdateOutput((prev) => [...prev.slice(-500), data.text!]);
+          }
+          if (data.type === "done") {
+            const finalStatus = data.run?.status ?? "done";
+            setUpdateStatus(finalStatus === "done" ? "done" : "failed");
+            setUpdateAvailable(false);
+            es.close();
+          }
+        } catch {
+          setUpdateOutput((prev) => [...prev.slice(-500), ev.data]);
+        }
+      };
+      es.onerror = () => {
+        setUpdateStatus("failed");
+        es.close();
+      };
+    } catch (e) {
+      setUpdateOutput([String(e)]);
+      setUpdateStatus("failed");
+    }
   };
 
   return (
@@ -215,8 +295,25 @@ export default function App() {
             ))}
           </nav>
 
-          {/* Settings button */}
-          <div className={`border-t border-border px-3 py-3 ${sidebarOpen ? "items-stretch" : "flex justify-center"}`}>
+          {/* Settings + Update buttons */}
+          <div className={`border-t border-border px-3 py-3 flex flex-col gap-2 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+            {updateAvailable && (
+              <button
+                type="button"
+                title={`Update available: v${latestVersion}`}
+                aria-label="Update Spark"
+                onClick={() => { setUpdateModalOpen(true); setUpdateStatus("idle"); setUpdateOutput([]); }}
+                className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+              >
+                <Download className="h-5 w-5 shrink-0" />
+                {sidebarOpen && (
+                  <span className="truncate text-sm font-medium">Update available</span>
+                )}
+                <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
+                  Update to v{latestVersion}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               title="Settings"
@@ -236,10 +333,6 @@ export default function App() {
                 Settings
               </span>
             </button>
-          </div>
-
-          <div className={`border-t border-border p-3 text-[0.62rem] uppercase tracking-[0.12em] text-muted-foreground ${sidebarOpen ? "text-left" : "text-center"}`}>
-            {sidebarOpen ? t.app.footer.name : ""}
           </div>
         </aside>
 
@@ -362,6 +455,111 @@ export default function App() {
       </div>
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+
+      {updateModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative flex w-full max-w-lg flex-col rounded-sm border border-border bg-card shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Download className="h-4 w-4 text-amber-400" />
+                <span className="text-sm font-semibold text-foreground">
+                  Update Spark{latestVersion ? ` to v${latestVersion}` : ""}
+                </span>
+              </div>
+              {updateStatus !== "running" && (
+                <button
+                  type="button"
+                  onClick={() => setUpdateModalOpen(false)}
+                  className="grid h-7 w-7 place-items-center rounded-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-4">
+              {updateStatus === "idle" && (
+                <p className="text-sm text-muted-foreground">
+                  A new version of Spark is available. The update will pull the latest changes and reinstall the package. After the update completes you can restart the web UI.
+                </p>
+              )}
+
+              {(updateStatus === "running" || updateOutput.length > 0) && (
+                <div className="mt-1 h-56 overflow-y-auto rounded-sm border border-border bg-background/60 p-3 font-mono text-xs text-muted-foreground">
+                  {updateOutput.length === 0 ? (
+                    <span className="animate-pulse">Starting update…</span>
+                  ) : (
+                    updateOutput.map((line, i) => (
+                      <div key={i} className="leading-5 whitespace-pre-wrap break-all">{line}</div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {updateStatus === "done" && (
+                <p className="mt-3 text-sm text-emerald-400">
+                  Update complete. Restart the web UI to load the new version.
+                </p>
+              )}
+              {updateStatus === "failed" && (
+                <p className="mt-3 text-sm text-red-400">
+                  Update failed. Check the output above for details.
+                </p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+              {updateStatus === "idle" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setUpdateModalOpen(false)}
+                    className="h-9 rounded-sm border border-border px-4 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void startUpdate()}
+                    className="flex h-9 items-center gap-2 rounded-sm bg-amber-500 px-4 text-xs font-semibold text-black transition hover:bg-amber-400"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Start Update
+                  </button>
+                </>
+              )}
+              {updateStatus === "running" && (
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Updating…
+                </span>
+              )}
+              {updateStatus === "done" && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="flex h-9 items-center gap-2 rounded-sm bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Restart &amp; Reload
+                </button>
+              )}
+              {updateStatus === "failed" && (
+                <button
+                  type="button"
+                  onClick={() => { setUpdateStatus("idle"); setUpdateOutput([]); }}
+                  className="h-9 rounded-sm border border-border px-4 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                >
+                  Try Again
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
