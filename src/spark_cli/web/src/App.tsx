@@ -131,6 +131,20 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Primary: read cached value from /api/status (always exists, no git fetch)
+      try {
+        const status = await api.getStatus();
+        if (!cancelled && status.update_available) {
+          setUpdateAvailable(true);
+          if (status.commits_behind != null) {
+            setLatestVersion(`${status.commits_behind} new commit${status.commits_behind === 1 ? "" : "s"}`);
+          }
+          return;
+        }
+      } catch {
+        // fall through to dedicated check
+      }
+      // Fallback: dedicated endpoint that does a fresh git fetch
       try {
         const result = await api.checkForUpdate();
         if (!cancelled && result.update_available) {

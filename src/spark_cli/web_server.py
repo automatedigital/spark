@@ -83,10 +83,22 @@ _admin_run_queues: dict[str, thread_queue.Queue] = {}
 
 
 @asynccontextmanager
+def _prefetch_update_check() -> None:
+    """Run in a thread at startup to warm the update-check cache."""
+    try:
+        from spark_cli.banner import check_for_updates
+        check_for_updates()
+    except Exception:
+        pass
+
+
 async def _lifespan(_app: FastAPI):
     global _web_event_loop
     _web_event_loop = asyncio.get_running_loop()
     ensure_dashboard_token_file()
+    # Warm the update cache in the background so /api/status has it immediately
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _prefetch_update_check)
     try:
         yield
     finally:
@@ -960,6 +972,17 @@ async def get_status():
     if not isinstance(_dash, dict):
         _dash = {}
 
+    # Read cached update result — never blocks (no git fetch)
+    commits_behind: int | None = None
+    try:
+        import json as _json
+        _cache = get_spark_home() / ".update_check"
+        if _cache.exists():
+            _data = _json.loads(_cache.read_text())
+            commits_behind = _data.get("behind")
+    except Exception:
+        pass
+
     return {
         "version": __version__,
         "release_date": __release_date__,
@@ -975,6 +998,8 @@ async def get_status():
         "gateway_exit_reason": gateway_exit_reason,
         "gateway_updated_at": gateway_updated_at,
         "active_sessions": active_sessions,
+        "commits_behind": commits_behind,
+        "update_available": bool(commits_behind and commits_behind > 0),
         "dashboard_auth": {
             "token_file": str(dashboard_token_path()),
             "require_auth_nonlocal": bool(_dash.get("require_auth_nonlocal", True)),

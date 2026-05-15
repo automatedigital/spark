@@ -563,6 +563,8 @@ export interface StatusResponse {
   latest_config_version: number;
   release_date: string;
   version: string;
+  update_available?: boolean;
+  commits_behind?: number | null;
   dashboard_auth?: {
     token_file: string;
     require_auth_nonlocal: boolean;
