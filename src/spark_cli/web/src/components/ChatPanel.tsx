@@ -63,6 +63,15 @@ interface ChatPanelProps {
 
 function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
   const out: ChatMessage[] = [];
+  // Build a map of tool_call_id -> tool name from assistant tool_calls for fallback
+  const toolCallNames: Record<string, string> = {};
+  for (const m of messages) {
+    if (m.role === "assistant" && m.tool_calls) {
+      for (const tc of m.tool_calls) {
+        if (tc.id && tc.function?.name) toolCallNames[tc.id] = tc.function.name;
+      }
+    }
+  }
   messages.forEach((m, i) => {
     if (m.role === "user") {
       out.push({ id: nid(), role: "user", content: m.content ?? "", sessionIdx: i });
@@ -71,13 +80,16 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
       if (reasoning) {
         out.push({ id: nid(), role: "reasoning", text: reasoning });
       }
-      out.push({ id: nid(), role: "assistant", content: m.content ?? "" });
+      if (m.content?.trim()) {
+        out.push({ id: nid(), role: "assistant", content: m.content });
+      }
     } else if (m.role === "tool") {
+      const toolId = m.tool_call_id ?? "";
       out.push({
         id: nid(),
         role: "tool",
-        toolId: m.tool_call_id ?? "",
-        name: m.tool_name ?? "tool",
+        toolId,
+        name: m.tool_name ?? toolCallNames[toolId] ?? "tool",
         args: {},
         result: m.content ?? "",
         done: true,
@@ -534,6 +546,7 @@ export function ChatPanel({
                 );
               }
               if (msg.role === "assistant") {
+                if (!msg.content && !msg.streaming) return null;
                 return (
                   <div key={msg.id} className="flex gap-2">
                     <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-success/20 text-success">
@@ -542,12 +555,12 @@ export function ChatPanel({
                     <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground min-w-0">
                       {msg.content ? (
                         <Markdown content={msg.content} />
-                      ) : msg.streaming ? (
+                      ) : (
                         <span className="inline-flex items-center gap-1 text-muted-foreground">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           <span className="text-xs">Thinking…</span>
                         </span>
-                      ) : null}
+                      )}
                       {msg.streaming && msg.content ? (
                         <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-success align-middle" />
                       ) : null}
