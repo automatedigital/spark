@@ -63,7 +63,7 @@ export function ToolCallBubble({
   startedAt?: number;
   endedAt?: number;
 }) {
-  const [open, setOpen] = useState(!done);
+  const [open, setOpen] = useState(false);
 
   const lname = name.toLowerCase();
   const family = Object.keys(TOOL_FAMILIES).find((k) => lname.includes(k));
