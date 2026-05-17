@@ -124,6 +124,11 @@ export function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
   const streamingRef = useRef(false);
+  // Token batching: accumulate tokens and flush once per animation frame
+  const tokenBufferRef = useRef("");
+  const rafPendingRef = useRef<number | null>(null);
+  // Scroll: only scroll once per rAF frame, instant during streaming
+  const scrollRafRef = useRef<number | null>(null);
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
@@ -131,6 +136,16 @@ export function ChatPanel({
   useEffect(() => {
     if (sessionId && sessionId === activeSessionRef.current && streamingRef.current) {
       return;
+    }
+    // Cancel any pending rAF flushes from the previous session
+    if (rafPendingRef.current !== null) {
+      cancelAnimationFrame(rafPendingRef.current);
+      rafPendingRef.current = null;
+      tokenBufferRef.current = "";
+    }
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
     }
     setActiveSessionId(sessionId);
     const optimistic: ChatMessage[] = initialMessage
@@ -156,9 +171,20 @@ export function ChatPanel({
     }
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Scroll to bottom at most once per frame; instant during streaming to avoid stacking animations
+  const scheduleScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      messagesEndRef.current?.scrollIntoView({
+        behavior: streamingRef.current ? "instant" : "smooth",
+      });
+    });
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+    scheduleScroll();
+  }, [chatMessages, scheduleScroll]);
 
   const finalizeAssistant = useCallback(() => {
     setChatMessages((prev) => {
@@ -171,18 +197,30 @@ export function ChatPanel({
     });
   }, []);
 
-  const appendToken = useCallback((token: string) => {
+  const flushTokenBuffer = useCallback(() => {
+    rafPendingRef.current = null;
+    const buffered = tokenBufferRef.current;
+    tokenBufferRef.current = "";
+    if (!buffered) return;
     setChatMessages((prev) => {
       const next = [...prev];
       const last = next[next.length - 1];
       if (last?.role === "assistant" && last.streaming) {
-        next[next.length - 1] = { ...last, content: last.content + token };
+        next[next.length - 1] = { ...last, content: last.content + buffered };
       } else {
-        next.push({ id: nid(), role: "assistant", content: token, streaming: true });
+        next.push({ id: nid(), role: "assistant", content: buffered, streaming: true });
       }
       return next;
     });
   }, []);
+
+  // Accumulate tokens and flush once per animation frame instead of on every token
+  const appendToken = useCallback((token: string) => {
+    tokenBufferRef.current += token;
+    if (rafPendingRef.current === null) {
+      rafPendingRef.current = requestAnimationFrame(flushTokenBuffer);
+    }
+  }, [flushTokenBuffer]);
 
   useEventBus((env) => {
     const sid = env.session_id ?? undefined;
@@ -279,6 +317,11 @@ export function ChatPanel({
         break;
       }
       case "chat.turn_done": {
+        // Flush any remaining buffered tokens before finalizing
+        if (rafPendingRef.current !== null) {
+          cancelAnimationFrame(rafPendingRef.current);
+          flushTokenBuffer();
+        }
         finalizeAssistant();
         setStreaming(false);
         setStatusLabel(null);
@@ -299,15 +342,18 @@ export function ChatPanel({
         const cur = activeSessionRef.current;
         if (cur) {
           onSessionUpdated?.(cur);
-          void api
-            .getSessionMessages(cur)
-            .then((resp) => {
-              const mapped = sessionMessagesToChat(
-                resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-              );
-              setChatMessages((prev) => (mapped.length === 0 && prev.length > 0 ? prev : mapped));
-            })
-            .catch(() => {});
+          // Sync session indices for retry/fork; delay to avoid competing with the final render
+          setTimeout(() => {
+            void api
+              .getSessionMessages(cur)
+              .then((resp) => {
+                const mapped = sessionMessagesToChat(
+                  resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+                );
+                setChatMessages((prev) => (mapped.length === 0 && prev.length > 0 ? prev : mapped));
+              })
+              .catch(() => {});
+          }, 500);
         }
         break;
       }
