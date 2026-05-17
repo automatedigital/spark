@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Eye,
+  Paperclip,
   PlayCircle,
   Search,
   Send,
@@ -130,6 +131,10 @@ export default function KanbanPage() {
   const [linkChildId, setLinkChildId] = useState("");
   const [workspaceProjects, setWorkspaceProjects] = useState<WorkspaceProject[]>([]);
   const [newWorkspaceSlug, setNewWorkspaceSlug] = useState("");
+  const [uploadingTask, setUploadingTask] = useState(false);
+  const [uploadingNew, setUploadingNew] = useState(false);
+  const taskFileInputRef = useRef<HTMLInputElement>(null);
+  const newFileInputRef = useRef<HTMLInputElement>(null);
 
   const loadBoard = useCallback(async () => {
     setErr(null);
@@ -387,6 +392,47 @@ export default function KanbanPage() {
     }
   };
 
+  const uploadFilesForPath = async (files: File[], workspacePath: string | null) => {
+    const project = workspaceProjects.find((p) => p.path === workspacePath);
+    if (project) {
+      const res = await api.uploadWorkspaceFiles(project.slug, files, "files");
+      return { count: res.saved.length, where: `workspace/${project.slug}/files` };
+    }
+    const res = await api.uploadChatFiles(files);
+    return { count: res.saved.length, where: `workspace/files` };
+  };
+
+  const onUploadToTask = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length || !detail) return;
+    setUploadingTask(true);
+    try {
+      const { count, where } = await uploadFilesForPath(files, detail.workspace_path ?? null);
+      showToast(`Uploaded ${count} file${count === 1 ? "" : "s"} to ${where}/`, "success");
+    } catch (err2) {
+      setErr(err2 instanceof Error ? err2.message : String(err2));
+    } finally {
+      setUploadingTask(false);
+    }
+  };
+
+  const onUploadForNewTask = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+    setUploadingNew(true);
+    try {
+      const project = workspaceProjects.find((p) => p.slug === newWorkspaceSlug);
+      const { count, where } = await uploadFilesForPath(files, project?.path ?? null);
+      showToast(`Uploaded ${count} file${count === 1 ? "" : "s"} to ${where}/`, "success");
+    } catch (err2) {
+      setErr(err2 instanceof Error ? err2.message : String(err2));
+    } finally {
+      setUploadingNew(false);
+    }
+  };
+
   const addLink = async () => {
     if (!linkParentId.trim() || !linkChildId.trim()) return;
     try {
@@ -567,6 +613,29 @@ export default function KanbanPage() {
             {t.common.create} task
           </button>
         </div>
+        <div className="mx-4 mb-2 flex items-center gap-2 text-xs">
+          <input
+            ref={newFileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => void onUploadForNewTask(e)}
+          />
+          <button
+            type="button"
+            disabled={uploadingNew}
+            className="inline-flex items-center gap-1 border border-border bg-background px-2 py-1 hover:bg-secondary disabled:opacity-60"
+            onClick={() => newFileInputRef.current?.click()}
+          >
+            <Paperclip className="h-3 w-3" />
+            {uploadingNew ? "Uploading…" : "Attach files"}
+          </button>
+          <span className="opacity-70">
+            {newWorkspaceSlug
+              ? `→ workspace/${newWorkspaceSlug}/files/`
+              : "→ workspace/files/"}
+          </span>
+        </div>
         <textarea
           className="mx-4 mb-4 min-h-[84px] w-[calc(100%-2rem)] border border-border bg-background px-3 py-2 text-sm shadow-inner"
           placeholder="Task brief, constraints, acceptance criteria, useful context"
@@ -744,6 +813,32 @@ export default function KanbanPage() {
                   ))}
                 </select>
               </label>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <input
+                ref={taskFileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => void onUploadToTask(e)}
+              />
+              <button
+                type="button"
+                disabled={uploadingTask}
+                className="inline-flex items-center gap-1 border border-border bg-background px-2 py-1 hover:bg-secondary disabled:opacity-60"
+                onClick={() => taskFileInputRef.current?.click()}
+              >
+                <Paperclip className="h-3 w-3" />
+                {uploadingTask ? "Uploading…" : "Attach files"}
+              </button>
+              <span className="opacity-70">
+                {(() => {
+                  const proj = workspaceProjects.find((p) => p.path === detail.workspace_path);
+                  return proj
+                    ? `→ workspace/${proj.slug}/files/`
+                    : "→ workspace/files/";
+                })()}
+              </span>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <button
