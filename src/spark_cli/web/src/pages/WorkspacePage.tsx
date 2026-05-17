@@ -786,6 +786,8 @@ function WorkspaceThreadList({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest(".spark-terminal-pane")) return;
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -1427,6 +1429,10 @@ function WorkspaceTerminalPanel({ slug }: { slug: string }) {
     fitAddonRef.current = fit;
     term.loadAddon(fit);
     term.open(host);
+    term.attachCustomKeyEventHandler((event) => {
+      event.stopPropagation();
+      return true;
+    });
     term.writeln("\x1b[2mStarting workspace shell...\x1b[0m");
     setShellStatus("connecting");
 
@@ -1501,7 +1507,11 @@ function WorkspaceTerminalPanel({ slug }: { slug: string }) {
   }, [sendResize, slug]);
 
   return (
-    <div className="spark-terminal-pane relative min-h-0 flex-1 overflow-hidden">
+    <div
+      className="spark-terminal-pane relative min-h-0 flex-1 overflow-hidden"
+      onMouseDown={() => terminalRef.current?.focus()}
+      onClick={() => terminalRef.current?.focus()}
+    >
       <div ref={terminalHostRef} className="h-full w-full px-2 py-2" />
       <div className="pointer-events-none absolute right-2 top-2 rounded-sm border border-border bg-background/75 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground backdrop-blur">
         {shellStatus}
