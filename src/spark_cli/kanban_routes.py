@@ -165,6 +165,13 @@ async def task_patch(task_id: str, body: TaskPatchBody):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.delete("/tasks/{task_id}")
+async def task_delete(task_id: str):
+    if kb.delete_task(task_id):
+        return {"ok": True, "deleted": task_id}
+    raise HTTPException(status_code=404, detail="Task not found")
+
+
 @router.post("/tasks/bulk", response_model=BulkPatchResponse)
 async def task_bulk(body: BulkPatchBody):
     fields: Dict[str, Any] = {

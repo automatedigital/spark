@@ -10,6 +10,7 @@ import {
   Send,
   Sparkles,
   Timer,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import {
@@ -362,6 +363,24 @@ export default function KanbanPage() {
       await api.patchKanbanTask(selectedId, { status: "done" });
       setCompleteSummary("");
       await openTask(selectedId);
+      void loadBoard();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const deleteSelectedTask = async () => {
+    if (!selectedId || !detail) return;
+    if (!confirm(`Delete task "${detail.title}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteKanbanTask(selectedId);
+      setSelectedId(null);
+      setDetail(null);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedId);
+        return next;
+      });
       void loadBoard();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -744,6 +763,14 @@ export default function KanbanPage() {
               </button>
               <button type="button" className="px-2 py-1 border border-border" onClick={() => void duplicateSelectedTask()}>
                 Duplicate
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 border border-destructive/30 px-2 py-1 text-destructive hover:bg-destructive/10"
+                onClick={() => void deleteSelectedTask()}
+              >
+                <Trash2 className="h-3 w-3" />
+                Delete
               </button>
             </div>
             <div className="flex gap-2 text-xs">

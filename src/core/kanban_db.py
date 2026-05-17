@@ -524,6 +524,22 @@ def patch_task(
         return dict(refreshed) if refreshed else None
 
 
+def delete_task(task_id: str) -> bool:
+    with _connect() as conn:
+        row = conn.execute("SELECT id, title, status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            return False
+        _emit_event(
+            conn,
+            task_id=None,
+            run_id=None,
+            kind="deleted",
+            payload={"task_id": task_id, "title": row["title"], "status": row["status"]},
+        )
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        return True
+
+
 def complete_task(
     task_id: str,
     *,

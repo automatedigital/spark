@@ -296,6 +296,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  deleteKanbanTask: (id: string) =>
+    fetchJSON<{ ok: boolean; deleted: string }>(`/api/kanban/tasks/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+
   bulkPatchKanbanTasks: (ids: string[], fields: KanbanBulkPatchFields) =>
     fetchJSON<KanbanBulkPatchResponse>("/api/kanban/tasks/bulk", {
       method: "POST",
