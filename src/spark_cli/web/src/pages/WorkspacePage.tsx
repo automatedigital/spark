@@ -964,12 +964,12 @@ function WorkspaceNewThread({
 
       {/* Prompt bar — matches Chat tab's PromptBar style */}
       <div className="shrink-0 border-t border-border bg-card/40 p-3">
-        <div className="relative flex items-end gap-2 rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary/50">
+        <div className="relative flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary/50">
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            className="mb-0.5 h-8 w-8 shrink-0 p-0"
+            className="h-8 w-8 shrink-0 p-0"
             disabled={starting || uploading}
             title="Add file"
             onClick={() => fileInputRef.current?.click()}
@@ -1010,7 +1010,7 @@ function WorkspaceNewThread({
           />
           <Button
             size="sm"
-            className="mb-0.5 h-8 w-8 shrink-0 p-0"
+            className="h-8 w-8 shrink-0 p-0"
             disabled={!msg.trim() || starting}
             onClick={() => void handleSend()}
           >
