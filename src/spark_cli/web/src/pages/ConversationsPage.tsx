@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Check,
@@ -53,6 +53,20 @@ export default function ConversationsPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Cmd+K / Ctrl+K focuses the sidebar search from anywhere on the page
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const loadThreads = useCallback(async () => {
     const resp = await api.getSessions(500, 0);
@@ -246,11 +260,17 @@ export default function ConversationsPage() {
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-9 pl-8 pr-8 text-sm"
-              placeholder="Search threads..."
+              ref={searchInputRef}
+              className="h-9 pl-8 pr-16 text-sm"
+              placeholder="Search threads…"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
             />
+            {!searchQ && (
+              <kbd className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                ⌘K
+              </kbd>
+            )}
             {searchQ && (
               <button
                 type="button"

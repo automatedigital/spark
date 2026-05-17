@@ -55,6 +55,7 @@ export function ToolCallBubble({
   done,
   startedAt,
   endedAt,
+  repeatCount,
 }: {
   name: string;
   args: Record<string, unknown>;
@@ -62,6 +63,7 @@ export function ToolCallBubble({
   done?: boolean;
   startedAt?: number;
   endedAt?: number;
+  repeatCount?: number;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -108,6 +110,11 @@ export function ToolCallBubble({
         )}
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {elapsed && <span className="text-[10px] text-muted-foreground/50">{elapsed}</span>}
+          {repeatCount != null && repeatCount > 0 && (
+            <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+              ×{repeatCount + 1}
+            </span>
+          )}
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
             {done ? "done" : "running"}
           </span>

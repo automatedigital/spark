@@ -92,6 +92,17 @@ def _prefetch_update_check() -> None:
         pass
 
 
+def _init_memory_store() -> None:
+    """Initialize the holographic memory store on startup (non-fatal)."""
+    try:
+        from plugins.memory.holographic import HolographicMemoryProvider
+        provider = HolographicMemoryProvider()
+        provider.initialize()
+        _log.info("Holographic memory store initialized")
+    except Exception as exc:
+        _log.warning("Memory store init skipped: %s", exc)
+
+
 async def _lifespan(_app: FastAPI):
     global _web_event_loop
     _web_event_loop = asyncio.get_running_loop()
@@ -99,6 +110,7 @@ async def _lifespan(_app: FastAPI):
     # Warm the update cache in the background so /api/status has it immediately
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _prefetch_update_check)
+    loop.run_in_executor(None, _init_memory_store)
     try:
         yield
     finally:
@@ -4493,8 +4505,12 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             working_dir=str(project_dir),
         )
         agent.ephemeral_system_prompt = (
+            f"You are working in the '{slug}' workspace project.\n"
             f"Working directory: {project_dir}\n"
-            "All file operations, terminal commands, and searches default to this directory."
+            "IMPORTANT: All file operations, terminal commands, and searches MUST stay within "
+            f"this directory ({project_dir}). Do NOT read from or write to any other project "
+            "directory. If the user asks you to build or edit something, create or modify files "
+            f"only under {project_dir}."
         )
     except (ValueError, Exception) as e:
         _web_queues.pop(session_id, None)

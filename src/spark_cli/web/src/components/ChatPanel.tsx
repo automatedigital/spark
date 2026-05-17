@@ -489,7 +489,23 @@ export function ChatPanel({
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {chatMessages.map((msg) => {
+            {(() => {
+              // Collapse consecutive same-name tool calls into one bubble with a repeat count.
+              // This prevents DOM bloat when the agent gets stuck calling the same tool repeatedly.
+              const collapsed: { msg: typeof chatMessages[number]; repeatCount: number }[] = [];
+              for (const msg of chatMessages) {
+                const prev = collapsed[collapsed.length - 1];
+                if (
+                  msg.role === "tool" &&
+                  prev?.msg.role === "tool" &&
+                  msg.name === (prev.msg as Extract<typeof msg, { role: "tool" }>).name
+                ) {
+                  collapsed[collapsed.length - 1] = { msg, repeatCount: prev.repeatCount + 1 };
+                } else {
+                  collapsed.push({ msg, repeatCount: 0 });
+                }
+              }
+              return collapsed.map(({ msg, repeatCount }) => {
               if (msg.role === "user") {
                 return (
                   <div key={msg.id} className="flex gap-2 flex-row-reverse group/msg">
@@ -583,6 +599,7 @@ export function ChatPanel({
                       done={msg.done}
                       startedAt={msg.startedAt}
                       endedAt={msg.endedAt}
+                      repeatCount={repeatCount > 0 ? repeatCount : undefined}
                     />
                   </div>
                 );
@@ -614,7 +631,29 @@ export function ChatPanel({
                 );
               }
               return null;
-            })}
+              });
+            })()}
+            {/* Typing indicator: shows immediately after send, before first token arrives */}
+            {streaming && (() => {
+              const last = chatMessages[chatMessages.length - 1];
+              const isAlreadyStreamingAssistant =
+                last?.role === "assistant" && (last.streaming || !last.content);
+              if (isAlreadyStreamingAssistant) return null;
+              return (
+                <div className="flex gap-2">
+                  <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-success/20 text-success">
+                    <Bot className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5 text-sm bg-secondary">
+                    <span className="flex gap-[4px] items-center">
+                      <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
+                      <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
+                      <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
         {error && (

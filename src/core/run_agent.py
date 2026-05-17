@@ -8147,6 +8147,11 @@ class AIAgent:
             except Exception:
                 pass
 
+        # Sliding window for repeated-tool-call loop detection.
+        # Tracks (tool_name, args_json) for the last N single-tool iterations.
+        _tool_call_history: list[tuple[str, str]] = []
+        _TOOL_LOOP_THRESHOLD = 3  # identical consecutive single-tool calls → break
+
         while (api_call_count < self.max_iterations and self.iteration_budget.remaining > 0) or self._budget_grace_call:
             # Reset per-turn checkpoint dedup so each iteration can take one snapshot
             self._checkpoint_mgr.new_turn()
@@ -10175,6 +10180,51 @@ class AIAgent:
                     # execution so a single truncation doesn't poison the
                     # entire conversation.
                     truncated_tool_call_retries = 0
+
+                    # ── Repeated-tool-call loop detection ───────────────────
+                    # If the agent calls the exact same single tool with the
+                    # same arguments N times in a row, it's stuck.  Break out
+                    # before the DOM / context balloon further.
+                    _tc_list = assistant_message.tool_calls
+                    if len(_tc_list) == 1:
+                        try:
+                            import json as _json
+                            _tc_sig = (
+                                _tc_list[0].function.name,
+                                _json.dumps(
+                                    _tc_list[0].function.arguments
+                                    if isinstance(_tc_list[0].function.arguments, dict)
+                                    else _tc_list[0].function.arguments,
+                                    sort_keys=True,
+                                ),
+                            )
+                        except Exception:
+                            _tc_sig = None
+                        if _tc_sig is not None:
+                            _tool_call_history.append(_tc_sig)
+                            if len(_tool_call_history) > _TOOL_LOOP_THRESHOLD:
+                                _tool_call_history.pop(0)
+                            if (
+                                len(_tool_call_history) == _TOOL_LOOP_THRESHOLD
+                                and len(set(_tool_call_history)) == 1
+                            ):
+                                _loop_tool = _tc_list[0].function.name
+                                _warn = (
+                                    f"Detected {_TOOL_LOOP_THRESHOLD} consecutive identical "
+                                    f"'{_loop_tool}' calls — stopping to avoid an infinite loop."
+                                )
+                                logger.warning("tool_loop_detected: %s", _warn)
+                                if not self.quiet_mode:
+                                    self._safe_print(f"\n⚠️  {_warn}")
+                                self._fire_stream_delta(f"\n\n> ⚠️ {_warn}\n")
+                                _turn_exit_reason = "tool_loop_detected"
+                                _tool_call_history.clear()
+                                break
+                        else:
+                            _tool_call_history.clear()
+                    else:
+                        _tool_call_history.clear()
+                    # ────────────────────────────────────────────────────────
 
                     # Signal that a paragraph break is needed before the next
                     # streamed text.  We don't emit it immediately because
