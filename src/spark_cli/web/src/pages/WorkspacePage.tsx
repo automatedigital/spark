@@ -505,6 +505,10 @@ function paneContainsTab(node: WorkspaceLayoutNode, paneId: string, tabId: strin
   return paneContainsTab(node.children[0], paneId, tabId) || paneContainsTab(node.children[1], paneId, tabId);
 }
 
+function findFirstPane(node: WorkspaceLayoutNode): PaneNode {
+  return node.type === "pane" ? node : findFirstPane(node.children[0]);
+}
+
 // ── Projects sidebar ──────────────────────────────────────────────────────────
 
 function ProjectsSidebar({
@@ -715,6 +719,11 @@ function WorkspaceThreadList({
   onSessionsChange,
   panelWidth,
   reloadTrigger,
+  tabPane,
+  tabs,
+  onActivateTab,
+  onCloseTab,
+  onReorderTab,
 }: {
   slug: string;
   activeId: string | null;
@@ -723,6 +732,11 @@ function WorkspaceThreadList({
   onSessionsChange: (sessions: SessionInfo[]) => void;
   panelWidth: number;
   reloadTrigger: number;
+  tabPane: PaneNode;
+  tabs: WorkspaceTab[];
+  onActivateTab: (paneId: string, tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+  onReorderTab: (paneId: string, draggedId: string, targetId: string) => void;
 }) {
   const [threads, setThreads] = useState<SessionInfo[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
@@ -791,16 +805,29 @@ function WorkspaceThreadList({
         return t.title?.toLowerCase().includes(q) || t.preview?.toLowerCase().includes(q);
       })
     : threads;
+  const headerTabs = tabPane.tabIds
+    .map((id) => tabs.find((tab) => tab.id === id))
+    .filter((tab): tab is WorkspaceTab => Boolean(tab));
+  const activeHeaderTab = headerTabs.find((tab) => tab.id === tabPane.activeTabId) ?? headerTabs[0] ?? THREAD_TAB;
 
   return (
     <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-r border-border">
       {/* Header */}
       <div className="shrink-0 border-b border-border p-3">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <h2 className="truncate text-sm font-semibold">Threads</h2>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="-mx-1 flex min-w-0 overflow-x-auto scrollbar-none">
+              {headerTabs.map((tab) => (
+                <WorkspaceTabButton
+                  key={tab.id}
+                  tab={tab}
+                  paneId={tabPane.id}
+                  active={activeHeaderTab.id === tab.id}
+                  onActivate={() => onActivateTab(tabPane.id, tab.id)}
+                  onClose={() => onCloseTab(tab.id)}
+                  onReorder={onReorderTab}
+                />
+              ))}
               <Badge variant="secondary" className="h-5 text-[10px]">
                 {threads.length}
               </Badge>
@@ -1101,15 +1128,17 @@ function WorkspaceTabButton({
 
 function PaneDropZone({
   edge,
+  topOffset,
   onDropTab,
 }: {
   edge: DropEdge;
+  topOffset: "top-0" | "top-9";
   onDropTab: (tabId: string, edge: DropEdge) => void;
 }) {
   const edgeClasses: Record<DropEdge, string> = {
-    left: "left-0 top-9 bottom-0 w-1/4 border-r",
-    right: "right-0 top-9 bottom-0 w-1/4 border-l",
-    top: "left-0 right-0 top-9 h-1/4 border-b",
+    left: `left-0 ${topOffset} bottom-0 w-1/4 border-r`,
+    right: `right-0 ${topOffset} bottom-0 w-1/4 border-l`,
+    top: `left-0 right-0 ${topOffset} h-1/4 border-b`,
     bottom: "left-0 right-0 bottom-0 h-1/4 border-t",
   };
 
@@ -1142,6 +1171,7 @@ function WorkspacePane({
   onMoveToPane,
   onReorder,
   onSplit,
+  hideTabStrip,
 }: {
   pane: PaneNode;
   tabs: WorkspaceTab[];
@@ -1152,6 +1182,7 @@ function WorkspacePane({
   onMoveToPane: (paneId: string, tabId: string) => void;
   onReorder: (paneId: string, draggedId: string, targetId: string) => void;
   onSplit: (paneId: string, tabId: string, edge: DropEdge) => void;
+  hideTabStrip?: boolean;
 }) {
   const [draggingOver, setDraggingOver] = useState(false);
   const paneTabs = pane.tabIds
@@ -1178,26 +1209,28 @@ function WorkspacePane({
         if (tabId) onMoveToPane(pane.id, tabId);
       }}
     >
-      <div className="flex h-9 shrink-0 overflow-x-auto border-b border-border bg-card/70 scrollbar-none">
-        {paneTabs.map((tab) => (
-          <WorkspaceTabButton
-            key={tab.id}
-            tab={tab}
-            paneId={pane.id}
-            active={activeTab.id === tab.id}
-            onActivate={() => onActivate(pane.id, tab.id)}
-            onClose={() => onClose(tab.id)}
-            onReorder={onReorder}
-          />
-        ))}
-      </div>
+      {!hideTabStrip && (
+        <div className="flex h-9 shrink-0 overflow-x-auto border-b border-border bg-card/70 scrollbar-none">
+          {paneTabs.map((tab) => (
+            <WorkspaceTabButton
+              key={tab.id}
+              tab={tab}
+              paneId={pane.id}
+              active={activeTab.id === tab.id}
+              onActivate={() => onActivate(pane.id, tab.id)}
+              onClose={() => onClose(tab.id)}
+              onReorder={onReorder}
+            />
+          ))}
+        </div>
+      )}
 
       {draggingOver && (
         <>
-          <PaneDropZone edge="left" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
-          <PaneDropZone edge="right" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
-          <PaneDropZone edge="top" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
-          <PaneDropZone edge="bottom" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="left" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="right" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="top" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="bottom" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
         </>
       )}
 
@@ -1213,6 +1246,7 @@ function WorkspaceLayoutView({
   tabs,
   slug,
   threadContent,
+  primaryHeaderPaneId,
   onActivate,
   onClose,
   onMoveToPane,
@@ -1224,6 +1258,7 @@ function WorkspaceLayoutView({
   tabs: WorkspaceTab[];
   slug: string;
   threadContent: React.ReactNode;
+  primaryHeaderPaneId: string;
   onActivate: (paneId: string, tabId: string) => void;
   onClose: (tabId: string) => void;
   onMoveToPane: (paneId: string, tabId: string) => void;
@@ -1238,6 +1273,7 @@ function WorkspaceLayoutView({
         tabs={tabs}
         slug={slug}
         threadContent={threadContent}
+        hideTabStrip={node.id === primaryHeaderPaneId}
         onActivate={onActivate}
         onClose={onClose}
         onMoveToPane={onMoveToPane}
@@ -1264,6 +1300,7 @@ function WorkspaceLayoutView({
           tabs={tabs}
           slug={slug}
           threadContent={threadContent}
+          primaryHeaderPaneId={primaryHeaderPaneId}
           onActivate={onActivate}
           onClose={onClose}
           onMoveToPane={onMoveToPane}
@@ -1283,6 +1320,7 @@ function WorkspaceLayoutView({
           tabs={tabs}
           slug={slug}
           threadContent={threadContent}
+          primaryHeaderPaneId={primaryHeaderPaneId}
           onActivate={onActivate}
           onClose={onClose}
           onMoveToPane={onMoveToPane}
@@ -1751,6 +1789,7 @@ export default function WorkspacePage() {
   };
 
   const activeFilePath = activeSlug ? findActiveFilePath(workspaceLayout, workspaceTabs) : null;
+  const primaryTabPane = findFirstPane(workspaceLayout);
 
   const threadContent = activeSlug ? (
     newThread ? (
@@ -1876,6 +1915,11 @@ export default function WorkspacePage() {
             onSessionsChange={handleSessionsChange}
             panelWidth={threadsWidth}
             reloadTrigger={threadsReloadTrigger}
+            tabPane={primaryTabPane}
+            tabs={workspaceTabs}
+            onActivateTab={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
+            onCloseTab={handleCloseTab}
+            onReorderTab={handleReorderTab}
           />
           <ResizeDivider onDrag={handleThreadsDrag} />
         </>
@@ -1889,6 +1933,7 @@ export default function WorkspacePage() {
             tabs={workspaceTabs}
             slug={activeSlug}
             threadContent={threadContent}
+            primaryHeaderPaneId={primaryTabPane.id}
             onActivate={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
             onClose={handleCloseTab}
             onMoveToPane={handleMoveTabToPane}
