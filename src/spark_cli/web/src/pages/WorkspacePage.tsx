@@ -655,7 +655,9 @@ function WorkspaceNewThread({
 }) {
   const [msg, setMsg] = useState("");
   const [starting, setStarting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTimeout(() => textareaRef.current?.focus(), 50);
@@ -671,6 +673,27 @@ function WorkspaceNewThread({
     } catch (e) {
       console.error("Failed to start conversation", e);
       setStarting(false);
+    }
+  };
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files) return;
+    const arr = Array.from(files);
+    if (!arr.length) return;
+    setUploading(true);
+    try {
+      const res = await api.uploadWorkspaceFiles(slug, arr, "files");
+      const refs = res.saved.map((f) => `@files/${f.filename}`).join(" ");
+      setMsg((prev) => {
+        const prefix = prev.trimEnd();
+        return prefix ? `${prefix}\n${refs} ` : `${refs} `;
+      });
+      textareaRef.current?.focus();
+    } catch (e) {
+      console.error("Upload failed", e);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -702,6 +725,28 @@ function WorkspaceNewThread({
       {/* Prompt bar — matches Chat tab's PromptBar style */}
       <div className="shrink-0 border-t border-border bg-card/40 p-3">
         <div className="relative flex items-end gap-2 rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary/50">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="mb-0.5 h-8 w-8 shrink-0 p-0"
+            disabled={starting || uploading}
+            title="Add file"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="h-3.5 w-3.5" />
+            )}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => void handleUpload(e.target.files)}
+          />
           <textarea
             ref={textareaRef}
             value={msg}
@@ -711,6 +756,7 @@ function WorkspaceNewThread({
               e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
             }}
             placeholder="Ask Spark about this project…"
+            disabled={starting || uploading}
             rows={1}
             className="flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
             style={{ maxHeight: 200 }}
@@ -1245,6 +1291,7 @@ export default function WorkspacePage() {
                 sessionId={activeThreadId}
                 sessionTitle={activeSession ? threadTitle(activeSession) : null}
                 initialMessage={pendingInitialMsg ?? undefined}
+                workspaceSlug={activeSlug ?? undefined}
                 onBack={() => {
                   setActiveThreadId(null);
                   setActiveSession(null);

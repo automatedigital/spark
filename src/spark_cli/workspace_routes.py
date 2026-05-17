@@ -202,6 +202,32 @@ async def upload_files(
     return {"ok": True, "saved": saved}
 
 
+@router.post("/files/upload")
+async def upload_workspace_files(files: List[UploadFile] = File(...)):
+    dest_dir = _workspace_root() / "files"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    for upload in files:
+        filename = Path(upload.filename or "upload").name
+        dest = dest_dir / filename
+        try:
+            content = await upload.read()
+            dest.write_bytes(content)
+            saved.append(
+                {
+                    "filename": filename,
+                    "path": f"files/{filename}",
+                    "absolute_path": str(dest),
+                    "size": len(content),
+                }
+            )
+        except Exception as exc:
+            _log.warning("Upload failed for %s: %s", filename, exc)
+            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}")
+    return {"ok": True, "saved": saved}
+
+
 @router.delete("/projects/{slug}/file")
 def delete_file(slug: str, path: str = Query(...)):
     project_dir = _project_dir(slug)

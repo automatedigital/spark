@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, Square } from "lucide-react";
+import { Loader2, Plus, Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 
@@ -9,12 +9,15 @@ interface PromptBarProps {
   streaming: boolean;
   onSend: () => void;
   onStop: () => void;
+  onUploadFiles?: (files: File[]) => Promise<void>;
   disabled?: boolean;
 }
 
-export function PromptBar({ input, setInput, streaming, onSend, onStop, disabled }: PromptBarProps) {
+export function PromptBar({ input, setInput, streaming, onSend, onStop, onUploadFiles, disabled }: PromptBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Resize textarea to content
   const resize = () => {
@@ -57,7 +60,22 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, disabled
     textareaRef.current?.focus();
   };
 
+  const handleFilesSelected = async (files: FileList | null) => {
+    if (!files || !onUploadFiles) return;
+    const arr = Array.from(files);
+    if (!arr.length) return;
+    setUploading(true);
+    try {
+      await onUploadFiles(arr);
+      textareaRef.current?.focus();
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const charCount = input.length;
+  const blocked = disabled || streaming || uploading;
 
   return (
     <div className="border-t border-border px-4 py-3 shrink-0 relative">
@@ -76,13 +94,39 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, disabled
             : ""
         } border-transparent`}
       >
+        {onUploadFiles && (
+          <>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-10 w-10 shrink-0"
+              disabled={blocked}
+              onClick={() => fileInputRef.current?.click()}
+              title="Add file"
+            >
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => void handleFilesSelected(e.target.files)}
+            />
+          </>
+        )}
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          disabled={disabled || streaming}
-          placeholder={streaming ? "Responding…" : "Ask anything…"}
+          disabled={blocked}
+          placeholder={streaming ? "Responding…" : uploading ? "Uploading…" : "Ask anything…"}
           rows={1}
           className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 min-h-[40px] max-h-[240px] overflow-y-auto"
           style={{ height: "40px" }}
@@ -102,7 +146,7 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, disabled
             <Button
               size="icon"
               className="h-10 w-10"
-              disabled={!input.trim() || !!disabled}
+              disabled={!input.trim() || !!disabled || uploading}
               onClick={onSend}
               title="Send (Enter)"
             >

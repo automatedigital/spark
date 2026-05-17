@@ -515,6 +515,24 @@ export const api = {
     return res.json() as Promise<{ ok: boolean; saved: Array<{ filename: string; size: number }> }>;
   },
 
+  uploadChatFiles: async (files: File[]) => {
+    const form = new FormData();
+    for (const f of files) form.append("files", f);
+    const res = await fetch("/api/workspace/files/upload", {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.json() as Promise<{
+      ok: boolean;
+      saved: Array<{ filename: string; path: string; absolute_path: string; size: number }>;
+    }>;
+  },
+
   deleteWorkspaceFile: (slug: string, path: string) => {
     const qs = new URLSearchParams({ path });
     return fetchJSON<{ ok: boolean; deleted: string }>(

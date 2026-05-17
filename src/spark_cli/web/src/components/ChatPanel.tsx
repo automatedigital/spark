@@ -59,6 +59,7 @@ interface ChatPanelProps {
   onSessionUpdated?: (id: string) => void;
   sessionTitle?: string | null;
   initialMessage?: string;
+  workspaceSlug?: string;
   className?: string;
 }
 
@@ -229,6 +230,7 @@ export function ChatPanel({
   onSessionUpdated,
   sessionTitle,
   initialMessage,
+  workspaceSlug,
   className,
 }: ChatPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -619,6 +621,22 @@ export function ChatPanel({
     void navigator.clipboard.writeText(t);
   }, []);
 
+  const uploadFiles = useCallback(async (files: File[]) => {
+    const res = workspaceSlug
+      ? await api.uploadWorkspaceFiles(workspaceSlug, files, "files")
+      : await api.uploadChatFiles(files);
+    const refs = res.saved.map((f) => {
+      const path = "path" in f ? f.path : `files/${f.filename}`;
+      return `@${path}`;
+    });
+    if (!refs.length) return;
+    setInput((prev) => {
+      const prefix = prev.trimEnd();
+      const addition = refs.join(" ");
+      return prefix ? `${prefix}\n${addition} ` : `${addition} `;
+    });
+  }, [workspaceSlug]);
+
   // Stable handlers passed to memoized row components
   const handleEdit = useCallback((idx: number, text: string) => {
     setEditingUser({ sessionIdx: idx, text });
@@ -791,6 +809,7 @@ export function ChatPanel({
         streaming={streaming}
         onSend={() => void sendMessage()}
         onStop={() => void stop()}
+        onUploadFiles={uploadFiles}
         disabled={!!editingUser}
       />
     </div>
