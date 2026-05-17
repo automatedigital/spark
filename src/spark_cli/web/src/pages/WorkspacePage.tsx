@@ -719,11 +719,6 @@ function WorkspaceThreadList({
   onSessionsChange,
   panelWidth,
   reloadTrigger,
-  tabPane,
-  tabs,
-  onActivateTab,
-  onCloseTab,
-  onReorderTab,
 }: {
   slug: string;
   activeId: string | null;
@@ -732,11 +727,6 @@ function WorkspaceThreadList({
   onSessionsChange: (sessions: SessionInfo[]) => void;
   panelWidth: number;
   reloadTrigger: number;
-  tabPane: PaneNode;
-  tabs: WorkspaceTab[];
-  onActivateTab: (paneId: string, tabId: string) => void;
-  onCloseTab: (tabId: string) => void;
-  onReorderTab: (paneId: string, draggedId: string, targetId: string) => void;
 }) {
   const [threads, setThreads] = useState<SessionInfo[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
@@ -805,27 +795,9 @@ function WorkspaceThreadList({
         return t.title?.toLowerCase().includes(q) || t.preview?.toLowerCase().includes(q);
       })
     : threads;
-  const headerTabs = tabPane.tabIds
-    .map((id) => tabs.find((tab) => tab.id === id))
-    .filter((tab): tab is WorkspaceTab => Boolean(tab));
-  const activeHeaderTab = headerTabs.find((tab) => tab.id === tabPane.activeTabId) ?? headerTabs[0] ?? THREAD_TAB;
 
   return (
     <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-r border-border">
-      <div className="flex h-9 shrink-0 overflow-x-auto border-b border-border bg-card/70 scrollbar-none">
-        {headerTabs.map((tab) => (
-          <WorkspaceTabButton
-            key={tab.id}
-            tab={tab}
-            paneId={tabPane.id}
-            active={activeHeaderTab.id === tab.id}
-            onActivate={() => onActivateTab(tabPane.id, tab.id)}
-            onClose={() => onCloseTab(tab.id)}
-            onReorder={onReorderTab}
-          />
-        ))}
-      </div>
-
       {/* Header */}
       <div className="shrink-0 border-b border-border p-3">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -1795,6 +1767,11 @@ export default function WorkspacePage() {
 
   const activeFilePath = activeSlug ? findActiveFilePath(workspaceLayout, workspaceTabs) : null;
   const primaryTabPane = findFirstPane(workspaceLayout);
+  const primaryTabs = primaryTabPane.tabIds
+    .map((id) => workspaceTabs.find((tab) => tab.id === id))
+    .filter((tab): tab is WorkspaceTab => Boolean(tab));
+  const activePrimaryTab =
+    primaryTabs.find((tab) => tab.id === primaryTabPane.activeTabId) ?? primaryTabs[0] ?? THREAD_TAB;
 
   const threadContent = activeSlug ? (
     newThread ? (
@@ -1908,53 +1885,70 @@ export default function WorkspacePage() {
       {/* Divider: projects ↔ threads/chat */}
       {!projectsCollapsed && <ResizeDivider onDrag={handleProjectsDrag} />}
 
-      {/* Thread list — only when a project is active */}
-      {activeSlug && (
-        <>
-          <WorkspaceThreadList
-            key={activeSlug}
-            slug={activeSlug}
-            activeId={activeThreadId}
-            onOpen={handleOpenThread}
-            onNewThread={handleNewThread}
-            onSessionsChange={handleSessionsChange}
-            panelWidth={threadsWidth}
-            reloadTrigger={threadsReloadTrigger}
-            tabPane={primaryTabPane}
-            tabs={workspaceTabs}
-            onActivateTab={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
-            onCloseTab={handleCloseTab}
-            onReorderTab={handleReorderTab}
-          />
-          <ResizeDivider onDrag={handleThreadsDrag} />
-        </>
-      )}
-
-      {/* Workspace editor area */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {activeSlug && threadContent ? (
-          <WorkspaceLayoutView
-            node={workspaceLayout}
-            tabs={workspaceTabs}
-            slug={activeSlug}
-            threadContent={threadContent}
-            primaryHeaderPaneId={primaryTabPane.id}
-            onActivate={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
-            onClose={handleCloseTab}
-            onMoveToPane={handleMoveTabToPane}
-            onReorder={handleReorderTab}
-            onSplit={handleSplitTab}
-            onResizeSplit={(splitId, delta) => setWorkspaceLayout((prev) => resizeSplit(prev, splitId, delta))}
-          />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
-            <FolderOpen className="mb-4 h-12 w-12 opacity-30" />
-            <p className="text-sm font-medium text-foreground">Select a project</p>
-            <p className="mt-1 max-w-sm text-xs opacity-75">
-              Choose a project from the left panel to get started.
-            </p>
+        {activeSlug && (
+          <div className="flex h-9 shrink-0 overflow-x-auto border-b border-border bg-card/70 scrollbar-none">
+            {primaryTabs.map((tab) => (
+              <WorkspaceTabButton
+                key={tab.id}
+                tab={tab}
+                paneId={primaryTabPane.id}
+                active={activePrimaryTab.id === tab.id}
+                onActivate={() =>
+                  setWorkspaceLayout((prev) => setPaneActiveTab(prev, primaryTabPane.id, tab.id))
+                }
+                onClose={() => handleCloseTab(tab.id)}
+                onReorder={handleReorderTab}
+              />
+            ))}
           </div>
         )}
+
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {/* Thread list — only when a project is active */}
+          {activeSlug && (
+            <>
+              <WorkspaceThreadList
+                key={activeSlug}
+                slug={activeSlug}
+                activeId={activeThreadId}
+                onOpen={handleOpenThread}
+                onNewThread={handleNewThread}
+                onSessionsChange={handleSessionsChange}
+                panelWidth={threadsWidth}
+                reloadTrigger={threadsReloadTrigger}
+              />
+              <ResizeDivider onDrag={handleThreadsDrag} />
+            </>
+          )}
+
+          {/* Workspace editor area */}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            {activeSlug && threadContent ? (
+              <WorkspaceLayoutView
+                node={workspaceLayout}
+                tabs={workspaceTabs}
+                slug={activeSlug}
+                threadContent={threadContent}
+                primaryHeaderPaneId={primaryTabPane.id}
+                onActivate={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
+                onClose={handleCloseTab}
+                onMoveToPane={handleMoveTabToPane}
+                onReorder={handleReorderTab}
+                onSplit={handleSplitTab}
+                onResizeSplit={(splitId, delta) => setWorkspaceLayout((prev) => resizeSplit(prev, splitId, delta))}
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+                <FolderOpen className="mb-4 h-12 w-12 opacity-30" />
+                <p className="text-sm font-medium text-foreground">Select a project</p>
+                <p className="mt-1 max-w-sm text-xs opacity-75">
+                  Choose a project from the left panel to get started.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Files panel — only when a project is active */}
