@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   X,
@@ -99,6 +99,125 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
   });
   return out;
 }
+
+// ── Memoized row components ───────────────────────────────────────────────────
+// Defined at module scope so their identity is stable — React.memo bails out
+// any row whose props haven't changed, preventing re-renders of the full
+// message list on every streaming token.
+
+type UserMsg = Extract<ChatMessage, { role: "user" }>;
+type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
+type ToolMsg = Extract<ChatMessage, { role: "tool" }>;
+type ReasoningMsg = Extract<ChatMessage, { role: "reasoning" }>;
+type ApprovalMsg = Extract<ChatMessage, { role: "approval" }>;
+type NoteMsg = Extract<ChatMessage, { role: "note" }>;
+
+const UserRow = memo(function UserRow({
+  msg, hasSession, streaming, onEdit, onRetry, onFork, onCopy,
+}: {
+  msg: UserMsg;
+  hasSession: boolean;
+  streaming: boolean;
+  onEdit: (idx: number, text: string) => void;
+  onRetry: (idx: number) => void;
+  onFork: (idx: number) => void;
+  onCopy: (text: string) => void;
+}) {
+  return (
+    <div className="flex gap-2 flex-row-reverse group/msg">
+      <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-primary/20 text-primary">
+        <User className="h-3.5 w-3.5" />
+      </div>
+      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-primary/10 text-foreground relative">
+        <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+        {hasSession && msg.sessionIdx != null && (
+          <div className="absolute -top-2 right-0 opacity-0 group-hover/msg:opacity-100 flex gap-1 transition-opacity">
+            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Edit & retry"
+              onClick={() => onEdit(msg.sessionIdx!, msg.content)}>
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Retry"
+              disabled={streaming} onClick={() => onRetry(msg.sessionIdx!)}>
+              <RotateCcw className="h-3 w-3" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Fork from here"
+              disabled={streaming} onClick={() => onFork(msg.sessionIdx!)}>
+              <GitFork className="h-3 w-3" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Copy"
+              onClick={() => onCopy(msg.content)}>
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const AssistantRow = memo(function AssistantRow({ msg }: { msg: AssistantMsg }) {
+  return (
+    <div className="flex gap-2">
+      <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-success/20 text-success">
+        <Bot className="h-3.5 w-3.5" />
+      </div>
+      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground min-w-0">
+        {msg.content ? (
+          <Markdown content={msg.content} />
+        ) : (
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="text-xs">Thinking…</span>
+          </span>
+        )}
+        {msg.streaming && msg.content ? (
+          <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-success align-middle" />
+        ) : null}
+      </div>
+    </div>
+  );
+});
+
+const ToolRow = memo(function ToolRow({ msg, repeatCount }: { msg: ToolMsg; repeatCount: number }) {
+  return (
+    <div className="pl-9">
+      <ToolCallBubble
+        name={msg.name} args={msg.args} result={msg.result} done={msg.done}
+        startedAt={msg.startedAt} endedAt={msg.endedAt}
+        repeatCount={repeatCount > 0 ? repeatCount : undefined}
+      />
+    </div>
+  );
+});
+
+const ReasoningRow = memo(function ReasoningRow({ msg }: { msg: ReasoningMsg }) {
+  return <div className="pl-9"><ReasoningBubble text={msg.text} /></div>;
+});
+
+const ApprovalRow = memo(function ApprovalRow({
+  msg, disabled, onChoice,
+}: {
+  msg: ApprovalMsg;
+  disabled: boolean;
+  onChoice: (c: "once" | "session" | "always" | "deny") => void;
+}) {
+  return (
+    <div className="pl-2">
+      <ApprovalPrompt
+        command={String(msg.approval.command ?? "")}
+        description={String(msg.approval.description ?? "")}
+        disabled={disabled || !!msg.resolved}
+        onChoice={onChoice}
+      />
+    </div>
+  );
+});
+
+const NoteRow = memo(function NoteRow({ msg }: { msg: NoteMsg }) {
+  return <p className="text-xs text-muted-foreground italic pl-2">{msg.text}</p>;
+});
+
+// ── ChatPanel ─────────────────────────────────────────────────────────────────
 
 export function ChatPanel({
   sessionId,
@@ -410,13 +529,18 @@ export function ChatPanel({
     }
   };
 
-  const doFork = async (fromSessionIdx?: number) => {
-    const sid = activeSessionId;
+  // Use refs for values that change so useCallback deps stay empty → stable identities
+  const onSessionCreatedRef = useRef(onSessionCreated);
+  onSessionCreatedRef.current = onSessionCreated;
+
+  const doFork = useCallback(async (fromSessionIdx?: number) => {
+    const sid = activeSessionRef.current;
     if (!sid) return;
     try {
       const r = await api.forkConversation(sid, fromSessionIdx);
       setActiveSessionId(r.session_id);
-      onSessionCreated?.(r.session_id);
+      activeSessionRef.current = r.session_id;
+      onSessionCreatedRef.current?.(r.session_id);
       setChatMessages([]);
       setLoadingHistory(true);
       const resp = await api.getSessionMessages(r.session_id);
@@ -430,11 +554,11 @@ export function ChatPanel({
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, []);
 
-  const doRetry = async (sessionIdx: number, edited?: string) => {
-    const sid = activeSessionId;
-    if (!sid || streaming) return;
+  const doRetry = useCallback(async (sessionIdx: number, edited?: string) => {
+    const sid = activeSessionRef.current;
+    if (!sid || streamingRef.current) return;
     try {
       await api.retryConversation(sid, sessionIdx, edited);
       setStreaming(true);
@@ -460,10 +584,10 @@ export function ChatPanel({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, []);
 
-  const submitApproval = async (choice: "once" | "session" | "always" | "deny") => {
-    const sid = activeSessionId;
+  const submitApproval = useCallback(async (choice: "once" | "session" | "always" | "deny") => {
+    const sid = activeSessionRef.current;
     if (!sid) return;
     setApprovalBusy(true);
     try {
@@ -473,11 +597,18 @@ export function ChatPanel({
     } finally {
       setApprovalBusy(false);
     }
-  };
+  }, []);
 
-  const copyText = (t: string) => {
+  const copyText = useCallback((t: string) => {
     void navigator.clipboard.writeText(t);
-  };
+  }, []);
+
+  // Stable handlers passed to memoized row components
+  const handleEdit = useCallback((idx: number, text: string) => {
+    setEditingUser({ sessionIdx: idx, text });
+  }, []);
+  const handleRetry = useCallback((idx: number) => { void doRetry(idx); }, [doRetry]);
+  const handleFork = useCallback((idx: number) => { void doFork(idx); }, [doFork]);
 
   return (
     <div className={cn("flex min-h-0 w-full flex-1 flex-col bg-background", className)}>
@@ -537,7 +668,6 @@ export function ChatPanel({
           <div className="flex flex-col gap-3">
             {(() => {
               // Collapse consecutive same-name tool calls into one bubble with a repeat count.
-              // This prevents DOM bloat when the agent gets stuck calling the same tool repeatedly.
               const collapsed: { msg: typeof chatMessages[number]; repeatCount: number }[] = [];
               for (const msg of chatMessages) {
                 const prev = collapsed[collapsed.length - 1];
@@ -552,131 +682,30 @@ export function ChatPanel({
                 }
               }
               return collapsed.map(({ msg, repeatCount }) => {
-              if (msg.role === "user") {
-                return (
-                  <div key={msg.id} className="flex gap-2 flex-row-reverse group/msg">
-                    <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-primary/20 text-primary">
-                      <User className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-primary/10 text-foreground relative">
-                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                      {activeSessionId && msg.sessionIdx != null && (
-                        <div className="absolute -top-2 right-0 opacity-0 group-hover/msg:opacity-100 flex gap-1 transition-opacity">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            title="Edit & retry"
-                            onClick={() =>
-                              setEditingUser({ sessionIdx: msg.sessionIdx!, text: msg.content })
-                            }
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            title="Retry"
-                            disabled={streaming}
-                            onClick={() => void doRetry(msg.sessionIdx!)}
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            title="Fork from here"
-                            disabled={streaming}
-                            onClick={() => void doFork(msg.sessionIdx)}
-                          >
-                            <GitFork className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            title="Copy"
-                            onClick={() => copyText(msg.content)}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-              if (msg.role === "assistant") {
-                if (!msg.content && !msg.streaming) return null;
-                return (
-                  <div key={msg.id} className="flex gap-2">
-                    <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-success/20 text-success">
-                      <Bot className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground min-w-0">
-                      {msg.content ? (
-                        <Markdown content={msg.content} />
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          <span className="text-xs">Thinking…</span>
-                        </span>
-                      )}
-                      {msg.streaming && msg.content ? (
-                        <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-success align-middle" />
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              }
-              if (msg.role === "tool") {
-                return (
-                  <div key={msg.id} className="pl-9">
-                    <ToolCallBubble
-                      name={msg.name}
-                      args={msg.args}
-                      result={msg.result}
-                      done={msg.done}
-                      startedAt={msg.startedAt}
-                      endedAt={msg.endedAt}
-                      repeatCount={repeatCount > 0 ? repeatCount : undefined}
-                    />
-                  </div>
-                );
-              }
-              if (msg.role === "reasoning") {
-                return (
-                  <div key={msg.id} className="pl-9">
-                    <ReasoningBubble text={msg.text} />
-                  </div>
-                );
-              }
-              if (msg.role === "approval") {
-                return (
-                  <div key={msg.id} className="pl-2">
-                    <ApprovalPrompt
-                      command={String(msg.approval.command ?? "")}
-                      description={String(msg.approval.description ?? "")}
-                      disabled={approvalBusy || !!msg.resolved}
-                      onChoice={(c) => void submitApproval(c)}
-                    />
-                  </div>
-                );
-              }
-              if (msg.role === "note") {
-                return (
-                  <p key={msg.id} className="text-xs text-muted-foreground italic pl-2">
-                    {msg.text}
-                  </p>
-                );
-              }
-              return null;
+                if (msg.role === "user") {
+                  return (
+                    <UserRow key={msg.id} msg={msg} hasSession={!!activeSessionId}
+                      streaming={streaming} onEdit={handleEdit} onRetry={handleRetry}
+                      onFork={handleFork} onCopy={copyText} />
+                  );
+                }
+                if (msg.role === "assistant") {
+                  if (!msg.content && !msg.streaming) return null;
+                  return <AssistantRow key={msg.id} msg={msg} />;
+                }
+                if (msg.role === "tool") {
+                  return <ToolRow key={msg.id} msg={msg} repeatCount={repeatCount} />;
+                }
+                if (msg.role === "reasoning") {
+                  return <ReasoningRow key={msg.id} msg={msg} />;
+                }
+                if (msg.role === "approval") {
+                  return <ApprovalRow key={msg.id} msg={msg} disabled={approvalBusy} onChoice={submitApproval} />;
+                }
+                if (msg.role === "note") {
+                  return <NoteRow key={msg.id} msg={msg} />;
+                }
+                return null;
               });
             })()}
             {/* Typing indicator: shows immediately after send, before first token arrives */}

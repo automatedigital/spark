@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -45,7 +45,7 @@ hljs.registerLanguage("go", go);
  * blockquotes, headings, hr, lists, paragraphs,
  * inline: bold, italic, strikethrough, code, links, bare URLs.
  */
-export function Markdown({ content, highlightTerms }: { content: string; highlightTerms?: string[] }) {
+export const Markdown = memo(function Markdown({ content, highlightTerms }: { content: string; highlightTerms?: string[] }) {
   const blocks = useMemo(() => parseBlocks(content), [content]);
 
   return (
@@ -55,7 +55,7 @@ export function Markdown({ content, highlightTerms }: { content: string; highlig
       ))}
     </div>
   );
-}
+});
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
