@@ -3278,8 +3278,7 @@ def _execute_web_slash_command(session_id: str, message: str) -> "str | None":
         return _web_cmd_status(session_id)
 
     if canonical == "feedback":
-        _publish_event("chat.feedback_form", {}, session_id)
-        return ""  # prevent agent fallthrough; form handles the response
+        return ""  # frontend injects form directly; return "" to prevent agent fallthrough
 
     return None  # Other web-available commands fall through to the agent
 

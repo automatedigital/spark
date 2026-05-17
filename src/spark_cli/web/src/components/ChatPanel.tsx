@@ -443,16 +443,6 @@ export function ChatPanel({
         if (msg) setStatusLabel(msg);
         break;
       }
-      case "chat.feedback_form": {
-        finalizeAssistant();
-        setChatMessages((prev) => [...prev, { id: nid(), role: "feedback_form" as const }]);
-        break;
-      }
-      case "chat.feedback_submitted":
-        setChatMessages((prev) =>
-          prev.map((m) => (m.role === "feedback_form" ? { ...m, submitted: true } : m)),
-        );
-        break;
       case "chat.approval_requested": {
         if (rafPendingRef.current !== null) {
           cancelAnimationFrame(rafPendingRef.current);
@@ -519,7 +509,12 @@ export function ChatPanel({
                 const mapped = sessionMessagesToChat(
                   resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
                 );
-                setChatMessages((prev) => (mapped.length === 0 && prev.length > 0 ? prev : mapped));
+                setChatMessages((prev) => {
+                  if (mapped.length === 0 && prev.length > 0) return prev;
+                  // Preserve ephemeral feedback forms across the DB sync
+                  const forms = prev.filter((m) => m.role === "feedback_form");
+                  return forms.length > 0 ? [...mapped, ...forms] : mapped;
+                });
               })
               .catch(() => {});
           }, 500);
@@ -538,6 +533,13 @@ export function ChatPanel({
     setInput("");
     setError(null);
     setChatMessages((prev) => [...prev, { id: nid(), role: "user", content: text }]);
+
+    // /feedback is handled entirely in the frontend — inject the form immediately,
+    // send to backend only to prevent agent fallthrough (backend returns "").
+    if (text.trim() === "/feedback") {
+      setChatMessages((prev) => [...prev, { id: nid(), role: "feedback_form" as const }]);
+    }
+
     setStreaming(true);
     setStatusLabel("Thinking…");
 
