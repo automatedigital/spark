@@ -559,13 +559,13 @@ export const api = {
     );
   },
 
-  runWorkspaceTerminalCommand: (slug: string, command: string) =>
+  runWorkspaceTerminalCommand: (slug: string, command?: string) =>
     fetchJSON<WorkspaceTerminalRunStart>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command }),
+        body: command ? JSON.stringify({ command }) : "{}",
       },
     ),
 
@@ -580,6 +580,16 @@ export const api = {
     fetchJSON<{ ok: boolean; run_id: string; status: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs/${encodeURIComponent(runId)}/stop`,
       { method: "POST" },
+    ),
+
+  sendWorkspaceTerminalInput: (slug: string, runId: string, input: string) =>
+    fetchJSON<{ ok: boolean; run_id: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs/${encodeURIComponent(runId)}/input`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input }),
+      },
     ),
 
   startWorkspaceConversation: (slug: string, message: string, model?: string) =>

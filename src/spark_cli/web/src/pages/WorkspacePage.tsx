@@ -1371,21 +1371,78 @@ type TerminalEntry = {
   cwd?: string;
 };
 
+function sanitizeTerminalText(text: string): string {
+  const ansiPattern = new RegExp(String.raw`\x1B\[[0-?]*[ -/]*[@-~]`, "g");
+  return text
+    .replace(ansiPattern, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+}
+
 function WorkspaceTerminalPanel({ slug }: { slug: string }) {
   const [command, setCommand] = useState("");
   const [entries, setEntries] = useState<TerminalEntry[]>([]);
-  const [runningRunId, setRunningRunId] = useState<string | null>(null);
+  const [shellRunId, setShellRunId] = useState<string | null>(null);
+  const [shellStatus, setShellStatus] = useState<"connecting" | "running" | "stopped" | "failed">("connecting");
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const shellRunIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setEntries([]);
+    setShellStatus("connecting");
+    setShellRunId(null);
+    shellRunIdRef.current = null;
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+
+    void api.runWorkspaceTerminalCommand(slug).then((run) => {
+      if (cancelled) return;
+      setShellRunId(run.run_id);
+      shellRunIdRef.current = run.run_id;
+      setEntries([{ id: run.run_id, command: "interactive shell", output: "", status: "queued", exitCode: null, cwd: run.cwd }]);
+      const source = api.streamWorkspaceTerminalRun(slug, run.run_id);
+      eventSourceRef.current = source;
+      source.onmessage = (ev) => {
+        const data = JSON.parse(ev.data) as WorkspaceTerminalEvent;
+        if (data.type === "output") {
+          appendOutput(run.run_id, sanitizeTerminalText(data.text));
+          return;
+        }
+        if (data.type === "state") {
+          setShellStatus(data.status === "running" ? "running" : "connecting");
+          appendEntry(run.run_id, { status: data.status as TerminalEntry["status"], cwd: data.cwd });
+          return;
+        }
+        if (data.type === "done") {
+          setShellStatus(data.status === "stopped" ? "stopped" : "failed");
+          appendEntry(run.run_id, { status: data.status as TerminalEntry["status"], exitCode: data.exit_code });
+          source.close();
+          if (eventSourceRef.current === source) eventSourceRef.current = null;
+        }
+      };
+      source.onerror = () => {
+        setShellStatus("failed");
+        appendEntry(run.run_id, { status: "failed" });
+        source.close();
+        if (eventSourceRef.current === source) eventSourceRef.current = null;
+      };
+    }).catch((e) => {
+      if (cancelled) return;
+      setShellStatus("failed");
+      setEntries([{ id: "failed", command: "interactive shell", output: `Failed to start shell: ${String(e)}\n`, status: "failed", exitCode: null }]);
+    });
+
     return () => {
+      cancelled = true;
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
+      if (shellRunIdRef.current) void api.stopWorkspaceTerminalRun(slug, shellRunIdRef.current).catch(() => {});
     };
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight });
@@ -1403,75 +1460,38 @@ function WorkspaceTerminalPanel({ slug }: { slug: string }) {
 
   const runCommand = async () => {
     const text = command.trim();
-    if (!text || runningRunId) return;
-    const localId = `local-${Date.now()}`;
-    setEntries((prev) => [
-      ...prev,
-      { id: localId, command: text, output: "", status: "queued", exitCode: null },
-    ]);
+    if (!text || !shellRunId || shellStatus !== "running") return;
     setHistory((prev) => [text, ...prev.filter((item) => item !== text)].slice(0, 40));
     setHistoryIndex(null);
     setCommand("");
-
     try {
-      const run = await api.runWorkspaceTerminalCommand(slug, text);
-      setRunningRunId(run.run_id);
-      setEntries((prev) =>
-        prev.map((entry) =>
-          entry.id === localId
-            ? { ...entry, id: run.run_id, status: run.status, cwd: run.cwd }
-            : entry,
-        ),
-      );
-
-      const source = api.streamWorkspaceTerminalRun(slug, run.run_id);
-      eventSourceRef.current = source;
-      source.onmessage = (ev) => {
-        const data = JSON.parse(ev.data) as WorkspaceTerminalEvent;
-        if (data.type === "output") {
-          appendOutput(run.run_id, data.text);
-          return;
-        }
-        if (data.type === "state") {
-          appendEntry(run.run_id, {
-            status: data.status as TerminalEntry["status"],
-            cwd: data.cwd,
-          });
-          return;
-        }
-        if (data.type === "done") {
-          appendEntry(run.run_id, {
-            status: data.status as TerminalEntry["status"],
-            exitCode: data.exit_code,
-          });
-          setRunningRunId(null);
-          source.close();
-          if (eventSourceRef.current === source) eventSourceRef.current = null;
-        }
-      };
-      source.onerror = () => {
-        appendEntry(run.run_id, { status: "failed" });
-        setRunningRunId(null);
-        source.close();
-        if (eventSourceRef.current === source) eventSourceRef.current = null;
-      };
+      await api.sendWorkspaceTerminalInput(slug, shellRunId, `${text}\n`);
     } catch (e) {
-      appendEntry(localId, { status: "failed", output: `Failed to start command: ${String(e)}\n` });
+      appendOutput(shellRunId, `\nFailed to send input: ${String(e)}\n`);
     }
   };
 
   const stopCommand = async () => {
-    if (!runningRunId) return;
-    const id = runningRunId;
+    if (!shellRunId) return;
+    const id = shellRunId;
     try {
       await api.stopWorkspaceTerminalRun(slug, id);
       appendEntry(id, { status: "stopped" });
+      setShellStatus("stopped");
     } catch (e) {
       appendOutput(id, `\nFailed to stop command: ${String(e)}\n`);
     } finally {
-      setRunningRunId(null);
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
+      shellRunIdRef.current = null;
+    }
+  };
+
+  const clearTerminal = () => {
+    if (shellRunId) {
+      setEntries([{ id: shellRunId, command: "interactive shell", output: "", status: "running", exitCode: null }]);
+    } else {
+      setEntries([]);
     }
   };
 
@@ -1503,7 +1523,7 @@ function WorkspaceTerminalPanel({ slug }: { slug: string }) {
                           : "text-muted-foreground",
                     )}
                   >
-                    {entry.status}
+                    {shellStatus}
                     {entry.exitCode !== null ? `:${entry.exitCode}` : ""}
                   </span>
                 </div>
@@ -1532,9 +1552,9 @@ function WorkspaceTerminalPanel({ slug }: { slug: string }) {
           <span className="pl-1 font-mono-ui text-xs text-primary">$</span>
           <Input
             value={command}
-            disabled={Boolean(runningRunId)}
+            disabled={shellStatus !== "running"}
             onChange={(e) => setCommand(e.target.value)}
-            placeholder={runningRunId ? "Command running…" : "Run command in project…"}
+            placeholder={shellStatus === "running" ? "Type a shell command…" : "Starting shell…"}
             className="h-7 border-0 bg-transparent px-1 font-mono-ui text-xs focus-visible:ring-0"
             onKeyDown={(e) => {
               if (e.key === "ArrowUp" && history.length) {
@@ -1551,36 +1571,34 @@ function WorkspaceTerminalPanel({ slug }: { slug: string }) {
               }
             }}
           />
-          {runningRunId ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7 shrink-0"
-              title="Stop command"
-              onClick={() => void stopCommand()}
-            >
-              <Square className="h-3.5 w-3.5" />
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              size="icon"
-              className="h-7 w-7 shrink-0"
-              disabled={!command.trim()}
-              title="Run command"
-            >
-              <Play className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <Button
+            type="submit"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            disabled={!command.trim() || shellStatus !== "running"}
+            title="Send command"
+          >
+            <Play className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 shrink-0"
+            title="Stop shell"
+            disabled={!shellRunId || shellStatus !== "running"}
+            onClick={() => void stopCommand()}
+          >
+            <Square className="h-3.5 w-3.5" />
+          </Button>
           <Button
             type="button"
             size="icon"
             variant="ghost"
             className="h-7 w-7 shrink-0 text-muted-foreground"
             title="Clear terminal"
-            onClick={() => setEntries([])}
-            disabled={Boolean(runningRunId) || entries.length === 0}
+            onClick={clearTerminal}
+            disabled={entries.length === 0}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

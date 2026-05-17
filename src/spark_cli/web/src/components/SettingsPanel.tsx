@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Activity, BarChart3, FileText, Shield, Settings, KeyRound, Download } from "lucide-react";
+import { X, Activity, BarChart3, FileText, Shield, Settings, KeyRound, Download, Palette } from "lucide-react";
 import StatusPage from "@/pages/StatusPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import LogsPage from "@/pages/LogsPage";
@@ -7,12 +7,14 @@ import AdminPage from "@/pages/AdminPage";
 import ConfigPage from "@/pages/ConfigPage";
 import EnvPage from "@/pages/EnvPage";
 import UpdatesPage from "@/pages/UpdatesPage";
+import AppearancePage from "@/pages/AppearancePage";
 
 const SETTINGS_TABS = [
   { id: "status", label: "Status", icon: Activity, component: StatusPage },
   { id: "analytics", label: "Analytics", icon: BarChart3, component: AnalyticsPage },
   { id: "logs", label: "Logs", icon: FileText, component: LogsPage },
   { id: "admin", label: "Admin", icon: Shield, component: AdminPage },
+  { id: "appearance", label: "Appearance", icon: Palette, component: AppearancePage },
   { id: "config", label: "Config", icon: Settings, component: ConfigPage },
   { id: "keys", label: "Keys", icon: KeyRound, component: EnvPage },
   { id: "updates", label: "Updates", icon: Download, component: UpdatesPage },

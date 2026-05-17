@@ -48,6 +48,66 @@
   --font-compressed: "Avenir Next", "Segoe UI", sans-serif;
 }
 
+:root[data-webui-theme="codex"] {
+  --color-background: #101112;
+  --color-foreground: #e8edf2;
+  --color-card: #181a1d;
+  --color-card-foreground: #e8edf2;
+  --color-primary: #d7dde5;
+  --color-primary-foreground: #111315;
+  --color-secondary: #202326;
+  --color-secondary-foreground: #e8edf2;
+  --color-muted: #151719;
+  --color-muted-foreground: #8d98a5;
+  --color-accent: #b9c4d0;
+  --color-accent-foreground: #111315;
+  --color-border: color-mix(in srgb, #ffffff 11%, transparent);
+  --color-input: color-mix(in srgb, #ffffff 14%, transparent);
+  --color-ring: #d7dde5;
+  --color-popover: #171a1d;
+  --color-popover-foreground: #e8edf2;
+}
+
+:root[data-webui-theme="daylight"] {
+  --color-background: #f6f3ea;
+  --color-foreground: #171717;
+  --color-card: #ffffff;
+  --color-card-foreground: #171717;
+  --color-primary: #276ef1;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #ebe7dc;
+  --color-secondary-foreground: #171717;
+  --color-muted: #eee9dc;
+  --color-muted-foreground: #706b62;
+  --color-accent: #276ef1;
+  --color-accent-foreground: #ffffff;
+  --color-border: color-mix(in srgb, #171717 13%, transparent);
+  --color-input: color-mix(in srgb, #171717 16%, transparent);
+  --color-ring: #276ef1;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #171717;
+}
+
+:root[data-webui-theme="signal"] {
+  --color-background: #07110d;
+  --color-foreground: #e7f6ed;
+  --color-card: #0e1a14;
+  --color-card-foreground: #e7f6ed;
+  --color-primary: #7ee787;
+  --color-primary-foreground: #061008;
+  --color-secondary: #14211a;
+  --color-secondary-foreground: #e7f6ed;
+  --color-muted: #0a1711;
+  --color-muted-foreground: #86a58f;
+  --color-accent: #58d68d;
+  --color-accent-foreground: #061008;
+  --color-border: color-mix(in srgb, #7ee787 16%, transparent);
+  --color-input: color-mix(in srgb, #7ee787 18%, transparent);
+  --color-ring: #7ee787;
+  --color-popover: #0b1711;
+  --color-popover-foreground: #e7f6ed;
+}
+
 /* ---- Global body ---- */
 body {
   margin: 0;
@@ -191,6 +251,18 @@ code {
   filter: blur(60px);
 }
 
+:root[data-webui-theme="codex"] .cursor-blob {
+  background: radial-gradient(circle, rgba(215, 221, 229, 0.08) 0%, rgba(215, 221, 229, 0.03) 45%, transparent 70%);
+}
+
+:root[data-webui-theme="daylight"] .cursor-blob {
+  background: radial-gradient(circle, rgba(39, 110, 241, 0.11) 0%, rgba(39, 110, 241, 0.04) 45%, transparent 70%);
+}
+
+:root[data-webui-theme="signal"] .cursor-blob {
+  background: radial-gradient(circle, rgba(126, 231, 135, 0.12) 0%, rgba(126, 231, 135, 0.04) 45%, transparent 70%);
+}
+
 .noise-overlay {
   pointer-events: none;
   position: fixed;
@@ -217,6 +289,25 @@ code {
     linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
 }
 
+:root[data-webui-theme="codex"] .warm-glow {
+  opacity: 0.34;
+  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
+}
+
+:root[data-webui-theme="daylight"] .warm-glow {
+  opacity: 0.45;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(39, 110, 241, 0.13) 0%, rgba(39, 110, 241, 0) 42%),
+    linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0));
+}
+
+:root[data-webui-theme="signal"] .warm-glow {
+  opacity: 0.55;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(126, 231, 135, 0.13) 0%, rgba(126, 231, 135, 0) 42%),
+    linear-gradient(180deg, rgba(126, 231, 135, 0.025), rgba(126, 231, 135, 0));
+}
+
 .auth-panel {
   background-image:
     linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 10%, transparent) 25%, transparent 25%),
@@ -226,19 +317,16 @@ code {
 
 /* ---- Compact WebUI work surfaces ---- */
 .spark-glass-panel {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-card) 76%, transparent), color-mix(in srgb, #101010 72%, transparent));
+  background: color-mix(in srgb, var(--color-card) 72%, transparent);
   backdrop-filter: blur(18px);
 }
 
 .spark-panel-header {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-card) 74%, transparent), color-mix(in srgb, var(--color-muted) 52%, transparent));
+  background: color-mix(in srgb, var(--color-card) 68%, transparent);
 }
 
 .spark-tabbar {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-card) 70%, transparent), color-mix(in srgb, #111 58%, transparent));
+  background: color-mix(in srgb, var(--color-card) 66%, transparent);
 }
 
 .spark-list-row {
@@ -246,8 +334,7 @@ code {
 }
 
 .spark-code-pane {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, #111 86%, transparent), color-mix(in srgb, var(--color-background) 94%, transparent));
+  background: color-mix(in srgb, var(--color-background) 90%, transparent);
 }
 
 .spark-code-pane pre,
@@ -256,8 +343,7 @@ code {
 }
 
 .spark-terminal-pane {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, #080808 72%, transparent), color-mix(in srgb, var(--color-background) 88%, transparent));
+  background: color-mix(in srgb, #000 22%, var(--color-background));
 }
 
 input,

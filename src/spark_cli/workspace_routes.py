@@ -7,9 +7,11 @@ import json
 import logging
 import mimetypes
 import os
+import pty
 import queue
 import re
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -97,7 +99,11 @@ class ProjectCreate(BaseModel):
 
 
 class TerminalRunCreate(BaseModel):
-    command: str
+    command: str = ""
+
+
+class TerminalInput(BaseModel):
+    input: str
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -342,11 +348,9 @@ def _run_terminal_command(run_id: str) -> None:
 
 
 @router.post("/projects/{slug}/terminal/runs")
-def start_terminal_run(slug: str, body: TerminalRunCreate):
+def start_terminal_run(slug: str, body: TerminalRunCreate | None = None):
     project_dir = _project_dir(slug)
-    command = body.command.strip()
-    if not command:
-        raise HTTPException(status_code=400, detail="Command is required")
+    command = body.command.strip() if body and body.command.strip() else os.environ.get("SHELL") or "/bin/bash"
 
     _prune_terminal_runs()
     run_id = f"wterm_{uuid.uuid4().hex[:16]}"
@@ -365,8 +369,100 @@ def start_terminal_run(slug: str, body: TerminalRunCreate):
         "updated_at": time.time(),
     }
     _terminal_run_queues[run_id] = q
-    threading.Thread(target=_run_terminal_command, args=(run_id,), daemon=True).start()
+    if body and body.command.strip():
+        threading.Thread(target=_run_terminal_command, args=(run_id,), daemon=True).start()
+    else:
+        threading.Thread(target=_run_terminal_shell, args=(run_id,), daemon=True).start()
     return {"run_id": run_id, "status": "queued", "cwd": str(project_dir)}
+
+
+def _run_terminal_shell(run_id: str) -> None:
+    run = _terminal_runs[run_id]
+    cwd = str(run["cwd"])
+    shell = os.environ.get("SHELL") or "/bin/bash"
+    master_fd: int | None = None
+
+    try:
+        master_fd, slave_fd = pty.openpty()
+        proc = subprocess.Popen(
+            [shell, "-i"],
+            cwd=cwd,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            start_new_session=True,
+            close_fds=True,
+            env={**os.environ, "TERM": os.environ.get("TERM", "xterm-256color")},
+        )
+        os.close(slave_fd)
+        with _terminal_lock:
+            run["status"] = "running"
+            run["pid"] = proc.pid
+            run["process"] = proc
+            run["pty_fd"] = master_fd
+            run["updated_at"] = time.time()
+        _queue_terminal_event(run_id, {"type": "state", "status": "running"})
+
+        while True:
+            try:
+                chunk = os.read(master_fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            text = chunk.decode("utf-8", errors="replace")
+            with _terminal_lock:
+                run["output"].append(text)
+                run["updated_at"] = time.time()
+            _queue_terminal_event(run_id, {"type": "output", "stream": "pty", "text": text})
+            if proc.poll() is not None:
+                break
+
+        exit_code = proc.poll()
+        if exit_code is None:
+            exit_code = proc.wait(timeout=1)
+        with _terminal_lock:
+            if run.get("status") != "stopped":
+                run["status"] = "done" if exit_code == 0 else "failed"
+            run["exit_code"] = exit_code
+            run["process"] = None
+            run["pty_fd"] = None
+            run["updated_at"] = time.time()
+        _queue_terminal_event(run_id, {"type": "done", "status": run["status"], "exit_code": exit_code})
+    except Exception as exc:
+        with _terminal_lock:
+            run["status"] = "failed"
+            run["exit_code"] = None
+            run["process"] = None
+            run["pty_fd"] = None
+            run["updated_at"] = time.time()
+            run["output"].append(f"{exc}\n")
+        _queue_terminal_event(run_id, {"type": "output", "stream": "stderr", "text": f"{exc}\n"})
+        _queue_terminal_event(run_id, {"type": "done", "status": "failed", "exit_code": None})
+    finally:
+        if master_fd is not None:
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
+        q = _terminal_run_queues.get(run_id)
+        if q is not None:
+            q.put_nowait(None)
+
+
+@router.post("/projects/{slug}/terminal/runs/{run_id}/input")
+def send_terminal_input(slug: str, run_id: str, body: TerminalInput):
+    run = _terminal_runs.get(run_id)
+    if not run or run.get("slug") != slug:
+        raise HTTPException(status_code=404, detail="Run not found")
+    fd = run.get("pty_fd")
+    if fd is None or run.get("status") != "running":
+        raise HTTPException(status_code=400, detail="Terminal is not running")
+    try:
+        os.write(fd, body.input.encode("utf-8"))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"ok": True, "run_id": run_id}
 
 
 @router.get("/projects/{slug}/terminal/runs/{run_id}/stream")
@@ -428,7 +524,10 @@ def stop_terminal_run(slug: str, run_id: str):
     if proc is not None and proc.poll() is None:
         run["status"] = "stopped"
         run["updated_at"] = time.time()
-        proc.terminate()
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except Exception:
+            proc.terminate()
         _queue_terminal_event(run_id, {"type": "state", "status": "stopped"})
     return {"ok": True, "run_id": run_id, "status": run.get("status")}
 

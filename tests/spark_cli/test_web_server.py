@@ -215,6 +215,41 @@ class TestWebServerEndpoints:
         assert "hello-workspace" in joined
         assert '"exit_code": 0' in joined
 
+    def test_workspace_terminal_interactive_shell_accepts_input(self):
+        created = self.client.post("/api/workspace/projects", json={"name": "terminal-shell-test"}).json()
+        slug = created["slug"]
+
+        start = self.client.post(f"/api/workspace/projects/{slug}/terminal/runs", json={})
+        assert start.status_code == 200
+        run_id = start.json()["run_id"]
+
+        sent = None
+        for _ in range(20):
+            sent = self.client.post(
+                f"/api/workspace/projects/{slug}/terminal/runs/{run_id}/input",
+                json={"input": "printf 'interactive-ok\\n'; exit\n"},
+            )
+            if sent.status_code == 200:
+                break
+            time.sleep(0.05)
+        assert sent is not None
+        assert sent.status_code == 200
+
+        chunks = []
+        with self.client.stream(
+            "GET",
+            f"/api/workspace/projects/{slug}/terminal/runs/{run_id}/stream",
+        ) as resp:
+            assert resp.status_code == 200
+            for line in resp.iter_lines():
+                if line.startswith("data: "):
+                    chunks.append(line)
+                    if '"type": "done"' in line:
+                        break
+
+        joined = "\n".join(chunks)
+        assert "interactive-ok" in joined
+
     def test_workspace_terminal_rejects_invalid_or_missing_project(self):
         invalid = self.client.post(
             "/api/workspace/projects/bad$name/terminal/runs",
