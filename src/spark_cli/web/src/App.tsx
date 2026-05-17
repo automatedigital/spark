@@ -420,7 +420,7 @@ export default function App() {
 
           <main
             key={animKey}
-            className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto w-full max-w-[1480px] flex-1 px-3 py-4 sm:px-6 sm:py-8"}
+            className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto min-h-0 w-full max-w-[1480px] flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-8"}
             style={{
               animation: "fade-in 150ms ease-out",
               ...(navHovered && !navExpanded ? { filter: "blur(4px) brightness(1.4)", transition: "filter 200ms ease" } : { transition: "filter 200ms ease" }),
