@@ -217,7 +217,12 @@ export default function App() {
           }
           if (data.type === "done") {
             const finalStatus = data.run?.status ?? "done";
-            setUpdateStatus(finalStatus === "done" ? "done" : "failed");
+            if (finalStatus === "done") {
+              // Don't show Reload yet — poll until the server is actually back up
+              setUpdateStatus("restarting");
+            } else {
+              setUpdateStatus("failed");
+            }
             setUpdateAvailable(false);
             es.close();
           }
