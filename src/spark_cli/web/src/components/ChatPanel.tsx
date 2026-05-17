@@ -75,6 +75,8 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
   }
   messages.forEach((m, i) => {
     if (m.role === "user") {
+      // Skip internal system-injected continuation messages (e.g. codex ack loop)
+      if ((m.content ?? "").startsWith("[System:")) return;
       out.push({ id: nid(), role: "user", content: m.content ?? "", sessionIdx: i });
     } else if (m.role === "assistant") {
       const reasoning = m.reasoning?.trim();

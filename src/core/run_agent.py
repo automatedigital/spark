@@ -2324,6 +2324,8 @@ class AIAgent:
             start_idx = len(conversation_history) if conversation_history else 0
             flush_from = max(start_idx, self._last_flushed_db_idx)
             for msg in messages[flush_from:]:
+                if msg.get("_internal"):
+                    continue
                 role = msg.get("role", "unknown")
                 content = msg.get("content")
                 tool_calls_data = None
@@ -10523,6 +10525,7 @@ class AIAgent:
                                 "[System: Continue now. Execute the required tool calls and only "
                                 "send your final answer after completing the task.]"
                             ),
+                            "_internal": True,
                         }
                         messages.append(continue_msg)
                         self._session_messages = messages
