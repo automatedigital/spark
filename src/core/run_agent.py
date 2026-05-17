@@ -2022,7 +2022,18 @@ class AIAgent:
             "path",
         )
 
-        user_text = (user_message or "").strip().lower()
+        user_text = (user_message or "").strip().lower().rstrip("!.?")
+        # If the user is just affirming a prior offer, the model is about to execute
+        # something specific it already described — injecting "Continue now" here
+        # breaks context and causes the model to forget what it offered.
+        _simple_affirmatives = {
+            "yes", "sure", "ok", "okay", "yep", "yeah", "yup", "alright",
+            "go ahead", "go for it", "please", "do it", "sounds good",
+            "of course", "absolutely", "great", "perfect", "why not",
+        }
+        if user_text in _simple_affirmatives:
+            return False
+
         user_targets_workspace = (
             any(marker in user_text for marker in workspace_markers)
             or "~/" in user_text
