@@ -6,12 +6,9 @@ import {
   Download,
   FolderOpen,
   LayoutGrid,
-  Loader2,
   MessageSquare,
   Package,
-  RefreshCw,
   Settings,
-  X,
 } from "lucide-react";
 import ConversationsPage from "@/pages/ConversationsPage";
 import CronPage from "@/pages/CronPage";
@@ -20,7 +17,8 @@ import SkillsPage from "@/pages/SkillsPage";
 import WorkspacePage from "@/pages/WorkspacePage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
-import { api, getDashboardToken, setDashboardToken, sseUrl } from "@/lib/api";
+import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
+import { useUpdateModal } from "@/lib/UpdateModalContext";
 
 
 const NAV_ITEMS = [
@@ -74,14 +72,7 @@ export default function App() {
   const [tokenInput, setTokenInput] = useState("");
   const [authChecking, setAuthChecking] = useState(true);
   const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [latestVersion, setLatestVersion] = useState<string | null>(null);
-  const [updateModalOpen, setUpdateModalOpen] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState<"idle" | "running" | "restarting" | "done" | "failed">("idle");
-  const [updateOutput, setUpdateOutput] = useState<string[]>([]);
-  const outputScrollRef = useRef<HTMLDivElement>(null);
-  const updateStartedInstanceIdRef = useRef<string | null>(null);
-  const updateSawUnavailableRef = useRef(false);
+  const { updateAvailable, latestVersion, openUpdateModal } = useUpdateModal();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -130,37 +121,6 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      // Primary: read cached value from /api/status (always exists, no git fetch)
-      try {
-        const status = await api.getStatus();
-        if (!cancelled && status.update_available) {
-          setUpdateAvailable(true);
-          if (status.commits_behind != null) {
-            setLatestVersion(`${status.commits_behind} new commit${status.commits_behind === 1 ? "" : "s"}`);
-          }
-          return;
-        }
-      } catch {
-        // fall through to dedicated check
-      }
-      // Fallback: dedicated endpoint that does a fresh git fetch
-      try {
-        const result = await api.checkForUpdate();
-        if (!cancelled && result.update_available) {
-          setUpdateAvailable(true);
-          if (result.commits_behind != null) {
-            setLatestVersion(`${result.commits_behind} new commit${result.commits_behind === 1 ? "" : "s"}`);
-          }
-        }
-      } catch {
-        // silently ignore — update check is best-effort
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     if (initialRef.current) {
@@ -169,35 +129,6 @@ export default function App() {
     }
     setAnimKey((k) => k + 1);
   }, [page]);
-
-  // Auto-scroll output to bottom as new lines arrive
-  useEffect(() => {
-    if (outputScrollRef.current) {
-      outputScrollRef.current.scrollTop = outputScrollRef.current.scrollHeight;
-    }
-  }, [updateOutput]);
-
-  // Poll for server coming back after a restart
-  useEffect(() => {
-    if (updateStatus !== "restarting") return;
-    const interval = setInterval(async () => {
-      try {
-        const status = await api.getStatus();
-        const startedInstanceId = updateStartedInstanceIdRef.current;
-        const instanceChanged =
-          Boolean(startedInstanceId) &&
-          Boolean(status.server_instance_id) &&
-          status.server_instance_id !== startedInstanceId;
-        if (instanceChanged || updateSawUnavailableRef.current) {
-          setUpdateStatus("done");
-          setUpdateAvailable(false);
-        }
-      } catch {
-        updateSawUnavailableRef.current = true;
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [updateStatus]);
 
   const sidebarOpen = navExpanded || navHovered;
 
@@ -210,49 +141,6 @@ export default function App() {
     setAuthWall(false);
     setTokenInput("");
     window.location.reload();
-  };
-
-  const startUpdate = async () => {
-    setUpdateStatus("running");
-    setUpdateOutput([]);
-    updateStartedInstanceIdRef.current = null;
-    updateSawUnavailableRef.current = false;
-    try {
-      const currentStatus = await api.getStatus().catch(() => null);
-      updateStartedInstanceIdRef.current = currentStatus?.server_instance_id ?? null;
-      const resp = await api.runAdminAction("update.run", {}, true);
-      const es = new EventSource(sseUrl(`/api/admin/actions/runs/${encodeURIComponent(resp.run_id)}/stream`));
-      es.onmessage = (ev) => {
-        try {
-          const data = JSON.parse(ev.data) as { type?: string; status?: string; stream?: string; text?: string; run?: { status?: string } };
-          if (data.type === "output" && data.text != null) {
-            setUpdateOutput((prev) => [...prev.slice(-500), data.text!]);
-          }
-          if (data.type === "done") {
-            const finalStatus = data.run?.status ?? "done";
-            if (finalStatus === "done") {
-              // Don't show Reload yet — poll until the server is actually back up
-              setUpdateStatus("restarting");
-            } else {
-              setUpdateStatus("failed");
-            }
-            setUpdateAvailable(false);
-            es.close();
-          }
-        } catch {
-          setUpdateOutput((prev) => [...prev.slice(-500), ev.data]);
-        }
-      };
-      es.onerror = () => {
-        es.close();
-        updateSawUnavailableRef.current = true;
-        // Server likely restarted mid-update — poll until it comes back
-        setUpdateStatus((prev) => prev === "running" ? "restarting" : prev);
-      };
-    } catch (e) {
-      setUpdateOutput([String(e)]);
-      setUpdateStatus("failed");
-    }
   };
 
   return (
@@ -339,7 +227,7 @@ export default function App() {
                 type="button"
                 title="Update available"
                 aria-label="Update Spark"
-                onClick={() => { setUpdateModalOpen(true); setUpdateStatus("idle"); setUpdateOutput([]); }}
+                onClick={openUpdateModal}
                 className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
               >
                 <Download className="h-5 w-5 shrink-0" />
@@ -495,137 +383,6 @@ export default function App() {
       </div>
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
-
-      {updateModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="relative flex w-full max-w-lg flex-col rounded-sm border border-border bg-card shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div className="flex items-center gap-2">
-                <Download className="h-4 w-4 text-amber-400" />
-                <span className="text-sm font-semibold text-foreground">
-                  Update Spark{latestVersion ? ` (${latestVersion})` : ""}
-                </span>
-              </div>
-              {updateStatus !== "running" && (
-                <button
-                  type="button"
-                  onClick={() => setUpdateModalOpen(false)}
-                  className="grid h-7 w-7 place-items-center rounded-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Body */}
-            <div className="px-5 py-4 flex flex-col gap-3">
-              {updateStatus === "idle" && (
-                <p className="text-sm text-muted-foreground">
-                  A new version of Spark is available. The update will pull the latest changes and reinstall the package. The web UI may restart automatically.
-                </p>
-              )}
-
-              {(updateStatus === "running" || updateStatus === "restarting" || updateOutput.length > 0) && (
-                <>
-                  <div
-                    ref={outputScrollRef}
-                    className="h-52 overflow-y-auto rounded-sm border border-border bg-background/60 p-3 font-mono text-xs text-muted-foreground"
-                  >
-                    {updateOutput.length === 0 ? (
-                      <span className="animate-pulse">Starting update…</span>
-                    ) : (
-                      updateOutput.map((line, i) => (
-                        <div key={i} className="leading-5 whitespace-pre-wrap break-all">{line}</div>
-                      ))
-                    )}
-                  </div>
-                  {/* Indeterminate progress bar */}
-                  {(updateStatus === "running" || updateStatus === "restarting") && (
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-border">
-                      <div
-                        className="h-full w-2/5 rounded-full bg-amber-500"
-                        style={{ animation: "progress-slide 1.6s ease-in-out infinite" }}
-                      />
-                    </div>
-                  )}
-                  {updateStatus === "restarting" && (
-                    <p className="text-xs text-amber-400 flex items-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Server is restarting — waiting for it to come back…
-                    </p>
-                  )}
-                </>
-              )}
-
-              {updateStatus === "done" && (
-                <p className="text-sm text-emerald-400">
-                  Update complete. Reload to load the new version.
-                </p>
-              )}
-              {updateStatus === "failed" && (
-                <p className="text-sm text-red-400">
-                  Update failed. Check the output above for details.
-                </p>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-              {updateStatus === "idle" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setUpdateModalOpen(false)}
-                    className="h-9 rounded-sm border border-border px-4 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void startUpdate()}
-                    className="flex h-9 items-center gap-2 rounded-sm bg-amber-500 px-4 text-xs font-semibold text-black transition hover:bg-amber-400"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Start Update
-                  </button>
-                </>
-              )}
-              {updateStatus === "running" && (
-                <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Updating…
-                </span>
-              )}
-              {updateStatus === "restarting" && (
-                <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Waiting for server…
-                </span>
-              )}
-              {updateStatus === "done" && (
-                <button
-                  type="button"
-                  onClick={() => window.location.reload()}
-                  className="flex h-9 items-center gap-2 rounded-sm bg-amber-500 px-4 text-xs font-semibold text-black transition hover:bg-amber-400"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Reload
-                </button>
-              )}
-              {updateStatus === "failed" && (
-                <button
-                  type="button"
-                  onClick={() => { setUpdateStatus("idle"); setUpdateOutput([]); }}
-                  className="h-9 rounded-sm border border-border px-4 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                >
-                  Try Again
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
