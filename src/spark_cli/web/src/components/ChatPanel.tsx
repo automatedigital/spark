@@ -20,6 +20,7 @@ import { useEventBus } from "@/hooks/useEventBus";
 import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
 import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
+import { FeedbackForm } from "@/components/chat/FeedbackForm";
 import { StatusPill } from "@/components/chat/StatusPill";
 import { PromptBar } from "@/components/chat/PromptBar";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
@@ -49,7 +50,8 @@ type ChatMessage =
       approval: Record<string, unknown>;
       resolved?: boolean;
     }
-  | { id: string; role: "note"; text: string };
+  | { id: string; role: "note"; text: string }
+  | { id: string; role: "feedback_form"; submitted?: boolean };
 
 interface ChatPanelProps {
   sessionId: string | null;
@@ -114,6 +116,7 @@ type ToolMsg = Extract<ChatMessage, { role: "tool" }>;
 type ReasoningMsg = Extract<ChatMessage, { role: "reasoning" }>;
 type ApprovalMsg = Extract<ChatMessage, { role: "approval" }>;
 type NoteMsg = Extract<ChatMessage, { role: "note" }>;
+type FeedbackFormMsg = Extract<ChatMessage, { role: "feedback_form" }>;
 
 const UserRow = memo(function UserRow({
   msg, hasSession, streaming, onEdit, onRetry, onFork, onCopy,
@@ -218,6 +221,25 @@ const ApprovalRow = memo(function ApprovalRow({
 
 const NoteRow = memo(function NoteRow({ msg }: { msg: NoteMsg }) {
   return <p className="text-xs text-muted-foreground italic pl-2">{msg.text}</p>;
+});
+
+const FeedbackRow = memo(function FeedbackRow({
+  msg, sessionId, onSubmitted,
+}: {
+  msg: FeedbackFormMsg;
+  sessionId: string | null;
+  onSubmitted: (id: string) => void;
+}) {
+  const handleSubmit = async (data: { name: string; email: string; area: string; note: string }) => {
+    if (!sessionId) throw new Error("No active session");
+    await api.submitFeedback(sessionId, data);
+    onSubmitted(msg.id);
+  };
+  return (
+    <div className="pl-2">
+      <FeedbackForm onSubmit={handleSubmit} submitted={!!msg.submitted} />
+    </div>
+  );
 });
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
@@ -421,6 +443,16 @@ export function ChatPanel({
         if (msg) setStatusLabel(msg);
         break;
       }
+      case "chat.feedback_form": {
+        finalizeAssistant();
+        setChatMessages((prev) => [...prev, { id: nid(), role: "feedback_form" as const }]);
+        break;
+      }
+      case "chat.feedback_submitted":
+        setChatMessages((prev) =>
+          prev.map((m) => (m.role === "feedback_form" ? { ...m, submitted: true } : m)),
+        );
+        break;
       case "chat.approval_requested": {
         if (rafPendingRef.current !== null) {
           cancelAnimationFrame(rafPendingRef.current);
@@ -738,6 +770,20 @@ export function ChatPanel({
                 }
                 if (msg.role === "note") {
                   return <NoteRow key={msg.id} msg={msg} />;
+                }
+                if (msg.role === "feedback_form") {
+                  return (
+                    <FeedbackRow
+                      key={msg.id}
+                      msg={msg}
+                      sessionId={activeSessionId}
+                      onSubmitted={(id) =>
+                        setChatMessages((prev) =>
+                          prev.map((m) => (m.id === id ? { ...m, submitted: true } : m)),
+                        )
+                      }
+                    />
+                  );
                 }
                 return null;
               });

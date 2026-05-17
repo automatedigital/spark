@@ -259,6 +259,19 @@ export const api = {
       },
     ),
 
+  submitFeedback: (
+    sessionId: string,
+    data: { name: string; email: string; area: string; note: string },
+  ) =>
+    fetchJSON<{ ok: boolean }>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/feedback`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+    ),
+
   getDashboardAuthInfo: () =>
     fetchJSON<DashboardAuthInfo>("/api/dashboard/auth/info"),
 

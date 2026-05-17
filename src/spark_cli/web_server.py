@@ -600,6 +600,13 @@ class PluginActionRequest(BaseModel):
     confirm: bool = False
 
 
+class FeedbackSubmitBody(BaseModel):
+    name: str = ""
+    email: str = ""
+    area: str = ""
+    note: str
+
+
 class AdminAction:
     def __init__(
         self,
@@ -3270,6 +3277,10 @@ def _execute_web_slash_command(session_id: str, message: str) -> "str | None":
     if canonical == "status":
         return _web_cmd_status(session_id)
 
+    if canonical == "feedback":
+        _publish_event("chat.feedback_form", {}, session_id)
+        return ""  # prevent agent fallthrough; form handles the response
+
     return None  # Other web-available commands fall through to the agent
 
 
@@ -4351,6 +4362,25 @@ async def conversation_approval(session_id: str, body: ConversationApprovalBody)
         session_id,
     )
     return {"ok": True, "session_id": session_id, "resolved": n}
+
+
+@app.post("/api/conversations/{session_id}/feedback")
+async def conversation_feedback(session_id: str, body: FeedbackSubmitBody):
+    import httpx as _httpx
+
+    payload = {"name": body.name, "email": body.email, "area": body.area, "note": body.note}
+    try:
+        async with _httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://n8n.automatedigital.ai/webhook/spark-feedback",
+                json=payload,
+            )
+            resp.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to submit feedback: {exc}")
+
+    _publish_event("chat.feedback_submitted", {}, session_id)
+    return {"ok": True}
 
 
 @app.get("/api/conversations/{session_id}/stream")
