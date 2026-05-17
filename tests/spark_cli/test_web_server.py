@@ -185,6 +185,54 @@ class TestWebServerEndpoints:
         assert created["id"] in body["ready"]
         assert "blocked_by_assignee" in body
 
+    def test_workspace_terminal_run_streams_output_in_project_cwd(self):
+        created = self.client.post("/api/workspace/projects", json={"name": "terminal-test"}).json()
+        slug = created["slug"]
+
+        start = self.client.post(
+            f"/api/workspace/projects/{slug}/terminal/runs",
+            json={"command": "pwd; printf 'hello-workspace\\n'"},
+        )
+
+        assert start.status_code == 200
+        run = start.json()
+        assert run["cwd"].endswith(f"/workspace/{slug}")
+
+        chunks = []
+        with self.client.stream(
+            "GET",
+            f"/api/workspace/projects/{slug}/terminal/runs/{run['run_id']}/stream",
+        ) as resp:
+            assert resp.status_code == 200
+            for line in resp.iter_lines():
+                if line.startswith("data: "):
+                    chunks.append(line)
+                    if '"type": "done"' in line:
+                        break
+
+        joined = "\n".join(chunks)
+        assert f"/workspace/{slug}" in joined
+        assert "hello-workspace" in joined
+        assert '"exit_code": 0' in joined
+
+    def test_workspace_terminal_rejects_invalid_or_missing_project(self):
+        invalid = self.client.post(
+            "/api/workspace/projects/bad$name/terminal/runs",
+            json={"command": "pwd"},
+        )
+        missing = self.client.post(
+            "/api/workspace/projects/missing-project/terminal/runs",
+            json={"command": "pwd"},
+        )
+        empty = self.client.post(
+            "/api/workspace/projects/missing-project/terminal/runs",
+            json={"command": ""},
+        )
+
+        assert invalid.status_code == 400
+        assert missing.status_code == 404
+        assert empty.status_code == 404
+
     def test_kanban_complete_endpoint_moves_to_user_review(self):
         created = self.client.post(
             "/api/kanban/tasks",

@@ -14,15 +14,19 @@ import {
   GripVertical,
   Loader2,
   MessageSquare,
+  Play,
   Plus,
   Search,
   Send,
+  Square,
+  SquareTerminal,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
+import hljs from "highlight.js";
 import { api, workspaceRawFileUrl } from "@/lib/api";
-import type { SessionInfo, WorkspaceFileNode, WorkspaceProject } from "@/lib/api";
+import type { SessionInfo, WorkspaceFileNode, WorkspaceProject, WorkspaceTerminalEvent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -103,6 +107,47 @@ function getFileCategory(mime: string, filename: string): "text" | "image" | "vi
   return textExts.has(ext) ? "text" : "binary";
 }
 
+function languageForFile(filename: string): string | null {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    bash: "bash",
+    css: "css",
+    env: "ini",
+    html: "xml",
+    ini: "ini",
+    js: "javascript",
+    jsx: "javascript",
+    json: "json",
+    md: "markdown",
+    py: "python",
+    sh: "bash",
+    ts: "typescript",
+    tsx: "typescript",
+    toml: "ini",
+    txt: "plaintext",
+    xml: "xml",
+    yaml: "yaml",
+    yml: "yaml",
+  };
+  return map[ext] ?? null;
+}
+
+function highlightFileContent(content: string, filename: string): { html: string; language: string } {
+  const language = languageForFile(filename);
+  try {
+    if (language && hljs.getLanguage(language)) {
+      return {
+        html: hljs.highlight(content, { language, ignoreIllegals: true }).value,
+        language,
+      };
+    }
+    const result = hljs.highlightAuto(content);
+    return { html: result.value, language: result.language ?? "text" };
+  } catch {
+    return { html: hljs.highlight(content, { language: "plaintext", ignoreIllegals: true }).value, language: "text" };
+  }
+}
+
 function FileIcon({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const textExts = new Set([
@@ -139,7 +184,7 @@ function FileNodeRow({
     <div>
       <div
         className={cn(
-          "group flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs cursor-pointer select-none transition",
+          "spark-list-row group flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] cursor-pointer select-none transition",
           isSelected && !isDir
             ? "bg-primary/20 text-foreground"
             : "text-muted-foreground hover:bg-secondary hover:text-foreground",
@@ -199,7 +244,7 @@ function FileNodeRow({
           ))}
           {node.children.length === 0 && (
             <div
-              className="px-2 py-0.5 text-xs italic text-muted-foreground/40"
+              className="px-2 py-0.5 text-[11px] italic text-muted-foreground/40"
               style={{ paddingLeft: `${8 + (depth + 1) * 12}px` }}
             >
               empty
@@ -261,10 +306,15 @@ function FileViewer({ file, slug }: { file: FileView; slug: string }) {
   }
 
   if (cat === "text" && file.content !== null) {
+    const highlighted = highlightFileContent(file.content, file.name);
     return (
-      <div className="h-full overflow-auto bg-background/60">
-        <pre className="whitespace-pre-wrap break-all px-4 py-3 font-mono text-[0.7rem] leading-relaxed text-muted-foreground">
-          {file.content}
+      <div className="spark-code-pane h-full overflow-auto">
+        <div className="sticky top-0 z-10 flex h-7 items-center justify-between border-b border-border bg-background/85 px-3 text-[10px] text-muted-foreground backdrop-blur">
+          <span className="truncate font-mono-ui">{file.path}</span>
+          <span className="uppercase tracking-[0.12em]">{highlighted.language}</span>
+        </div>
+        <pre className="hljs min-h-full overflow-visible px-4 py-3 font-mono-ui text-[0.72rem] leading-5">
+          <code dangerouslySetInnerHTML={{ __html: highlighted.html }} />
         </pre>
       </div>
     );
@@ -304,7 +354,7 @@ function ResizeDivider({ onDrag }: { onDrag: (delta: number) => void }) {
   return (
     <div
       onMouseDown={handleMouseDown}
-      className="group relative flex w-3 shrink-0 cursor-col-resize items-center justify-center"
+      className="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center"
     >
       <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-primary/50 group-active:bg-primary/70" />
       <GripVertical className="relative z-10 h-4 w-4 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 group-active:text-primary/70" />
@@ -332,7 +382,7 @@ function HorizontalResizeDivider({ onDrag }: { onDrag: (delta: number) => void }
   return (
     <div
       onMouseDown={handleMouseDown}
-      className="group relative flex h-3 shrink-0 cursor-row-resize items-center justify-center"
+      className="group relative flex h-2 shrink-0 cursor-row-resize items-center justify-center"
     >
       <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-border transition-colors group-hover:bg-primary/50 group-active:bg-primary/70" />
       <GripVertical className="relative z-10 h-4 w-4 rotate-90 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 group-active:text-primary/70" />
@@ -549,7 +599,7 @@ function ProjectsSidebar({
 
   if (collapsed) {
     return (
-      <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border bg-card/60 py-2">
+      <div className="spark-glass-panel flex w-9 shrink-0 flex-col items-center gap-1 border-r border-border py-2">
         <button
           type="button"
           title="Show projects"
@@ -595,15 +645,15 @@ function ProjectsSidebar({
   }
 
   return (
-    <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-r border-border bg-card/60">
-      <div className="shrink-0 border-b border-border p-3">
+    <div style={{ width: panelWidth }} className="spark-glass-panel flex shrink-0 flex-col overflow-hidden border-r border-border">
+      <div className="spark-panel-header shrink-0 border-b border-border p-2">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <FolderOpen className="h-4 w-4 text-muted-foreground" />
               <h2 className="truncate text-sm font-semibold">Projects</h2>
             </div>
-            <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            <p className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
               Workspace
             </p>
           </div>
@@ -649,7 +699,7 @@ function ProjectsSidebar({
             type="button"
             onClick={() => onSelect(p.slug)}
             className={cn(
-              "w-full px-3 py-2 text-left text-sm transition",
+              "spark-list-row w-full px-2 py-1.5 text-left text-xs transition",
               activeSlug === p.slug
                 ? "border-r-2 border-primary bg-primary/15 text-foreground"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground",
@@ -659,7 +709,7 @@ function ProjectsSidebar({
               <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300/70" />
               <span className="truncate font-medium">{p.name}</span>
             </div>
-            <div className="mt-0.5 pl-5 text-xs text-muted-foreground/50">
+            <div className="mt-0.5 pl-5 text-[11px] text-muted-foreground/50">
               {p.file_count} {p.file_count === 1 ? "file" : "files"}
             </div>
           </button>
@@ -797,10 +847,10 @@ function WorkspaceThreadList({
     : threads;
 
   return (
-    <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-r border-border">
+    <div style={{ width: panelWidth }} className="spark-glass-panel flex shrink-0 flex-col overflow-hidden border-r border-border">
       {/* Header */}
-      <div className="shrink-0 border-b border-border p-3">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="spark-panel-header shrink-0 border-b border-border p-2">
+        <div className="mb-2 flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-muted-foreground" />
@@ -809,13 +859,13 @@ function WorkspaceThreadList({
                 {threads.length}
               </Badge>
             </div>
-            <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            <p className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
               Project chats
             </p>
           </div>
           <Button
             size="sm"
-            className="h-8 shrink-0 gap-1.5"
+            className="h-7 shrink-0 gap-1.5 px-2 text-xs"
             onClick={onNewThread}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -826,7 +876,7 @@ function WorkspaceThreadList({
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchInputRef}
-            className="h-9 pl-8 pr-16 text-sm"
+            className="h-8 pl-8 pr-16 text-xs"
             placeholder="Search threads…"
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
@@ -1066,7 +1116,7 @@ function WorkspaceTabButton({
         if (draggedId) onReorder(paneId, draggedId, tab.id);
       }}
       className={cn(
-        "group flex h-9 max-w-56 shrink-0 items-center gap-1.5 border-r border-border px-3 text-xs transition",
+        "group flex h-8 max-w-52 shrink-0 items-center gap-1.5 border-r border-border px-2.5 text-[11px] transition",
         active
           ? "bg-background text-foreground"
           : "bg-card/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
@@ -1109,7 +1159,7 @@ function PaneDropZone({
   onDropTab,
 }: {
   edge: DropEdge;
-  topOffset: "top-0" | "top-9";
+  topOffset: "top-0" | "top-8";
   onDropTab: (tabId: string, edge: DropEdge) => void;
 }) {
   const edgeClasses: Record<DropEdge, string> = {
@@ -1187,7 +1237,7 @@ function WorkspacePane({
       }}
     >
       {!hideTabStrip && (
-        <div className="flex h-9 shrink-0 overflow-x-auto border-b border-border bg-card/70 scrollbar-none">
+        <div className="spark-tabbar flex h-8 shrink-0 overflow-x-auto border-b border-border scrollbar-none">
           {paneTabs.map((tab) => (
             <WorkspaceTabButton
               key={tab.id}
@@ -1204,10 +1254,10 @@ function WorkspacePane({
 
       {draggingOver && (
         <>
-          <PaneDropZone edge="left" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
-          <PaneDropZone edge="right" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
-          <PaneDropZone edge="top" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
-          <PaneDropZone edge="bottom" topOffset={hideTabStrip ? "top-0" : "top-9"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="left" topOffset={hideTabStrip ? "top-0" : "top-8"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="right" topOffset={hideTabStrip ? "top-0" : "top-8"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="top" topOffset={hideTabStrip ? "top-0" : "top-8"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="bottom" topOffset={hideTabStrip ? "top-0" : "top-8"} onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
         </>
       )}
 
@@ -1310,6 +1360,236 @@ function WorkspaceLayoutView({
   );
 }
 
+// ── Workspace terminal ────────────────────────────────────────────────────────
+
+type TerminalEntry = {
+  id: string;
+  command: string;
+  output: string;
+  status: "queued" | "running" | "done" | "failed" | "stopped";
+  exitCode: number | null;
+  cwd?: string;
+};
+
+function WorkspaceTerminalPanel({ slug }: { slug: string }) {
+  const [command, setCommand] = useState("");
+  const [entries, setEntries] = useState<TerminalEntry[]>([]);
+  const [runningRunId, setRunningRunId] = useState<string | null>(null);
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight });
+  }, [entries]);
+
+  const appendEntry = (id: string, patch: Partial<TerminalEntry>) => {
+    setEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
+  };
+
+  const appendOutput = (id: string, text: string) => {
+    setEntries((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, output: `${entry.output}${text}` } : entry)),
+    );
+  };
+
+  const runCommand = async () => {
+    const text = command.trim();
+    if (!text || runningRunId) return;
+    const localId = `local-${Date.now()}`;
+    setEntries((prev) => [
+      ...prev,
+      { id: localId, command: text, output: "", status: "queued", exitCode: null },
+    ]);
+    setHistory((prev) => [text, ...prev.filter((item) => item !== text)].slice(0, 40));
+    setHistoryIndex(null);
+    setCommand("");
+
+    try {
+      const run = await api.runWorkspaceTerminalCommand(slug, text);
+      setRunningRunId(run.run_id);
+      setEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === localId
+            ? { ...entry, id: run.run_id, status: run.status, cwd: run.cwd }
+            : entry,
+        ),
+      );
+
+      const source = api.streamWorkspaceTerminalRun(slug, run.run_id);
+      eventSourceRef.current = source;
+      source.onmessage = (ev) => {
+        const data = JSON.parse(ev.data) as WorkspaceTerminalEvent;
+        if (data.type === "output") {
+          appendOutput(run.run_id, data.text);
+          return;
+        }
+        if (data.type === "state") {
+          appendEntry(run.run_id, {
+            status: data.status as TerminalEntry["status"],
+            cwd: data.cwd,
+          });
+          return;
+        }
+        if (data.type === "done") {
+          appendEntry(run.run_id, {
+            status: data.status as TerminalEntry["status"],
+            exitCode: data.exit_code,
+          });
+          setRunningRunId(null);
+          source.close();
+          if (eventSourceRef.current === source) eventSourceRef.current = null;
+        }
+      };
+      source.onerror = () => {
+        appendEntry(run.run_id, { status: "failed" });
+        setRunningRunId(null);
+        source.close();
+        if (eventSourceRef.current === source) eventSourceRef.current = null;
+      };
+    } catch (e) {
+      appendEntry(localId, { status: "failed", output: `Failed to start command: ${String(e)}\n` });
+    }
+  };
+
+  const stopCommand = async () => {
+    if (!runningRunId) return;
+    const id = runningRunId;
+    try {
+      await api.stopWorkspaceTerminalRun(slug, id);
+      appendEntry(id, { status: "stopped" });
+    } catch (e) {
+      appendOutput(id, `\nFailed to stop command: ${String(e)}\n`);
+    } finally {
+      setRunningRunId(null);
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    }
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-background/30">
+      <div ref={outputRef} className="spark-terminal-pane min-h-0 flex-1 overflow-auto p-2">
+        {entries.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center px-5 text-center text-muted-foreground/65">
+            <SquareTerminal className="mb-3 h-8 w-8 opacity-35" />
+            <p className="text-xs font-medium text-foreground/85">Project terminal</p>
+            <p className="mt-1 text-[11px] leading-4">
+              Commands run from this workspace project directory.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {entries.map((entry) => (
+              <div key={entry.id} className="rounded-sm border border-border bg-black/20">
+                <div className="flex min-w-0 items-center gap-2 border-b border-border px-2 py-1 text-[10px]">
+                  <span className="text-primary">$</span>
+                  <span className="min-w-0 flex-1 truncate text-foreground">{entry.command}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 uppercase tracking-[0.12em]",
+                      entry.status === "failed"
+                        ? "text-destructive"
+                        : entry.status === "done"
+                          ? "text-primary"
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {entry.status}
+                    {entry.exitCode !== null ? `:${entry.exitCode}` : ""}
+                  </span>
+                </div>
+                {entry.output ? (
+                  <pre className="whitespace-pre-wrap break-words px-2 py-1.5 font-mono-ui text-[11px] leading-4 text-muted-foreground">
+                    {entry.output}
+                  </pre>
+                ) : (
+                  <div className="px-2 py-2 text-[11px] text-muted-foreground/55">
+                    Waiting for output…
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="border-t border-border bg-card/55 p-2 backdrop-blur">
+        <form
+          className="flex items-center gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void runCommand();
+          }}
+        >
+          <span className="pl-1 font-mono-ui text-xs text-primary">$</span>
+          <Input
+            value={command}
+            disabled={Boolean(runningRunId)}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder={runningRunId ? "Command running…" : "Run command in project…"}
+            className="h-7 border-0 bg-transparent px-1 font-mono-ui text-xs focus-visible:ring-0"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp" && history.length) {
+                e.preventDefault();
+                const next = historyIndex === null ? 0 : Math.min(history.length - 1, historyIndex + 1);
+                setHistoryIndex(next);
+                setCommand(history[next] ?? "");
+              }
+              if (e.key === "ArrowDown" && history.length) {
+                e.preventDefault();
+                const next = historyIndex === null ? null : historyIndex - 1;
+                setHistoryIndex(next !== null && next >= 0 ? next : null);
+                setCommand(next !== null && next >= 0 ? history[next] ?? "" : "");
+              }
+            }}
+          />
+          {runningRunId ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 shrink-0"
+              title="Stop command"
+              onClick={() => void stopCommand()}
+            >
+              <Square className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              disabled={!command.trim()}
+              title="Run command"
+            >
+              <Play className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 shrink-0 text-muted-foreground"
+            title="Clear terminal"
+            onClick={() => setEntries([])}
+            disabled={Boolean(runningRunId) || entries.length === 0}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Files panel ───────────────────────────────────────────────────────────────
 
 function FilesPanel({
@@ -1327,6 +1607,7 @@ function FilesPanel({
   activePath: string | null;
   onOpenFile: (node: WorkspaceFileNode) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"files" | "terminal">("files");
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1388,10 +1669,24 @@ function FilesPanel({
         <button
           type="button"
           title="Files"
-          onClick={onToggleCollapse}
+          onClick={() => {
+            setActiveTab("files");
+            onToggleCollapse();
+          }}
           className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
         >
           <FileText className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          title="Terminal"
+          onClick={() => {
+            setActiveTab("terminal");
+            onToggleCollapse();
+          }}
+          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+        >
+          <SquareTerminal className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
@@ -1413,23 +1708,49 @@ function FilesPanel({
   }
 
   return (
-    <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-l border-border">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-3 py-3">
-        <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Files
-        </span>
+    <div style={{ width: panelWidth }} className="spark-glass-panel flex shrink-0 flex-col overflow-hidden border-l border-border">
+      <div className="spark-panel-header flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5">
+        <div className="flex min-w-0 items-center gap-1 rounded-sm border border-border bg-background/45 p-0.5">
+          <button
+            type="button"
+            onClick={() => setActiveTab("files")}
+            className={cn(
+              "flex h-6 items-center gap-1.5 rounded-[3px] px-2 text-[11px] transition",
+              activeTab === "files"
+                ? "bg-primary/18 text-foreground"
+                : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+            )}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Files
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("terminal")}
+            className={cn(
+              "flex h-6 items-center gap-1.5 rounded-[3px] px-2 text-[11px] transition",
+              activeTab === "terminal"
+                ? "bg-primary/18 text-foreground"
+                : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+            )}
+          >
+            <SquareTerminal className="h-3.5 w-3.5" />
+            Terminal
+          </button>
+        </div>
         <div className="flex items-center gap-1">
           {uploading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 w-6 p-0"
-            title="Upload files"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="h-3.5 w-3.5" />
-          </Button>
+          {activeTab === "files" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0"
+              title="Upload files"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -1449,49 +1770,52 @@ function FilesPanel({
         </div>
       </div>
 
-      {/* File tree */}
-      <div
-        className={cn(
-          "flex-1 overflow-y-auto py-1 transition-all",
-          dragOver && "bg-primary/5 ring-2 ring-inset ring-primary/20",
-        )}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          if (e.dataTransfer.files.length) void handleUpload(e.dataTransfer.files);
-        }}
-      >
-        {loadingTree && (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-          </div>
-        )}
-        {!loadingTree && tree.length === 0 && (
-          <div className="flex flex-col items-center gap-2 py-8 text-center text-xs text-muted-foreground/60">
-            <Upload className="h-6 w-6 opacity-30" />
-            <p>
-              No files yet.
-              <br />
-              Drop files here or click upload.
-            </p>
-          </div>
-        )}
-        {tree.map((node) => (
-          <FileNodeRow
-            key={node.path}
-            node={node}
-            depth={0}
-            onSelect={onOpenFile}
-            selectedPath={activePath}
-            onDelete={(n) => void handleDelete(n)}
-          />
-        ))}
-      </div>
+      {activeTab === "files" ? (
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto py-1 transition-all",
+            dragOver && "bg-primary/5 ring-2 ring-inset ring-primary/20",
+          )}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (e.dataTransfer.files.length) void handleUpload(e.dataTransfer.files);
+          }}
+        >
+          {loadingTree && (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+          )}
+          {!loadingTree && tree.length === 0 && (
+            <div className="flex flex-col items-center gap-2 py-8 text-center text-xs text-muted-foreground/60">
+              <Upload className="h-6 w-6 opacity-30" />
+              <p>
+                No files yet.
+                <br />
+                Drop files here or click upload.
+              </p>
+            </div>
+          )}
+          {tree.map((node) => (
+            <FileNodeRow
+              key={node.path}
+              node={node}
+              depth={0}
+              onSelect={onOpenFile}
+              selectedPath={activePath}
+              onDelete={(n) => void handleDelete(n)}
+            />
+          ))}
+        </div>
+      ) : (
+        <WorkspaceTerminalPanel slug={slug} />
+      )}
     </div>
   );
 }
@@ -1869,7 +2193,7 @@ export default function WorkspacePage() {
   ) : null;
 
   return (
-    <div className="flex h-full max-h-screen min-h-0 overflow-hidden border-t border-border bg-card/75">
+    <div className="flex h-full max-h-screen min-h-0 overflow-hidden border-t border-border bg-card/70 backdrop-blur-xl">
       {/* Projects panel */}
       <ProjectsSidebar
         projects={projects}
@@ -1887,7 +2211,7 @@ export default function WorkspacePage() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {activeSlug && (
-          <div className="flex h-9 shrink-0 overflow-x-auto border-b border-border bg-card/70 scrollbar-none">
+          <div className="spark-tabbar flex h-8 shrink-0 overflow-x-auto border-b border-border scrollbar-none">
             {primaryTabs.map((tab) => (
               <WorkspaceTabButton
                 key={tab.id}

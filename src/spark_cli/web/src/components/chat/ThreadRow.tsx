@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { MessageSquare, Trash2 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -47,31 +48,31 @@ export function ThreadRow({
         }
       }}
       className={cn(
-        "group relative flex w-full min-w-0 items-start gap-3 border-b border-border px-3 py-3 text-left transition",
+        "spark-list-row group relative flex w-full min-w-0 items-start gap-2 border-b border-border px-2.5 py-2 text-left transition",
         active ? "bg-primary/12" : "hover:bg-secondary/45",
       )}
     >
       <span
         className={cn(
-          "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-sm border",
+          "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-sm border",
           session.is_active
             ? "border-primary/45 bg-primary/18 text-primary"
             : "border-border bg-secondary/60 text-muted-foreground",
         )}
       >
-        <MessageSquare className="h-4 w-4" />
+        <MessageSquare className="h-3.5 w-3.5" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">{threadTitle(session)}</span>
+          <span className="truncate text-[13px] font-medium text-foreground">{threadTitle(session)}</span>
           {session.is_active && (
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_12px_rgba(255,163,43,0.8)]" />
           )}
         </span>
-        <span className="mt-1 block truncate text-xs text-muted-foreground">
+        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
           {searchSnippet || session.preview || "No messages yet"}
         </span>
-        <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+        <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] leading-4 text-muted-foreground">
           {modelShort(session.model) && (
             <>
               <span className="truncate font-mono-ui max-w-[96px]">{modelShort(session.model)}</span>
@@ -86,13 +87,13 @@ export function ThreadRow({
         </span>
       </span>
       <span
-        className="absolute right-2 top-2 opacity-0 transition group-hover:opacity-100"
+        className="absolute right-1.5 top-1.5 opacity-0 transition group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
           title="Delete thread"
           onClick={onDelete}
         >

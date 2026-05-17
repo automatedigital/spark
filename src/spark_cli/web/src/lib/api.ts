@@ -559,6 +559,29 @@ export const api = {
     );
   },
 
+  runWorkspaceTerminalCommand: (slug: string, command: string) =>
+    fetchJSON<WorkspaceTerminalRunStart>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command }),
+      },
+    ),
+
+  streamWorkspaceTerminalRun: (slug: string, runId: string): EventSource =>
+    new EventSource(
+      sseUrl(
+        `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs/${encodeURIComponent(runId)}/stream`,
+      ),
+    ),
+
+  stopWorkspaceTerminalRun: (slug: string, runId: string) =>
+    fetchJSON<{ ok: boolean; run_id: string; status: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs/${encodeURIComponent(runId)}/stop`,
+      { method: "POST" },
+    ),
+
   startWorkspaceConversation: (slug: string, message: string, model?: string) =>
     fetchJSON<{ session_id: string; ok: boolean; source: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/conversations`,
@@ -1161,3 +1184,14 @@ export interface WorkspaceFileContent {
   mime: string;
   size: number;
 }
+
+export interface WorkspaceTerminalRunStart {
+  run_id: string;
+  status: "queued" | "running" | "done" | "failed" | "stopped";
+  cwd: string;
+}
+
+export type WorkspaceTerminalEvent =
+  | { type: "state"; status: string; cwd?: string }
+  | { type: "output"; stream?: string; text: string }
+  | { type: "done"; status: string; exit_code: number | null };

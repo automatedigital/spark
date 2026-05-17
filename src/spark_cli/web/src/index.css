@@ -224,6 +224,42 @@ code {
   background-size: 512px 512px;
 }
 
+/* ---- Compact WebUI work surfaces ---- */
+.spark-glass-panel {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-card) 76%, transparent), color-mix(in srgb, #101010 72%, transparent));
+  backdrop-filter: blur(18px);
+}
+
+.spark-panel-header {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-card) 74%, transparent), color-mix(in srgb, var(--color-muted) 52%, transparent));
+}
+
+.spark-tabbar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-card) 70%, transparent), color-mix(in srgb, #111 58%, transparent));
+}
+
+.spark-list-row {
+  min-height: 0;
+}
+
+.spark-code-pane {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #111 86%, transparent), color-mix(in srgb, var(--color-background) 94%, transparent));
+}
+
+.spark-code-pane pre,
+.spark-terminal-pane pre {
+  tab-size: 2;
+}
+
+.spark-terminal-pane {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #080808 72%, transparent), color-mix(in srgb, var(--color-background) 88%, transparent));
+}
+
 input,
 select,
 textarea {
