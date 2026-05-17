@@ -938,7 +938,7 @@ function WorkspaceNewThread({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 flex-col">
       {/* Header — matches session header style */}
       <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
         <p className="text-sm font-medium">New thread</p>
@@ -1211,7 +1211,7 @@ function WorkspacePane({
         </>
       )}
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab.type === "threads" ? threadContent : <FileViewer file={activeTab} slug={slug} />}
       </div>
     </div>
@@ -1858,7 +1858,7 @@ export default function WorkspacePage() {
         />
       </>
     ) : (
-      <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
         <MessageSquare className="mb-4 h-12 w-12 opacity-30" />
         <p className="text-sm font-medium text-foreground">Select a thread</p>
         <p className="mt-1 max-w-sm text-xs opacity-75">
