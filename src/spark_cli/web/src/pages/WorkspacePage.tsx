@@ -475,23 +475,20 @@ function WorkspaceThreadList({
   slug,
   activeId,
   onOpen,
-  onNew,
+  onNewThread,
   onSessionsChange,
   panelWidth,
 }: {
   slug: string;
   activeId: string | null;
   onOpen: (id: string, session: SessionInfo) => void;
-  onNew: (id: string, initialMsg: string) => void;
+  onNewThread: () => void;
   onSessionsChange: (sessions: SessionInfo[]) => void;
   panelWidth: number;
 }) {
   const [threads, setThreads] = useState<SessionInfo[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [searchQ, setSearchQ] = useState("");
-  const [startMsg, setStartMsg] = useState("");
-  const [startingThread, setStartingThread] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -533,22 +530,6 @@ function WorkspaceThreadList({
     }
   });
 
-  const handleStartThread = async () => {
-    const msg = startMsg.trim();
-    if (!msg) return;
-    setStartingThread(true);
-    try {
-      const res = await api.startWorkspaceConversation(slug, msg);
-      setStartMsg("");
-      onNew(res.session_id, msg);
-      await loadThreads();
-    } catch (e) {
-      console.error("Start thread failed", e);
-    } finally {
-      setStartingThread(false);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     setThreads((prev) => {
       const next = prev.filter((t) => t.id !== id);
@@ -589,7 +570,7 @@ function WorkspaceThreadList({
           <Button
             size="sm"
             className="h-8 shrink-0 gap-1.5"
-            onClick={() => setTimeout(() => inputRef.current?.focus(), 0)}
+            onClick={onNewThread}
           >
             <Plus className="h-3.5 w-3.5" />
             New
@@ -645,44 +626,112 @@ function WorkspaceThreadList({
               {searchQ ? "No matching threads" : "No threads yet"}
             </p>
             <p className="mt-1 text-xs opacity-70">
-              {searchQ ? "Try a different search." : "Start a conversation below."}
+              {searchQ ? "Try a different search." : "Click New to start one."}
             </p>
           </div>
         )}
       </div>
 
-      {/* New thread input */}
-      <div className="shrink-0 border-t border-border bg-card/40 p-3">
-        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-widest text-muted-foreground/60">
-          New thread
+    </div>
+  );
+}
+
+// ── New thread (full-area, like Chat tab) ─────────────────────────────────────
+
+function WorkspaceNewThread({
+  slug,
+  onCreated,
+  onCancel,
+}: {
+  slug: string;
+  onCreated: (id: string, initialMsg: string) => void;
+  onCancel: () => void;
+}) {
+  const [msg, setMsg] = useState("");
+  const [starting, setStarting] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }, []);
+
+  const handleSend = async () => {
+    const text = msg.trim();
+    if (!text || starting) return;
+    setStarting(true);
+    try {
+      const res = await api.startWorkspaceConversation(slug, text);
+      onCreated(res.session_id, text);
+    } catch (e) {
+      console.error("Failed to start conversation", e);
+      setStarting(false);
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Header — matches session header style */}
+      <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
+        <p className="text-sm font-medium">New thread</p>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+          onClick={onCancel}
+        >
+          <X className="h-3.5 w-3.5" />
+          Cancel
+        </Button>
+      </div>
+
+      {/* Empty messages area */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
+        <MessageSquare className="mb-4 h-12 w-12 opacity-20" />
+        <p className="text-sm font-medium text-foreground">Start a conversation</p>
+        <p className="mt-1 max-w-sm text-xs opacity-75">
+          Ask Spark anything about this project — it has context of the workspace files.
         </p>
-        <div className="flex gap-2">
-          <Input
-            ref={inputRef}
-            value={startMsg}
-            onChange={(e) => setStartMsg(e.target.value)}
+      </div>
+
+      {/* Prompt bar — matches Chat tab's PromptBar style */}
+      <div className="shrink-0 border-t border-border bg-card/40 p-3">
+        <div className="relative flex items-end gap-2 rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary/50">
+          <textarea
+            ref={textareaRef}
+            value={msg}
+            onChange={(e) => {
+              setMsg(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+            }}
             placeholder="Ask Spark about this project…"
-            className="h-8 flex-1 text-xs"
+            rows={1}
+            className="flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+            style={{ maxHeight: 200 }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void handleStartThread();
+                void handleSend();
               }
+              if (e.key === "Escape") onCancel();
             }}
           />
           <Button
             size="sm"
-            className="h-8 w-8 shrink-0 p-0"
-            disabled={!startMsg.trim() || startingThread}
-            onClick={() => void handleStartThread()}
+            className="mb-0.5 h-8 w-8 shrink-0 p-0"
+            disabled={!msg.trim() || starting}
+            onClick={() => void handleSend()}
           >
-            {startingThread ? (
+            {starting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Send className="h-3.5 w-3.5" />
             )}
           </Button>
         </div>
+        <p className="mt-1.5 text-center text-[10px] text-muted-foreground/50">
+          Enter to send · Shift+Enter for new line · Esc to cancel
+        </p>
       </div>
     </div>
   );
@@ -933,6 +982,7 @@ export default function WorkspacePage() {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<SessionInfo | null>(null);
   const [pendingInitialMsg, setPendingInitialMsg] = useState<string | null>(null);
+  const [newThread, setNewThread] = useState(false);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -1009,6 +1059,7 @@ export default function WorkspacePage() {
     setActiveThreadId(null);
     setActiveSession(null);
     setPendingInitialMsg(null);
+    setNewThread(false);
     setEditingTitle(false);
   };
 
@@ -1016,13 +1067,21 @@ export default function WorkspacePage() {
     setActiveThreadId(id);
     setActiveSession(session);
     setPendingInitialMsg(null);
+    setNewThread(false);
     setEditingTitle(false);
   };
 
-  const handleNewThread = (id: string, initialMsg: string) => {
+  const handleNewThread = () => {
+    setActiveThreadId(null);
+    setActiveSession(null);
+    setNewThread(true);
+    setEditingTitle(false);
+  };
+
+  const handleThreadCreated = (id: string, initialMsg: string) => {
     setActiveThreadId(id);
     setPendingInitialMsg(initialMsg);
-    setEditingTitle(false);
+    setNewThread(false);
   };
 
   const handleSessionsChange = useCallback(
@@ -1093,7 +1152,7 @@ export default function WorkspacePage() {
             slug={activeSlug}
             activeId={activeThreadId}
             onOpen={handleOpenThread}
-            onNew={handleNewThread}
+            onNewThread={handleNewThread}
             onSessionsChange={handleSessionsChange}
             panelWidth={threadsWidth}
           />
@@ -1104,7 +1163,14 @@ export default function WorkspacePage() {
       {/* Chat area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {activeSlug ? (
-          activeThreadId ? (
+          newThread ? (
+            <WorkspaceNewThread
+              key={`new-${activeSlug}`}
+              slug={activeSlug}
+              onCreated={handleThreadCreated}
+              onCancel={() => setNewThread(false)}
+            />
+          ) : activeThreadId ? (
             <>
               {/* Session header */}
               <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
@@ -1185,7 +1251,7 @@ export default function WorkspacePage() {
               <MessageSquare className="mb-4 h-12 w-12 opacity-30" />
               <p className="text-sm font-medium text-foreground">Select a thread</p>
               <p className="mt-1 max-w-sm text-xs opacity-75">
-                Pick a thread from the list or start a new conversation below.
+                Pick a thread from the list or click New to start one.
               </p>
             </div>
           )
