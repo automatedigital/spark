@@ -1,0 +1,69 @@
+{
+  "rules": [
+    {
+      "id": "generic.ansi",
+      "match": {},
+      "transforms": {"strip_ansi": true, "trim_empty_edges": true, "dedupe_adjacent": true}
+    },
+    {
+      "id": "shell.json_pretty",
+      "match": {"tool_names": ["execute_code", "shell_exec", "run_shell", "terminal"]},
+      "transforms": {"pretty_print_json": true}
+    },
+    {
+      "id": "git.status",
+      "match": {"argv0": ["git"], "argv_includes_any": ["status"]},
+      "transforms": {"dedupe_adjacent": true, "trim_empty_edges": true},
+      "filters": {"skip_patterns": ["^\\s*\\(use \"git "]}
+    },
+    {
+      "id": "git.log",
+      "match": {"argv0": ["git"], "argv_includes_any": ["log"]},
+      "summarize": {"head": 30, "tail": 5}
+    },
+    {
+      "id": "npm.install",
+      "match": {"argv0": ["npm", "pnpm", "yarn"], "argv_includes_any": ["install", "i", "add"]},
+      "filters": {
+        "skip_patterns": [
+          "^npm WARN deprecated",
+          "^npm notice",
+          "^\\s*[\\u2800-\\u28FF\\|/\\-\\\\]\\s",
+          "^Progress:",
+          "^[\\s\\d]+ packages? are looking for funding"
+        ],
+        "keep_patterns": ["error", "ERR!", "warning"]
+      },
+      "transforms": {"dedupe_adjacent": true, "trim_empty_edges": true},
+      "summarize": {"head": 40, "tail": 20}
+    },
+    {
+      "id": "cargo.build",
+      "match": {"argv0": ["cargo"], "argv_includes_any": ["build", "check", "test", "run"]},
+      "filters": {
+        "skip_patterns": ["^\\s*Compiling ", "^\\s*Downloading ", "^\\s*Updating "],
+        "keep_patterns": ["warning", "error", "Finished", "Running"]
+      },
+      "transforms": {"dedupe_adjacent": true, "trim_empty_edges": true},
+      "summarize": {"head": 30, "tail": 30}
+    },
+    {
+      "id": "docker.build",
+      "match": {"argv0": ["docker"], "argv_includes_any": ["build", "pull"]},
+      "filters": {
+        "skip_patterns": ["^#\\d+ \\[internal\\]", "^#\\d+ sha256:", "^#\\d+ DONE \\d+\\.\\d+s$"]
+      },
+      "transforms": {"dedupe_adjacent": true, "trim_empty_edges": true},
+      "summarize": {"head": 30, "tail": 20}
+    },
+    {
+      "id": "test.pytest",
+      "match": {"argv0": ["pytest", "python"], "command_includes_any": ["pytest"]},
+      "filters": {
+        "skip_patterns": ["^\\s*PASSED", "^\\.+$", "^\\s*\\d+%\\]$"]
+      },
+      "transforms": {"dedupe_adjacent": true},
+      "summarize": {"head": 50, "tail": 50}
+    }
+  ]
+}

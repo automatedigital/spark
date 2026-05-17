@@ -804,7 +804,21 @@ DEFAULT_CONFIG = {
         "max_runtime_seconds": 0,
         "default_board": "default",
     },
-    "_config_version": 19,
+    # Post-dispatch tool-output pipeline (TokenJuice compaction +
+    # prompt-injection screening). Both layers are off by default; opt in
+    # via `spark config set tool_pipeline.normalization.enabled true` etc.
+    "tool_pipeline": {
+        "normalization": {
+            "enabled": False,
+            "user_rules_dir": "",  # empty = ${SPARK_HOME}/normalization_rules
+        },
+        "injection_guard": {
+            "mode": "off",  # "off" | "warn" | "enforce"
+            "block_threshold": 0.70,
+            "review_threshold": 0.45,
+        },
+    },
+    "_config_version": 20,
 }
 
 # =============================================================================

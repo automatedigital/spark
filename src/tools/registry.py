@@ -28,12 +28,12 @@ class ToolEntry:
     __slots__ = (
         "name", "toolset", "schema", "handler", "check_fn",
         "requires_env", "is_async", "description", "emoji",
-        "max_result_size_chars",
+        "max_result_size_chars", "normalize", "screen",
     )
 
     def __init__(self, name, toolset, schema, handler, check_fn,
                  requires_env, is_async, description, emoji,
-                 max_result_size_chars=None):
+                 max_result_size_chars=None, normalize=True, screen=True):
         self.name = name
         self.toolset = toolset
         self.schema = schema
@@ -44,6 +44,8 @@ class ToolEntry:
         self.description = description
         self.emoji = emoji
         self.max_result_size_chars = max_result_size_chars
+        self.normalize = normalize
+        self.screen = screen
 
 
 class ToolRegistry:
@@ -112,6 +114,8 @@ class ToolRegistry:
         description: str = "",
         emoji: str = "",
         max_result_size_chars: int | float | None = None,
+        normalize: bool = True,
+        screen: bool = True,
     ):
         """Register a tool.  Called at module-import time by each tool file."""
         with self._lock:
@@ -133,6 +137,8 @@ class ToolRegistry:
                 description=description or schema.get("description", ""),
                 emoji=emoji,
                 max_result_size_chars=max_result_size_chars,
+                normalize=normalize,
+                screen=screen,
             )
             if check_fn and toolset not in self._toolset_checks:
                 self._toolset_checks[toolset] = check_fn
@@ -199,6 +205,8 @@ class ToolRegistry:
         * Async handlers are bridged automatically via ``_run_async()``.
         * All exceptions are caught and returned as ``{"error": "..."}``
           for consistent error format.
+        * Output is passed through the TokenJuice compaction + prompt-injection
+          screening pipeline when those layers are enabled in config.
         """
         entry = self.get_entry(name)
         if not entry:
@@ -206,13 +214,16 @@ class ToolRegistry:
         try:
             if entry.is_async:
                 from core.model_tools import _run_async
-                return _run_async(entry.handler(args, **kwargs))
-            return entry.handler(args, **kwargs)
+                raw = _run_async(entry.handler(args, **kwargs))
+            else:
+                raw = entry.handler(args, **kwargs)
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
             logger.exception("Tool %s dispatch error: %s", name, e)
             return json.dumps({"error": f"Tool execution failed: {type(e).__name__}: {e}"})
+
+        return _post_process(name, entry, raw, args)
 
     # ------------------------------------------------------------------
     # Query helpers  (replace redundant dicts in model_tools.py)
@@ -341,6 +352,131 @@ class ToolRegistry:
 
 # Module-level singleton
 registry = ToolRegistry()
+
+
+# ---------------------------------------------------------------------------
+# Post-dispatch pipeline (TokenJuice compaction + prompt-injection screening)
+# ---------------------------------------------------------------------------
+
+
+class _PipelineSettings:
+    """Cached config for the post-dispatch pipeline.
+
+    Loaded lazily on first dispatch, then cached. Call ``reload()`` after
+    config changes (e.g. from ``/reload`` or ``spark config set``) to pick
+    up new values without restarting.
+    """
+
+    __slots__ = ("normalize_enabled", "injection_mode",
+                 "block_threshold", "review_threshold", "_loaded")
+
+    def __init__(self):
+        self.normalize_enabled = False
+        self.injection_mode = "off"   # "off" | "warn" | "enforce"
+        self.block_threshold = 0.70
+        self.review_threshold = 0.45
+        self._loaded = False
+
+    def ensure_loaded(self):
+        if self._loaded:
+            return
+        try:
+            from spark_cli.config import load_config
+            cfg = load_config() or {}
+            pipe = (cfg.get("tool_pipeline") or {})
+            norm = pipe.get("normalization") or {}
+            guard = pipe.get("injection_guard") or {}
+            self.normalize_enabled = bool(norm.get("enabled", False))
+            self.injection_mode = str(guard.get("mode", "off")).lower()
+            self.block_threshold = float(guard.get("block_threshold", 0.70))
+            self.review_threshold = float(guard.get("review_threshold", 0.45))
+        except Exception as e:
+            logger.debug("Pipeline settings load failed (using defaults): %s", e)
+        self._loaded = True
+
+    def reload(self):
+        self._loaded = False
+        self.ensure_loaded()
+
+
+_pipeline_settings = _PipelineSettings()
+
+
+def reload_pipeline_settings():
+    """Re-read tool_pipeline config from disk (call after config changes)."""
+    _pipeline_settings.reload()
+    try:
+        from tools.normalize import reload_default_rules
+        reload_default_rules()
+    except Exception:
+        pass
+
+
+def _argv_from_args(args: dict | None) -> list[str] | None:
+    """Best-effort extraction of an argv-like list from tool args.
+
+    Used by TokenJuice match rules (argv0, argv_includes_any). Falls back
+    to None if no obvious command/argv field is present.
+    """
+    if not isinstance(args, dict):
+        return None
+    if isinstance(args.get("argv"), list):
+        return [str(x) for x in args["argv"]]
+    cmd = args.get("command") or args.get("cmd")
+    if isinstance(cmd, str) and cmd.strip():
+        try:
+            import shlex
+            return shlex.split(cmd)
+        except Exception:
+            return cmd.split()
+    if isinstance(cmd, list):
+        return [str(x) for x in cmd]
+    return None
+
+
+def _post_process(name: str, entry: "ToolEntry", raw: str, args: dict | None) -> str:
+    """Apply compaction + injection screen. Always returns a string."""
+    if not isinstance(raw, str):
+        return raw
+
+    _pipeline_settings.ensure_loaded()
+    text = raw
+
+    if entry.normalize and _pipeline_settings.normalize_enabled:
+        try:
+            from tools.normalize import compact_tool_output
+            text, stats = compact_tool_output(text, name, _argv_from_args(args))
+            if stats.rules_applied and stats.output_chars < stats.input_chars:
+                logger.debug(
+                    "normalize[%s]: %d→%d chars (-%.0f%%) rules=%s",
+                    name, stats.input_chars, stats.output_chars,
+                    stats.reduction_ratio * 100, stats.rules_applied,
+                )
+        except Exception as e:
+            logger.warning("normalize[%s] failed (passthrough): %s", name, e)
+
+    if entry.screen and _pipeline_settings.injection_mode != "off":
+        try:
+            from tools.injection_guard import screen_tool_output, blocked_stub
+            text, decision = screen_tool_output(
+                text, name,
+                block_threshold=_pipeline_settings.block_threshold,
+                review_threshold=_pipeline_settings.review_threshold,
+            )
+            if decision.verdict != "allow":
+                logger.warning(
+                    "injection_guard[%s]: verdict=%s score=%.2f sha=%s reasons=%s",
+                    name, decision.verdict, decision.score,
+                    decision.prompt_sha256[:12],
+                    [r.code for r in decision.reasons],
+                )
+                if (_pipeline_settings.injection_mode == "enforce"
+                        and decision.verdict == "block"):
+                    text = blocked_stub(decision, name)
+        except Exception as e:
+            logger.warning("injection_guard[%s] failed (passthrough): %s", name, e)
+
+    return text
 
 
 # ---------------------------------------------------------------------------
