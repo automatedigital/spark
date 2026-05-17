@@ -592,6 +592,16 @@ export const api = {
       },
     ),
 
+  resizeWorkspaceTerminal: (slug: string, runId: string, rows: number, cols: number) =>
+    fetchJSON<{ ok: boolean; run_id: string; rows: number; cols: number }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs/${encodeURIComponent(runId)}/resize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, cols }),
+      },
+    ),
+
   startWorkspaceConversation: (slug: string, message: string, model?: string) =>
     fetchJSON<{ session_id: string; ok: boolean; source: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/conversations`,

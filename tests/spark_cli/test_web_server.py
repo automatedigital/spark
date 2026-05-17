@@ -223,16 +223,24 @@ class TestWebServerEndpoints:
         assert start.status_code == 200
         run_id = start.json()["run_id"]
 
-        sent = None
+        resized = None
         for _ in range(20):
-            sent = self.client.post(
-                f"/api/workspace/projects/{slug}/terminal/runs/{run_id}/input",
-                json={"input": "printf 'interactive-ok\\n'; exit\n"},
+            resized = self.client.post(
+                f"/api/workspace/projects/{slug}/terminal/runs/{run_id}/resize",
+                json={"rows": 33, "cols": 101},
             )
-            if sent.status_code == 200:
+            if resized.status_code == 200:
                 break
             time.sleep(0.05)
-        assert sent is not None
+        assert resized is not None
+        assert resized.status_code == 200
+        assert resized.json()["rows"] == 33
+        assert resized.json()["cols"] == 101
+
+        sent = self.client.post(
+            f"/api/workspace/projects/{slug}/terminal/runs/{run_id}/input",
+            json={"input": "printf 'interactive-ok\\n'; exit\n"},
+        )
         assert sent.status_code == 200
 
         chunks = []

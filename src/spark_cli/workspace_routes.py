@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import logging
 import mimetypes
@@ -12,7 +13,9 @@ import queue
 import re
 import shutil
 import signal
+import struct
 import subprocess
+import termios
 import threading
 import time
 import uuid
@@ -104,6 +107,11 @@ class TerminalRunCreate(BaseModel):
 
 class TerminalInput(BaseModel):
     input: str
+
+
+class TerminalResize(BaseModel):
+    rows: int
+    cols: int
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -384,6 +392,10 @@ def _run_terminal_shell(run_id: str) -> None:
 
     try:
         master_fd, slave_fd = pty.openpty()
+        try:
+            fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        except OSError:
+            pass
         proc = subprocess.Popen(
             [shell, "-i"],
             cwd=cwd,
@@ -392,7 +404,7 @@ def _run_terminal_shell(run_id: str) -> None:
             stderr=slave_fd,
             start_new_session=True,
             close_fds=True,
-            env={**os.environ, "TERM": os.environ.get("TERM", "xterm-256color")},
+            env={**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor", "LINES": "24", "COLUMNS": "80"},
         )
         os.close(slave_fd)
         with _terminal_lock:
@@ -463,6 +475,23 @@ def send_terminal_input(slug: str, run_id: str, body: TerminalInput):
     except OSError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return {"ok": True, "run_id": run_id}
+
+
+@router.post("/projects/{slug}/terminal/runs/{run_id}/resize")
+def resize_terminal(slug: str, run_id: str, body: TerminalResize):
+    run = _terminal_runs.get(run_id)
+    if not run or run.get("slug") != slug:
+        raise HTTPException(status_code=404, detail="Run not found")
+    fd = run.get("pty_fd")
+    if fd is None or run.get("status") != "running":
+        raise HTTPException(status_code=400, detail="Terminal is not running")
+    rows = max(2, min(200, int(body.rows)))
+    cols = max(10, min(400, int(body.cols)))
+    try:
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"ok": True, "run_id": run_id, "rows": rows, "cols": cols}
 
 
 @router.get("/projects/{slug}/terminal/runs/{run_id}/stream")

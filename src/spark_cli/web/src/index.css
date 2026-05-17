@@ -346,6 +346,19 @@ code {
   background: color-mix(in srgb, #000 22%, var(--color-background));
 }
 
+.spark-terminal-pane .xterm {
+  height: 100%;
+  padding: 0;
+}
+
+.spark-terminal-pane .xterm-viewport {
+  background-color: transparent !important;
+}
+
+.spark-terminal-pane .xterm-screen {
+  background-color: transparent !important;
+}
+
 input,
 select,
 textarea {
