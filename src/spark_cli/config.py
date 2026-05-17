@@ -307,6 +307,21 @@ def _secure_file(path):
         pass
 
 
+def _ensure_default_wiki_readme(home: Path) -> None:
+    """Seed a default README.md into workspace/wiki if absent."""
+    readme = home / "workspace" / "wiki" / "README.md"
+    if readme.exists():
+        return
+    readme.write_text(
+        "# Spark Wiki\n\n"
+        "Personal knowledge base populated by `/dream` reflection passes.\n\n"
+        "## Structure\n\n"
+        "- `dreams/` — daily reflection summaries written by `/dream`\n"
+        "- `log.md` — chronological append-only log of wiki events\n",
+        encoding="utf-8",
+    )
+
+
 def _ensure_default_soul_md(home: Path) -> None:
     """Seed a default SOUL.md into SPARK_HOME if the user doesn't have one yet."""
     soul_path = home / "SOUL.md"
@@ -337,11 +352,13 @@ def ensure_spark_home():
     else:
         home.mkdir(parents=True, exist_ok=True)
         _secure_dir(home)
-        for subdir in ("cron", "sessions", "logs", "memories"):
+        for subdir in ("cron", "sessions", "logs", "memories",
+                       "workspace", "workspace/wiki", "workspace/wiki/dreams"):
             d = home / subdir
             d.mkdir(parents=True, exist_ok=True)
             _secure_dir(d)
         _ensure_default_soul_md(home)
+        _ensure_default_wiki_readme(home)
 
 
 def _ensure_spark_home_managed(home: Path):
@@ -356,8 +373,11 @@ def _ensure_spark_home_managed(home: Path):
             raise RuntimeError(
                 f"{d} does not exist. Run 'sudo nixos-rebuild switch' first."
             )
-    # Inside umask(0o007) scope — SOUL.md will be created as 0660
+    # Wiki dirs are user-content, not system-managed — create if missing.
+    (home / "workspace" / "wiki" / "dreams").mkdir(parents=True, exist_ok=True)
+    # Inside umask(0o007) scope — SOUL.md and README will be created as 0660
     _ensure_default_soul_md(home)
+    _ensure_default_wiki_readme(home)
 
 
 # =============================================================================

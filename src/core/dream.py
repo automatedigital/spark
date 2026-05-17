@@ -120,23 +120,7 @@ def configure_schedule(enabled: bool, frequency: str = "daily", hour: int = 3) -
 # ---------------------------------------------------------------------------
 
 def _resolve_wiki_path() -> Path:
-    """Resolve the llm-wiki directory, mirroring the llm-wiki skill convention.
-
-    Reads ``skills.config.wiki.path`` from ``config.yaml`` if set, else falls
-    back to ``$SPARK_HOME/workspace/wiki``.
-    """
-    try:
-        from spark_cli.config import load_config
-        cfg = load_config()
-        skills_cfg = cfg.get("skills", {}) if isinstance(cfg, dict) else {}
-        config = skills_cfg.get("config", {}) if isinstance(skills_cfg, dict) else {}
-        wiki_cfg = config.get("wiki", {}) if isinstance(config, dict) else {}
-        path_str = wiki_cfg.get("path") if isinstance(wiki_cfg, dict) else None
-        if path_str:
-            return Path(str(path_str)).expanduser()
-    except Exception as e:
-        logger.debug("Could not read wiki.path from config: %s", e)
-
+    """Return the llm-wiki directory: always $SPARK_HOME/workspace/wiki."""
     return get_spark_home() / "workspace" / "wiki"
 
 
