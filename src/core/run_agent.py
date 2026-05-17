@@ -7962,14 +7962,21 @@ class AIAgent:
             _msg_preview,
         )
 
-        # Initialize conversation (copy to avoid mutating the caller's list)
-        messages = list(conversation_history) if conversation_history else []
+        # Initialize conversation (copy to avoid mutating the caller's list).
+        # When conversation_history is explicitly provided (new agent, gateway reload),
+        # use it directly.  When it is None (cached web agent reused across turns),
+        # fall back to _session_messages so the agent retains full prior context.
+        if conversation_history is not None:
+            messages = list(conversation_history)
+        else:
+            messages = list(self._session_messages)
 
         # Hydrate todo store from conversation history (gateway creates a fresh
         # AIAgent per message, so the in-memory store is empty -- we need to
         # recover the todo state from the most recent todo tool response in history)
-        if conversation_history and not self._todo_store.has_items():
-            self._hydrate_todo_store(conversation_history)
+        prior_history = conversation_history if conversation_history is not None else self._session_messages
+        if prior_history and not self._todo_store.has_items():
+            self._hydrate_todo_store(prior_history)
         
         # Prefill messages (few-shot priming) are injected at API-call time only,
         # never stored in the messages list. This keeps them ephemeral: they won't
