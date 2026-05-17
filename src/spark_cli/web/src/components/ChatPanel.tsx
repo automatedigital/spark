@@ -353,6 +353,10 @@ export function ChatPanel({
         break;
       }
       case "chat.tool_start": {
+        if (rafPendingRef.current !== null) {
+          cancelAnimationFrame(rafPendingRef.current);
+          flushTokenBuffer();
+        }
         finalizeAssistant();
         setChatMessages((prev) => [
           ...prev,
@@ -414,6 +418,11 @@ export function ChatPanel({
         break;
       }
       case "chat.approval_requested": {
+        if (rafPendingRef.current !== null) {
+          cancelAnimationFrame(rafPendingRef.current);
+          flushTokenBuffer();
+        }
+        finalizeAssistant();
         const approval = (data as { approval?: Record<string, unknown> }).approval ?? {};
         setChatMessages((prev) => [...prev, { id: nid(), role: "approval", approval }]);
         setStatusLabel("Waiting for approval…");
@@ -426,6 +435,11 @@ export function ChatPanel({
         );
         break;
       case "chat.interrupted": {
+        if (rafPendingRef.current !== null) {
+          cancelAnimationFrame(rafPendingRef.current);
+          flushTokenBuffer();
+        }
+        finalizeAssistant();
         const msg = (data as { message?: string }).message;
         setChatMessages((prev) => [
           ...prev,
