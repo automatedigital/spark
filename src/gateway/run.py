@@ -2891,6 +2891,9 @@ class GatewayRunner:
         if canonical == "debug":
             return await self._handle_debug_command(event)
 
+        if canonical == "feedback":
+            return await self._handle_feedback_command(event)
+
         if canonical == "title":
             return await self._handle_title_command(event)
 
@@ -7100,6 +7103,65 @@ class GatewayRunner:
         Platform.HOMEASSISTANT, Platform.EMAIL, Platform.SMS, Platform.DINGTALK,
         Platform.FEISHU, Platform.WECOM, Platform.WECOM_CALLBACK, Platform.WEIXIN, Platform.BLUEBUBBLES, Platform.QQBOT, Platform.LOCAL,
     })
+
+    async def _handle_feedback_command(self, event: MessageEvent) -> str:
+        """Handle /feedback — accept inline note and POST to n8n webhook."""
+        import shlex
+        import httpx
+
+        AREAS = ["Workspace", "Tasks", "Chat", "Cron", "Skills", "Settings"]
+        args = event.get_command_args().strip()
+
+        if not args:
+            area_list = " | ".join(AREAS)
+            return (
+                "📝 **Submit Feedback**\n\n"
+                "Usage: `/feedback <note>`\n\n"
+                "Optional flags:\n"
+                f"  `--name <name>` — your name\n"
+                f"  `--email <email>` — your email\n"
+                f"  `--area <area>` — one of: {area_list}"
+            )
+
+        try:
+            tokens = shlex.split(args)
+        except ValueError:
+            tokens = args.split()
+
+        name = ""
+        email = ""
+        area = ""
+        note_parts: list[str] = []
+        i = 0
+        while i < len(tokens):
+            if tokens[i] == "--name" and i + 1 < len(tokens):
+                name = tokens[i + 1]; i += 2
+            elif tokens[i] == "--email" and i + 1 < len(tokens):
+                email = tokens[i + 1]; i += 2
+            elif tokens[i] == "--area" and i + 1 < len(tokens):
+                area = tokens[i + 1]; i += 2
+            else:
+                note_parts.append(tokens[i]); i += 1
+
+        note = " ".join(note_parts).strip()
+        if not note:
+            return "✗ Please include a feedback note after any flags."
+
+        if area not in AREAS:
+            area = ""
+
+        payload = {"name": name, "email": email, "area": area, "note": note}
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    "https://n8n.automatedigital.ai/webhook/spark-feedback",
+                    json=payload,
+                )
+                resp.raise_for_status()
+            return "✓ Feedback submitted — thank you!"
+        except Exception as exc:
+            return f"✗ Failed to submit feedback: {exc}"
 
     async def _handle_debug_command(self, event: MessageEvent) -> str:
         """Handle /debug — upload debug report + logs and return paste URLs."""

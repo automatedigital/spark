@@ -198,6 +198,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("update", "Update Spark Agent to the latest version", "Info",
                gateway_only=True),
     CommandDef("debug", "Upload debug report (system info + logs) and get shareable links", "Info"),
+    CommandDef("feedback", "Submit feedback about your Spark experience", "Info"),
 
     # Exit
     CommandDef("quit", "Exit the CLI", "Exit",

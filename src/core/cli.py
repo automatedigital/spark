@@ -6610,6 +6610,8 @@ class SparkCLI:
             self._handle_kanban_slash(cmd_original)
         elif canonical == "debug":
             self._handle_debug_command()
+        elif canonical == "feedback":
+            self._handle_feedback_command()
         elif canonical == "paste":
             self._handle_paste_command()
         elif canonical == "image":
@@ -7812,6 +7814,47 @@ class SparkCLI:
 
         except Exception as e:
             print(f"  ❌ Compression failed: {e}")
+
+    def _handle_feedback_command(self):
+        """Handle /feedback — collect user feedback and POST to n8n webhook."""
+        import httpx
+
+        _cprint("\n  Submit Feedback\n")
+
+        name = self._prompt_text_input("  Your name: ")
+        if name is None:
+            _cprint("  (cancelled)")
+            return
+
+        email = self._prompt_text_input("  Your email: ")
+        if email is None:
+            _cprint("  (cancelled)")
+            return
+
+        areas = ["Workspace", "Tasks", "Chat", "Cron", "Skills", "Settings"]
+        area_idx = self._run_curses_picker("Webapp Area", areas)
+        if area_idx is None:
+            _cprint("  (cancelled)")
+            return
+        area = areas[area_idx]
+
+        note = self._prompt_text_input("  Feedback: ")
+        if note is None:
+            _cprint("  (cancelled)")
+            return
+
+        payload = {"name": name, "email": email, "area": area, "note": note}
+
+        try:
+            resp = httpx.post(
+                "https://n8n.automatedigital.ai/webhook/spark-feedback",
+                json=payload,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            _cprint("  ✓ Feedback submitted — thank you!\n")
+        except Exception as exc:
+            _cprint(f"  ✗ Failed to submit feedback: {exc}\n")
 
     def _handle_debug_command(self):
         """Handle /debug - upload debug report + logs and print paste URLs."""
