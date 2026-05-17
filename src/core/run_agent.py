@@ -2030,8 +2030,30 @@ class AIAgent:
             "yes", "sure", "ok", "okay", "yep", "yeah", "yup", "alright",
             "go ahead", "go for it", "please", "do it", "sounds good",
             "of course", "absolutely", "great", "perfect", "why not",
+            "tell me more", "show me", "show me more",
         }
         if user_text in _simple_affirmatives:
+            return False
+
+        # "Continue now" says "Execute the required tool calls" — that's wrong when
+        # the model is about to deliver a TEXT response (give a list, explain something).
+        # These markers mean the model is about to write content, not call tools, so
+        # injecting the message causes it to forget what it was providing.
+        _text_delivery_markers = (
+            "give you",
+            "walk you through",
+            "explain",
+            "outline",
+            "provide",
+            "list out",
+            "describe",
+            "tell you",
+            "break down",
+            "show you",
+            "here's the",
+            "here are the",
+        )
+        if any(marker in assistant_text for marker in _text_delivery_markers):
             return False
 
         user_targets_workspace = (
