@@ -7,7 +7,6 @@ import {
   Eye,
   Paperclip,
   PlayCircle,
-  Search,
   Send,
   Sparkles,
   Timer,
@@ -109,9 +108,9 @@ function eventReachedUserReview(raw: string): string | null {
 export default function KanbanPage() {
   const { t } = useI18n();
   const { toast, showToast } = useToast(5000);
-  const [search, setSearch] = useState("");
-  const [tenant, setTenant] = useState("");
-  const [assignee, setAssignee] = useState("");
+  const [search] = useState("");
+  const [tenant] = useState("");
+  const [assignee] = useState("");
   const [board, setBoard] = useState<KanbanBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -489,50 +488,6 @@ export default function KanbanPage() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-3 p-4 text-sm md:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t.common.search}</span>
-            <span className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                className="w-full border border-border bg-background py-2 pl-9 pr-3 shadow-inner"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Title, brief, id"
-              />
-            </span>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Tenant</span>
-            <select
-              className="border border-border bg-background px-3 py-2 shadow-inner"
-              value={tenant}
-              onChange={(e) => setTenant(e.target.value)}
-            >
-              <option value="">All tenants</option>
-              {(board?.tenants ?? []).map((x) => (
-                <option key={x} value={x}>
-                  {x}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Worker</span>
-            <select
-              className="border border-border bg-background px-3 py-2 shadow-inner"
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-            >
-              <option value="">All workers</option>
-              {(board?.assignees ?? []).map((x) => (
-                <option key={x} value={x}>
-                  {x}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
         {selectedIds.size > 0 && (
           <div className="mx-4 mb-4 flex flex-wrap gap-2 items-center rounded-sm border border-border bg-secondary/60 p-3 text-sm">
             <span>{selectedIds.size} selected</span>
@@ -559,7 +514,13 @@ export default function KanbanPage() {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 gap-3 border-t border-border bg-background/32 p-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 border-t border-border bg-background/32 p-4 md:grid-cols-2 xl:grid-cols-5">
+          <input
+            className="border border-border bg-background px-3 py-2 shadow-inner"
+            placeholder="Task title"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+          />
           <select
             className="border border-border bg-background px-3 py-2 shadow-inner"
             value={templateKey}
@@ -582,38 +543,10 @@ export default function KanbanPage() {
           </select>
           <input
             className="border border-border bg-background px-3 py-2 shadow-inner"
-            placeholder="Task title"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-          />
-          <input
-            className="border border-border bg-background px-3 py-2 shadow-inner"
             placeholder="Worker label"
             value={newAssignee}
             onChange={(e) => setNewAssignee(e.target.value)}
           />
-          <input
-            className="border border-border bg-background px-3 py-2 shadow-inner"
-            placeholder="Tenant"
-            value={newTenant}
-            onChange={(e) => setNewTenant(e.target.value)}
-          />
-          <input
-            className="border border-border bg-background px-3 py-2 shadow-inner"
-            type="number"
-            placeholder="Priority"
-            value={newPriority}
-            onChange={(e) => setNewPriority(Number(e.target.value) || 0)}
-          />
-          <button
-            type="button"
-            className="border border-primary/25 bg-primary/10 px-3 py-2 font-semibold text-primary hover:bg-primary/15"
-            onClick={() => void createTask()}
-          >
-            {t.common.create} task
-          </button>
-        </div>
-        <div className="mx-4 mb-2 flex items-center gap-2 text-xs">
           <input
             ref={newFileInputRef}
             type="file"
@@ -624,17 +557,19 @@ export default function KanbanPage() {
           <button
             type="button"
             disabled={uploadingNew}
-            className="inline-flex items-center gap-1 border border-border bg-background px-2 py-1 hover:bg-secondary disabled:opacity-60"
+            className="border border-border bg-secondary px-3 py-2 font-semibold text-foreground hover:bg-secondary/80 disabled:opacity-60 inline-flex items-center justify-center gap-2"
             onClick={() => newFileInputRef.current?.click()}
           >
-            <Paperclip className="h-3 w-3" />
+            <Paperclip className="h-4 w-4" />
             {uploadingNew ? "Uploading…" : "Attach files"}
           </button>
-          <span className="opacity-70">
-            {newWorkspaceSlug
-              ? `→ workspace/${newWorkspaceSlug}/files/`
-              : "→ workspace/files/"}
-          </span>
+          <button
+            type="button"
+            className="border border-primary/25 bg-primary/10 px-3 py-2 font-semibold text-primary hover:bg-primary/15"
+            onClick={() => void createTask()}
+          >
+            {t.common.create} task
+          </button>
         </div>
         <textarea
           className="mx-4 mb-4 min-h-[84px] w-[calc(100%-2rem)] border border-border bg-background px-3 py-2 text-sm shadow-inner"
