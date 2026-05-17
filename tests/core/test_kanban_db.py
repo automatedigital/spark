@@ -19,7 +19,7 @@ def test_create_with_dependency_promotes_when_parent_done():
 
     assert child["status"] == "todo"
 
-    kb.complete_task(parent["id"], summary="parent complete")
+    kb.mark_task_done(parent["id"], summary="parent complete")
     refreshed = kb.get_task(child["id"])
 
     assert refreshed is not None
@@ -39,9 +39,11 @@ def test_link_cycle_rejected():
 def test_patch_status_block_unblock_and_complete():
     task = kb.create_task(title="Patch me", assignee="worker-a")
 
-    patched = kb.patch_task(task["id"], status="todo", priority=5, tenant="tenant-a")
+    assert task["status"] == "todo"
+
+    patched = kb.patch_task(task["id"], status="ready", priority=5, tenant="tenant-a")
     assert patched is not None
-    assert patched["status"] == "todo"
+    assert patched["status"] == "ready"
     assert patched["priority"] == 5
     assert patched["tenant"] == "tenant-a"
 
@@ -53,14 +55,19 @@ def test_patch_status_block_unblock_and_complete():
     assert unblocked is not None
     assert unblocked["status"] == "ready"
 
-    done = kb.complete_task(task["id"], summary="finished")
+    review = kb.complete_task(task["id"], summary="finished")
+    assert review is not None
+    assert review["status"] == "user_review"
+    assert review["result"] == "finished"
+
+    done = kb.mark_task_done(task["id"], summary="accepted")
     assert done is not None
     assert done["status"] == "done"
-    assert done["result"] == "finished"
 
 
 def test_reclaim_stale_running_returns_task_to_ready():
     task = kb.create_task(title="Run me", assignee="worker-a")
+    kb.patch_task(task["id"], status="ready")
     claim = kb.claim_ready_task(task["id"], profile="worker-a", claim_ttl_seconds=-1)
 
     assert claim is not None
@@ -84,9 +91,12 @@ def test_bulk_patch_reports_missing_task_errors():
 
 def test_board_columns_sorted_by_priority_then_updated_at():
     older = kb.create_task(title="Older", assignee="worker-a", priority=1)
+    kb.patch_task(older["id"], status="ready")
     time.sleep(0.01)
     newer = kb.create_task(title="Newer", assignee="worker-a", priority=1)
+    kb.patch_task(newer["id"], status="ready")
     highest = kb.create_task(title="Highest", assignee="worker-a", priority=10)
+    kb.patch_task(highest["id"], status="ready")
 
     ids = [row["id"] for row in kb.get_board()["columns"]["ready"]]
 
@@ -98,6 +108,8 @@ def test_preview_ready_for_dispatch_reports_assignee_concurrency():
     first = kb.create_task(title="First", assignee="worker-a", priority=2)
     second = kb.create_task(title="Second", assignee="worker-a", priority=1)
     third = kb.create_task(title="Third", assignee="worker-b", priority=1)
+    for task in (first, second, third):
+        kb.patch_task(task["id"], status="ready")
 
     preview = kb.preview_ready_for_dispatch(max_tasks=3)
 

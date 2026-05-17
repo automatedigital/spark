@@ -42,6 +42,7 @@ class TaskPatchBody(BaseModel):
     tenant: Optional[str] = None
     result: Optional[str] = None
     in_triage: Optional[bool] = None
+    workspace_path: Optional[str] = None
 
 
 class BulkPatchBody(BaseModel):
@@ -141,6 +142,9 @@ async def task_create(body: TaskCreateBody):
 @router.patch("/tasks/{task_id}")
 async def task_patch(task_id: str, body: TaskPatchBody):
     try:
+        provided_fields = getattr(body, "model_fields_set", None)
+        if provided_fields is None:
+            provided_fields = getattr(body, "__fields_set__", set())
         row = kb.patch_task(
             task_id,
             status=body.status,
@@ -151,6 +155,8 @@ async def task_patch(task_id: str, body: TaskPatchBody):
             tenant=body.tenant,
             result=body.result,
             in_triage=body.in_triage,
+            workspace_path=body.workspace_path,
+            workspace_path_set="workspace_path" in provided_fields,
         )
         if not row:
             raise HTTPException(status_code=404, detail="Task not found")

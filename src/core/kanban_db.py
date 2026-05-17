@@ -35,6 +35,7 @@ KANBAN_STATUSES = frozenset(
         "todo",
         "ready",
         "running",
+        "user_review",
         "blocked",
         "done",
         "archived",
@@ -291,12 +292,7 @@ def create_task(
                 (board_slug, board_slug, now),
             )
 
-        if in_triage:
-            status = "triage"
-        elif parent_ids and len(list(parent_ids)) > 0:
-            status = "todo"
-        else:
-            status = "ready" if assignee else "todo"
+        status = "triage" if in_triage else "todo"
 
         tid = _new_task_id()
         conn.execute(
@@ -330,13 +326,6 @@ def create_task(
                 "INSERT OR IGNORE INTO task_links (parent_id, child_id) VALUES (?, ?)",
                 (pid, tid),
             )
-
-        if status == "todo" and not in_triage and _all_parents_done(conn, tid):
-            conn.execute(
-                "UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ?",
-                (now, tid),
-            )
-            status = "ready"
 
         _emit_event(
             conn,
@@ -444,6 +433,8 @@ def patch_task(
     tenant: Optional[str] = None,
     result: Optional[str] = None,
     in_triage: Optional[bool] = None,
+    workspace_path: Optional[str] = None,
+    workspace_path_set: bool = False,
 ) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
@@ -503,6 +494,9 @@ def patch_task(
         if result is not None:
             sets.append("result = ?")
             params.append(result)
+        if workspace_path_set:
+            sets.append("workspace_path = ?")
+            params.append(workspace_path)
         if in_triage is not None:
             sets.append("in_triage = ?")
             params.append(new_in_triage)
@@ -537,7 +531,7 @@ def complete_task(
     metadata: Optional[dict] = None,
     result: str = "",
 ) -> Optional[Dict[str, Any]]:
-    """Close task as done; finalize run row."""
+    """Finish worker execution and move the task to user review."""
     now = _now()
     meta_json = json.dumps(metadata or {}, ensure_ascii=False)
     with _connect() as conn:
@@ -567,7 +561,7 @@ def complete_task(
             run_id = _insert_row_id(cur)
 
         conn.execute(
-            "UPDATE tasks SET status = 'done', current_run_id = NULL, claim_token = NULL, "
+            "UPDATE tasks SET status = 'user_review', current_run_id = NULL, claim_token = NULL, "
             "claim_expires_at = NULL, worker_pid = NULL, result = ?, updated_at = ? WHERE id = ?",
             (result or summary[:500], now, task_id),
         )
@@ -576,8 +570,59 @@ def complete_task(
             task_id=task_id,
             run_id=run_id,
             kind="completed",
-            payload={"summary": (summary or result)[:400]},
+            payload={"summary": (summary or result)[:400], "status": "user_review"},
         )
+        refreshed = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(refreshed) if refreshed else None
+
+
+def mark_task_done(
+    task_id: str,
+    *,
+    summary: str = "",
+    result: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Mark a reviewed task complete."""
+    now = _now()
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            return None
+        run_id = row["current_run_id"]
+        if run_id:
+            conn.execute(
+                "UPDATE task_runs SET outcome = 'reclaimed', ended_at = ?, "
+                "error = (CASE WHEN trim(COALESCE(error, '')) != '' "
+                "THEN COALESCE(error, '') || char(10) ELSE '' END) "
+                "|| 'marked complete by user' "
+                "WHERE id = ? AND outcome = 'active'",
+                (now, run_id),
+            )
+        conn.execute(
+            "UPDATE tasks SET status = 'done', current_run_id = NULL, claim_token = NULL, "
+            "claim_expires_at = NULL, worker_pid = NULL, result = COALESCE(NULLIF(?, ''), result), "
+            "updated_at = ? WHERE id = ?",
+            (result or summary[:500], now, task_id),
+        )
+        _emit_event(
+            conn,
+            task_id=task_id,
+            run_id=run_id,
+            kind="status",
+            payload={"from": row["status"], "to": "done"},
+        )
+        if summary:
+            cid = conn.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?,?,?,?)",
+                (task_id, "user", summary, now),
+            )
+            _emit_event(
+                conn,
+                task_id=task_id,
+                run_id=None,
+                kind="comment",
+                payload={"id": _insert_row_id(cid)},
+            )
         _promote_child_tasks(conn, task_id)
         refreshed = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(refreshed) if refreshed else None

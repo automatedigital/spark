@@ -114,6 +114,7 @@ class TestWebServerEndpoints:
         data = resp.json()
         assert "columns" in data
         assert "triage" in data["columns"]
+        assert "user_review" in data["columns"]
 
     def test_kanban_task_create_patch_comment_and_link(self):
         parent_resp = self.client.post(
@@ -128,6 +129,8 @@ class TestWebServerEndpoints:
         assert child_resp.status_code == 200
         parent = parent_resp.json()
         child = child_resp.json()
+        assert parent["status"] == "todo"
+        assert child["status"] == "todo"
 
         patch_resp = self.client.patch(
             f"/api/kanban/tasks/{child['id']}",
@@ -169,6 +172,10 @@ class TestWebServerEndpoints:
             "/api/kanban/tasks",
             json={"title": "Ready dispatch web task", "assignee": "worker-a"},
         ).json()
+        self.client.patch(
+            f"/api/kanban/tasks/{created['id']}",
+            json={"status": "ready"},
+        )
 
         resp = self.client.post("/api/kanban/dispatch?max_tasks=3&dry_run=true")
 
@@ -177,6 +184,22 @@ class TestWebServerEndpoints:
         assert body["dry_run"] is True
         assert created["id"] in body["ready"]
         assert "blocked_by_assignee" in body
+
+    def test_kanban_complete_endpoint_moves_to_user_review(self):
+        created = self.client.post(
+            "/api/kanban/tasks",
+            json={"title": "Review web task", "assignee": "worker-a"},
+        ).json()
+
+        resp = self.client.post(
+            f"/api/kanban/tasks/{created['id']}/complete",
+            json={"summary": "Ready for review"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "user_review"
+        assert body["result"] == "Ready for review"
 
     def test_kanban_missing_comment_and_link_errors_are_clean(self):
         comment_resp = self.client.post(

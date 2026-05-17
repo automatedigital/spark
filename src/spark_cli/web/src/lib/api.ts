@@ -605,6 +605,8 @@ export interface KanbanTaskRow {
   priority?: number;
   in_triage?: number;
   board_slug?: string;
+  workspace_path?: string | null;
+  updated_at?: number;
   result?: string | null;
   [key: string]: unknown;
 }

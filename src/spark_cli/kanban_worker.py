@@ -38,10 +38,13 @@ def main() -> int:
     model = model.strip() or "anthropic/claude-sonnet-4.6"
 
     system_extra = (
-        "You are a Kanban worker. You MUST use kanban_show first to read context, "
-        "then use terminal/file/web tools as needed. When finished call kanban_complete "
-        "with a clear summary and metadata (changed_files, verification). "
-        "If blocked on a human decision, call kanban_block with a short reason.\n\n"
+        "You are a Spark task worker. Treat the task as a /goal-style objective: "
+        "work toward the stated outcome, keep task context current, and stop only when "
+        "the objective is ready for user review or blocked on human input. You MUST use "
+        "kanban_show first to read context, then use terminal/file/web tools as needed. "
+        "When finished call kanban_complete with a clear summary and metadata "
+        "(changed_files, verification). If blocked on a human decision, call "
+        "kanban_block with a short reason.\n\n"
         f"=== TASK CONTEXT ===\n{detail.get('worker_context', '')}"
     )
 

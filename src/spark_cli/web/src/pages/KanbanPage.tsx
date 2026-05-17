@@ -3,14 +3,14 @@ import type { ElementType } from "react";
 import {
   AlertCircle,
   CheckCircle2,
-  CircleDot,
   ClipboardList,
+  Eye,
   PlayCircle,
   Search,
+  Send,
+  Sparkles,
   Timer,
   UserRound,
-  XCircle,
-  Zap,
 } from "lucide-react";
 import {
   api,
@@ -20,10 +20,13 @@ import {
   type WorkspaceProject,
   sseUrl,
 } from "@/lib/api";
+import { Toast } from "@/components/Toast";
 import { useI18n } from "@/i18n";
+import { useToast } from "@/hooks/useToast";
 
-const COLUMN_ORDER = ["triage", "todo", "ready", "running", "blocked", "done"] as const;
-const STATUS_OPTIONS = ["triage", "todo", "ready", "running", "blocked", "done", "archived"] as const;
+const DEFAULT_BOARD = "default";
+const COLUMN_ORDER = ["todo", "ready", "running", "user_review", "done"] as const;
+const STATUS_OPTIONS = ["todo", "ready", "running", "user_review", "done", "blocked", "archived"] as const;
 const TASK_TEMPLATES: Record<string, { title: string; body: string; priority: number }> = {
   bug: {
     title: "Fix: ",
@@ -42,18 +45,27 @@ const TASK_TEMPLATES: Record<string, { title: string; body: string; priority: nu
   },
 };
 
-function colLabel(key: string): string {
-  return key.charAt(0).toUpperCase() + key.slice(1);
-}
+const STATUS_LABELS: Record<string, string> = {
+  todo: "Planned",
+  ready: "Send to Spark",
+  running: "In-Progress",
+  user_review: "User Review",
+  done: "Complete",
+  blocked: "Blocked",
+  archived: "Archived",
+};
 
 const COLUMN_META: Record<string, { icon: ElementType; className: string }> = {
-  triage: { icon: CircleDot, className: "text-slate-300 bg-slate-300/10" },
   todo: { icon: ClipboardList, className: "text-amber-200 bg-amber-300/12" },
-  ready: { icon: Zap, className: "text-yellow-200 bg-yellow-300/12" },
+  ready: { icon: Send, className: "text-yellow-200 bg-yellow-300/12" },
   running: { icon: PlayCircle, className: "text-orange-200 bg-orange-300/12" },
-  blocked: { icon: XCircle, className: "text-orange-200 bg-orange-300/12" },
+  user_review: { icon: Eye, className: "text-sky-200 bg-sky-300/12" },
   done: { icon: CheckCircle2, className: "text-lime-200 bg-lime-300/12" },
 };
+
+function colLabel(key: string): string {
+  return STATUS_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
 
 function formatTime(value?: number | null): string {
   if (!value) return "";
@@ -72,9 +84,29 @@ function eventPayload(raw?: string | null): string {
   }
 }
 
+function eventReachedUserReview(raw: string): string | null {
+  try {
+    const event = JSON.parse(raw) as {
+      task_id?: string;
+      kind?: string;
+      payload_json?: string | null;
+    };
+    const payload = event.payload_json ? (JSON.parse(event.payload_json) as Record<string, unknown>) : {};
+    if (
+      event.kind === "completed" ||
+      (event.kind === "status" && payload.to === "user_review")
+    ) {
+      return event.task_id ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export default function KanbanPage() {
   const { t } = useI18n();
-  const [boardSlug, setBoardSlug] = useState("default");
+  const { toast, showToast } = useToast(5000);
   const [search, setSearch] = useState("");
   const [tenant, setTenant] = useState("");
   const [assignee, setAssignee] = useState("");
@@ -92,10 +124,7 @@ export default function KanbanPage() {
   const [commentBody, setCommentBody] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("todo");
-  const [dispatchPreview, setDispatchPreview] = useState<string[] | null>(null);
-  const [dispatchBlocked, setDispatchBlocked] = useState<string[]>([]);
   const [completeSummary, setCompleteSummary] = useState("");
-  const [blockReason, setBlockReason] = useState("");
   const [linkParentId, setLinkParentId] = useState("");
   const [linkChildId, setLinkChildId] = useState("");
   const [workspaceProjects, setWorkspaceProjects] = useState<WorkspaceProject[]>([]);
@@ -105,23 +134,22 @@ export default function KanbanPage() {
     setErr(null);
     try {
       const b = await api.getKanbanBoard({
-        board: boardSlug,
+        board: DEFAULT_BOARD,
         tenant: tenant || null,
         assignee: assignee || null,
         q: search || null,
       });
       setBoard(b);
-      setDispatchPreview(null);
-      setDispatchBlocked([]);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [boardSlug, tenant, assignee, search]);
+  }, [tenant, assignee, search]);
 
   const loadBoardRef = useRef(loadBoard);
   const selectedIdRef = useRef(selectedId);
+  const notifiedReviewIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     loadBoardRef.current = loadBoard;
   }, [loadBoard]);
@@ -136,18 +164,31 @@ export default function KanbanPage() {
   useEffect(() => {
     const url = sseUrl("/api/kanban/events?since=0");
     const es = new EventSource(url);
-    es.onmessage = () => {
+    es.onmessage = (event) => {
+      const reviewTaskId = eventReachedUserReview(event.data);
       void loadBoardRef.current();
       const sid = selectedIdRef.current;
       if (sid) {
         api.getKanbanTask(sid).then(setDetail).catch(() => {});
+      }
+      if (reviewTaskId && !notifiedReviewIdsRef.current.has(reviewTaskId)) {
+        notifiedReviewIdsRef.current.add(reviewTaskId);
+        api.getKanbanTask(reviewTaskId)
+          .then((task) => {
+            const message = `Task ready for review: ${task.title}`;
+            showToast(message, "success");
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification("Spark task ready for review", { body: task.title });
+            }
+          })
+          .catch(() => showToast("Task ready for review", "success"));
       }
     };
     es.onerror = () => {
       es.close();
     };
     return () => es.close();
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     api.listWorkspaceProjects()
@@ -170,12 +211,23 @@ export default function KanbanPage() {
     e.dataTransfer.effectAllowed = "move";
   };
 
+  const moveTask = async (id: string, status: string) => {
+    if (status === "done") {
+      await api.patchKanbanTask(id, { status: "done" });
+    } else {
+      await api.patchKanbanTask(id, { status });
+    }
+    if (status === "ready") {
+      await api.dispatchKanban(3, false);
+    }
+  };
+
   const onDropColumn = async (e: React.DragEvent, status: string) => {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/task-id");
     if (!id) return;
     try {
-      await api.patchKanbanTask(id, { status });
+      await moveTask(id, status);
       void loadBoard();
       if (selectedId === id) void openTask(id);
     } catch (err2) {
@@ -195,13 +247,17 @@ export default function KanbanPage() {
   const runBulk = async () => {
     if (selectedIds.size === 0) return;
     try {
-      const result = await api.bulkPatchKanbanTasks(Array.from(selectedIds), { status: bulkStatus });
+      const ids = Array.from(selectedIds);
+      const result = await api.bulkPatchKanbanTasks(ids, { status: bulkStatus });
       if (!result.ok) {
         setErr(
           Object.entries(result.errors)
             .map(([id, msg]) => `${id}: ${msg}`)
             .join("; "),
         );
+      }
+      if (bulkStatus === "ready") {
+        await api.dispatchKanban(3, false);
       }
       setSelectedIds(new Set());
       void loadBoard();
@@ -216,7 +272,7 @@ export default function KanbanPage() {
       const selectedProject = workspaceProjects.find((p) => p.slug === newWorkspaceSlug);
       await api.createKanbanTask({
         title: newTitle.trim(),
-        board: boardSlug,
+        board: DEFAULT_BOARD,
         body: newBody,
         assignee: newAssignee.trim() || null,
         tenant: newTenant.trim() || null,
@@ -249,11 +305,12 @@ export default function KanbanPage() {
     try {
       await api.createKanbanTask({
         title: `Copy of ${detail.title}`,
-        board: detail.board_slug ?? boardSlug,
+        board: DEFAULT_BOARD,
         body: detail.body ?? "",
         assignee: detail.assignee,
         tenant: detail.tenant,
         priority: detail.priority ?? 0,
+        workspace_path: detail.workspace_path ?? null,
       });
       void loadBoard();
     } catch (e) {
@@ -265,7 +322,8 @@ export default function KanbanPage() {
     if (!selectedId) return;
     try {
       await api.patchKanbanTask(selectedId, { status: "ready" });
-      await api.addKanbanComment(selectedId, "Retry requested from dashboard.", "web");
+      await api.addKanbanComment(selectedId, "Sent back to Spark from dashboard.", "web");
+      await api.dispatchKanban(3, false);
       await openTask(selectedId);
       void loadBoard();
     } catch (e) {
@@ -279,22 +337,6 @@ export default function KanbanPage() {
       await api.addKanbanComment(selectedId, commentBody.trim());
       setCommentBody("");
       void openTask(selectedId);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const nudgeDispatch = async () => {
-    try {
-      const result = await api.dispatchKanban(3, dispatchPreview === null);
-      if (result.dry_run) {
-        setDispatchPreview(result.ready ?? []);
-        setDispatchBlocked(result.blocked_by_assignee ?? []);
-        return;
-      }
-      setDispatchPreview(null);
-      setDispatchBlocked([]);
-      void loadBoard();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -314,31 +356,11 @@ export default function KanbanPage() {
   const completeSelectedTask = async () => {
     if (!selectedId) return;
     try {
-      await api.completeKanbanTask(selectedId, completeSummary.trim() || "Completed from dashboard");
+      if (completeSummary.trim()) {
+        await api.addKanbanComment(selectedId, completeSummary.trim(), "user");
+      }
+      await api.patchKanbanTask(selectedId, { status: "done" });
       setCompleteSummary("");
-      await openTask(selectedId);
-      void loadBoard();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const blockSelectedTask = async () => {
-    if (!selectedId || !blockReason.trim()) return;
-    try {
-      await api.blockKanbanTask(selectedId, blockReason.trim());
-      setBlockReason("");
-      await openTask(selectedId);
-      void loadBoard();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const unblockSelectedTask = async () => {
-    if (!selectedId) return;
-    try {
-      await api.unblockKanbanTask(selectedId);
       await openTask(selectedId);
       void loadBoard();
     } catch (e) {
@@ -370,20 +392,18 @@ export default function KanbanPage() {
 
   return (
     <div className="flex flex-col gap-5 min-h-[60vh]">
+      <Toast toast={toast} />
       <header className="overflow-hidden rounded-sm border border-border bg-card/92 shadow-2xl shadow-black/20">
         <div className="grid gap-4 border-b border-border bg-[linear-gradient(135deg,rgba(255,163,43,0.16),rgba(255,214,142,0.06)_48%,rgba(15,23,26,0.82))] p-5 lg:grid-cols-[1fr_auto]">
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               <ClipboardList className="h-4 w-4" />
-              Task Board
+              Tasks
             </div>
             <h1 className="text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
-              Coordinate work across Spark profiles.
+              Plan work, send it to Spark, review the result.
             </h1>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span className="rounded-full border border-border bg-background/55 px-3 py-1">
-                Board: {boardSlug || "default"}
-              </span>
               <span className="rounded-full border border-border bg-background/55 px-3 py-1">
                 {totalTasks} visible tasks
               </span>
@@ -397,58 +417,14 @@ export default function KanbanPage() {
           <div className="flex flex-wrap gap-2 items-center">
             <button
               type="button"
-              className={`px-3 py-2 text-xs font-semibold border ${boardSlug === "goals" ? "border-primary bg-primary/15 text-primary" : "border-border bg-background/70 hover:bg-secondary"}`}
-              onClick={() => setBoardSlug(boardSlug === "goals" ? "default" : "goals")}
-              title="Switch to Goals board — objectives set via /goal"
-            >
-              🎯 {boardSlug === "goals" ? "Tasks" : "Goals"}
-            </button>
-            <button
-              type="button"
               className="px-3 py-2 text-xs font-semibold border border-border bg-background/70 hover:bg-secondary"
               onClick={() => void loadBoard()}
             >
               {t.common.refresh}
             </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-              onClick={() => void nudgeDispatch()}
-            >
-              <Zap className="h-4 w-4" />
-              {dispatchPreview === null ? "Preview dispatch" : "Confirm dispatch"}
-            </button>
           </div>
         </div>
-        {dispatchPreview !== null && (
-          <div className="m-4 rounded-sm border border-primary/25 bg-primary/10 p-3 text-xs">
-            <div className="font-semibold text-primary">
-              Ready to dispatch: {dispatchPreview.length ? dispatchPreview.join(", ") : "none"}
-            </div>
-            {dispatchBlocked.length > 0 && (
-              <div className="mt-1 opacity-70">Skipped active assignees: {dispatchBlocked.join(", ")}</div>
-            )}
-            <button
-              type="button"
-              className="mt-2 opacity-70 underline"
-              onClick={() => {
-                setDispatchPreview(null);
-                setDispatchBlocked([]);
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-        <div className="grid grid-cols-1 gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Board</span>
-            <input
-              className="border border-border bg-background px-3 py-2 shadow-inner"
-              value={boardSlug}
-              onChange={(e) => setBoardSlug(e.target.value)}
-            />
-          </label>
+        <div className="grid grid-cols-1 gap-3 p-4 text-sm md:grid-cols-3">
           <label className="flex flex-col gap-1">
             <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t.common.search}</span>
             <span className="relative">
@@ -457,7 +433,7 @@ export default function KanbanPage() {
                 className="w-full border border-border bg-background py-2 pl-9 pr-3 shadow-inner"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Title, body, id"
+                placeholder="Title, brief, id"
               />
             </span>
           </label>
@@ -468,7 +444,7 @@ export default function KanbanPage() {
               value={tenant}
               onChange={(e) => setTenant(e.target.value)}
             >
-              <option value="">—</option>
+              <option value="">All tenants</option>
               {(board?.tenants ?? []).map((x) => (
                 <option key={x} value={x}>
                   {x}
@@ -477,13 +453,13 @@ export default function KanbanPage() {
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Assignee</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Worker</span>
             <select
               className="border border-border bg-background px-3 py-2 shadow-inner"
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
             >
-              <option value="">—</option>
+              <option value="">All workers</option>
               {(board?.assignees ?? []).map((x) => (
                 <option key={x} value={x}>
                   {x}
@@ -541,13 +517,13 @@ export default function KanbanPage() {
           </select>
           <input
             className="border border-border bg-background px-3 py-2 shadow-inner"
-            placeholder="New task title"
+            placeholder="Task title"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
           />
           <input
             className="border border-border bg-background px-3 py-2 shadow-inner"
-            placeholder="Assignee (worker label)"
+            placeholder="Worker label"
             value={newAssignee}
             onChange={(e) => setNewAssignee(e.target.value)}
           />
@@ -573,8 +549,8 @@ export default function KanbanPage() {
           </button>
         </div>
         <textarea
-          className="mx-4 mb-4 min-h-[64px] w-[calc(100%-2rem)] border border-border bg-background px-3 py-2 text-sm shadow-inner"
-          placeholder="Description (optional)"
+          className="mx-4 mb-4 min-h-[84px] w-[calc(100%-2rem)] border border-border bg-background px-3 py-2 text-sm shadow-inner"
+          placeholder="Task brief, constraints, acceptance criteria, useful context"
           value={newBody}
           onChange={(e) => setNewBody(e.target.value)}
         />
@@ -588,72 +564,73 @@ export default function KanbanPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 items-start md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 items-start md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {COLUMN_ORDER.map((col) => {
           const Icon = COLUMN_META[col].icon;
           return (
-          <section
-            key={col}
-            className="flex min-h-[320px] flex-col overflow-hidden rounded-sm border border-border bg-card/88 shadow-xl shadow-black/14"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => void onDropColumn(e, col)}
-          >
-            <div className="flex items-center justify-between border-b border-border px-3 py-3">
-              <div className="flex items-center gap-2">
-                <span className={`grid h-7 w-7 place-items-center rounded-sm ${COLUMN_META[col].className}`}>
-                  <Icon className="h-4 w-4" />
-                </span>
-                <span className="text-xs font-semibold uppercase tracking-[0.08em] text-foreground">
-                  {colLabel(col)}
+            <section
+              key={col}
+              className="flex min-h-[320px] flex-col overflow-hidden rounded-sm border border-border bg-card/88 shadow-xl shadow-black/14"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => void onDropColumn(e, col)}
+            >
+              <div className="flex items-center justify-between border-b border-border px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <span className={`grid h-7 w-7 place-items-center rounded-sm ${COLUMN_META[col].className}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-foreground">
+                    {colLabel(col)}
+                  </span>
+                </div>
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+                  {columnTasks[col]?.length ?? 0}
                 </span>
               </div>
-              <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                {columnTasks[col]?.length ?? 0}
-              </span>
-            </div>
-            <div className="flex flex-col gap-2 p-2 overflow-y-auto max-h-[62vh]">
-              {(columnTasks[col] ?? []).map((task) => (
-                <div
-                  key={task.id}
-                  draggable
-                  onDragStart={(e) => onDragStart(e, task.id)}
-                  className={`rounded-sm border px-3 py-3 cursor-grab active:cursor-grabbing text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-                    selectedId === task.id ? "border-primary ring-2 ring-primary/15" : "border-border"
-                  } bg-background/90`}
-                  onClick={() => void openTask(task.id)}
-                >
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(task.id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleSelect(task.id);
-                      }}
-                      className="mt-1"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{task.title}</div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>{task.id}</span>
-                        <span className="inline-flex items-center gap-1">
-                          <UserRound className="h-3 w-3" />
-                          {String(task.assignee ?? "unassigned")}
-                        </span>
-                        {task.priority ? (
+              <div className="flex flex-col gap-2 p-2 overflow-y-auto max-h-[62vh]">
+                {(columnTasks[col] ?? []).map((task) => (
+                  <div
+                    key={task.id}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, task.id)}
+                    className={`rounded-sm border px-3 py-3 cursor-grab active:cursor-grabbing text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                      selectedId === task.id ? "border-primary ring-2 ring-primary/15" : "border-border"
+                    } bg-background/90`}
+                    onClick={() => void openTask(task.id)}
+                  >
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(task.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleSelect(task.id);
+                        }}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{task.title}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span>{task.id}</span>
                           <span className="inline-flex items-center gap-1">
-                            <Timer className="h-3 w-3" />
-                            P{String(task.priority)}
+                            <UserRound className="h-3 w-3" />
+                            {String(task.assignee ?? "unassigned")}
                           </span>
-                        ) : null}
+                          {task.priority ? (
+                            <span className="inline-flex items-center gap-1">
+                              <Timer className="h-3 w-3" />
+                              P{String(task.priority)}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )})}
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {detail && (
@@ -674,8 +651,8 @@ export default function KanbanPage() {
           <div className="flex-1 overflow-y-auto p-4 text-sm space-y-4">
             <div className="opacity-80 text-xs">
               <div>ID: {detail.id}</div>
-              <div>Status: {detail.status}</div>
-              <div>Assignee: {String(detail.assignee ?? "—")}</div>
+              <div>Status: {colLabel(detail.status)}</div>
+              <div>Worker: {String(detail.assignee ?? "—")}</div>
               <div>Priority: {String(detail.priority ?? 0)}</div>
               <div>Tenant: {String(detail.tenant ?? "—")}</div>
               {!!detail.workspace_path && (
@@ -712,7 +689,7 @@ export default function KanbanPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="uppercase tracking-wider opacity-70">Assignee</span>
+                <span className="uppercase tracking-wider opacity-70">Worker</span>
                 <input
                   key={`assignee-${detail.id}-${detail.assignee ?? ""}`}
                   className="border border-border bg-background px-2 py-1"
@@ -752,52 +729,47 @@ export default function KanbanPage() {
             <div className="flex flex-wrap gap-2 text-xs">
               <button
                 type="button"
+                className="inline-flex items-center gap-1 px-2 py-1 border border-border"
+                onClick={() => void retrySelectedTask()}
+              >
+                <Sparkles className="h-3 w-3" />
+                Send to Spark
+              </button>
+              <button
+                type="button"
                 className="px-2 py-1 border border-border"
                 onClick={() => void patchSelectedTask({ status: "archived" })}
               >
                 Archive
               </button>
-              <button type="button" className="px-2 py-1 border border-border" onClick={() => void unblockSelectedTask()}>
-                Unblock
-              </button>
-              <button type="button" className="px-2 py-1 border border-border" onClick={() => void retrySelectedTask()}>
-                Retry
-              </button>
               <button type="button" className="px-2 py-1 border border-border" onClick={() => void duplicateSelectedTask()}>
                 Duplicate
               </button>
             </div>
-            <div className="grid grid-cols-1 gap-2 text-xs">
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 border border-border bg-background px-2 py-1"
-                  value={completeSummary}
-                  onChange={(e) => setCompleteSummary(e.target.value)}
-                  placeholder="Completion summary"
-                />
-                <button
-                  type="button"
-                  className="px-2 py-1 border border-border"
-                  onClick={() => void completeSelectedTask()}
-                >
-                  Complete
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 border border-border bg-background px-2 py-1"
-                  value={blockReason}
-                  onChange={(e) => setBlockReason(e.target.value)}
-                  placeholder="Block reason"
-                />
-                <button type="button" className="px-2 py-1 border border-border" onClick={() => void blockSelectedTask()}>
-                  Block
-                </button>
-              </div>
+            <div className="flex gap-2 text-xs">
+              <input
+                className="flex-1 border border-border bg-background px-2 py-1"
+                value={completeSummary}
+                onChange={(e) => setCompleteSummary(e.target.value)}
+                placeholder="Review note"
+              />
+              <button
+                type="button"
+                className="px-2 py-1 border border-border"
+                onClick={() => void completeSelectedTask()}
+              >
+                Complete
+              </button>
             </div>
-            <pre className="whitespace-pre-wrap opacity-90 text-xs border border-border p-2 max-h-40 overflow-y-auto">
-              {detail.body || "(no description)"}
-            </pre>
+            <label className="block text-xs">
+              <span className="mb-1 block uppercase tracking-wider opacity-70">Brief</span>
+              <textarea
+                key={`body-${detail.id}-${detail.updated_at ?? ""}`}
+                className="min-h-32 w-full border border-border bg-background px-2 py-2"
+                defaultValue={detail.body ?? ""}
+                onBlur={(e) => void patchSelectedTask({ body: e.target.value })}
+              />
+            </label>
             <div>
               <div className="text-xs uppercase tracking-wider mb-2 opacity-70">Link Tasks</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
@@ -861,10 +833,10 @@ export default function KanbanPage() {
               </ul>
               <div className="flex gap-2 mt-2">
                 <input
-                  className="flex-1 border border-border px-2 py-1"
+                  className="flex-1 border border-border bg-background px-2 py-1"
                   value={commentBody}
                   onChange={(e) => setCommentBody(e.target.value)}
-                  placeholder="Add comment"
+                  placeholder="Add detail or revision note"
                 />
                 <button type="button" className="px-2 py-1 border border-border" onClick={() => void postComment()}>
                   Send

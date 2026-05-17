@@ -155,7 +155,10 @@ registry.register(
     toolset="kanban",
     schema={
         "name": "kanban_complete",
-        "description": "Mark the Kanban task done with summary + structured metadata for handoff.",
+        "description": (
+            "Mark the Kanban task ready for user review with summary + structured "
+            "metadata for handoff."
+        ),
         "parameters": {
             "type": "object",
             "properties": {

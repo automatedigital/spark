@@ -51,7 +51,7 @@ def _ensure_goals_board() -> None:
     kb = _kb()
     kb.init_kanban_db()
     import sqlite3
-    from core.spark_constants import get_spark_home
+
     path = str(kb.kanban_db_path())
     conn = sqlite3.connect(path)
     try:
@@ -199,7 +199,7 @@ def done_goal(summary: str = "") -> dict[str, Any] | None:
         if task is None:
             return None
         snapshot = _task_to_goal(task)
-        _kb().complete_task(task["id"], summary=summary or "Goal completed via /goal done")
+        _kb().mark_task_done(task["id"], summary=summary or "Goal completed via /goal done")
         return snapshot
     except Exception as e:
         logger.warning("done_goal failed: %s", e)
