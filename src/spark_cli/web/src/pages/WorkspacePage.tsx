@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type React from "react";
 import {
   Bot,
   Check,
@@ -40,6 +41,49 @@ type FileView = {
   content: string | null;
   loading: boolean;
 };
+
+type ThreadTab = {
+  id: "threads";
+  type: "threads";
+  name: string;
+};
+
+type FileTab = FileView & {
+  id: string;
+  type: "file";
+};
+
+type WorkspaceTab = ThreadTab | FileTab;
+
+type PaneNode = {
+  type: "pane";
+  id: string;
+  tabIds: string[];
+  activeTabId: string;
+};
+
+type SplitNode = {
+  type: "split";
+  id: string;
+  direction: "row" | "column";
+  sizes: [number, number];
+  children: [WorkspaceLayoutNode, WorkspaceLayoutNode];
+};
+
+type WorkspaceLayoutNode = PaneNode | SplitNode;
+
+type DropEdge = "left" | "right" | "top" | "bottom";
+
+const THREAD_TAB_ID = "threads";
+const THREAD_TAB: ThreadTab = { id: THREAD_TAB_ID, type: "threads", name: "Threads" };
+
+const makePaneId = () => `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const makeSplitId = () => `split-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const fileTabId = (path: string) => `file:${path}`;
+
+function createDefaultLayout(): WorkspaceLayoutNode {
+  return { type: "pane", id: makePaneId(), tabIds: [THREAD_TAB_ID], activeTabId: THREAD_TAB_ID };
+}
 
 // ── File utilities ─────────────────────────────────────────────────────────────
 
@@ -204,7 +248,6 @@ function FileViewer({ file, slug }: { file: FileView; slug: string }) {
     const url = workspaceRawFileUrl(slug, file.path);
     return (
       <div className="flex h-full flex-col items-center gap-3 overflow-auto p-4">
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video src={url} controls className="max-w-full rounded border border-border" />
         <a
           href={url}
@@ -267,6 +310,199 @@ function ResizeDivider({ onDrag }: { onDrag: (delta: number) => void }) {
       <GripVertical className="relative z-10 h-4 w-4 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 group-active:text-primary/70" />
     </div>
   );
+}
+
+function HorizontalResizeDivider({ onDrag }: { onDrag: (delta: number) => void }) {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let lastY = e.clientY;
+    const onMove = (mv: MouseEvent) => {
+      const delta = mv.clientY - lastY;
+      lastY = mv.clientY;
+      onDrag(delta);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      className="group relative flex h-3 shrink-0 cursor-row-resize items-center justify-center"
+    >
+      <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-border transition-colors group-hover:bg-primary/50 group-active:bg-primary/70" />
+      <GripVertical className="relative z-10 h-4 w-4 rotate-90 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 group-active:text-primary/70" />
+    </div>
+  );
+}
+
+function allLayoutTabIds(node: WorkspaceLayoutNode): string[] {
+  if (node.type === "pane") return node.tabIds;
+  return [...allLayoutTabIds(node.children[0]), ...allLayoutTabIds(node.children[1])];
+}
+
+function findActiveFilePath(node: WorkspaceLayoutNode, tabs: WorkspaceTab[]): string | null {
+  const activeIds = allLayoutTabIds(node);
+  const activeFile = tabs.find((tab) => tab.type === "file" && activeIds.includes(tab.id));
+  return activeFile?.type === "file" ? activeFile.path : null;
+}
+
+function ensureLayoutTabs(node: WorkspaceLayoutNode, validIds: Set<string>): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    const tabIds = node.tabIds.filter((id) => validIds.has(id));
+    const safeTabIds = tabIds.length ? tabIds : [THREAD_TAB_ID];
+    return {
+      ...node,
+      tabIds: safeTabIds,
+      activeTabId: safeTabIds.includes(node.activeTabId) ? node.activeTabId : safeTabIds[0],
+    };
+  }
+  return {
+    ...node,
+    children: [
+      ensureLayoutTabs(node.children[0], validIds),
+      ensureLayoutTabs(node.children[1], validIds),
+    ],
+  };
+}
+
+function removeTabFromLayout(node: WorkspaceLayoutNode, tabId: string): WorkspaceLayoutNode | null {
+  if (node.type === "pane") {
+    const index = node.tabIds.indexOf(tabId);
+    if (index === -1) return node;
+    const nextTabIds = node.tabIds.filter((id) => id !== tabId);
+    if (!nextTabIds.length) return null;
+    const nextActive =
+      node.activeTabId === tabId
+        ? nextTabIds[Math.min(index, nextTabIds.length - 1)]
+        : node.activeTabId;
+    return { ...node, tabIds: nextTabIds, activeTabId: nextActive };
+  }
+
+  const left = removeTabFromLayout(node.children[0], tabId);
+  const right = removeTabFromLayout(node.children[1], tabId);
+  if (!left) return right;
+  if (!right) return left;
+  return { ...node, children: [left, right] };
+}
+
+function addTabToFirstPane(node: WorkspaceLayoutNode, tabId: string): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    const tabIds = node.tabIds.includes(tabId) ? node.tabIds : [...node.tabIds, tabId];
+    return { ...node, tabIds, activeTabId: tabId };
+  }
+  return { ...node, children: [addTabToFirstPane(node.children[0], tabId), node.children[1]] };
+}
+
+function focusTabInLayout(node: WorkspaceLayoutNode, tabId: string): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    return node.tabIds.includes(tabId) ? { ...node, activeTabId: tabId } : node;
+  }
+  return {
+    ...node,
+    children: [focusTabInLayout(node.children[0], tabId), focusTabInLayout(node.children[1], tabId)],
+  };
+}
+
+function setPaneActiveTab(node: WorkspaceLayoutNode, paneId: string, tabId: string): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    return node.id === paneId ? { ...node, activeTabId: tabId } : node;
+  }
+  return {
+    ...node,
+    children: [
+      setPaneActiveTab(node.children[0], paneId, tabId),
+      setPaneActiveTab(node.children[1], paneId, tabId),
+    ],
+  };
+}
+
+function reorderTabInPane(
+  node: WorkspaceLayoutNode,
+  paneId: string,
+  draggedId: string,
+  targetId: string,
+): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    if (node.id !== paneId || draggedId === targetId) return node;
+    const without = node.tabIds.filter((id) => id !== draggedId);
+    const targetIndex = without.indexOf(targetId);
+    if (targetIndex === -1) return node;
+    const tabIds = [...without.slice(0, targetIndex), draggedId, ...without.slice(targetIndex)];
+    return { ...node, tabIds, activeTabId: draggedId };
+  }
+  return {
+    ...node,
+    children: [
+      reorderTabInPane(node.children[0], paneId, draggedId, targetId),
+      reorderTabInPane(node.children[1], paneId, draggedId, targetId),
+    ],
+  };
+}
+
+function splitPaneWithTab(
+  node: WorkspaceLayoutNode,
+  paneId: string,
+  tabId: string,
+  edge: DropEdge,
+): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    if (node.id !== paneId) return node;
+    const cleanNode = removeTabFromLayout(node, tabId);
+    if (!cleanNode || cleanNode.type !== "pane") return node;
+    const newPane: PaneNode = { type: "pane", id: makePaneId(), tabIds: [tabId], activeTabId: tabId };
+    const direction = edge === "left" || edge === "right" ? "row" : "column";
+    const children: [WorkspaceLayoutNode, WorkspaceLayoutNode] =
+      edge === "left" || edge === "top" ? [newPane, cleanNode] : [cleanNode, newPane];
+    return { type: "split", id: makeSplitId(), direction, sizes: [50, 50], children };
+  }
+  return {
+    ...node,
+    children: [
+      splitPaneWithTab(node.children[0], paneId, tabId, edge),
+      splitPaneWithTab(node.children[1], paneId, tabId, edge),
+    ],
+  };
+}
+
+function moveTabToPane(node: WorkspaceLayoutNode, paneId: string, tabId: string): WorkspaceLayoutNode {
+  const targetAlreadyHasTab = (layout: WorkspaceLayoutNode): boolean => {
+    if (layout.type === "pane") return layout.id === paneId && layout.tabIds.includes(tabId);
+    return targetAlreadyHasTab(layout.children[0]) || targetAlreadyHasTab(layout.children[1]);
+  };
+  if (targetAlreadyHasTab(node)) return setPaneActiveTab(node, paneId, tabId);
+
+  const without = removeTabFromLayout(node, tabId) ?? createDefaultLayout();
+  const addToPane = (layout: WorkspaceLayoutNode): WorkspaceLayoutNode => {
+    if (layout.type === "pane") {
+      if (layout.id !== paneId) return layout;
+      const tabIds = layout.tabIds.includes(tabId) ? layout.tabIds : [...layout.tabIds, tabId];
+      return { ...layout, tabIds, activeTabId: tabId };
+    }
+    return { ...layout, children: [addToPane(layout.children[0]), addToPane(layout.children[1])] };
+  };
+  return addToPane(without);
+}
+
+function resizeSplit(node: WorkspaceLayoutNode, splitId: string, delta: number): WorkspaceLayoutNode {
+  if (node.type === "pane") return node;
+  if (node.id === splitId) {
+    const next = Math.min(80, Math.max(20, node.sizes[0] + delta));
+    return { ...node, sizes: [next, 100 - next] };
+  }
+  return {
+    ...node,
+    children: [resizeSplit(node.children[0], splitId, delta), resizeSplit(node.children[1], splitId, delta)],
+  };
+}
+
+function paneContainsTab(node: WorkspaceLayoutNode, paneId: string, tabId: string): boolean {
+  if (node.type === "pane") return node.id === paneId && node.tabIds.includes(tabId);
+  return paneContainsTab(node.children[0], paneId, tabId) || paneContainsTab(node.children[1], paneId, tabId);
 }
 
 // ── Projects sidebar ──────────────────────────────────────────────────────────
@@ -789,6 +1025,276 @@ function WorkspaceNewThread({
   );
 }
 
+// ── Workspace editor tabs ─────────────────────────────────────────────────────
+
+function WorkspaceTabButton({
+  tab,
+  active,
+  paneId,
+  onActivate,
+  onClose,
+  onReorder,
+}: {
+  tab: WorkspaceTab;
+  active: boolean;
+  paneId: string;
+  onActivate: () => void;
+  onClose: () => void;
+  onReorder: (paneId: string, draggedId: string, targetId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      draggable
+      title={tab.type === "file" ? tab.path : "Workspace threads"}
+      onClick={onActivate}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/x-spark-tab", tab.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("application/x-spark-tab")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const draggedId = e.dataTransfer.getData("application/x-spark-tab");
+        if (draggedId) onReorder(paneId, draggedId, tab.id);
+      }}
+      className={cn(
+        "group flex h-9 max-w-56 shrink-0 items-center gap-1.5 border-r border-border px-3 text-xs transition",
+        active
+          ? "bg-background text-foreground"
+          : "bg-card/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
+      )}
+    >
+      {tab.type === "threads" ? (
+        <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+      ) : (
+        <FileIcon name={tab.name} />
+      )}
+      <span className="truncate">{tab.name}</span>
+      {tab.type === "file" && (
+        <span
+          role="button"
+          tabIndex={0}
+          className="ml-1 grid h-4 w-4 shrink-0 place-items-center rounded-sm text-muted-foreground/50 opacity-0 transition hover:bg-secondary hover:text-foreground group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }
+          }}
+          aria-label={`Close ${tab.name}`}
+        >
+          <X className="h-3 w-3" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function PaneDropZone({
+  edge,
+  onDropTab,
+}: {
+  edge: DropEdge;
+  onDropTab: (tabId: string, edge: DropEdge) => void;
+}) {
+  const edgeClasses: Record<DropEdge, string> = {
+    left: "left-0 top-9 bottom-0 w-1/4 border-r",
+    right: "right-0 top-9 bottom-0 w-1/4 border-l",
+    top: "left-0 right-0 top-9 h-1/4 border-b",
+    bottom: "left-0 right-0 bottom-0 h-1/4 border-t",
+  };
+
+  return (
+    <div
+      className={cn(
+        "absolute z-20 border-primary/0 bg-primary/0 transition-colors hover:border-primary/40 hover:bg-primary/10",
+        edgeClasses[edge],
+      )}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("application/x-spark-tab")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const tabId = e.dataTransfer.getData("application/x-spark-tab");
+        if (tabId) onDropTab(tabId, edge);
+      }}
+    />
+  );
+}
+
+function WorkspacePane({
+  pane,
+  tabs,
+  slug,
+  threadContent,
+  onActivate,
+  onClose,
+  onMoveToPane,
+  onReorder,
+  onSplit,
+}: {
+  pane: PaneNode;
+  tabs: WorkspaceTab[];
+  slug: string;
+  threadContent: React.ReactNode;
+  onActivate: (paneId: string, tabId: string) => void;
+  onClose: (tabId: string) => void;
+  onMoveToPane: (paneId: string, tabId: string) => void;
+  onReorder: (paneId: string, draggedId: string, targetId: string) => void;
+  onSplit: (paneId: string, tabId: string, edge: DropEdge) => void;
+}) {
+  const [draggingOver, setDraggingOver] = useState(false);
+  const paneTabs = pane.tabIds
+    .map((id) => tabs.find((tab) => tab.id === id))
+    .filter((tab): tab is WorkspaceTab => Boolean(tab));
+  const activeTab = paneTabs.find((tab) => tab.id === pane.activeTabId) ?? paneTabs[0] ?? THREAD_TAB;
+
+  return (
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-border bg-card/30"
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("application/x-spark-tab")) {
+          e.preventDefault();
+          setDraggingOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDraggingOver(false);
+        const tabId = e.dataTransfer.getData("application/x-spark-tab");
+        if (tabId) onMoveToPane(pane.id, tabId);
+      }}
+    >
+      <div className="flex h-9 shrink-0 overflow-x-auto border-b border-border bg-card/70 scrollbar-none">
+        {paneTabs.map((tab) => (
+          <WorkspaceTabButton
+            key={tab.id}
+            tab={tab}
+            paneId={pane.id}
+            active={activeTab.id === tab.id}
+            onActivate={() => onActivate(pane.id, tab.id)}
+            onClose={() => onClose(tab.id)}
+            onReorder={onReorder}
+          />
+        ))}
+      </div>
+
+      {draggingOver && (
+        <>
+          <PaneDropZone edge="left" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="right" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="top" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+          <PaneDropZone edge="bottom" onDropTab={(tabId, edge) => onSplit(pane.id, tabId, edge)} />
+        </>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {activeTab.type === "threads" ? threadContent : <FileViewer file={activeTab} slug={slug} />}
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceLayoutView({
+  node,
+  tabs,
+  slug,
+  threadContent,
+  onActivate,
+  onClose,
+  onMoveToPane,
+  onReorder,
+  onSplit,
+  onResizeSplit,
+}: {
+  node: WorkspaceLayoutNode;
+  tabs: WorkspaceTab[];
+  slug: string;
+  threadContent: React.ReactNode;
+  onActivate: (paneId: string, tabId: string) => void;
+  onClose: (tabId: string) => void;
+  onMoveToPane: (paneId: string, tabId: string) => void;
+  onReorder: (paneId: string, draggedId: string, targetId: string) => void;
+  onSplit: (paneId: string, tabId: string, edge: DropEdge) => void;
+  onResizeSplit: (splitId: string, delta: number) => void;
+}) {
+  if (node.type === "pane") {
+    return (
+      <WorkspacePane
+        pane={node}
+        tabs={tabs}
+        slug={slug}
+        threadContent={threadContent}
+        onActivate={onActivate}
+        onClose={onClose}
+        onMoveToPane={onMoveToPane}
+        onReorder={onReorder}
+        onSplit={onSplit}
+      />
+    );
+  }
+
+  const firstStyle =
+    node.direction === "row"
+      ? { flexBasis: `${node.sizes[0]}%` }
+      : { flexBasis: `${node.sizes[0]}%` };
+  const secondStyle =
+    node.direction === "row"
+      ? { flexBasis: `${node.sizes[1]}%` }
+      : { flexBasis: `${node.sizes[1]}%` };
+
+  return (
+    <div className={cn("flex min-h-0 min-w-0 flex-1 overflow-hidden", node.direction === "column" && "flex-col")}>
+      <div className="flex min-h-0 min-w-0 overflow-hidden" style={firstStyle}>
+        <WorkspaceLayoutView
+          node={node.children[0]}
+          tabs={tabs}
+          slug={slug}
+          threadContent={threadContent}
+          onActivate={onActivate}
+          onClose={onClose}
+          onMoveToPane={onMoveToPane}
+          onReorder={onReorder}
+          onSplit={onSplit}
+          onResizeSplit={onResizeSplit}
+        />
+      </div>
+      {node.direction === "row" ? (
+        <ResizeDivider onDrag={(delta) => onResizeSplit(node.id, delta * 0.15)} />
+      ) : (
+        <HorizontalResizeDivider onDrag={(delta) => onResizeSplit(node.id, delta * 0.15)} />
+      )}
+      <div className="flex min-h-0 min-w-0 overflow-hidden" style={secondStyle}>
+        <WorkspaceLayoutView
+          node={node.children[1]}
+          tabs={tabs}
+          slug={slug}
+          threadContent={threadContent}
+          onActivate={onActivate}
+          onClose={onClose}
+          onMoveToPane={onMoveToPane}
+          onReorder={onReorder}
+          onSplit={onSplit}
+          onResizeSplit={onResizeSplit}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Files panel ───────────────────────────────────────────────────────────────
 
 function FilesPanel({
@@ -796,15 +1302,18 @@ function FilesPanel({
   collapsed,
   onToggleCollapse,
   panelWidth,
+  activePath,
+  onOpenFile,
 }: {
   slug: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
   panelWidth: number;
+  activePath: string | null;
+  onOpenFile: (node: WorkspaceFileNode) => void;
 }) {
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<FileView | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -822,43 +1331,13 @@ function FilesPanel({
   }, [slug]);
 
   useEffect(() => {
-    setSelectedFile(null);
     loadTree();
   }, [slug, loadTree]);
-
-  const handleSelectFile = async (node: WorkspaceFileNode) => {
-    const mime = node.mime ?? "application/octet-stream";
-    const cat = getFileCategory(mime, node.name);
-    const file: FileView = {
-      path: node.path,
-      name: node.name,
-      mime,
-      content: null,
-      loading: cat === "text",
-    };
-    setSelectedFile(file);
-
-    if (cat === "text") {
-      try {
-        const res = await api.getWorkspaceFile(slug, node.path);
-        setSelectedFile((prev) =>
-          prev?.path === node.path ? { ...prev, content: res.content, loading: false } : prev,
-        );
-      } catch (e) {
-        setSelectedFile((prev) =>
-          prev?.path === node.path
-            ? { ...prev, content: `Error loading file: ${e}`, loading: false }
-            : prev,
-        );
-      }
-    }
-  };
 
   const handleDelete = async (node: WorkspaceFileNode) => {
     if (!confirm(`Delete ${node.path}?`)) return;
     try {
       await api.deleteWorkspaceFile(slug, node.path);
-      if (selectedFile?.path === node.path) setSelectedFile(null);
       loadTree();
     } catch (e) {
       console.error("Delete failed", e);
@@ -958,8 +1437,7 @@ function FilesPanel({
       {/* File tree */}
       <div
         className={cn(
-          "overflow-y-auto py-1 transition-all",
-          selectedFile ? "h-[45%]" : "flex-1",
+          "flex-1 overflow-y-auto py-1 transition-all",
           dragOver && "bg-primary/5 ring-2 ring-inset ring-primary/20",
         )}
         onDragOver={(e) => {
@@ -993,33 +1471,12 @@ function FilesPanel({
             key={node.path}
             node={node}
             depth={0}
-            onSelect={(n) => void handleSelectFile(n)}
-            selectedPath={selectedFile?.path ?? null}
+            onSelect={onOpenFile}
+            selectedPath={activePath}
             onDelete={(n) => void handleDelete(n)}
           />
         ))}
       </div>
-
-      {/* Inline file viewer */}
-      {selectedFile && (
-        <div className="flex flex-col overflow-hidden border-t border-border" style={{ flex: "0 0 55%" }}>
-          <div className="flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-3 py-1.5">
-            <span className="truncate text-xs text-muted-foreground" title={selectedFile.path}>
-              {selectedFile.name}
-            </span>
-            <button
-              type="button"
-              className="ml-2 shrink-0 text-muted-foreground/50 hover:text-foreground"
-              onClick={() => setSelectedFile(null)}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <FileViewer file={selectedFile} slug={slug} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1039,6 +1496,8 @@ export default function WorkspacePage() {
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>([THREAD_TAB]);
+  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayoutNode>(() => createDefaultLayout());
 
   const [projectsCollapsed, setProjectsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem("spark-workspace-projects-collapsed") === "true";
@@ -1098,6 +1557,43 @@ export default function WorkspacePage() {
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    if (!activeSlug) {
+      setWorkspaceTabs([THREAD_TAB]);
+      setWorkspaceLayout(createDefaultLayout());
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(`spark-workspace-editor:${activeSlug}`);
+      if (!raw) {
+        setWorkspaceTabs([THREAD_TAB]);
+        setWorkspaceLayout(createDefaultLayout());
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as { tabs?: WorkspaceTab[]; layout?: WorkspaceLayoutNode };
+      const tabs = Array.isArray(parsed.tabs)
+        ? [THREAD_TAB, ...parsed.tabs.filter((tab): tab is FileTab => tab?.type === "file" && typeof tab.path === "string")]
+        : [THREAD_TAB];
+      const uniqueTabs = tabs.filter((tab, index, arr) => arr.findIndex((item) => item.id === tab.id) === index);
+      const validIds = new Set(uniqueTabs.map((tab) => tab.id));
+      setWorkspaceTabs(uniqueTabs);
+      setWorkspaceLayout(parsed.layout ? ensureLayoutTabs(parsed.layout, validIds) : createDefaultLayout());
+    } catch {
+      setWorkspaceTabs([THREAD_TAB]);
+      setWorkspaceLayout(createDefaultLayout());
+    }
+  }, [activeSlug]);
+
+  useEffect(() => {
+    if (!activeSlug) return;
+    localStorage.setItem(
+      `spark-workspace-editor:${activeSlug}`,
+      JSON.stringify({ tabs: workspaceTabs.filter((tab) => tab.type === "file"), layout: workspaceLayout }),
+    );
+  }, [activeSlug, workspaceLayout, workspaceTabs]);
 
   const handleCreate = async (name: string) => {
     const res = await api.createWorkspaceProject(name);
@@ -1181,6 +1677,176 @@ export default function WorkspacePage() {
     }
   };
 
+  const handleOpenFile = (node: WorkspaceFileNode) => {
+    if (!activeSlug) return;
+    const mime = node.mime ?? "application/octet-stream";
+    const cat = getFileCategory(mime, node.name);
+    const tabId = fileTabId(node.path);
+
+    setWorkspaceTabs((prev) => {
+      if (prev.some((tab) => tab.id === tabId)) return prev;
+      return [
+        ...prev,
+        {
+          id: tabId,
+          type: "file",
+          path: node.path,
+          name: node.name,
+          mime,
+          content: null,
+          loading: cat === "text",
+        },
+      ];
+    });
+    setWorkspaceLayout((prev) =>
+      allLayoutTabIds(prev).includes(tabId) ? focusTabInLayout(prev, tabId) : addTabToFirstPane(prev, tabId),
+    );
+
+    if (cat === "text") {
+      void api
+        .getWorkspaceFile(activeSlug, node.path)
+        .then((res) => {
+          setWorkspaceTabs((prev) =>
+            prev.map((tab) =>
+              tab.id === tabId && tab.type === "file"
+                ? { ...tab, content: res.content, loading: false }
+                : tab,
+            ),
+          );
+        })
+        .catch((e) => {
+          setWorkspaceTabs((prev) =>
+            prev.map((tab) =>
+              tab.id === tabId && tab.type === "file"
+                ? { ...tab, content: `Error loading file: ${e}`, loading: false }
+                : tab,
+            ),
+          );
+        });
+    }
+  };
+
+  const handleCloseTab = (tabId: string) => {
+    if (tabId === THREAD_TAB_ID) return;
+    setWorkspaceTabs((prev) => prev.filter((tab) => tab.id !== tabId));
+    setWorkspaceLayout((prev) => removeTabFromLayout(prev, tabId) ?? createDefaultLayout());
+  };
+
+  const handleMoveTabToPane = (paneId: string, tabId: string) => {
+    setWorkspaceLayout((prev) => moveTabToPane(prev, paneId, tabId));
+  };
+
+  const handleSplitTab = (paneId: string, tabId: string, edge: DropEdge) => {
+    if (tabId === THREAD_TAB_ID) return;
+    setWorkspaceLayout((prev) => {
+      const layout = paneContainsTab(prev, paneId, tabId)
+        ? prev
+        : removeTabFromLayout(prev, tabId) ?? createDefaultLayout();
+      return splitPaneWithTab(layout, paneId, tabId, edge);
+    });
+  };
+
+  const handleReorderTab = (paneId: string, draggedId: string, targetId: string) => {
+    setWorkspaceLayout((prev) => reorderTabInPane(prev, paneId, draggedId, targetId));
+  };
+
+  const activeFilePath = activeSlug ? findActiveFilePath(workspaceLayout, workspaceTabs) : null;
+
+  const threadContent = activeSlug ? (
+    newThread ? (
+      <WorkspaceNewThread
+        key={`new-${activeSlug}`}
+        slug={activeSlug}
+        onCreated={handleThreadCreated}
+        onCancel={() => setNewThread(false)}
+      />
+    ) : activeThreadId ? (
+      <>
+        <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
+          <div className="min-w-0 flex-1">
+            {editingTitle ? (
+              <div className="flex max-w-xl items-center gap-2">
+                <Input
+                  className="h-8 text-sm"
+                  value={titleDraft}
+                  placeholder={activeSession?.preview || "Thread title"}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveRename();
+                    if (e.key === "Escape") setEditingTitle(false);
+                  }}
+                  autoFocus
+                />
+                <Button size="icon" className="h-8 w-8" onClick={() => void saveRename()}>
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setEditingTitle(false)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <p className="truncate text-sm font-medium">
+                  {activeSession ? threadTitle(activeSession) : "Thread"}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground"
+                  onClick={beginRename}
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+            onClick={() => {
+              setActiveThreadId(null);
+              setActiveSession(null);
+              setEditingTitle(false);
+              setPendingInitialMsg(null);
+            }}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            All threads
+          </Button>
+        </div>
+
+        <ChatPanel
+          sessionId={activeThreadId}
+          sessionTitle={activeSession ? threadTitle(activeSession) : null}
+          initialMessage={pendingInitialMsg ?? undefined}
+          workspaceSlug={activeSlug}
+          onBack={() => {
+            setActiveThreadId(null);
+            setActiveSession(null);
+            setPendingInitialMsg(null);
+          }}
+          onSessionCreated={(id) => setActiveThreadId(id)}
+          onSessionUpdated={() => {}}
+          className="min-h-0 flex-1"
+        />
+      </>
+    ) : (
+      <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+        <MessageSquare className="mb-4 h-12 w-12 opacity-30" />
+        <p className="text-sm font-medium text-foreground">Select a thread</p>
+        <p className="mt-1 max-w-sm text-xs opacity-75">
+          Pick a thread from the list or click New to start one.
+        </p>
+      </div>
+    )
+  ) : null;
+
   return (
     <div className="flex h-full max-h-screen min-h-0 overflow-hidden border-t border-border bg-card/75">
       {/* Projects panel */}
@@ -1215,102 +1881,21 @@ export default function WorkspacePage() {
         </>
       )}
 
-      {/* Chat area */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {activeSlug ? (
-          newThread ? (
-            <WorkspaceNewThread
-              key={`new-${activeSlug}`}
-              slug={activeSlug}
-              onCreated={handleThreadCreated}
-              onCancel={() => setNewThread(false)}
-            />
-          ) : activeThreadId ? (
-            <>
-              {/* Session header */}
-              <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
-                <div className="min-w-0 flex-1">
-                  {editingTitle ? (
-                    <div className="flex max-w-xl items-center gap-2">
-                      <Input
-                        className="h-8 text-sm"
-                        value={titleDraft}
-                        placeholder={activeSession?.preview || "Thread title"}
-                        onChange={(e) => setTitleDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") void saveRename();
-                          if (e.key === "Escape") setEditingTitle(false);
-                        }}
-                        autoFocus
-                      />
-                      <Button size="icon" className="h-8 w-8" onClick={() => void saveRename()}>
-                        <Check className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => setEditingTitle(false)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex min-w-0 items-center gap-2">
-                      <p className="truncate text-sm font-medium">
-                        {activeSession ? threadTitle(activeSession) : "Thread"}
-                      </p>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground"
-                        onClick={beginRename}
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                  onClick={() => {
-                    setActiveThreadId(null);
-                    setActiveSession(null);
-                    setEditingTitle(false);
-                    setPendingInitialMsg(null);
-                  }}
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  All threads
-                </Button>
-              </div>
-
-              <ChatPanel
-                sessionId={activeThreadId}
-                sessionTitle={activeSession ? threadTitle(activeSession) : null}
-                initialMessage={pendingInitialMsg ?? undefined}
-                workspaceSlug={activeSlug ?? undefined}
-                onBack={() => {
-                  setActiveThreadId(null);
-                  setActiveSession(null);
-                  setPendingInitialMsg(null);
-                }}
-                onSessionCreated={(id) => setActiveThreadId(id)}
-                onSessionUpdated={() => {}}
-                className="min-h-0 flex-1"
-              />
-            </>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
-              <MessageSquare className="mb-4 h-12 w-12 opacity-30" />
-              <p className="text-sm font-medium text-foreground">Select a thread</p>
-              <p className="mt-1 max-w-sm text-xs opacity-75">
-                Pick a thread from the list or click New to start one.
-              </p>
-            </div>
-          )
+      {/* Workspace editor area */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {activeSlug && threadContent ? (
+          <WorkspaceLayoutView
+            node={workspaceLayout}
+            tabs={workspaceTabs}
+            slug={activeSlug}
+            threadContent={threadContent}
+            onActivate={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
+            onClose={handleCloseTab}
+            onMoveToPane={handleMoveTabToPane}
+            onReorder={handleReorderTab}
+            onSplit={handleSplitTab}
+            onResizeSplit={(splitId, delta) => setWorkspaceLayout((prev) => resizeSplit(prev, splitId, delta))}
+          />
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
             <FolderOpen className="mb-4 h-12 w-12 opacity-30" />
@@ -1332,6 +1917,8 @@ export default function WorkspacePage() {
             collapsed={filesCollapsed}
             onToggleCollapse={toggleFilesCollapse}
             panelWidth={filesWidth}
+            activePath={activeFilePath}
+            onOpenFile={handleOpenFile}
           />
         </>
       )}
