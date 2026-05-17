@@ -585,6 +585,7 @@ export interface StatusResponse {
   spark_home: string;
   latest_config_version: number;
   release_date: string;
+  server_instance_id?: string;
   version: string;
   update_available?: boolean;
   commits_behind?: number | null;

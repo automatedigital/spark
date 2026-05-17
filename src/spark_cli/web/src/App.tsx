@@ -80,6 +80,8 @@ export default function App() {
   const [updateStatus, setUpdateStatus] = useState<"idle" | "running" | "restarting" | "done" | "failed">("idle");
   const [updateOutput, setUpdateOutput] = useState<string[]>([]);
   const outputScrollRef = useRef<HTMLDivElement>(null);
+  const updateStartedInstanceIdRef = useRef<string | null>(null);
+  const updateSawUnavailableRef = useRef(false);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -180,11 +182,18 @@ export default function App() {
     if (updateStatus !== "restarting") return;
     const interval = setInterval(async () => {
       try {
-        await api.getStatus();
-        setUpdateStatus("done");
-        setUpdateAvailable(false);
+        const status = await api.getStatus();
+        const startedInstanceId = updateStartedInstanceIdRef.current;
+        const instanceChanged =
+          Boolean(startedInstanceId) &&
+          Boolean(status.server_instance_id) &&
+          status.server_instance_id !== startedInstanceId;
+        if (instanceChanged || updateSawUnavailableRef.current) {
+          setUpdateStatus("done");
+          setUpdateAvailable(false);
+        }
       } catch {
-        // still restarting
+        updateSawUnavailableRef.current = true;
       }
     }, 2000);
     return () => clearInterval(interval);
@@ -206,7 +215,11 @@ export default function App() {
   const startUpdate = async () => {
     setUpdateStatus("running");
     setUpdateOutput([]);
+    updateStartedInstanceIdRef.current = null;
+    updateSawUnavailableRef.current = false;
     try {
+      const currentStatus = await api.getStatus().catch(() => null);
+      updateStartedInstanceIdRef.current = currentStatus?.server_instance_id ?? null;
       const resp = await api.runAdminAction("update.run", {}, true);
       const es = new EventSource(sseUrl(`/api/admin/actions/runs/${encodeURIComponent(resp.run_id)}/stream`));
       es.onmessage = (ev) => {
@@ -232,6 +245,7 @@ export default function App() {
       };
       es.onerror = () => {
         es.close();
+        updateSawUnavailableRef.current = true;
         // Server likely restarted mid-update — poll until it comes back
         setUpdateStatus((prev) => prev === "running" ? "restarting" : prev);
       };

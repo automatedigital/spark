@@ -226,6 +226,7 @@ class TestWebServerEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert "version" in data
+        assert "server_instance_id" in data
         assert "spark_home" in data
         assert "active_sessions" in data
 
@@ -726,24 +727,40 @@ class TestNewEndpoints:
                 "description": "active",
                 "category": "demo",
                 "enabled": True,
+                "use_count": 0,
+                "view_count": 0,
+                "patch_count": 0,
+                "skill_state": "active",
             },
             {
                 "name": "design-md",
                 "description": "design",
                 "category": "creative",
                 "enabled": True,
+                "use_count": 0,
+                "view_count": 0,
+                "patch_count": 0,
+                "skill_state": "active",
             },
             {
                 "name": "disabled-skill",
                 "description": "disabled",
                 "category": "demo",
                 "enabled": False,
+                "use_count": 0,
+                "view_count": 0,
+                "patch_count": 0,
+                "skill_state": "active",
             },
             {
                 "name": "frontend-design",
                 "description": "frontend",
                 "category": "creative",
                 "enabled": True,
+                "use_count": 0,
+                "view_count": 0,
+                "patch_count": 0,
+                "skill_state": "active",
             },
         ]
 

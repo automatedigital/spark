@@ -127,6 +127,7 @@ app = FastAPI(title="Spark Agent", version=__version__, lifespan=_lifespan)
 # Generated fresh on every server start — dies when the process exits.
 # Injected into the SPA HTML so only the legitimate web UI can use it.
 # ---------------------------------------------------------------------------
+_SERVER_INSTANCE_ID = uuid.uuid4().hex
 _SESSION_TOKEN = secrets.token_urlsafe(32)
 
 # Simple rate limiter for the reveal endpoint
@@ -997,6 +998,7 @@ async def get_status():
         pass
 
     return {
+        "server_instance_id": _SERVER_INSTANCE_ID,
         "version": __version__,
         "release_date": __release_date__,
         "spark_home": str(get_spark_home()),
