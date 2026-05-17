@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Bot,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Edit3,
   File,
   FileText,
-  Film,
   Folder,
   FolderOpen,
   GripVertical,
-  Image,
   Loader2,
   MessageSquare,
   Plus,
@@ -21,12 +21,9 @@ import {
   X,
 } from "lucide-react";
 import { api, workspaceRawFileUrl } from "@/lib/api";
-import type {
-  SessionInfo,
-  WorkspaceFileNode,
-  WorkspaceProject,
-} from "@/lib/api";
+import type { SessionInfo, WorkspaceFileNode, WorkspaceProject } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -36,38 +33,15 @@ import { ThreadRow, threadTitle } from "@/components/chat/ThreadRow";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type FileTab = {
-  id: string;        // = file path
+type FileView = {
   path: string;
-  label: string;     // filename only
+  name: string;
   mime: string;
-  content: string | null;  // null for binary or not-yet-loaded
+  content: string | null;
   loading: boolean;
 };
 
-type ActiveTab = "chat" | string;  // "chat" or a file path id
-
-// ── localStorage persistence ──────────────────────────────────────────────────
-
-const COL_WIDTHS_KEY = "spark-workspace-col-widths";
-
-function loadColWidths(): [number, number] {
-  try {
-    const raw = localStorage.getItem(COL_WIDTHS_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as unknown;
-      if (Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number")
-        return [Math.max(160, p[0] as number), Math.max(200, p[1] as number)];
-    }
-  } catch { /* ignore */ }
-  return [240, 300];
-}
-
-function saveColWidths(l: number, c: number): void {
-  localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify([l, c]));
-}
-
-// ── File category ─────────────────────────────────────────────────────────────
+// ── File utilities ─────────────────────────────────────────────────────────────
 
 function getFileCategory(mime: string, filename: string): "text" | "image" | "video" | "binary" {
   if (mime.startsWith("image/")) return "image";
@@ -75,7 +49,8 @@ function getFileCategory(mime: string, filename: string): "text" | "image" | "vi
   if (
     mime.startsWith("text/") ||
     ["application/json", "application/yaml", "application/xml"].includes(mime)
-  ) return "text";
+  )
+    return "text";
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
   const textExts = new Set([
     "ts", "tsx", "js", "jsx", "py", "md", "txt", "yaml", "yml",
@@ -84,7 +59,20 @@ function getFileCategory(mime: string, filename: string): "text" | "image" | "vi
   return textExts.has(ext) ? "text" : "binary";
 }
 
-// ── File tree node ────────────────────────────────────────────────────────────
+function FileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const textExts = new Set([
+    "ts", "tsx", "js", "jsx", "py", "md", "txt", "yaml", "yml", "json",
+    "html", "css", "sh", "toml", "env", "ini", "cfg",
+  ]);
+  return textExts.has(ext) ? (
+    <FileText className="h-3.5 w-3.5 shrink-0 text-sky-300/70" />
+  ) : (
+    <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+  );
+}
+
+// ── File tree node ─────────────────────────────────────────────────────────────
 
 function FileNodeRow({
   node,
@@ -114,11 +102,8 @@ function FileNodeRow({
         )}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
         onClick={() => {
-          if (isDir) {
-            setExpanded((v) => !v);
-          } else {
-            onSelect(node);
-          }
+          if (isDir) setExpanded((v) => !v);
+          else onSelect(node);
         }}
       >
         {isDir ? (
@@ -131,9 +116,9 @@ function FileNodeRow({
               )}
             </span>
             {expanded ? (
-              <FolderOpen className="h-3.5 w-3.5 text-amber-300/80 shrink-0" />
+              <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300/80" />
             ) : (
-              <Folder className="h-3.5 w-3.5 text-amber-300/80 shrink-0" />
+              <Folder className="h-3.5 w-3.5 shrink-0 text-amber-300/80" />
             )}
           </>
         ) : (
@@ -146,7 +131,7 @@ function FileNodeRow({
         {!isDir && (
           <button
             type="button"
-            className="hidden group-hover:block ml-1 text-muted-foreground/50 hover:text-destructive"
+            className="ml-1 hidden text-muted-foreground/50 hover:text-destructive group-hover:block"
             onClick={(e) => {
               e.stopPropagation();
               onDelete(node);
@@ -170,7 +155,7 @@ function FileNodeRow({
           ))}
           {node.children.length === 0 && (
             <div
-              className="px-2 py-0.5 text-xs text-muted-foreground/40 italic"
+              className="px-2 py-0.5 text-xs italic text-muted-foreground/40"
               style={{ paddingLeft: `${8 + (depth + 1) * 12}px` }}
             >
               empty
@@ -182,16 +167,75 @@ function FileNodeRow({
   );
 }
 
-function FileIcon({ name }: { name: string }) {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  const textExts = new Set([
-    "ts", "tsx", "js", "jsx", "py", "md", "txt", "yaml", "yml", "json",
-    "html", "css", "sh", "toml", "env", "ini", "cfg",
-  ]);
-  return textExts.has(ext) ? (
-    <FileText className="h-3.5 w-3.5 text-sky-300/70 shrink-0" />
-  ) : (
-    <File className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+// ── File viewer ───────────────────────────────────────────────────────────────
+
+function FileViewer({ file, slug }: { file: FileView; slug: string }) {
+  const cat = getFileCategory(file.mime, file.name);
+
+  if (file.loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (cat === "image") {
+    const url = workspaceRawFileUrl(slug, file.path);
+    return (
+      <div className="flex h-full flex-col items-center gap-3 overflow-auto p-4">
+        <img
+          src={url}
+          alt={file.name}
+          className="max-w-full rounded border border-border object-contain"
+        />
+        <a
+          href={url}
+          download={file.name}
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          Download {file.name}
+        </a>
+      </div>
+    );
+  }
+
+  if (cat === "video") {
+    const url = workspaceRawFileUrl(slug, file.path);
+    return (
+      <div className="flex h-full flex-col items-center gap-3 overflow-auto p-4">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video src={url} controls className="max-w-full rounded border border-border" />
+        <a
+          href={url}
+          download={file.name}
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          Download {file.name}
+        </a>
+      </div>
+    );
+  }
+
+  if (cat === "text" && file.content !== null) {
+    return (
+      <div className="h-full overflow-auto bg-background/60">
+        <pre className="whitespace-pre-wrap break-all px-4 py-3 font-mono text-[0.7rem] leading-relaxed text-muted-foreground">
+          {file.content}
+        </pre>
+      </div>
+    );
+  }
+
+  const url = workspaceRawFileUrl(slug, file.path);
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+      <File className="h-10 w-10 text-muted-foreground/20" />
+      <p className="text-xs text-muted-foreground/60">Binary file — no preview available.</p>
+      <a href={url} download={file.name} className="text-xs text-primary hover:underline">
+        Download {file.name}
+      </a>
+    </div>
   );
 }
 
@@ -219,9 +263,7 @@ function ResizeDivider({ onDrag }: { onDrag: (delta: number) => void }) {
       onMouseDown={handleMouseDown}
       className="group relative flex w-3 shrink-0 cursor-col-resize items-center justify-center"
     >
-      {/* visible 1px rule */}
       <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-primary/50 group-active:bg-primary/70" />
-      {/* grip handle — appears on hover */}
       <GripVertical className="relative z-10 h-4 w-4 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 group-active:text-primary/70" />
     </div>
   );
@@ -235,12 +277,18 @@ function ProjectsSidebar({
   onSelect,
   onCreate,
   loading,
+  collapsed,
+  onToggleCollapse,
+  panelWidth,
 }: {
   projects: WorkspaceProject[];
   activeSlug: string | null;
   onSelect: (slug: string) => void;
   onCreate: (name: string) => Promise<void>;
   loading: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  panelWidth: number;
 }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -259,31 +307,97 @@ function ProjectsSidebar({
     }
   };
 
-  return (
-    <div className="flex h-full flex-col border-r border-border bg-card/60">
-      <div className="flex items-center justify-between border-b border-border px-3 py-3">
-        <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Projects
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 w-6 p-0"
+  if (collapsed) {
+    return (
+      <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border bg-card/60 py-2">
+        <button
+          type="button"
+          title="Show projects"
+          onClick={onToggleCollapse}
+          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+        <div className="my-1 h-px w-6 bg-border" />
+        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/50" />}
+        {projects.map((p) => (
+          <button
+            key={p.slug}
+            type="button"
+            title={p.name}
+            onClick={() => {
+              onSelect(p.slug);
+              onToggleCollapse();
+            }}
+            className={cn(
+              "rounded p-1.5 transition",
+              activeSlug === p.slug
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            )}
+          >
+            <FolderOpen className="h-3.5 w-3.5" />
+          </button>
+        ))}
+        <button
+          type="button"
           title="New project"
-          onClick={() => setCreating(true)}
+          onClick={() => {
+            onToggleCollapse();
+            setTimeout(() => setCreating(true), 150);
+          }}
+          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
-        </Button>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-r border-border bg-card/60">
+      <div className="shrink-0 border-b border-border p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="h-4 w-4 text-muted-foreground" />
+              <h2 className="truncate text-sm font-semibold">Projects</h2>
+            </div>
+            <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+              Workspace
+            </p>
+          </div>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0"
+              title="New project"
+              onClick={() => setCreating(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0"
+              title="Collapse projects"
+              onClick={onToggleCollapse}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {loading && projects.length === 0 && (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
           </div>
         )}
         {!loading && projects.length === 0 && !creating && (
-          <p className="px-3 py-4 text-xs text-muted-foreground/60 text-center">
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground/60">
             No projects yet.
             <br />
             Create one to get started.
@@ -295,9 +409,9 @@ function ProjectsSidebar({
             type="button"
             onClick={() => onSelect(p.slug)}
             className={cn(
-              "w-full text-left px-3 py-2 text-sm transition",
+              "w-full px-3 py-2 text-left text-sm transition",
               activeSlug === p.slug
-                ? "bg-primary/15 text-foreground border-r-2 border-primary"
+                ? "border-r-2 border-primary bg-primary/15 text-foreground"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
           >
@@ -305,7 +419,7 @@ function ProjectsSidebar({
               <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300/70" />
               <span className="truncate font-medium">{p.name}</span>
             </div>
-            <div className="mt-0.5 pl-5.5 text-xs text-muted-foreground/50">
+            <div className="mt-0.5 pl-5 text-xs text-muted-foreground/50">
               {p.file_count} {p.file_count === 1 ? "file" : "files"}
             </div>
           </button>
@@ -320,7 +434,7 @@ function ProjectsSidebar({
               placeholder="Project name"
               className="h-7 text-xs"
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
+                if (e.key === "Enter") void handleCreate();
                 if (e.key === "Escape") {
                   setCreating(false);
                   setNewName("");
@@ -328,7 +442,12 @@ function ProjectsSidebar({
               }}
             />
             <div className="flex gap-1">
-              <Button size="sm" className="h-6 flex-1 text-xs" onClick={handleCreate} disabled={saving}>
+              <Button
+                size="sm"
+                className="h-6 flex-1 text-xs"
+                onClick={() => void handleCreate()}
+                disabled={saving}
+              >
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
               </Button>
               <Button
@@ -350,18 +469,241 @@ function ProjectsSidebar({
   );
 }
 
-// ── File panel ────────────────────────────────────────────────────────────────
+// ── Workspace thread list ─────────────────────────────────────────────────────
 
-function FilePanel({
+function WorkspaceThreadList({
   slug,
-  onFileOpen,
+  activeId,
+  onOpen,
+  onNew,
+  onSessionsChange,
+  panelWidth,
 }: {
   slug: string;
-  onFileOpen: (node: WorkspaceFileNode, mime: string) => void;
+  activeId: string | null;
+  onOpen: (id: string, session: SessionInfo) => void;
+  onNew: (id: string, initialMsg: string) => void;
+  onSessionsChange: (sessions: SessionInfo[]) => void;
+  panelWidth: number;
+}) {
+  const [threads, setThreads] = useState<SessionInfo[]>([]);
+  const [loadingThreads, setLoadingThreads] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [startMsg, setStartMsg] = useState("");
+  const [startingThread, setStartingThread] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const loadThreads = useCallback(async () => {
+    setLoadingThreads(true);
+    try {
+      const res = await api.listWorkspaceConversations(slug);
+      const sessions = res.sessions as SessionInfo[];
+      setThreads(sessions);
+      onSessionsChange(sessions);
+    } catch (e) {
+      console.error("Load threads failed", e);
+    } finally {
+      setLoadingThreads(false);
+    }
+  }, [slug, onSessionsChange]);
+
+  useEffect(() => {
+    setThreads([]);
+    setSearchQ("");
+    loadThreads();
+  }, [slug, loadThreads]);
+
+  useEventBus((env: SparkEventEnvelope) => {
+    if (env.topic === "sessions.changed") {
+      const src = (env.data as { session?: { source?: string } }).session?.source ?? "";
+      if (src === `workspace:${slug}`) void loadThreads();
+    }
+  });
+
+  const handleStartThread = async () => {
+    const msg = startMsg.trim();
+    if (!msg) return;
+    setStartingThread(true);
+    try {
+      const res = await api.startWorkspaceConversation(slug, msg);
+      setStartMsg("");
+      onNew(res.session_id, msg);
+      await loadThreads();
+    } catch (e) {
+      console.error("Start thread failed", e);
+    } finally {
+      setStartingThread(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setThreads((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      onSessionsChange(next);
+      return next;
+    });
+    try {
+      await api.deleteSession(id);
+    } catch {
+      void loadThreads();
+    }
+  };
+
+  const visibleThreads = searchQ.trim()
+    ? threads.filter((t) => {
+        const q = searchQ.toLowerCase();
+        return t.title?.toLowerCase().includes(q) || t.preview?.toLowerCase().includes(q);
+      })
+    : threads;
+
+  return (
+    <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-r border-border">
+      {/* Header */}
+      <div className="shrink-0 border-b border-border p-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              <h2 className="truncate text-sm font-semibold">Threads</h2>
+              <Badge variant="secondary" className="h-5 text-[10px]">
+                {threads.length}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+              Project chats
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="h-8 shrink-0 gap-1.5"
+            onClick={() => setTimeout(() => inputRef.current?.focus(), 0)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </Button>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            className="h-9 pl-8 pr-16 text-sm"
+            placeholder="Search threads…"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+          />
+          {!searchQ && (
+            <kbd className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+              ⌘K
+            </kbd>
+          )}
+          {searchQ && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setSearchQ("")}
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Thread list */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {loadingThreads && threads.length === 0 && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {visibleThreads.map((t) => (
+          <ThreadRow
+            key={t.id}
+            session={t}
+            active={activeId === t.id}
+            onOpen={() => onOpen(t.id, t)}
+            onDelete={() => void handleDelete(t.id)}
+          />
+        ))}
+        {!loadingThreads && visibleThreads.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center px-8 py-12 text-center text-muted-foreground">
+            <Bot className="mb-3 h-9 w-9 opacity-35" />
+            <p className="text-sm font-medium">
+              {searchQ ? "No matching threads" : "No threads yet"}
+            </p>
+            <p className="mt-1 text-xs opacity-70">
+              {searchQ ? "Try a different search." : "Start a conversation below."}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* New thread input */}
+      <div className="shrink-0 border-t border-border bg-card/40 p-3">
+        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-widest text-muted-foreground/60">
+          New thread
+        </p>
+        <div className="flex gap-2">
+          <Input
+            ref={inputRef}
+            value={startMsg}
+            onChange={(e) => setStartMsg(e.target.value)}
+            placeholder="Ask Spark about this project…"
+            className="h-8 flex-1 text-xs"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleStartThread();
+              }
+            }}
+          />
+          <Button
+            size="sm"
+            className="h-8 w-8 shrink-0 p-0"
+            disabled={!startMsg.trim() || startingThread}
+            onClick={() => void handleStartThread()}
+          >
+            {startingThread ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Files panel ───────────────────────────────────────────────────────────────
+
+function FilesPanel({
+  slug,
+  collapsed,
+  onToggleCollapse,
+  panelWidth,
+}: {
+  slug: string;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  panelWidth: number;
 }) {
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<FileView | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -379,20 +721,43 @@ function FilePanel({
   }, [slug]);
 
   useEffect(() => {
-    setSelectedPath(null);
+    setSelectedFile(null);
     loadTree();
   }, [slug, loadTree]);
 
-  const handleSelectFile = (node: WorkspaceFileNode) => {
-    setSelectedPath(node.path);
-    onFileOpen(node, node.mime ?? "application/octet-stream");
+  const handleSelectFile = async (node: WorkspaceFileNode) => {
+    const mime = node.mime ?? "application/octet-stream";
+    const cat = getFileCategory(mime, node.name);
+    const file: FileView = {
+      path: node.path,
+      name: node.name,
+      mime,
+      content: null,
+      loading: cat === "text",
+    };
+    setSelectedFile(file);
+
+    if (cat === "text") {
+      try {
+        const res = await api.getWorkspaceFile(slug, node.path);
+        setSelectedFile((prev) =>
+          prev?.path === node.path ? { ...prev, content: res.content, loading: false } : prev,
+        );
+      } catch (e) {
+        setSelectedFile((prev) =>
+          prev?.path === node.path
+            ? { ...prev, content: `Error loading file: ${e}`, loading: false }
+            : prev,
+        );
+      }
+    }
   };
 
   const handleDelete = async (node: WorkspaceFileNode) => {
     if (!confirm(`Delete ${node.path}?`)) return;
     try {
       await api.deleteWorkspaceFile(slug, node.path);
-      if (selectedPath === node.path) setSelectedPath(null);
+      if (selectedFile?.path === node.path) setSelectedFile(null);
       loadTree();
     } catch (e) {
       console.error("Delete failed", e);
@@ -413,10 +778,49 @@ function FilePanel({
     }
   };
 
+  if (collapsed) {
+    return (
+      <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-l border-border bg-card/60 py-2">
+        <button
+          type="button"
+          title="Show files"
+          onClick={onToggleCollapse}
+          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <div className="my-1 h-px w-6 bg-border" />
+        <button
+          type="button"
+          title="Files"
+          onClick={onToggleCollapse}
+          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+        >
+          <FileText className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          title="Upload files"
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+        >
+          <Upload className="h-3.5 w-3.5" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => e.target.files && void handleUpload(e.target.files)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full flex-col border-r border-border">
+    <div style={{ width: panelWidth }} className="flex shrink-0 flex-col overflow-hidden border-l border-border">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border bg-card/60 px-3 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-3 py-3">
         <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Files
         </span>
@@ -431,20 +835,30 @@ function FilePanel({
           >
             <Upload className="h-3.5 w-3.5" />
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 w-6 p-0"
+            title="Collapse files"
+            onClick={onToggleCollapse}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
             multiple
             className="hidden"
-            onChange={(e) => e.target.files && handleUpload(e.target.files)}
+            onChange={(e) => e.target.files && void handleUpload(e.target.files)}
           />
         </div>
       </div>
 
-      {/* Tree */}
+      {/* File tree */}
       <div
         className={cn(
-          "flex-1 overflow-y-auto py-1 transition",
+          "overflow-y-auto py-1 transition-all",
+          selectedFile ? "h-[45%]" : "flex-1",
           dragOver && "bg-primary/5 ring-2 ring-inset ring-primary/20",
         )}
         onDragOver={(e) => {
@@ -455,7 +869,7 @@ function FilePanel({
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files);
+          if (e.dataTransfer.files.length) void handleUpload(e.dataTransfer.files);
         }}
       >
         {loadingTree && (
@@ -478,441 +892,33 @@ function FilePanel({
             key={node.path}
             node={node}
             depth={0}
-            onSelect={handleSelectFile}
-            selectedPath={selectedPath}
-            onDelete={handleDelete}
+            onSelect={(n) => void handleSelectFile(n)}
+            selectedPath={selectedFile?.path ?? null}
+            onDelete={(n) => void handleDelete(n)}
           />
         ))}
       </div>
-    </div>
-  );
-}
 
-// ── File viewer ───────────────────────────────────────────────────────────────
-
-function FileViewer({ tab, slug }: { tab: FileTab; slug: string }) {
-  const cat = getFileCategory(tab.mime, tab.label);
-
-  if (tab.loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (cat === "image") {
-    const url = workspaceRawFileUrl(slug, tab.path);
-    return (
-      <div className="flex h-full flex-col items-center gap-3 overflow-auto p-4">
-        <img
-          src={url}
-          alt={tab.label}
-          className="max-w-full rounded border border-border object-contain"
-        />
-        <a
-          href={url}
-          download={tab.label}
-          className="text-xs text-muted-foreground hover:text-foreground underline"
-        >
-          Download {tab.label}
-        </a>
-      </div>
-    );
-  }
-
-  if (cat === "video") {
-    const url = workspaceRawFileUrl(slug, tab.path);
-    return (
-      <div className="flex h-full flex-col items-center gap-3 overflow-auto p-4">
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <video
-          src={url}
-          controls
-          className="max-w-full rounded border border-border"
-        />
-        <a
-          href={url}
-          download={tab.label}
-          className="text-xs text-muted-foreground hover:text-foreground underline"
-        >
-          Download {tab.label}
-        </a>
-      </div>
-    );
-  }
-
-  if (cat === "text" && tab.content !== null) {
-    return (
-      <div className="h-full overflow-auto bg-background/60">
-        <pre className="px-4 py-3 text-[0.7rem] leading-relaxed text-muted-foreground font-mono whitespace-pre-wrap break-all">
-          {tab.content}
-        </pre>
-      </div>
-    );
-  }
-
-  // binary / unknown
-  const url = workspaceRawFileUrl(slug, tab.path);
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-      <File className="h-10 w-10 text-muted-foreground/20" />
-      <p className="text-xs text-muted-foreground/60">Binary file — no preview available.</p>
-      <a
-        href={url}
-        download={tab.label}
-        className="text-xs text-primary hover:underline"
-      >
-        Download {tab.label}
-      </a>
-    </div>
-  );
-}
-
-// ── File tab icon ─────────────────────────────────────────────────────────────
-
-function FileTabIcon({ mime, name }: { mime: string; name: string }) {
-  const cat = getFileCategory(mime, name);
-  if (cat === "image") return <Image className="h-3 w-3 text-violet-400/70 shrink-0" />;
-  if (cat === "video") return <Film className="h-3 w-3 text-pink-400/70 shrink-0" />;
-  return <FileText className="h-3 w-3 text-sky-300/70 shrink-0" />;
-}
-
-// ── Right panel (chat + file tabs) ────────────────────────────────────────────
-
-function RightPanel({
-  slug,
-  fileTabs,
-  activeTab,
-  onTabClose,
-  onTabSelect,
-}: {
-  slug: string;
-  fileTabs: FileTab[];
-  activeTab: ActiveTab;
-  onTabClose: (id: string) => void;
-  onTabSelect: (id: ActiveTab) => void;
-}) {
-  const [threads, setThreads] = useState<SessionInfo[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [pendingInitialMsg, setPendingInitialMsg] = useState<string | null>(null);
-  const [loadingThreads, setLoadingThreads] = useState(false);
-  const [startMsg, setStartMsg] = useState("");
-  const [startingThread, setStartingThread] = useState(false);
-  const [searchQ, setSearchQ] = useState("");
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const loadThreads = useCallback(async () => {
-    setLoadingThreads(true);
-    try {
-      const res = await api.listWorkspaceConversations(slug);
-      setThreads(res.sessions as SessionInfo[]);
-    } catch (e) {
-      console.error("Load threads failed", e);
-    } finally {
-      setLoadingThreads(false);
-    }
-  }, [slug]);
-
-  useEffect(() => {
-    setActiveId(null);
-    setThreads([]);
-    setSearchQ("");
-    loadThreads();
-  }, [slug, loadThreads]);
-
-  useEffect(() => {
-    if (!loadingThreads && threads.length === 0 && !activeId) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [loadingThreads, threads.length, activeId]);
-
-  useEventBus((env: SparkEventEnvelope) => {
-    if (env.topic === "sessions.changed") {
-      const src = (env.data as { session?: { source?: string } }).session?.source ?? "";
-      if (src === `workspace:${slug}`) loadThreads();
-    }
-  });
-
-  const handleStartThread = async () => {
-    const msg = startMsg.trim();
-    if (!msg) return;
-    setStartingThread(true);
-    try {
-      const res = await api.startWorkspaceConversation(slug, msg);
-      setStartMsg("");
-      setPendingInitialMsg(msg);
-      setActiveId(res.session_id);
-      await loadThreads();
-    } catch (e) {
-      console.error("Start thread failed", e);
-    } finally {
-      setStartingThread(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    setThreads((prev) => prev.filter((t) => t.id !== id));
-    if (activeId === id) setActiveId(null);
-    try {
-      await api.deleteSession(id);
-    } catch (e) {
-      console.error("Delete thread failed", e);
-      loadThreads();
-    }
-  };
-
-  const beginRename = () => {
-    if (!activeThread) return;
-    setTitleDraft(activeThread.title || "");
-    setEditingTitle(true);
-  };
-
-  const saveRename = async () => {
-    if (!activeThread) return;
-    try {
-      await api.renameSession(activeThread.id, titleDraft);
-      setEditingTitle(false);
-      void loadThreads();
-    } catch (e) {
-      console.error("Rename failed", e);
-    }
-  };
-
-  const visibleThreads = searchQ.trim()
-    ? threads.filter((t) => {
-        const q = searchQ.toLowerCase();
-        return (
-          t.title?.toLowerCase().includes(q) ||
-          t.preview?.toLowerCase().includes(q)
-        );
-      })
-    : threads;
-
-  const activeThread = threads.find((t) => t.id === activeId) ?? null;
-
-  return (
-    <div className="flex h-full flex-col">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-border bg-card/60 overflow-x-auto shrink-0">
-        <button
-          type="button"
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-2.5 text-xs shrink-0 transition border-b-2",
-            activeTab === "chat"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground",
-          )}
-          onClick={() => onTabSelect("chat")}
-        >
-          <MessageSquare className="h-3 w-3" />
-          Chat
-        </button>
-
-        {fileTabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={cn(
-              "group flex items-center gap-1.5 px-3 py-2.5 text-xs shrink-0 transition border-b-2 cursor-pointer select-none",
-              activeTab === tab.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-            onClick={() => onTabSelect(tab.id)}
-          >
-            <FileTabIcon mime={tab.mime} name={tab.label} />
-            <span className="max-w-[120px] truncate">{tab.label}</span>
+      {/* Inline file viewer */}
+      {selectedFile && (
+        <div className="flex flex-col overflow-hidden border-t border-border" style={{ flex: "0 0 55%" }}>
+          <div className="flex shrink-0 items-center justify-between border-b border-border bg-card/60 px-3 py-1.5">
+            <span className="truncate text-xs text-muted-foreground" title={selectedFile.path}>
+              {selectedFile.name}
+            </span>
             <button
               type="button"
-              className="ml-0.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:text-destructive transition"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTabClose(tab.id);
-              }}
+              className="ml-2 shrink-0 text-muted-foreground/50 hover:text-foreground"
+              onClick={() => setSelectedFile(null)}
             >
-              <X className="h-2.5 w-2.5" />
+              <X className="h-3 w-3" />
             </button>
           </div>
-        ))}
-      </div>
-
-      {/* Content area */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab !== "chat" ? (
-          (() => {
-            const tab = fileTabs.find((t) => t.id === activeTab);
-            return tab ? <FileViewer tab={tab} slug={slug} /> : null;
-          })()
-        ) : (
-          <div className="flex h-full flex-col">
-            {/* Chat header */}
-            <div className="flex items-center justify-between border-b border-border bg-card/60 px-3 py-2 shrink-0">
-              {activeId && activeThread ? (
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  {editingTitle ? (
-                    <>
-                      <Input
-                        className="h-7 flex-1 text-xs"
-                        value={titleDraft}
-                        placeholder={activeThread.preview || "Thread title"}
-                        onChange={(e) => setTitleDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") void saveRename();
-                          if (e.key === "Escape") setEditingTitle(false);
-                        }}
-                        autoFocus
-                      />
-                      <Button size="icon" className="h-7 w-7 shrink-0" onClick={() => void saveRename()}>
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setEditingTitle(false)}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="truncate text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                        {threadTitle(activeThread)}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0 text-muted-foreground"
-                        title="Rename thread"
-                        onClick={beginRename}
-                      >
-                        <Edit3 className="h-3 w-3" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                  Threads
-                </span>
-              )}
-              {activeId && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 shrink-0 gap-1 px-2 text-xs"
-                  onClick={() => { setActiveId(null); setEditingTitle(false); }}
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  All threads
-                </Button>
-              )}
-            </div>
-
-            {activeId ? (
-              <ChatPanel
-                sessionId={activeId}
-                sessionTitle={threadTitle(activeThread)}
-                initialMessage={pendingInitialMsg ?? undefined}
-                onBack={() => { setActiveId(null); setEditingTitle(false); setPendingInitialMsg(null); }}
-                onSessionCreated={(id) => setActiveId(id)}
-                onSessionUpdated={() => loadThreads()}
-                className="min-h-0 flex-1"
-              />
-            ) : (
-              <div className="flex flex-1 flex-col overflow-hidden">
-                {/* Search bar — only when there are threads */}
-                {threads.length > 0 && (
-                  <div className="shrink-0 border-b border-border p-2">
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        className="h-8 pl-8 pr-7 text-xs"
-                        placeholder="Search threads…"
-                        value={searchQ}
-                        onChange={(e) => setSearchQ(e.target.value)}
-                      />
-                      {searchQ && (
-                        <button
-                          type="button"
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                          onClick={() => setSearchQ("")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Thread list */}
-                <div className="flex-1 overflow-y-auto">
-                  {loadingThreads && threads.length === 0 && (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
-                  {visibleThreads.map((t) => (
-                    <ThreadRow
-                      key={t.id}
-                      session={t}
-                      active={activeId === t.id}
-                      onOpen={() => { setPendingInitialMsg(null); setActiveId(t.id); }}
-                      onDelete={() => void handleDelete(t.id)}
-                    />
-                  ))}
-                  {!loadingThreads && visibleThreads.length === 0 && threads.length > 0 && (
-                    <p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
-                      No matching threads
-                    </p>
-                  )}
-                </div>
-
-                {/* New thread input */}
-                <div className={cn(
-                  "shrink-0 border-t border-border bg-card/40 p-3",
-                  threads.length === 0 && !loadingThreads && "flex flex-1 flex-col justify-center border-t-0",
-                )}>
-                  {threads.length === 0 && !loadingThreads && (
-                    <p className="mb-3 text-center text-xs text-muted-foreground/50">
-                      Start a conversation about this project
-                    </p>
-                  )}
-                  {threads.length > 0 && (
-                    <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                      New thread
-                    </p>
-                  )}
-                  <div className="flex gap-2">
-                    <Input
-                      ref={inputRef}
-                      value={startMsg}
-                      onChange={(e) => setStartMsg(e.target.value)}
-                      placeholder="Ask Spark about this project…"
-                      className="h-8 flex-1 text-xs"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleStartThread();
-                        }
-                      }}
-                    />
-                    <Button
-                      size="sm"
-                      className="h-8 w-8 shrink-0 p-0"
-                      disabled={!startMsg.trim() || startingThread}
-                      onClick={handleStartThread}
-                    >
-                      {startingThread ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Send className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <FileViewer file={selectedFile} slug={slug} />
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -924,12 +930,55 @@ export default function WorkspacePage() {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
 
-  // Tab state
-  const [fileTabs, setFileTabs] = useState<FileTab[]>([]);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("chat");
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [activeSession, setActiveSession] = useState<SessionInfo | null>(null);
+  const [pendingInitialMsg, setPendingInitialMsg] = useState<string | null>(null);
 
-  // Resizable panel widths (persisted to localStorage)
-  const [[leftWidth, centerWidth], setWidths] = useState<[number, number]>(loadColWidths);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+
+  const [projectsCollapsed, setProjectsCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem("spark-workspace-projects-collapsed") === "true";
+  });
+  const [filesCollapsed, setFilesCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem("spark-workspace-files-collapsed") === "true";
+  });
+
+  const [[projectsWidth, threadsWidth, filesWidth], setPanelWidths] = useState<[number, number, number]>(() => {
+    try {
+      const raw = localStorage.getItem("spark-workspace-widths");
+      if (raw) {
+        const p = JSON.parse(raw) as unknown;
+        if (Array.isArray(p) && p.length === 3 && p.every((x) => typeof x === "number"))
+          return [Math.max(160, p[0] as number), Math.max(200, p[1] as number), Math.max(200, p[2] as number)];
+      }
+    } catch { /* ignore */ }
+    return [220, 300, 280];
+  });
+
+  const handleProjectsDrag = useCallback((delta: number) => {
+    setPanelWidths(([p, t, f]) => {
+      const next: [number, number, number] = [Math.max(160, p + delta), t, f];
+      localStorage.setItem("spark-workspace-widths", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleThreadsDrag = useCallback((delta: number) => {
+    setPanelWidths(([p, t, f]) => {
+      const next: [number, number, number] = [p, Math.max(200, t + delta), f];
+      localStorage.setItem("spark-workspace-widths", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleFilesDrag = useCallback((delta: number) => {
+    setPanelWidths(([p, t, f]) => {
+      const next: [number, number, number] = [p, t, Math.max(200, f - delta)];
+      localStorage.setItem("spark-workspace-widths", JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
@@ -944,135 +993,226 @@ export default function WorkspacePage() {
   }, []);
 
   useEffect(() => {
-    loadProjects();
+    void loadProjects();
   }, [loadProjects]);
 
   const handleCreate = async (name: string) => {
     const res = await api.createWorkspaceProject(name);
     await loadProjects();
     setActiveSlug(res.slug);
+    setActiveThreadId(null);
+    setActiveSession(null);
   };
 
-  // Clear file tabs when switching projects
-  useEffect(() => {
-    setFileTabs([]);
-    setActiveTab("chat");
-  }, [activeSlug]);
+  const handleSelectProject = (slug: string) => {
+    setActiveSlug(slug);
+    setActiveThreadId(null);
+    setActiveSession(null);
+    setPendingInitialMsg(null);
+    setEditingTitle(false);
+  };
 
-  // Drag handlers (incremental deltas from ResizeDivider)
-  const handleLeftDrag = useCallback((delta: number) => {
-    setWidths(([l, c]) => {
-      const nl = Math.max(160, l + delta);
-      saveColWidths(nl, c);
-      return [nl, c];
-    });
-  }, []);
+  const handleOpenThread = (id: string, session: SessionInfo) => {
+    setActiveThreadId(id);
+    setActiveSession(session);
+    setPendingInitialMsg(null);
+    setEditingTitle(false);
+  };
 
-  const handleCenterDrag = useCallback((delta: number) => {
-    setWidths(([l, c]) => {
-      const nc = Math.max(200, c + delta);
-      saveColWidths(l, nc);
-      return [l, nc];
-    });
-  }, []);
+  const handleNewThread = (id: string, initialMsg: string) => {
+    setActiveThreadId(id);
+    setPendingInitialMsg(initialMsg);
+    setEditingTitle(false);
+  };
 
-  // Open or switch to a file tab
-  const handleFileOpen = useCallback(
-    async (node: WorkspaceFileNode, mime: string) => {
-      const id = node.path;
-
-      // Switch to existing tab if already open
-      setFileTabs((prev) => {
-        if (prev.find((t) => t.id === id)) return prev;
-        const cat = getFileCategory(mime, node.name);
-        const newTab: FileTab = {
-          id,
-          path: node.path,
-          label: node.name,
-          mime,
-          content: null,
-          loading: cat === "text",
-        };
-        return [...prev, newTab];
-      });
-      setActiveTab(id);
-
-      // Fetch content for text files
-      const cat = getFileCategory(mime, node.name);
-      if (cat === "text") {
-        try {
-          const res = await api.getWorkspaceFile(activeSlug!, node.path);
-          setFileTabs((prev) =>
-            prev.map((t) => (t.id === id ? { ...t, content: res.content, loading: false } : t)),
-          );
-        } catch (e) {
-          setFileTabs((prev) =>
-            prev.map((t) =>
-              t.id === id ? { ...t, content: `Error loading file: ${e}`, loading: false } : t,
-            ),
-          );
-        }
+  const handleSessionsChange = useCallback(
+    (sessions: SessionInfo[]) => {
+      if (activeThreadId) {
+        const updated = sessions.find((s) => s.id === activeThreadId);
+        if (updated) setActiveSession(updated);
       }
     },
-    [activeSlug],
+    [activeThreadId],
   );
 
-  const handleTabClose = useCallback((id: string) => {
-    setFileTabs((prev) => prev.filter((t) => t.id !== id));
-    setActiveTab((prev) => (prev === id ? "chat" : prev));
-  }, []);
+  const toggleProjectsCollapse = () => {
+    setProjectsCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem("spark-workspace-projects-collapsed", String(next));
+      return next;
+    });
+  };
+
+  const toggleFilesCollapse = () => {
+    setFilesCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem("spark-workspace-files-collapsed", String(next));
+      return next;
+    });
+  };
+
+  const beginRename = () => {
+    if (!activeSession) return;
+    setTitleDraft(activeSession.title || "");
+    setEditingTitle(true);
+  };
+
+  const saveRename = async () => {
+    if (!activeSession) return;
+    try {
+      await api.renameSession(activeSession.id, titleDraft);
+      setActiveSession((prev) => (prev ? { ...prev, title: titleDraft } : prev));
+      setEditingTitle(false);
+    } catch (e) {
+      console.error("Rename failed", e);
+    }
+  };
 
   return (
-    <div className="flex flex-1 overflow-hidden rounded-sm border border-border">
-      {/* Left: project list */}
-      <div style={{ width: leftWidth, minWidth: 160 }} className="shrink-0 overflow-hidden">
-        <ProjectsSidebar
-          projects={projects}
-          activeSlug={activeSlug}
-          onSelect={setActiveSlug}
-          onCreate={handleCreate}
-          loading={loadingProjects}
-        />
-      </div>
+    <div className="flex h-full max-h-screen min-h-0 overflow-hidden border-t border-border bg-card/75">
+      {/* Projects panel */}
+      <ProjectsSidebar
+        projects={projects}
+        activeSlug={activeSlug}
+        onSelect={handleSelectProject}
+        onCreate={handleCreate}
+        loading={loadingProjects}
+        collapsed={projectsCollapsed}
+        onToggleCollapse={toggleProjectsCollapse}
+        panelWidth={projectsWidth}
+      />
 
-      <ResizeDivider onDrag={handleLeftDrag} />
+      {/* Divider: projects ↔ threads/chat */}
+      {!projectsCollapsed && <ResizeDivider onDrag={handleProjectsDrag} />}
 
-      {/* Center: file tree */}
-      <div style={{ width: centerWidth, minWidth: 200 }} className="shrink-0 overflow-hidden">
-        {activeSlug ? (
-          <FilePanel
+      {/* Thread list — only when a project is active */}
+      {activeSlug && (
+        <>
+          <WorkspaceThreadList
             key={activeSlug}
             slug={activeSlug}
-            onFileOpen={handleFileOpen}
+            activeId={activeThreadId}
+            onOpen={handleOpenThread}
+            onNew={handleNewThread}
+            onSessionsChange={handleSessionsChange}
+            panelWidth={threadsWidth}
           />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center border-r border-border text-center">
-            <FolderOpen className="mb-3 h-10 w-10 text-muted-foreground/20" />
-            <p className="text-sm text-muted-foreground/50">Select a project</p>
-          </div>
-        )}
-      </div>
+          <ResizeDivider onDrag={handleThreadsDrag} />
+        </>
+      )}
 
-      <ResizeDivider onDrag={handleCenterDrag} />
-
-      {/* Right: chat + file viewer tabs */}
-      <div className="flex-1 min-w-[280px] overflow-hidden">
+      {/* Chat area */}
+      <div className="flex min-w-0 flex-1 flex-col">
         {activeSlug ? (
-          <RightPanel
-            key={`right-${activeSlug}`}
-            slug={activeSlug}
-            fileTabs={fileTabs}
-            activeTab={activeTab}
-            onTabClose={handleTabClose}
-            onTabSelect={setActiveTab}
-          />
+          activeThreadId ? (
+            <>
+              {/* Session header */}
+              <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
+                <div className="min-w-0 flex-1">
+                  {editingTitle ? (
+                    <div className="flex max-w-xl items-center gap-2">
+                      <Input
+                        className="h-8 text-sm"
+                        value={titleDraft}
+                        placeholder={activeSession?.preview || "Thread title"}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void saveRename();
+                          if (e.key === "Escape") setEditingTitle(false);
+                        }}
+                        autoFocus
+                      />
+                      <Button size="icon" className="h-8 w-8" onClick={() => void saveRename()}>
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setEditingTitle(false)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-medium">
+                        {activeSession ? threadTitle(activeSession) : "Thread"}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground"
+                        onClick={beginRename}
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                  onClick={() => {
+                    setActiveThreadId(null);
+                    setActiveSession(null);
+                    setEditingTitle(false);
+                    setPendingInitialMsg(null);
+                  }}
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  All threads
+                </Button>
+              </div>
+
+              <ChatPanel
+                sessionId={activeThreadId}
+                sessionTitle={activeSession ? threadTitle(activeSession) : null}
+                initialMessage={pendingInitialMsg ?? undefined}
+                onBack={() => {
+                  setActiveThreadId(null);
+                  setActiveSession(null);
+                  setPendingInitialMsg(null);
+                }}
+                onSessionCreated={(id) => setActiveThreadId(id)}
+                onSessionUpdated={() => {}}
+                className="min-h-0 flex-1"
+              />
+            </>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+              <MessageSquare className="mb-4 h-12 w-12 opacity-30" />
+              <p className="text-sm font-medium text-foreground">Select a thread</p>
+              <p className="mt-1 max-w-sm text-xs opacity-75">
+                Pick a thread from the list or start a new conversation below.
+              </p>
+            </div>
+          )
         ) : (
-          <div className="flex h-full flex-col items-center justify-center text-center">
-            <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/20" />
-            <p className="text-sm text-muted-foreground/50">Select a project to chat</p>
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+            <FolderOpen className="mb-4 h-12 w-12 opacity-30" />
+            <p className="text-sm font-medium text-foreground">Select a project</p>
+            <p className="mt-1 max-w-sm text-xs opacity-75">
+              Choose a project from the left panel to get started.
+            </p>
           </div>
         )}
       </div>
+
+      {/* Files panel — only when a project is active */}
+      {activeSlug && (
+        <>
+          {!filesCollapsed && <ResizeDivider onDrag={handleFilesDrag} />}
+          <FilesPanel
+            key={`files-${activeSlug}`}
+            slug={activeSlug}
+            collapsed={filesCollapsed}
+            onToggleCollapse={toggleFilesCollapse}
+            panelWidth={filesWidth}
+          />
+        </>
+      )}
     </div>
   );
 }
