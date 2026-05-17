@@ -478,6 +478,7 @@ function WorkspaceThreadList({
   onNewThread,
   onSessionsChange,
   panelWidth,
+  reloadTrigger,
 }: {
   slug: string;
   activeId: string | null;
@@ -485,6 +486,7 @@ function WorkspaceThreadList({
   onNewThread: () => void;
   onSessionsChange: (sessions: SessionInfo[]) => void;
   panelWidth: number;
+  reloadTrigger: number;
 }) {
   const [threads, setThreads] = useState<SessionInfo[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
@@ -522,6 +524,10 @@ function WorkspaceThreadList({
     setSearchQ("");
     loadThreads();
   }, [slug, loadThreads]);
+
+  useEffect(() => {
+    if (reloadTrigger > 0) void loadThreads();
+  }, [reloadTrigger, loadThreads]);
 
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic === "sessions.changed") {
@@ -983,6 +989,7 @@ export default function WorkspacePage() {
   const [activeSession, setActiveSession] = useState<SessionInfo | null>(null);
   const [pendingInitialMsg, setPendingInitialMsg] = useState<string | null>(null);
   const [newThread, setNewThread] = useState(false);
+  const [threadsReloadTrigger, setThreadsReloadTrigger] = useState(0);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -1082,6 +1089,7 @@ export default function WorkspacePage() {
     setActiveThreadId(id);
     setPendingInitialMsg(initialMsg);
     setNewThread(false);
+    setThreadsReloadTrigger((n) => n + 1);
   };
 
   const handleSessionsChange = useCallback(
@@ -1155,6 +1163,7 @@ export default function WorkspacePage() {
             onNewThread={handleNewThread}
             onSessionsChange={handleSessionsChange}
             panelWidth={threadsWidth}
+            reloadTrigger={threadsReloadTrigger}
           />
           <ResizeDivider onDrag={handleThreadsDrag} />
         </>
