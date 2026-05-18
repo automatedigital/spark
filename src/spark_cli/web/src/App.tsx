@@ -41,6 +41,13 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
 
 const FULL_WIDTH_PAGES = new Set<PageId>(["workspace", "conversations"]);
 
+function formatVersionDate(date = new Date()) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = String(date.getFullYear()).slice(-2);
+  return `${day}${month}${year}`;
+}
+
 function SparkLogo({ className = "" }: { className?: string }) {
   return (
     <img
@@ -72,6 +79,7 @@ export default function App() {
   const [tokenInput, setTokenInput] = useState("");
   const [authChecking, setAuthChecking] = useState(true);
   const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
+  const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
   const { updateAvailable, latestVersion, openUpdateModal } = useUpdateModal();
 
   useEffect(() => {
@@ -114,6 +122,25 @@ export default function App() {
         if (!cancelled) setAuthWall(false);
       } finally {
         if (!cancelled) setAuthChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await api.getStatus();
+        if (!cancelled) {
+          setVersionLabel(`v${status.version}_${formatVersionDate()}`);
+        }
+      } catch {
+        if (!cancelled) {
+          setVersionLabel(`v${formatVersionDate()}`);
+        }
       }
     })();
     return () => {
@@ -181,7 +208,6 @@ export default function App() {
               {sidebarOpen && (
                 <div className="min-w-0 flex-1 px-3 text-left">
                   <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
-                  <div className="truncate text-xs text-muted-foreground">Web UI</div>
                 </div>
               )}
             </button>
@@ -300,8 +326,7 @@ export default function App() {
                 </button>
               </nav>
               <div className="ml-auto hidden items-center gap-2 md:flex">
-                <span className="h-2 w-2 rounded-full bg-[#22c55e] shadow-[0_0_14px_rgba(34,197,94,0.8)]" />
-                <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t.app.webUi}</span>
+                <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{versionLabel}</span>
               </div>
             </div>
           </header>
