@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
+import { FileRowSkeleton } from "@/components/Skeleton";
 import {
   Bot,
   Check,
@@ -257,10 +258,41 @@ function FileNodeRow({
   );
 }
 
+// ── Diff utility ─────────────────────────────────────────────────────────────
+
+type DiffLine = { kind: "context" | "add" | "remove"; text: string };
+
+function computeLineDiff(before: string, after: string): DiffLine[] {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  // Simple Myers-style diff via LCS DP
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--)
+    for (let j = n - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? 1 + dp[i + 1][j + 1] : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const result: DiffLine[] = [];
+  let i = 0, j = 0;
+  while (i < m || j < n) {
+    if (i < m && j < n && a[i] === b[j]) {
+      result.push({ kind: "context", text: a[i] }); i++; j++;
+    } else if (j < n && (i >= m || dp[i + 1][j] <= dp[i][j + 1])) {
+      result.push({ kind: "add", text: b[j] }); j++;
+    } else {
+      result.push({ kind: "remove", text: a[i] }); i++;
+    }
+  }
+  return result;
+}
+
+// Per-path baseline content captured the first time a file loads
+const _fileBaselines = new Map<string, string>();
+
 // ── File viewer ───────────────────────────────────────────────────────────────
 
 function FileViewer({ file, slug }: { file: FileView; slug: string }) {
   const cat = getFileCategory(file.mime, file.name);
+  const [diffMode, setDiffMode] = useState(false);
 
   if (file.loading) {
     return (
@@ -307,16 +339,60 @@ function FileViewer({ file, slug }: { file: FileView; slug: string }) {
   }
 
   if (cat === "text" && file.content !== null) {
+    // Capture baseline on first load
+    if (!_fileBaselines.has(file.path)) {
+      _fileBaselines.set(file.path, file.content);
+    }
+    const baseline = _fileBaselines.get(file.path) ?? file.content;
+    const hasDiff = file.content !== baseline;
     const highlighted = highlightFileContent(file.content, file.name);
+    const diffLines = diffMode ? computeLineDiff(baseline, file.content) : null;
     return (
       <div className="spark-code-pane h-full overflow-auto">
         <div className="sticky top-0 z-10 flex h-7 items-center justify-between border-b border-border bg-background/85 px-3 text-[10px] text-muted-foreground backdrop-blur">
           <span className="truncate font-mono-ui">{file.path}</span>
-          <span className="uppercase tracking-[0.12em]">{highlighted.language}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {hasDiff && (
+              <button
+                type="button"
+                onClick={() => setDiffMode((d) => !d)}
+                className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider transition ${
+                  diffMode
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Diff
+              </button>
+            )}
+            <span className="uppercase tracking-[0.12em]">{highlighted.language}</span>
+          </div>
         </div>
-        <pre className="hljs min-h-full overflow-visible px-4 py-3 font-mono-ui text-[0.72rem] leading-5">
-          <code dangerouslySetInnerHTML={{ __html: highlighted.html }} />
-        </pre>
+        {diffMode && diffLines ? (
+          <div className="min-h-full font-mono-ui text-[0.72rem] leading-5">
+            {diffLines.map((line, i) => (
+              <div
+                key={i}
+                className={
+                  line.kind === "add"
+                    ? "bg-success/10 text-success px-4"
+                    : line.kind === "remove"
+                    ? "bg-destructive/10 text-destructive px-4"
+                    : "px-4 text-foreground/70"
+                }
+              >
+                <span className="select-none text-muted-foreground/40 mr-2">
+                  {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
+                </span>
+                {line.text || " "}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <pre className="hljs min-h-full overflow-visible px-4 py-3 font-mono-ui text-[0.72rem] leading-5">
+            <code dangerouslySetInnerHTML={{ __html: highlighted.html }} />
+          </pre>
+        )}
       </div>
     );
   }
@@ -683,8 +759,8 @@ function ProjectsSidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {loading && projects.length === 0 && (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+          <div className="flex flex-col py-1">
+            {Array.from({ length: 5 }).map((_, i) => <FileRowSkeleton key={i} />)}
           </div>
         )}
         {!loading && projects.length === 0 && !creating && (
@@ -905,8 +981,8 @@ function WorkspaceThreadList({
       {/* Thread list */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loadingThreads && threads.length === 0 && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <div className="flex flex-col py-1">
+            {Array.from({ length: 4 }).map((_, i) => <FileRowSkeleton key={i} />)}
           </div>
         )}
         {visibleThreads.map((t) => (

@@ -175,7 +175,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **F9. Notification system for async job completions**
   When a cron job or long-running task finishes, surface the result via: (1) an in-app notification bell icon in the top nav bar that opens a dropdown of recent events (job name, status, timestamp, truncated output) — powered by a new SSE stream `GET /api/notifications/stream` in `src/gateway/run.py` that the scheduler pushes to after each `run_job()` completes; (2) a browser `Notification` (Web Notifications API) if the user has granted permission. The notification store is a small in-memory queue in the gateway process; events are not persisted between restarts. Add a `NotificationBell.tsx` component to the `App.tsx` header.
 
-- [ ] **F10. Workspace file diff viewer**
+- [x] **F10. Workspace file diff viewer**
   In `WorkspacePage.tsx`, when the agent modifies a file (detected via the existing file-change events), show a **Diff** tab alongside the current file view. Use a lightweight JS diff library (e.g. `diff` npm package, already common) to compute a unified diff between the pre-change snapshot (stored in a `Map<path, string>` at the time the session opens) and the current content. Render with syntax-colored `+`/`-` line prefixes. Add a "Diff" tab button to the file viewer toolbar (lines 262-334 in `WorkspacePage.tsx`). No backend changes needed — the frontend already fetches file content via `api.getWorkspaceFile()`.
 
 - [x] **F11. Keyboard shortcuts reference overlay**
