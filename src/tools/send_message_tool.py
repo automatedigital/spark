@@ -13,14 +13,18 @@ import ssl
 import time
 
 from agent.redact import redact_sensitive_text
+from core.channel_utils import (
+    parse_target_ref,
+    _TELEGRAM_TOPIC_TARGET_RE,
+    _FEISHU_TARGET_RE,
+    _WEIXIN_TARGET_RE,
+    _NUMERIC_TOPIC_RE,
+)
 
 logger = logging.getLogger(__name__)
 
-_TELEGRAM_TOPIC_TARGET_RE = re.compile(r"^\s*(-?\d+)(?::(\d+))?\s*$")
-_FEISHU_TARGET_RE = re.compile(r"^\s*((?:oc|ou|on|chat|open)_[-A-Za-z0-9]+)(?::([-A-Za-z0-9_]+))?\s*$")
-_WEIXIN_TARGET_RE = re.compile(r"^\s*((?:wxid|gh|v\d+|wm|wb)_[A-Za-z0-9_-]+|[A-Za-z0-9._-]+@chatroom|filehelper)\s*$")
-# Discord snowflake IDs are numeric, same regex pattern as Telegram topic targets.
-_NUMERIC_TOPIC_RE = _TELEGRAM_TOPIC_TARGET_RE
+# Backwards-compatible alias used internally and by tests that import this name.
+_parse_target_ref = parse_target_ref
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 _VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".3gp"}
 _AUDIO_EXTS = {".ogg", ".opus", ".mp3", ".wav", ".m4a"}

@@ -111,9 +111,9 @@ def _resolve_delivery_target(job: dict) -> Optional[dict]:
         platform_name, rest = deliver.split(":", 1)
         platform_key = platform_name.lower()
 
-        from tools.send_message_tool import _parse_target_ref
+        from core.channel_utils import parse_target_ref
 
-        parsed_chat_id, parsed_thread_id, is_explicit = _parse_target_ref(platform_key, rest)
+        parsed_chat_id, parsed_thread_id, is_explicit = parse_target_ref(platform_key, rest)
         if is_explicit:
             chat_id, thread_id = parsed_chat_id, parsed_thread_id
         else:
@@ -124,7 +124,7 @@ def _resolve_delivery_target(job: dict) -> Optional[dict]:
             from gateway.channel_directory import resolve_channel_name
             resolved = resolve_channel_name(platform_key, chat_id)
             if resolved:
-                parsed_chat_id, parsed_thread_id, resolved_is_explicit = _parse_target_ref(platform_key, resolved)
+                parsed_chat_id, parsed_thread_id, resolved_is_explicit = parse_target_ref(platform_key, resolved)
                 if resolved_is_explicit:
                     chat_id, thread_id = parsed_chat_id, parsed_thread_id
                 else:

@@ -80,7 +80,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **14. Unbounded subprocess output collection can exhaust memory**
   `src/gateway/run.py` ~3000-3002. `proc.communicate()` with no size limit buffers all stdout/stderr in memory. A runaway command printing gigabytes of output will OOM the gateway process. Add a `MAX_OUTPUT_BYTES = 10 * 1024 * 1024` cap via streaming read with a byte counter, truncating with a notice if exceeded.
 
-- [ ] **15. Circular dependency risk: cron imports shared logic from `tools`**
+- [x] **15. Circular dependency risk: cron imports shared logic from `tools`**
   `src/cron/scheduler.py` ~114, 124. `_parse_target_ref()` is imported from `src/tools/send_message_tool.py` and `resolve_channel_name()` is imported lazily inside an except handler. If `tools` ever imports `cron` (e.g. a scheduling tool), Python will hit a circular import. Move the shared parsing helpers to `src/core/channel_utils.py` and import from there.
 
 - [ ] **16. 13+ raw `os.getenv()` calls scattered through `run_job()`**
