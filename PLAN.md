@@ -105,13 +105,13 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **21. Mixed `Optional[T]` vs `T | None` type hint styles**
   Codebase-wide. `Optional[dict]` and `dict | None` are used interchangeably; `typing.List` and `list[str]` coexist. Since the project targets Python 3.11, standardize on built-in generics (`list[str]`, `dict[str, Any]`, `T | None`) and remove unused `from typing import Optional, List, Dict`.
 
-- [ ] **22. `webbrowser.open()` return value ignored**
+- [x] **22. `webbrowser.open()` return value ignored**
   `src/tools/mcp_oauth.py` ~301. `webbrowser.open()` returns `False` if no browser is available (headless server, no DISPLAY). The tool currently proceeds silently and the user gets no feedback. Check the return value and if `False`, log a warning and include the URL in the response so the user can open it manually.
 
 - [x] **23. Unreachable dead code in `spark_state.py`**
   `src/core/spark_state.py` ~269. The branch `else row[0]` after `isinstance(row, sqlite3.Row)` is never reached because `row_factory = sqlite3.Row` is unconditionally set at connection creation time. Remove the dead branch.
 
-- [ ] **24. Unused cursor variable**
+- [x] **24. Unused cursor variable** *(already fixed)*
   `src/core/spark_state.py` ~254. `cursor = self._conn.cursor()` is assigned but the very next lines call `self._conn.execute()` directly, bypassing the cursor. Remove the unused assignment.
 
 - [ ] **25. No tests for the cron subsystem**
