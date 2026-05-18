@@ -230,6 +230,19 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         pass
 
 
+def push_job_notification(job_id: str, job_name: str, success: bool, summary: str) -> None:
+    """Publish a cron job completion event to all SSE subscribers."""
+    _publish_event(
+        "notifications.job_complete",
+        {
+            "job_id": job_id,
+            "job_name": job_name,
+            "success": success,
+            "summary": summary[:200],
+        },
+    )
+
+
 def _topic_allowed(topic: str, prefixes: tuple[str, ...]) -> bool:
     if not prefixes:
         return True

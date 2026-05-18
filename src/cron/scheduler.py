@@ -969,6 +969,15 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
                 mark_job_run(job["id"], success, error, delivery_error=delivery_error)
                 executed += 1
 
+                try:
+                    import sys as _sys
+                    _ws = _sys.modules.get("spark_cli.web_server")
+                    if _ws is not None:
+                        summary = error or (final_response[:200] if final_response else "completed")
+                        _ws.push_job_notification(job["id"], job.get("name", job["id"]), success, summary)
+                except Exception:
+                    pass
+
             except Exception as e:
                 logger.error("Error processing job %s: %s", job['id'], e)
                 mark_job_run(job["id"], False, str(e))

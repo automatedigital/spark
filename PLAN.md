@@ -172,7 +172,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **F8. In-session message search**
   Add a search bar to `ChatPanel.tsx` that appears on `Cmd+F` (or a search icon button in the chat header). As the user types, highlight all matching text spans in the rendered message list and show a `3 / 12` match counter with up/down arrows to jump between matches. Implement with a `searchQuery` state in `ChatPanel.tsx`, a `useMemo` that builds a list of match positions from the flattened message content, and a `useEffect` that scrolls the active match into view. No backend changes needed — searches the already-loaded message array.
 
-- [ ] **F9. Notification system for async job completions**
+- [x] **F9. Notification system for async job completions**
   When a cron job or long-running task finishes, surface the result via: (1) an in-app notification bell icon in the top nav bar that opens a dropdown of recent events (job name, status, timestamp, truncated output) — powered by a new SSE stream `GET /api/notifications/stream` in `src/gateway/run.py` that the scheduler pushes to after each `run_job()` completes; (2) a browser `Notification` (Web Notifications API) if the user has granted permission. The notification store is a small in-memory queue in the gateway process; events are not persisted between restarts. Add a `NotificationBell.tsx` component to the `App.tsx` header.
 
 - [ ] **F10. Workspace file diff viewer**

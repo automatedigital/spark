@@ -21,6 +21,7 @@ import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 import { useUpdateModal } from "@/lib/UpdateModalContext";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
+import { NotificationBell } from "@/components/NotificationBell";
 
 
 const NAV_ITEMS = [
@@ -354,6 +355,7 @@ export default function App() {
                 </button>
               </nav>
               <div className="ml-auto hidden items-center gap-2 md:flex">
+                <NotificationBell />
                 <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{versionLabel}</span>
               </div>
             </div>
