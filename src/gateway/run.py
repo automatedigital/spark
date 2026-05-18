@@ -537,7 +537,7 @@ class GatewayRunner:
 
     # Class-level defaults so partial construction in tests doesn't
     # blow up on attribute access.
-    _running_agents_ts: Dict[str, float] = {}
+    _running_agents_ts: dict[str, float] = {}
     _busy_input_mode: str = "interrupt"
     _restart_drain_timeout: float = DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT
     _exit_code: Optional[int] = None
@@ -547,11 +547,11 @@ class GatewayRunner:
     _restart_detached: bool = False
     _restart_via_service: bool = False
     _stop_task: Optional[asyncio.Task] = None
-    _session_model_overrides: Dict[str, Dict[str, str]] = {}
+    _session_model_overrides: dict[str, dict[str, str]] = {}
     
     def __init__(self, config: Optional[GatewayConfig] = None):
         self.config = config or load_gateway_config()
-        self.adapters: Dict[Platform, BasePlatformAdapter] = {}
+        self.adapters: dict[Platform, BasePlatformAdapter] = {}
 
         # Load ephemeral config from config.yaml / env vars.
         # Both are injected at API-call time only and never persisted.
@@ -588,9 +588,9 @@ class GatewayRunner:
         
         # Track running agents per session for interrupt support
         # Key: session_key, Value: AIAgent instance
-        self._running_agents: Dict[str, Any] = {}
-        self._running_agents_ts: Dict[str, float] = {}  # start timestamp per session
-        self._pending_messages: Dict[str, str] = {}  # Queued messages during interrupt
+        self._running_agents: dict[str, Any] = {}
+        self._running_agents_ts: dict[str, float] = {}  # start timestamp per session
+        self._pending_messages: dict[str, str] = {}  # Queued messages during interrupt
 
         # Cache AIAgent instances per session to preserve prompt caching.
         # Without this, a new AIAgent is created per message, rebuilding the
@@ -598,26 +598,26 @@ class GatewayRunner:
         # and costing ~10x more on providers with prompt caching (Anthropic).
         # Key: session_key, Value: (AIAgent, config_signature_str)
         import threading as _threading
-        self._agent_cache: Dict[str, tuple] = {}
+        self._agent_cache: dict[str, tuple] = {}
         self._agent_cache_lock = _threading.Lock()
 
         # Per-session model overrides from /model command.
         # Key: session_key, Value: dict with model/provider/api_key/base_url/api_mode
-        self._session_model_overrides: Dict[str, Dict[str, str]] = {}
+        self._session_model_overrides: dict[str, dict[str, str]] = {}
         self._last_config_fingerprint = self._gateway_config_fingerprint(
             _load_gateway_config()
         )
         # Track pending exec approvals per session
         # Key: session_key, Value: {"command": str, "pattern_key": str, ...}
-        self._pending_approvals: Dict[str, Dict[str, Any]] = {}
+        self._pending_approvals: dict[str, dict[str, Any]] = {}
 
         # Track platforms that failed to connect for background reconnection.
         # Key: Platform enum, Value: {"config": platform_config, "attempts": int, "next_retry": float}
-        self._failed_platforms: Dict[Platform, Dict[str, Any]] = {}
+        self._failed_platforms: dict[Platform, dict[str, Any]] = {}
 
         # Track pending /update prompt responses per session.
         # Key: session_key, Value: True when a prompt is waiting for user input.
-        self._update_prompt_pending: Dict[str, bool] = {}
+        self._update_prompt_pending: dict[str, bool] = {}
 
         # Persistent Honcho managers keyed by gateway session key.
         # This preserves write_frequency="session" semantics across short-lived
@@ -649,7 +649,7 @@ class GatewayRunner:
         self.hooks = HookRegistry()
 
         # Per-chat voice reply mode: "off" | "voice_only" | "all"
-        self._voice_mode: Dict[str, str] = self._load_voice_modes()
+        self._voice_mode: dict[str, str] = self._load_voice_modes()
 
         # Track background tasks to prevent garbage collection mid-execution
         self._background_tasks: set = set()
@@ -671,7 +671,7 @@ class GatewayRunner:
 
     _VOICE_MODE_PATH = _spark_home / "gateway_voice_mode.json"
 
-    def _load_voice_modes(self) -> Dict[str, str]:
+    def _load_voice_modes(self) -> dict[str, str]:
         try:
             data = json.loads(self._VOICE_MODE_PATH.read_text())
         except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -1092,7 +1092,7 @@ class GatewayRunner:
             pass
     
     @staticmethod
-    def _load_prefill_messages() -> List[Dict[str, Any]]:
+    def _load_prefill_messages() -> list[dict[str, Any]]:
         """Load ephemeral prefill messages from config or env var.
         
         Checks SPARK_PREFILL_MESSAGES_FILE env var first, then falls back to
@@ -1342,7 +1342,7 @@ class GatewayRunner:
             pass
         return {}
 
-    def _snapshot_running_agents(self) -> Dict[str, Any]:
+    def _snapshot_running_agents(self) -> dict[str, Any]:
         return {
             session_key: agent
             for session_key, agent in self._running_agents.items()
@@ -1378,7 +1378,7 @@ class GatewayRunner:
         )
         return True
 
-    async def _drain_active_agents(self, timeout: float) -> tuple[Dict[str, Any], bool]:
+    async def _drain_active_agents(self, timeout: float) -> tuple[dict[str, Any], bool]:
         snapshot = self._snapshot_running_agents()
         last_active_count = self._running_agent_count()
         last_status_at = 0.0
@@ -1418,7 +1418,7 @@ class GatewayRunner:
             except Exception as e:
                 logger.debug("Failed interrupting agent during shutdown: %s", e)
 
-    def _finalize_shutdown_agents(self, active_agents: Dict[str, Any]) -> None:
+    def _finalize_shutdown_agents(self, active_agents: dict[str, Any]) -> None:
         for agent in active_agents.values():
             try:
                 from spark_cli.plugins import invoke_hook as _invoke_hook
@@ -3140,7 +3140,7 @@ class GatewayRunner:
         *,
         event: MessageEvent,
         source: SessionSource,
-        history: List[Dict[str, Any]],
+        history: list[dict[str, Any]],
     ) -> Optional[str]:
         """Prepare inbound event text for the agent.
 
@@ -5218,7 +5218,7 @@ class GatewayRunner:
                     and adapter.is_in_voice_channel(guild_id)):
                 await adapter.play_in_voice_channel(guild_id, actual_path)
             elif adapter and hasattr(adapter, "send_voice"):
-                send_kwargs: Dict[str, Any] = {
+                send_kwargs: dict[str, Any] = {
                     "chat_id": event.source.chat_id,
                     "audio_path": actual_path,
                     "reply_to": event.message_id,
@@ -7687,7 +7687,7 @@ class GatewayRunner:
     async def _enrich_message_with_vision(
         self,
         user_text: str,
-        image_paths: List[str],
+        image_paths: list[str],
     ) -> str:
         """
         Auto-analyze user-attached images with the vision tool and prepend
@@ -7755,7 +7755,7 @@ class GatewayRunner:
     async def _enrich_message_with_transcription(
         self,
         user_text: str,
-        audio_paths: List[str],
+        audio_paths: list[str],
     ) -> str:
         """
         Auto-transcribe user voice/audio messages using the configured STT provider
@@ -8076,13 +8076,13 @@ class GatewayRunner:
         self,
         message: str,
         context_prompt: str,
-        history: List[Dict[str, Any]],
+        history: list[dict[str, Any]],
         source: SessionSource,
         session_id: str,
         session_key: str = None,
         _interrupt_depth: int = 0,
         event_message_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run the agent with the given message and context.
         

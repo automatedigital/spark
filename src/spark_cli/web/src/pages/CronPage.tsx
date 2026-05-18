@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useI18n } from "@/i18n";
+import { CronCardSkeleton } from "@/components/Skeleton";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -26,6 +27,39 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "destructive"> = {
   completed: "destructive",
 };
 
+// ── Cron expression helpers ──────────────────────────────────────────────────
+
+type Frequency = "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "custom";
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function friendlyToCron(freq: Frequency, time: string, dayOfWeek: string, dayOfMonth: string, month: string): string {
+  const [hStr = "9", mStr = "0"] = time.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  switch (freq) {
+    case "hourly": return `${m} * * * *`;
+    case "daily":  return `${m} ${h} * * *`;
+    case "weekly": return `${m} ${h} * * ${dayOfWeek}`;
+    case "monthly": return `${m} ${h} ${dayOfMonth} * *`;
+    case "yearly": return `${m} ${h} ${dayOfMonth} ${month} *`;
+    default: return "";
+  }
+}
+
+function cronToFriendly(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return expr;
+  const [min, hour, dom, mon, dow] = parts;
+  if (min !== "*" && hour === "*" && dom === "*" && mon === "*" && dow === "*") return `Every hour at :${min.padStart(2, "0")}`;
+  if (min !== "*" && hour !== "*" && dom === "*" && mon === "*" && dow === "*") return `Daily at ${hour}:${min.padStart(2, "0")}`;
+  if (min !== "*" && hour !== "*" && dom === "*" && mon === "*" && dow !== "*") return `Weekly on ${DAYS[parseInt(dow, 10)] ?? dow} at ${hour}:${min.padStart(2, "0")}`;
+  if (min !== "*" && hour !== "*" && dom !== "*" && mon === "*" && dow === "*") return `Monthly on day ${dom} at ${hour}:${min.padStart(2, "0")}`;
+  if (min !== "*" && hour !== "*" && dom !== "*" && mon !== "*" && dow === "*") return `Yearly on ${MONTHS[parseInt(mon, 10) - 1] ?? mon} ${dom} at ${hour}:${min.padStart(2, "0")}`;
+  return expr;
+}
+
 export default function CronPage() {
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,10 +68,17 @@ export default function CronPage() {
 
   // New job form state
   const [prompt, setPrompt] = useState("");
-  const [schedule, setSchedule] = useState("");
   const [name, setName] = useState("");
   const [deliver, setDeliver] = useState("local");
   const [creating, setCreating] = useState(false);
+
+  // Friendly picker state
+  const [freq, setFreq] = useState<Frequency>("daily");
+  const [schedTime, setSchedTime] = useState("09:00");
+  const [schedDow, setSchedDow] = useState("1");       // day of week (0=Sun)
+  const [schedDom, setSchedDom] = useState("1");       // day of month
+  const [schedMonth, setSchedMonth] = useState("1");   // month (1-12)
+  const [customExpr, setCustomExpr] = useState("");
 
   const loadJobs = () => {
     api
@@ -51,8 +92,12 @@ export default function CronPage() {
     loadJobs();
   }, []);
 
+  const resolvedSchedule = freq === "custom"
+    ? customExpr.trim()
+    : friendlyToCron(freq, schedTime, schedDow, schedDom, schedMonth);
+
   const handleCreate = async () => {
-    if (!prompt.trim() || !schedule.trim()) {
+    if (!prompt.trim() || !resolvedSchedule) {
       showToast(`${t.cron.prompt} & ${t.cron.schedule} required`, "error");
       return;
     }
@@ -60,15 +105,17 @@ export default function CronPage() {
     try {
       await api.createCronJob({
         prompt: prompt.trim(),
-        schedule: schedule.trim(),
+        schedule: resolvedSchedule,
         name: name.trim() || undefined,
         deliver,
       });
       showToast(t.common.create + " ✓", "success");
       setPrompt("");
-      setSchedule("");
       setName("");
       setDeliver("local");
+      setFreq("daily");
+      setSchedTime("09:00");
+      setCustomExpr("");
       loadJobs();
     } catch (e) {
       showToast(`${t.config.failedToSave}: ${e}`, "error");
@@ -115,8 +162,10 @@ export default function CronPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex flex-col gap-4 px-1 py-2">
+        <CronCardSkeleton />
+        <CronCardSkeleton />
+        <CronCardSkeleton />
       </div>
     );
   }
@@ -156,17 +205,87 @@ export default function CronPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Friendly schedule picker */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="cron-schedule">{t.cron.schedule}</Label>
-                <Input
-                  id="cron-schedule"
-                  placeholder={t.cron.schedulePlaceholder}
-                  value={schedule}
-                  onChange={(e) => setSchedule(e.target.value)}
-                />
+                <Label htmlFor="cron-freq">{t.cron.schedule}</Label>
+                <Select
+                  id="cron-freq"
+                  value={freq}
+                  onValueChange={(v) => setFreq(v as Frequency)}
+                >
+                  <option value="hourly">Every Hour</option>
+                  <option value="daily">Every Day</option>
+                  <option value="weekly">Every Week</option>
+                  <option value="monthly">Every Month</option>
+                  <option value="yearly">Every Year</option>
+                  <option value="custom">Custom (cron expression)</option>
+                </Select>
               </div>
 
+              {freq !== "custom" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="cron-time">Time</Label>
+                  <input
+                    id="cron-time"
+                    type="time"
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={schedTime}
+                    onChange={(e) => setSchedTime(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {freq === "weekly" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="cron-dow">Day of Week</Label>
+                  <Select id="cron-dow" value={schedDow} onValueChange={setSchedDow}>
+                    {DAYS.map((d, i) => <option key={i} value={String(i)}>{d}</option>)}
+                  </Select>
+                </div>
+              )}
+
+              {(freq === "monthly" || freq === "yearly") && (
+                <div className="grid gap-2">
+                  <Label htmlFor="cron-dom">Day of Month</Label>
+                  <Select id="cron-dom" value={schedDom} onValueChange={setSchedDom}>
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                      <option key={d} value={String(d)}>{d}</option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              {freq === "yearly" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="cron-month">Month</Label>
+                  <Select id="cron-month" value={schedMonth} onValueChange={setSchedMonth}>
+                    {MONTHS.map((m, i) => <option key={i} value={String(i + 1)}>{m}</option>)}
+                  </Select>
+                </div>
+              )}
+
+              {freq === "custom" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="cron-schedule">Cron Expression</Label>
+                  <Input
+                    id="cron-schedule"
+                    placeholder="0 9 * * *"
+                    value={customExpr}
+                    onChange={(e) => setCustomExpr(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {resolvedSchedule && freq !== "custom" && (
+              <p className="text-xs text-muted-foreground">
+                Schedule: <code className="font-mono">{resolvedSchedule}</code>
+                {" — "}{cronToFriendly(resolvedSchedule)}
+              </p>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="cron-deliver">{t.cron.deliverTo}</Label>
                 <Select
@@ -230,7 +349,7 @@ export default function CronPage() {
                   </p>
                 )}
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="font-mono">{job.schedule_display}</span>
+                  <span className="font-mono" title={job.schedule_display}>{cronToFriendly(job.schedule_display)}</span>
                   <span>{t.cron.last}: {formatTime(job.last_run_at)}</span>
                   <span>{t.cron.next}: {formatTime(job.next_run_at)}</span>
                 </div>

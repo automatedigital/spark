@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Check,
+  Download,
   Edit3,
   Loader2,
   MessageSquare,
@@ -10,9 +11,10 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { SessionInfo, SessionSearchResult } from "@/lib/api";
+import type { SessionInfo, SessionMessage, SessionSearchResult } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { SessionRowSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -20,6 +22,30 @@ import { useEventBus } from "@/hooks/useEventBus";
 import { ThreadRow, threadTitle } from "@/components/chat/ThreadRow";
 
 const WEB_SOURCE = "web";
+
+function messagesToMarkdown(messages: SessionMessage[], title: string): string {
+  const lines: string[] = [`# ${title}`, ""];
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      lines.push(`## User`, "", msg.content || "", "");
+    } else if (msg.role === "assistant") {
+      lines.push(`## Assistant`, "", msg.content || "", "");
+    } else if (msg.role === "tool") {
+      lines.push(`### Tool: ${msg.tool_name ?? "call"}`, "", `\`\`\`json`, JSON.stringify(msg.tool_calls ?? [], null, 2), `\`\`\``, "");
+    }
+  }
+  return lines.join("\n");
+}
+
+function downloadBlob(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function optimisticThread(id: string, initialMessage?: string): SessionInfo {
   const now = Date.now() / 1000;
@@ -53,6 +79,7 @@ export default function ConversationsPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Cmd+K / Ctrl+K focuses the sidebar search from anywhere on the page
@@ -196,6 +223,23 @@ export default function ConversationsPage() {
     });
   };
 
+  const handleExport = async (format: "md" | "json") => {
+    if (!selectedId || !selectedSession) return;
+    setExporting(true);
+    try {
+      const resp = await api.getSessionMessages(selectedId);
+      const title = threadTitle(selectedSession);
+      const safeName = title.replace(/[^a-z0-9]+/gi, "_").slice(0, 60) || selectedId;
+      if (format === "md") {
+        downloadBlob(messagesToMarkdown(resp.messages, title), `${safeName}.md`, "text/markdown");
+      } else {
+        downloadBlob(JSON.stringify(resp, null, 2), `${safeName}.json`, "application/json");
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
     if (selectedId === id) {
@@ -231,8 +275,12 @@ export default function ConversationsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <div className="flex h-full max-h-screen min-h-0 overflow-hidden border-t border-border bg-card/75">
+        <aside className="flex min-h-0 w-full flex-col border-r border-border md:w-[360px] overflow-hidden">
+          <div className="flex flex-col">
+            {Array.from({ length: 8 }).map((_, i) => <SessionRowSkeleton key={i} />)}
+          </div>
+        </aside>
       </div>
     );
   }
@@ -319,7 +367,7 @@ export default function ConversationsPage() {
           <>
             {selectedSession && (
               <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2 md:flex">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 flex items-center gap-2">
                   {editingTitle ? (
                     <div className="flex max-w-xl items-center gap-2">
                       <Input
@@ -341,11 +389,33 @@ export default function ConversationsPage() {
                       </Button>
                     </div>
                   ) : (
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2 flex-1">
                       <p className="truncate text-sm font-medium">{threadTitle(selectedSession)}</p>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={beginRename}>
                         <Edit3 className="h-3.5 w-3.5" />
                       </Button>
+                      <div className="ml-auto flex items-center gap-1">
+                        <Button
+                          variant="ghost" size="sm"
+                          className="h-7 gap-1 text-xs text-muted-foreground"
+                          disabled={exporting}
+                          onClick={() => void handleExport("md")}
+                          title="Export as Markdown"
+                        >
+                          {exporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                          MD
+                        </Button>
+                        <Button
+                          variant="ghost" size="sm"
+                          className="h-7 gap-1 text-xs text-muted-foreground"
+                          disabled={exporting}
+                          onClick={() => void handleExport("json")}
+                          title="Export as JSON"
+                        >
+                          {exporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                          JSON
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
