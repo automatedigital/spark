@@ -28,6 +28,14 @@ export function workspaceRawFileUrl(slug: string, path: string): string {
   return `/api/workspace/projects/${encodeURIComponent(slug)}/raw-file?${qs}`;
 }
 
+/** Build a protected URL for MEDIA:/absolute/path attachments in chat output. */
+export function mediaFileUrl(path: string): string {
+  const qs = new URLSearchParams({ path });
+  const tok = getDashboardToken();
+  if (tok) qs.set("dashboard_token", tok);
+  return `/api/media?${qs}`;
+}
+
 /** Append dashboard auth for EventSource (no custom headers support). */
 export function sseUrl(path: string): string {
   const t = getDashboardToken();

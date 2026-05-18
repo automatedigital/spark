@@ -12,6 +12,7 @@ Usage:
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import platform
 import queue as thread_queue
@@ -20,9 +21,9 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 import urllib.parse
 import urllib.request
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -2694,6 +2695,38 @@ async def get_session_messages(session_id: str):
         return {"session_id": sid, "messages": messages}
     finally:
         db.close()
+
+
+def _resolve_workspace_media_path(path: str) -> Path:
+    """Resolve a MEDIA path for previewing, limited to Spark workspace files."""
+    raw = path.strip().strip("`\"'")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Missing media path")
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = get_spark_home() / "workspace" / candidate
+    resolved = candidate.resolve()
+    workspace_root = (get_spark_home() / "workspace").resolve()
+    try:
+        resolved.relative_to(workspace_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail="Media previews are limited to Spark workspace files",
+        )
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail=f"Media file not found: {path!r}")
+    if resolved.is_dir():
+        raise HTTPException(status_code=400, detail="Media path is a directory")
+    return resolved
+
+
+@app.get("/api/media")
+async def get_media_file(path: str):
+    """Serve MEDIA:/path attachments for web chat previews."""
+    file_path = _resolve_workspace_media_path(path)
+    mime, _ = mimetypes.guess_type(file_path.name)
+    return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
 @app.patch("/api/sessions/{session_id}/title")

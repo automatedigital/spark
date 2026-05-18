@@ -12,7 +12,8 @@ import css from "highlight.js/lib/languages/css";
 import markdown from "highlight.js/lib/languages/markdown";
 import rust from "highlight.js/lib/languages/rust";
 import go from "highlight.js/lib/languages/go";
-import { Copy, CheckCheck } from "lucide-react";
+import { Copy, CheckCheck, X } from "lucide-react";
+import { mediaFileUrl } from "@/lib/api";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -367,13 +368,14 @@ type InlineNode =
   | { type: "italic"; content: string }
   | { type: "strike"; content: string }
   | { type: "link"; text: string; href: string }
+  | { type: "media"; path: string }
   | { type: "br" };
 
 function parseInline(text: string): InlineNode[] {
   const nodes: InlineNode[] = [];
-  // Priority: code > link > bold > italic > strikethrough > bare URL > line break
+  // Priority: MEDIA > code > link > bold > italic > strikethrough > bare URL > line break
   const pattern =
-    /(`[^`]+`)|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|~~([^~]+)~~|(\bhttps?:\/\/[^\s<>)\]]+)|(\n)/g;
+    /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:~?\/|[A-Za-z]:\\)\S+(?:[^\S\n]+\S+)*?\.(?:png|jpe?g|gif|webp|mp4|mov|avi|mkv|webm|ogg|opus|mp3|wav|m4a)(?=[\s`"',;:)\]}]|$)|\S+)[`"']?|(`[^`]+`)|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|~~([^~]+)~~|(\bhttps?:\/\/[^\s<>)\]]+)|(\n)/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -383,18 +385,20 @@ function parseInline(text: string): InlineNode[] {
     }
 
     if (match[1]) {
-      nodes.push({ type: "code", content: match[1].slice(1, -1) });
+      nodes.push({ type: "media", path: cleanMediaPath(match[1]) });
     } else if (match[2]) {
-      nodes.push({ type: "link", text: match[3], href: match[4] });
-    } else if (match[5]) {
-      nodes.push({ type: "bold", content: match[6] });
-    } else if (match[7]) {
-      nodes.push({ type: "italic", content: match[8] });
-    } else if (match[9]) {
-      nodes.push({ type: "strike", content: match[9] });
+      nodes.push({ type: "code", content: match[2].slice(1, -1) });
+    } else if (match[3]) {
+      nodes.push({ type: "link", text: match[4], href: match[5] });
+    } else if (match[6]) {
+      nodes.push({ type: "bold", content: match[7] });
+    } else if (match[8]) {
+      nodes.push({ type: "italic", content: match[9] });
     } else if (match[10]) {
-      nodes.push({ type: "link", text: match[10], href: match[10] });
+      nodes.push({ type: "strike", content: match[10] });
     } else if (match[11]) {
+      nodes.push({ type: "link", text: match[11], href: match[11] });
+    } else if (match[12]) {
       nodes.push({ type: "br" });
     }
 
@@ -406,6 +410,94 @@ function parseInline(text: string): InlineNode[] {
   }
 
   return nodes;
+}
+
+function cleanMediaPath(path: string): string {
+  let cleaned = path.trim();
+  if (cleaned.length >= 2 && "`\"'".includes(cleaned[0]) && cleaned[0] === cleaned[cleaned.length - 1]) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned.replace(/^[`"']+|[`"',.;:)}\]]+$/g, "");
+}
+
+function mediaKind(path: string): "image" | "video" | "audio" | "file" {
+  const ext = path.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "image";
+  if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext)) return "video";
+  if (["ogg", "opus", "mp3", "wav", "m4a"].includes(ext)) return "audio";
+  return "file";
+}
+
+function MediaPreview({ path }: { path: string }) {
+  const [open, setOpen] = useState(false);
+  const kind = mediaKind(path);
+  const src = mediaFileUrl(path);
+  const name = path.split(/[\\/]/).pop() || "media";
+
+  if (kind === "image") {
+    return (
+      <span className="my-2 block">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="block overflow-hidden rounded-md border border-border/70 bg-background/40 transition-colors hover:border-primary/60"
+          title={`Preview ${name}`}
+        >
+          <img src={src} alt={name} className="max-h-72 max-w-full object-contain" loading="lazy" />
+        </button>
+        {open ? (
+          <span
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setOpen(false)}
+          >
+            <button
+              type="button"
+              className="absolute right-4 top-4 rounded-full bg-background/90 p-2 text-foreground shadow-lg"
+              title="Close preview"
+              onClick={() => setOpen(false)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={src}
+              alt={name}
+              className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            />
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  if (kind === "video") {
+    return (
+      <span className="my-2 block">
+        <video src={src} controls className="max-h-80 max-w-full rounded-md border border-border/70 bg-black" />
+      </span>
+    );
+  }
+
+  if (kind === "audio") {
+    return (
+      <span className="my-2 block">
+        <audio src={src} controls className="w-full max-w-md" />
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      className="text-primary underline underline-offset-2 decoration-primary/30 hover:decoration-primary/60 transition-colors"
+    >
+      {name}
+    </a>
+  );
 }
 
 function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?: string[] }) {
@@ -441,6 +533,8 @@ function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?
                 {node.text}
               </a>
             );
+          case "media":
+            return <MediaPreview key={i} path={node.path} />;
           case "br":
             return <br key={i} />;
         }
