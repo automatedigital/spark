@@ -19,6 +19,8 @@ import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 import { useUpdateModal } from "@/lib/UpdateModalContext";
+import { CommandPalette } from "@/components/CommandPalette";
+import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 
 
 const NAV_ITEMS = [
@@ -80,6 +82,8 @@ export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { updateAvailable, latestVersion, openUpdateModal } = useUpdateModal();
 
   useEffect(() => {
@@ -88,6 +92,22 @@ export default function App() {
     };
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      } else if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && !(e.target as HTMLElement).isContentEditable) {
+          setShortcutsOpen((o) => !o);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const navigateTo = (id: PageId) => {
@@ -172,6 +192,14 @@ export default function App() {
 
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground">
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={(id) => navigateTo(id as PageId)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
       {/* Cursor-following glow blob */}
       <div
         className="cursor-blob"
