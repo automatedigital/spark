@@ -114,7 +114,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **24. Unused cursor variable** *(already fixed)*
   `src/core/spark_state.py` ~254. `cursor = self._conn.cursor()` is assigned but the very next lines call `self._conn.execute()` directly, bypassing the cursor. Remove the unused assignment.
 
-- [ ] **25. No tests for the cron subsystem**
+- [x] **25. No tests for the cron subsystem**
   `tests/`. `src/cron/scheduler.py` and `src/cron/jobs.py` run unattended and have zero dedicated test coverage. Add `tests/test_cron_jobs.py` (schedule parsing, DST transitions, grace period calculation, job normalization) and `tests/test_cron_scheduler.py` (delivery routing, timeout logic, error state propagation).
 
 - [x] **26. Error messages expose full internal filesystem paths**

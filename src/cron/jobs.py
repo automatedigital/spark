@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from core.spark_constants import get_spark_home
-from typing import Optional, Dict, List, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ OUTPUT_DIR = CRON_DIR / "output"
 ONESHOT_GRACE_SECONDS = 120
 
 
-def _normalize_skill_list(skill: Optional[str] = None, skills: Optional[Any] = None) -> List[str]:
+def _normalize_skill_list(skill: str | None = None, skills: Any | None = None) -> list[str]:
     """Normalize legacy/single-skill and multi-skill inputs into a unique ordered list."""
     if skills is None:
         raw_items = [skill] if skill else []
@@ -47,7 +47,7 @@ def _normalize_skill_list(skill: Optional[str] = None, skills: Optional[Any] = N
     else:
         raw_items = list(skills)
 
-    normalized: List[str] = []
+    normalized: list[str] = []
     for item in raw_items:
         text = str(item or "").strip()
         if text and text not in normalized:
@@ -55,7 +55,7 @@ def _normalize_skill_list(skill: Optional[str] = None, skills: Optional[Any] = N
     return normalized
 
 
-def _apply_skill_fields(job: Dict[str, Any]) -> Dict[str, Any]:
+def _apply_skill_fields(job: dict[str, Any]) -> dict[str, Any]:
     """Return a job dict with canonical `skills` and legacy `skill` fields aligned."""
     normalized = dict(job)
     skills = _normalize_skill_list(normalized.get("skill"), normalized.get("skills"))
@@ -114,7 +114,7 @@ def parse_duration(s: str) -> int:
     return value * multipliers[unit]
 
 
-def parse_schedule(schedule: str) -> Dict[str, Any]:
+def parse_schedule(schedule: str) -> dict[str, Any]:
     """
     Parse schedule string into structured format.
     
@@ -223,11 +223,11 @@ def _ensure_aware(dt: datetime) -> datetime:
 
 
 def _recoverable_oneshot_run_at(
-    schedule: Dict[str, Any],
+    schedule: dict[str, Any],
     now: datetime,
     *,
-    last_run_at: Optional[str] = None,
-) -> Optional[str]:
+    last_run_at: str | None = None,
+) -> str | None:
     """Return a one-shot run time if it is still eligible to fire.
 
     One-shot jobs get a small grace window so jobs created a few seconds after
@@ -281,7 +281,7 @@ def _compute_grace_seconds(schedule: dict) -> int:
     return MIN_GRACE
 
 
-def compute_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = None) -> Optional[str]:
+def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -> str | None:
     """
     Compute the next run time for a schedule.
 
@@ -317,7 +317,7 @@ def compute_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = None
 # Job CRUD Operations
 # =============================================================================
 
-def load_jobs() -> List[Dict[str, Any]]:
+def load_jobs() -> list[dict[str, Any]]:
     """Load all jobs from storage."""
     ensure_dirs()
     if not JOBS_FILE.exists():
@@ -346,7 +346,7 @@ def load_jobs() -> List[Dict[str, Any]]:
         raise RuntimeError(f"Failed to read cron database: {e}") from e
 
 
-def save_jobs(jobs: List[Dict[str, Any]]):
+def save_jobs(jobs: list[dict[str, Any]]):
     """Save all jobs to storage."""
     ensure_dirs()
     fd, tmp_path = tempfile.mkstemp(dir=str(JOBS_FILE.parent), suffix='.tmp', prefix='.jobs_')
@@ -368,17 +368,17 @@ def save_jobs(jobs: List[Dict[str, Any]]):
 def create_job(
     prompt: str,
     schedule: str,
-    name: Optional[str] = None,
-    repeat: Optional[int] = None,
-    deliver: Optional[str] = None,
-    origin: Optional[Dict[str, Any]] = None,
-    skill: Optional[str] = None,
-    skills: Optional[List[str]] = None,
-    model: Optional[str] = None,
-    provider: Optional[str] = None,
-    base_url: Optional[str] = None,
-    script: Optional[str] = None,
-) -> Dict[str, Any]:
+    name: str | None = None,
+    repeat: int | None = None,
+    deliver: str | None = None,
+    origin: dict[str, Any] | None = None,
+    skill: str | None = None,
+    skills: list[str] | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+    base_url: str | None = None,
+    script: str | None = None,
+) -> dict[str, Any]:
     """
     Create a new cron job.
 
@@ -467,7 +467,7 @@ def create_job(
     return job
 
 
-def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+def get_job(job_id: str) -> dict[str, Any] | None:
     """Get a job by ID."""
     jobs = load_jobs()
     for job in jobs:
@@ -476,7 +476,7 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def list_jobs(include_disabled: bool = False) -> List[Dict[str, Any]]:
+def list_jobs(include_disabled: bool = False) -> list[dict[str, Any]]:
     """List all jobs, optionally including disabled ones."""
     jobs = [_apply_skill_fields(j) for j in load_jobs()]
     if not include_disabled:
@@ -484,7 +484,7 @@ def list_jobs(include_disabled: bool = False) -> List[Dict[str, Any]]:
     return jobs
 
 
-def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     """Update a job by ID, refreshing derived schedule fields when needed."""
     jobs = load_jobs()
     for i, job in enumerate(jobs):
@@ -517,7 +517,7 @@ def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]
     return None
 
 
-def pause_job(job_id: str, reason: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def pause_job(job_id: str, reason: str | None = None) -> dict[str, Any] | None:
     """Pause a job without deleting it."""
     return update_job(
         job_id,
@@ -530,7 +530,7 @@ def pause_job(job_id: str, reason: Optional[str] = None) -> Optional[Dict[str, A
     )
 
 
-def resume_job(job_id: str) -> Optional[Dict[str, Any]]:
+def resume_job(job_id: str) -> dict[str, Any] | None:
     """Resume a paused job and compute the next future run from now."""
     job = get_job(job_id)
     if not job:
@@ -549,7 +549,7 @@ def resume_job(job_id: str) -> Optional[Dict[str, Any]]:
     )
 
 
-def trigger_job(job_id: str) -> Optional[Dict[str, Any]]:
+def trigger_job(job_id: str) -> dict[str, Any] | None:
     """Schedule a job to run on the next scheduler tick."""
     job = get_job(job_id)
     if not job:
@@ -577,8 +577,8 @@ def remove_job(job_id: str) -> bool:
     return False
 
 
-def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
-                 delivery_error: Optional[str] = None):
+def mark_job_run(job_id: str, success: bool, error: str | None = None,
+                 delivery_error: str | None = None):
     """
     Mark a job as having been run.
     
@@ -655,7 +655,7 @@ def advance_next_run(job_id: str) -> bool:
     return False
 
 
-def get_due_jobs() -> List[Dict[str, Any]]:
+def get_due_jobs() -> list[dict[str, Any]]:
     """Get all jobs that are due to run now.
 
     For recurring jobs (cron/interval), if the scheduled time is stale

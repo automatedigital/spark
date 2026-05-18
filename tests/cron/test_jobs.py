@@ -174,6 +174,19 @@ class TestComputeNextRun:
     def test_unknown_kind_returns_none(self):
         assert compute_next_run({"kind": "unknown"}) is None
 
+    def test_interval_across_dst_spring_forward(self):
+        """Interval schedule should advance by real minutes, not wall-clock hours."""
+        # 2026-03-08 01:30 US/Eastern — 30 minutes before spring-forward gap.
+        # A 60-minute interval started here should land at 03:30 EDT (skipping 02:x).
+        utc_before = datetime(2026, 3, 8, 6, 30, tzinfo=timezone.utc)  # 01:30 EST
+        schedule = {"kind": "interval", "minutes": 60}
+        result = compute_next_run(schedule, last_run_at=utc_before.isoformat())
+        next_dt = datetime.fromisoformat(result)
+        # Exactly 60 real minutes later regardless of DST: 07:30 UTC
+        expected_utc = datetime(2026, 3, 8, 7, 30, tzinfo=timezone.utc)
+        delta = abs((next_dt.astimezone(timezone.utc) - expected_utc).total_seconds())
+        assert delta < 2, f"Expected 07:30 UTC, got {next_dt.astimezone(timezone.utc)}"
+
 
 # =========================================================================
 # Job CRUD (with tmp file storage)
