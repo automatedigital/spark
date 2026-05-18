@@ -123,7 +123,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **27. Browser tool FD pair not cleaned up if `Popen` raises**
   `src/tools/browser_tool.py` ~1090-1102. File descriptors from `os.open()` are assigned inside the try block, so if `Popen` raises before both assignments complete, the finally clause can't close the unassigned fds. Move fd assignments before the try block and use a single `try/finally` that unconditionally closes them.
 
-- [ ] **28. TODO/FIXME comment debt**
+- [x] **28. TODO/FIXME comment debt** *(triaged: 2 remaining are legitimate pending-work notes, not stale noise)*
   Grep the entire repo for `TODO|FIXME|HACK|XXX` and triage: close resolved ones, file issues for real ones, and delete stale noise comments.
 
 ---
