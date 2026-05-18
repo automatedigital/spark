@@ -102,7 +102,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **20. `_SCRIPT_TIMEOUT` monkeypatching is brittle for testing**
   `src/cron/scheduler.py` ~369-370. Tests override a module-level mutable variable to inject a timeout value. Replace with a `timeout: int | None = None` parameter on the relevant function; callers that omit it get the default constant.
 
-- [ ] **21. Mixed `Optional[T]` vs `T | None` type hint styles**
+- [x] **21. Mixed `Optional[T]` vs `T | None` type hint styles**
   Codebase-wide. `Optional[dict]` and `dict | None` are used interchangeably; `typing.List` and `list[str]` coexist. Since the project targets Python 3.11, standardize on built-in generics (`list[str]`, `dict[str, Any]`, `T | None`) and remove unused `from typing import Optional, List, Dict`.
 
 - [ ] **22. `webbrowser.open()` return value ignored**

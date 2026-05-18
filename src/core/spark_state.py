@@ -23,7 +23,8 @@ import threading
 import time
 from pathlib import Path
 from core.spark_constants import get_spark_home
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, TypeVar
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ class SessionDB:
 
         Returns whatever *fn* returns.
         """
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
         for attempt in range(self._WRITE_MAX_RETRIES):
             try:
                 with self._lock:
@@ -381,7 +382,7 @@ class SessionDB:
         session_id: str,
         source: str,
         model: str = None,
-        model_config: Dict[str, Any] = None,
+        model_config: dict[str, Any] = None,
         system_prompt: str = None,
         user_id: str = None,
         parent_session_id: str = None,
@@ -442,14 +443,14 @@ class SessionDB:
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
         reasoning_tokens: int = 0,
-        estimated_cost_usd: Optional[float] = None,
-        actual_cost_usd: Optional[float] = None,
-        cost_status: Optional[str] = None,
-        cost_source: Optional[str] = None,
-        pricing_version: Optional[str] = None,
-        billing_provider: Optional[str] = None,
-        billing_base_url: Optional[str] = None,
-        billing_mode: Optional[str] = None,
+        estimated_cost_usd: float | None = None,
+        actual_cost_usd: float | None = None,
+        cost_status: str | None = None,
+        cost_source: str | None = None,
+        pricing_version: str | None = None,
+        billing_provider: str | None = None,
+        billing_base_url: str | None = None,
+        billing_mode: str | None = None,
         absolute: bool = False,
     ) -> None:
         """Update token counters and backfill model if not already set.
@@ -544,7 +545,7 @@ class SessionDB:
             )
         self._execute_write(_do)
 
-    def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
         """Get a session by ID."""
         with self._lock:
             cursor = self._conn.execute(
@@ -553,7 +554,7 @@ class SessionDB:
             row = cursor.fetchone()
         return dict(row) if row else None
 
-    def resolve_session_id(self, session_id_or_prefix: str) -> Optional[str]:
+    def resolve_session_id(self, session_id_or_prefix: str) -> str | None:
         """Resolve an exact or uniquely prefixed session ID to the full ID.
 
         Returns the exact ID when it exists. Otherwise treats the input as a
@@ -584,7 +585,7 @@ class SessionDB:
     MAX_TITLE_LENGTH = 100
 
     @staticmethod
-    def sanitize_title(title: Optional[str]) -> Optional[str]:
+    def sanitize_title(title: str | None) -> str | None:
         """Validate and sanitize a session title.
 
         - Strips leading/trailing whitespace
@@ -656,7 +657,7 @@ class SessionDB:
         rowcount = self._execute_write(_do)
         return rowcount > 0
 
-    def get_session_title(self, session_id: str) -> Optional[str]:
+    def get_session_title(self, session_id: str) -> str | None:
         """Get the title for a session, or None."""
         with self._lock:
             cursor = self._conn.execute(
@@ -665,7 +666,7 @@ class SessionDB:
             row = cursor.fetchone()
         return row["title"] if row else None
 
-    def get_session_by_title(self, title: str) -> Optional[Dict[str, Any]]:
+    def get_session_by_title(self, title: str) -> dict[str, Any] | None:
         """Look up a session by exact title. Returns session dict or None."""
         with self._lock:
             cursor = self._conn.execute(
@@ -674,7 +675,7 @@ class SessionDB:
             row = cursor.fetchone()
         return dict(row) if row else None
 
-    def resolve_session_by_title(self, title: str) -> Optional[str]:
+    def resolve_session_by_title(self, title: str) -> str | None:
         """Resolve a title to a session ID, preferring the latest in a lineage.
 
         If the exact title exists, returns that session's ID.
@@ -741,11 +742,11 @@ class SessionDB:
     def list_sessions_rich(
         self,
         source: str = None,
-        exclude_sources: List[str] = None,
+        exclude_sources: list[str] = None,
         limit: int = 20,
         offset: int = 0,
         include_children: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List sessions with preview (first user message) and last active timestamp.
 
         Returns dicts with keys: id, source, model, title, started_at, ended_at,
@@ -887,7 +888,7 @@ class SessionDB:
 
         return self._execute_write(_do)
 
-    def get_messages(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         """Load all messages for a session, ordered by timestamp."""
         with self._lock:
             cursor = self._conn.execute(
@@ -910,7 +911,7 @@ class SessionDB:
             result.append(msg)
         return result
 
-    def get_messages_as_conversation(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_messages_as_conversation(self, session_id: str) -> list[dict[str, Any]]:
         """
         Load messages in the OpenAI conversation format (role + content dicts).
         Used by the gateway to restore conversation history.
@@ -1020,12 +1021,12 @@ class SessionDB:
     def search_messages(
         self,
         query: str,
-        source_filter: List[str] = None,
-        exclude_sources: List[str] = None,
-        role_filter: List[str] = None,
+        source_filter: list[str] = None,
+        exclude_sources: list[str] = None,
+        role_filter: list[str] = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Full-text search across session messages using FTS5.
 
@@ -1141,7 +1142,7 @@ class SessionDB:
         source: str = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List sessions, optionally filtered by source."""
         with self._lock:
             if source:
@@ -1188,7 +1189,7 @@ class SessionDB:
     # Export and cleanup
     # =========================================================================
 
-    def export_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def export_session(self, session_id: str) -> dict[str, Any] | None:
         """Export a single session with all its messages as a dict."""
         session = self.get_session(session_id)
         if not session:
@@ -1196,7 +1197,7 @@ class SessionDB:
         messages = self.get_messages(session_id)
         return {**session, "messages": messages}
 
-    def export_all(self, source: str = None) -> List[Dict[str, Any]]:
+    def export_all(self, source: str = None) -> list[dict[str, Any]]:
         """
         Export all sessions (with messages) as a list of dicts.
         Suitable for writing to a JSONL file for backup/analysis.

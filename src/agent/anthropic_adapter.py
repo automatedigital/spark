@@ -18,7 +18,7 @@ from pathlib import Path
 
 from core.spark_constants import get_spark_home
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 try:
     import anthropic as _anthropic_sdk
@@ -122,7 +122,7 @@ _OAUTH_ONLY_BETAS = [
 # The version must stay reasonably current — Anthropic rejects OAuth requests
 # when the spoofed user-agent version is too far behind the actual release.
 _CLAUDE_CODE_VERSION_FALLBACK = "2.1.74"
-_claude_code_version_cache: Optional[str] = None
+_claude_code_version_cache: str | None = None
 
 
 def _detect_claude_code_version() -> str:
@@ -298,7 +298,7 @@ def build_anthropic_client(api_key: str, base_url: str = None):
     return _anthropic_sdk.Anthropic(**kwargs)
 
 
-def read_claude_code_credentials() -> Optional[Dict[str, Any]]:
+def read_claude_code_credentials() -> dict[str, Any] | None:
     """Read refreshable Claude Code OAuth credentials from ~/.claude/.credentials.json.
 
     This intentionally excludes ~/.claude.json primaryApiKey. Opencode's
@@ -328,7 +328,7 @@ def read_claude_code_credentials() -> Optional[Dict[str, Any]]:
     return None
 
 
-def read_claude_managed_key() -> Optional[str]:
+def read_claude_managed_key() -> str | None:
     """Read Claude's native managed key from ~/.claude.json for diagnostics only."""
     claude_json = Path.home() / ".claude.json"
     if claude_json.exists():
@@ -342,7 +342,7 @@ def read_claude_managed_key() -> Optional[str]:
     return None
 
 
-def is_claude_code_token_valid(creds: Dict[str, Any]) -> bool:
+def is_claude_code_token_valid(creds: dict[str, Any]) -> bool:
     """Check if Claude Code credentials have a non-expired access token."""
     import time
 
@@ -357,7 +357,7 @@ def is_claude_code_token_valid(creds: Dict[str, Any]) -> bool:
     return now_ms < (expires_at - 60_000)
 
 
-def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) -> Dict[str, Any]:
+def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) -> dict[str, Any]:
     """Refresh an Anthropic OAuth token without mutating local credential files."""
     import time
     import urllib.parse
@@ -421,7 +421,7 @@ def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) 
     raise ValueError("Anthropic token refresh failed")
 
 
-def _refresh_oauth_token(creds: Dict[str, Any]) -> Optional[str]:
+def _refresh_oauth_token(creds: dict[str, Any]) -> str | None:
     """Attempt to refresh an expired Claude Code OAuth token."""
     refresh_token = creds.get("refreshToken", "")
     if not refresh_token:
@@ -447,7 +447,7 @@ def _write_claude_code_credentials(
     refresh_token: str,
     expires_at_ms: int,
     *,
-    scopes: Optional[list] = None,
+    scopes: list | None = None,
 ) -> None:
     """Write refreshed credentials back to ~/.claude/.credentials.json.
 
@@ -463,7 +463,7 @@ def _write_claude_code_credentials(
         if cred_path.exists():
             existing = json.loads(cred_path.read_text(encoding="utf-8"))
 
-        oauth_data: Dict[str, Any] = {
+        oauth_data: dict[str, Any] = {
             "accessToken": access_token,
             "refreshToken": refresh_token,
             "expiresAt": expires_at_ms,
@@ -485,7 +485,7 @@ def _write_claude_code_credentials(
         logger.debug("Failed to write refreshed credentials: %s", e)
 
 
-def _resolve_claude_code_token_from_credentials(creds: Optional[Dict[str, Any]] = None) -> Optional[str]:
+def _resolve_claude_code_token_from_credentials(creds: dict[str, Any] | None = None) -> str | None:
     """Resolve a token from Claude Code credential files, refreshing if needed."""
     creds = creds or read_claude_code_credentials()
     if creds and is_claude_code_token_valid(creds):
@@ -500,7 +500,7 @@ def _resolve_claude_code_token_from_credentials(creds: Optional[Dict[str, Any]] 
     return None
 
 
-def _prefer_refreshable_claude_code_token(env_token: str, creds: Optional[Dict[str, Any]]) -> Optional[str]:
+def _prefer_refreshable_claude_code_token(env_token: str, creds: dict[str, Any] | None) -> str | None:
     """Prefer Claude Code creds when a persisted env OAuth token would shadow refresh.
 
     Spark historically persisted setup tokens into ANTHROPIC_TOKEN. That makes
@@ -522,7 +522,7 @@ def _prefer_refreshable_claude_code_token(env_token: str, creds: Optional[Dict[s
     return None
 
 
-def resolve_anthropic_token() -> Optional[str]:
+def resolve_anthropic_token() -> str | None:
     """Resolve an Anthropic token from all available sources.
 
     Priority:
@@ -566,7 +566,7 @@ def resolve_anthropic_token() -> Optional[str]:
     return None
 
 
-def run_oauth_setup_token() -> Optional[str]:
+def run_oauth_setup_token() -> str | None:
     """Run 'claude setup-token' interactively and return the resulting token.
 
     Checks multiple sources after the subprocess completes:
@@ -632,7 +632,7 @@ def _generate_pkce() -> tuple:
     return verifier, challenge
 
 
-def run_spark_oauth_login_pure() -> Optional[Dict[str, Any]]:
+def run_spark_oauth_login_pure() -> dict[str, Any] | None:
     """Run Spark-native OAuth PKCE flow and return credential state."""
     import time
     import webbrowser
@@ -730,7 +730,7 @@ def run_spark_oauth_login_pure() -> Optional[Dict[str, Any]]:
     }
 
 
-def read_spark_oauth_credentials() -> Optional[Dict[str, Any]]:
+def read_spark_oauth_credentials() -> dict[str, Any] | None:
     """Read Spark-managed OAuth credentials from ~/.spark/.anthropic_oauth.json."""
     if _SPARK_OAUTH_FILE.exists():
         try:
@@ -778,7 +778,7 @@ def _sanitize_tool_id(tool_id: str) -> str:
     return sanitized or "tool_0"
 
 
-def convert_tools_to_anthropic(tools: List[Dict]) -> List[Dict]:
+def convert_tools_to_anthropic(tools: list[dict]) -> list[dict]:
     """Convert OpenAI tool definitions to Anthropic format."""
     if not tools:
         return []
@@ -793,7 +793,7 @@ def convert_tools_to_anthropic(tools: List[Dict]) -> List[Dict]:
     return result
 
 
-def _image_source_from_openai_url(url: str) -> Dict[str, str]:
+def _image_source_from_openai_url(url: str) -> dict[str, str]:
     """Convert an OpenAI-style image URL/data URL into Anthropic image source."""
     url = str(url or "").strip()
     if not url:
@@ -815,7 +815,7 @@ def _image_source_from_openai_url(url: str) -> Dict[str, str]:
     return {"type": "url", "url": url}
 
 
-def _convert_content_part_to_anthropic(part: Any) -> Optional[Dict[str, Any]]:
+def _convert_content_part_to_anthropic(part: Any) -> dict[str, Any] | None:
     """Convert a single OpenAI-style content part to Anthropic format."""
     if part is None:
         return None
@@ -827,7 +827,7 @@ def _convert_content_part_to_anthropic(part: Any) -> Optional[Dict[str, Any]]:
     ptype = part.get("type")
 
     if ptype == "input_text":
-        block: Dict[str, Any] = {"type": "text", "text": part.get("text", "")}
+        block: dict[str, Any] = {"type": "text", "text": part.get("text", "")}
     elif ptype in {"image_url", "input_image"}:
         image_value = part.get("image_url", {})
         url = image_value.get("url", "") if isinstance(image_value, dict) else str(image_value or "")
@@ -840,7 +840,7 @@ def _convert_content_part_to_anthropic(part: Any) -> Optional[Dict[str, Any]]:
     return block
 
 
-def _to_plain_data(value: Any, *, _depth: int = 0, _path: Optional[set] = None) -> Any:
+def _to_plain_data(value: Any, *, _depth: int = 0, _path: set | None = None) -> Any:
     """Recursively convert SDK objects to plain Python data structures.
 
     Guards against circular references (``_path`` tracks ``id()`` of objects
@@ -886,13 +886,13 @@ def _to_plain_data(value: Any, *, _depth: int = 0, _path: Optional[set] = None) 
     return value
 
 
-def _extract_preserved_thinking_blocks(message: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _extract_preserved_thinking_blocks(message: dict[str, Any]) -> list[dict[str, Any]]:
     """Return Anthropic thinking blocks previously preserved on the message."""
     raw_details = message.get("reasoning_details")
     if not isinstance(raw_details, list):
         return []
 
-    preserved: List[Dict[str, Any]] = []
+    preserved: list[dict[str, Any]] = []
     for detail in raw_details:
         if not isinstance(detail, dict):
             continue
@@ -917,9 +917,9 @@ def _convert_content_to_anthropic(content: Any) -> Any:
 
 
 def convert_messages_to_anthropic(
-    messages: List[Dict],
+    messages: list[dict],
     base_url: str | None = None,
-) -> Tuple[Optional[Any], List[Dict]]:
+) -> tuple[Any | None, list[dict]]:
     """Convert OpenAI-format messages to Anthropic format.
 
     Returns (system_prompt, anthropic_messages).
@@ -1188,17 +1188,17 @@ def convert_messages_to_anthropic(
 
 def build_anthropic_kwargs(
     model: str,
-    messages: List[Dict],
-    tools: Optional[List[Dict]],
-    max_tokens: Optional[int],
-    reasoning_config: Optional[Dict[str, Any]],
-    tool_choice: Optional[str] = None,
+    messages: list[dict],
+    tools: list[dict] | None,
+    max_tokens: int | None,
+    reasoning_config: dict[str, Any] | None,
+    tool_choice: str | None = None,
     is_oauth: bool = False,
     preserve_dots: bool = False,
-    context_length: Optional[int] = None,
+    context_length: int | None = None,
     base_url: str | None = None,
     fast_mode: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build kwargs for anthropic.messages.create().
 
     Naming note — two distinct concepts, easily confused:
@@ -1292,7 +1292,7 @@ def build_anthropic_kwargs(
                         elif block.get("type") == "tool_result" and "tool_use_id" in block:
                             pass  # tool_result uses ID, not name
 
-    kwargs: Dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "model": model,
         "messages": anthropic_messages,
         "max_tokens": effective_max_tokens,
@@ -1355,7 +1355,7 @@ def build_anthropic_kwargs(
 def normalize_anthropic_response(
     response,
     strip_tool_prefix: bool = False,
-) -> Tuple[SimpleNamespace, str]:
+) -> tuple[SimpleNamespace, str]:
     """Normalize Anthropic response to match the shape expected by AIAgent.
 
     Returns (assistant_message, finish_reason) where assistant_message has

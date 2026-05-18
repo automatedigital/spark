@@ -26,7 +26,6 @@ except ImportError:
     except ImportError:
         msvcrt = None
 from pathlib import Path
-from typing import Optional
 
 # Add parent directory to path for imports BEFORE repo-level imports.
 # Without this, standalone invocations (e.g. after `spark update` reloads
@@ -63,7 +62,7 @@ _LOCK_DIR = _spark_home / "cron"
 _LOCK_FILE = _LOCK_DIR / ".tick.lock"
 
 
-def _resolve_origin(job: dict) -> Optional[dict]:
+def _resolve_origin(job: dict) -> dict | None:
     """Extract origin info from a job, preserving any extra routing metadata."""
     origin = job.get("origin")
     if not origin:
@@ -75,7 +74,7 @@ def _resolve_origin(job: dict) -> Optional[dict]:
     return None
 
 
-def _resolve_delivery_target(job: dict) -> Optional[dict]:
+def _resolve_delivery_target(job: dict) -> dict | None:
     """Resolve the concrete auto-delivery target for a cron job, if any."""
     deliver = job.get("deliver", "local")
     origin = _resolve_origin(job)
@@ -260,7 +259,7 @@ def _send_via_live_adapter(adapter, chat_id: str, text: str, media_files: list,
 
 
 def _send_via_standalone_path(platform, pconfig, chat_id: str, text: str,
-                              thread_id, media_files: list, job: dict) -> Optional[str]:
+                              thread_id, media_files: list, job: dict) -> str | None:
     """Send via a freshly-created asyncio event loop (safe from any thread).
 
     Returns None on success, or an error string on failure.
@@ -293,7 +292,7 @@ def _send_via_standalone_path(platform, pconfig, chat_id: str, text: str,
     return None
 
 
-def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Optional[str]:
+def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> str | None:
     """Deliver job output to the configured target.
 
     Returns None on success, or an error string on failure.
@@ -831,7 +830,7 @@ def _format_job_output(result: dict, job: dict, prompt: str) -> tuple[str, str]:
     return output, final_response
 
 
-def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
+def run_job(job: dict) -> tuple[bool, str, str, str | None]:
     """Execute a single cron job.
 
     Returns:
