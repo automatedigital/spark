@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectOption } from "@/components/ui/select";
 import { useI18n } from "@/i18n";
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +76,26 @@ const REASONING_EFFORT_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Max" },
+];
+
+const MODEL_PROVIDER_OPTIONS = [
+  { value: "", label: "Auto" },
+  { value: "openai-codex", label: "OpenAI Codex" },
+  { value: "openrouter", label: "OpenRouter" },
+  { value: "anthropic", label: "Anthropic" },
+  { value: "nous", label: "Nous" },
+  { value: "qwen-oauth", label: "Qwen OAuth" },
+  { value: "github-copilot", label: "GitHub Copilot" },
+  { value: "copilot-acp", label: "GitHub Copilot ACP" },
+  { value: "zai", label: "Z.ai" },
+  { value: "kimi-for-coding", label: "Kimi for Coding" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "alibaba", label: "Alibaba DashScope" },
+  { value: "minimax", label: "MiniMax" },
+  { value: "minimax-cn", label: "MiniMax CN" },
+  { value: "xai", label: "xAI" },
+  { value: "ollama", label: "Ollama" },
+  { value: "custom", label: "Custom" },
 ];
 
 function textValue(value: unknown): string {
@@ -276,6 +297,15 @@ export default function ConfigPage() {
     const fastApiMode = textValue(getNestedValue(config, "smart_model_routing.cheap_model.api_mode"));
     const maxSimpleChars = numberValue(getNestedValue(config, "smart_model_routing.max_simple_chars"), 160);
     const maxSimpleWords = numberValue(getNestedValue(config, "smart_model_routing.max_simple_words"), 28);
+    const providerOptions = (currentProvider: string) => {
+      if (!currentProvider || MODEL_PROVIDER_OPTIONS.some((option) => option.value === currentProvider)) {
+        return MODEL_PROVIDER_OPTIONS;
+      }
+      return [
+        ...MODEL_PROVIDER_OPTIONS,
+        { value: currentProvider, label: currentProvider },
+      ];
+    };
 
     return (
       <div className="mb-3 border border-border bg-background/70">
@@ -312,11 +342,16 @@ export default function ConfigPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label className="text-xs">Provider</Label>
-                <Input
+                <Select
                   value={smartProvider}
-                  onChange={(e) => updateConfigValue("model_provider", e.target.value)}
-                  placeholder="openai-codex"
-                />
+                  onValueChange={(value) => updateConfigValue("model_provider", value)}
+                >
+                  {providerOptions(smartProvider).map(({ value, label }) => (
+                    <SelectOption key={value} value={value}>
+                      {label}
+                    </SelectOption>
+                  ))}
+                </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">Model</Label>
@@ -389,11 +424,16 @@ export default function ConfigPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Provider</Label>
-                  <Input
+                  <Select
                     value={fastProvider}
-                    onChange={(e) => updateConfigValue("smart_model_routing.cheap_model.provider", e.target.value)}
-                    placeholder="openai-codex"
-                  />
+                    onValueChange={(value) => updateConfigValue("smart_model_routing.cheap_model.provider", value)}
+                  >
+                    {providerOptions(fastProvider).map(({ value, label }) => (
+                      <SelectOption key={value} value={value}>
+                        {label}
+                      </SelectOption>
+                    ))}
+                  </Select>
                 </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Model</Label>
