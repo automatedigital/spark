@@ -15,7 +15,7 @@
 
 A modular AI harness that runs in your terminal, connects to any LLM provider, and gets smarter over time. Learns from your sessions, adapts to your workflow, and bridges the terminal with messaging platforms like Telegram, Discord, and Slack.
 
-<img src="https://img.shields.io/badge/version-1.2.7-blue" alt="Version 1.2.7">
+<img src="https://img.shields.io/badge/version-1.3.0-blue" alt="Version 1.3.0">
 <a href="https://img.shields.io/github/commit-activity/m/automatedigital/spark">
   <img src="https://img.shields.io/github/commit-activity/m/automatedigital/spark?label=commits%20this%20month" alt="Commits this month" />
 </a>
