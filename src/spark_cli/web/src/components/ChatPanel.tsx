@@ -115,6 +115,22 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
 // any row whose props haven't changed, preventing re-renders of the full
 // message list on every streaming token.
 
+// Highlight @file and /command tokens in plain text (used in user message bubbles)
+const BUBBLE_TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
+function renderTokens(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  BUBBLE_TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = BUBBLE_TOKEN_RE.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    nodes.push(<span key={m.index} className="text-primary font-medium">{m[0]}</span>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
 type UserMsg = Extract<ChatMessage, { role: "user" }>;
 type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
 type ToolMsg = Extract<ChatMessage, { role: "tool" }>;
@@ -140,7 +156,7 @@ const UserRow = memo(function UserRow({
         <User className="h-3.5 w-3.5" />
       </div>
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-primary/10 text-foreground relative">
-        <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+        <p className="whitespace-pre-wrap leading-relaxed">{renderTokens(msg.content)}</p>
         {hasSession && msg.sessionIdx != null && (
           <div className="absolute -top-2 right-0 opacity-0 group-hover/msg:opacity-100 flex gap-1 transition-opacity">
             <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Edit & retry"
