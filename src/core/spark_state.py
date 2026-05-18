@@ -554,6 +554,15 @@ class SessionDB:
             row = cursor.fetchone()
         return dict(row) if row else None
 
+    def get_session_forks(self, session_id: str) -> list[dict[str, Any]]:
+        """Return all sessions forked directly from session_id."""
+        with self._lock:
+            cursor = self._conn.execute(
+                "SELECT * FROM sessions WHERE parent_session_id = ? ORDER BY started_at DESC",
+                (session_id,),
+            )
+            return [dict(r) for r in cursor.fetchall()]
+
     def resolve_session_id(self, session_id_or_prefix: str) -> str | None:
         """Resolve an exact or uniquely prefixed session ID to the full ID.
 

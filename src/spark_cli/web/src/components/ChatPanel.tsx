@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   X,
@@ -9,6 +9,10 @@ import {
   RotateCcw,
   Copy,
   Pencil,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  CornerUpLeft,
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api } from "@/lib/api";
@@ -25,6 +29,7 @@ import { StatusPill } from "@/components/chat/StatusPill";
 import { PromptBar } from "@/components/chat/PromptBar";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
+import { MessageRowSkeleton } from "@/components/Skeleton";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
@@ -265,6 +270,11 @@ export function ChatPanel({
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>({});
+  const [forkInfo, setForkInfo] = useState<{
+    parentSessionId: string | null;
+    parentTitle: string | null;
+    forkCount: number;
+  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
@@ -301,7 +311,15 @@ export function ChatPanel({
     setStatusLabel(null);
     setEditingUser(null);
     setSessionStats({});
+    setForkInfo(null);
     if (sessionId) {
+      api.getSessionForks(sessionId).then((info) => {
+        setForkInfo({
+          parentSessionId: info.parent_session_id,
+          parentTitle: info.parent_title,
+          forkCount: info.fork_count,
+        });
+      }).catch(() => {});
       setLoadingHistory(true);
       api
         .getSessionMessages(sessionId)
@@ -678,8 +696,103 @@ export function ChatPanel({
   const handleRetry = useCallback((idx: number) => { void doRetry(idx); }, [doRetry]);
   const handleFork = useCallback((idx: number) => { void doFork(idx); }, [doFork]);
 
+  // In-session search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatchIdx, setSearchMatchIdx] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+
+  // Cmd+F / Ctrl+F opens message search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        e.preventDefault();
+        setSearchOpen((o) => {
+          if (!o) setTimeout(() => searchInputRef.current?.focus(), 10);
+          return !o;
+        });
+      }
+      if (e.key === "Escape" && searchOpen) setSearchOpen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [searchOpen]);
+
+  // Build match positions from messages
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const results: number[] = [];
+    chatMessages.forEach((msg, i) => {
+      const text =
+        msg.role === "user" || msg.role === "assistant"
+          ? msg.content?.toLowerCase() ?? ""
+          : msg.role === "reasoning"
+          ? msg.text?.toLowerCase() ?? ""
+          : "";
+      if (text.includes(q)) results.push(i);
+    });
+    return results;
+  }, [chatMessages, searchQuery]);
+
+  // Scroll active match into view
+  useEffect(() => {
+    if (!searchMatches.length) return;
+    const idx = searchMatches[searchMatchIdx % searchMatches.length];
+    const el = messageListRef.current?.children[idx] as HTMLElement | undefined;
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [searchMatchIdx, searchMatches]);
+
+  // Drag-and-drop state
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes("Files")) {
+      dragCounterRef.current += 1;
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) void uploadFiles(files);
+  }, [uploadFiles]);
+
   return (
-    <div className={cn("flex min-h-0 w-full flex-1 flex-col bg-background", className)}>
+    <div
+      className={cn("flex min-h-0 w-full flex-1 flex-col bg-background relative", className)}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {isDragOver && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary rounded-lg pointer-events-none">
+          <svg className="h-12 w-12 text-primary mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          <p className="text-sm font-medium text-primary">Drop files to attach</p>
+        </div>
+      )}
       <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0 gap-2">
         {onBack && (
           <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={onBack}>
@@ -692,6 +805,18 @@ export function ChatPanel({
           </span>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusPill streaming={streaming} label={statusLabel} />
+            {forkInfo?.parentSessionId && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                <CornerUpLeft className="h-2.5 w-2.5" />
+                Forked from {forkInfo.parentTitle ?? forkInfo.parentSessionId}
+              </span>
+            )}
+            {forkInfo && forkInfo.forkCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                <GitFork className="h-2.5 w-2.5" />
+                {forkInfo.forkCount} {forkInfo.forkCount === 1 ? "branch" : "branches"}
+              </span>
+            )}
             {activeSessionId && (
               <Button
                 variant="outline"
@@ -713,6 +838,13 @@ export function ChatPanel({
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground"
+            onClick={() => { setSearchOpen((o) => !o); setTimeout(() => searchInputRef.current?.focus(), 10); }}
+            title="Search messages (⌘F)"
+          >
+            <Search className="h-3.5 w-3.5" />
+          </Button>
           {onClose && (
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -721,10 +853,45 @@ export function ChatPanel({
         </div>
       </div>
 
+      {/* Message search bar */}
+      {searchOpen && (
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 bg-muted/30 shrink-0">
+          <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <input
+            ref={searchInputRef}
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder="Search messages…"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setSearchMatchIdx(0); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setSearchMatchIdx((i) => (i + 1) % Math.max(searchMatches.length, 1));
+              if (e.key === "Escape") setSearchOpen(false);
+            }}
+          />
+          {searchQuery && (
+            <span className="text-[11px] text-muted-foreground shrink-0">
+              {searchMatches.length ? `${(searchMatchIdx % searchMatches.length) + 1} / ${searchMatches.length}` : "0 results"}
+            </span>
+          )}
+          <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!searchMatches.length}
+            onClick={() => setSearchMatchIdx((i) => (i - 1 + searchMatches.length) % searchMatches.length)}>
+            <ChevronUp className="h-3 w-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!searchMatches.length}
+            onClick={() => setSearchMatchIdx((i) => (i + 1) % searchMatches.length)}>
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSearchOpen(false)}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {loadingHistory ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="flex flex-col gap-4 py-2">
+            <MessageRowSkeleton />
+            <MessageRowSkeleton />
           </div>
         ) : chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -733,7 +900,7 @@ export function ChatPanel({
             <p className="text-xs mt-1 opacity-60">Type a message below</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3" ref={messageListRef}>
             {(() => {
               // Collapse consecutive same-name tool calls into one bubble with a repeat count.
               const collapsed: { msg: typeof chatMessages[number]; repeatCount: number }[] = [];

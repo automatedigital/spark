@@ -181,5 +181,5 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **F11. Keyboard shortcuts reference overlay**
   Add a `KeyboardShortcutsModal.tsx` that opens when the user presses `?` (outside an input field). Lists all keyboard shortcuts organized by context (Global, Chat, Workspace, Editor). Shortcuts are defined in a static `SHORTCUTS` constant in the component. Add a "Keyboard shortcuts" entry to the settings panel or help menu so it's also discoverable without knowing the key. No backend changes needed.
 
-- [ ] **F12. Session branching / fork-from-message UI**
+- [x] **F12. Session branching / fork-from-message UI**
   `ChatPanel.tsx` already has a "Fork" action on user messages (line ~141-156) that calls the backend fork API. Currently the forked session opens as a new conversation with no visual link back to the parent. Improve this by: (1) showing a `↩ Forked from [Session Name]` badge at the top of the new session's chat header; (2) adding a "Branches" indicator on the original session's message row showing how many forks exist (via a `GET /api/sessions/{id}/forks` count endpoint added to `src/gateway/run.py`); (3) in `ConversationsPage.tsx`, group forked sessions visually under their parent with an indented tree layout. Backend: add a `parent_session_id` query to `src/core/spark_state.py` `get_session_forks(session_id)`.

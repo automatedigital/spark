@@ -4310,6 +4310,28 @@ async def fork_conversation(session_id: str, body: ConversationForkBody):
     return {"ok": True, "session_id": new_id, "source_session_id": sid}
 
 
+@app.get("/api/sessions/{session_id}/forks")
+async def get_session_forks(session_id: str):
+    """Return sessions forked from this session and the parent session title (if any)."""
+    from core.spark_state import SessionDB
+    db = SessionDB()
+    try:
+        session = db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        forks = db.get_session_forks(session_id)
+        parent_id = session.get("parent_session_id")
+        parent = db.get_session(parent_id) if parent_id else None
+        return {
+            "forks": [{"id": f["id"], "title": f.get("title") or f["id"]} for f in forks],
+            "fork_count": len(forks),
+            "parent_session_id": parent_id,
+            "parent_title": (parent.get("title") or parent_id) if parent else None,
+        }
+    finally:
+        db.close()
+
+
 @app.post("/api/conversations/{session_id}/retry")
 async def retry_conversation(session_id: str, body: ConversationRetryBody):
     from tools.approval import register_gateway_notify, unregister_gateway_notify

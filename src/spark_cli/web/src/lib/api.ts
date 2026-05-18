@@ -243,6 +243,14 @@ export const api = {
       },
     ),
 
+  getSessionForks: (sessionId: string) =>
+    fetchJSON<{
+      forks: Array<{ id: string; title: string }>;
+      fork_count: number;
+      parent_session_id: string | null;
+      parent_title: string | null;
+    }>(`/api/sessions/${encodeURIComponent(sessionId)}/forks`),
+
   retryConversation: (sessionId: string, messageIndex: number, message?: string) =>
     fetchJSON<{ ok: boolean; session_id: string }>(
       `/api/conversations/${encodeURIComponent(sessionId)}/retry`,
