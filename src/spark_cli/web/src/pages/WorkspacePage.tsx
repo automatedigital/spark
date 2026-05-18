@@ -65,7 +65,13 @@ type TerminalTab = {
   name: string;
 };
 
-type WorkspaceTab = ThreadTab | FileTab | TerminalTab;
+type FilesTab = {
+  id: "files";
+  type: "files";
+  name: string;
+};
+
+type WorkspaceTab = ThreadTab | FileTab | TerminalTab | FilesTab;
 
 type PaneNode = {
   type: "pane";
@@ -92,12 +98,17 @@ const THREAD_TAB: ThreadTab = { id: THREAD_TAB_ID, type: "threads", name: "Threa
 const TERMINAL_TAB_ID = "terminal";
 const TERMINAL_TAB: TerminalTab = { id: TERMINAL_TAB_ID, type: "terminal", name: "Terminal" };
 
+const FILES_TAB_ID = "files";
+const FILES_TAB: FilesTab = { id: FILES_TAB_ID, type: "files", name: "Files" };
+
 const makePaneId = () => `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const makeSplitId = () => `split-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const fileTabId = (path: string) => `file:${path}`;
 
 function createDefaultLayout(): WorkspaceLayoutNode {
-  return { type: "pane", id: makePaneId(), tabIds: [THREAD_TAB_ID], activeTabId: THREAD_TAB_ID };
+  const leftPane: PaneNode = { type: "pane", id: makePaneId(), tabIds: [THREAD_TAB_ID], activeTabId: THREAD_TAB_ID };
+  const rightPane: PaneNode = { type: "pane", id: makePaneId(), tabIds: [FILES_TAB_ID, TERMINAL_TAB_ID], activeTabId: FILES_TAB_ID };
+  return { type: "split", id: makeSplitId(), direction: "row", sizes: [58, 42], children: [leftPane, rightPane] };
 }
 
 // ── File utilities ─────────────────────────────────────────────────────────────
@@ -641,9 +652,6 @@ function paneContainsTab(node: WorkspaceLayoutNode, paneId: string, tabId: strin
   return paneContainsTab(node.children[0], paneId, tabId) || paneContainsTab(node.children[1], paneId, tabId);
 }
 
-function findFirstPane(node: WorkspaceLayoutNode): PaneNode {
-  return node.type === "pane" ? node : findFirstPane(node.children[0]);
-}
 
 // ── Projects sidebar ──────────────────────────────────────────────────────────
 
@@ -1116,7 +1124,7 @@ function WorkspaceTabButton({
     <button
       type="button"
       draggable
-      title={tab.type === "file" ? tab.path : tab.type === "terminal" ? "Terminal" : "Workspace threads"}
+      title={tab.type === "file" ? tab.path : tab.type === "terminal" ? "Terminal" : tab.type === "files" ? "Files" : "Workspace threads"}
       onClick={onActivate}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/x-spark-tab", tab.id);
@@ -1142,11 +1150,13 @@ function WorkspaceTabButton({
         <MessageSquare className="h-3.5 w-3.5 shrink-0" />
       ) : tab.type === "terminal" ? (
         <SquareTerminal className="h-3.5 w-3.5 shrink-0" />
+      ) : tab.type === "files" ? (
+        <FileText className="h-3.5 w-3.5 shrink-0" />
       ) : (
         <FileIcon name={tab.name} />
       )}
       <span className="truncate">{tab.name}</span>
-      {(tab.type === "file" || tab.type === "terminal") && (
+      {tab.type === "file" && (
         <span
           role="button"
           tabIndex={0}
@@ -1211,22 +1221,26 @@ function WorkspacePane({
   tabs,
   slug,
   threadContent,
+  activePath,
   onActivate,
   onClose,
   onMoveToPane,
   onReorder,
   onSplit,
+  onOpenFile,
   hideTabStrip,
 }: {
   pane: PaneNode;
   tabs: WorkspaceTab[];
   slug: string;
   threadContent: React.ReactNode;
+  activePath: string | null;
   onActivate: (paneId: string, tabId: string) => void;
   onClose: (tabId: string) => void;
   onMoveToPane: (paneId: string, tabId: string) => void;
   onReorder: (paneId: string, draggedId: string, targetId: string) => void;
   onSplit: (paneId: string, tabId: string, edge: DropEdge) => void;
+  onOpenFile: (node: WorkspaceFileNode) => void;
   hideTabStrip?: boolean;
 }) {
   const [draggingOver, setDraggingOver] = useState(false);
@@ -1282,6 +1296,7 @@ function WorkspacePane({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab.type === "threads" ? threadContent
           : activeTab.type === "terminal" ? <WorkspaceTerminalPanel slug={slug} />
+          : activeTab.type === "files" ? <FileTreePane slug={slug} activePath={activePath} onOpenFile={onOpenFile} />
           : <FileViewer file={activeTab} slug={slug} />}
       </div>
     </div>
@@ -1293,6 +1308,7 @@ function WorkspaceLayoutView({
   tabs,
   slug,
   threadContent,
+  activePath,
   primaryHeaderPaneId,
   onActivate,
   onClose,
@@ -1300,11 +1316,13 @@ function WorkspaceLayoutView({
   onReorder,
   onSplit,
   onResizeSplit,
+  onOpenFile,
 }: {
   node: WorkspaceLayoutNode;
   tabs: WorkspaceTab[];
   slug: string;
   threadContent: React.ReactNode;
+  activePath: string | null;
   primaryHeaderPaneId: string;
   onActivate: (paneId: string, tabId: string) => void;
   onClose: (tabId: string) => void;
@@ -1312,6 +1330,7 @@ function WorkspaceLayoutView({
   onReorder: (paneId: string, draggedId: string, targetId: string) => void;
   onSplit: (paneId: string, tabId: string, edge: DropEdge) => void;
   onResizeSplit: (splitId: string, delta: number) => void;
+  onOpenFile: (node: WorkspaceFileNode) => void;
 }) {
   if (node.type === "pane") {
     return (
@@ -1320,24 +1339,20 @@ function WorkspaceLayoutView({
         tabs={tabs}
         slug={slug}
         threadContent={threadContent}
+        activePath={activePath}
         hideTabStrip={node.id === primaryHeaderPaneId}
         onActivate={onActivate}
         onClose={onClose}
         onMoveToPane={onMoveToPane}
         onReorder={onReorder}
         onSplit={onSplit}
+        onOpenFile={onOpenFile}
       />
     );
   }
 
-  const firstStyle =
-    node.direction === "row"
-      ? { flexBasis: `${node.sizes[0]}%` }
-      : { flexBasis: `${node.sizes[0]}%` };
-  const secondStyle =
-    node.direction === "row"
-      ? { flexBasis: `${node.sizes[1]}%` }
-      : { flexBasis: `${node.sizes[1]}%` };
+  const firstStyle = { flexBasis: `${node.sizes[0]}%` };
+  const secondStyle = { flexBasis: `${node.sizes[1]}%` };
 
   return (
     <div className={cn("flex min-h-0 min-w-0 flex-1 overflow-hidden", node.direction === "column" && "flex-col")}>
@@ -1347,6 +1362,7 @@ function WorkspaceLayoutView({
           tabs={tabs}
           slug={slug}
           threadContent={threadContent}
+          activePath={activePath}
           primaryHeaderPaneId={primaryHeaderPaneId}
           onActivate={onActivate}
           onClose={onClose}
@@ -1354,6 +1370,7 @@ function WorkspaceLayoutView({
           onReorder={onReorder}
           onSplit={onSplit}
           onResizeSplit={onResizeSplit}
+          onOpenFile={onOpenFile}
         />
       </div>
       {node.direction === "row" ? (
@@ -1367,6 +1384,7 @@ function WorkspaceLayoutView({
           tabs={tabs}
           slug={slug}
           threadContent={threadContent}
+          activePath={activePath}
           primaryHeaderPaneId={primaryHeaderPaneId}
           onActivate={onActivate}
           onClose={onClose}
@@ -1374,6 +1392,7 @@ function WorkspaceLayoutView({
           onReorder={onReorder}
           onSplit={onSplit}
           onResizeSplit={onResizeSplit}
+          onOpenFile={onOpenFile}
         />
       </div>
     </div>
@@ -1538,26 +1557,17 @@ function WorkspaceTerminalPanel({ slug }: { slug: string }) {
   );
 }
 
-// ── Files panel ───────────────────────────────────────────────────────────────
+// ── File tree pane (renders inside workspace layout) ──────────────────────────
 
-function FilesPanel({
+function FileTreePane({
   slug,
-  collapsed,
-  onToggleCollapse,
-  panelWidth,
   activePath,
   onOpenFile,
-  terminalInWorkspace,
 }: {
   slug: string;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
-  panelWidth: number;
   activePath: string | null;
   onOpenFile: (node: WorkspaceFileNode) => void;
-  terminalInWorkspace?: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<"files" | "terminal">("files");
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1576,15 +1586,13 @@ function FilesPanel({
     }
   }, [slug]);
 
-  useEffect(() => {
-    loadTree();
-  }, [slug, loadTree]);
+  useEffect(() => { void loadTree(); }, [loadTree]);
 
   const handleDelete = async (node: WorkspaceFileNode) => {
     if (!confirm(`Delete ${node.path}?`)) return;
     try {
       await api.deleteWorkspaceFile(slug, node.path);
-      loadTree();
+      void loadTree();
     } catch (e) {
       console.error("Delete failed", e);
     }
@@ -1596,7 +1604,7 @@ function FilesPanel({
     setUploading(true);
     try {
       await api.uploadWorkspaceFiles(slug, arr);
-      loadTree();
+      void loadTree();
     } catch (e) {
       console.error("Upload failed", e);
     } finally {
@@ -1604,193 +1612,49 @@ function FilesPanel({
     }
   };
 
-  if (collapsed) {
-    return (
-      <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-l border-border bg-card/60 py-2">
-        <button
-          type="button"
-          title="Show files"
-          onClick={onToggleCollapse}
-          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </button>
-        <div className="my-1 h-px w-6 bg-border" />
-        <button
-          type="button"
-          title="Files"
-          onClick={() => {
-            setActiveTab("files");
-            onToggleCollapse();
-          }}
-          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-        >
-          <FileText className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          draggable={!terminalInWorkspace}
-          title={terminalInWorkspace ? "Terminal is open in the workspace" : "Terminal"}
-          onClick={() => {
-            if (!terminalInWorkspace) {
-              setActiveTab("terminal");
-              onToggleCollapse();
-            }
-          }}
-          onDragStart={(e) => {
-            e.dataTransfer.setData("application/x-spark-tab", TERMINAL_TAB_ID);
-            e.dataTransfer.effectAllowed = "move";
-          }}
-          className={cn(
-            "rounded p-1.5 transition",
-            terminalInWorkspace
-              ? "cursor-grab text-muted-foreground/30"
-              : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-          )}
-        >
-          <SquareTerminal className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title="Upload files"
-          onClick={() => fileInputRef.current?.click()}
-          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-        >
-          <Upload className="h-3.5 w-3.5" />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => e.target.files && void handleUpload(e.target.files)}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div style={{ width: panelWidth }} className="spark-glass-panel flex shrink-0 flex-col overflow-hidden border-l border-border">
-      <div className="spark-panel-header flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5">
-        <div className="flex min-w-0 items-center gap-1 rounded-sm border border-border bg-background/45 p-0.5">
-          <button
-            type="button"
-            onClick={() => setActiveTab("files")}
-            className={cn(
-              "flex h-6 items-center gap-1.5 rounded-[3px] px-2 text-[11px] transition",
-              activeTab === "files"
-                ? "bg-primary/18 text-foreground"
-                : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
-            )}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Files
-          </button>
-          <button
-            type="button"
-            draggable={!terminalInWorkspace}
-            onClick={() => { if (!terminalInWorkspace) setActiveTab("terminal"); }}
-            onDragStart={(e) => {
-              e.dataTransfer.setData("application/x-spark-tab", TERMINAL_TAB_ID);
-              e.dataTransfer.effectAllowed = "move";
-            }}
-            title={terminalInWorkspace ? "Terminal is open in the workspace" : "Terminal"}
-            className={cn(
-              "flex h-6 items-center gap-1.5 rounded-[3px] px-2 text-[11px] transition",
-              terminalInWorkspace
-                ? "cursor-grab text-muted-foreground/40"
-                : activeTab === "terminal"
-                  ? "bg-primary/18 text-foreground"
-                  : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
-            )}
-          >
-            <SquareTerminal className="h-3.5 w-3.5" />
-            Terminal
-          </button>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1">
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Explorer</span>
         <div className="flex items-center gap-1">
-          {uploading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-          {activeTab === "files" && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 w-6 p-0"
-              title="Upload files"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 w-6 p-0"
-            title="Collapse files"
-            onClick={onToggleCollapse}
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
+          {uploading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Upload files" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-3.5 w-3.5" />
           </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => e.target.files && void handleUpload(e.target.files)}
-          />
+          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Refresh" onClick={() => void loadTree()}>
+            <Loader2 className={cn("h-3.5 w-3.5", loadingTree ? "animate-spin" : "opacity-40")} />
+          </Button>
         </div>
+        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && void handleUpload(e.target.files)} />
       </div>
-
-      {activeTab === "files" ? (
-        <div
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto py-1 transition-all",
-            dragOver && "bg-primary/5 ring-2 ring-inset ring-primary/20",
-          )}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            if (e.dataTransfer.files.length) void handleUpload(e.dataTransfer.files);
-          }}
-        >
-          {loadingTree && (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
-          )}
-          {!loadingTree && tree.length === 0 && (
-            <div className="flex flex-col items-center gap-2 py-8 text-center text-xs text-muted-foreground/60">
-              <Upload className="h-6 w-6 opacity-30" />
-              <p>
-                No files yet.
-                <br />
-                Drop files here or click upload.
-              </p>
-            </div>
-          )}
-          {tree.map((node) => (
-            <FileNodeRow
-              key={node.path}
-              node={node}
-              depth={0}
-              onSelect={onOpenFile}
-              selectedPath={activePath}
-              onDelete={(n) => void handleDelete(n)}
-            />
-          ))}
-        </div>
-      ) : terminalInWorkspace ? (
-        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center text-xs text-muted-foreground/50">
-          <SquareTerminal className="h-5 w-5 opacity-30" />
-          <p>Terminal is open in the workspace.<br />Close it there to bring it back here.</p>
-        </div>
-      ) : (
-        <WorkspaceTerminalPanel slug={slug} />
-      )}
+      <div
+        className={cn("min-h-0 flex-1 overflow-y-auto py-1 transition-all", dragOver && "bg-primary/5 ring-2 ring-inset ring-primary/20")}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) void handleUpload(e.dataTransfer.files); }}
+      >
+        {loadingTree && !tree.length && (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </div>
+        )}
+        {!loadingTree && tree.length === 0 && (
+          <div className="flex flex-col items-center gap-2 py-8 text-center text-xs text-muted-foreground/60">
+            <Upload className="h-6 w-6 opacity-30" />
+            <p>No files yet.<br />Drop files here or click upload.</p>
+          </div>
+        )}
+        {tree.map((node) => (
+          <FileNodeRow
+            key={node.path}
+            node={node}
+            depth={0}
+            onSelect={onOpenFile}
+            selectedPath={activePath}
+            onDelete={(n) => void handleDelete(n)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1810,47 +1674,37 @@ export default function WorkspacePage() {
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>([THREAD_TAB]);
+  const STATIC_TABS: WorkspaceTab[] = [THREAD_TAB, FILES_TAB, TERMINAL_TAB];
+  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(STATIC_TABS);
   const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayoutNode>(() => createDefaultLayout());
 
   const [projectsCollapsed, setProjectsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem("spark-workspace-projects-collapsed") === "true";
   });
-  const [filesCollapsed, setFilesCollapsed] = useState<boolean>(() => {
-    return localStorage.getItem("spark-workspace-files-collapsed") === "true";
-  });
 
-  const [[projectsWidth, threadsWidth, filesWidth], setPanelWidths] = useState<[number, number, number]>(() => {
+  const [[projectsWidth, threadsWidth], setPanelWidths] = useState<[number, number]>(() => {
     try {
       const raw = localStorage.getItem("spark-workspace-widths");
       if (raw) {
         const p = JSON.parse(raw) as unknown;
-        if (Array.isArray(p) && p.length === 3 && p.every((x) => typeof x === "number"))
-          return [Math.max(160, p[0] as number), Math.max(200, p[1] as number), Math.max(200, p[2] as number)];
+        if (Array.isArray(p) && p.length >= 2 && p.every((x) => typeof x === "number"))
+          return [Math.max(160, p[0] as number), Math.max(200, p[1] as number)];
       }
     } catch { /* ignore */ }
-    return [220, 300, 280];
+    return [220, 280];
   });
 
   const handleProjectsDrag = useCallback((delta: number) => {
-    setPanelWidths(([p, t, f]) => {
-      const next: [number, number, number] = [Math.max(160, p + delta), t, f];
+    setPanelWidths(([p, t]) => {
+      const next: [number, number] = [Math.max(160, p + delta), t];
       localStorage.setItem("spark-workspace-widths", JSON.stringify(next));
       return next;
     });
   }, []);
 
   const handleThreadsDrag = useCallback((delta: number) => {
-    setPanelWidths(([p, t, f]) => {
-      const next: [number, number, number] = [p, Math.max(200, t + delta), f];
-      localStorage.setItem("spark-workspace-widths", JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const handleFilesDrag = useCallback((delta: number) => {
-    setPanelWidths(([p, t, f]) => {
-      const next: [number, number, number] = [p, t, Math.max(200, f - delta)];
+    setPanelWidths(([p, t]) => {
+      const next: [number, number] = [p, Math.max(200, t + delta)];
       localStorage.setItem("spark-workspace-widths", JSON.stringify(next));
       return next;
     });
@@ -1874,7 +1728,7 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (!activeSlug) {
-      setWorkspaceTabs([THREAD_TAB]);
+      setWorkspaceTabs(STATIC_TABS);
       setWorkspaceLayout(createDefaultLayout());
       return;
     }
@@ -1882,23 +1736,25 @@ export default function WorkspacePage() {
     try {
       const raw = localStorage.getItem(`spark-workspace-editor:${activeSlug}`);
       if (!raw) {
-        setWorkspaceTabs([THREAD_TAB]);
+        setWorkspaceTabs(STATIC_TABS);
         setWorkspaceLayout(createDefaultLayout());
         return;
       }
 
       const parsed = JSON.parse(raw) as { tabs?: WorkspaceTab[]; layout?: WorkspaceLayoutNode };
-      const tabs = Array.isArray(parsed.tabs)
-        ? [THREAD_TAB, ...parsed.tabs.filter((tab): tab is FileTab => tab?.type === "file" && typeof tab.path === "string")]
-        : [THREAD_TAB];
+      const fileTabs = Array.isArray(parsed.tabs)
+        ? parsed.tabs.filter((tab): tab is FileTab => tab?.type === "file" && typeof tab.path === "string")
+        : [];
+      const tabs = [...STATIC_TABS, ...fileTabs];
       const uniqueTabs = tabs.filter((tab, index, arr) => arr.findIndex((item) => item.id === tab.id) === index);
       const validIds = new Set(uniqueTabs.map((tab) => tab.id));
       setWorkspaceTabs(uniqueTabs);
       setWorkspaceLayout(parsed.layout ? ensureLayoutTabs(parsed.layout, validIds) : createDefaultLayout());
     } catch {
-      setWorkspaceTabs([THREAD_TAB]);
+      setWorkspaceTabs(STATIC_TABS);
       setWorkspaceLayout(createDefaultLayout());
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSlug]);
 
   useEffect(() => {
@@ -1962,14 +1818,6 @@ export default function WorkspacePage() {
     setProjectsCollapsed((v) => {
       const next = !v;
       localStorage.setItem("spark-workspace-projects-collapsed", String(next));
-      return next;
-    });
-  };
-
-  const toggleFilesCollapse = () => {
-    setFilesCollapsed((v) => {
-      const next = !v;
-      localStorage.setItem("spark-workspace-files-collapsed", String(next));
       return next;
     });
   };
@@ -2040,26 +1888,20 @@ export default function WorkspacePage() {
     }
   };
 
+  const PERMANENT_TAB_IDS = new Set([THREAD_TAB_ID, FILES_TAB_ID, TERMINAL_TAB_ID]);
+
   const handleCloseTab = (tabId: string) => {
-    if (tabId === THREAD_TAB_ID) return;
+    if (PERMANENT_TAB_IDS.has(tabId)) return;
     setWorkspaceTabs((prev) => prev.filter((tab) => tab.id !== tabId));
     setWorkspaceLayout((prev) => removeTabFromLayout(prev, tabId) ?? createDefaultLayout());
   };
 
-  const ensureTerminalTab = (tabId: string) => {
-    if (tabId === TERMINAL_TAB_ID) {
-      setWorkspaceTabs((prev) => prev.some((t) => t.id === TERMINAL_TAB_ID) ? prev : [...prev, TERMINAL_TAB]);
-    }
-  };
-
   const handleMoveTabToPane = (paneId: string, tabId: string) => {
-    ensureTerminalTab(tabId);
     setWorkspaceLayout((prev) => moveTabToPane(prev, paneId, tabId));
   };
 
   const handleSplitTab = (paneId: string, tabId: string, edge: DropEdge) => {
     if (tabId === THREAD_TAB_ID) return;
-    ensureTerminalTab(tabId);
     setWorkspaceLayout((prev) => {
       const layout = paneContainsTab(prev, paneId, tabId)
         ? prev
@@ -2073,13 +1915,6 @@ export default function WorkspacePage() {
   };
 
   const activeFilePath = activeSlug ? findActiveFilePath(workspaceLayout, workspaceTabs) : null;
-  const terminalInWorkspace = allLayoutTabIds(workspaceLayout).includes(TERMINAL_TAB_ID);
-  const primaryTabPane = findFirstPane(workspaceLayout);
-  const primaryTabs = primaryTabPane.tabIds
-    .map((id) => workspaceTabs.find((tab) => tab.id === id))
-    .filter((tab): tab is WorkspaceTab => Boolean(tab));
-  const activePrimaryTab =
-    primaryTabs.find((tab) => tab.id === primaryTabPane.activeTabId) ?? primaryTabs[0] ?? THREAD_TAB;
 
   const threadContent = activeSlug ? (
     newThread ? (
@@ -2193,88 +2028,51 @@ export default function WorkspacePage() {
       {/* Divider: projects ↔ threads/chat */}
       {!projectsCollapsed && <ResizeDivider onDrag={handleProjectsDrag} />}
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {/* Thread list — only when a project is active */}
         {activeSlug && (
-          <div className="spark-tabbar flex h-8 shrink-0 overflow-x-auto border-b border-border scrollbar-none">
-            {primaryTabs.map((tab) => (
-              <WorkspaceTabButton
-                key={tab.id}
-                tab={tab}
-                paneId={primaryTabPane.id}
-                active={activePrimaryTab.id === tab.id}
-                onActivate={() =>
-                  setWorkspaceLayout((prev) => setPaneActiveTab(prev, primaryTabPane.id, tab.id))
-                }
-                onClose={() => handleCloseTab(tab.id)}
-                onReorder={handleReorderTab}
-              />
-            ))}
-          </div>
+          <>
+            <WorkspaceThreadList
+              key={activeSlug}
+              slug={activeSlug}
+              activeId={activeThreadId}
+              onOpen={handleOpenThread}
+              onNewThread={handleNewThread}
+              onSessionsChange={handleSessionsChange}
+              panelWidth={threadsWidth}
+              reloadTrigger={threadsReloadTrigger}
+            />
+            <ResizeDivider onDrag={handleThreadsDrag} />
+          </>
         )}
 
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {/* Thread list — only when a project is active */}
-          {activeSlug && (
-            <>
-              <WorkspaceThreadList
-                key={activeSlug}
-                slug={activeSlug}
-                activeId={activeThreadId}
-                onOpen={handleOpenThread}
-                onNewThread={handleNewThread}
-                onSessionsChange={handleSessionsChange}
-                panelWidth={threadsWidth}
-                reloadTrigger={threadsReloadTrigger}
-              />
-              <ResizeDivider onDrag={handleThreadsDrag} />
-            </>
-          )}
-
-          {/* Workspace editor area */}
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            {activeSlug && threadContent ? (
-              <WorkspaceLayoutView
-                node={workspaceLayout}
-                tabs={workspaceTabs}
-                slug={activeSlug}
-                threadContent={threadContent}
-                primaryHeaderPaneId={primaryTabPane.id}
-                onActivate={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
-                onClose={handleCloseTab}
-                onMoveToPane={handleMoveTabToPane}
-                onReorder={handleReorderTab}
-                onSplit={handleSplitTab}
-                onResizeSplit={(splitId, delta) => setWorkspaceLayout((prev) => resizeSplit(prev, splitId, delta))}
-              />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
-                <FolderOpen className="mb-4 h-12 w-12 opacity-30" />
-                <p className="text-sm font-medium text-foreground">Select a project</p>
-                <p className="mt-1 max-w-sm text-xs opacity-75">
-                  Choose a project from the left panel to get started.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Files panel — only when a project is active */}
-      {activeSlug && (
-        <>
-          {!filesCollapsed && <ResizeDivider onDrag={handleFilesDrag} />}
-          <FilesPanel
-            key={`files-${activeSlug}`}
+        {/* Workspace tile area */}
+        {activeSlug ? (
+          <WorkspaceLayoutView
+            node={workspaceLayout}
+            tabs={workspaceTabs}
             slug={activeSlug}
-            collapsed={filesCollapsed}
-            onToggleCollapse={toggleFilesCollapse}
-            panelWidth={filesWidth}
+            threadContent={threadContent}
             activePath={activeFilePath}
+            primaryHeaderPaneId=""
+            onActivate={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
+            onClose={handleCloseTab}
+            onMoveToPane={handleMoveTabToPane}
+            onReorder={handleReorderTab}
+            onSplit={handleSplitTab}
+            onResizeSplit={(splitId, delta) => setWorkspaceLayout((prev) => resizeSplit(prev, splitId, delta))}
             onOpenFile={handleOpenFile}
-            terminalInWorkspace={terminalInWorkspace}
           />
-        </>
-      )}
+        ) : (
+          <div className="flex h-full flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
+            <FolderOpen className="mb-4 h-12 w-12 opacity-30" />
+            <p className="text-sm font-medium text-foreground">Select a project</p>
+            <p className="mt-1 max-w-sm text-xs opacity-75">
+              Choose a project from the left panel to get started.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
