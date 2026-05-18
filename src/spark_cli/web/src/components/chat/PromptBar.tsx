@@ -13,8 +13,32 @@ interface PromptBarProps {
   disabled?: boolean;
 }
 
+// Match @tokens and /commands at line start (gm: ^ matches after each \n)
+const TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
+
+function renderMirror(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_RE.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    nodes.push(
+      <mark key={m.index} className="bg-transparent text-primary font-medium not-italic">
+        {m[0]}
+      </mark>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  // Trailing nbsp prevents div collapse when text ends with \n
+  nodes.push(" ");
+  return nodes;
+}
+
 export function PromptBar({ input, setInput, streaming, onSend, onStop, onUploadFiles, disabled }: PromptBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -28,6 +52,12 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, onUpload
   };
 
   useEffect(resize, [input]);
+
+  const syncScroll = () => {
+    if (mirrorRef.current && textareaRef.current) {
+      mirrorRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showMenu) {
@@ -120,17 +150,34 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, onUpload
             />
           </>
         )}
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          disabled={blocked}
-          placeholder={streaming ? "Responding…" : uploading ? "Uploading…" : "Ask anything…"}
-          rows={1}
-          className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 min-h-[40px] max-h-[240px] overflow-y-auto"
-          style={{ height: "40px" }}
-        />
+
+        {/* Rich input: mirror div for highlights + transparent textarea on top */}
+        <div
+          className={`relative flex-1 rounded-md border border-input bg-background min-h-[40px] focus-within:ring-1 focus-within:ring-ring transition-opacity ${
+            blocked ? "opacity-50" : ""
+          }`}
+        >
+          <div
+            ref={mirrorRef}
+            aria-hidden
+            className="absolute inset-0 pointer-events-none overflow-hidden px-3 py-2 text-sm text-foreground whitespace-pre-wrap break-words select-none"
+          >
+            {renderMirror(input)}
+          </div>
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onScroll={syncScroll}
+            disabled={blocked}
+            placeholder={streaming ? "Responding…" : uploading ? "Uploading…" : "Ask anything…"}
+            rows={1}
+            className="relative z-10 w-full resize-none bg-transparent px-3 py-2 text-sm text-transparent placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed min-h-[40px] max-h-[240px] overflow-y-auto"
+            style={{ height: "40px", caretColor: "hsl(var(--foreground))" }}
+          />
+        </div>
+
         <div className="flex flex-col items-end gap-1 shrink-0">
           {streaming ? (
             <Button
