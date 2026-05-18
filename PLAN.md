@@ -166,7 +166,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **F6. Session export (Markdown, JSON, PDF)**
   Add an export button to the conversation detail view (`ConversationsPage.tsx` / `ChatPanel.tsx`). Options: **Markdown** (renders messages as `## User` / `## Assistant` blocks with tool call details), **JSON** (raw session data), **PDF** (browser `window.print()` with a print-specific CSS stylesheet). Markdown and JSON are generated client-side from the already-loaded message array. PDF uses the browser print dialog with `@media print` styles that hide sidebar and controls. No backend changes needed for Markdown/JSON/PDF. Optionally add a `GET /api/sessions/{id}/export?format=md` gateway endpoint for server-side rendering if the session is too large for in-browser export.
 
-- [ ] **F7. Inline image and file preview in chat messages**
+- [x] **F7. Inline image and file preview in chat messages**
   When tool calls in `ToolCallBubble.tsx` or assistant messages return a file path or URL (image, audio, video, PDF, code file), detect the file type and render it inline rather than showing just a raw path string. Images: `<img>` with max-height cap and click-to-fullscreen. Audio: HTML5 `<audio controls>`. Code files: syntax-highlighted code block using the existing `highlight.js` integration already in `WorkspacePage.tsx`. PDF: `<iframe>` embed or download link. Add a `detectOutputType(value: string)` utility and update `ToolCallBubble.tsx` and the assistant message renderer to use it.
 
 - [x] **F8. In-session message search**

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText } from "lucide-react";
+import { detectOutputType } from "@/lib/detectOutputType";
 
 const TOOL_FAMILIES: Record<string, { color: string; icon: typeof Wrench }> = {
   bash: { color: "amber", icon: Terminal },
@@ -22,6 +23,44 @@ const COLOR_CLASSES: Record<string, { border: string; bg: string; text: string }
   blue: { border: "border-blue-400/30", bg: "bg-blue-500/5", text: "text-blue-400/70" },
   green: { border: "border-success/30", bg: "bg-success/5", text: "text-success/70" },
 };
+
+function ResultPreview({ result }: { result: string }) {
+  const [fullscreen, setFullscreen] = useState(false);
+  const trimmed = result.trim();
+  const detected = detectOutputType(trimmed);
+
+  if (detected.kind === "image") {
+    return (
+      <>
+        <img
+          src={detected.url}
+          alt={trimmed}
+          className="max-h-48 rounded cursor-pointer object-contain"
+          onClick={() => setFullscreen(true)}
+        />
+        {fullscreen && (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80"
+            onClick={() => setFullscreen(false)}
+          >
+            <img src={detected.url} alt={trimmed} className="max-h-[90vh] max-w-[90vw] rounded object-contain" />
+          </div>
+        )}
+      </>
+    );
+  }
+  if (detected.kind === "audio") {
+    return <audio controls src={detected.url} className="w-full max-w-xs" />;
+  }
+  if (detected.kind === "video") {
+    return <video controls src={detected.url} className="max-h-48 rounded w-full" />;
+  }
+  return (
+    <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap font-mono text-foreground/90 max-h-48 overflow-y-auto">
+      {result.length > 12000 ? `${result.slice(0, 12000)}…` : result}
+    </pre>
+  );
+}
 
 function getArgPreview(name: string, args: Record<string, unknown>): string | null {
   const lname = name.toLowerCase();
@@ -128,9 +167,7 @@ export function ToolCallBubble({
           {result != null && result !== "" && (
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Result</div>
-              <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap font-mono text-foreground/90 max-h-48 overflow-y-auto">
-                {result.length > 12000 ? `${result.slice(0, 12000)}…` : result}
-              </pre>
+              <ResultPreview result={result} />
             </div>
           )}
         </div>
