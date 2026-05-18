@@ -83,7 +83,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 - [x] **15. Circular dependency risk: cron imports shared logic from `tools`**
   `src/cron/scheduler.py` ~114, 124. `_parse_target_ref()` is imported from `src/tools/send_message_tool.py` and `resolve_channel_name()` is imported lazily inside an except handler. If `tools` ever imports `cron` (e.g. a scheduling tool), Python will hit a circular import. Move the shared parsing helpers to `src/core/channel_utils.py` and import from there.
 
-- [ ] **16. 13+ raw `os.getenv()` calls scattered through `run_job()`**
+- [x] **16. 13+ raw `os.getenv()` calls scattered through `run_job()`**
   `src/cron/scheduler.py` ~626, 645, 707 (and more). Makes testing require patching individual env vars and makes it easy to miss a variable when renaming. Create a `@dataclass class JobRunEnv` at the top of `run_job()` that reads all relevant env vars once, then pass it to sub-functions.
 
 - [x] **17. PIL `Image.open()` handle not guaranteed to close on exception**

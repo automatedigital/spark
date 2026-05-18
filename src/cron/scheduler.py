@@ -658,6 +658,9 @@ def _setup_job_environment(job: dict) -> dict:
     smart_routing = _cfg.get("smart_model_routing", {}) or {}
     fallback_model = _cfg.get("fallback_providers") or _cfg.get("fallback_model") or None
 
+    inference_provider = os.getenv("SPARK_INFERENCE_PROVIDER") or None
+    cron_timeout = float(os.getenv("SPARK_CRON_TIMEOUT", 600))
+
     return {
         "model": model,
         "cfg": _cfg,
@@ -667,6 +670,8 @@ def _setup_job_environment(job: dict) -> dict:
         "provider_routing": pr,
         "smart_routing": smart_routing,
         "fallback_model": fallback_model,
+        "inference_provider": inference_provider,
+        "cron_timeout": cron_timeout,
     }
 
 
@@ -683,7 +688,7 @@ def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session
 
     try:
         runtime_kwargs: dict = {
-            "requested": job.get("provider") or os.getenv("SPARK_INFERENCE_PROVIDER"),
+            "requested": job.get("provider") or env.get("inference_provider"),
         }
         if job.get("base_url"):
             runtime_kwargs["explicit_base_url"] = job.get("base_url")
@@ -747,11 +752,10 @@ def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session
     )
 
 
-def _execute_job_with_timeout(agent, job: dict, prompt: str) -> dict:
+def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict) -> dict:
     """Run the agent with an inactivity-based timeout. Returns the result dict."""
     job_name = job["name"]
-    _cron_timeout = float(os.getenv("SPARK_CRON_TIMEOUT", 600))
-    _cron_inactivity_limit = _cron_timeout if _cron_timeout > 0 else None
+    _cron_inactivity_limit = env.get("cron_timeout", 600.0) or None
 
     _cron_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     _cron_future = _cron_pool.submit(agent.run_conversation, prompt)
@@ -851,7 +855,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
     try:
         env = _setup_job_environment(job)
         agent = _initialize_job_agent(job, env, prompt, _session_db, _cron_session_id)
-        result = _execute_job_with_timeout(agent, job, prompt)
+        result = _execute_job_with_timeout(agent, job, prompt, env)
         output, final_response = _format_job_output(result, job, prompt)
         logger.info("Job '%s' completed successfully", job_name)
         return True, output, final_response, None
