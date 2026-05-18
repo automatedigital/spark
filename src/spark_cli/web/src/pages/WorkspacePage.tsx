@@ -59,7 +59,13 @@ type FileTab = FileView & {
   type: "file";
 };
 
-type WorkspaceTab = ThreadTab | FileTab;
+type TerminalTab = {
+  id: "terminal";
+  type: "terminal";
+  name: string;
+};
+
+type WorkspaceTab = ThreadTab | FileTab | TerminalTab;
 
 type PaneNode = {
   type: "pane";
@@ -82,6 +88,9 @@ type DropEdge = "left" | "right" | "top" | "bottom";
 
 const THREAD_TAB_ID = "threads";
 const THREAD_TAB: ThreadTab = { id: THREAD_TAB_ID, type: "threads", name: "Threads" };
+
+const TERMINAL_TAB_ID = "terminal";
+const TERMINAL_TAB: TerminalTab = { id: TERMINAL_TAB_ID, type: "terminal", name: "Terminal" };
 
 const makePaneId = () => `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const makeSplitId = () => `split-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1107,7 +1116,7 @@ function WorkspaceTabButton({
     <button
       type="button"
       draggable
-      title={tab.type === "file" ? tab.path : "Workspace threads"}
+      title={tab.type === "file" ? tab.path : tab.type === "terminal" ? "Terminal" : "Workspace threads"}
       onClick={onActivate}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/x-spark-tab", tab.id);
@@ -1131,11 +1140,13 @@ function WorkspaceTabButton({
     >
       {tab.type === "threads" ? (
         <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+      ) : tab.type === "terminal" ? (
+        <SquareTerminal className="h-3.5 w-3.5 shrink-0" />
       ) : (
         <FileIcon name={tab.name} />
       )}
       <span className="truncate">{tab.name}</span>
-      {tab.type === "file" && (
+      {(tab.type === "file" || tab.type === "terminal") && (
         <span
           role="button"
           tabIndex={0}
@@ -1269,7 +1280,9 @@ function WorkspacePane({
       )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {activeTab.type === "threads" ? threadContent : <FileViewer file={activeTab} slug={slug} />}
+        {activeTab.type === "threads" ? threadContent
+          : activeTab.type === "terminal" ? <WorkspaceTerminalPanel slug={slug} />
+          : <FileViewer file={activeTab} slug={slug} />}
       </div>
     </div>
   );
@@ -1534,6 +1547,7 @@ function FilesPanel({
   panelWidth,
   activePath,
   onOpenFile,
+  terminalInWorkspace,
 }: {
   slug: string;
   collapsed: boolean;
@@ -1541,6 +1555,7 @@ function FilesPanel({
   panelWidth: number;
   activePath: string | null;
   onOpenFile: (node: WorkspaceFileNode) => void;
+  terminalInWorkspace?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<"files" | "terminal">("files");
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
@@ -1614,12 +1629,24 @@ function FilesPanel({
         </button>
         <button
           type="button"
-          title="Terminal"
+          draggable={!terminalInWorkspace}
+          title={terminalInWorkspace ? "Terminal is open in the workspace" : "Terminal"}
           onClick={() => {
-            setActiveTab("terminal");
-            onToggleCollapse();
+            if (!terminalInWorkspace) {
+              setActiveTab("terminal");
+              onToggleCollapse();
+            }
           }}
-          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+          onDragStart={(e) => {
+            e.dataTransfer.setData("application/x-spark-tab", TERMINAL_TAB_ID);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          className={cn(
+            "rounded p-1.5 transition",
+            terminalInWorkspace
+              ? "cursor-grab text-muted-foreground/30"
+              : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+          )}
         >
           <SquareTerminal className="h-3.5 w-3.5" />
         </button>
@@ -1661,12 +1688,20 @@ function FilesPanel({
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("terminal")}
+            draggable={!terminalInWorkspace}
+            onClick={() => { if (!terminalInWorkspace) setActiveTab("terminal"); }}
+            onDragStart={(e) => {
+              e.dataTransfer.setData("application/x-spark-tab", TERMINAL_TAB_ID);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            title={terminalInWorkspace ? "Terminal is open in the workspace" : "Terminal"}
             className={cn(
               "flex h-6 items-center gap-1.5 rounded-[3px] px-2 text-[11px] transition",
-              activeTab === "terminal"
-                ? "bg-primary/18 text-foreground"
-                : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+              terminalInWorkspace
+                ? "cursor-grab text-muted-foreground/40"
+                : activeTab === "terminal"
+                  ? "bg-primary/18 text-foreground"
+                  : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
             )}
           >
             <SquareTerminal className="h-3.5 w-3.5" />
@@ -1747,6 +1782,11 @@ function FilesPanel({
               onDelete={(n) => void handleDelete(n)}
             />
           ))}
+        </div>
+      ) : terminalInWorkspace ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center text-xs text-muted-foreground/50">
+          <SquareTerminal className="h-5 w-5 opacity-30" />
+          <p>Terminal is open in the workspace.<br />Close it there to bring it back here.</p>
         </div>
       ) : (
         <WorkspaceTerminalPanel slug={slug} />
@@ -2006,12 +2046,20 @@ export default function WorkspacePage() {
     setWorkspaceLayout((prev) => removeTabFromLayout(prev, tabId) ?? createDefaultLayout());
   };
 
+  const ensureTerminalTab = (tabId: string) => {
+    if (tabId === TERMINAL_TAB_ID) {
+      setWorkspaceTabs((prev) => prev.some((t) => t.id === TERMINAL_TAB_ID) ? prev : [...prev, TERMINAL_TAB]);
+    }
+  };
+
   const handleMoveTabToPane = (paneId: string, tabId: string) => {
+    ensureTerminalTab(tabId);
     setWorkspaceLayout((prev) => moveTabToPane(prev, paneId, tabId));
   };
 
   const handleSplitTab = (paneId: string, tabId: string, edge: DropEdge) => {
     if (tabId === THREAD_TAB_ID) return;
+    ensureTerminalTab(tabId);
     setWorkspaceLayout((prev) => {
       const layout = paneContainsTab(prev, paneId, tabId)
         ? prev
@@ -2025,6 +2073,7 @@ export default function WorkspacePage() {
   };
 
   const activeFilePath = activeSlug ? findActiveFilePath(workspaceLayout, workspaceTabs) : null;
+  const terminalInWorkspace = allLayoutTabIds(workspaceLayout).includes(TERMINAL_TAB_ID);
   const primaryTabPane = findFirstPane(workspaceLayout);
   const primaryTabs = primaryTabPane.tabIds
     .map((id) => workspaceTabs.find((tab) => tab.id === id))
@@ -2222,6 +2271,7 @@ export default function WorkspacePage() {
             panelWidth={filesWidth}
             activePath={activeFilePath}
             onOpenFile={handleOpenFile}
+            terminalInWorkspace={terminalInWorkspace}
           />
         </>
       )}
