@@ -1026,6 +1026,7 @@ export function ChatPanel({
         onStop={() => void stop()}
         onUploadFiles={uploadFiles}
         disabled={!!editingUser}
+        workspaceSlug={workspaceSlug}
       />
     </div>
   );

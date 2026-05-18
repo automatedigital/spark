@@ -258,6 +258,55 @@ async def upload_workspace_files(files: list[UploadFile] = File(...)):
     return {"ok": True, "saved": saved}
 
 
+@router.get("/projects/{slug}/list")
+def list_project_dir(slug: str, path: str = Query(default="")):
+    """List one level of a directory in a workspace project for @ autocomplete."""
+    project_dir = _project_dir(slug)
+    target = _safe_path(project_dir, path) if path else project_dir
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
+    entries = []
+    try:
+        for entry in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
+            if entry.name.startswith("."):
+                continue
+            rel = str(entry.relative_to(project_dir))
+            entries.append({"name": entry.name, "path": rel, "type": "dir" if entry.is_dir() else "file"})
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return {"path": path, "entries": entries}
+
+
+@router.get("/files/list")
+def list_chat_files(path: str = Query(default="")):
+    """List chat-uploaded files for @ autocomplete. path='' returns the files/ dir entry."""
+    workspace = _workspace_root()
+    if not path:
+        files_dir = workspace / "files"
+        entries = [{"name": "files", "path": "files", "type": "dir"}] if files_dir.exists() else []
+        return {"path": "", "entries": entries}
+
+    rel = path.lstrip("/")
+    target = (workspace / rel).resolve()
+    try:
+        target.relative_to(workspace.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path traversal detected")
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
+
+    entries = []
+    try:
+        for entry in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
+            if entry.name.startswith("."):
+                continue
+            entry_rel = str(entry.relative_to(workspace))
+            entries.append({"name": entry.name, "path": entry_rel, "type": "dir" if entry.is_dir() else "file"})
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return {"path": path, "entries": entries}
+
+
 @router.delete("/projects/{slug}/file")
 def delete_file(slug: str, path: str = Query(...)):
     project_dir = _project_dir(slug)

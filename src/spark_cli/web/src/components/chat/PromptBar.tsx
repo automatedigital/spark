@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Plus, Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
+import { AtFileMenu } from "@/components/chat/AtFileMenu";
 
 interface PromptBarProps {
   input: string;
@@ -11,6 +12,7 @@ interface PromptBarProps {
   onStop: () => void;
   onUploadFiles?: (files: File[]) => Promise<void>;
   disabled?: boolean;
+  workspaceSlug?: string;
 }
 
 // Match @tokens and /commands at line start (gm: ^ matches after each \n)
@@ -31,16 +33,27 @@ function renderMirror(text: string): React.ReactNode[] {
     last = m.index + m[0].length;
   }
   if (last < text.length) nodes.push(text.slice(last));
-  // Trailing nbsp prevents div collapse when text ends with \n
-  nodes.push(" ");
+  // Trailing space prevents div collapse when text ends with \n
+  nodes.push(" ");
   return nodes;
 }
 
-export function PromptBar({ input, setInput, streaming, onSend, onStop, onUploadFiles, disabled }: PromptBarProps) {
+export function PromptBar({
+  input,
+  setInput,
+  streaming,
+  onSend,
+  onStop,
+  onUploadFiles,
+  disabled,
+  workspaceSlug,
+}: PromptBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [showAtMenu, setShowAtMenu] = useState(false);
+  const [atQuery, setAtQuery] = useState("");
   const [uploading, setUploading] = useState(false);
 
   // Resize textarea to content
@@ -60,13 +73,10 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, onUpload
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showMenu) {
-      // Let SlashCommandMenu handle arrow keys / enter / escape
+    if (showMenu || showAtMenu) {
+      // Let the active menu handle arrow keys / enter / escape / tab
       if (["ArrowUp", "ArrowDown", "Escape"].includes(e.key)) return;
-      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
-        // Menu will intercept via its own keydown listener on the window
-        return;
-      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -74,20 +84,61 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, onUpload
     }
     if (e.key === "Escape") {
       setShowMenu(false);
+      setShowAtMenu(false);
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
+    const cursor = e.target.selectionStart ?? val.length;
     setInput(val);
-    // Show slash menu when text starts with /
+
+    // Slash command menu: only when input starts with /
     setShowMenu(val.startsWith("/"));
+
+    // @ file menu: detect @token immediately before cursor
+    const beforeCursor = val.slice(0, cursor);
+    const atMatch = /(@\S*)$/.exec(beforeCursor);
+    if (atMatch) {
+      setAtQuery(atMatch[1].slice(1)); // strip the leading @
+      setShowAtMenu(true);
+    } else {
+      setShowAtMenu(false);
+    }
   };
 
-  const handleSelect = (command: string) => {
+  const handleSlashSelect = (command: string) => {
     setInput(`/${command} `);
     setShowMenu(false);
     textareaRef.current?.focus();
+  };
+
+  const handleAtSelect = (path: string, isDir: boolean) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const cursor = textarea.selectionStart ?? input.length;
+    const beforeCursor = input.slice(0, cursor);
+    const atMatch = /(@\S*)$/.exec(beforeCursor);
+    if (!atMatch) return;
+
+    const atStart = cursor - atMatch[0].length;
+    // Dirs get a trailing slash so user can keep browsing; files get a space to close the token
+    const newToken = `@${path}${isDir ? "/" : " "}`;
+    const newInput = input.slice(0, atStart) + newToken + input.slice(cursor);
+    setInput(newInput);
+
+    if (isDir) {
+      setAtQuery(`${path}/`);
+    } else {
+      setShowAtMenu(false);
+    }
+
+    // Restore cursor after the completed token
+    setTimeout(() => {
+      const pos = atStart + newToken.length;
+      textarea.selectionStart = textarea.selectionEnd = pos;
+      textarea.focus();
+    }, 0);
   };
 
   const handleFilesSelected = async (files: FileList | null) => {
@@ -112,8 +163,16 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, onUpload
       {showMenu && (
         <SlashCommandMenu
           query={input.slice(1)} // strip leading /
-          onSelect={handleSelect}
+          onSelect={handleSlashSelect}
           onClose={() => setShowMenu(false)}
+        />
+      )}
+      {showAtMenu && (
+        <AtFileMenu
+          query={atQuery}
+          workspaceSlug={workspaceSlug}
+          onSelect={handleAtSelect}
+          onClose={() => setShowAtMenu(false)}
         />
       )}
 

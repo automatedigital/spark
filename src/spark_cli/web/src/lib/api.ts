@@ -567,6 +567,16 @@ export const api = {
     }>;
   },
 
+  listWorkspaceDir: (slug: string, path = "") =>
+    fetchJSON<FileListResponse>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+    ),
+
+  listChatFiles: (path = "") =>
+    fetchJSON<FileListResponse>(
+      `/api/workspace/files/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+    ),
+
   deleteWorkspaceFile: (slug: string, path: string) => {
     const qs = new URLSearchParams({ path });
     return fetchJSON<{ ok: boolean; deleted: string }>(
@@ -1188,6 +1198,17 @@ export interface WorkspaceProject {
 
 export interface WorkspaceProjectsResponse {
   projects: WorkspaceProject[];
+}
+
+export interface FileListEntry {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+}
+
+export interface FileListResponse {
+  path: string;
+  entries: FileListEntry[];
 }
 
 export interface WorkspaceFileNode {
