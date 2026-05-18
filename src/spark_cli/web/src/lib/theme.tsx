@@ -7,6 +7,10 @@ export const WEBUI_THEMES = [
   { id: "codex", name: "Codex", description: "Neutral compact console" },
   { id: "daylight", name: "Daylight", description: "Bright workspace" },
   { id: "signal", name: "Signal", description: "Green terminal glow" },
+  { id: "aurora", name: "Aurora", description: "Polar ink with cyan light" },
+  { id: "ember", name: "Ember", description: "Charcoal with hot copper" },
+  { id: "orchid", name: "Orchid", description: "Night violet command deck" },
+  { id: "harbor", name: "Harbor", description: "Deep navy and sea glass" },
 ] as const;
 
 export type WebUITheme = (typeof WEBUI_THEMES)[number]["id"];

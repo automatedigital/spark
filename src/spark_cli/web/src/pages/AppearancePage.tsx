@@ -7,6 +7,10 @@ const THEME_SWATCHES: Record<WebUITheme, string[]> = {
   codex: ["#101112", "#202326", "#d7dde5"],
   daylight: ["#f6f3ea", "#ffffff", "#276ef1"],
   signal: ["#07110d", "#14211a", "#7ee787"],
+  aurora: ["#07131f", "#102a36", "#5eead4"],
+  ember: ["#190f0b", "#2a1710", "#ff7a45"],
+  orchid: ["#160d21", "#241433", "#c084fc"],
+  harbor: ["#071827", "#102f3d", "#38bdf8"],
 };
 
 export default function AppearancePage() {
