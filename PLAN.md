@@ -28,118 +28,35 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 
 ## BUG FIXES
 
-### CRITICAL
-
-- [x] **1. Shell injection in gateway quick-command execution**
-  `src/gateway/run.py` ~2999. `asyncio.create_subprocess_shell()` passes the user-supplied `exec_cmd` string directly to the shell without any validation or escaping. Any gateway user can execute arbitrary shell commands on the host. Fix by switching to `create_subprocess_exec()` with a pre-split argument list (`shlex.split(exec_cmd)`) and optionally whitelisting allowed commands before execution.
-
-- [x] **2. `fetchone()[0]` crashes when query returns no rows (3 sites)**
-  `src/core/spark_state.py` ~1150, 1161, 1210. `cursor.fetchone()[0]` raises `TypeError` when the COUNT query returns no rows — affects `session_count()`, `message_count()`, and at least one additional call site. Fix each site with: `row = cursor.fetchone(); return row[0] if row else 0`.
-
----
-
-### HIGH
-
-- [x] **3. `BaseException` caught in skill_usage cleanup — swallows Ctrl-C**
-  `src/tools/skill_usage.py` ~138-140. `except BaseException:` catches `KeyboardInterrupt` and `SystemExit`, preventing clean process termination during tool cleanup. This directly violates the documented rule in CLAUDE.md. Change to `except Exception:`.
-
-- [x] **4. `KeyboardInterrupt` silently dropped in Anthropic adapter setup**
-  `src/agent/anthropic_adapter.py` ~591-593. User cancellation (Ctrl-C) during interactive setup flow is caught and silently converted to a `None` return value instead of propagating. The caller has no way to distinguish a cancelled setup from a completed one. Re-raise `KeyboardInterrupt` after logging.
-
-- [x] **5. Return type violation in `registry._post_process()`**
-  `src/tools/registry.py` ~440. Function is annotated `-> str` but returns non-string values when `not isinstance(raw, str)`. Downstream tool dispatch code that assumes a string return will silently mishandle the result. Ensure all branches coerce to `str` (e.g. `json.dumps(raw)`) or fix the annotation to `-> Any`.
-
-- [x] **6. File descriptor leak in `memory_tool.py` lock acquisition**
-  `src/tools/memory_tool.py` ~142. `fd = open(lock_path, "w")` opens a file descriptor that is not guaranteed to close if an exception occurs between `open()` and `fcntl.flock()`. On repeated failures this exhausts available fds. Refactor to `with open(lock_path, "w") as fd: fcntl.flock(fd, ...)`.
-
-- [x] **7. `devnull` file descriptor leak in `code_execution_tool.py`**
-  `src/tools/code_execution_tool.py` ~390-399. `devnull = open(os.devnull, "w")` is assigned before `Popen`. If `Popen` raises (bad executable, permission error), the finally block that closes `devnull` may not execute because the variable isn't yet in scope for the handler. Wrap in `with open(os.devnull, "w") as devnull:` and restructure the `Popen` call inside that block.
-
-- [x] **8. `run_job()` is 320+ lines — untestable monolith**
-  `src/cron/scheduler.py` ~577. The function mixes env-var loading, config file parsing, credential pool selection, model routing, agent initialization, execution with inactivity timeout, output formatting, and error reporting. Each concern is impossible to unit-test in isolation. Extract into: `_setup_job_environment(job)`, `_initialize_job_agent(job, env)`, `_execute_job_with_timeout(agent, job)`, `_format_job_output(result, job)`. `run_job()` becomes an orchestrator that calls each in sequence.
-
-- [x] **9. `_deliver_result()` is 166 lines**
-  `src/cron/scheduler.py` ~200. Combines delivery-target resolution, adapter selection, text extraction from rich output, media file detection, and both live-adapter and HTTP fallback delivery paths. Extract into: `_build_delivery_content(result)` → returns `(text, media_files)`, `_send_via_live_adapter(adapter, text, media_files)`, `_send_via_standalone_path(platform, channel, text)`.
-
----
-
 ### MEDIUM
 
-- [x] **10. Three sources of truth for the platform list**
-  `src/cron/scheduler.py` ~44-49 (`_KNOWN_DELIVERY_PLATFORMS` frozenset) and ~241-259 (hardcoded name→enum mapping) both duplicate what the `Platform` enum in `src/gateway/config.py` already defines. A new platform added to the enum is silently ignored by the scheduler. Remove the frozenset and derive the mapping programmatically from `Platform` members.
+- [ ] **B1. `_fileBaselines` map in `WorkspacePage.tsx` grows unbounded**
+  `src/spark_cli/web/src/pages/WorkspacePage.tsx`. The module-level `_fileBaselines = new Map<string, string>()` accumulates baseline snapshots for every file opened across all sessions and is never cleared. Over a long-running browser session with many files this is a quiet memory leak. Add a `useEffect` that calls `_fileBaselines.clear()` when the active `sessionId` changes, and also `return () => _fileBaselines.clear()` in the cleanup for the workspace component mount.
 
-- [x] **11. `except Exception: pass` silently swallowing errors at multiple sites**
-  `src/gateway/channel_directory.py` ~140, `src/gateway/status.py` ~272, `src/cron/scheduler.py` ~286/380/389, `src/core/model_tools.py` plugin hooks ~537-595. Silent pass blocks make it impossible to diagnose misconfigured plugins, failed Slack imports, and PID file cleanup errors. At minimum add `logger.debug("...", exc_info=True)` in each block; use specific exception types where the failure mode is known.
+- [ ] **B2. `NotificationBell.tsx` `EventSource` may not close on fast navigation**
+  `src/spark_cli/web/src/components/NotificationBell.tsx`. The `useEffect` sets up an `EventSource` and returns a cleanup. If the component unmounts before the `EventSource` fires its `onopen`, some environments will not invoke the cleanup, leaving an open connection. Verify the cleanup calls `es.close()` unconditionally (not inside an `if (es.readyState !== EventSource.CLOSED)` guard), and add an `es.onerror` handler that calls `es.close()` when `e.target.readyState === EventSource.CLOSED` to handle server-side disconnects without dangling listeners.
 
-- [x] **12. Lock acquired inside per-match loop causes unnecessary contention**
-  `src/core/spark_state.py` ~1093-1109. A comment says context fetches are "done outside the lock" but the lock is actually re-acquired on every iteration of the `for match in matches` loop. This serializes all context reads. Batch the context query into a single `WHERE id IN (...)` call before the loop.
+- [ ] **B3. Flaky `TestSilentDelivery` tests — shared module-level `_live_adapters` dict**
+  `src/cron/scheduler.py` + `tests/cron/test_scheduler.py`. The `_live_adapters` dict is module-level shared state. Tests that register a mock adapter affect subsequent tests that run in the same process, causing order-dependent failures (`test_normal_response_delivers`, `test_failed_job_always_delivers` fail when the full suite runs but pass in isolation). Add a `setUp`/`tearDown` (or `@patch` decorator) in `TestSilentDelivery` that saves and restores `scheduler._live_adapters` around each test, or refactor the dict to be per-instance state passed via dependency injection.
 
-- [x] **13. Silent JSON fallback masks data corruption in session history**
-  `src/core/spark_state.py` ~900-907, 934-935. `json.JSONDecodeError` is caught and falls back to `[]` for `tool_calls` and `content` fields without any logging. Corrupted session rows are silently discarded. Add `logger.warning("Corrupt JSON in session %s message %s, falling back to []", session_id, msg_id)`.
-
-- [x] **14. Unbounded subprocess output collection can exhaust memory**
-  `src/gateway/run.py` ~3000-3002. `proc.communicate()` with no size limit buffers all stdout/stderr in memory. A runaway command printing gigabytes of output will OOM the gateway process. Add a `MAX_OUTPUT_BYTES = 10 * 1024 * 1024` cap via streaming read with a byte counter, truncating with a notice if exceeded.
-
-- [x] **15. Circular dependency risk: cron imports shared logic from `tools`**
-  `src/cron/scheduler.py` ~114, 124. `_parse_target_ref()` is imported from `src/tools/send_message_tool.py` and `resolve_channel_name()` is imported lazily inside an except handler. If `tools` ever imports `cron` (e.g. a scheduling tool), Python will hit a circular import. Move the shared parsing helpers to `src/core/channel_utils.py` and import from there.
-
-- [x] **16. 13+ raw `os.getenv()` calls scattered through `run_job()`**
-  `src/cron/scheduler.py` ~626, 645, 707 (and more). Makes testing require patching individual env vars and makes it easy to miss a variable when renaming. Create a `@dataclass class JobRunEnv` at the top of `run_job()` that reads all relevant env vars once, then pass it to sub-functions.
-
-- [x] **17. PIL `Image.open()` handle not guaranteed to close on exception**
-  `src/tools/vision_tools.py` ~342. If any processing step raises after `Image.open(path)`, the file handle leaks. Change to `with Image.open(path) as img:` and restructure downstream operations to work within the context.
-
-- [x] **18. asyncio event loop created but not set in main-thread helper**
-  `src/core/model_tools.py` ~55. `_get_tool_loop()` creates a new event loop for the main thread but never calls `asyncio.set_event_loop(loop)`, unlike the analogous `_get_worker_loop()` at ~76. Code that calls `asyncio.get_event_loop()` from the main thread will get a different loop, causing subtle async context failures. Add `asyncio.set_event_loop(loop)` immediately after creation.
+- [ ] **B4. `ConversationsPage.tsx` fork tree view never implemented**
+  F12 added the `↩ Forked from` badge in `ChatPanel.tsx` and the `GET /api/sessions/{id}/forks` endpoint, but `ConversationsPage.tsx` still renders all sessions in a flat list with no visual grouping. Forked sessions should be indented under their parent. Add a `buildSessionTree(sessions)` utility that groups sessions by `parent_session_id` and render the tree with a left-border accent and reduced opacity for child sessions. Fetch each parent's fork count via the existing endpoint when the page loads.
 
 ---
 
 ### LOW
 
-- [x] **19. Magic numbers in cron — should be named constants**
-  `src/cron/scheduler.py` + `src/cron/jobs.py`. Values `120` (default script timeout), `7200` (max grace seconds), `5.0` (poll interval) appear inline with no explanation. Define `DEFAULT_SCRIPT_TIMEOUT_SECS = 120`, `MAX_GRACE_SECS = 7200`, `SCHEDULER_POLL_INTERVAL_SECS = 5.0` at module level.
+- [ ] **B5. PDF files fall through to raw `<pre>` in `ToolCallBubble.tsx`**
+  `src/spark_cli/web/src/components/chat/ToolCallBubble.tsx`. The `detectOutputType` utility (`src/spark_cli/web/src/lib/detectOutputType.ts`) identifies `.pdf` paths, but the `ResultPreview` component has no renderer for them — it falls through to the existing `<pre>` block, showing a raw path string. Add a `kind === "pdf"` branch that renders `<iframe src={url} className="w-full h-64 rounded border" />` with a "Open in new tab" link below it as a fallback for browsers that block embedded PDFs.
 
-- [x] **20. `_SCRIPT_TIMEOUT` monkeypatching is brittle for testing**
-  `src/cron/scheduler.py` ~369-370. Tests override a module-level mutable variable to inject a timeout value. Replace with a `timeout: int | None = None` parameter on the relevant function; callers that omit it get the default constant.
-
-- [x] **21. Mixed `Optional[T]` vs `T | None` type hint styles**
-  Codebase-wide. `Optional[dict]` and `dict | None` are used interchangeably; `typing.List` and `list[str]` coexist. Since the project targets Python 3.11, standardize on built-in generics (`list[str]`, `dict[str, Any]`, `T | None`) and remove unused `from typing import Optional, List, Dict`.
-
-- [x] **22. `webbrowser.open()` return value ignored**
-  `src/tools/mcp_oauth.py` ~301. `webbrowser.open()` returns `False` if no browser is available (headless server, no DISPLAY). The tool currently proceeds silently and the user gets no feedback. Check the return value and if `False`, log a warning and include the URL in the response so the user can open it manually.
-
-- [x] **23. Unreachable dead code in `spark_state.py`**
-  `src/core/spark_state.py` ~269. The branch `else row[0]` after `isinstance(row, sqlite3.Row)` is never reached because `row_factory = sqlite3.Row` is unconditionally set at connection creation time. Remove the dead branch.
-
-- [x] **24. Unused cursor variable** *(already fixed)*
-  `src/core/spark_state.py` ~254. `cursor = self._conn.cursor()` is assigned but the very next lines call `self._conn.execute()` directly, bypassing the cursor. Remove the unused assignment.
-
-- [x] **25. No tests for the cron subsystem**
-  `tests/`. `src/cron/scheduler.py` and `src/cron/jobs.py` run unattended and have zero dedicated test coverage. Add `tests/test_cron_jobs.py` (schedule parsing, DST transitions, grace period calculation, job normalization) and `tests/test_cron_scheduler.py` (delivery routing, timeout logic, error state propagation).
-
-- [x] **26. Error messages expose full internal filesystem paths**
-  `src/cron/scheduler.py` ~437-443. Script path validation error messages include the fully-resolved filesystem path, leaking the host directory structure to users. Replace with the path relative to `SPARK_HOME/scripts/`.
-
-- [x] **27. Browser tool FD pair not cleaned up if `Popen` raises**
-  `src/tools/browser_tool.py` ~1090-1102. File descriptors from `os.open()` are assigned inside the try block, so if `Popen` raises before both assignments complete, the finally clause can't close the unassigned fds. Move fd assignments before the try block and use a single `try/finally` that unconditionally closes them.
-
-- [x] **28. TODO/FIXME comment debt** *(triaged: 2 remaining are legitimate pending-work notes, not stale noise)*
-  Grep the entire repo for `TODO|FIXME|HACK|XXX` and triage: close resolved ones, file issues for real ones, and delete stale noise comments.
+- [ ] **B6. `GET /api/voice/tts` content-type detection relies on file extension only**
+  When the voice TTS endpoint (to be added in F4) calls `_generate_supertonic_tts()`, the output path is a `NamedTemporaryFile` with suffix `.wav`. But the edge/openai/piper providers write `.mp3` and `neutts` writes `.ogg`. If a provider writes to an extension-less temp path, `FileResponse` will serve `application/octet-stream` and the browser `<audio>` element will fail to decode it. After writing the audio file, inspect the first 4 bytes (magic bytes: `ID3`/`\xff\xfb` for MP3, `OggS` for OGG, `RIFF` for WAV) to determine content-type rather than relying solely on extension.
 
 ---
 
 ## FEATURE LIST
 
-- [x] **F1. Drag-and-drop file upload in chat and workspace thread UIs**
-  Currently `PromptBar.tsx` (lines 99-120) only supports file upload via a hidden `<input type="file">` triggered by the Plus button. Add `dragenter`, `dragover`, `dragleave`, and `drop` event listeners to `ChatPanel.tsx` that activate a full-panel dropzone overlay (translucent backdrop + centered "Drop files to attach" label with a file icon) when the user drags files over the chat area. On drop, call the same `onUploadFiles` path already used by the Plus button. Apply the same pattern to the `WorkspacePage.tsx` new-thread input area. No backend changes needed — the existing `api.uploadFile()` path handles the upload.
-
-- [x] **F2. Skeleton UI and page-level loading states**
-  Replace all spinner-only loading states with animated skeleton placeholders that match the shape of the real content. Add a base `Skeleton.tsx` component (`animate-pulse` gray rectangles, composable). Apply to: `ChatPanel.tsx` history loading (lines 727) → message-row skeletons; `CronPage.tsx` job list loading (line 119) → card-shaped skeletons; `ConversationsPage.tsx` → session list row skeletons; `WorkspacePage.tsx` thread list and file tree loading → row skeletons. No backend changes needed; pure frontend.
-
-- [x] **F3. Friendly cron scheduler — replace raw expression input with guided pickers**
-  `CronPage.tsx` currently shows a raw cron expression text input (line 162-167, placeholder `"0 9 * * *"`). Replace with two fields: **Frequency** (a `<Select>` with options: Every Hour, Every Day, Every Week, Every Month, Every Year, Custom) and **Trigger Time** (a time picker `<input type="time">` for daily/weekly/monthly, a day-of-week selector for weekly, a day-of-month + month selector for annual). When "Custom" is chosen, show the raw cron input as a fallback. Add a client-side `cronToFriendly(expr)` / `friendlyToCron(freq, time, day)` utility. The gateway API and `src/cron/jobs.py` already store cron expressions — the conversion is frontend-only.
-
-- [ ] **F4. Voice mode — animated call UI with local-first TTS/STT and hardware detection**
+- [ ] **F1. Voice mode — animated call UI with local-first TTS/STT**
 
   ### What already exists (do not reimplement)
 
@@ -226,10 +143,10 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 
   **`GET /api/voice/tts`**
   - Query params: `text` (URL-encoded string), `provider` (optional, overrides config).
-  - Call the appropriate `_generate_<provider>_tts()` function from `tts_tool.py`, write to a NamedTemporaryFile, then stream the file as `audio/mpeg` (MP3) or `audio/wav` using `FileResponse` or a `StreamingResponse` that reads and deletes the temp file after streaming.
+  - Call the appropriate `_generate_<provider>_tts()` function from `tts_tool.py`, write to a NamedTemporaryFile, then stream the file using `FileResponse` or a `StreamingResponse` that reads and deletes the temp file after streaming.
+  - Detect content-type from magic bytes (see B6), not just file extension.
   - ElevenLabs streaming path (already returns a generator in `tts_tool.py` around line 244) should be streamed directly without buffering to disk if possible.
-  - Supertonic produces WAV output from `soundfile.write()`; serve as `audio/wav`. All other providers produce MP3/OGG — detect by inspecting the output file extension.
-  - Return a proper `Content-Type` header so the browser `<audio>` element can auto-play without codec detection.
+  - Supertonic produces WAV output from `soundfile.write()`; serve as `audio/wav`.
 
   **`GET /api/voice/capabilities`**
   - Call `check_voice_requirements()` from `tools.voice_mode` and return its dict as JSON.
@@ -283,46 +200,27 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
   - Read-only display of the active STT provider.
   - A "Test TTS" button that calls `GET /api/voice/tts?text=Hello+from+Spark` and plays the result.
 
-  #### 5. No hardware-detection backend needed
-
-  The original plan mentioned a `src/core/voice_config.py` with GPU/CPU detection for Chatterbox-Turbo and Kokoro. Neither library is currently in `tts_tool.py` — adding them would require new optional dependencies (`pip install chatterbox-tts`, `pip install kokoro-onnx`) and significant integration work. **Skip the hardware-detection piece for now.** Supertonic-3 handles its own device auto-selection. The existing provider auto-selection in `transcription_tools.py` (faster-whisper if installed, else OpenAI) is sufficient. The Settings panel will show users what's active.
-
-  #### 6. Browser compatibility note
+  #### 5. Browser compatibility note
 
   `MediaRecorder` with `audio/webm;codecs=opus` works in Chrome/Edge/Firefox. Safari requires `audio/mp4` (AAC). Check `MediaRecorder.isTypeSupported()` and fall back to `audio/mp4` on Safari. The backend should handle both via ffmpeg or soundfile for format conversion if needed (faster-whisper accepts WAV/MP3/WebM natively via ffmpeg).
 
   #### Suggested build order
 
   1. Add `_generate_supertonic_tts()` to `tts_tool.py` + config defaults (30 min).
-  2. `GET /api/voice/capabilities` endpoint (5 min — calls existing `check_voice_requirements()` + adds provider fields).
+  2. `GET /api/voice/capabilities` endpoint (5 min).
   3. `POST /api/voice/transcribe` endpoint (30 min).
-  4. `GET /api/voice/tts` endpoint (45 min — wires existing `_generate_*` functions, handles WAV vs MP3 content-type).
+  4. `GET /api/voice/tts` endpoint with magic-byte content-type detection (45 min).
   5. `VoiceCallModal.tsx` without waveforms (transcript + basic record/playback loop) (2h).
   6. Add waveform visualizers (1h).
   7. Wire mic button into `PromptBar.tsx` + `ChatPanel.tsx` (15 min).
-  8. Settings panel Voice section with Supertonic provider label (30 min).
+  8. Settings panel Voice section (30 min).
   9. Test on Chrome + Safari, handle codec fallback.
 
-- [x] **F5. Global command palette (Cmd+K)**
-  Add a `CommandPalette.tsx` modal component triggered by `Cmd+K` (or `Ctrl+K`). It provides a fuzzy-searchable list of: page navigation (all pages in `App.tsx`), recent sessions (from the existing sessions API), slash commands (from `src/spark_cli/web/src/i18n/en.ts`), and workspace actions (new thread, upload file). Selecting an item navigates or dispatches the action. Register a global `keydown` listener in `App.tsx`. No backend changes needed — all data sources are already available to the frontend.
+- [ ] **F2. Global session full-text search**
+  `SessionDB` in `src/core/spark_state.py` already has an FTS5 index and a `search_sessions(query)` method, but there is no web UI to use it. Add a search input at the top of `ConversationsPage.tsx` (debounced, 300ms) that calls a new `GET /api/sessions?q=<query>` endpoint in `web_server.py` (route already exists but check if `q` param is handled — if not, wire `search_sessions()` into the existing list endpoint). Highlight matched text in session titles and snippets. Searching `""` should return the normal recent-sessions list. No new backend infrastructure needed — FTS5 is already there.
 
-- [x] **F6. Session export (Markdown, JSON, PDF)**
-  Add an export button to the conversation detail view (`ConversationsPage.tsx` / `ChatPanel.tsx`). Options: **Markdown** (renders messages as `## User` / `## Assistant` blocks with tool call details), **JSON** (raw session data), **PDF** (browser `window.print()` with a print-specific CSS stylesheet). Markdown and JSON are generated client-side from the already-loaded message array. PDF uses the browser print dialog with `@media print` styles that hide sidebar and controls. No backend changes needed for Markdown/JSON/PDF. Optionally add a `GET /api/sessions/{id}/export?format=md` gateway endpoint for server-side rendering if the session is too large for in-browser export.
+- [ ] **F3. Cron job "next run" live preview on the schedule editor**
+  `CronPage.tsx` has a friendly cron picker (F3, now done), but shows no indication of when the job will next fire. After the user changes the frequency/time fields (or the raw cron input in Custom mode), compute and display "Next run: Monday 09:00 local time" below the field. Use the same `cronToFriendly` / `friendlyToCron` utilities already in `CronPage.tsx` plus a lightweight client-side cron-parser (the `cronstrue` or `cron-parser` npm packages, or a minimal inline implementation) to calculate the next fire time. No backend changes needed.
 
-- [x] **F7. Inline image and file preview in chat messages**
-  When tool calls in `ToolCallBubble.tsx` or assistant messages return a file path or URL (image, audio, video, PDF, code file), detect the file type and render it inline rather than showing just a raw path string. Images: `<img>` with max-height cap and click-to-fullscreen. Audio: HTML5 `<audio controls>`. Code files: syntax-highlighted code block using the existing `highlight.js` integration already in `WorkspacePage.tsx`. PDF: `<iframe>` embed or download link. Add a `detectOutputType(value: string)` utility and update `ToolCallBubble.tsx` and the assistant message renderer to use it.
-
-- [x] **F8. In-session message search**
-  Add a search bar to `ChatPanel.tsx` that appears on `Cmd+F` (or a search icon button in the chat header). As the user types, highlight all matching text spans in the rendered message list and show a `3 / 12` match counter with up/down arrows to jump between matches. Implement with a `searchQuery` state in `ChatPanel.tsx`, a `useMemo` that builds a list of match positions from the flattened message content, and a `useEffect` that scrolls the active match into view. No backend changes needed — searches the already-loaded message array.
-
-- [x] **F9. Notification system for async job completions**
-  When a cron job or long-running task finishes, surface the result via: (1) an in-app notification bell icon in the top nav bar that opens a dropdown of recent events (job name, status, timestamp, truncated output) — powered by a new SSE stream `GET /api/notifications/stream` in `src/gateway/run.py` that the scheduler pushes to after each `run_job()` completes; (2) a browser `Notification` (Web Notifications API) if the user has granted permission. The notification store is a small in-memory queue in the gateway process; events are not persisted between restarts. Add a `NotificationBell.tsx` component to the `App.tsx` header.
-
-- [x] **F10. Workspace file diff viewer**
-  In `WorkspacePage.tsx`, when the agent modifies a file (detected via the existing file-change events), show a **Diff** tab alongside the current file view. Use a lightweight JS diff library (e.g. `diff` npm package, already common) to compute a unified diff between the pre-change snapshot (stored in a `Map<path, string>` at the time the session opens) and the current content. Render with syntax-colored `+`/`-` line prefixes. Add a "Diff" tab button to the file viewer toolbar (lines 262-334 in `WorkspacePage.tsx`). No backend changes needed — the frontend already fetches file content via `api.getWorkspaceFile()`.
-
-- [x] **F11. Keyboard shortcuts reference overlay**
-  Add a `KeyboardShortcutsModal.tsx` that opens when the user presses `?` (outside an input field). Lists all keyboard shortcuts organized by context (Global, Chat, Workspace, Editor). Shortcuts are defined in a static `SHORTCUTS` constant in the component. Add a "Keyboard shortcuts" entry to the settings panel or help menu so it's also discoverable without knowing the key. No backend changes needed.
-
-- [x] **F12. Session branching / fork-from-message UI**
-  `ChatPanel.tsx` already has a "Fork" action on user messages (line ~141-156) that calls the backend fork API. Currently the forked session opens as a new conversation with no visual link back to the parent. Improve this by: (1) showing a `↩ Forked from [Session Name]` badge at the top of the new session's chat header; (2) adding a "Branches" indicator on the original session's message row showing how many forks exist (via a `GET /api/sessions/{id}/forks` count endpoint added to `src/gateway/run.py`); (3) in `ConversationsPage.tsx`, group forked sessions visually under their parent with an indented tree layout. Backend: add a `parent_session_id` query to `src/core/spark_state.py` `get_session_forks(session_id)`.
+- [ ] **F4. `ConversationsPage.tsx` global keyword filter + tag/label system**
+  Currently `ConversationsPage.tsx` lists sessions in reverse-chronological order with no filtering beyond the FTS search added in F2. Add: (1) a **tag** system — users can label sessions with freeform tags (stored as a JSON array in a new `tags` column on the `sessions` SQLite table, exposed via `PUT /api/sessions/{id}/tags`); (2) a tag filter bar below the search input that shows all used tags as chips — clicking a chip filters the list to sessions with that tag; (3) a "star/pin" toggle per session (stored as a boolean `pinned` column) that keeps pinned sessions at the top of the list regardless of sort order. Backend: two new columns (`tags TEXT DEFAULT '[]'`, `pinned INTEGER DEFAULT 0`) in `spark_state.py` with migration logic; two new API endpoints. Frontend: tag chips in session row, `TagEditor` popover on right-click or via a `...` menu.
