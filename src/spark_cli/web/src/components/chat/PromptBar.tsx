@@ -173,8 +173,8 @@ export function PromptBar({ input, setInput, streaming, onSend, onStop, onUpload
             disabled={blocked}
             placeholder={streaming ? "Responding…" : uploading ? "Uploading…" : "Ask anything…"}
             rows={1}
-            className="relative z-10 w-full resize-none bg-transparent px-3 py-2 text-sm text-transparent placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed min-h-[40px] max-h-[240px] overflow-y-auto"
-            style={{ height: "40px", caretColor: "hsl(var(--foreground))" }}
+            className="relative z-10 w-full resize-none bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed min-h-[40px] max-h-[240px] overflow-y-auto"
+            style={{ height: "40px", color: "transparent", caretColor: "hsl(var(--foreground))" }}
           />
         </div>
 
