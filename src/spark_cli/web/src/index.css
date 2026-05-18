@@ -343,6 +343,22 @@ code {
   background: radial-gradient(circle, rgba(126, 231, 135, 0.12) 0%, rgba(126, 231, 135, 0.04) 45%, transparent 70%);
 }
 
+:root[data-webui-theme="aurora"] .cursor-blob {
+  background: radial-gradient(circle, rgba(94, 234, 212, 0.12) 0%, rgba(94, 234, 212, 0.04) 45%, transparent 70%);
+}
+
+:root[data-webui-theme="ember"] .cursor-blob {
+  background: radial-gradient(circle, rgba(255, 122, 69, 0.13) 0%, rgba(255, 122, 69, 0.04) 45%, transparent 70%);
+}
+
+:root[data-webui-theme="orchid"] .cursor-blob {
+  background: radial-gradient(circle, rgba(192, 132, 252, 0.12) 0%, rgba(192, 132, 252, 0.04) 45%, transparent 70%);
+}
+
+:root[data-webui-theme="harbor"] .cursor-blob {
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0.04) 45%, transparent 70%);
+}
+
 .noise-overlay {
   pointer-events: none;
   position: fixed;
@@ -386,6 +402,35 @@ code {
   background:
     radial-gradient(ellipse at 12% 0%, rgba(126, 231, 135, 0.13) 0%, rgba(126, 231, 135, 0) 42%),
     linear-gradient(180deg, rgba(126, 231, 135, 0.025), rgba(126, 231, 135, 0));
+}
+
+:root[data-webui-theme="aurora"] .warm-glow {
+  opacity: 0.54;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(94, 234, 212, 0.13) 0%, rgba(94, 234, 212, 0) 42%),
+    linear-gradient(180deg, rgba(103, 232, 249, 0.03), rgba(103, 232, 249, 0));
+}
+
+:root[data-webui-theme="ember"] .warm-glow {
+  opacity: 0.62;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(255, 122, 69, 0.15) 0%, rgba(255, 122, 69, 0) 42%),
+    radial-gradient(ellipse at 88% 6%, rgba(251, 191, 36, 0.08) 0%, rgba(251, 191, 36, 0) 38%),
+    linear-gradient(180deg, rgba(255, 122, 69, 0.025), rgba(255, 122, 69, 0));
+}
+
+:root[data-webui-theme="orchid"] .warm-glow {
+  opacity: 0.58;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(192, 132, 252, 0.13) 0%, rgba(192, 132, 252, 0) 42%),
+    linear-gradient(180deg, rgba(240, 171, 252, 0.03), rgba(240, 171, 252, 0));
+}
+
+:root[data-webui-theme="harbor"] .warm-glow {
+  opacity: 0.55;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(56, 189, 248, 0.13) 0%, rgba(56, 189, 248, 0) 42%),
+    linear-gradient(180deg, rgba(45, 212, 191, 0.03), rgba(45, 212, 191, 0));
 }
 
 .auth-panel {
