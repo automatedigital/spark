@@ -256,6 +256,43 @@ class TestSyncSkills:
         assert "design-md" not in get_disabled_skills({"skills": {}})
         assert "frontend-design" not in get_disabled_skills({"skills": {}})
 
+    def test_new_bundled_skills_copy_with_supporting_files(self, tmp_path):
+        """New bundled skills sync with their supporting files."""
+        bundled = Path(__file__).resolve().parents[2] / "skills"
+        skills_dir = tmp_path / "user_skills"
+        manifest_file = skills_dir / ".bundled_manifest"
+
+        with self._patches(bundled, skills_dir, manifest_file):
+            result = sync_skills(quiet=True)
+
+        assert "remotion-best-practices" in result["copied"]
+        assert "grill-with-docs" in result["copied"]
+        assert (
+            skills_dir
+            / "creative"
+            / "remotion-best-practices"
+            / "SKILL.md"
+        ).exists()
+        assert (
+            skills_dir
+            / "creative"
+            / "remotion-best-practices"
+            / "rules"
+            / "timing.md"
+        ).exists()
+        assert (
+            skills_dir
+            / "software-development"
+            / "grill-with-docs"
+            / "CONTEXT-FORMAT.md"
+        ).exists()
+        assert (
+            skills_dir
+            / "software-development"
+            / "grill-with-docs"
+            / "ADR-FORMAT.md"
+        ).exists()
+
     def test_user_deleted_skill_not_re_added(self, tmp_path):
         """Skill in manifest but not on disk = user deleted it. Don't re-add."""
         bundled = self._setup_bundled(tmp_path)
@@ -541,6 +578,13 @@ class TestGetBundledDir:
         assert result.name == "skills"
         assert (result / "creative" / "design-md" / "SKILL.md").exists()
         assert (result / "creative" / "frontend-design" / "SKILL.md").exists()
+        assert (result / "creative" / "remotion-best-practices" / "SKILL.md").exists()
+        assert (
+            result
+            / "software-development"
+            / "grill-with-docs"
+            / "SKILL.md"
+        ).exists()
 
     def test_env_var_empty_string_ignored(self, monkeypatch):
         """Empty SPARK_BUNDLED_SKILLS should fall back to default."""

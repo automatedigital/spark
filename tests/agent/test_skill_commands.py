@@ -144,6 +144,16 @@ class TestScanSkillCommands:
         assert "/sonarr-v3v4-api" in result
         assert any("/" in k[1:] for k in result) is False  # no unescaped /
 
+    def test_new_bundled_skills_register_commands(self):
+        """New bundled skills are discoverable as slash commands."""
+        bundled_skills = Path(__file__).resolve().parents[2] / "skills"
+        with patch("tools.skills_tool.SKILLS_DIR", bundled_skills):
+            result = scan_skill_commands()
+        assert "/remotion-best-practices" in result
+        assert result["/remotion-best-practices"]["name"] == "remotion-best-practices"
+        assert "/grill-with-docs" in result
+        assert result["/grill-with-docs"]["name"] == "grill-with-docs"
+
 
 class TestResolveSkillCommandKey:
     """Telegram bot-command names disallow hyphens, so the menu registers
