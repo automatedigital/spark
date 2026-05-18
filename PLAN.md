@@ -65,7 +65,7 @@ ruff check src/ && mypy src/agent/ src/spark_cli/
 
 ### MEDIUM
 
-- [ ] **10. Three sources of truth for the platform list**
+- [x] **10. Three sources of truth for the platform list**
   `src/cron/scheduler.py` ~44-49 (`_KNOWN_DELIVERY_PLATFORMS` frozenset) and ~241-259 (hardcoded name→enum mapping) both duplicate what the `Platform` enum in `src/gateway/config.py` already defines. A new platform added to the enum is silently ignored by the scheduler. Remove the frozenset and derive the mapping programmatically from `Platform` members.
 
 - [x] **11. `except Exception: pass` silently swallowing errors at multiple sites**

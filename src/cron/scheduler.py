@@ -39,14 +39,14 @@ from core.spark_time import now as _spark_now
 
 logger = logging.getLogger(__name__)
 
-# Valid delivery platforms — used to validate user-supplied platform names
-# in cron delivery targets, preventing env var enumeration via crafted names.
-_KNOWN_DELIVERY_PLATFORMS = frozenset({
-    "telegram", "discord", "slack", "whatsapp", "signal",
-    "matrix", "mattermost", "homeassistant", "dingtalk", "feishu",
-    "wecom", "wecom_callback", "weixin", "sms", "email", "webhook", "bluebubbles",
-    "qqbot",
-})
+# Derived from the Platform enum — eliminates the duplicate hand-maintained list.
+# LOCAL and API_SERVER are not valid delivery targets, so they are excluded.
+def _build_known_delivery_platforms() -> frozenset:
+    from gateway.config import Platform
+    _non_delivery = {"local", "api_server"}
+    return frozenset(p.value for p in Platform if p.value not in _non_delivery)
+
+_KNOWN_DELIVERY_PLATFORMS = _build_known_delivery_platforms()
 
 from cron.jobs import get_due_jobs, mark_job_run, save_job_output, advance_next_run
 
@@ -326,25 +326,7 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
 
     from gateway.config import load_gateway_config, Platform
 
-    platform_map = {
-        "telegram": Platform.TELEGRAM,
-        "discord": Platform.DISCORD,
-        "slack": Platform.SLACK,
-        "whatsapp": Platform.WHATSAPP,
-        "signal": Platform.SIGNAL,
-        "matrix": Platform.MATRIX,
-        "mattermost": Platform.MATTERMOST,
-        "homeassistant": Platform.HOMEASSISTANT,
-        "dingtalk": Platform.DINGTALK,
-        "feishu": Platform.FEISHU,
-        "wecom": Platform.WECOM,
-        "wecom_callback": Platform.WECOM_CALLBACK,
-        "weixin": Platform.WEIXIN,
-        "email": Platform.EMAIL,
-        "sms": Platform.SMS,
-        "bluebubbles": Platform.BLUEBUBBLES,
-        "qqbot": Platform.QQBOT,
-    }
+    platform_map = {p.value: p for p in Platform}
     platform = platform_map.get(platform_name.lower())
     if not platform:
         msg = f"unknown platform '{platform_name}'"
