@@ -197,14 +197,104 @@ def _send_media_via_adapter(adapter, chat_id: str, media_files: list, metadata: 
             logger.warning("Job '%s': failed to send media %s: %s", job.get("id", "?"), media_path, e)
 
 
-def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Optional[str]:
-    """
-    Deliver job output to the configured target (origin chat, specific platform, etc.).
+def _build_delivery_content(job: dict, content: str) -> tuple[str, list]:
+    """Wrap content with cron header if configured, then extract media files.
 
-    When ``adapters`` and ``loop`` are provided (gateway is running), tries to
-    use the live adapter first — this supports E2EE rooms (e.g. Matrix) where
-    the standalone HTTP path cannot encrypt.  Falls back to standalone send if
-    the adapter path fails or is unavailable.
+    Returns (cleaned_text, media_files).
+    """
+    wrap_response = True
+    try:
+        user_cfg = load_config()
+        wrap_response = user_cfg.get("cron", {}).get("wrap_response", True)
+    except Exception:
+        pass
+
+    if wrap_response:
+        task_name = job.get("name", job["id"])
+        delivery_content = (
+            f"Cronjob Response: {task_name}\n"
+            f"-------------\n\n"
+            f"{content}\n\n"
+            f"Note: The agent cannot see this message, and therefore cannot respond to it."
+        )
+    else:
+        delivery_content = content
+
+    from gateway.platforms.base import BasePlatformAdapter
+    media_files, cleaned = BasePlatformAdapter.extract_media(delivery_content)
+    return cleaned, media_files
+
+
+def _send_via_live_adapter(adapter, chat_id: str, text: str, media_files: list,
+                           thread_id, loop, job: dict) -> bool:
+    """Try to deliver via the live in-process adapter. Returns True on success."""
+    send_metadata = {"thread_id": thread_id} if thread_id else None
+    platform_name = job.get("_platform_name", "?")
+    try:
+        adapter_ok = True
+        if text:
+            future = asyncio.run_coroutine_threadsafe(
+                adapter.send(chat_id, text, metadata=send_metadata), loop
+            )
+            send_result = future.result(timeout=60)
+            if send_result and not getattr(send_result, "success", True):
+                err = getattr(send_result, "error", "unknown")
+                logger.warning(
+                    "Job '%s': live adapter send to %s:%s failed (%s), falling back to standalone",
+                    job["id"], platform_name, chat_id, err,
+                )
+                adapter_ok = False
+
+        if adapter_ok and media_files:
+            _send_media_via_adapter(adapter, chat_id, media_files, send_metadata, loop, job)
+
+        if adapter_ok:
+            logger.info("Job '%s': delivered to %s:%s via live adapter", job["id"], platform_name, chat_id)
+        return adapter_ok
+    except Exception as e:
+        logger.warning(
+            "Job '%s': live adapter delivery to %s:%s failed (%s), falling back to standalone",
+            job["id"], platform_name, chat_id, e,
+        )
+        return False
+
+
+def _send_via_standalone_path(platform, pconfig, chat_id: str, text: str,
+                              thread_id, media_files: list, job: dict) -> Optional[str]:
+    """Send via a freshly-created asyncio event loop (safe from any thread).
+
+    Returns None on success, or an error string on failure.
+    """
+    from tools.send_message_tool import _send_to_platform
+
+    platform_name = job.get("_platform_name", "?")
+    coro = _send_to_platform(platform, pconfig, chat_id, text, thread_id=thread_id, media_files=media_files)
+    try:
+        result = asyncio.run(coro)
+    except RuntimeError:
+        coro.close()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                asyncio.run,
+                _send_to_platform(platform, pconfig, chat_id, text, thread_id=thread_id, media_files=media_files),
+            )
+            result = future.result(timeout=30)
+    except Exception as e:
+        msg = f"delivery to {platform_name}:{chat_id} failed: {e}"
+        logger.error("Job '%s': %s", job["id"], msg)
+        return msg
+
+    if result and result.get("error"):
+        msg = f"delivery error: {result['error']}"
+        logger.error("Job '%s': %s", job["id"], msg)
+        return msg
+
+    logger.info("Job '%s': delivered to %s:%s", job["id"], platform_name, chat_id)
+    return None
+
+
+def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Optional[str]:
+    """Deliver job output to the configured target.
 
     Returns None on success, or an error string on failure.
     """
@@ -214,13 +304,12 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
             msg = f"no delivery target resolved for deliver={job.get('deliver', 'local')}"
             logger.warning("Job '%s': %s", job["id"], msg)
             return msg
-        return None  # local-only jobs don't deliver — not a failure
+        return None
 
     platform_name = target["platform"]
     chat_id = target["chat_id"]
     thread_id = target.get("thread_id")
 
-    # Diagnostic: log thread_id for topic-aware delivery debugging
     origin = job.get("origin") or {}
     origin_thread = origin.get("thread_id")
     if origin_thread and not thread_id:
@@ -235,7 +324,6 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
             job["id"], platform_name, chat_id, thread_id,
         )
 
-    from tools.send_message_tool import _send_to_platform
     from gateway.config import load_gateway_config, Platform
 
     platform_map = {
@@ -276,96 +364,22 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
         logger.warning("Job '%s': %s", job["id"], msg)
         return msg
 
-    # Optionally wrap the content with a header/footer so the user knows this
-    # is a cron delivery.  Wrapping is on by default; set cron.wrap_response: false
-    # in config.yaml for clean output.
-    wrap_response = True
-    try:
-        user_cfg = load_config()
-        wrap_response = user_cfg.get("cron", {}).get("wrap_response", True)
-    except Exception:
-        pass
+    # Stash platform_name so helpers can log it without passing extra args
+    job = {**job, "_platform_name": platform_name}
 
-    if wrap_response:
-        task_name = job.get("name", job["id"])
-        delivery_content = (
-            f"Cronjob Response: {task_name}\n"
-            f"-------------\n\n"
-            f"{content}\n\n"
-            f"Note: The agent cannot see this message, and therefore cannot respond to it."
-        )
-    else:
-        delivery_content = content
+    cleaned_text, media_files = _build_delivery_content(job, content)
 
-    # Extract MEDIA: tags so attachments are forwarded as files, not raw text
-    from gateway.platforms.base import BasePlatformAdapter
-    media_files, cleaned_delivery_content = BasePlatformAdapter.extract_media(delivery_content)
-
-    # Prefer the live adapter when the gateway is running — this supports E2EE
-    # rooms (e.g. Matrix) where the standalone HTTP path cannot encrypt.
     runtime_adapter = (adapters or {}).get(platform)
     if runtime_adapter is not None and loop is not None and getattr(loop, "is_running", lambda: False)():
-        send_metadata = {"thread_id": thread_id} if thread_id else None
-        try:
-            # Send cleaned text (MEDIA tags stripped) — not the raw content
-            text_to_send = cleaned_delivery_content.strip()
-            adapter_ok = True
-            if text_to_send:
-                future = asyncio.run_coroutine_threadsafe(
-                    runtime_adapter.send(chat_id, text_to_send, metadata=send_metadata),
-                    loop,
-                )
-                send_result = future.result(timeout=60)
-                if send_result and not getattr(send_result, "success", True):
-                    err = getattr(send_result, "error", "unknown")
-                    logger.warning(
-                        "Job '%s': live adapter send to %s:%s failed (%s), falling back to standalone",
-                        job["id"], platform_name, chat_id, err,
-                    )
-                    adapter_ok = False  # fall through to standalone path
+        if _send_via_live_adapter(runtime_adapter, chat_id, cleaned_text.strip(), media_files, thread_id, loop, job):
+            return None
 
-            # Send extracted media files as native attachments via the live adapter
-            if adapter_ok and media_files:
-                _send_media_via_adapter(runtime_adapter, chat_id, media_files, send_metadata, loop, job)
-
-            if adapter_ok:
-                logger.info("Job '%s': delivered to %s:%s via live adapter", job["id"], platform_name, chat_id)
-                return None
-        except Exception as e:
-            logger.warning(
-                "Job '%s': live adapter delivery to %s:%s failed (%s), falling back to standalone",
-                job["id"], platform_name, chat_id, e,
-            )
-
-    # Standalone path: run the async send in a fresh event loop (safe from any thread)
-    coro = _send_to_platform(platform, pconfig, chat_id, cleaned_delivery_content, thread_id=thread_id, media_files=media_files)
-    try:
-        result = asyncio.run(coro)
-    except RuntimeError:
-        # asyncio.run() checks for a running loop before awaiting the coroutine;
-        # when it raises, the original coro was never started — close it to
-        # prevent "coroutine was never awaited" RuntimeWarning, then retry in a
-        # fresh thread that has no running loop.
-        coro.close()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, _send_to_platform(platform, pconfig, chat_id, cleaned_delivery_content, thread_id=thread_id, media_files=media_files))
-            result = future.result(timeout=30)
-    except Exception as e:
-        msg = f"delivery to {platform_name}:{chat_id} failed: {e}"
-        logger.error("Job '%s': %s", job["id"], msg)
-        return msg
-
-    if result and result.get("error"):
-        msg = f"delivery error: {result['error']}"
-        logger.error("Job '%s': %s", job["id"], msg)
-        return msg
-
-    logger.info("Job '%s': delivered to %s:%s", job["id"], platform_name, chat_id)
-    return None
+    return _send_via_standalone_path(platform, pconfig, chat_id, cleaned_text, thread_id, media_files, job)
 
 
-_DEFAULT_SCRIPT_TIMEOUT = 120  # seconds
+DEFAULT_SCRIPT_TIMEOUT_SECS = 120
+SCHEDULER_POLL_INTERVAL_SECS = 5.0
+_DEFAULT_SCRIPT_TIMEOUT = DEFAULT_SCRIPT_TIMEOUT_SECS  # kept for backward compat
 # Backward-compatible module override used by tests and emergency monkeypatches.
 _SCRIPT_TIMEOUT = _DEFAULT_SCRIPT_TIMEOUT
 
@@ -403,7 +417,7 @@ def _get_script_timeout() -> int:
     return _DEFAULT_SCRIPT_TIMEOUT
 
 
-def _run_job_script(script_path: str) -> tuple[bool, str]:
+def _run_job_script(script_path: str, timeout: int | None = None) -> tuple[bool, str]:
     """Execute a cron job's data-collection script and capture its output.
 
     Scripts must reside within SPARK_HOME/scripts/.  Both relative and
@@ -435,19 +449,18 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
     # Guard against path traversal, absolute path injection, and symlink
     # escape — scripts MUST reside within SPARK_HOME/scripts/.
     try:
-        path.relative_to(scripts_dir_resolved)
+        rel = path.relative_to(scripts_dir_resolved)
     except ValueError:
         return False, (
-            f"Blocked: script path resolves outside the scripts directory "
-            f"({scripts_dir_resolved}): {script_path!r}"
+            f"Blocked: script path resolves outside SPARK_HOME/scripts/: {script_path!r}"
         )
 
     if not path.exists():
-        return False, f"Script not found: {path}"
+        return False, f"Script not found: scripts/{rel}"
     if not path.is_file():
-        return False, f"Script path is not a file: {path}"
+        return False, f"Script path is not a file: scripts/{rel}"
 
-    script_timeout = _get_script_timeout()
+    script_timeout = timeout if timeout is not None else _get_script_timeout()
 
     try:
         result = subprocess.run(
@@ -574,325 +587,317 @@ def _build_job_prompt(job: dict) -> str:
     return "\n".join(parts)
 
 
-def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
+_JOB_ENV_KEYS = (
+    "SPARK_SESSION_PLATFORM",
+    "SPARK_SESSION_CHAT_ID",
+    "SPARK_SESSION_CHAT_NAME",
+    "SPARK_CRON_AUTO_DELIVER_PLATFORM",
+    "SPARK_CRON_AUTO_DELIVER_CHAT_ID",
+    "SPARK_CRON_AUTO_DELIVER_THREAD_ID",
+)
+
+
+def _setup_job_environment(job: dict) -> dict:
+    """Load env vars, .env, and config.yaml; inject origin/delivery env vars.
+
+    Returns a dict with all resolved config values needed to build the agent.
+    Callers must pop _JOB_ENV_KEYS from os.environ in a finally block.
     """
-    Execute a single cron job.
-    
+    job_id = job["id"]
+
+    origin = _resolve_origin(job)
+    if origin:
+        os.environ["SPARK_SESSION_PLATFORM"] = origin["platform"]
+        os.environ["SPARK_SESSION_CHAT_ID"] = str(origin["chat_id"])
+        if origin.get("chat_name"):
+            os.environ["SPARK_SESSION_CHAT_NAME"] = origin["chat_name"]
+
+    from dotenv import load_dotenv
+    try:
+        load_dotenv(str(_spark_home / ".env"), override=True, encoding="utf-8")
+    except UnicodeDecodeError:
+        load_dotenv(str(_spark_home / ".env"), override=True, encoding="latin-1")
+
+    delivery_target = _resolve_delivery_target(job)
+    if delivery_target:
+        os.environ["SPARK_CRON_AUTO_DELIVER_PLATFORM"] = delivery_target["platform"]
+        os.environ["SPARK_CRON_AUTO_DELIVER_CHAT_ID"] = str(delivery_target["chat_id"])
+        if delivery_target.get("thread_id") is not None:
+            os.environ["SPARK_CRON_AUTO_DELIVER_THREAD_ID"] = str(delivery_target["thread_id"])
+
+    model = job.get("model") or os.getenv("SPARK_MODEL") or ""
+    _cfg: dict = {}
+    try:
+        import yaml
+        _cfg_path = str(_spark_home / "config.yaml")
+        if os.path.exists(_cfg_path):
+            with open(_cfg_path) as _f:
+                _cfg = yaml.safe_load(_f) or {}
+            _model_cfg = _cfg.get("model", {})
+            if not job.get("model"):
+                if isinstance(_model_cfg, str):
+                    model = _model_cfg
+                elif isinstance(_model_cfg, dict):
+                    model = _model_cfg.get("default", model)
+    except Exception as e:
+        logger.warning("Job '%s': failed to load config.yaml, using defaults: %s", job_id, e)
+
+    try:
+        from core.spark_constants import apply_ipv4_preference
+        _net_cfg = _cfg.get("network", {})
+        if isinstance(_net_cfg, dict) and _net_cfg.get("force_ipv4"):
+            apply_ipv4_preference(force=True)
+    except Exception:
+        pass
+
+    from core.spark_constants import parse_reasoning_effort
+    effort = str(_cfg.get("agent", {}).get("reasoning_effort", "")).strip()
+    reasoning_config = parse_reasoning_effort(effort)
+
+    prefill_messages = None
+    prefill_file = os.getenv("SPARK_PREFILL_MESSAGES_FILE", "") or _cfg.get("prefill_messages_file", "")
+    if prefill_file:
+        import json as _json
+        pfpath = Path(prefill_file).expanduser()
+        if not pfpath.is_absolute():
+            pfpath = _spark_home / pfpath
+        if pfpath.exists():
+            try:
+                with open(pfpath, "r", encoding="utf-8") as _pf:
+                    prefill_messages = _json.load(_pf)
+                if not isinstance(prefill_messages, list):
+                    prefill_messages = None
+            except Exception as e:
+                logger.warning("Job '%s': failed to parse prefill messages file '%s': %s", job_id, pfpath, e)
+                prefill_messages = None
+
+    max_iterations = _cfg.get("agent", {}).get("max_turns") or _cfg.get("max_turns") or 90
+    pr = _cfg.get("provider_routing", {})
+    smart_routing = _cfg.get("smart_model_routing", {}) or {}
+    fallback_model = _cfg.get("fallback_providers") or _cfg.get("fallback_model") or None
+
+    return {
+        "model": model,
+        "cfg": _cfg,
+        "reasoning_config": reasoning_config,
+        "prefill_messages": prefill_messages,
+        "max_iterations": max_iterations,
+        "provider_routing": pr,
+        "smart_routing": smart_routing,
+        "fallback_model": fallback_model,
+    }
+
+
+def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session_id: str):
+    """Resolve provider/model routing and construct the AIAgent for a cron job."""
+    from core.run_agent import AIAgent
+    from spark_cli.runtime_provider import resolve_runtime_provider, format_runtime_provider_error
+    from agent.smart_model_routing import resolve_turn_route
+
+    job_id = job["id"]
+    model = env["model"]
+    pr = env["provider_routing"]
+    smart_routing = env["smart_routing"]
+
+    try:
+        runtime_kwargs: dict = {
+            "requested": job.get("provider") or os.getenv("SPARK_INFERENCE_PROVIDER"),
+        }
+        if job.get("base_url"):
+            runtime_kwargs["explicit_base_url"] = job.get("base_url")
+        runtime = resolve_runtime_provider(**runtime_kwargs)
+    except Exception as exc:
+        raise RuntimeError(format_runtime_provider_error(exc)) from exc
+
+    turn_route = resolve_turn_route(
+        prompt,
+        smart_routing,
+        {
+            "model": model,
+            "api_key": runtime.get("api_key"),
+            "base_url": runtime.get("base_url"),
+            "provider": runtime.get("provider"),
+            "api_mode": runtime.get("api_mode"),
+            "command": runtime.get("command"),
+            "args": list(runtime.get("args") or []),
+        },
+    )
+
+    credential_pool = None
+    runtime_provider = str(turn_route["runtime"].get("provider") or "").strip().lower()
+    if runtime_provider:
+        try:
+            from agent.credential_pool import load_pool
+            pool = load_pool(runtime_provider)
+            if pool.has_credentials():
+                credential_pool = pool
+                logger.info(
+                    "Job '%s': loaded credential pool for provider %s with %d entries",
+                    job_id, runtime_provider, len(pool.entries()),
+                )
+        except Exception as e:
+            logger.debug("Job '%s': failed to load credential pool for %s: %s", job_id, runtime_provider, e)
+
+    return AIAgent(
+        model=turn_route["model"],
+        api_key=turn_route["runtime"].get("api_key"),
+        base_url=turn_route["runtime"].get("base_url"),
+        provider=turn_route["runtime"].get("provider"),
+        api_mode=turn_route["runtime"].get("api_mode"),
+        acp_command=turn_route["runtime"].get("command"),
+        acp_args=turn_route["runtime"].get("args"),
+        max_iterations=env["max_iterations"],
+        reasoning_config=env["reasoning_config"],
+        prefill_messages=env["prefill_messages"],
+        fallback_model=env["fallback_model"],
+        credential_pool=credential_pool,
+        providers_allowed=pr.get("only"),
+        providers_ignored=pr.get("ignore"),
+        providers_order=pr.get("order"),
+        provider_sort=pr.get("sort"),
+        disabled_toolsets=["cronjob", "messaging", "clarify"],
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        platform="cron",
+        session_id=session_id,
+        session_db=session_db,
+    )
+
+
+def _execute_job_with_timeout(agent, job: dict, prompt: str) -> dict:
+    """Run the agent with an inactivity-based timeout. Returns the result dict."""
+    job_name = job["name"]
+    _cron_timeout = float(os.getenv("SPARK_CRON_TIMEOUT", 600))
+    _cron_inactivity_limit = _cron_timeout if _cron_timeout > 0 else None
+
+    _cron_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    _cron_future = _cron_pool.submit(agent.run_conversation, prompt)
+    _inactivity_timeout = False
+    try:
+        if _cron_inactivity_limit is None:
+            result = _cron_future.result()
+        else:
+            result = None
+            while True:
+                done, _ = concurrent.futures.wait({_cron_future}, timeout=SCHEDULER_POLL_INTERVAL_SECS)
+                if done:
+                    result = _cron_future.result()
+                    break
+                _idle_secs = 0.0
+                if hasattr(agent, "get_activity_summary"):
+                    try:
+                        _idle_secs = agent.get_activity_summary().get("seconds_since_activity", 0.0)
+                    except Exception:
+                        pass
+                if _idle_secs >= _cron_inactivity_limit:
+                    _inactivity_timeout = True
+                    break
+    except Exception:
+        _cron_pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    finally:
+        _cron_pool.shutdown(wait=False, cancel_futures=True)
+
+    if _inactivity_timeout:
+        _activity: dict = {}
+        if hasattr(agent, "get_activity_summary"):
+            try:
+                _activity = agent.get_activity_summary()
+            except Exception:
+                pass
+        _last_desc = _activity.get("last_activity_desc", "unknown")
+        _secs_ago = _activity.get("seconds_since_activity", 0)
+        _cur_tool = _activity.get("current_tool")
+        _iter_n = _activity.get("api_call_count", 0)
+        _iter_max = _activity.get("max_iterations", 0)
+        logger.error(
+            "Job '%s' idle for %.0fs (inactivity limit %.0fs) "
+            "| last_activity=%s | iteration=%s/%s | tool=%s",
+            job_name, _secs_ago, _cron_inactivity_limit,
+            _last_desc, _iter_n, _iter_max, _cur_tool or "none",
+        )
+        if hasattr(agent, "interrupt"):
+            agent.interrupt("Cron job timed out (inactivity)")
+        raise TimeoutError(
+            f"Cron job '{job_name}' idle for "
+            f"{int(_secs_ago)}s (limit {int(_cron_inactivity_limit)}s) "
+            f"— last activity: {_last_desc}"
+        )
+
+    return result
+
+
+def _format_job_output(result: dict, job: dict, prompt: str) -> tuple[str, str]:
+    """Build the output document and extract the final response string."""
+    job_id = job["id"]
+    job_name = job["name"]
+    final_response = result.get("final_response", "") or ""
+    logged_response = final_response if final_response else "(No response generated)"
+    output = (
+        f"# Cron Job: {job_name}\n\n"
+        f"**Job ID:** {job_id}\n"
+        f"**Run Time:** {_spark_now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"**Schedule:** {job.get('schedule_display', 'N/A')}\n\n"
+        f"## Prompt\n\n{prompt}\n\n"
+        f"## Response\n\n{logged_response}\n"
+    )
+    return output, final_response
+
+
+def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
+    """Execute a single cron job.
+
     Returns:
         Tuple of (success, full_output_doc, final_response, error_message)
     """
-    from core.run_agent import AIAgent
-    
-    # Initialize SQLite session store so cron job messages are persisted
-    # and discoverable via session_search (same pattern as gateway/run.py).
     _session_db = None
     try:
         from core.spark_state import SessionDB
         _session_db = SessionDB()
     except Exception as e:
         logger.debug("Job '%s': SQLite session store not available: %s", job.get("id", "?"), e)
-    
+
     job_id = job["id"]
     job_name = job["name"]
     prompt = _build_job_prompt(job)
-    origin = _resolve_origin(job)
     _cron_session_id = f"cron_{job_id}_{_spark_now().strftime('%Y%m%d_%H%M%S')}"
 
     logger.info("Running job '%s' (ID: %s)", job_name, job_id)
     logger.info("Prompt: %s", prompt[:100])
 
     try:
-        # Inject origin context so the agent's send_message tool knows the chat.
-        # Must be INSIDE the try block so the finally cleanup always runs.
-        if origin:
-            os.environ["SPARK_SESSION_PLATFORM"] = origin["platform"]
-            os.environ["SPARK_SESSION_CHAT_ID"] = str(origin["chat_id"])
-            if origin.get("chat_name"):
-                os.environ["SPARK_SESSION_CHAT_NAME"] = origin["chat_name"]
-        # Re-read .env and config.yaml fresh every run so provider/key
-        # changes take effect without a gateway restart.
-        from dotenv import load_dotenv
-        try:
-            load_dotenv(str(_spark_home / ".env"), override=True, encoding="utf-8")
-        except UnicodeDecodeError:
-            load_dotenv(str(_spark_home / ".env"), override=True, encoding="latin-1")
-
-        delivery_target = _resolve_delivery_target(job)
-        if delivery_target:
-            os.environ["SPARK_CRON_AUTO_DELIVER_PLATFORM"] = delivery_target["platform"]
-            os.environ["SPARK_CRON_AUTO_DELIVER_CHAT_ID"] = str(delivery_target["chat_id"])
-            if delivery_target.get("thread_id") is not None:
-                os.environ["SPARK_CRON_AUTO_DELIVER_THREAD_ID"] = str(delivery_target["thread_id"])
-
-        model = job.get("model") or os.getenv("SPARK_MODEL") or ""
-
-        # Load config.yaml for model, reasoning, prefill, toolsets, provider routing
-        _cfg = {}
-        try:
-            import yaml
-            _cfg_path = str(_spark_home / "config.yaml")
-            if os.path.exists(_cfg_path):
-                with open(_cfg_path) as _f:
-                    _cfg = yaml.safe_load(_f) or {}
-                _model_cfg = _cfg.get("model", {})
-                if not job.get("model"):
-                    if isinstance(_model_cfg, str):
-                        model = _model_cfg
-                    elif isinstance(_model_cfg, dict):
-                        model = _model_cfg.get("default", model)
-        except Exception as e:
-            logger.warning("Job '%s': failed to load config.yaml, using defaults: %s", job_id, e)
-
-        # Apply IPv4 preference if configured.
-        try:
-            from core.spark_constants import apply_ipv4_preference
-            _net_cfg = _cfg.get("network", {})
-            if isinstance(_net_cfg, dict) and _net_cfg.get("force_ipv4"):
-                apply_ipv4_preference(force=True)
-        except Exception:
-            pass
-
-        # Reasoning config from config.yaml
-        from core.spark_constants import parse_reasoning_effort
-        effort = str(_cfg.get("agent", {}).get("reasoning_effort", "")).strip()
-        reasoning_config = parse_reasoning_effort(effort)
-
-        # Prefill messages from env or config.yaml
-        prefill_messages = None
-        prefill_file = os.getenv("SPARK_PREFILL_MESSAGES_FILE", "") or _cfg.get("prefill_messages_file", "")
-        if prefill_file:
-            import json as _json
-            pfpath = Path(prefill_file).expanduser()
-            if not pfpath.is_absolute():
-                pfpath = _spark_home / pfpath
-            if pfpath.exists():
-                try:
-                    with open(pfpath, "r", encoding="utf-8") as _pf:
-                        prefill_messages = _json.load(_pf)
-                    if not isinstance(prefill_messages, list):
-                        prefill_messages = None
-                except Exception as e:
-                    logger.warning("Job '%s': failed to parse prefill messages file '%s': %s", job_id, pfpath, e)
-                    prefill_messages = None
-
-        # Max iterations
-        max_iterations = _cfg.get("agent", {}).get("max_turns") or _cfg.get("max_turns") or 90
-
-        # Provider routing
-        pr = _cfg.get("provider_routing", {})
-        smart_routing = _cfg.get("smart_model_routing", {}) or {}
-
-        from spark_cli.runtime_provider import (
-            resolve_runtime_provider,
-            format_runtime_provider_error,
-        )
-        try:
-            runtime_kwargs = {
-                "requested": job.get("provider") or os.getenv("SPARK_INFERENCE_PROVIDER"),
-            }
-            if job.get("base_url"):
-                runtime_kwargs["explicit_base_url"] = job.get("base_url")
-            runtime = resolve_runtime_provider(**runtime_kwargs)
-        except Exception as exc:
-            message = format_runtime_provider_error(exc)
-            raise RuntimeError(message) from exc
-
-        from agent.smart_model_routing import resolve_turn_route
-        turn_route = resolve_turn_route(
-            prompt,
-            smart_routing,
-            {
-                "model": model,
-                "api_key": runtime.get("api_key"),
-                "base_url": runtime.get("base_url"),
-                "provider": runtime.get("provider"),
-                "api_mode": runtime.get("api_mode"),
-                "command": runtime.get("command"),
-                "args": list(runtime.get("args") or []),
-            },
-        )
-
-        fallback_model = _cfg.get("fallback_providers") or _cfg.get("fallback_model") or None
-        credential_pool = None
-        runtime_provider = str(turn_route["runtime"].get("provider") or "").strip().lower()
-        if runtime_provider:
-            try:
-                from agent.credential_pool import load_pool
-                pool = load_pool(runtime_provider)
-                if pool.has_credentials():
-                    credential_pool = pool
-                    logger.info(
-                        "Job '%s': loaded credential pool for provider %s with %d entries",
-                        job_id,
-                        runtime_provider,
-                        len(pool.entries()),
-                    )
-            except Exception as e:
-                logger.debug("Job '%s': failed to load credential pool for %s: %s", job_id, runtime_provider, e)
-
-        agent = AIAgent(
-            model=turn_route["model"],
-            api_key=turn_route["runtime"].get("api_key"),
-            base_url=turn_route["runtime"].get("base_url"),
-            provider=turn_route["runtime"].get("provider"),
-            api_mode=turn_route["runtime"].get("api_mode"),
-            acp_command=turn_route["runtime"].get("command"),
-            acp_args=turn_route["runtime"].get("args"),
-            max_iterations=max_iterations,
-            reasoning_config=reasoning_config,
-            prefill_messages=prefill_messages,
-            fallback_model=fallback_model,
-            credential_pool=credential_pool,
-            providers_allowed=pr.get("only"),
-            providers_ignored=pr.get("ignore"),
-            providers_order=pr.get("order"),
-            provider_sort=pr.get("sort"),
-            disabled_toolsets=["cronjob", "messaging", "clarify"],
-            quiet_mode=True,
-            skip_context_files=True,  # Don't inject SOUL.md/AGENTS.md from scheduler cwd
-            skip_memory=True,  # Cron system prompts would corrupt user representations
-            platform="cron",
-            session_id=_cron_session_id,
-            session_db=_session_db,
-        )
-        
-        # Run the agent with an *inactivity*-based timeout: the job can run
-        # for hours if it's actively calling tools / receiving stream tokens,
-        # but a hung API call or stuck tool with no activity for the configured
-        # duration is caught and killed.  Default 600s (10 min inactivity);
-        # override via SPARK_CRON_TIMEOUT env var.  0 = unlimited.
-        #
-        # Uses the agent's built-in activity tracker (updated by
-        # _touch_activity() on every tool call, API call, and stream delta).
-        _cron_timeout = float(os.getenv("SPARK_CRON_TIMEOUT", 600))
-        _cron_inactivity_limit = _cron_timeout if _cron_timeout > 0 else None
-        _POLL_INTERVAL = 5.0
-        _cron_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        _cron_future = _cron_pool.submit(agent.run_conversation, prompt)
-        _inactivity_timeout = False
-        try:
-            if _cron_inactivity_limit is None:
-                # Unlimited — just wait for the result.
-                result = _cron_future.result()
-            else:
-                result = None
-                while True:
-                    done, _ = concurrent.futures.wait(
-                        {_cron_future}, timeout=_POLL_INTERVAL,
-                    )
-                    if done:
-                        result = _cron_future.result()
-                        break
-                    # Agent still running — check inactivity.
-                    _idle_secs = 0.0
-                    if hasattr(agent, "get_activity_summary"):
-                        try:
-                            _act = agent.get_activity_summary()
-                            _idle_secs = _act.get("seconds_since_activity", 0.0)
-                        except Exception:
-                            pass
-                    if _idle_secs >= _cron_inactivity_limit:
-                        _inactivity_timeout = True
-                        break
-        except Exception:
-            _cron_pool.shutdown(wait=False, cancel_futures=True)
-            raise
-        finally:
-            _cron_pool.shutdown(wait=False, cancel_futures=True)
-
-        if _inactivity_timeout:
-            # Build diagnostic summary from the agent's activity tracker.
-            _activity = {}
-            if hasattr(agent, "get_activity_summary"):
-                try:
-                    _activity = agent.get_activity_summary()
-                except Exception:
-                    pass
-            _last_desc = _activity.get("last_activity_desc", "unknown")
-            _secs_ago = _activity.get("seconds_since_activity", 0)
-            _cur_tool = _activity.get("current_tool")
-            _iter_n = _activity.get("api_call_count", 0)
-            _iter_max = _activity.get("max_iterations", 0)
-
-            logger.error(
-                "Job '%s' idle for %.0fs (inactivity limit %.0fs) "
-                "| last_activity=%s | iteration=%s/%s | tool=%s",
-                job_name, _secs_ago, _cron_inactivity_limit,
-                _last_desc, _iter_n, _iter_max,
-                _cur_tool or "none",
-            )
-            if hasattr(agent, "interrupt"):
-                agent.interrupt("Cron job timed out (inactivity)")
-            raise TimeoutError(
-                f"Cron job '{job_name}' idle for "
-                f"{int(_secs_ago)}s (limit {int(_cron_inactivity_limit)}s) "
-                f"— last activity: {_last_desc}"
-            )
-
-        final_response = result.get("final_response", "") or ""
-        # Use a separate variable for log display; keep final_response clean
-        # for delivery logic (empty response = no delivery).
-        logged_response = final_response if final_response else "(No response generated)"
-        
-        output = f"""# Cron Job: {job_name}
-
-**Job ID:** {job_id}
-**Run Time:** {_spark_now().strftime('%Y-%m-%d %H:%M:%S')}
-**Schedule:** {job.get('schedule_display', 'N/A')}
-
-## Prompt
-
-{prompt}
-
-## Response
-
-{logged_response}
-"""
-        
+        env = _setup_job_environment(job)
+        agent = _initialize_job_agent(job, env, prompt, _session_db, _cron_session_id)
+        result = _execute_job_with_timeout(agent, job, prompt)
+        output, final_response = _format_job_output(result, job, prompt)
         logger.info("Job '%s' completed successfully", job_name)
         return True, output, final_response, None
-        
+
     except Exception as e:
         error_msg = f"{type(e).__name__}: {str(e)}"
         logger.exception("Job '%s' failed: %s", job_name, error_msg)
-        
-        output = f"""# Cron Job: {job_name} (FAILED)
-
-**Job ID:** {job_id}
-**Run Time:** {_spark_now().strftime('%Y-%m-%d %H:%M:%S')}
-**Schedule:** {job.get('schedule_display', 'N/A')}
-
-## Prompt
-
-{prompt}
-
-## Error
-
-```
-{error_msg}
-```
-"""
+        output = (
+            f"# Cron Job: {job_name} (FAILED)\n\n"
+            f"**Job ID:** {job_id}\n"
+            f"**Run Time:** {_spark_now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"**Schedule:** {job.get('schedule_display', 'N/A')}\n\n"
+            f"## Prompt\n\n{prompt}\n\n"
+            f"## Error\n\n```\n{error_msg}\n```\n"
+        )
         return False, output, "", error_msg
 
     finally:
-        # Clean up injected env vars so they don't leak to other jobs
-        for key in (
-            "SPARK_SESSION_PLATFORM",
-            "SPARK_SESSION_CHAT_ID",
-            "SPARK_SESSION_CHAT_NAME",
-            "SPARK_CRON_AUTO_DELIVER_PLATFORM",
-            "SPARK_CRON_AUTO_DELIVER_CHAT_ID",
-            "SPARK_CRON_AUTO_DELIVER_THREAD_ID",
-        ):
+        for key in _JOB_ENV_KEYS:
             os.environ.pop(key, None)
         if _session_db:
             try:
                 _session_db.end_session(_cron_session_id, "cron_complete")
-            except (Exception, KeyboardInterrupt) as e:
+            except Exception as e:
                 logger.debug("Job '%s': failed to end session: %s", job_id, e)
             try:
                 _session_db.close()
-            except (Exception, KeyboardInterrupt) as e:
+            except Exception as e:
                 logger.debug("Job '%s': failed to close SQLite session store: %s", job_id, e)
 
 

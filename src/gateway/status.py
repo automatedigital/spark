@@ -13,6 +13,7 @@ concurrently under distinct configurations).
 
 import hashlib
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -21,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from core.spark_constants import get_spark_home
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 _GATEWAY_KIND = "spark-gateway"
 _RUNTIME_STATUS_FILE = "gateway_state.json"
@@ -270,7 +273,7 @@ def remove_pid_file() -> None:
     try:
         _get_pid_path().unlink(missing_ok=True)
     except Exception:
-        pass
+        logger.debug("Failed to remove PID file", exc_info=True)
 
 
 def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[dict[str, Any]]]:

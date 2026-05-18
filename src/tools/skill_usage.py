@@ -133,7 +133,7 @@ def _save_raw(data: Dict[str, Any]) -> None:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, path)
-        except BaseException:
+        except Exception:
             try:
                 os.unlink(tmp)
             except OSError:

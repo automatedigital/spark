@@ -589,8 +589,10 @@ def run_oauth_setup_token() -> Optional[str]:
     # Run interactively — stdin/stdout/stderr inherited so user can interact
     try:
         subprocess.run([claude_path, "setup-token"])
-    except (KeyboardInterrupt, EOFError):
+    except EOFError:
         return None
+    except KeyboardInterrupt:
+        raise
 
     # Check if credentials were saved to Claude Code's config files
     creds = read_claude_code_credentials()

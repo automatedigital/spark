@@ -266,7 +266,7 @@ class SessionDB:
             row = cursor.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
 
         if row is not None:
-            current_version = row["version"] if isinstance(row, sqlite3.Row) else row[0]
+            current_version = row["version"]
             if current_version < 2:
                 # v2: add finish_reason column to messages
                 try:
@@ -902,7 +902,10 @@ class SessionDB:
                 try:
                     msg["tool_calls"] = json.loads(msg["tool_calls"])
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning("Failed to deserialize tool_calls in get_messages, falling back to []")
+                    logger.warning(
+                        "Corrupt JSON tool_calls in session %s message %s, falling back to []",
+                        session_id, msg.get("id"),
+                    )
                     msg["tool_calls"] = []
             result.append(msg)
         return result
@@ -931,7 +934,10 @@ class SessionDB:
                 try:
                     msg["tool_calls"] = json.loads(row["tool_calls"])
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning("Failed to deserialize tool_calls in conversation replay, falling back to []")
+                    logger.warning(
+                        "Corrupt JSON tool_calls in session %s during conversation replay, falling back to []",
+                        session_id,
+                    )
                     msg["tool_calls"] = []
             # Restore reasoning fields on assistant messages so providers
             # that replay reasoning (OpenRouter, OpenAI, Spark Portal) receive
@@ -1090,23 +1096,39 @@ class SessionDB:
             matches = [dict(row) for row in cursor.fetchall()]
 
         # Add surrounding context (1 message before + after each match).
-        # Done outside the lock so we don't hold it across N sequential queries.
-        for match in matches:
+        # Batch all context reads in a single lock acquisition to avoid
+        # per-match lock contention.
+        if matches:
+            id_set = {m["id"] for m in matches}
+            # Fetch a window of ±1 around every match id in one query.
+            min_id = min(id_set) - 1
+            max_id = max(id_set) + 1
+            session_ids = list({m["session_id"] for m in matches})
+            placeholders = ",".join("?" * len(session_ids))
             try:
                 with self._lock:
-                    ctx_cursor = self._conn.execute(
-                        """SELECT role, content FROM messages
-                           WHERE session_id = ? AND id >= ? - 1 AND id <= ? + 1
-                           ORDER BY id""",
-                        (match["session_id"], match["id"], match["id"]),
-                    )
-                    context_msgs = [
-                        {"role": r["role"], "content": (r["content"] or "")[:200]}
-                        for r in ctx_cursor.fetchall()
+                    ctx_rows = self._conn.execute(
+                        f"""SELECT session_id, id, role, content FROM messages
+                           WHERE session_id IN ({placeholders})
+                             AND id >= ? AND id <= ?
+                           ORDER BY session_id, id""",
+                        (*session_ids, min_id, max_id),
+                    ).fetchall()
+                # Build a lookup: (session_id, id) → row
+                ctx_lookup: dict[tuple, list] = {}
+                for r in ctx_rows:
+                    key = (r["session_id"], r["id"])
+                    ctx_lookup[key] = {"role": r["role"], "content": (r["content"] or "")[:200]}
+                for match in matches:
+                    sid = match["session_id"]
+                    mid = match["id"]
+                    match["context"] = [
+                        ctx_lookup[k] for k in [(sid, mid - 1), (sid, mid), (sid, mid + 1)]
+                        if k in ctx_lookup
                     ]
-                match["context"] = context_msgs
             except Exception:
-                match["context"] = []
+                for match in matches:
+                    match["context"] = []
 
         # Remove full content from result (snippet is enough, saves tokens)
         for match in matches:
@@ -1147,7 +1169,8 @@ class SessionDB:
                 )
             else:
                 cursor = self._conn.execute("SELECT COUNT(*) FROM sessions")
-            return cursor.fetchone()[0]
+            row = cursor.fetchone()
+            return row[0] if row else 0
 
     def message_count(self, session_id: str = None) -> int:
         """Count messages, optionally for a specific session."""
@@ -1158,7 +1181,8 @@ class SessionDB:
                 )
             else:
                 cursor = self._conn.execute("SELECT COUNT(*) FROM messages")
-            return cursor.fetchone()[0]
+            row = cursor.fetchone()
+            return row[0] if row else 0
 
     # =========================================================================
     # Export and cleanup
@@ -1207,7 +1231,8 @@ class SessionDB:
             cursor = conn.execute(
                 "SELECT COUNT(*) FROM sessions WHERE id = ?", (session_id,)
             )
-            if cursor.fetchone()[0] == 0:
+            row = cursor.fetchone()
+            if not row or row[0] == 0:
                 return False
             # Orphan child sessions so FK constraint is satisfied
             conn.execute(

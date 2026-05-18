@@ -387,16 +387,15 @@ def _rpc_server_loop(
                 # their status prints don't leak into the CLI spinner.
                 try:
                     _real_stdout, _real_stderr = sys.stdout, sys.stderr
-                    devnull = open(os.devnull, "w")
-                    try:
-                        sys.stdout = devnull
-                        sys.stderr = devnull
-                        result = handle_function_call(
-                            tool_name, tool_args, task_id=task_id
-                        )
-                    finally:
-                        sys.stdout, sys.stderr = _real_stdout, _real_stderr
-                        devnull.close()
+                    with open(os.devnull, "w") as devnull:
+                        try:
+                            sys.stdout = devnull
+                            sys.stderr = devnull
+                            result = handle_function_call(
+                                tool_name, tool_args, task_id=task_id
+                            )
+                        finally:
+                            sys.stdout, sys.stderr = _real_stdout, _real_stderr
                 except Exception as exc:
                     logger.error("Tool call failed in sandbox: %s", exc, exc_info=True)
                     result = tool_error(str(exc))

@@ -2996,13 +2996,18 @@ class GatewayRunner:
                     exec_cmd = qcmd.get("command", "")
                     if exec_cmd:
                         try:
-                            proc = await asyncio.create_subprocess_shell(
-                                exec_cmd,
+                            _MAX_OUTPUT_BYTES = 10 * 1024 * 1024
+                            args = shlex.split(exec_cmd)
+                            proc = await asyncio.create_subprocess_exec(
+                                *args,
                                 stdout=asyncio.subprocess.PIPE,
                                 stderr=asyncio.subprocess.PIPE,
                             )
                             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-                            output = (stdout or stderr).decode().strip()
+                            raw = stdout or stderr or b""
+                            if len(raw) > _MAX_OUTPUT_BYTES:
+                                raw = raw[:_MAX_OUTPUT_BYTES] + b"\n[output truncated]"
+                            output = raw.decode(errors="replace").strip()
                             return output if output else "Command returned no output."
                         except asyncio.TimeoutError:
                             return "Quick command timed out (30s)."

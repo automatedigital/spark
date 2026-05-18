@@ -339,12 +339,15 @@ def _resize_image_for_vision(image_path: Path, mime_type: Optional[str] = None,
     out_mime = "image/png" if pil_format == "PNG" else "image/jpeg"
 
     try:
-        img = Image.open(image_path)
+        with Image.open(image_path) as orig:
+            # Copy into memory so the file handle is released when we exit the with block
+            img = orig.copy()
     except Exception as exc:
         logger.info("Pillow cannot open image for resizing: %s", exc)
         if data_url is None:
             data_url = _image_to_base64_data_url(image_path, mime_type=mime_type)
         return data_url  # fall through to size-check in caller
+
     # Convert RGBA to RGB for JPEG output
     if pil_format == "JPEG" and img.mode in ("RGBA", "P"):
         img = img.convert("RGB")

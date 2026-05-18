@@ -437,7 +437,11 @@ def _argv_from_args(args: dict | None) -> list[str] | None:
 def _post_process(name: str, entry: "ToolEntry", raw: str, args: dict | None) -> str:
     """Apply compaction + injection screen. Always returns a string."""
     if not isinstance(raw, str):
-        return raw
+        import json as _json
+        try:
+            return _json.dumps(raw)
+        except (TypeError, ValueError):
+            return str(raw)
 
     _pipeline_settings.ensure_loaded()
     text = raw

@@ -1087,9 +1087,11 @@ def _run_browser_command(
         # sees EOF and blocks until the timeout fires.
         stdout_path = os.path.join(task_socket_dir, f"_stdout_{command}")
         stderr_path = os.path.join(task_socket_dir, f"_stderr_{command}")
-        stdout_fd = os.open(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        stderr_fd = os.open(stderr_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        stdout_fd = None
+        stderr_fd = None
         try:
+            stdout_fd = os.open(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            stderr_fd = os.open(stderr_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             proc = subprocess.Popen(
                 cmd_parts,
                 stdout=stdout_fd,
@@ -1098,8 +1100,10 @@ def _run_browser_command(
                 env=browser_env,
             )
         finally:
-            os.close(stdout_fd)
-            os.close(stderr_fd)
+            if stdout_fd is not None:
+                os.close(stdout_fd)
+            if stderr_fd is not None:
+                os.close(stderr_fd)
 
         try:
             proc.wait(timeout=timeout)

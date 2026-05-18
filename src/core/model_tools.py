@@ -53,6 +53,7 @@ def _get_tool_loop():
     with _tool_loop_lock:
         if _tool_loop is None or _tool_loop.is_closed():
             _tool_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(_tool_loop)
         return _tool_loop
 
 
@@ -535,7 +536,7 @@ def handle_function_call(
                     tool_call_id=tool_call_id or "",
                 )
             except Exception:
-                pass
+                logger.debug("pre_tool_call block check failed for %s", function_name, exc_info=True)
 
             if block_message is not None:
                 return json.dumps({"error": block_message}, ensure_ascii=False)
@@ -553,7 +554,7 @@ def handle_function_call(
                     tool_call_id=tool_call_id or "",
                 )
             except Exception:
-                pass
+                logger.debug("pre_tool_call observer hook failed for %s", function_name, exc_info=True)
 
         # Notify the read-loop tracker when a non-read/search tool runs,
         # so the *consecutive* counter resets (reads after other work are fine).
@@ -562,7 +563,7 @@ def handle_function_call(
                 from tools.file_tools import notify_other_tool_call
                 notify_other_tool_call(task_id or "default")
             except Exception:
-                pass  # file_tools may not be loaded yet
+                logger.debug("notify_other_tool_call unavailable for %s", function_name, exc_info=True)
 
         if function_name == "execute_code":
             # Prefer the caller-provided list so subagents can't overwrite
@@ -592,7 +593,7 @@ def handle_function_call(
                 tool_call_id=tool_call_id or "",
             )
         except Exception:
-            pass
+            logger.debug("post_tool_call hook failed for %s", function_name, exc_info=True)
 
         return result
 
