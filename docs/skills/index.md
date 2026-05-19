@@ -363,6 +363,7 @@ Default taps (browsable without any setup):
 - [anthropics/skills](https://github.com/anthropics/skills)
 - [VoltAgent/awesome-agent-skills](https://github.com/VoltAgent/awesome-agent-skills)
 - [garrytan/gstack](https://github.com/garrytan/gstack)
+- [pbakaus/impeccable](https://github.com/pbakaus/impeccable) — design skill (typography, color, motion, anti-pattern detection); also bundled with Spark out of the box
 
 - Example:
 

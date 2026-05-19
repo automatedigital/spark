@@ -61,6 +61,16 @@ Generate ASCII art, diagrams, frontend interfaces, design systems, and generativ
 
 ---
 
+## design
+
+Front-end design and review workflows — visual hierarchy, typography, color/contrast, motion, anti-pattern detection.
+
+| Skill | What you can do | Path |
+|-------|----------------|------|
+| `impeccable` | Design, audit, polish, animate, and refine frontend UIs with 23 sub-commands (`craft`, `audit`, `polish`, `animate`, `clarify`, `distill`, `harden`, …) backed by seven reference docs (typography, color, spatial, motion, interaction, responsive, ux-writing) plus deterministic anti-pattern detection. Built on Anthropic's `frontend-design` skill. Upstream: [pbakaus/impeccable](https://github.com/pbakaus/impeccable). | `design/impeccable` |
+
+---
+
 ## devops
 
 Automate infrastructure and event-driven workflows.
