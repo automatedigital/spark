@@ -290,6 +290,7 @@ class GitHubSource(SkillSource):
         {"repo": "VoltAgent/awesome-agent-skills", "path": "skills/"},
         {"repo": "garrytan/gstack", "path": ""},
         {"repo": "pbakaus/impeccable", "path": ".claude/skills/"},
+        {"repo": "heygen-com/hyperframes", "path": "skills/"},
     ]
 
     def __init__(self, auth: GitHubAuth, extra_taps: Optional[List[Dict]] = None):

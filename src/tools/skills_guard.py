@@ -36,7 +36,7 @@ from typing import List, Tuple
 # Hardcoded trust configuration
 # ---------------------------------------------------------------------------
 
-TRUSTED_REPOS = {"openai/skills", "anthropics/skills", "pbakaus/impeccable"}
+TRUSTED_REPOS = {"openai/skills", "anthropics/skills", "pbakaus/impeccable", "heygen-com/hyperframes"}
 
 INSTALL_POLICY = {
     #                  safe      caution    dangerous
