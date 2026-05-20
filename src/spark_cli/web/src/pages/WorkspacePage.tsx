@@ -660,6 +660,7 @@ function ProjectsSidebar({
   activeSlug,
   onSelect,
   onCreate,
+  onDelete,
   loading,
   collapsed,
   onToggleCollapse,
@@ -669,6 +670,7 @@ function ProjectsSidebar({
   activeSlug: string | null;
   onSelect: (slug: string) => void;
   onCreate: (name: string) => Promise<void>;
+  onDelete: (slug: string) => Promise<void>;
   loading: boolean;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -677,6 +679,19 @@ function ProjectsSidebar({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteSlug, setConfirmDeleteSlug] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!confirmDeleteSlug) return;
+    setDeleting(true);
+    try {
+      await onDelete(confirmDeleteSlug);
+      setConfirmDeleteSlug(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleCreate = async () => {
     const name = newName.trim();
@@ -788,26 +803,67 @@ function ProjectsSidebar({
           </p>
         )}
         {projects.map((p) => (
-          <button
+          <div
             key={p.slug}
-            type="button"
-            onClick={() => onSelect(p.slug)}
             className={cn(
-              "spark-list-row w-full px-2 py-1.5 text-left text-xs transition",
+              "spark-list-row group relative w-full px-2 py-1.5 text-xs transition cursor-pointer",
               activeSlug === p.slug
                 ? "border-r-2 border-primary bg-primary/15 text-foreground"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
+            onClick={() => onSelect(p.slug)}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pr-5">
               <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300/70" />
               <span className="truncate font-medium">{p.name}</span>
             </div>
             <div className="mt-0.5 pl-5 text-[11px] text-muted-foreground/50">
               {p.file_count} {p.file_count === 1 ? "file" : "files"}
             </div>
-          </button>
+            <button
+              type="button"
+              title="Delete project"
+              className="absolute right-2 top-1/2 -translate-y-1/2 hidden text-muted-foreground/50 hover:text-destructive group-hover:block"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDeleteSlug(p.slug);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         ))}
+
+        {confirmDeleteSlug && (
+          <div className="mx-2 mt-2 flex flex-col gap-1.5 rounded-sm border border-destructive/40 bg-background p-2">
+            <p className="text-xs text-foreground">
+              Delete <span className="font-semibold">{confirmDeleteSlug}</span>?
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              This will permanently remove the project and all its files.
+            </p>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-6 flex-1 text-xs"
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+              >
+                {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Delete"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+                onClick={() => setConfirmDeleteSlug(null)}
+                disabled={deleting}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {creating && (
           <div className="mx-2 mt-2 flex flex-col gap-1.5 rounded-sm border border-border bg-background p-2">
@@ -1773,6 +1829,16 @@ export default function WorkspacePage() {
     setActiveSession(null);
   };
 
+  const handleDeleteProject = async (slug: string) => {
+    await api.deleteWorkspaceProject(slug);
+    await loadProjects();
+    if (activeSlug === slug) {
+      setActiveSlug(null);
+      setActiveThreadId(null);
+      setActiveSession(null);
+    }
+  };
+
   const handleSelectProject = (slug: string) => {
     setActiveSlug(slug);
     setActiveThreadId(null);
@@ -2019,6 +2085,7 @@ export default function WorkspacePage() {
         activeSlug={activeSlug}
         onSelect={handleSelectProject}
         onCreate={handleCreate}
+        onDelete={handleDeleteProject}
         loading={loadingProjects}
         collapsed={projectsCollapsed}
         onToggleCollapse={toggleProjectsCollapse}

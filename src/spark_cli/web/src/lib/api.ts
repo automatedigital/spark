@@ -524,6 +524,11 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
 
+  deleteWorkspaceProject: (slug: string) =>
+    fetchJSON<{ ok: boolean; deleted: string }>(`/api/workspace/projects/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+    }),
+
   getWorkspaceFileTree: (slug: string) =>
     fetchJSON<WorkspaceTreeResponse>(`/api/workspace/projects/${encodeURIComponent(slug)}/tree`),
 

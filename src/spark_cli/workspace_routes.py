@@ -307,6 +307,16 @@ def list_chat_files(path: str = Query(default="")):
     return {"path": path, "entries": entries}
 
 
+@router.delete("/projects/{slug}")
+def delete_project(slug: str):
+    project_dir = _project_dir(slug)
+    try:
+        shutil.rmtree(project_dir)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"ok": True, "deleted": slug}
+
+
 @router.delete("/projects/{slug}/file")
 def delete_file(slug: str, path: str = Query(...)):
     project_dir = _project_dir(slug)
