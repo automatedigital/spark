@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2 } from "lucide-react";
 import { detectOutputType } from "@/lib/detectOutputType";
 
 const TOOL_FAMILIES: Record<string, { color: string; icon: typeof Wrench }> = {
@@ -154,9 +154,14 @@ export function ToolCallBubble({
               ×{repeatCount + 1}
             </span>
           )}
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            {done ? "done" : "running"}
-          </span>
+          {!done ? (
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-[var(--spark-accent)] animate-pulse">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              running
+            </span>
+          ) : (
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">done</span>
+          )}
         </div>
       </button>
       {open && (
