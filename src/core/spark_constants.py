@@ -240,25 +240,50 @@ _server_env_detected: bool | None = None
 
 
 def is_server_environment() -> bool:
-    """Return True when Spark appears to be running on a headless server.
+    """Return True when Spark appears to be running on a remote/headless server.
 
-    A server environment is detected when the process is inside an SSH session
-    (``SSH_CLIENT``, ``SSH_TTY``, or ``SSH_CONNECTION`` is set) or when there
-    is no graphical display (Linux without ``DISPLAY`` or ``WAYLAND_DISPLAY``).
-    macOS is assumed to be a desktop unless SSH variables are present.
+    Detection order (first match wins):
+    1. ``dashboard.public_url`` set in config — user explicitly configured a
+       public URL, so this is clearly a server deployment.
+    2. ``dashboard.host`` is not loopback in config — bound to 0.0.0.0 etc.,
+       meaning the user intends external access.
+    3. SSH session — ``SSH_CLIENT``, ``SSH_TTY``, or ``SSH_CONNECTION`` is set.
+    4. Headless Linux — no ``DISPLAY`` or ``WAYLAND_DISPLAY`` (services started
+       by systemd/supervisor don't have X11 forwarding).
 
+    macOS without SSH markers is always treated as a desktop.
     Result is cached for the process lifetime.
     """
     global _server_env_detected
     if _server_env_detected is not None:
         return _server_env_detected
 
-    # SSH session — strongest signal, works on all platforms
+    # 1 & 2. Config signals — most reliable for daemon/service deployments
+    try:
+        import yaml  # type: ignore[import]
+
+        _cfg_path = get_config_path()
+        if _cfg_path.exists():
+            with open(_cfg_path, "r") as _f:
+                _cfg = yaml.safe_load(_f) or {}
+            _dash = _cfg.get("dashboard") or {}
+            if _dash.get("public_url", "").strip():
+                _server_env_detected = True
+                return True
+            _dash_host = _dash.get("host", "").strip()
+            _LOOPBACK = {"127.0.0.1", "::1", "localhost", ""}
+            if _dash_host and _dash_host not in _LOOPBACK:
+                _server_env_detected = True
+                return True
+    except Exception:
+        pass
+
+    # 3. SSH session — works for interactive sessions on all platforms
     if any(os.getenv(v) for v in ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")):
         _server_env_detected = True
         return True
 
-    # Headless Linux (no X11 / Wayland display)
+    # 4. Headless Linux (no X11 / Wayland display)
     import sys
 
     if sys.platform.startswith("linux"):
