@@ -1805,7 +1805,15 @@ export default function WorkspacePage() {
       const uniqueTabs = tabs.filter((tab, index, arr) => arr.findIndex((item) => item.id === tab.id) === index);
       const validIds = new Set(uniqueTabs.map((tab) => tab.id));
       setWorkspaceTabs(uniqueTabs);
-      setWorkspaceLayout(parsed.layout ? ensureLayoutTabs(parsed.layout, validIds) : createDefaultLayout());
+
+      let finalLayout = parsed.layout ? ensureLayoutTabs(parsed.layout, validIds) : createDefaultLayout();
+      // If permanent tabs are missing (e.g. from a layout saved before they were added), reset to default
+      const presentIds = new Set(allLayoutTabIds(finalLayout));
+      if (!presentIds.has(FILES_TAB_ID) || !presentIds.has(TERMINAL_TAB_ID)) {
+        finalLayout = createDefaultLayout();
+        for (const ft of fileTabs) finalLayout = addTabToFirstPane(finalLayout, ft.id);
+      }
+      setWorkspaceLayout(finalLayout);
     } catch {
       setWorkspaceTabs(STATIC_TABS);
       setWorkspaceLayout(createDefaultLayout());
