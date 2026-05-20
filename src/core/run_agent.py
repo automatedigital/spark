@@ -588,6 +588,7 @@ class AIAgent:
         interim_assistant_callback: callable = None,
         tool_gen_callback: callable = None,
         status_callback: callable = None,
+        session_migrated_callback: callable = None,
         max_tokens: int = None,
         reasoning_config: Dict[str, Any] = None,
         service_tier: str = None,
@@ -748,6 +749,7 @@ class AIAgent:
         self.interim_assistant_callback = interim_assistant_callback
         self.status_callback = status_callback
         self.tool_gen_callback = tool_gen_callback
+        self.session_migrated_callback = session_migrated_callback
 
         
         # Tool execution state — allows _vprint during tool execution
@@ -6872,6 +6874,13 @@ class AIAgent:
                 self._session_db.update_system_prompt(self.session_id, new_system_prompt)
                 # Reset flush cursor — new session starts with no messages written
                 self._last_flushed_db_idx = 0
+                # Notify subscribers (web UI, gateway) that the session has migrated
+                # so they can update their session_id pointer to follow the agent.
+                if self.session_migrated_callback:
+                    try:
+                        self.session_migrated_callback(old_session_id, self.session_id, "compression")
+                    except Exception:
+                        logger.debug("session_migrated_callback raised", exc_info=True)
             except Exception as e:
                 logger.warning("Session DB compression split failed — new session will NOT be indexed: %s", e)
 

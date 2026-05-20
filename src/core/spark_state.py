@@ -563,6 +563,45 @@ class SessionDB:
             )
             return [dict(r) for r in cursor.fetchall()]
 
+    def resolve_latest_descendant(self, session_id: str) -> str:
+        """Follow the compression chain forward to the most recent descendant.
+
+        When ``_compress_context`` rolls a session over it creates a child session
+        with ``parent_session_id`` set to the previous session and marks the
+        parent's ``end_reason = "compression"``. This walks that chain forward
+        from ``session_id`` and returns the leaf so callers can fetch the
+        agent's actual current message history rather than the pre-compression
+        snapshot frozen in the parent row.
+
+        User-initiated forks (created via /api/sessions/{id}/fork) have a
+        different ``end_reason`` on the parent (or none) and are NOT followed,
+        so forks remain independent threads.
+
+        Returns the input ``session_id`` unchanged when no compression chain
+        exists. Guards against accidental cycles via a visit set + depth cap.
+        """
+        current = session_id
+        visited: set[str] = {current}
+        for _ in range(64):
+            parent = self.get_session(current)
+            if not parent or parent.get("end_reason") != "compression":
+                return current
+            with self._lock:
+                cursor = self._conn.execute(
+                    "SELECT id FROM sessions WHERE parent_session_id = ? "
+                    "ORDER BY started_at DESC LIMIT 1",
+                    (current,),
+                )
+                row = cursor.fetchone()
+            if not row:
+                return current
+            next_id = row["id"]
+            if next_id in visited:
+                return current
+            visited.add(next_id)
+            current = next_id
+        return current
+
     def resolve_session_id(self, session_id_or_prefix: str) -> str | None:
         """Resolve an exact or uniquely prefixed session ID to the full ID.
 

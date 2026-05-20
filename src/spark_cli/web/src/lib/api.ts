@@ -835,6 +835,12 @@ export interface SessionMessage {
 export interface SessionMessagesResponse {
   session_id: string;
   messages: SessionMessage[];
+  /**
+   * Set when the requested session was a parent of a compression-driven
+   * lineage; identifies the originally-requested ID. The returned messages
+   * come from the leaf (`session_id`) so the agent's current state is shown.
+   */
+  migrated_from?: string;
 }
 
 export interface LogsResponse {

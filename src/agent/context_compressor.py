@@ -141,9 +141,14 @@ class ContextCompressor(ContextEngine):
         )
         self.compression_count = 0
 
-        # Derive token budgets: ratio is relative to the threshold, not total context
+        # Derive token budgets: ratio is relative to the threshold, not total context.
+        # Enforce a floor of 30K tokens so the most recent tool_call / tool_result
+        # pairs always survive compression intact — otherwise a single noisy
+        # tool burst (vision_analyze, screenshots, large outputs) at the tail
+        # can push the agent's recent actions into the summarised region and
+        # leave it unable to answer "did you finish?" questions about that work.
         target_tokens = int(self.threshold_tokens * self.summary_target_ratio)
-        self.tail_token_budget = target_tokens
+        self.tail_token_budget = max(target_tokens, 30000)
         self.max_summary_tokens = min(
             int(self.context_length * 0.05), _SUMMARY_TOKENS_CEILING,
         )
@@ -388,7 +393,10 @@ class ContextCompressor(ContextEngine):
 [Questions or requests from the user that have NOT yet been answered or fulfilled. If none, write "None."]
 
 ## Relevant Files
-[Files read, modified, or created — with brief note on each]
+[Files read, modified, or created — with brief note on each. Include ABSOLUTE paths for anything written, modified, or generated. Note write/render outputs explicitly (e.g. "wrote /abs/path/index.html (4.2KB)", "rendered /abs/path/out.mp4 (12.4s)").]
+
+## Recent Tool Activity
+[A concise log of significant tool invocations from these turns — in order — covering: file writes/edits/patches with absolute paths, shell commands run with exit status, code executions and key results, vision/analysis findings with the artifact path, and URLs fetched. This must answer the question "what has the assistant actually DONE so far?" so the next assistant can honestly respond to follow-ups like "did you finish?" or "what did you produce?".]
 
 ## Remaining Work
 [What remains to be done — framed as context, not instructions]

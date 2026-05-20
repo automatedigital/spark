@@ -2743,8 +2743,15 @@ async def get_session_messages(session_id: str):
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
-        messages = db.get_messages(sid)
-        return {"session_id": sid, "messages": messages}
+        # Follow the compression chain forward so the UI sees the agent's
+        # current state, not the pre-compression snapshot frozen in the
+        # parent session row. Forks are not followed (different end_reason).
+        leaf_sid = db.resolve_latest_descendant(sid)
+        messages = db.get_messages(leaf_sid)
+        resp: dict[str, Any] = {"session_id": leaf_sid, "messages": messages}
+        if leaf_sid != sid:
+            resp["migrated_from"] = sid
+        return resp
     finally:
         db.close()
 
@@ -3243,6 +3250,10 @@ def _make_web_chat_callbacks(
     queue: asyncio.Queue,
     loop: asyncio.AbstractEventLoop,
 ):
+    # Mutable holder so the migrate callback can switch the channel that
+    # subsequent events publish on after a compression-driven session split.
+    current_session_id = [session_id]
+
     def token_callback(token: Optional[str]) -> None:
         if token is None:
             return
@@ -3250,13 +3261,13 @@ def _make_web_chat_callbacks(
             loop.call_soon_threadsafe(queue.put_nowait, token)
         except Exception:
             pass
-        _publish_event("chat.token", {"t": token}, session_id)
+        _publish_event("chat.token", {"t": token}, current_session_id[0])
 
     def tool_start_callback(tid: str, name: str, args: Any) -> None:
         _publish_event(
             "chat.tool_start",
             {"id": tid, "name": name, "args": _json_safe(args), "ts": time.time()},
-            session_id,
+            current_session_id[0],
         )
 
     def tool_complete_callback(tid: str, name: str, args: Any, result: Any) -> None:
@@ -3269,18 +3280,31 @@ def _make_web_chat_callbacks(
                 "result": _truncate_str(result),
                 "ts": time.time(),
             },
-            session_id,
+            current_session_id[0],
         )
 
     def reasoning_callback(text: str) -> None:
-        _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, session_id)
+        _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, current_session_id[0])
 
     def status_callback(kind: str, message: str) -> None:
         _publish_event(
             "chat.status",
             {"kind": kind, "message": _truncate_str(message, 2000)},
-            session_id,
+            current_session_id[0],
         )
+
+    def session_migrated_callback(old_id: str, new_id: str, reason: str) -> None:
+        # Publish the migration event on the OLD channel so listeners pinned
+        # to it receive it and update their pointer. Then switch the holder so
+        # all subsequent events flow on the NEW channel — otherwise the UI
+        # would update activeSessionRef to new_id and then drop every
+        # following event because the filter would no longer match.
+        _publish_event(
+            "chat.session_migrated",
+            {"old_session_id": old_id, "new_session_id": new_id, "reason": reason},
+            current_session_id[0],
+        )
+        current_session_id[0] = new_id
 
     return (
         token_callback,
@@ -3288,6 +3312,7 @@ def _make_web_chat_callbacks(
         tool_complete_callback,
         reasoning_callback,
         status_callback,
+        session_migrated_callback,
     )
 
 
@@ -3799,6 +3824,7 @@ def _new_web_agent(
     tool_complete_callback: Any,
     reasoning_callback: Any,
     status_callback: Any,
+    session_migrated_callback: Any = None,
     working_dir: Optional[str] = None,
 ) -> Any:
     from core.run_agent import AIAgent
@@ -3822,6 +3848,7 @@ def _new_web_agent(
         tool_complete_callback=tool_complete_callback,
         reasoning_callback=reasoning_callback,
         status_callback=status_callback,
+        session_migrated_callback=session_migrated_callback,
         quiet_mode=True,
         platform="web",
         session_db=SessionDB(),
@@ -4034,6 +4061,7 @@ async def create_conversation(body: ConversationCreate):
         tool_complete_callback,
         reasoning_callback,
         status_callback,
+        session_migrated_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     if body.model:
@@ -4055,6 +4083,7 @@ async def create_conversation(body: ConversationCreate):
             tool_complete_callback=tool_complete_callback,
             reasoning_callback=reasoning_callback,
             status_callback=status_callback,
+            session_migrated_callback=session_migrated_callback,
         )
     except (ValueError, Exception) as e:
         _web_queues.pop(session_id, None)
@@ -4125,6 +4154,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         tool_complete_callback,
         reasoning_callback,
         status_callback,
+        session_migrated_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     from core.spark_state import SessionDB
@@ -4145,6 +4175,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             tool_complete_callback,
             reasoning_callback,
             status_callback,
+            session_migrated_callback,
         ) = _make_web_chat_callbacks(session_id, queue, loop)
         _web_queues[session_id] = queue
         turn_route = _resolve_web_turn_route(body.message)
@@ -4155,6 +4186,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             agent.tool_complete_callback = tool_complete_callback
             agent.reasoning_callback = reasoning_callback
             agent.status_callback = status_callback
+            agent.session_migrated_callback = session_migrated_callback
             agent.request_overrides = turn_route.get("request_overrides")
         else:
             conversation_history = db.get_messages_as_conversation(session_id)
@@ -4169,6 +4201,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 tool_complete_callback=tool_complete_callback,
                 reasoning_callback=reasoning_callback,
                 status_callback=status_callback,
+                session_migrated_callback=session_migrated_callback,
             )
         _update_web_session_model(session_id, turn_route["model"])
         try:
@@ -4403,6 +4436,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         tool_complete_callback,
         reasoning_callback,
         status_callback,
+        session_migrated_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
     turn_route = _resolve_web_turn_route(user_msg)
     if agent and _web_agent_signatures.get(session_id) == turn_route["signature"]:
@@ -4411,6 +4445,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         agent.tool_complete_callback = tool_complete_callback
         agent.reasoning_callback = reasoning_callback
         agent.status_callback = status_callback
+        agent.session_migrated_callback = session_migrated_callback
         agent.request_overrides = turn_route.get("request_overrides")
     else:
         agent = _new_web_agent(
@@ -4424,6 +4459,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             tool_complete_callback=tool_complete_callback,
             reasoning_callback=reasoning_callback,
             status_callback=status_callback,
+            session_migrated_callback=session_migrated_callback,
         )
     _update_web_session_model(session_id, turn_route["model"])
 
@@ -4598,6 +4634,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         tool_complete_callback,
         reasoning_callback,
         status_callback,
+        session_migrated_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     if body.model:
@@ -4640,6 +4677,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             tool_complete_callback=tool_complete_callback,
             reasoning_callback=reasoning_callback,
             status_callback=status_callback,
+            session_migrated_callback=session_migrated_callback,
             working_dir=str(project_dir),
         )
         agent.ephemeral_system_prompt = (

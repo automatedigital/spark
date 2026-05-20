@@ -83,6 +83,37 @@ class TestSessionLifecycle:
         child = db.get_session("child")
         assert child["parent_session_id"] == "parent"
 
+    def test_resolve_latest_descendant_no_chain(self, db):
+        db.create_session(session_id="solo", source="cli")
+        assert db.resolve_latest_descendant("solo") == "solo"
+
+    def test_resolve_latest_descendant_follows_compression_chain(self, db):
+        # parent --compression--> mid --compression--> leaf
+        db.create_session(session_id="parent", source="cli")
+        db.create_session(session_id="mid", source="cli", parent_session_id="parent")
+        db.create_session(session_id="leaf", source="cli", parent_session_id="mid")
+        db.end_session("parent", end_reason="compression")
+        db.end_session("mid", end_reason="compression")
+
+        assert db.resolve_latest_descendant("parent") == "leaf"
+        assert db.resolve_latest_descendant("mid") == "leaf"
+        assert db.resolve_latest_descendant("leaf") == "leaf"
+
+    def test_resolve_latest_descendant_does_not_follow_forks(self, db):
+        # User-initiated fork: parent's end_reason is NOT "compression".
+        db.create_session(session_id="parent", source="cli")
+        db.create_session(session_id="fork", source="cli", parent_session_id="parent")
+        db.end_session("parent", end_reason="user_exit")
+
+        assert db.resolve_latest_descendant("parent") == "parent"
+
+    def test_resolve_latest_descendant_handles_unended_parent(self, db):
+        # Parent has children but isn't marked ended yet — don't follow.
+        db.create_session(session_id="parent", source="cli")
+        db.create_session(session_id="child", source="cli", parent_session_id="parent")
+        # No end_session call on parent.
+        assert db.resolve_latest_descendant("parent") == "parent"
+
 
 # =========================================================================
 # Message storage

@@ -340,6 +340,13 @@ export function ChatPanel({
       api
         .getSessionMessages(sessionId)
         .then((resp) => {
+          // If the requested session was compressed, the backend returns
+          // the leaf session_id. Re-pin our refs so streaming events and
+          // turn_done re-fetches use the agent's actual current session.
+          if (resp.session_id && resp.session_id !== activeSessionRef.current) {
+            activeSessionRef.current = resp.session_id;
+            setActiveSessionId(resp.session_id);
+          }
           const mapped = sessionMessagesToChat(
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
@@ -494,6 +501,25 @@ export function ChatPanel({
           prev.map((m) => (m.role === "approval" ? { ...m, resolved: true } : m)),
         );
         break;
+      case "chat.session_migrated": {
+        const newId = String((data as { new_session_id?: string }).new_session_id ?? "");
+        if (newId && newId !== activeSessionRef.current) {
+          activeSessionRef.current = newId;
+          setActiveSessionId(newId);
+          onSessionUpdated?.(newId);
+          // Inline marker so the user understands why the agent may suddenly
+          // recall less detail about earlier work in this thread.
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: nid(),
+              role: "note",
+              text: "Earlier conversation was summarized to free context space — the assistant may not recall fine-grained details from before this point.",
+            },
+          ]);
+        }
+        break;
+      }
       case "chat.interrupted": {
         if (rafPendingRef.current !== null) {
           cancelAnimationFrame(rafPendingRef.current);
