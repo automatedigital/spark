@@ -277,8 +277,40 @@ def sync_skills(quiet: bool = False) -> dict:
                 skipped += 1  # bundled unchanged, user unchanged
 
         else:
-            # ── In manifest but not on disk — user deleted it ──
-            skipped += 1
+            # ── In manifest but not on disk — check for a stale path (skill moved) ──
+            # Search for the skill under any other category in SKILLS_DIR.
+            stale_locations = [
+                p.parent
+                for p in SKILLS_DIR.rglob(f"{skill_name}/SKILL.md")
+                if p.parent != dest
+            ]
+            if stale_locations:
+                stale = stale_locations[0]
+                stale_hash = _dir_hash(stale)
+                origin_hash = manifest.get(skill_name, "")
+                if origin_hash and stale_hash == origin_hash:
+                    # Unmodified — relocate to new path
+                    try:
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(stale), str(dest))
+                        manifest[skill_name] = bundled_hash
+                        updated.append(skill_name)
+                        if not quiet:
+                            print(f"  → {skill_name} (relocated to {dest.parent.name}/)")
+                        # Remove stale category dir if now empty
+                        try:
+                            stale.parent.rmdir()
+                        except OSError:
+                            pass
+                    except (OSError, IOError) as e:
+                        if not quiet:
+                            print(f"  ! Failed to relocate {skill_name}: {e}")
+                else:
+                    # User modified — leave in place, don't re-path
+                    user_modified.append(skill_name)
+            else:
+                # Genuinely deleted by user — respect that
+                skipped += 1
 
     # Clean stale manifest entries (skills removed from bundled dir)
     cleaned = sorted(set(manifest.keys()) - bundled_names)

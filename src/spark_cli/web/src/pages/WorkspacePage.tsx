@@ -1285,6 +1285,8 @@ function WorkspacePane({
   onSplit,
   onOpenFile,
   hideTabStrip,
+  isRightPanel,
+  onToggleRightPanel,
 }: {
   pane: PaneNode;
   tabs: WorkspaceTab[];
@@ -1298,6 +1300,8 @@ function WorkspacePane({
   onSplit: (paneId: string, tabId: string, edge: DropEdge) => void;
   onOpenFile: (node: WorkspaceFileNode) => void;
   hideTabStrip?: boolean;
+  isRightPanel?: boolean;
+  onToggleRightPanel?: () => void;
 }) {
   const [draggingOver, setDraggingOver] = useState(false);
   const paneTabs = pane.tabIds
@@ -1337,6 +1341,18 @@ function WorkspacePane({
               onReorder={onReorder}
             />
           ))}
+          {isRightPanel && onToggleRightPanel && (
+            <div className="ml-auto flex shrink-0 items-center border-l border-border">
+              <button
+                type="button"
+                title="Collapse right panel"
+                onClick={onToggleRightPanel}
+                className="flex h-8 w-8 items-center justify-center text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1366,6 +1382,7 @@ function WorkspaceLayoutView({
   threadContent,
   activePath,
   primaryHeaderPaneId,
+  rightPanelCollapsed,
   onActivate,
   onClose,
   onMoveToPane,
@@ -1373,6 +1390,7 @@ function WorkspaceLayoutView({
   onSplit,
   onResizeSplit,
   onOpenFile,
+  onToggleRightPanel,
 }: {
   node: WorkspaceLayoutNode;
   tabs: WorkspaceTab[];
@@ -1380,6 +1398,7 @@ function WorkspaceLayoutView({
   threadContent: React.ReactNode;
   activePath: string | null;
   primaryHeaderPaneId: string;
+  rightPanelCollapsed: boolean;
   onActivate: (paneId: string, tabId: string) => void;
   onClose: (tabId: string) => void;
   onMoveToPane: (paneId: string, tabId: string) => void;
@@ -1387,8 +1406,10 @@ function WorkspaceLayoutView({
   onSplit: (paneId: string, tabId: string, edge: DropEdge) => void;
   onResizeSplit: (splitId: string, delta: number) => void;
   onOpenFile: (node: WorkspaceFileNode) => void;
+  onToggleRightPanel: () => void;
 }) {
   if (node.type === "pane") {
+    const isRightPanel = node.tabIds.includes(FILES_TAB_ID);
     return (
       <WorkspacePane
         pane={node}
@@ -1397,6 +1418,8 @@ function WorkspaceLayoutView({
         threadContent={threadContent}
         activePath={activePath}
         hideTabStrip={node.id === primaryHeaderPaneId}
+        isRightPanel={isRightPanel}
+        onToggleRightPanel={isRightPanel ? onToggleRightPanel : undefined}
         onActivate={onActivate}
         onClose={onClose}
         onMoveToPane={onMoveToPane}
@@ -1407,27 +1430,46 @@ function WorkspaceLayoutView({
     );
   }
 
+  const sharedProps = {
+    tabs, slug, threadContent, activePath, primaryHeaderPaneId,
+    rightPanelCollapsed, onActivate, onClose, onMoveToPane,
+    onReorder, onSplit, onResizeSplit, onOpenFile, onToggleRightPanel,
+  };
+
+  // For row splits, collapse the right child when it contains the Files tab
+  if (node.direction === "row") {
+    const rightHasFilesTab = allLayoutTabIds(node.children[1]).includes(FILES_TAB_ID);
+    if (rightPanelCollapsed && rightHasFilesTab) {
+      return (
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <WorkspaceLayoutView node={node.children[0]} {...sharedProps} />
+          </div>
+          <div className="spark-glass-panel flex w-9 shrink-0 flex-col items-center gap-1 border-l border-border py-2">
+            <button
+              type="button"
+              title="Expand right panel"
+              onClick={onToggleRightPanel}
+              className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <div className="my-1 h-px w-6 bg-border" />
+            <FileText className="h-3.5 w-3.5 text-muted-foreground/30" />
+            <SquareTerminal className="h-3.5 w-3.5 text-muted-foreground/30" />
+          </div>
+        </div>
+      );
+    }
+  }
+
   const firstStyle = { flexBasis: `${node.sizes[0]}%` };
   const secondStyle = { flexBasis: `${node.sizes[1]}%` };
 
   return (
     <div className={cn("flex min-h-0 min-w-0 flex-1 overflow-hidden", node.direction === "column" && "flex-col")}>
       <div className="flex min-h-0 min-w-0 overflow-hidden" style={firstStyle}>
-        <WorkspaceLayoutView
-          node={node.children[0]}
-          tabs={tabs}
-          slug={slug}
-          threadContent={threadContent}
-          activePath={activePath}
-          primaryHeaderPaneId={primaryHeaderPaneId}
-          onActivate={onActivate}
-          onClose={onClose}
-          onMoveToPane={onMoveToPane}
-          onReorder={onReorder}
-          onSplit={onSplit}
-          onResizeSplit={onResizeSplit}
-          onOpenFile={onOpenFile}
-        />
+        <WorkspaceLayoutView node={node.children[0]} {...sharedProps} />
       </div>
       {node.direction === "row" ? (
         <ResizeDivider onDrag={(delta) => onResizeSplit(node.id, delta * 0.15)} />
@@ -1435,21 +1477,7 @@ function WorkspaceLayoutView({
         <HorizontalResizeDivider onDrag={(delta) => onResizeSplit(node.id, delta * 0.15)} />
       )}
       <div className="flex min-h-0 min-w-0 overflow-hidden" style={secondStyle}>
-        <WorkspaceLayoutView
-          node={node.children[1]}
-          tabs={tabs}
-          slug={slug}
-          threadContent={threadContent}
-          activePath={activePath}
-          primaryHeaderPaneId={primaryHeaderPaneId}
-          onActivate={onActivate}
-          onClose={onClose}
-          onMoveToPane={onMoveToPane}
-          onReorder={onReorder}
-          onSplit={onSplit}
-          onResizeSplit={onResizeSplit}
-          onOpenFile={onOpenFile}
-        />
+        <WorkspaceLayoutView node={node.children[1]} {...sharedProps} />
       </div>
     </div>
   );
@@ -1737,6 +1765,18 @@ export default function WorkspacePage() {
   const [projectsCollapsed, setProjectsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem("spark-workspace-projects-collapsed") === "true";
   });
+
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem("spark-workspace-right-collapsed") === "true";
+  });
+
+  const toggleRightPanel = () => {
+    setRightPanelCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem("spark-workspace-right-collapsed", String(next));
+      return next;
+    });
+  };
 
   const [[projectsWidth, threadsWidth], setPanelWidths] = useState<[number, number]>(() => {
     try {
@@ -2130,6 +2170,7 @@ export default function WorkspacePage() {
             threadContent={threadContent}
             activePath={activeFilePath}
             primaryHeaderPaneId=""
+            rightPanelCollapsed={rightPanelCollapsed}
             onActivate={(paneId, tabId) => setWorkspaceLayout((prev) => setPaneActiveTab(prev, paneId, tabId))}
             onClose={handleCloseTab}
             onMoveToPane={handleMoveTabToPane}
@@ -2137,6 +2178,7 @@ export default function WorkspacePage() {
             onSplit={handleSplitTab}
             onResizeSplit={(splitId, delta) => setWorkspaceLayout((prev) => resizeSplit(prev, splitId, delta))}
             onOpenFile={handleOpenFile}
+            onToggleRightPanel={toggleRightPanel}
           />
         ) : (
           <div className="flex h-full flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">

@@ -83,7 +83,6 @@ const MODEL_PROVIDER_OPTIONS = [
   { value: "openai-codex", label: "OpenAI Codex" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "anthropic", label: "Anthropic" },
-  { value: "nous", label: "Nous" },
   { value: "qwen-oauth", label: "Qwen OAuth" },
   { value: "github-copilot", label: "GitHub Copilot" },
   { value: "copilot-acp", label: "GitHub Copilot ACP" },

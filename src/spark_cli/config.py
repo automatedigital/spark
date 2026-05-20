@@ -818,7 +818,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 20,
+    "_config_version": 21,
 }
 
 # =============================================================================
@@ -2469,6 +2469,27 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             save_config(config)
             if not quiet:
                 print("  ✓ Added dashboard.* and kanban.* sections")
+
+    # ── Version 20 → 21: backfill clarify into explicit CLI platform toolsets ──
+    if current_ver < 21:
+        config = read_raw_config()
+        platform_toolsets = config.get("platform_toolsets", {})
+        # Platforms that intentionally exclude clarify (editor/gateway environments)
+        _no_clarify_platforms = {"editor", "gateway", "singularity", "docker"}
+        changed = False
+        for platform, toolsets in platform_toolsets.items():
+            if (
+                isinstance(toolsets, list)
+                and "clarify" not in toolsets
+                and platform not in _no_clarify_platforms
+            ):
+                toolsets.append("clarify")
+                toolsets.sort()
+                changed = True
+        if changed:
+            save_config(config)
+            if not quiet:
+                print("  ✓ Backfilled 'clarify' toolset into existing platform config")
 
     if current_ver < latest_ver and not quiet:
         print(f"Config version: {current_ver} → {latest_ver}")
