@@ -217,8 +217,8 @@ const ToolRow = memo(function ToolRow({ msg, repeatCount }: { msg: ToolMsg; repe
   );
 });
 
-const ReasoningRow = memo(function ReasoningRow({ msg }: { msg: ReasoningMsg }) {
-  return <div className="pl-9"><ReasoningBubble text={msg.text} /></div>;
+const ReasoningRow = memo(function ReasoningRow({ msg, isActive }: { msg: ReasoningMsg; isActive?: boolean }) {
+  return <div className="pl-9"><ReasoningBubble text={msg.text} isActive={isActive} /></div>;
 });
 
 const ApprovalRow = memo(function ApprovalRow({
@@ -465,13 +465,10 @@ export function ChatPanel({
         if (text) {
           setChatMessages((prev) => {
             const next = [...prev];
-            for (let i = next.length - 1; i >= 0; i--) {
-              const row = next[i];
-              if (row.role === "assistant") break;
-              if (row.role === "reasoning") {
-                next[i] = { ...row, text: row.text ? `${row.text}\n${text}` : text };
-                return next;
-              }
+            const last = next[next.length - 1];
+            if (last?.role === "reasoning") {
+              next[next.length - 1] = { ...last, text: last.text ? `${last.text}${text}` : text };
+              return next;
             }
             next.push({ id: nid(), role: "reasoning", text });
             return next;
@@ -958,7 +955,7 @@ export function ChatPanel({
                   collapsed.push({ msg, repeatCount: 0 });
                 }
               }
-              return collapsed.map(({ msg, repeatCount }) => {
+              return collapsed.map(({ msg, repeatCount }, idx) => {
                 if (msg.role === "user") {
                   return (
                     <UserRow key={msg.id} msg={msg} hasSession={!!activeSessionId}
@@ -974,7 +971,7 @@ export function ChatPanel({
                   return <ToolRow key={msg.id} msg={msg} repeatCount={repeatCount} />;
                 }
                 if (msg.role === "reasoning") {
-                  return <ReasoningRow key={msg.id} msg={msg} />;
+                  return <ReasoningRow key={msg.id} msg={msg} isActive={streaming && idx === collapsed.length - 1} />;
                 }
                 if (msg.role === "approval") {
                   return <ApprovalRow key={msg.id} msg={msg} disabled={approvalBusy} onChoice={submitApproval} />;

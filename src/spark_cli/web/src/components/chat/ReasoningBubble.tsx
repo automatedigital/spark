@@ -5,7 +5,7 @@ function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export function ReasoningBubble({ text }: { text: string }) {
+export function ReasoningBubble({ text, isActive }: { text: string; isActive?: boolean }) {
   const [open, setOpen] = useState(false);
   const words = wordCount(text);
   const preview = text.length > 100 ? text.slice(0, 100).trimEnd() + "…" : null;
@@ -18,9 +18,12 @@ export function ReasoningBubble({ text }: { text: string }) {
         onClick={() => setOpen(!open)}
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-        <Brain className={`h-3.5 w-3.5 shrink-0 ${open ? "text-primary/60 animate-pulse" : "text-muted-foreground"}`} />
+        <Brain className={`h-3.5 w-3.5 shrink-0 ${open || isActive ? "text-primary/60 animate-pulse" : "text-muted-foreground"}`} />
         <span className="text-muted-foreground italic">Reasoning</span>
-        <span className="ml-auto text-[10px] text-muted-foreground/50 shrink-0">~{words} words</span>
+        <span className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground/50 shrink-0">
+          {isActive && <span className="h-1.5 w-1.5 rounded-full bg-[var(--spark-accent)] animate-pulse" />}
+          ~{words} words
+        </span>
       </button>
 
       {!open && preview && (
