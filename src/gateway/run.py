@@ -1799,16 +1799,13 @@ class GatewayRunner:
                 self._background_tasks.add(_dt)
                 _dt.add_done_callback(self._background_tasks.discard)
                 try:
-                    from core.spark_constants import display_spark_home
+                    from core.spark_constants import display_spark_home, get_public_base_url
 
                     _token_hint = f"{display_spark_home()}/dashboard.token"
+                    _bind_hint = get_public_base_url(_host, _port)
                 except Exception:
                     _token_hint = "~/.spark/dashboard.token (or profile path)"
-                _bind_hint = (
-                    f"http://127.0.0.1:{_port}"
-                    if _host in ("0.0.0.0", "::", "[::]")
-                    else f"http://{_host}:{_port}"
-                )
+                    _bind_hint = f"http://{_host}:{_port}"
                 logger.info(
                     "Web dashboard listening — open %s (bind %s:%s). Auth: %s or SPARK_DASHBOARD_TOKEN",
                     _bind_hint,

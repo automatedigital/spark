@@ -234,6 +234,98 @@ def is_container() -> bool:
     return False
 
 
+# ─── Server Environment Detection ────────────────────────────────────────────
+
+_server_env_detected: bool | None = None
+
+
+def is_server_environment() -> bool:
+    """Return True when Spark appears to be running on a headless server.
+
+    A server environment is detected when the process is inside an SSH session
+    (``SSH_CLIENT``, ``SSH_TTY``, or ``SSH_CONNECTION`` is set) or when there
+    is no graphical display (Linux without ``DISPLAY`` or ``WAYLAND_DISPLAY``).
+    macOS is assumed to be a desktop unless SSH variables are present.
+
+    Result is cached for the process lifetime.
+    """
+    global _server_env_detected
+    if _server_env_detected is not None:
+        return _server_env_detected
+
+    # SSH session — strongest signal, works on all platforms
+    if any(os.getenv(v) for v in ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")):
+        _server_env_detected = True
+        return True
+
+    # Headless Linux (no X11 / Wayland display)
+    import sys
+
+    if sys.platform.startswith("linux"):
+        has_display = bool(os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY"))
+        _server_env_detected = not has_display
+        return _server_env_detected
+
+    _server_env_detected = False
+    return False
+
+
+def get_server_hostname() -> str:
+    """Return the machine's primary hostname for use in user-facing URLs.
+
+    Prefers ``socket.gethostname()`` over ``socket.getfqdn()`` to avoid
+    slow reverse-DNS lookups and ARPA artifacts on macOS/containers.
+    """
+    import socket
+
+    try:
+        name = socket.gethostname()
+        if name and name != "localhost":
+            return name
+    except Exception:
+        pass
+    return "localhost"
+
+
+def get_public_base_url(host: str, port: int, scheme: str = "http") -> str:
+    """Return the URL a browser should open to reach Spark on *host:port*.
+
+    Resolution order:
+    1. ``dashboard.public_url`` in ``config.yaml`` — user-configured override
+    2. Server environment detected → replace loopback/wildcard with the
+       machine's real hostname so remote users get a clickable link
+    3. Desktop (default) → ``scheme://127.0.0.1:port`` for local access
+
+    The function never raises; it always returns a usable URL string.
+    """
+    _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+    _WILDCARD = {"0.0.0.0", "::", "[::]"}
+
+    # 1. Config override — loaded lazily to keep this module import-safe
+    try:
+        import yaml  # type: ignore[import]
+
+        _cfg_path = get_config_path()
+        if _cfg_path.exists():
+            with open(_cfg_path, "r") as _f:
+                _cfg = yaml.safe_load(_f) or {}
+            _pub = (_cfg.get("dashboard") or {}).get("public_url", "").strip()
+            if _pub:
+                return _pub.rstrip("/")
+    except Exception:
+        pass
+
+    # 2. Server environment — use real hostname
+    display_host = host
+    if host in _WILDCARD or host in _LOOPBACK:
+        if is_server_environment():
+            display_host = get_server_hostname()
+        else:
+            display_host = "127.0.0.1" if host in _WILDCARD else host
+
+    return f"{scheme}://{display_host}:{port}"
+
+
 # ─── Well-Known Paths ─────────────────────────────────────────────────────────
 
 

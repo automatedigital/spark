@@ -794,6 +794,10 @@ DEFAULT_CONFIG = {
         # carry Authorization: Bearer <dashboard.token>. Loopback peers without
         # Origin (e.g. curl) are allowed for local tooling.
         "require_auth_nonlocal": True,
+        # Optional public-facing URL override (e.g. "https://spark.example.com").
+        # When set, Spark uses this in all user-facing links instead of deriving
+        # the address from the bind host.  Leave empty to auto-detect.
+        "public_url": "",
     },
     # Multi-agent Kanban board (SQLite kanban.db under SPARK_HOME).
     "kanban": {
@@ -2453,7 +2457,11 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                 "host": "0.0.0.0",
                 "port": 9119,
                 "require_auth_nonlocal": True,
+                "public_url": "",
             }
+            changed = True
+        elif "public_url" not in config.get("dashboard", {}):
+            config.setdefault("dashboard", {})["public_url"] = ""
             changed = True
         if "kanban" not in config:
             config["kanban"] = {

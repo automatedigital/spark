@@ -25,9 +25,12 @@ from agent.skill_utils import (
 from core.spark_constants import (
     display_spark_home,
     display_spark_workspace,
+    get_public_base_url,
+    get_server_hostname,
     get_skills_dir,
     get_spark_home,
     get_spark_workspace,
+    is_server_environment,
     is_wsl,
 )
 from core.utils import atomic_json_write
@@ -469,15 +472,27 @@ WSL_ENVIRONMENT_HINT = (
 )
 
 
+_SERVER_HOSTNAME_HINT_TEMPLATE = (
+    "IMPORTANT — server environment: This Spark instance is running on a remote server "
+    "(hostname: {hostname}). When you mention local service URLs in your responses "
+    "(e.g. a web server, preview server, or dashboard), always use "
+    "http://{hostname}:PORT instead of http://localhost:PORT or http://127.0.0.1:PORT "
+    "so the user can open the link from their own browser."
+)
+
+
 def build_environment_hints() -> str:
     """Return environment-specific guidance for the system prompt.
 
-    Detects WSL, and can be extended for Termux, Docker, etc.
+    Detects WSL, server environments, and can be extended for Termux, Docker, etc.
     Returns an empty string when no special environment is detected.
     """
     hints: list[str] = []
     if is_wsl():
         hints.append(WSL_ENVIRONMENT_HINT)
+    if is_server_environment():
+        hostname = get_server_hostname()
+        hints.append(_SERVER_HOSTNAME_HINT_TEMPLATE.format(hostname=hostname))
     return "\n\n".join(hints)
 
 

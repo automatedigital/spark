@@ -516,11 +516,11 @@ function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?
               </code>
             );
           case "bold":
-            return <strong key={i} className="font-semibold"><HighlightedText text={node.content} terms={highlightTerms} /></strong>;
+            return <strong key={i} className="font-semibold"><InlineContent text={node.content} highlightTerms={highlightTerms} /></strong>;
           case "italic":
-            return <em key={i}><HighlightedText text={node.content} terms={highlightTerms} /></em>;
+            return <em key={i}><InlineContent text={node.content} highlightTerms={highlightTerms} /></em>;
           case "strike":
-            return <del key={i} className="text-muted-foreground line-through"><HighlightedText text={node.content} terms={highlightTerms} /></del>;
+            return <del key={i} className="text-muted-foreground line-through"><InlineContent text={node.content} highlightTerms={highlightTerms} /></del>;
           case "link":
             return (
               <a

@@ -4770,10 +4770,13 @@ mount_spa(app)
 def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool = True):
     """Start the web UI server."""
     import uvicorn
+    from core.spark_constants import get_public_base_url, is_server_environment
 
     ensure_dashboard_token_file()
-    browse_host = "127.0.0.1" if host in ("0.0.0.0", "::", "[::]") else host
-    if host not in ("127.0.0.1", "localhost", "::1"):
+    public_url = get_public_base_url(host, port)
+
+    _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+    if host not in _LOOPBACK:
         import logging
 
         logging.warning(
@@ -4783,7 +4786,7 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
             dashboard_token_path(),
         )
 
-    if open_browser:
+    if open_browser and not is_server_environment():
         import threading
         import webbrowser
 
@@ -4791,9 +4794,9 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
             import time as _t
 
             _t.sleep(1.0)
-            webbrowser.open(f"http://{browse_host}:{port}")
+            webbrowser.open(public_url)
 
         threading.Thread(target=_open, daemon=True).start()
 
-    print(f"  Spark Web UI → http://{browse_host}:{port} (bind {host}:{port})")
+    print(f"  Spark Web UI → {public_url} (bind {host}:{port})")
     uvicorn.run(app, host=host, port=port, log_level="warning")
