@@ -46,7 +46,7 @@ curl http://localhost:8642/v1/chat/completions \
   -d '{"model": "spark-agent", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
-For step-by-step instructions with Open WebUI, see the [Open WebUI integration guide](/docs/chat-platforms/open-web-dashboard).
+For step-by-step instructions with Open WebUI, see the [Open WebUI integration guide](../chat-platforms/open-webui.md).
 
 ## Endpoints
 
@@ -149,7 +149,7 @@ Delete a stored response.
 
 ### GET /v1/models
 
-Lists Spark as an available model. The advertised name defaults to the [profile](/docs/cli/profiles) name, or `spark-agent` for the default profile. Most frontends require this endpoint for model discovery.
+Lists Spark as an available model. The advertised name defaults to the [profile](../cli/profiles.md) name, or `spark-agent` for the default profile. Most frontends require this endpoint for model discovery.
 
 ### GET /health
 
@@ -227,7 +227,7 @@ Most documented frontends like Open WebUI connect server-to-server and don't nee
 
 | Frontend | Stars | How to connect |
 |----------|-------|----------------|
-| [Open WebUI](/docs/chat-platforms/open-web-dashboard) | 126k | Full guide available |
+| [Open WebUI](../chat-platforms/open-webui.md) | 126k | Full guide available |
 | LobeChat | 73k | Custom provider endpoint |
 | LibreChat | 34k | Custom endpoint in librechat.yaml |
 | AnythingLLM | 56k | Generic OpenAI provider |
@@ -241,7 +241,7 @@ Most documented frontends like Open WebUI connect server-to-server and don't nee
 
 ## Multi-User Setup with Profiles
 
-Give multiple users isolated Spark instances — separate config, memory, and skills — using [profiles](/docs/cli/profiles):
+Give multiple users isolated Spark instances — separate config, memory, and skills — using [profiles](../cli/profiles.md):
 
 ```bash
 spark profile create alice
@@ -264,7 +264,7 @@ Each profile's API server advertises the profile name as the model ID:
 - `http://localhost:8643/v1/models` → model `alice`
 - `http://localhost:8644/v1/models` → model `bob`
 
-In Open WebUI, add each as a separate connection. See the [Open WebUI guide](/docs/chat-platforms/open-web-dashboard#multi-user-setup-with-profiles).
+In Open WebUI, add each as a separate connection. See the [Open WebUI guide](../chat-platforms/open-webui.md#multi-user-setup-with-profiles).
 
 ## Limitations
 

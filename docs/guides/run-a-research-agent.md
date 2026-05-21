@@ -6,7 +6,7 @@ description: "Long-running research: batch jobs, cron, and memory."
 
 # Run a Research Agent That Works While You Sleep
 
-Combine [batch processing](/docs/automate/batch), [cron](/docs/automate/cron), and [memory](/docs/memory/index) and Spark keeps making progress across sessions — even when you're not at the keyboard.
+Combine [batch processing](../automate/batch.md), [cron](../automate/cron.md), and [memory](../memory/index.md) and Spark keeps making progress across sessions — even when you're not at the keyboard.
 
 ---
 
@@ -24,7 +24,7 @@ Each piece is useful alone. Combined, they produce a research loop that persists
 
 ## Cron requires a running gateway
 
-Cron ticks go nowhere without an active [gateway](/docs/chat-platforms/index). Start it before scheduling jobs:
+Cron ticks go nowhere without an active [gateway](../chat-platforms/index.md). Start it before scheduling jobs:
 
 ```bash
 spark gateway start
@@ -46,11 +46,11 @@ Cron jobs start with a **fresh agent context** — no memory of previous convers
 
 A vague cron prompt produces vague (or failed) output. A good one reads like a complete brief.
 
-See [Automate with cron](/docs/guides/automate-with-cron) for examples of well-constructed scheduled prompts.
+See [Automate with cron](automate-with-cron.md) for examples of well-constructed scheduled prompts.
 
 ---
 
 ## See also
 
-- [Delegation](/docs/tools/delegation)
-- [Optimize costs](/docs/guides/optimize-costs)
+- [Delegation](../tools/delegation.md)
+- [Optimize costs](optimize-costs.md)

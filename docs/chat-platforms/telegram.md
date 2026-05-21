@@ -384,4 +384,4 @@ Always set `TELEGRAM_ALLOWED_USERS`. Without it, the gateway denies all users by
 
 Never share your bot token. Revoke it immediately via BotFather's `/revoke` command if it's ever compromised.
 
-Use [DM pairing](/docs/chat-platforms/telegram#dm-pairing-alternative-to-allowlists) for a code-based alternative to managing user IDs manually.
+Use [DM pairing](telegram.md#dm-pairing-alternative-to-allowlists) for a code-based alternative to managing user IDs manually.

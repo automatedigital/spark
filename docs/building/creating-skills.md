@@ -138,7 +138,7 @@ Each entry supports: `name` (required), `prompt`, `help`, `required_for` (all op
 Spark never exposes the raw secret to the model. In gateway and messaging sessions, Spark shows local setup guidance instead of collecting secrets in-band.
 
 :::tip Sandbox passthrough is automatic
-When your skill loads, all declared `required_environment_variables` that are set are automatically passed through to `execute_code` and `terminal` sandboxes — including remote backends like Docker and Modal. Your scripts can access `$TENOR_API_KEY` or `os.environ["TENOR_API_KEY"]` without extra configuration. See [Environment Variable Passthrough](/docs/configuration#environment-variable-passthrough) for details.
+When your skill loads, all declared `required_environment_variables` that are set are automatically passed through to `execute_code` and `terminal` sandboxes — including remote backends like Docker and Modal. Your scripts can access `$TENOR_API_KEY` or `os.environ["TENOR_API_KEY"]` without extra configuration. See [Environment Variable Passthrough](../configuration.md#environment-variable-passthrough) for details.
 :::
 
 Users can also manually configure passthrough variables:

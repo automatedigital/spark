@@ -11,7 +11,7 @@ Spark gives you two ways to run custom code at key lifecycle points:
 | System | Registered via | Runs in | Use case |
 |--------|---------------|---------|----------|
 | **[Gateway hooks](#gateway-event-hooks)** | `HOOK.yaml` + `handler.py` in `~/.spark/hooks/` | Gateway only | Logging, alerts, webhooks |
-| **[Plugin hooks](#plugin-hooks)** | `ctx.register_hook()` in a [plugin](/docs/automate/plugins) | CLI + Gateway | Tool interception, metrics, guardrails |
+| **[Plugin hooks](#plugin-hooks)** | `ctx.register_hook()` in a [plugin](../automate/plugins.md) | CLI + Gateway | Tool interception, metrics, guardrails |
 
 Both systems are non-blocking — errors in any hook are caught and logged, never crashing the agent.
 
@@ -219,7 +219,7 @@ Gateway hooks only fire in the **gateway** (Telegram, Discord, Slack, WhatsApp).
 
 ## Plugin Hooks
 
-[Plugins](/docs/automate/plugins) can register hooks that fire in **both CLI and gateway** sessions. Register them programmatically via `ctx.register_hook()` in your plugin's `register()` function.
+[Plugins](../automate/plugins.md) can register hooks that fire in **both CLI and gateway** sessions. Register them programmatically via `ctx.register_hook()` in your plugin's `register()` function.
 
 ```python
 def register(ctx):
@@ -604,4 +604,4 @@ def register(ctx):
 
 ---
 
-See the **[Build a Plugin guide](/docs/guides/build-a-plugin)** for the full walkthrough including tool schemas, handlers, and advanced hook patterns.
+See the **[Build a Plugin guide](../guides/build-a-plugin.md)** for the full walkthrough including tool schemas, handlers, and advanced hook patterns.

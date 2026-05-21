@@ -217,6 +217,6 @@ spark cron remove <job_id>         # Delete a job
 
 ## Related docs
 
-- [Cron Feature Guide](/docs/automate/cron)
+- [Cron Feature Guide](../automate/cron.md)
 - [Gateway Internals](./gateway-internals.md)
 - [Agent Loop Internals](./agent-loop.md)

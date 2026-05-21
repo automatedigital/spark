@@ -339,6 +339,6 @@ Do this after changing include/exclude lists, enabled flags, resources/prompts t
 
 ## Related Docs
 
-- [MCP (Model Context Protocol)](/docs/tools/mcp)
-- [FAQ](/docs/reference/faq)
-- [Slash Commands](/docs/cli/slash-commands)
+- [MCP (Model Context Protocol)](../tools/mcp.md)
+- [FAQ](../reference/faq.md)
+- [Slash Commands](../cli/slash-commands.md)

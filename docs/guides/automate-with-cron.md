@@ -6,9 +6,9 @@ description: "Real-world automation patterns using Spark cron - monitoring, repo
 
 # Automate Anything with Cron
 
-Got the basics from the [daily briefing bot tutorial](/docs/guides/daily-briefing-bot)? This guide goes further — five real-world patterns you can steal and adapt.
+Got the basics from the [daily briefing bot tutorial](daily-briefing-bot.md)? This guide goes further — five real-world patterns you can steal and adapt.
 
-Full reference: [Scheduled Tasks (Cron)](/docs/automate/cron).
+Full reference: [Scheduled Tasks (Cron)](../automate/cron.md).
 
 :::info One rule you can't break
 Cron jobs run in a fresh agent session every time — no memory of your current chat, no prior context. Your prompt must be **completely self-contained**. Include every URL, repo name, format preference, and instruction directly in the prompt text.
@@ -346,4 +346,4 @@ If you've worked through all of this and the problem persists, open an issue at 
 
 ---
 
-*For the complete cron reference, see [Scheduled Tasks (Cron)](/docs/automate/cron).*
+*For the complete cron reference, see [Scheduled Tasks (Cron)](../automate/cron.md).*

@@ -8,7 +8,7 @@ description: "Chat with Spark from Telegram, Discord, Slack, WhatsApp, Signal, S
 
 One gateway process connects Spark to every platform at once. Start it and you can reach your agent from Telegram, Discord, Slack, WhatsApp, Signal, SMS, Email, Home Assistant, Mattermost, Matrix, DingTalk, Feishu/Lark, WeCom, Weixin, BlueBubbles (iMessage), QQ, or your browser — all sharing the same sessions, cron jobs, and voice pipeline.
 
-For voice — microphone mode in the CLI, spoken replies in messaging, and Discord voice-channel conversations — see [Voice Mode](/docs/voice/voice-mode) and [Use Voice Mode with Spark](/docs/guides/enable-voice-mode).
+For voice — microphone mode in the CLI, spoken replies in messaging, and Discord voice-channel conversations — see [Voice Mode](../voice/voice-mode.md) and [Use Voice Mode with Spark](../guides/enable-voice-mode.md).
 
 ## What Each Platform Supports
 
@@ -391,5 +391,5 @@ Each `SPARK_HOME` directory gets its own launchd label. The default `~/.spark` u
 - [Weixin Setup (WeChat)](weixin.md)
 - [BlueBubbles Setup (iMessage)](bluebubbles.md)
 - [QQBot Setup](qqbot.md)
-- [Open WebUI + API Server](open-web-dashboard.md)
+- [Open WebUI + API Server](open-webui.md)
 - [Webhooks](webhooks.md)

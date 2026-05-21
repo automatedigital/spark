@@ -160,7 +160,7 @@ For a full audit trail, open the goals board in the Dashboard and enable the `ar
 
 ## See also
 
-- [Slash Commands Reference](/docs/cli/slash-commands#goal-tracking) — full `/goal` subcommand reference
-- [Task Board](/docs/web-dashboard) — Dashboard and Kanban board overview
-- [Dream](/docs/cli/slash-commands#dream) — offline reflection that consolidates session memory; pairs well with long-running goals
-- [Automate with Cron](/docs/guides/automate-with-cron) — schedule recurring tasks alongside your goals
+- [Slash Commands Reference](../cli/slash-commands.md#goal-tracking) — full `/goal` subcommand reference
+- [Task Board](../web-dashboard.md) — Dashboard and Kanban board overview
+- [Dream](../cli/slash-commands.md#dream) — offline reflection that consolidates session memory; pairs well with long-running goals
+- [Automate with Cron](automate-with-cron.md) — schedule recurring tasks alongside your goals

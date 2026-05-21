@@ -11,7 +11,7 @@ Every built-in tool Spark ships with, organized by toolset. 48 tools total. Avai
 **Quick counts:** 11 browser tools (1 entry point + 10 sub-tools activated on first use), 4 file tools, 10 RL tools, 4 Home Assistant tools, 2 terminal tools, 2 web tools, and 15 standalone tools across other toolsets.
 
 :::tip MCP Tools
-Spark can also load tools dynamically from MCP servers. MCP tools appear with a server-name prefix (e.g., `github_create_issue` for the `github` MCP server). See [MCP Integration](/docs/tools/mcp) for configuration.
+Spark can also load tools dynamically from MCP servers. MCP tools appear with a server-name prefix (e.g., `github_create_issue` for the `github` MCP server). See [MCP Integration](../tools/mcp.md) for configuration.
 :::
 
 ## `browser` toolset

@@ -8,8 +8,8 @@ description: "Reference for Spark Agent MCP configuration keys, filtering semant
 
 Quick reference for every MCP configuration key Spark supports. For conceptual background and setup walkthroughs, see:
 
-- [MCP (Model Context Protocol)](/docs/tools/mcp)
-- [Use MCP with Spark](/docs/guides/use-mcp)
+- [MCP (Model Context Protocol)](../tools/mcp.md)
+- [Use MCP with Spark](../guides/use-mcp.md)
 
 ## Config Shape
 

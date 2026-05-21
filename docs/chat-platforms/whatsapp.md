@@ -91,7 +91,7 @@ WHATSAPP_ALLOWED_USERS=15551234567         # Comma-separated phone numbers (with
 :::tip Allow-all shorthand
 `WHATSAPP_ALLOWED_USERS=*` allows all senders. This is equivalent to `WHATSAPP_ALLOW_ALL_USERS=true`.
 To use the pairing flow instead, remove both variables and rely on the
-[DM pairing system](/docs/chat-platforms/whatsapp#dm-pairing).
+[DM pairing system](whatsapp.md#dm-pairing).
 :::
 
 Optional behavior in `~/.spark/config.yaml`:

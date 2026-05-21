@@ -24,7 +24,7 @@ A Telegram bot that:
 
 | Requirement | Notes |
 |-------------|-------|
-| Spark Agent on a server or VPS | Not your laptop — the bot needs to stay running. [Installation guide](/docs/getting-started/installation) |
+| Spark Agent on a server or VPS | Not your laptop — the bot needs to stay running. [Installation guide](../getting-started/installation.md) |
 | A Telegram account | You'll be the bot owner |
 | An LLM provider key | OpenAI, Anthropic, or another supported provider in `~/.spark/.env` |
 
@@ -284,7 +284,7 @@ values directness. When debugging, always ask for error logs
 before guessing at solutions.
 ```
 
-For a full walkthrough, see [Use SOUL.md with Spark](/docs/guides/define-personality-with-soul).
+For a full walkthrough, see [Use SOUL.md with Spark](define-personality-with-soul.md).
 
 ### Add Project Context
 
@@ -410,12 +410,12 @@ spark gateway stop && spark gateway start
 
 ## What's Next
 
-- **[Messaging Gateway](/docs/chat-platforms)** — gateway architecture, session management, chat commands
-- **[Telegram Setup](/docs/chat-platforms/telegram)** — platform details including voice messages and TTS
-- **[Scheduled Tasks](/docs/automate/cron)** — advanced cron scheduling, delivery options, expressions
-- **[Context Files](/docs/tools/context-files)** — AGENTS.md, SOUL.md, and .cursorrules
-- **[Personality](/docs/personality)** — built-in presets and custom persona definitions
-- **Add more platforms** — the same gateway can simultaneously run [Discord](/docs/chat-platforms/discord), [Slack](/docs/chat-platforms/slack), and [WhatsApp](/docs/chat-platforms/whatsapp)
+- **[Messaging Gateway](../chat-platforms/index.md)** — gateway architecture, session management, chat commands
+- **[Telegram Setup](../chat-platforms/telegram.md)** — platform details including voice messages and TTS
+- **[Scheduled Tasks](../automate/cron.md)** — advanced cron scheduling, delivery options, expressions
+- **[Context Files](../tools/context-files.md)** — AGENTS.md, SOUL.md, and .cursorrules
+- **[Personality](../personality.md)** — built-in presets and custom persona definitions
+- **Add more platforms** — the same gateway can simultaneously run [Discord](../chat-platforms/discord.md), [Slack](../chat-platforms/slack.md), and [WhatsApp](../chat-platforms/whatsapp.md)
 
 ---
 

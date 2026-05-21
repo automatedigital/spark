@@ -507,7 +507,7 @@ fallback_model:
   model: anthropic/claude-sonnet-4
 ```
 
-See [Fallback Providers](/docs/providers/fallback) for details.
+See [Fallback Providers](../providers/fallback.md) for details.
 
 ### Provider Routing
 

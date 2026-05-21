@@ -170,7 +170,7 @@ terminal:
     - ANOTHER_TOKEN
 ```
 
-See the [Configuration guide](/docs/configuration#environment-variable-passthrough) for full details.
+See the [Configuration guide](../configuration.md#environment-variable-passthrough) for full details.
 
 ## `execute_code` vs `terminal` — Which to Use
 

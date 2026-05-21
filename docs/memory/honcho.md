@@ -11,7 +11,7 @@ Built-in memory remembers facts. [Honcho](https://github.com/plastic-labs/honcho
 Honcho is an AI-native memory backend that builds a model of who you are — your preferences, communication style, goals, and patterns — by reasoning about your conversations after they happen. It runs alongside Spark's built-in memory and deepens over time without you doing anything.
 
 :::info Honcho is a Memory Provider Plugin
-Honcho plugs into the [Memory Providers](./memory-providers.md) system. Everything below is available through the standard memory provider interface.
+Honcho plugs into the [Memory Providers](./providers.md) system. Everything below is available through the standard memory provider interface.
 :::
 
 ## Built-in Memory vs. Honcho
@@ -93,4 +93,4 @@ No re-login or re-setup required. Run `spark memory setup`, select "honcho", and
 
 ## Full Reference
 
-See [Memory Providers — Honcho](./memory-providers.md#honcho) for the complete configuration reference.
+See [Memory Providers — Honcho](./providers.md#honcho) for the complete configuration reference.

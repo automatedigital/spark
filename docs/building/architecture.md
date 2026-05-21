@@ -221,7 +221,7 @@ Long-running process with 18 platform adapters, unified session routing, user au
 
 Three discovery sources: `~/.spark/plugins/` (user), `.spark/plugins/` (project), and pip entry points. Plugins register tools, hooks, and CLI commands. Two specialized plugin types: memory providers (`plugins/memory/`) and context engines (`plugins/context_engine/`). Both are single-select, configured via `spark plugins` or `config.yaml`.
 
-→ [Plugin Guide](/docs/guides/build-a-plugin), [Memory Provider Plugin](./memory-provider-plugin.md)
+→ [Plugin Guide](../guides/build-a-plugin.md), [Memory Provider Plugin](./memory-provider-plugin.md)
 
 ### Cron
 

@@ -91,7 +91,7 @@ Skip explanations unless asked. Prefer one-liners over verbose solutions.
 Always consider error handling and edge cases.
 ```
 
-`SOUL.md` = durable personality. `AGENTS.md` = project-specific instructions. For a full walkthrough, see [Use SOUL.md with Spark](/docs/guides/define-personality-with-soul).
+`SOUL.md` = durable personality. `AGENTS.md` = project-specific instructions. For a full walkthrough, see [Use SOUL.md with Spark](define-personality-with-soul.md).
 
 ### .cursorrules Compatibility
 

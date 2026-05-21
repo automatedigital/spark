@@ -6,7 +6,7 @@ description: "Isolate work vs personal agents with Spark profiles."
 
 # Switch Profiles
 
-[Profiles](/docs/cli/profiles) give each agent its own `SPARK_HOME` — completely isolated config, `.env`, memories, sessions, skills, and gateway. Work and personal never bleed into each other.
+[Profiles](../cli/profiles.md) give each agent its own `SPARK_HOME` — completely isolated config, `.env`, memories, sessions, skills, and gateway. Work and personal never bleed into each other.
 
 ## Create a Profile
 
@@ -35,5 +35,5 @@ Each profile stores its own bot tokens in `~/.spark/profiles/<name>/.env`. Run `
 
 ## See Also
 
-- [Profile commands reference](/docs/cli/profiles#profile-commands-reference)
-- [FAQ — profiles](/docs/reference/faq#profiles)
+- [Profile commands reference](../cli/profiles.md#profile-commands-reference)
+- [FAQ — profiles](../reference/faq.md#profiles)

@@ -8,7 +8,7 @@ description: "A practical guide to setting up and using Spark voice mode across 
 
 Tired of typing? Voice mode lets you speak to Spark and hear it talk back — in the terminal, via Telegram, or live in a Discord voice channel. This guide gets you running, in that order.
 
-For a full feature overview, see the [Voice Mode reference](/docs/voice/voice-mode).
+For a full feature overview, see the [Voice Mode reference](../voice/voice-mode.md).
 
 ---
 
@@ -386,8 +386,8 @@ Each step is a smaller debugging surface than jumping straight to the end.
 
 ## Read next
 
-- [Voice Mode feature reference](/docs/voice/voice-mode)
-- [Messaging Gateway](/docs/chat-platforms)
-- [Discord setup](/docs/chat-platforms/discord)
-- [Telegram setup](/docs/chat-platforms/telegram)
-- [Configuration](/docs/configuration)
+- [Voice Mode feature reference](../voice/voice-mode.md)
+- [Messaging Gateway](../chat-platforms/index.md)
+- [Discord setup](../chat-platforms/discord.md)
+- [Telegram setup](../chat-platforms/telegram.md)
+- [Configuration](../configuration.md)

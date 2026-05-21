@@ -255,7 +255,7 @@ npm start
 6. Click **Save** to write the skin YAML to `~/.spark/skins/`
 7. Click **Activate** to set it as the current skin (updates `display.skin` in `config.yaml`)
 
-Spark Mod respects the `SPARK_HOME` environment variable, so it works with [profiles](/docs/cli/profiles) too.
+Spark Mod respects the `SPARK_HOME` environment variable, so it works with [profiles](profiles.md) too.
 
 ## Notes
 

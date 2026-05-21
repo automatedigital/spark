@@ -175,4 +175,4 @@ spark memory setup      # pick a provider and configure it
 spark memory status     # check what's active
 ```
 
-See the [Memory Providers](./memory-providers.md) guide for details on each one.
+See the [Memory Providers](./providers.md) guide for details on each one.

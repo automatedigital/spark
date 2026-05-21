@@ -58,7 +58,7 @@ Run `/usage` for a full breakdown including per-category costs.
 
 ### Resuming a session
 
-When you resume (`spark -c` or `spark --resume <id>`), a "Previous Conversation" panel appears between the banner and input, showing a compact recap of history. See [Sessions — Conversation Recap on Resume](sessions.md#conversation-recap-on-resume) for config options.
+When you resume (`spark -c` or `spark --resume <id>`), a "Previous Conversation" panel appears between the banner and input, showing a compact recap of history. See [Sessions — Conversation Recap on Resume](../sessions.md#conversation-recap-on-resume) for config options.
 
 ## Keybindings
 
@@ -176,7 +176,7 @@ quick_commands:
     command: nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader
 ```
 
-Then type `/status` or `/gpu` in any chat — CLI or messaging platform. See [Configuration](/docs/configuration#quick-commands) for more examples.
+Then type `/status` or `/gpu` in any chat — CLI or messaging platform. See [Configuration](../configuration.md#quick-commands) for more examples.
 
 ## Personalities
 

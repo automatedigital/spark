@@ -186,7 +186,7 @@ Your `OPENAI_API_KEY` in Open WebUI must match `API_SERVER_KEY` in Spark.
 
 ## Multi-User Setup with Profiles
 
-Run separate Spark instances per user — each with their own config, memory, and skills — using [profiles](/docs/cli/profiles). Each profile runs its own API server on a different port.
+Run separate Spark instances per user — each with their own config, memory, and skills — using [profiles](../cli/profiles.md). Each profile runs its own API server on a different port.
 
 ### 1. Create profiles and configure API servers
 

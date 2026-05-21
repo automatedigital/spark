@@ -9,7 +9,7 @@ description: "Extend Spark with custom tools, hooks, and integrations via the pl
 
 Add custom tools, lifecycle hooks, and integrations to Spark without touching core code. Drop a directory into `~/.spark/plugins/` and your additions appear alongside built-in tools the next time Spark starts.
 
-**-> [Build a Spark Plugin](/docs/guides/build-a-plugin)** - step-by-step guide with a complete working example.
+**-> [Build a Spark Plugin](../guides/build-a-plugin.md)** - step-by-step guide with a complete working example.
 
 ## How plugins are structured
 
@@ -100,16 +100,16 @@ Project-local plugins under `./.spark/plugins/` are disabled by default. Enable 
 
 ## Available lifecycle hooks
 
-Register callbacks for these events. See the **[Event Hooks page](/docs/tools/hooks#plugin-hooks)** for full signatures and examples.
+Register callbacks for these events. See the **[Event Hooks page](../tools/hooks.md#plugin-hooks)** for full signatures and examples.
 
 | Hook | Fires when |
 |------|-----------|
-| [`pre_tool_call`](/docs/tools/hooks#pre_tool_call) | Before any tool executes |
-| [`post_tool_call`](/docs/tools/hooks#post_tool_call) | After any tool returns |
-| [`pre_llm_call`](/docs/tools/hooks#pre_llm_call) | Once per turn, before the LLM loop — can return `{"context": "..."}` to [inject context into the user message](/docs/tools/hooks#pre_llm_call) |
-| [`post_llm_call`](/docs/tools/hooks#post_llm_call) | Once per turn, after the LLM loop (successful turns only) |
-| [`on_session_start`](/docs/tools/hooks#on_session_start) | New session created (first turn only) |
-| [`on_session_end`](/docs/tools/hooks#on_session_end) | End of every `run_conversation` call + CLI exit handler |
+| [`pre_tool_call`](../tools/hooks.md#pre_tool_call) | Before any tool executes |
+| [`post_tool_call`](../tools/hooks.md#post_tool_call) | After any tool returns |
+| [`pre_llm_call`](../tools/hooks.md#pre_llm_call) | Once per turn, before the LLM loop — can return `{"context": "..."}` to [inject context into the user message](../tools/hooks.md#pre_llm_call) |
+| [`post_llm_call`](../tools/hooks.md#post_llm_call) | Once per turn, after the LLM loop (successful turns only) |
+| [`on_session_start`](../tools/hooks.md#on_session_start) | New session created (first turn only) |
+| [`on_session_end`](../tools/hooks.md#on_session_end) | End of every `run_conversation` call + CLI exit handler |
 
 ## Plugin types
 
@@ -198,4 +198,4 @@ This is how plugins like remote viewers, messaging bridges, and webhook receiver
 `inject_message` only works in CLI mode. In gateway mode, there is no CLI reference and the method returns `False`.
 :::
 
-See the **[full guide](/docs/guides/build-a-plugin)** for handler contracts, schema format, hook behavior, error handling, and common mistakes.
+See the **[full guide](../guides/build-a-plugin.md)** for handler contracts, schema format, hook behavior, error handling, and common mistakes.
