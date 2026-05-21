@@ -12,6 +12,7 @@ interface CodexUsageResponse {
   available: boolean;
   reason?: string;
   provider_connected?: boolean;
+  active_model?: string;
   limit_hit?: {
     hit_age_seconds: number;
     resets_at?: number;
@@ -87,13 +88,13 @@ export function CodexUsageBadge() {
     };
   }, []);
 
-  // Don't render if not a Codex provider or not authenticated
   if (!data?.available || !data.provider_connected) return null;
 
   const limitHit = data.limit_hit;
   const rateLimitRPM = data.rate_limit?.requests_min;
   const rateLimitRPH = data.rate_limit?.requests_hour;
   const hasRateData = rateLimitRPM?.limit || rateLimitRPH?.limit;
+  const modelLabel = data.active_model || "Codex";
 
   // Usage limit was hit — show warning with reset time
   if (limitHit) {
@@ -108,26 +109,26 @@ export function CodexUsageBadge() {
     );
   }
 
-  // Rate limit headers from inference (non-Codex providers typically send these)
+  // Rate limit headers present (non-Codex providers that send x-ratelimit-* headers)
   if (hasRateData) {
     return (
       <div className="hidden items-center gap-3 md:flex px-2 py-1 rounded-sm border border-border/50 bg-card/50">
-        {rateLimitRPM?.limit ? (
-          <RateLimitBar label="Req/min" bucket={rateLimitRPM} />
-        ) : null}
-        {rateLimitRPH?.limit ? (
-          <RateLimitBar label="Req/hr" bucket={rateLimitRPH} />
-        ) : null}
+        {rateLimitRPM?.limit ? <RateLimitBar label="Req/min" bucket={rateLimitRPM} /> : null}
+        {rateLimitRPH?.limit ? <RateLimitBar label="Req/hr" bucket={rateLimitRPH} /> : null}
       </div>
     );
   }
 
-  // Codex is connected but the API doesn't expose usage data proactively —
-  // show a minimal "connected" pill so the user knows Codex is active.
+  // Codex connected — show model name
   return (
-    <div className="hidden items-center gap-1.5 md:flex px-2 py-1 rounded-sm border border-border/50 bg-card/40">
-      <Zap className="h-3 w-3 text-primary/70 shrink-0" />
-      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.1em]">Codex</span>
+    <div
+      className="hidden items-center gap-1.5 md:flex px-2 py-1 rounded-sm border border-primary/20 bg-primary/5 cursor-default"
+      title="OpenAI Codex — usage limits are only accessible via the ChatGPT web interface"
+    >
+      <Zap className="h-3 w-3 text-primary/60 shrink-0" />
+      <span className="text-[10px] font-medium text-primary/70 uppercase tracking-[0.1em]">
+        {modelLabel}
+      </span>
     </div>
   );
 }

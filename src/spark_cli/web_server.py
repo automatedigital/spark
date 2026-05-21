@@ -1594,10 +1594,24 @@ def get_codex_usage():
         if not status.get("logged_in"):
             return {"available": False, "reason": "not_authenticated"}
 
+        # Resolve active model name for display
+        active_model = ""
+        try:
+            if isinstance(model_cfg, dict):
+                active_model = str(model_cfg.get("default", model_cfg.get("name", "")) or "").strip()
+            else:
+                active_model = str(model_cfg or "").strip()
+            # Make it display-friendly: "gpt-5.4-mini" → "GPT-5.4-Mini"
+            if active_model:
+                active_model = active_model.replace("-", " ").title().replace(" ", "-").replace("Gpt", "GPT")
+        except Exception:
+            pass
+
         # Build the response from what we actually have
         result: Dict[str, Any] = {
             "available": True,
             "provider_connected": True,
+            "active_model": active_model,
             "limit_hit": None,
             "rate_limit": None,
         }
