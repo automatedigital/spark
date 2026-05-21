@@ -46,48 +46,7 @@ from agent.models_dev import (
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Non-agentic model warning
-# ---------------------------------------------------------------------------
-
-_SPARK_MODEL_WARNING = (
-    "Automate Digital Spark 3 & 4 models are NOT agentic and are not designed "
-    "for use with Spark Agent. They lack the tool-calling capabilities "
-    "required for agent workflows. Consider using an agentic model instead "
-    "(Claude, GPT, Gemini, DeepSeek, etc.)."
-)
-
-# Match only the real Automate Digital Spark 3 / Spark 4 chat families.
-# The previous substring check (`"spark" in name.lower()`) false-positived on
-# unrelated local Modelfiles like ``spark-brain:qwen3-14b-ctx16k`` that just
-# happen to carry "spark" in their tag but are fully tool-capable.
-#
-# Positive examples the regex must match:
-#   AutomateDigital/Spark-3-Llama-3.1-70B, spark-4-405b, openrouter/spark-3:70b
-# Negative examples it must NOT match:
-#   spark-brain:qwen3-14b-ctx16k, qwen3:14b, claude-opus-4-6
-_SPARK_NON_AGENTIC_RE = re.compile(
-    r"(?:^|[/:])spark[-_ ]?[34](?:[-_.:]|$)",
-    re.IGNORECASE,
-)
-
-
-def is_nous_spark_non_agentic(model_name: str) -> bool:
-    """Return True if *model_name* is a real Spark Portal Spark 3/4 chat model.
-
-    Used to decide whether to surface the non-agentic warning at startup.
-    Callers in :mod:`cli.py` and here should go through this single helper
-    so the two sites don't drift.
-    """
-    if not model_name:
-        return False
-    return bool(_SPARK_NON_AGENTIC_RE.search(model_name))
-
-
 def _check_spark_model_warning(model_name: str) -> str:
-    """Return a warning string if *model_name* is a Spark Portal Spark 3/4 chat model."""
-    if is_nous_spark_non_agentic(model_name):
-        return _SPARK_MODEL_WARNING
     return ""
 
 

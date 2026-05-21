@@ -32,9 +32,7 @@ import { useI18n } from "@/i18n";
 
 /** Map env-var key prefixes to a human-friendly provider name + ordering. */
 const PROVIDER_GROUPS: { prefix: string; name: string; priority: number }[] = [
-  // Spark Portal first
-  { prefix: "NOUS_",            name: "Spark Portal",       priority: 0 },
-  // Then alphabetical by display name
+  // Alphabetical by display name
   { prefix: "ANTHROPIC_",       name: "Anthropic",         priority: 1 },
   { prefix: "DASHSCOPE_",       name: "DashScope (Qwen)",  priority: 2 },
   { prefix: "SPARK_QWEN_",    name: "DashScope (Qwen)",  priority: 2 },

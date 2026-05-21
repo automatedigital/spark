@@ -14,8 +14,8 @@ _VALID_MODAL_MODES = {"auto", "direct", "managed"}
 
 
 def managed_nous_tools_enabled() -> bool:
-    """Return True when the hidden Spark-managed tools feature flag is enabled."""
-    return env_var_enabled("SPARK_ENABLE_NOUS_MANAGED_TOOLS")
+    """Managed Nous tools have been removed. Always returns False."""
+    return False
 
 
 def normalize_browser_cloud_provider(value: object | None) -> str:

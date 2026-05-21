@@ -67,7 +67,6 @@ from tools.environments.singularity import _get_scratch_dir
 from tools.tool_backend_helpers import (
     coerce_modal_mode,
     has_direct_modal_credentials,
-    managed_nous_tools_enabled,
     resolve_modal_backend_state,
 )
 
@@ -761,8 +760,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
             if modal_state["managed_mode_blocked"]:
                 raise ValueError(
                     "Modal backend is configured for managed mode, but "
-                    "SPARK_ENABLE_NOUS_MANAGED_TOOLS is not enabled and no direct "
-                    "Modal credentials/config were found. Enable the feature flag or "
+                    "No direct Modal credentials/config were found. Configure Modal or "
                     "choose TERMINAL_MODAL_MODE=direct/auto."
                 )
             if modal_state["mode"] == "managed":
@@ -773,12 +771,7 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
                 raise ValueError(
                     "Modal backend is configured for direct mode, but no direct Modal credentials/config were found."
                 )
-            message = "Modal backend selected but no direct Modal credentials/config was found."
-            if managed_nous_tools_enabled():
-                message = (
-                    "Modal backend selected but no direct Modal credentials/config or managed tool gateway was found."
-                )
-            raise ValueError(message)
+            raise ValueError("Modal backend selected but no direct Modal credentials/config was found.")
 
         return _ModalEnvironment(
             image=image, cwd=cwd, timeout=timeout,
@@ -1570,9 +1563,8 @@ def check_terminal_requirements() -> bool:
                 if modal_state["managed_mode_blocked"]:
                     logger.error(
                         "Modal backend selected with TERMINAL_MODAL_MODE=managed, but "
-                        "SPARK_ENABLE_NOUS_MANAGED_TOOLS is not enabled and no direct "
-                        "Modal credentials/config were found. Enable the feature flag "
-                        "or choose TERMINAL_MODAL_MODE=direct/auto."
+                        "No direct Modal credentials/config were found. Configure Modal or "
+                        "choose TERMINAL_MODAL_MODE=direct/auto."
                     )
                     return False
                 if modal_state["mode"] == "managed":
@@ -1583,31 +1575,17 @@ def check_terminal_requirements() -> bool:
                     )
                     return False
                 elif modal_state["mode"] == "direct":
-                    if managed_nous_tools_enabled():
-                        logger.error(
-                            "Modal backend selected with TERMINAL_MODAL_MODE=direct, but no direct "
-                            "Modal credentials/config were found. Configure Modal or choose "
-                            "TERMINAL_MODAL_MODE=managed/auto."
-                        )
-                    else:
-                        logger.error(
-                            "Modal backend selected with TERMINAL_MODAL_MODE=direct, but no direct "
-                            "Modal credentials/config were found. Configure Modal or choose "
-                            "TERMINAL_MODAL_MODE=auto."
-                        )
+                    logger.error(
+                        "Modal backend selected with TERMINAL_MODAL_MODE=direct, but no direct "
+                        "Modal credentials/config were found. Configure Modal or choose "
+                        "TERMINAL_MODAL_MODE=auto."
+                    )
                     return False
                 else:
-                    if managed_nous_tools_enabled():
-                        logger.error(
-                            "Modal backend selected but no direct Modal credentials/config or managed "
-                            "tool gateway was found. Configure Modal, set up the managed gateway, "
-                            "or choose a different TERMINAL_ENV."
-                        )
-                    else:
-                        logger.error(
-                            "Modal backend selected but no direct Modal credentials/config was found. "
-                            "Configure Modal or choose a different TERMINAL_ENV."
-                        )
+                    logger.error(
+                        "Modal backend selected but no direct Modal credentials/config was found. "
+                        "Configure Modal or choose a different TERMINAL_ENV."
+                    )
                     return False
 
             if importlib.util.find_spec("modal") is None:

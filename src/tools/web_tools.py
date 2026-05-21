@@ -59,10 +59,8 @@ from agent.auxiliary_client import (
 from tools.debug_helpers import DebugSession
 from tools.managed_tool_gateway import (
     build_vendor_gateway_url,
-    read_nous_access_token as _read_nous_access_token,
     resolve_managed_tool_gateway,
 )
-from tools.tool_backend_helpers import managed_nous_tools_enabled
 from tools.url_safety import is_safe_url
 from tools.website_policy import check_website_access
 
@@ -152,7 +150,7 @@ def _get_firecrawl_gateway_url() -> str:
 
 def _is_tool_gateway_ready() -> bool:
     """Return True when gateway URL and a Spark Portal Subscriber token are available."""
-    return resolve_managed_tool_gateway("firecrawl", token_reader=_read_nous_access_token) is not None
+    return resolve_managed_tool_gateway("firecrawl", token_reader=None) is not None
 
 
 def _has_direct_firecrawl_config() -> bool:
@@ -162,26 +160,14 @@ def _has_direct_firecrawl_config() -> bool:
 
 def _raise_web_backend_configuration_error() -> None:
     """Raise a clear error for unsupported web backend configuration."""
-    message = (
+    raise ValueError(
         "Web tools are not configured. "
         "Set FIRECRAWL_API_KEY for cloud Firecrawl or set FIRECRAWL_API_URL for a self-hosted Firecrawl instance."
     )
-    if managed_nous_tools_enabled():
-        message += (
-            " If you have the hidden Spark-managed tools flag enabled, you can also login to Spark Portal "
-            "(`spark model`) and provide FIRECRAWL_GATEWAY_URL or TOOL_GATEWAY_DOMAIN."
-        )
-    raise ValueError(message)
 
 
 def _firecrawl_backend_help_suffix() -> str:
-    """Return optional managed-gateway guidance for Firecrawl help text."""
-    if not managed_nous_tools_enabled():
-        return ""
-    return (
-        ", or, if you have the hidden Spark-managed tools flag enabled, login to Spark Portal and use "
-        "FIRECRAWL_GATEWAY_URL or TOOL_GATEWAY_DOMAIN"
-    )
+    return ""
 
 
 def _web_requires_env() -> list[str]:
@@ -193,15 +179,6 @@ def _web_requires_env() -> list[str]:
         "FIRECRAWL_API_KEY",
         "FIRECRAWL_API_URL",
     ]
-    if managed_nous_tools_enabled():
-        requires.extend(
-            [
-                "FIRECRAWL_GATEWAY_URL",
-                "TOOL_GATEWAY_DOMAIN",
-                "TOOL_GATEWAY_SCHEME",
-                "TOOL_GATEWAY_USER_TOKEN",
-            ]
-        )
     return requires
 
 
@@ -219,7 +196,7 @@ def _get_firecrawl_client():
     else:
         managed_gateway = resolve_managed_tool_gateway(
             "firecrawl",
-            token_reader=_read_nous_access_token,
+            token_reader=None,
         )
         if managed_gateway is None:
             logger.error("Firecrawl client initialization failed: missing direct config and tool-gateway auth.")
@@ -1951,7 +1928,7 @@ if __name__ == "__main__":
     tool_gateway_available = _is_tool_gateway_ready()
     firecrawl_key_available = bool(os.getenv("FIRECRAWL_API_KEY", "").strip())
     firecrawl_url_available = bool(os.getenv("FIRECRAWL_API_URL", "").strip())
-    nous_available = check_auxiliary_model()
+    aux_model_available = check_auxiliary_model()
     default_summarizer_model = _get_default_summarizer_model()
 
     if web_available:
@@ -1979,9 +1956,9 @@ if __name__ == "__main__":
             f"{_firecrawl_backend_help_suffix()}"
         )
 
-    if not nous_available:
+    if not aux_model_available:
         print("❌ No auxiliary model available for LLM content processing")
-        print("Set OPENROUTER_API_KEY, configure Spark Portal, or set OPENAI_BASE_URL + OPENAI_API_KEY")
+        print("Set OPENROUTER_API_KEY or set OPENAI_BASE_URL + OPENAI_API_KEY")
         print("⚠️  Without an auxiliary model, LLM content processing will be disabled")
     else:
         print(f"✅ Auxiliary model available: {default_summarizer_model}")
@@ -1991,7 +1968,7 @@ if __name__ == "__main__":
 
     print("🛠️  Web tools ready for use!")
     
-    if nous_available:
+    if aux_model_available:
         print(f"🧠 LLM content processing available with {default_summarizer_model}")
         print(f"   Default min length for processing: {DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION} chars")
     
@@ -2015,7 +1992,7 @@ if __name__ == "__main__":
     print("      crawl_data = await web_crawl_tool('example.com', 'Find docs')")
     print("  asyncio.run(main())")
     
-    if nous_available:
+    if aux_model_available:
         print("\nLLM-enhanced usage:")
         print("  # Content automatically processed for pages >5000 chars (default)")
         print("  content = await web_extract_tool(['https://python.org/about/'])")

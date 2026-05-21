@@ -37,7 +37,6 @@ _PROVIDER_ENV_HINTS = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_TOKEN",
     "OPENAI_BASE_URL",
-    "NOUS_API_KEY",
     "GLM_API_KEY",
     "ZAI_API_KEY",
     "Z_AI_API_KEY",
@@ -371,13 +370,7 @@ def run_doctor(args):
     print(color("◆ Auth Providers", Colors.CYAN, Colors.BOLD))
 
     try:
-        from spark_cli.auth import get_nous_auth_status, get_codex_auth_status
-
-        nous_status = get_nous_auth_status()
-        if nous_status.get("logged_in"):
-            check_ok("Spark Portal auth", "(logged in)")
-        else:
-            check_warn("Spark Portal auth", "(not logged in)")
+        from spark_cli.auth import get_codex_auth_status
 
         codex_status = get_codex_auth_status()
         if codex_status.get("logged_in"):

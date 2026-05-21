@@ -23,10 +23,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
-from tools.tool_backend_helpers import (
-    managed_nous_tools_enabled as _managed_nous_tools_enabled,
-)
-
 _IS_WINDOWS = platform.system() == "Windows"
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Env var names written to .env that aren't in OPTIONAL_ENV_VARS
@@ -860,14 +856,6 @@ REQUIRED_ENV_VARS = {}
 # Optional environment variables that enhance functionality
 OPTIONAL_ENV_VARS = {
     # ── Provider (handled in provider selection, not shown in checklists) ──
-    "NOUS_BASE_URL": {
-        "description": "Spark Portal base URL override",
-        "prompt": "Spark Portal base URL (leave empty for default)",
-        "url": None,
-        "password": False,
-        "category": "provider",
-        "advanced": True,
-    },
     "OPENROUTER_API_KEY": {
         "description": "OpenRouter API key (for vision, web scraping helpers, and MoA)",
         "prompt": "OpenRouter API key",
@@ -1632,14 +1620,13 @@ OPTIONAL_ENV_VARS = {
     },
 }
 
-if not _managed_nous_tools_enabled():
-    for _hidden_var in (
-        "FIRECRAWL_GATEWAY_URL",
-        "TOOL_GATEWAY_DOMAIN",
-        "TOOL_GATEWAY_SCHEME",
-        "TOOL_GATEWAY_USER_TOKEN",
-    ):
-        OPTIONAL_ENV_VARS.pop(_hidden_var, None)
+for _hidden_var in (
+    "FIRECRAWL_GATEWAY_URL",
+    "TOOL_GATEWAY_DOMAIN",
+    "TOOL_GATEWAY_SCHEME",
+    "TOOL_GATEWAY_USER_TOKEN",
+):
+    OPTIONAL_ENV_VARS.pop(_hidden_var, None)
 
 
 def get_missing_env_vars(required_only: bool = False) -> List[Dict[str, Any]]:
@@ -2817,7 +2804,7 @@ _FALLBACK_COMMENT = """
 # Supported providers:
 #   openrouter   (OPENROUTER_API_KEY)  — routes to any model
 #   openai-codex (OAuth — spark auth) — OpenAI Codex
-#   nous         (OAuth — spark auth) — Spark Portal
+
 #   zai          (ZAI_API_KEY)         — Z.AI / GLM
 #   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
 #   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)
@@ -2864,7 +2851,7 @@ _COMMENTED_SECTIONS = """
 # Supported providers:
 #   openrouter   (OPENROUTER_API_KEY)  — routes to any model
 #   openai-codex (OAuth — spark auth) — OpenAI Codex
-#   nous         (OAuth — spark auth) — Spark Portal
+
 #   zai          (ZAI_API_KEY)         — Z.AI / GLM
 #   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
 #   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)

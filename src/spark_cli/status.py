@@ -15,10 +15,8 @@ from spark_cli.auth import AuthError, resolve_provider
 from spark_cli.colors import Colors, color
 from spark_cli.config import get_env_path, get_env_value, get_spark_home, load_config
 from spark_cli.models import provider_label
-from spark_cli.nous_subscription import get_nous_subscription_features
 from spark_cli.runtime_provider import resolve_requested_provider
 from core.spark_constants import OPENROUTER_MODELS_URL
-from tools.tool_backend_helpers import managed_nous_tools_enabled
 
 def check_mark(ok: bool) -> str:
     if ok:
@@ -153,29 +151,12 @@ def show_status(args):
     print(color("◆ Auth Providers", Colors.CYAN, Colors.BOLD))
 
     try:
-        from spark_cli.auth import get_nous_auth_status, get_codex_auth_status, get_qwen_auth_status
-        nous_status = get_nous_auth_status()
+        from spark_cli.auth import get_codex_auth_status, get_qwen_auth_status
         codex_status = get_codex_auth_status()
         qwen_status = get_qwen_auth_status()
     except Exception:
-        nous_status = {}
         codex_status = {}
         qwen_status = {}
-
-    nous_logged_in = bool(nous_status.get("logged_in"))
-    print(
-        f"  {'Spark Portal':<12}  {check_mark(nous_logged_in)} "
-        f"{'logged in' if nous_logged_in else 'not logged in (run: spark model)'}"
-    )
-    if nous_logged_in:
-        portal_url = nous_status.get("portal_base_url") or "(unknown)"
-        access_exp = _format_iso_timestamp(nous_status.get("access_expires_at"))
-        key_exp = _format_iso_timestamp(nous_status.get("agent_key_expires_at"))
-        refresh_label = "yes" if nous_status.get("has_refresh_token") else "no"
-        print(f"    Portal URL: {portal_url}")
-        print(f"    Access exp: {access_exp}")
-        print(f"    Key exp:    {key_exp}")
-        print(f"    Refresh:    {refresh_label}")
 
     codex_logged_in = bool(codex_status.get("logged_in"))
     print(
@@ -205,31 +186,6 @@ def show_status(args):
         print(f"    Access exp: {datetime.fromtimestamp(int(qwen_exp) / 1000, tz=timezone.utc).isoformat()}")
     if qwen_status.get("error") and not qwen_logged_in:
         print(f"    Error:      {qwen_status.get('error')}")
-
-    # =========================================================================
-    # Spark Subscription Features
-    # =========================================================================
-    if managed_nous_tools_enabled():
-        features = get_nous_subscription_features(config)
-        print()
-        print(color("◆ Spark Subscription Features", Colors.CYAN, Colors.BOLD))
-        if not features.nous_auth_present:
-            print("  Spark Portal   ✗ not logged in")
-        else:
-            print("  Spark Portal   ✓ managed tools available")
-        for feature in features.items():
-            if feature.managed_by_nous:
-                state = "active via Spark subscription"
-            elif feature.active:
-                current = feature.current_provider or "configured provider"
-                state = f"active via {current}"
-            elif feature.included_by_default and features.nous_auth_present:
-                state = "included by subscription, not currently selected"
-            elif feature.key == "modal" and features.nous_auth_present:
-                state = "available via subscription (optional)"
-            else:
-                state = "not configured"
-            print(f"  {feature.label:<15} {check_mark(feature.available or feature.active or feature.managed_by_nous)} {state}")
 
     # =========================================================================
     # API-Key Providers
