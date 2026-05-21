@@ -1649,7 +1649,7 @@ def get_codex_usage():
                     "limit_reached": rl.get("limit_reached", False),
                     "windows": [
                         {
-                            "label": "5h limit",
+                            "label": "5h Limit",
                             "used_percent": pw.get("used_percent", 0),
                             "reset_at": pw.get("reset_at"),
                             "reset_after_seconds": pw.get("reset_after_seconds"),

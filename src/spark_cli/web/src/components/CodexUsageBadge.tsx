@@ -41,9 +41,9 @@ function UsageBar({ window: w }: { window: UsageWindow }) {
   const resetLabel = formatReset(w.reset_at, w.reset_after_seconds);
 
   return (
-    <div className="group relative flex flex-col gap-0.5 min-w-[68px]">
+    <div className="group relative flex flex-col gap-1 min-w-[68px]">
       <div className="flex items-center justify-between gap-1">
-        <span className="text-[9px] font-medium uppercase tracking-[0.1em] text-muted-foreground truncate leading-none">
+        <span className="text-[9px] font-medium tracking-[0.04em] text-muted-foreground truncate leading-none">
           {w.label}
         </span>
         <span className={`text-[9px] font-semibold leading-none tabular-nums ${textColor}`}>
