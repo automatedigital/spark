@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Zap, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 
-interface RateLimitBucket {
-  limit: number;
-  remaining: number;
-  reset_seconds: number;
+interface UsageWindow {
+  label: string;
+  used_percent: number;
+  reset_at?: number;
+  reset_after_seconds?: number;
+  window_seconds?: number;
 }
 
 interface CodexUsageResponse {
@@ -13,54 +15,52 @@ interface CodexUsageResponse {
   reason?: string;
   provider_connected?: boolean;
   active_model?: string;
-  limit_hit?: {
-    hit_age_seconds: number;
-    resets_at?: number;
-    resets_in_seconds?: number;
-  } | null;
-  rate_limit?: {
-    requests_min: RateLimitBucket;
-    requests_hour: RateLimitBucket;
-    captured_age_seconds: number;
-  } | null;
+  plan_type?: string;
+  limit_reached?: boolean;
+  windows?: UsageWindow[];
 }
 
-function formatResetTime(resets_at?: number, resets_in_seconds?: number): string {
-  if (resets_at) {
-    const d = new Date(resets_at * 1000);
-    const diffH = (resets_at * 1000 - Date.now()) / 3600000;
-    if (diffH < 24) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    }
-    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+function formatReset(reset_at?: number, reset_after_seconds?: number): string {
+  const secsLeft = reset_after_seconds ?? (reset_at ? reset_at - Date.now() / 1000 : 0);
+  if (secsLeft <= 0) return "";
+  if (secsLeft < 3600) return `${Math.ceil(secsLeft / 60)}m`;
+  if (secsLeft < 86400) {
+    const d = reset_at ? new Date(reset_at * 1000) : null;
+    return d ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : `${Math.ceil(secsLeft / 3600)}h`;
   }
-  if (resets_in_seconds) {
-    const h = Math.ceil(resets_in_seconds / 3600);
-    return `~${h}h`;
-  }
-  return "";
+  const d = reset_at ? new Date(reset_at * 1000) : null;
+  return d ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : "";
 }
 
-function RateLimitBar({ label, bucket }: { label: string; bucket: RateLimitBucket }) {
-  if (!bucket.limit) return null;
-  const pct = Math.max(0, Math.min(100, (bucket.remaining / bucket.limit) * 100));
-  const isLow = pct <= 25;
-  const isEmpty = pct <= 5;
+function UsageBar({ window: w }: { window: UsageWindow }) {
+  const pctRemaining = Math.max(0, Math.min(100, 100 - w.used_percent));
+  const isLow = pctRemaining <= 25;
+  const isEmpty = pctRemaining <= 5;
   const barColor = isEmpty ? "bg-destructive/80" : isLow ? "bg-amber-400/90" : "bg-emerald-500/90";
+  const textColor = isEmpty ? "text-destructive" : isLow ? "text-amber-400" : "text-emerald-400";
+  const resetLabel = formatReset(w.reset_at, w.reset_after_seconds);
 
   return (
-    <div className="flex flex-col gap-0.5 min-w-[64px]">
+    <div className="group relative flex flex-col gap-0.5 min-w-[68px]">
       <div className="flex items-center justify-between gap-1">
         <span className="text-[9px] font-medium uppercase tracking-[0.1em] text-muted-foreground truncate leading-none">
-          {label}
+          {w.label}
         </span>
-        <span className={`text-[9px] font-semibold leading-none tabular-nums ${isEmpty ? "text-destructive" : isLow ? "text-amber-400" : "text-emerald-400"}`}>
-          {Math.round(pct)}%
+        <span className={`text-[9px] font-semibold leading-none tabular-nums ${textColor}`}>
+          {Math.round(pctRemaining)}%
         </span>
       </div>
       <div className="h-[3px] w-full rounded-full bg-white/10 overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+          style={{ width: `${pctRemaining}%` }}
+        />
       </div>
+      {resetLabel && (
+        <div className="pointer-events-none absolute -bottom-5 left-0 z-50 hidden group-hover:block whitespace-nowrap rounded border border-border bg-popover px-1.5 py-0.5 text-[10px] text-muted-foreground shadow-lg">
+          Resets {resetLabel}
+        </div>
+      )}
     </div>
   );
 }
@@ -70,8 +70,7 @@ export function CodexUsageBadge() {
 
   useEffect(() => {
     let cancelled = false;
-
-    async function fetchUsage() {
+    async function fetch() {
       try {
         const resp = await api.getCodexUsage();
         if (!cancelled) setData(resp as CodexUsageResponse);
@@ -79,51 +78,50 @@ export function CodexUsageBadge() {
         if (!cancelled) setData(null);
       }
     }
-
-    fetchUsage();
-    const interval = setInterval(fetchUsage, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    fetch();
+    const t = setInterval(fetch, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
   }, []);
 
   if (!data?.available || !data.provider_connected) return null;
 
-  const limitHit = data.limit_hit;
-  const rateLimitRPM = data.rate_limit?.requests_min;
-  const rateLimitRPH = data.rate_limit?.requests_hour;
-  const hasRateData = rateLimitRPM?.limit || rateLimitRPH?.limit;
-  const modelLabel = data.active_model || "Codex";
+  const windows = data.windows ?? [];
+  const limitReached = data.limit_reached;
 
-  // Usage limit was hit — show warning with reset time
-  if (limitHit) {
-    const resetLabel = formatResetTime(limitHit.resets_at ?? undefined, limitHit.resets_in_seconds ?? undefined);
+  // Limit reached warning
+  if (limitReached && windows.length > 0) {
+    const nextReset = windows
+      .map((w) => w.reset_after_seconds ?? 0)
+      .filter(Boolean)
+      .sort()[0];
+    const resetLabel = nextReset ? formatReset(undefined, nextReset) : "";
     return (
       <div className="hidden items-center gap-1.5 md:flex px-2 py-1 rounded-sm border border-amber-500/40 bg-amber-500/10">
         <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0" />
         <span className="text-[10px] font-medium text-amber-300">
-          Usage limit{resetLabel ? ` · resets ${resetLabel}` : ""}
+          Limit reached{resetLabel ? ` · resets in ${resetLabel}` : ""}
         </span>
       </div>
     );
   }
 
-  // Rate limit headers present (non-Codex providers that send x-ratelimit-* headers)
-  if (hasRateData) {
+  // Real usage windows from wham/usage
+  if (windows.length > 0) {
     return (
-      <div className="hidden items-center gap-3 md:flex px-2 py-1 rounded-sm border border-border/50 bg-card/50">
-        {rateLimitRPM?.limit ? <RateLimitBar label="Req/min" bucket={rateLimitRPM} /> : null}
-        {rateLimitRPH?.limit ? <RateLimitBar label="Req/hr" bucket={rateLimitRPH} /> : null}
+      <div className="hidden items-center gap-3 md:flex px-2 py-1.5 rounded-sm border border-border/50 bg-card/40">
+        {windows.map((w) => (
+          <UsageBar key={w.label} window={w} />
+        ))}
       </div>
     );
   }
 
-  // Codex connected — show model name
+  // Fallback: just show active model as a connected pill
+  const modelLabel = data.active_model || "Codex";
   return (
     <div
-      className="hidden items-center gap-1.5 md:flex px-2 py-1 rounded-sm border border-primary/20 bg-primary/5 cursor-default"
-      title="OpenAI Codex — usage limits are only accessible via the ChatGPT web interface"
+      className="hidden items-center gap-1.5 md:flex px-2 py-1 rounded-sm border border-primary/20 bg-primary/5"
+      title="OpenAI Codex connected"
     >
       <Zap className="h-3 w-3 text-primary/60 shrink-0" />
       <span className="text-[10px] font-medium text-primary/70 uppercase tracking-[0.1em]">

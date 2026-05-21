@@ -1601,60 +1601,79 @@ def get_codex_usage():
                 active_model = str(model_cfg.get("default", model_cfg.get("name", "")) or "").strip()
             else:
                 active_model = str(model_cfg or "").strip()
-            # Make it display-friendly: "gpt-5.4-mini" → "GPT-5.4-Mini"
             if active_model:
                 active_model = active_model.replace("-", " ").title().replace(" ", "-").replace("Gpt", "GPT")
         except Exception:
             pass
 
-        # Build the response from what we actually have
-        result: Dict[str, Any] = {
+        # Fetch live usage from the wham/usage endpoint (discovered via CodexBar)
+        # Requires the ChatGPT-Account-Id header extracted from the JWT claims.
+        try:
+            import httpx as _httpx
+            import base64 as _base64
+
+            access_token = status.get("api_key", "")
+            # Extract chatgpt_account_id from JWT payload
+            account_id = ""
+            try:
+                parts = access_token.split(".")
+                if len(parts) >= 2:
+                    padded = parts[1] + "=" * (-len(parts[1]) % 4)
+                    jwt_claims = __import__("json").loads(_base64.urlsafe_b64decode(padded))
+                    auth_ns = jwt_claims.get("https://api.openai.com/auth", {})
+                    account_id = auth_ns.get("chatgpt_account_id", "")
+            except Exception:
+                pass
+
+            wham_headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+                "User-Agent": "Spark/1.0",
+            }
+            if account_id:
+                wham_headers["ChatGPT-Account-Id"] = account_id
+
+            with _httpx.Client(http2=True, timeout=10.0) as _hc:
+                wham = _hc.get("https://chatgpt.com/backend-api/wham/usage", headers=wham_headers)
+
+            if wham.status_code == 200:
+                wham_data = wham.json()
+                rl = wham_data.get("rate_limit", {})
+                pw = rl.get("primary_window", {})    # 5-hour window
+                sw = rl.get("secondary_window", {})  # weekly window
+                return {
+                    "available": True,
+                    "provider_connected": True,
+                    "active_model": active_model,
+                    "plan_type": wham_data.get("plan_type"),
+                    "limit_reached": rl.get("limit_reached", False),
+                    "windows": [
+                        {
+                            "label": "5h limit",
+                            "used_percent": pw.get("used_percent", 0),
+                            "reset_at": pw.get("reset_at"),
+                            "reset_after_seconds": pw.get("reset_after_seconds"),
+                            "window_seconds": pw.get("limit_window_seconds", 18000),
+                        },
+                        {
+                            "label": "Weekly limit",
+                            "used_percent": sw.get("used_percent", 0),
+                            "reset_at": sw.get("reset_at"),
+                            "reset_after_seconds": sw.get("reset_after_seconds"),
+                            "window_seconds": sw.get("limit_window_seconds", 604800),
+                        },
+                    ],
+                }
+        except Exception as exc:
+            _log.debug("wham/usage fetch failed: %s", exc)
+
+        # Fallback: return connected state without usage windows
+        return {
             "available": True,
             "provider_connected": True,
             "active_model": active_model,
-            "limit_hit": None,
-            "rate_limit": None,
+            "windows": [],
         }
-
-        # Last known usage-limit-hit state (set by _maybe_capture_codex_usage_limit)
-        if _codex_usage_limit_hit:
-            hit_age = time.time() - _codex_usage_limit_hit.get("hit_at", 0)
-            resets_at = _codex_usage_limit_hit.get("resets_at")
-            resets_in = _codex_usage_limit_hit.get("resets_in_seconds")
-            # Expire the hit record if its reset window has passed
-            if resets_at and time.time() > resets_at:
-                pass  # expired — omit
-            else:
-                result["limit_hit"] = {
-                    "hit_age_seconds": int(hit_age),
-                    "resets_at": resets_at,
-                    "resets_in_seconds": resets_in,
-                }
-
-        # Rate-limit headers from any active web agent (for providers that send them)
-        try:
-            for agent in list(_web_agents.values()):
-                rl = agent.get_rate_limit_state() if hasattr(agent, "get_rate_limit_state") else None
-                if rl and rl.has_data:
-                    from agent.rate_limit_tracker import RateLimitState
-                    result["rate_limit"] = {
-                        "requests_min": {
-                            "limit": rl.requests_min.limit,
-                            "remaining": rl.requests_min.remaining,
-                            "reset_seconds": rl.requests_min.remaining_seconds_now,
-                        },
-                        "requests_hour": {
-                            "limit": rl.requests_hour.limit,
-                            "remaining": rl.requests_hour.remaining,
-                            "reset_seconds": rl.requests_hour.remaining_seconds_now,
-                        },
-                        "captured_age_seconds": int(rl.age_seconds),
-                    }
-                    break
-        except Exception:
-            pass
-
-        return result
     except Exception:
         _log.exception("GET /api/model/codex-usage failed")
         return {"available": False, "reason": "internal_error"}
