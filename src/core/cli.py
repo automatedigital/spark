@@ -1776,7 +1776,7 @@ class SparkCLI:
         Args:
             model: Model to use (default: from env or claude-sonnet)
             toolsets: List of toolsets to enable (default: all)
-            provider: Inference provider ("auto", "openrouter", "nous", "openai-codex", "zai", "kimi-coding", "minimax", "minimax-cn")
+            provider: Inference provider ("auto", "openrouter", "openai-codex", "zai", "kimi-coding", "minimax", "minimax-cn")
             api_key: API key (default: from environment)
             base_url: API base URL (default: OpenRouter)
             max_turns: Maximum tool-calling iterations shared with subagents (default: 90)
@@ -3421,22 +3421,6 @@ class SparkCLI:
                 self.console.print(
                     "[dim]   Fix: Set model.context_length in config.yaml, or increase your server's context setting[/]"
                 )
-
-        # Warn if the configured model is a Spark Portal Spark LLM (not agentic)
-        from spark_cli.model_switch import is_nous_spark_non_agentic
-
-        model_name = getattr(self, "model", "") or ""
-        if is_nous_spark_non_agentic(model_name):
-            self.console.print()
-            self.console.print(
-                "[bold yellow]WARN  Automate Digital Spark 3 & 4 models are NOT agentic and are not "
-                "designed for use with Spark Agent.[/]"
-            )
-            self.console.print(
-                "[dim]   They lack tool-calling capabilities required for agent workflows. "
-                "Consider using an agentic model (Claude, GPT, Gemini, DeepSeek, etc.).[/]"
-            )
-            self.console.print("[dim]   Switch with: /model sonnet  or  /model gpt5[/]")
 
         self.console.print()
 
@@ -5615,10 +5599,9 @@ class SparkCLI:
                 marker = " ← active" if is_active else ""
                 print(f"    [{p['id']}]{marker}")
                 curated = curated_models_for_provider(p["id"])
-                # Fetch pricing for providers that support it (openrouter, nous)
                 pricing_map = (
                     get_pricing_for_provider(p["id"])
-                    if p["id"] in ("openrouter", "nous")
+                    if p["id"] == "openrouter"
                     else {}
                 )
                 if curated and pricing_map:
@@ -12079,7 +12062,7 @@ def main(
         toolsets: Comma-separated list of toolsets to enable (e.g., "web,terminal")
         skills: Comma-separated or repeated list of skills to preload for the session
         model: Model to use (default: anthropic/claude-opus-4-20250514)
-        provider: Inference provider ("auto", "openrouter", "nous", "openai-codex", "zai", "kimi-coding", "minimax", "minimax-cn")
+        provider: Inference provider ("auto", "openrouter", "openai-codex", "zai", "kimi-coding", "minimax", "minimax-cn")
         api_key: API key for authentication
         base_url: Base URL for the API
         max_turns: Maximum tool-calling iterations (default: 60)

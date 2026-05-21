@@ -409,8 +409,6 @@ class TrajectoryCompressor:
         url = (self.config.base_url or "").lower()
         if "openrouter" in url:
             return "openrouter"
-        if "automatedigital.ai" in url:
-            return "nous"
         if "chatgpt.com/backend-api/codex" in url:
             return "codex"
         if "api.z.ai" in url:

@@ -138,7 +138,11 @@ export function AutoField({
     <div className="grid gap-1.5">
       <Label className="text-sm">{label}</Label>
       <FieldHint schema={schema} schemaKey={schemaKey} />
-      <Input value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />
+      <Input
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={schema.placeholder ? String(schema.placeholder) : undefined}
+      />
     </div>
   );
 }
