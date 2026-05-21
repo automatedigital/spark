@@ -224,7 +224,7 @@ Total messages: 3847
 Database size: 12.4 MB
 ```
 
-For token usage, cost estimates, tool breakdown, and activity patterns, use [`spark insights`](/docs/cli/commands-reference#spark-insights).
+For token usage, cost estimates, tool breakdown, and activity patterns, use [`spark insights`](cli/commands-reference.md#spark-insights).
 
 ## Search Across All Sessions
 

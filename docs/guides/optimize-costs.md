@@ -21,19 +21,19 @@ What breaks the cache mid-session:
 - Modifying toolsets
 - Rebuilding the system prompt
 
-Leave these alone during a session. See [context compression](/docs/building/context-compression-and-caching) for the full picture.
+Leave these alone during a session. See [context compression](../building/context-compression-and-caching.md) for the full picture.
 
 ### 2. Route to cheaper models for easy work
 
-Not every task needs your most capable model. [Provider routing](/docs/providers/routing) and [fallbacks](/docs/providers/fallback) let you send simple steps to cheaper models automatically.
+Not every task needs your most capable model. [Provider routing](../providers/routing.md) and [fallbacks](../providers/fallback.md) let you send simple steps to cheaper models automatically.
 
 ### 3. Batch instead of one-off runs
 
-[Batch processing](/docs/automate/batch) amortizes setup cost across many prompts. Tune your parallelism against your rate limits — running too many workers simultaneously just triggers retries, which costs more.
+[Batch processing](../automate/batch.md) amortizes setup cost across many prompts. Tune your parallelism against your rate limits — running too many workers simultaneously just triggers retries, which costs more.
 
 ### 4. Rotate credential pools to avoid retry waste
 
-A key that hits its rate limit triggers retries. [Rotating keys](/docs/providers/credential-pools) spreads load and avoids the hard failures that silently inflate your token usage.
+A key that hits its rate limit triggers retries. [Rotating keys](../providers/credential-pools.md) spreads load and avoids the hard failures that silently inflate your token usage.
 
 ### 5. Point auxiliary tasks at smaller models
 
@@ -51,5 +51,5 @@ Vision analysis and summarization rarely need your frontier model. Point these a
 
 ## See also
 
-- [Configuration](/docs/configuration)
-- [Environment variables](/docs/reference/environment-variables)
+- [Configuration](../configuration.md)
+- [Environment variables](../reference/environment-variables.md)

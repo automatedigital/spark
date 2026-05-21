@@ -179,5 +179,5 @@ provider_data_collection    <- from provider_routing.data_collection
 Without a `provider_routing` section, OpenRouter uses its own default routing logic — generally a balance of cost and availability. You don't need to configure anything to get started.
 
 :::tip Provider Routing vs. Fallback Models
-Provider routing controls which sub-providers *within OpenRouter* handle your requests. For automatic failover to an entirely different provider when your primary model fails, see [Fallback Providers](/docs/providers/fallback).
+Provider routing controls which sub-providers *within OpenRouter* handle your requests. For automatic failover to an entirely different provider when your primary model fails, see [Fallback Providers](fallback.md).
 :::

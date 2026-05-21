@@ -8,7 +8,7 @@ description: "Real-time voice conversations with Spark Agent - CLI, Telegram, Di
 
 Talk to Spark using your microphone and hear spoken replies. Works in the CLI, Telegram, Discord DMs, Discord text channels, and live Discord voice channels.
 
-For a practical setup walkthrough with recommended configurations, see [Enable Voice Mode](/docs/guides/enable-voice-mode).
+For a practical setup walkthrough with recommended configurations, see [Enable Voice Mode](../guides/enable-voice-mode.md).
 
 ## What's Available
 

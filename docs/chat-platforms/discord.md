@@ -269,7 +269,7 @@ DISCORD_HOME_CHANNEL_NAME="#bot-updates"
 - **TTS responses:** use `/voice tts` to have the bot send spoken audio alongside text.
 - **Voice channels:** Spark can join a voice channel, listen, and talk back.
 
-See: [Voice Mode](/docs/voice/voice-mode) and [Enable Voice Mode](/docs/guides/enable-voice-mode).
+See: [Voice Mode](../voice/voice-mode.md) and [Enable Voice Mode](../guides/enable-voice-mode.md).
 
 ---
 

@@ -574,7 +574,7 @@ fallback_model:
   model: anthropic/claude-sonnet-4
 ```
 
-Activates automatically when your primary model fails with rate limits, server errors, or auth failures. Fires at most once per session. See [Fallback Providers](/docs/providers/fallback) for full details.
+Activates automatically when your primary model fails with rate limits, server errors, or auth failures. Fires at most once per session. See [Fallback Providers](../providers/fallback.md) for full details.
 
 ---
 
@@ -649,5 +649,5 @@ Trade-off: no API key or rate limits, but the self-hosted version uses basic fet
 
 ## See Also
 
-- [Configuration](/docs/configuration) — Directory structure, config precedence, context compression, and more
-- [Environment Variables](/docs/reference/environment-variables) — Complete reference
+- [Configuration](../configuration.md) — Directory structure, config precedence, context compression, and more
+- [Environment Variables](../reference/environment-variables.md) — Complete reference

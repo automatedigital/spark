@@ -546,7 +546,7 @@ The gateway does NOT need to be running for read operations (listing conversatio
 
 ## Related Docs
 
-- [Use MCP with Spark](/docs/guides/use-mcp)
-- [CLI Commands](/docs/cli/commands-reference)
-- [Slash Commands](/docs/cli/slash-commands)
-- [FAQ](/docs/reference/faq)
+- [Use MCP with Spark](../guides/use-mcp.md)
+- [CLI Commands](../cli/commands-reference.md)
+- [Slash Commands](../cli/slash-commands.md)
+- [FAQ](../reference/faq.md)

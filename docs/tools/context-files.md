@@ -103,7 +103,7 @@ Put per-package instructions in nested AGENTS.md files:
 
 ## SOUL.md — Personality and Tone
 
-`SOUL.md` controls how the agent communicates. See the [Personality](/docs/personality) page for the full reference.
+`SOUL.md` controls how the agent communicates. See the [Personality](../personality.md) page for the full reference.
 
 **Location:** `~/.spark/SOUL.md` (or `$SPARK_HOME/SOUL.md` with a custom home directory).
 

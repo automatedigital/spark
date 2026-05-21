@@ -229,7 +229,7 @@ Move project instructions into `AGENTS.md` and keep `SOUL.md` focused on identit
 
 ## Related Docs
 
-- [Personality & SOUL.md](/docs/personality)
-- [Context Files](/docs/tools/context-files)
-- [Configuration](/docs/configuration)
-- [Tips & Best Practices](/docs/guides/tips-and-tricks)
+- [Personality & SOUL.md](../personality.md)
+- [Context Files](../tools/context-files.md)
+- [Configuration](../configuration.md)
+- [Tips & Best Practices](tips-and-tricks.md)

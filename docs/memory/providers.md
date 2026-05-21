@@ -483,7 +483,7 @@ echo 'SUPERMEMORY_API_KEY=***' >> ~/.spark/.env
 
 ## Data Isolation Per Profile
 
-Each provider's data is scoped to the active [profile](/docs/cli/profiles):
+Each provider's data is scoped to the active [profile](../cli/profiles.md):
 
 - **Local providers** (Holographic, ByteRover) — use `$SPARK_HOME/` paths, which differ per profile
 - **Config file providers** (Honcho, Mem0, Hindsight, Supermemory) — config stored in `$SPARK_HOME/`, so each profile has its own credentials
@@ -492,4 +492,4 @@ Each provider's data is scoped to the active [profile](/docs/cli/profiles):
 
 ## Build Your Own Provider
 
-See the [Developer Guide: Memory Provider Plugins](/docs/building/memory-provider-plugin) to create a custom provider.
+See the [Developer Guide: Memory Provider Plugins](../building/memory-provider-plugin.md) to create a custom provider.

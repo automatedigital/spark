@@ -30,7 +30,7 @@ With worktrees, each agent is fully isolated:
 | `/rollback` checkpoint history | Yes |
 | Uncommitted file edits | Yes |
 
-See also: [Checkpoints and /rollback](./checkpoints-and-rollback.md).
+See also: [Checkpoints and /rollback](./checkpoints.md).
 
 ## The Fast Path: `spark -w`
 
@@ -118,7 +118,7 @@ A few things to know:
 
 - **One worktree per experiment.** Focused diffs make for reviewable PRs.
 - **Name branches after the task.** `feature/spark-checkpoints-docs` is searchable; `feature/tmp` is not.
-- **Commit often at milestones.** Let [checkpoints and /rollback](./checkpoints-and-rollback.md) handle granular recovery between commits.
+- **Commit often at milestones.** Let [checkpoints and /rollback](./checkpoints.md) handle granular recovery between commits.
 - **Don't run Spark from the bare repo root when using worktrees.** Work inside the worktree directory so each agent has a clear scope.
 
 ## The Three-Layer Safety Net

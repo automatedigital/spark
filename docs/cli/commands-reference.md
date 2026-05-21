@@ -157,7 +157,7 @@ spark gateway <subcommand>
 | `setup` | Interactive messaging-platform setup |
 
 :::tip WSL users
-Use `spark gateway run` instead of `spark gateway start` — WSL's systemd support is unreliable. Wrap it in tmux for persistence: `tmux new -s spark 'spark gateway run'`. See [WSL FAQ](/docs/reference/faq#wsl-gateway-keeps-disconnecting-or-spark-gateway-start-fails) for details.
+Use `spark gateway run` instead of `spark gateway start` — WSL's systemd support is unreliable. Wrap it in tmux for persistence: `tmux new -s spark 'spark gateway run'`. See [WSL FAQ](../reference/faq.md#wsl-gateway-keeps-disconnecting-or-spark-gateway-start-fails) for details.
 :::
 
 ---
@@ -211,7 +211,7 @@ spark auth reset openrouter                             # Clear cooldowns
 
 Subcommands: `add`, `list`, `remove`, `reset`. No subcommand opens the interactive wizard.
 
-See [Credential Pools](/docs/providers/credential-pools) for the full reference.
+See [Credential Pools](../providers/credential-pools.md) for the full reference.
 
 :::caution
 `spark login` has been removed. Use `spark auth` to manage OAuth credentials, `spark model` to select a provider, or `spark setup` for full interactive setup.
@@ -772,7 +772,7 @@ spark dashboard --port 8080 --no-open  # Custom port, no browser
 spark dashboard --host 127.0.0.1       # Local-only
 ```
 
-See [Web Dashboard](/docs/integrations/web-dashboard) for full documentation.
+See [Web Dashboard](../integrations/web-dashboard.md) for full documentation.
 
 ---
 

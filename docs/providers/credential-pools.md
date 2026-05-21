@@ -9,7 +9,7 @@ sidebar_position: 9
 
 Hit a rate limit? Spark rotates to your next healthy key automatically — no interruptions, no manual intervention. Credential pools let you register multiple API keys or OAuth tokens for the same provider and Spark handles the switching.
 
-This is different from [fallback providers](./fallback-providers.md), which switch to a *different* provider. Credential pools rotate within the same provider. Pools are tried first — if every key is exhausted, *then* the fallback provider activates.
+This is different from [fallback providers](./fallback.md), which switch to a *different* provider. Credential pools rotate within the same provider. Pools are tried first — if every key is exhausted, *then* the fallback provider activates.
 
 ## How Rotation Works
 

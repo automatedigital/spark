@@ -185,6 +185,6 @@ Or by editing `~/.spark/.env` directly.
 
 ## See also
 
-- [ACP Internals](../../building/editor-extension-internals.md)
-- [Provider Runtime Resolution](../../building/provider-runtime.md)
-- [Tools Runtime](../../building/tools-runtime.md)
+- [ACP Internals](../building/editor-extension-internals.md)
+- [Provider Runtime Resolution](../building/provider-runtime.md)
+- [Tools Runtime](../building/tools-runtime.md)

@@ -27,7 +27,7 @@ The engine owns four responsibilities:
 2. Check general plugin system (`register_context_engine()`)
 3. Fall back to built-in `ContextCompressor`
 
-Plugin engines are never auto-activated. The user must explicitly set `context.engine`. To build your own, see [Context Engine Plugins](/docs/building/context-engine-plugin).
+Plugin engines are never auto-activated. The user must explicitly set `context.engine`. To build your own, see [Context Engine Plugins](context-engine-plugin.md).
 
 Configure via `spark plugins` → Provider Plugins → Context Engine, or edit `config.yaml` directly.
 

@@ -8,7 +8,7 @@ description: "When and how to use subagent delegation - patterns for parallel re
 
 Spark can spawn isolated child agents and run them in parallel. Each subagent gets its own conversation, terminal session, and toolset. Only the final summary comes back — intermediate tool calls never enter your context window.
 
-For the full feature reference, see [Subagent Delegation](/docs/tools/delegation).
+For the full feature reference, see [Subagent Delegation](../tools/delegation.md).
 
 ---
 
@@ -238,4 +238,4 @@ Restricting toolsets keeps the subagent focused and prevents accidental side eff
 
 ---
 
-*For the complete delegation reference — all parameters, ACP integration, and advanced configuration — see [Subagent Delegation](/docs/tools/delegation).*
+*For the complete delegation reference — all parameters, ACP integration, and advanced configuration — see [Subagent Delegation](../tools/delegation.md).*

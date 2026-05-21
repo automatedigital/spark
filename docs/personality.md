@@ -165,11 +165,11 @@ These are two separate systems:
 - `SOUL.md`, `agent.system_prompt`, and `/personality` — change how Spark speaks
 - `display.skin` and `/skin` — change how Spark looks in the terminal
 
-For terminal appearance, see [Skins & Themes](./skins.md).
+For terminal appearance, see [Skins & Themes](./cli/skins.md).
 
 ## Related Docs
 
-- [Context Files](/docs/tools/context-files)
-- [Configuration](/docs/configuration)
-- [Tips & Best Practices](/docs/guides/tips-and-tricks)
-- [SOUL.md Guide](/docs/guides/define-personality-with-soul)
+- [Context Files](tools/context-files.md)
+- [Configuration](configuration.md)
+- [Tips & Best Practices](guides/tips-and-tricks.md)
+- [SOUL.md Guide](guides/define-personality-with-soul.md)

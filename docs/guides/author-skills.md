@@ -8,7 +8,7 @@ description: "Find, install, use, and create skills - on-demand knowledge that t
 
 Skills are knowledge documents you drop into Spark to teach it new workflows — from generating ASCII art to managing GitHub pull requests. They only cost tokens when actually used, and they're as easy to build as writing a markdown file.
 
-For the full technical reference, see [Skills System](/docs/skills).
+For the full technical reference, see [Skills System](../skills/index.md).
 
 ---
 
@@ -242,4 +242,4 @@ If you'd put it in a reference doc, it's a skill. If you'd put it on a sticky no
 
 ---
 
-*For the complete skills reference — frontmatter fields, conditional activation, external directories, and more — see [Skills System](/docs/skills).*
+*For the complete skills reference — frontmatter fields, conditional activation, external directories, and more — see [Skills System](../skills/index.md).*

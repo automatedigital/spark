@@ -287,7 +287,7 @@ Or set the `SPARK_CRON_SCRIPT_TIMEOUT` environment variable. Resolution order: e
 
 Cron jobs inherit your fallback providers and credential pool rotation. If the primary API key is rate-limited, the cron agent can fall back to an alternate provider or rotate to the next credential in your pool.
 
-See: [credential pool strategies](/docs/configuration#credential-pool-strategies).
+See: [credential pool strategies](../configuration.md#credential-pool-strategies).
 
 ## Writing Self-Contained Prompts
 

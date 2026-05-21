@@ -9,7 +9,7 @@ description: "How to build a memory provider plugin for Spark Agent"
 Memory provider plugins give Spark persistent, cross-session knowledge that goes beyond the built-in `MEMORY.md` and `USER.md`. With a plugin, you connect any external backend — a vector store, a hosted service, your own database — and Spark will use it automatically every session.
 
 :::tip
-Memory providers are one of two **provider plugin** types. The other is [Context Engine Plugins](/docs/building/context-engine-plugin), which replace the built-in context compressor. Both follow the same pattern: single-select, config-driven, managed via `spark plugins`.
+Memory providers are one of two **provider plugin** types. The other is [Context Engine Plugins](context-engine-plugin.md), which replace the built-in context compressor. Both follow the same pattern: single-select, config-driven, managed via `spark plugins`.
 :::
 
 ## What You're Building

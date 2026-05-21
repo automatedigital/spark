@@ -35,7 +35,7 @@ Type `/` in the CLI to open the autocomplete menu. Built-in commands are case-in
 | `/queue <prompt>` (alias: `/q`) | Queue a prompt for the next turn — doesn't interrupt the current agent response. **Note:** `/q` is claimed by both `/queue` and `/quit`; the last registration wins, so `/q` resolves to `/quit` in practice. Use `/queue` explicitly. |
 | `/resume [name]` | Resume a previously-named session |
 | `/status` | Show session info |
-| `/background <prompt>` (alias: `/bg`) | Run a prompt in a separate background session. Your current session stays free while the agent works independently. Results appear as a panel when the task finishes. See [CLI Background Sessions](/docs/cli#background-sessions). |
+| `/background <prompt>` (alias: `/bg`) | Run a prompt in a separate background session. Your current session stays free while the agent works independently. Results appear as a panel when the task finishes. See [CLI Background Sessions](index.md#background-sessions). |
 | `/btw <question>` | Ask a quick side question using session context — no tools, not persisted. Useful for quick clarifications without affecting conversation history. |
 | `/plan [request]` | Load the bundled `plan` skill to write a markdown plan instead of executing work. Plans are saved under `.spark/plans/` relative to the active workspace/backend working directory. |
 | `/branch [name]` (alias: `/fork`) | Branch the current session to explore a different path |
@@ -140,7 +140,7 @@ These commands work inside Telegram, Discord, Slack, WhatsApp, Signal, Email, an
 | `/voice [on\|off\|tts\|join\|channel\|leave\|status]` | Control spoken replies in chat. `join`/`channel`/`leave` manage Discord voice-channel mode. |
 | `/rollback [number]` | List or restore filesystem checkpoints |
 | `/snapshot [create\|restore <id>\|prune]` (alias: `/snap`) | Create or restore state snapshots of Spark config/state |
-| `/background <prompt>` | Run a prompt in a separate background session. Results are delivered back to the same chat when the task finishes. See [Messaging Background Sessions](/docs/chat-platforms/#background-sessions). |
+| `/background <prompt>` | Run a prompt in a separate background session. Results are delivered back to the same chat when the task finishes. See [Messaging Background Sessions](../chat-platforms/index.md#background-sessions). |
 | `/plan [request]` | Load the bundled `plan` skill to write a markdown plan instead of executing work. Plans are saved under `.spark/plans/` relative to the active workspace/backend working directory. |
 | `/reload-mcp` (alias: `/reload_mcp`) | Reload MCP servers from config |
 | `/reload` | Reload `.env` variables into the running session |

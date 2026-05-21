@@ -20,7 +20,7 @@ The Python environment framework documented here lives under `environments/` and
 
 :::tip Quick Links
 - **Run benchmarks?** Jump to [Available Benchmarks](#available-benchmarks)
-- **Train with RL?** See [RL Training Tools](/docs/automate/model-training) for the agent-driven interface, or [Running Environments](#running-environments) for manual execution
+- **Train with RL?** See [RL Training Tools](../automate/model-training.md) for the agent-driven interface, or [Running Environments](#running-environments) for manual execution
 - **Create a new environment?** See [Creating Environments](#creating-environments)
 :::
 
@@ -489,7 +489,7 @@ python my_env.py evaluate \
 - `WANDB_API_KEY` — for Weights & Biases metrics tracking
 - The `tinker-atropos` submodule (at `tinker-atropos/` in the repo)
 
-See [RL Training](/docs/automate/model-training) for the agent-driven RL workflow.
+See [RL Training](../automate/model-training.md) for the agent-driven RL workflow.
 
 ## Directory structure
 

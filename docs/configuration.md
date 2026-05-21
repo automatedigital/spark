@@ -69,7 +69,7 @@ delegation:
 
 Multiple references in one value work: `url: "${HOST}:${PORT}"`. Undefined variables stay verbatim (`${UNDEFINED_VAR}`). Only `${VAR}` syntax is supported — bare `$VAR` is not expanded.
 
-For AI provider setup (OpenRouter, Anthropic, Copilot, custom endpoints, self-hosted LLMs, fallback models), see [AI Providers](/docs/integrations/providers).
+For AI provider setup (OpenRouter, Anthropic, Copilot, custom endpoints, self-hosted LLMs, fallback models), see [AI Providers](integrations/providers.md).
 
 ---
 
@@ -99,7 +99,7 @@ terminal:
 
 For cloud sandboxes (Modal, Daytona): `container_persistent: true` preserves filesystem state across sandbox recreation — but does not guarantee the same live sandbox, PID space, or background processes remain running.
 
-Full tables and security notes: see [cli-config.yaml.example](cli-config.yaml.example) and [Tools](../tools/index.md).
+Full tables and security notes: see [cli-config.yaml.example](cli-config.yaml.example) and [Tools](tools/index.md).
 
 ---
 
@@ -124,7 +124,7 @@ Set values manually:
 spark config set skills.config.wiki.path ~/my-research-wiki
 ```
 
-See [Creating Skills - Config Settings](/docs/building/creating-skills#config-settings-configyaml) for how to declare settings in your own skills.
+See [Creating Skills - Config Settings](building/creating-skills.md#config-settings-configyaml) for how to declare settings in your own skills.
 
 ---
 
@@ -329,7 +329,7 @@ credential_pool_strategies:
   anthropic: least_used      # always pick the least-used key
 ```
 
-Options: `fill_first` (default), `round_robin`, `least_used`, `random`. See [Credential Pools](/docs/providers/credential-pools).
+Options: `fill_first` (default), `round_robin`, `least_used`, `random`. See [Credential Pools](providers/credential-pools.md).
 
 ---
 
@@ -558,7 +558,7 @@ voice:
   silence_duration: 3.0
 ```
 
-Use `/voice on` to enable microphone mode. Press `record_key` to start/stop. Use `/voice tts` to toggle spoken replies. See [Voice Mode](/docs/voice/voice-mode) for full setup.
+Use `/voice on` to enable microphone mode. Press `record_key` to start/stop. Use `/voice tts` to toggle spoken replies. See [Voice Mode](voice/voice-mode.md) for full setup.
 
 ---
 
@@ -601,7 +601,7 @@ group_sessions_per_user: true  # true = per-user isolation, false = one shared s
 
 With `true` (default): Alice and Bob each get their own session in shared channels. With `false`: everyone shares one context, token budget, and interrupt state.
 
-Direct messages are unaffected. See [Sessions](/docs/sessions) and the [Discord guide](/docs/chat-platforms/discord) for more.
+Direct messages are unaffected. See [Sessions](sessions.md) and the [Discord guide](chat-platforms/discord.md) for more.
 
 ---
 
@@ -698,7 +698,7 @@ browser:
     managed_persistence: false   # Persist cookies/logins across restarts
 ```
 
-See the [Browser feature page](/docs/tools/browser) for details on Browserbase, Browser Use, and local Chrome CDP setup.
+See the [Browser feature page](tools/browser.md) for details on Browserbase, Browser Use, and local Chrome CDP setup.
 
 ---
 
@@ -829,7 +829,7 @@ approvals:
 
 ## Checkpoints
 
-Automatic filesystem snapshots before destructive operations. See [Checkpoints & Rollback](/docs/checkpoints) for full details.
+Automatic filesystem snapshots before destructive operations. See [Checkpoints & Rollback](checkpoints.md) for full details.
 
 ```yaml
 checkpoints:
@@ -877,7 +877,7 @@ clarify:
 
 Project context files use a priority system — only ONE type is loaded (first match wins): `.spark.md` -> `AGENTS.md` -> `CLAUDE.md` -> `.cursorrules`. SOUL.md is always loaded independently.
 
-See also: [Personality & SOUL.md](/docs/personality) and [Context Files](/docs/tools/context-files).
+See also: [Personality & SOUL.md](personality.md) and [Context Files](tools/context-files.md).
 
 ---
 

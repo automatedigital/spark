@@ -221,7 +221,7 @@ auxiliary:
 
 ### Provider Options for Auxiliary Tasks
 
-These options apply to `auxiliary:`, `compression:`, and `fallback_model:` — `"main"` is **not** valid for your top-level `model.provider`. For custom endpoints at the top level, use `provider: custom` (see [AI Providers](/docs/integrations/providers)).
+These options apply to `auxiliary:`, `compression:`, and `fallback_model:` — `"main"` is **not** valid for your top-level `model.provider`. For custom endpoints at the top level, use `provider: custom` (see [AI Providers](../integrations/providers.md)).
 
 | Provider | Description | Requirements |
 |----------|-------------|-------------|
@@ -279,7 +279,7 @@ delegation:
   # api_key: "local-key"
 ```
 
-See [Subagent Delegation](/docs/tools/delegation) for full configuration details.
+See [Subagent Delegation](../tools/delegation.md) for full configuration details.
 
 ---
 
@@ -297,7 +297,7 @@ cronjob(
 )
 ```
 
-See [Scheduled Tasks (Cron)](/docs/automate/cron) for full configuration details.
+See [Scheduled Tasks (Cron)](../automate/cron.md) for full configuration details.
 
 ---
 

@@ -243,4 +243,4 @@ The PID file lives at `~/.spark/gateway.pid`, scoped per profile. `spark gateway
 - [Cron Internals](./cron-internals.md)
 - [ACP Internals](./editor-extension-internals.md)
 - [Agent Loop Internals](./agent-loop.md)
-- [Messaging Gateway (User Guide)](/docs/chat-platforms)
+- [Messaging Gateway (User Guide)](../chat-platforms/index.md)

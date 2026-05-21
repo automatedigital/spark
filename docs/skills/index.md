@@ -14,8 +14,8 @@ You can also point Spark at **external skill directories** — additional folder
 
 See also:
 
-- [Bundled Skills Catalog](/docs/skills/catalog)
-- [Official Optional Skills Catalog](/docs/skills/optional-catalog)
+- [Bundled Skills Catalog](catalog.md)
+- [Official Optional Skills Catalog](optional-catalog.md)
 
 ---
 
@@ -152,7 +152,7 @@ required_environment_variables:
 
 When a missing value is encountered, Spark asks for it securely — but only in the local CLI when the skill is actually loaded. You can skip setup and keep using the skill. Messaging surfaces never ask for secrets in chat; they tell you to use `spark setup` or `~/.spark/.env` locally instead.
 
-Once set, declared env vars are **automatically passed through** to `execute_code` and `terminal` sandboxes — the skill's scripts can use `$TENOR_API_KEY` directly. For non-skill env vars, use the `terminal.env_passthrough` config option. See [Environment Variable Passthrough](/docs/configuration#environment-variable-passthrough) for details.
+Once set, declared env vars are **automatically passed through** to `execute_code` and `terminal` sandboxes — the skill's scripts can use `$TENOR_API_KEY` directly. For non-skill env vars, use the `terminal.env_passthrough` config option. See [Environment Variable Passthrough](../configuration.md#environment-variable-passthrough) for details.
 
 ### Skill Config Settings
 
@@ -170,7 +170,7 @@ metadata:
 
 Settings are stored under `skills.config` in your `config.yaml`. `spark config migrate` prompts for unconfigured settings; `spark config show` displays them. When a skill loads, its resolved config values are injected automatically into the context.
 
-See [Skill Settings](/docs/configuration#skill-settings) and [Creating Skills - Config Settings](/docs/building/creating-skills#config-settings-configyaml) for details.
+See [Skill Settings](../configuration.md#skill-settings) and [Creating Skills - Config Settings](../building/creating-skills.md#config-settings-configyaml) for details.
 
 ---
 

@@ -359,14 +359,14 @@ All hooks accept `**kwargs` for forward compatibility. If a callback crashes, it
 
 | Hook | Fires when | Signature |
 |------|-----------|-----------|
-| [`pre_tool_call`](/docs/tools/hooks#pre_tool_call) | Before any tool executes | `tool_name, args, task_id` |
-| [`post_tool_call`](/docs/tools/hooks#post_tool_call) | After any tool returns | `tool_name, args, result, task_id` |
-| [`pre_llm_call`](/docs/tools/hooks#pre_llm_call) | Before the tool-calling loop | `session_id, user_message, conversation_history, is_first_turn, model, platform` |
-| [`post_llm_call`](/docs/tools/hooks#post_llm_call) | After the tool-calling loop (successful turns) | `session_id, user_message, assistant_response, conversation_history, model, platform` |
-| [`on_session_start`](/docs/tools/hooks#on_session_start) | New session created | `session_id, model, platform` |
-| [`on_session_end`](/docs/tools/hooks#on_session_end) | End of every conversation | `session_id, completed, interrupted, model, platform` |
-| [`pre_api_request`](/docs/tools/hooks#pre_api_request) | Before each HTTP request to the LLM | `method, url, headers, body` |
-| [`post_api_request`](/docs/tools/hooks#post_api_request) | After each HTTP response | `method, url, status_code, response` |
+| [`pre_tool_call`](../tools/hooks.md#pre_tool_call) | Before any tool executes | `tool_name, args, task_id` |
+| [`post_tool_call`](../tools/hooks.md#post_tool_call) | After any tool returns | `tool_name, args, result, task_id` |
+| [`pre_llm_call`](../tools/hooks.md#pre_llm_call) | Before the tool-calling loop | `session_id, user_message, conversation_history, is_first_turn, model, platform` |
+| [`post_llm_call`](../tools/hooks.md#post_llm_call) | After the tool-calling loop (successful turns) | `session_id, user_message, assistant_response, conversation_history, model, platform` |
+| [`on_session_start`](../tools/hooks.md#on_session_start) | New session created | `session_id, model, platform` |
+| [`on_session_end`](../tools/hooks.md#on_session_end) | End of every conversation | `session_id, completed, interrupted, model, platform` |
+| [`pre_api_request`](../tools/hooks.md#pre_api_request) | Before each HTTP request to the LLM | `method, url, headers, body` |
+| [`post_api_request`](../tools/hooks.md#post_api_request) | After each HTTP response | `method, url, status_code, response` |
 
 ### `pre_llm_call` context injection
 
@@ -518,6 +518,6 @@ def handler(args, **kwargs):
 
 :::tip
 This guide covers general plugins (tools, hooks, CLI commands). For specialized types, see:
-- [Memory Provider Plugins](/docs/building/memory-provider-plugin) — cross-session knowledge backends
-- [Context Engine Plugins](/docs/building/context-engine-plugin) — alternative context management strategies
+- [Memory Provider Plugins](../building/memory-provider-plugin.md) — cross-session knowledge backends
+- [Context Engine Plugins](../building/context-engine-plugin.md) — alternative context management strategies
 :::

@@ -29,7 +29,7 @@ Spark ships with a broad built-in registry: web search, browser automation, term
 | **Automation & delivery** | `cronjob`, `send_message` | Schedule tasks and send outbound messages |
 | **Integrations** | `ha_*`, MCP server tools, `rl_*` | Home Assistant, MCP, RL training, and more |
 
-For the authoritative code-derived registry, see [Built-in Tools Reference](/docs/reference/tools-reference) and [Toolsets Reference](/docs/reference/toolsets-reference).
+For the authoritative code-derived registry, see [Built-in Tools Reference](../reference/tools-reference.md) and [Toolsets Reference](../reference/toolsets-reference.md).
 
 ---
 
@@ -48,7 +48,7 @@ spark tools
 
 Common toolsets: `web`, `terminal`, `file`, `browser`, `vision`, `image_gen`, `moa`, `skills`, `tts`, `todo`, `memory`, `session_search`, `cronjob`, `code_execution`, `delegation`, `clarify`, `homeassistant`, and `rl`.
 
-See [Toolsets Reference](/docs/reference/toolsets-reference) for the full set, including platform presets like `spark-cli` and `spark-telegram`, and dynamic MCP toolsets like `mcp-<server>`.
+See [Toolsets Reference](../reference/toolsets-reference.md) for the full set, including platform presets like `spark-cli` and `spark-telegram`, and dynamic MCP toolsets like `mcp-<server>`.
 
 ---
 

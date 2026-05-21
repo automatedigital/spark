@@ -20,10 +20,10 @@ Here's the full flow:
 
 | Requirement | Details |
 |-------------|---------|
-| Spark Agent installed | [Installation guide](/docs/getting-started/installation) |
+| Spark Agent installed | [Installation guide](../getting-started/installation.md) |
 | Gateway running | `spark gateway install` or `spark gateway` for foreground |
 | Firecrawl API key | Set `FIRECRAWL_API_KEY` in your environment |
-| Messaging configured | [Telegram](/docs/chat-platforms/telegram) or Discord with a home channel (optional) |
+| Messaging configured | [Telegram](../chat-platforms/telegram.md) or Discord with a home channel (optional) |
 
 ```bash
 spark gateway install                      # Install as a user service
@@ -156,7 +156,7 @@ Delegate each topic to a sub-agent so they run simultaneously:
 Collect all results and combine them into a single clean briefing with section headers, emoji formatting, and source links. Add today's date as a header."
 ```
 
-Each sub-agent searches independently, then the main agent combines everything. See the [Delegation docs](/docs/tools/delegation) for details.
+Each sub-agent searches independently, then the main agent combines everything. See the [Delegation docs](../tools/delegation.md) for details.
 
 ### Weekdays Only
 
@@ -238,11 +238,11 @@ sudo spark gateway install --system
 
 ## What's Next
 
-- **[Scheduled Tasks (Cron)](/docs/automate/cron)** — schedule formats, repeat limits, delivery options
-- **[Delegation](/docs/tools/delegation)** — parallel sub-agent workflows in depth
-- **[Messaging Platforms](/docs/chat-platforms)** — Telegram, Discord, and other delivery targets
-- **[Memory](/docs/memory)** — persistent context across sessions
-- **[Tips & Best Practices](/docs/guides/tips-and-tricks)** — more prompt engineering advice
+- **[Scheduled Tasks (Cron)](../automate/cron.md)** — schedule formats, repeat limits, delivery options
+- **[Delegation](../tools/delegation.md)** — parallel sub-agent workflows in depth
+- **[Messaging Platforms](../chat-platforms/index.md)** — Telegram, Discord, and other delivery targets
+- **[Memory](../memory/index.md)** — persistent context across sessions
+- **[Tips & Best Practices](tips-and-tricks.md)** — more prompt engineering advice
 
 :::tip What else can you schedule?
 The briefing bot pattern works for anything: competitor monitoring, GitHub summaries, weather, portfolio tracking, server health checks, even a daily joke. If you can describe it in a prompt, you can schedule it.

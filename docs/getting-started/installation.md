@@ -70,7 +70,7 @@ Prefer to do it yourself? Here's the full process:
    npm install                             # browser tools or WhatsApp
    ```
 
-5. **Create your config folder**: `mkdir -p ~/.spark/{cron,sessions,logs,memories,skills,...}` — see [Configuration](/docs/configuration). Copy `docs/cli-config.yaml.example` to `~/.spark/config.yaml` and add your API keys to `~/.spark/.env`.
+5. **Create your config folder**: `mkdir -p ~/.spark/{cron,sessions,logs,memories,skills,...}` — see [Configuration](../configuration.md). Copy `docs/cli-config.yaml.example` to `~/.spark/config.yaml` and add your API keys to `~/.spark/.env`.
 
 6. **Add to PATH**:
    ```bash

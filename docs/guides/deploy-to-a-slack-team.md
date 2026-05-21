@@ -6,7 +6,7 @@ description: "Wire Spark's gateway to a Slack workspace."
 
 # Deploy to a Slack Team
 
-The [Slack messaging doc](/docs/chat-platforms/slack) is your source of truth for tokens, scopes, and event configuration. This page gives you the outline.
+The [Slack messaging doc](../chat-platforms/slack.md) is your source of truth for tokens, scopes, and event configuration. This page gives you the outline.
 
 ## Steps
 
@@ -18,7 +18,7 @@ The [Slack messaging doc](/docs/chat-platforms/slack) is your source of truth fo
    ```
    Add any signing secret the same way.
 
-3. **Enable Slack in your config.** Set `slack` (or the equivalent key) in [configuration](/docs/configuration) so the gateway activates the Slack adapter.
+3. **Enable Slack in your config.** Set `slack` (or the equivalent key) in [configuration](../configuration.md) so the gateway activates the Slack adapter.
 
 4. **Start the gateway** for that profile:
    ```bash
@@ -31,8 +31,8 @@ The [Slack messaging doc](/docs/chat-platforms/slack) is your source of truth fo
 
 ## Multiple Workspaces
 
-Need separate tokens and session data per workspace? Use separate [profiles](/docs/cli/profiles) — one per workspace.
+Need separate tokens and session data per workspace? Use separate [profiles](../cli/profiles.md) — one per workspace.
 
 ## See Also
 
-- [Slash commands reference](/docs/cli/slash-commands) (gateway routing)
+- [Slash commands reference](../cli/slash-commands.md) (gateway routing)
