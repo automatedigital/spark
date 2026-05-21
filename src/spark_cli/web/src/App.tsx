@@ -317,7 +317,10 @@ export default function App() {
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-col h-full overflow-hidden md:col-start-2">
+        <div className="relative flex min-w-0 flex-col h-full overflow-hidden md:col-start-2">
+          {navHovered && !navExpanded && (
+            <div className="pointer-events-none absolute inset-0 z-10 bg-background/40 backdrop-blur-sm transition-opacity duration-200" />
+          )}
           <header className="sticky top-0 z-40 border-b border-border bg-background/82 backdrop-blur-xl">
             <div className="flex min-h-16 items-center gap-3 px-3 sm:px-6">
               <div className="flex items-center gap-3 md:hidden">
@@ -366,10 +369,7 @@ export default function App() {
           <main
             key={animKey}
             className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto min-h-0 w-full max-w-[1480px] flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-8"}
-            style={{
-              animation: "fade-in 150ms ease-out",
-              ...(navHovered && !navExpanded ? { filter: "blur(4px) brightness(1.4)", transition: "filter 200ms ease" } : { transition: "filter 200ms ease" }),
-            }}
+            style={{ animation: "fade-in 150ms ease-out" }}
           >
             {authChecking ? (
               <div className="mx-auto mt-24 max-w-md rounded-sm border border-border bg-card/90 p-6 text-sm text-muted-foreground shadow-2xl">
