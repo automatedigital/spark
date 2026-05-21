@@ -4514,8 +4514,6 @@ def cmd_update(args):
         if sys.platform == "win32":
             use_zip_update = True
         else:
-            from core.spark_constants import get_spark_home
-
             spark_home = get_spark_home()
             install_cmd = (
                 "curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install.sh "

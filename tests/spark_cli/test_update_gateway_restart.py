@@ -47,7 +47,23 @@ def _make_run_side_effect(
         if "rev-list" in joined:
             return subprocess.CompletedProcess(cmd, 0, stdout=f"{commit_count}\n", stderr="")
 
-        # systemctl list-units spark-gateway* — discover all gateway services
+        # systemctl list-unit-files spark-gateway* — discover installed units
+        if "systemctl" in joined and "list-unit-files" in joined:
+            if "--user" in joined and systemd_active:
+                return subprocess.CompletedProcess(
+                    cmd, 0,
+                    stdout="spark-gateway.service enabled enabled\n",
+                    stderr="",
+                )
+            elif "--user" not in joined and system_service_active:
+                return subprocess.CompletedProcess(
+                    cmd, 0,
+                    stdout="spark-gateway.service enabled enabled\n",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        # systemctl list-units spark-gateway* — legacy fallback (kept for _get_service_pids)
         if "systemctl" in joined and "list-units" in joined:
             if "--user" in joined and systemd_active:
                 return subprocess.CompletedProcess(
@@ -96,6 +112,26 @@ def _make_run_side_effect(
 @pytest.fixture
 def mock_args():
     return SimpleNamespace()
+
+
+@pytest.fixture(autouse=True)
+def patch_project_root(tmp_path, monkeypatch):
+    """Make PROJECT_ROOT point to a temp dir that has a .git folder, and
+    suppress helpers that would block or slow down tests.
+
+    - PROJECT_ROOT: cmd_update checks for .git here; src/ doesn't have one.
+    - _maybe_offer_cua_driver: in gateway mode this calls _gateway_prompt()
+      which sleeps in a file-IPC loop — patch it out entirely.
+    - time.sleep: the update path sleeps 1s and 7s after restarting services;
+      skip those in tests.
+    """
+    import time
+    import spark_cli.main as main_mod
+    fake_git = tmp_path / ".git"
+    fake_git.mkdir()
+    monkeypatch.setattr(main_mod, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(main_mod, "_maybe_offer_cua_driver", lambda **kw: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
 
 # ---------------------------------------------------------------------------
@@ -346,31 +382,29 @@ class TestCmdUpdateLaunchdRestart:
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
-    def test_update_without_launchd_shows_manual_restart(
+    def test_update_without_launchd_auto_restarts_manual_gateway(
         self, mock_run, _mock_which, mock_args, capsys, tmp_path, monkeypatch,
     ):
-        """When no service manager is running but manual gateway is found, show manual restart hint."""
-        monkeypatch.setattr(
-            gateway_cli, "is_macos", lambda: True,
-        )
+        """When no service manager is running but a manual gateway is found,
+        update kills it and auto-restarts it in the background."""
+        monkeypatch.setattr(gateway_cli, "is_macos", lambda: True)
         plist_path = tmp_path / "ai.spark.gateway.plist"
         # plist does NOT exist — no launchd service
-        monkeypatch.setattr(
-            gateway_cli, "get_launchd_plist_path", lambda: plist_path,
-        )
+        monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
 
         mock_run.side_effect = _make_run_side_effect(
             commit_count="3",
             launchctl_loaded=False,
         )
 
-        # Simulate a manual gateway process found by find_gateway_pids
+        mock_popen = MagicMock()
         with patch.object(gateway_cli, "find_gateway_pids", return_value=[12345]), \
-             patch("os.kill"):
+             patch("os.kill"), \
+             patch("subprocess.Popen", return_value=mock_popen):
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Restart manually: spark gateway run" in captured
+        assert "Restarted gateway (background)" in captured
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
@@ -650,8 +684,8 @@ class TestServicePidExclusion:
         # Service PID should NOT be killed
         service_kills = [c for c in mock_kill.call_args_list if c.args[0] == SERVICE_PID]
         assert len(service_kills) == 0
-        # Should show manual stop message since manual PID was killed
-        assert "Stopped 1 manual gateway" in captured
+        # Manual gateway should be auto-restarted in the background
+        assert "Restarted gateway (background)" in captured
 
 
 class TestGetServicePids:
