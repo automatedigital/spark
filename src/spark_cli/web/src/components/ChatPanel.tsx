@@ -271,7 +271,6 @@ export function ChatPanel({
   onBack,
   onSessionCreated,
   onSessionUpdated,
-  sessionTitle,
   initialMessage,
   workspaceSlug,
   className,
@@ -839,9 +838,6 @@ export function ChatPanel({
           </Button>
         )}
         <div className="flex flex-col gap-1 min-w-0 flex-1">
-          <span className="text-sm font-semibold truncate">
-            {activeSessionId ? sessionTitle || "Conversation" : "New thread"}
-          </span>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusPill streaming={streaming} label={statusLabel} />
             {forkInfo?.parentSessionId && (

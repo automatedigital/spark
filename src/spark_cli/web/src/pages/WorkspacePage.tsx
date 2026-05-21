@@ -2083,20 +2083,6 @@ export default function WorkspacePage() {
               </div>
             )}
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-            onClick={() => {
-              setActiveThreadId(null);
-              setActiveSession(null);
-              setEditingTitle(false);
-              setPendingInitialMsg(null);
-            }}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-            All threads
-          </Button>
         </div>
 
         <ChatPanel
