@@ -1563,10 +1563,19 @@ _EMPTY_MODEL_INFO: dict = {
 
 @app.get("/api/model/codex-usage")
 def get_codex_usage():
-    """Fetch OpenAI Codex usage limits from the ChatGPT backend API.
+    """Return Codex provider status and any captured usage-limit state.
 
-    Only returns data when the current provider is openai-codex and the user
-    is authenticated.  Returns ``{"available": false}`` otherwise.
+    The ChatGPT backend ``usage_limits`` endpoint is Cloudflare-protected and
+    requires browser session cookies — it cannot be called server-side with the
+    Codex OAuth token.  The Codex Responses API also does not return
+    x-ratelimit-* headers.  Instead, this endpoint surfaces:
+
+    1. ``provider_connected`` — whether the provider is openai-codex and the
+       user is authenticated (always available when Codex is configured).
+    2. ``limit_hit`` — non-null when a ``usage_limit_reached`` error was
+       detected during a recent inference turn, including reset info.
+    3. ``rate_limit`` — the last x-ratelimit-* state from any active web agent,
+       if the provider returned those headers (most non-Codex providers do).
     """
     try:
         cfg = load_config()
@@ -1580,32 +1589,58 @@ def get_codex_usage():
             return {"available": False, "reason": "not_codex_provider"}
 
         from spark_cli.auth import get_codex_auth_status
-        import httpx
 
         status = get_codex_auth_status()
         if not status.get("logged_in"):
             return {"available": False, "reason": "not_authenticated"}
 
-        access_token = status.get("api_key", "")
-        if not access_token:
-            return {"available": False, "reason": "no_access_token"}
+        # Build the response from what we actually have
+        result: Dict[str, Any] = {
+            "available": True,
+            "provider_connected": True,
+            "limit_hit": None,
+            "rate_limit": None,
+        }
 
+        # Last known usage-limit-hit state (set by _maybe_capture_codex_usage_limit)
+        if _codex_usage_limit_hit:
+            hit_age = time.time() - _codex_usage_limit_hit.get("hit_at", 0)
+            resets_at = _codex_usage_limit_hit.get("resets_at")
+            resets_in = _codex_usage_limit_hit.get("resets_in_seconds")
+            # Expire the hit record if its reset window has passed
+            if resets_at and time.time() > resets_at:
+                pass  # expired — omit
+            else:
+                result["limit_hit"] = {
+                    "hit_age_seconds": int(hit_age),
+                    "resets_at": resets_at,
+                    "resets_in_seconds": resets_in,
+                }
+
+        # Rate-limit headers from any active web agent (for providers that send them)
         try:
-            resp = httpx.get(
-                "https://chatgpt.com/backend-api/usage_limits",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json",
-                },
-                timeout=8.0,
-            )
-            if resp.status_code != 200:
-                return {"available": False, "reason": f"api_error_{resp.status_code}"}
-            data = resp.json()
-            return {"available": True, "data": data}
-        except Exception as exc:
-            _log.debug("Codex usage API error: %s", exc)
-            return {"available": False, "reason": "fetch_error"}
+            for agent in list(_web_agents.values()):
+                rl = agent.get_rate_limit_state() if hasattr(agent, "get_rate_limit_state") else None
+                if rl and rl.has_data:
+                    from agent.rate_limit_tracker import RateLimitState
+                    result["rate_limit"] = {
+                        "requests_min": {
+                            "limit": rl.requests_min.limit,
+                            "remaining": rl.requests_min.remaining,
+                            "reset_seconds": rl.requests_min.remaining_seconds_now,
+                        },
+                        "requests_hour": {
+                            "limit": rl.requests_hour.limit,
+                            "remaining": rl.requests_hour.remaining,
+                            "reset_seconds": rl.requests_hour.remaining_seconds_now,
+                        },
+                        "captured_age_seconds": int(rl.age_seconds),
+                    }
+                    break
+        except Exception:
+            pass
+
+        return result
     except Exception:
         _log.exception("GET /api/model/codex-usage failed")
         return {"available": False, "reason": "internal_error"}
@@ -3259,6 +3294,10 @@ _web_queues: Dict[str, asyncio.Queue] = {}   # session_id → token queue (activ
 _web_agents: Dict[str, Any] = {}             # session_id → AIAgent (multi-turn context)
 _web_agent_signatures: Dict[str, Any] = {}    # session_id → effective model/runtime signature
 
+# Codex usage-limit hit state — updated when a usage_limit_reached error occurs during inference.
+# Shape: {"hit_at": float, "resets_at": float | None, "resets_in_seconds": int | None}
+_codex_usage_limit_hit: Dict[str, Any] = {}
+
 
 class KanbanUpdate(BaseModel):
     status: str
@@ -3784,10 +3823,50 @@ def _run_web_agent_turn(
     tok = set_current_session_key(agent.session_id)
     try:
         if conversation_history is not None:
-            return agent.run_conversation(user_message, conversation_history=conversation_history)
-        return agent.run_conversation(user_message)
+            result = agent.run_conversation(user_message, conversation_history=conversation_history)
+        else:
+            result = agent.run_conversation(user_message)
+        _maybe_capture_codex_usage_limit(agent, result)
+        return result
     finally:
         reset_current_session_key(tok)
+
+
+def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
+    """Detect usage_limit_reached signals and store them in _codex_usage_limit_hit."""
+    global _codex_usage_limit_hit
+    try:
+        provider = str(getattr(agent, "provider", "") or "").lower()
+        if "codex" not in provider and "chatgpt" not in str(getattr(agent, "base_url", "") or "").lower():
+            return
+        # Check if the result text contains a usage limit message
+        final_text = ""
+        if isinstance(result, dict):
+            final_text = str(result.get("final_response", "") or "")
+        elif isinstance(result, str):
+            final_text = result
+        usage_limit_signals = [
+            "usage limit", "usage_limit_reached", "rate limit reached",
+            "resets in", "try again later",
+        ]
+        if not any(sig in final_text.lower() for sig in usage_limit_signals):
+            return
+        # Try to parse resets_in from the text or agent error state
+        resets_in = None
+        try:
+            import re
+            m = re.search(r"resets? in[^\d]*(\d+)\s*h", final_text, re.IGNORECASE)
+            if m:
+                resets_in = int(m.group(1)) * 3600
+        except Exception:
+            pass
+        _codex_usage_limit_hit = {
+            "hit_at": time.time(),
+            "resets_in_seconds": resets_in,
+            "resets_at": (time.time() + resets_in) if resets_in else None,
+        }
+    except Exception:
+        pass
 
 
 def _close_web_agent(session_id: str) -> None:
