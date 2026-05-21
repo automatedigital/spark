@@ -1561,6 +1561,56 @@ _EMPTY_MODEL_INFO: dict = {
 }
 
 
+@app.get("/api/model/codex-usage")
+def get_codex_usage():
+    """Fetch OpenAI Codex usage limits from the ChatGPT backend API.
+
+    Only returns data when the current provider is openai-codex and the user
+    is authenticated.  Returns ``{"available": false}`` otherwise.
+    """
+    try:
+        cfg = load_config()
+        model_cfg = cfg.get("model", "")
+        if isinstance(model_cfg, dict):
+            provider = str(model_cfg.get("provider", "") or "").strip()
+        else:
+            provider = ""
+
+        if provider != "openai-codex":
+            return {"available": False, "reason": "not_codex_provider"}
+
+        from spark_cli.auth import get_codex_auth_status
+        import httpx
+
+        status = get_codex_auth_status()
+        if not status.get("logged_in"):
+            return {"available": False, "reason": "not_authenticated"}
+
+        access_token = status.get("api_key", "")
+        if not access_token:
+            return {"available": False, "reason": "no_access_token"}
+
+        try:
+            resp = httpx.get(
+                "https://chatgpt.com/backend-api/usage_limits",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                timeout=8.0,
+            )
+            if resp.status_code != 200:
+                return {"available": False, "reason": f"api_error_{resp.status_code}"}
+            data = resp.json()
+            return {"available": True, "data": data}
+        except Exception as exc:
+            _log.debug("Codex usage API error: %s", exc)
+            return {"available": False, "reason": "fetch_error"}
+    except Exception:
+        _log.exception("GET /api/model/codex-usage failed")
+        return {"available": False, "reason": "internal_error"}
+
+
 @app.get("/api/model/info")
 def get_model_info():
     """Return resolved model metadata for the currently configured model.

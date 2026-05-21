@@ -22,6 +22,7 @@ import { useUpdateModal } from "@/lib/UpdateModalContext";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { NotificationBell } from "@/components/NotificationBell";
+import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 
 
 const NAV_ITEMS = [
@@ -355,6 +356,7 @@ export default function App() {
                 </button>
               </nav>
               <div className="ml-auto hidden items-center gap-2 md:flex">
+                <CodexUsageBadge />
                 <NotificationBell />
                 <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{versionLabel}</span>
               </div>

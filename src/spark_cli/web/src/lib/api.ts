@@ -454,6 +454,9 @@ export const api = {
   getDiagnosticsSummary: () => fetchJSON<DiagnosticsSummary>("/api/diagnostics/summary"),
   checkForUpdate: () => fetchJSON<{ update_available: boolean; commits_behind: number | null }>("/api/update/check"),
 
+  getCodexUsage: () =>
+    fetchJSON<{ available: boolean; reason?: string; data?: Record<string, unknown> }>("/api/model/codex-usage"),
+
   // OAuth provider management
   getOAuthProviders: () =>
     fetchJSON<OAuthProvidersResponse>("/api/providers/oauth"),
