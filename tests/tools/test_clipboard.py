@@ -950,6 +950,7 @@ class TestVoiceSubmission:
         cli_obj._voice_recorder = MagicMock()
         cli_obj._voice_recorder.stop.return_value = "/tmp/fake.wav"
         cli_obj._app = None
+        cli_obj._show_welcome_logo = False
         return cli_obj
 
     def test_voice_transcript_clears_stale_attached_images(self, cli):

@@ -988,7 +988,7 @@ class TestSparkHomeIsolation:
         from tools.tirith_security import _failure_marker_path
         with patch.dict(os.environ, {"SPARK_HOME": "/custom/spark"}):
             result = _failure_marker_path()
-        assert result == "/custom.spark/.tirith-install-failed"
+        assert result == "/custom/spark/.tirith-install-failed"
 
     def test_conftest_isolation_prevents_real_home_writes(self):
         """The conftest autouse fixture sets SPARK_HOME; verify it's active."""

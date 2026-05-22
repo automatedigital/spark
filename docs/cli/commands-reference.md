@@ -81,7 +81,7 @@ Your main entry point. Run `spark` with no arguments to open the interactive TUI
 | `-q`, `--query "..."` | One-shot query, non-interactive |
 | `-m`, `--model <model>` | Override the model for this run |
 | `-t`, `--toolsets <csv>` | Enable a specific set of toolsets |
-| `--provider <provider>` | Force a provider: `auto`, `openrouter`, `nous`, `openai-codex`, `copilot-acp`, `copilot`, `anthropic`, `gemini`, `huggingface`, `zai`, `kimi-coding`, `minimax`, `minimax-cn`, `kilocode`, `xiaomi`, `arcee` |
+| `--provider <provider>` | Force a provider: `auto`, `openrouter`, `openai-codex`, `copilot-acp`, `copilot`, `anthropic`, `gemini`, `huggingface`, `zai`, `kimi-coding`, `minimax`, `minimax-cn`, `kilocode`, `xiaomi`, `arcee` |
 | `-s`, `--skills <name>` | Preload skills for the session (repeat or comma-separate) |
 | `-v`, `--verbose` | Verbose output |
 | `-Q`, `--quiet` | Suppress banner, spinner, and tool previews — useful for scripting |
@@ -342,7 +342,6 @@ api_keys:
   openrouter           set
   openai               not set
   anthropic            set
-  nous                 not set
   firecrawl            set
   ...
 

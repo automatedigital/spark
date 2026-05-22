@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip("acp", reason="acp package not installed")
+
 from acp.schema import (
     AllowedOutcome,
     DeniedOutcome,

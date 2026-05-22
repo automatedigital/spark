@@ -81,20 +81,20 @@ class TestSourceLinesAreClamped:
             return f.read()
 
     def test_gateway_run_clamped(self):
-        src = self._read_file("gateway/run.py")
+        src = self._read_file("src/gateway/run.py")
         # Check that the stats handler has min(100, ...)
         assert "min(100, ctx.last_prompt_tokens" in src, (
             "gateway/run.py stats pct is not clamped with min(100, ...)"
         )
 
     def test_cli_clamped(self):
-        src = self._read_file("core/cli.py")
+        src = self._read_file("src/core/cli.py")
         assert "min(100, (last_prompt" in src, (
             "core.cli.py /stats pct is not clamped with min(100, ...)"
         )
 
     def test_memory_tool_clamped(self):
-        src = self._read_file("tools/memory_tool.py")
+        src = self._read_file("src/tools/memory_tool.py")
         # Both _success_response and _render_block should have min(100, ...)
         count = src.count("min(100, int((current / limit)")
         assert count >= 2, (

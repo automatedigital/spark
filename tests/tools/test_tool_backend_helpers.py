@@ -19,33 +19,11 @@ import pytest
 from tools.tool_backend_helpers import (
     coerce_modal_mode,
     has_direct_modal_credentials,
-    managed_nous_tools_enabled,
     normalize_browser_cloud_provider,
     normalize_modal_mode,
     resolve_modal_backend_state,
     resolve_openai_audio_api_key,
 )
-
-
-# ---------------------------------------------------------------------------
-# managed_nous_tools_enabled
-# ---------------------------------------------------------------------------
-class TestManagedNousToolsEnabled:
-    """Feature flag driven by SPARK_ENABLE_NOUS_MANAGED_TOOLS."""
-
-    def test_disabled_by_default(self, monkeypatch):
-        monkeypatch.delenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", raising=False)
-        assert managed_nous_tools_enabled() is False
-
-    @pytest.mark.parametrize("val", ["1", "true", "True", "yes"])
-    def test_enabled_when_truthy(self, monkeypatch, val):
-        monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", val)
-        assert managed_nous_tools_enabled() is True
-
-    @pytest.mark.parametrize("val", ["0", "false", "no", ""])
-    def test_disabled_when_falsy(self, monkeypatch, val):
-        monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", val)
-        assert managed_nous_tools_enabled() is False
 
 
 # ---------------------------------------------------------------------------
@@ -181,10 +159,6 @@ class TestResolveModalBackendState:
 
     # --- auto mode ---
 
-    def test_auto_prefers_managed_when_available(self, monkeypatch):
-        result = self._resolve(monkeypatch, "auto", has_direct=True, managed_ready=True, nous_enabled=True)
-        assert result["selected_backend"] == "managed"
-
     def test_auto_falls_back_to_direct(self, monkeypatch):
         result = self._resolve(monkeypatch, "auto", has_direct=True, managed_ready=False, nous_enabled=True)
         assert result["selected_backend"] == "direct"
@@ -212,10 +186,6 @@ class TestResolveModalBackendState:
         assert result["selected_backend"] is None
 
     # --- managed mode ---
-
-    def test_managed_selects_managed_when_ready_and_enabled(self, monkeypatch):
-        result = self._resolve(monkeypatch, "managed", has_direct=True, managed_ready=True, nous_enabled=True)
-        assert result["selected_backend"] == "managed"
 
     def test_managed_none_when_not_ready(self, monkeypatch):
         result = self._resolve(monkeypatch, "managed", has_direct=True, managed_ready=False, nous_enabled=True)

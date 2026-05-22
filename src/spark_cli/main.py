@@ -269,7 +269,7 @@ def _has_any_provider_configured() -> bool:
     except Exception:
         pass
 
-    # Check for Spark Portal OAuth credentials
+    # Check for active OAuth credentials
     auth_file = get_spark_home() / "auth.json"
     if auth_file.exists():
         try:
@@ -5876,39 +5876,39 @@ For more help on a command:
     )
     model_parser.add_argument(
         "--portal-url",
-        help="Portal base URL for Spark Portal login (default: production portal)",
+        help="OAuth portal base URL (provider-specific; usually not needed)",
     )
     model_parser.add_argument(
         "--inference-url",
-        help="Inference API base URL for Spark Portal login (default: production inference API)",
+        help="Inference API base URL for OAuth-backed providers (usually not needed)",
     )
     model_parser.add_argument(
         "--client-id",
         default=None,
-        help="OAuth client id to use for Spark Portal login (default: spark-cli)",
+        help="OAuth client id to use for provider login (default: spark-cli)",
     )
     model_parser.add_argument(
-        "--scope", default=None, help="OAuth scope to request for Spark Portal login"
+        "--scope", default=None, help="OAuth scope to request for provider login"
     )
     model_parser.add_argument(
         "--no-browser",
         action="store_true",
-        help="Do not attempt to open the browser automatically during Spark Portal login",
+        help="Do not attempt to open the browser automatically during provider login",
     )
     model_parser.add_argument(
         "--timeout",
         type=float,
         default=15.0,
-        help="HTTP request timeout in seconds for Spark Portal login (default: 15)",
+        help="HTTP request timeout in seconds for provider login (default: 15)",
     )
     model_parser.add_argument(
         "--ca-bundle",
-        help="Path to CA bundle PEM file for Spark Portal TLS verification",
+        help="Path to CA bundle PEM file for provider TLS verification",
     )
     model_parser.add_argument(
         "--insecure",
         action="store_true",
-        help="Disable TLS verification for Spark Portal login (testing only)",
+        help="Disable TLS verification for provider login (testing only)",
     )
     model_parser.set_defaults(func=cmd_model)
 
@@ -6133,8 +6133,8 @@ For more help on a command:
     auth_add.add_argument(
         "--api-key", help="API key value (otherwise prompted securely)"
     )
-    auth_add.add_argument("--portal-url", help="Spark Portal portal base URL")
-    auth_add.add_argument("--inference-url", help="Spark Portal inference base URL")
+    auth_add.add_argument("--portal-url", help="OAuth portal base URL")
+    auth_add.add_argument("--inference-url", help="OAuth provider inference base URL")
     auth_add.add_argument("--client-id", help="OAuth client id")
     auth_add.add_argument("--scope", help="OAuth scope override")
     auth_add.add_argument(

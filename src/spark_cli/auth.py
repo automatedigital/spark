@@ -544,14 +544,14 @@ def format_auth_error(error: Exception) -> str:
 
     if error.code == "subscription_required":
         return (
-            "No active paid subscription found on Spark Portal. "
+            "No active paid subscription found for this provider. "
             "Please purchase/activate a subscription, then retry."
         )
 
     if error.code == "insufficient_credits":
         return (
             "Subscription credits are exhausted. "
-            "Top up/renew credits in Spark Portal, then retry."
+            "Top up/renew credits with the provider, then retry."
         )
 
     if error.code == "temporarily_unavailable":

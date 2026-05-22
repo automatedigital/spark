@@ -131,6 +131,10 @@ def patch_project_root(tmp_path, monkeypatch):
     fake_git.mkdir()
     monkeypatch.setattr(main_mod, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(main_mod, "_maybe_offer_cua_driver", lambda **kw: None)
+    # Other tests may reload spark_cli.main after this module imported cmd_update.
+    # Patch the imported function's globals too so this file stays isolated.
+    monkeypatch.setitem(cmd_update.__globals__, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setitem(cmd_update.__globals__, "_maybe_offer_cua_driver", lambda **kw: None)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
 
@@ -175,7 +179,9 @@ class TestLaunchdPlistPath:
     def test_plist_path_includes_venv_bin(self):
         plist = gateway_cli.generate_launchd_plist()
         detected = gateway_cli._detect_venv_dir()
-        venv_bin = str(detected / "bin") if detected else str(gateway_cli.PROJECT_ROOT / "venv" / "bin")
+        # Use the same fallback as generate_launchd_plist(): PROJECT_ROOT.parent / ".venv"
+        _venv_fallback = gateway_cli.PROJECT_ROOT.parent / ".venv"
+        venv_bin = str(detected / "bin") if detected else str(_venv_fallback / "bin")
         assert venv_bin in plist
 
     def test_plist_path_starts_with_venv_bin(self):
@@ -186,7 +192,9 @@ class TestLaunchdPlistPath:
                 path_value = lines[i + 1].strip()
                 path_value = path_value.replace("<string>", "").replace("</string>", "")
                 detected = gateway_cli._detect_venv_dir()
-                venv_bin = str(detected / "bin") if detected else str(gateway_cli.PROJECT_ROOT / "venv" / "bin")
+                # Use the same fallback as generate_launchd_plist(): PROJECT_ROOT.parent / ".venv"
+                _venv_fallback = gateway_cli.PROJECT_ROOT.parent / ".venv"
+                venv_bin = str(detected / "bin") if detected else str(_venv_fallback / "bin")
                 assert path_value.startswith(venv_bin + ":")
                 break
         else:

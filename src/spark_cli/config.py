@@ -689,7 +689,7 @@ DEFAULT_CONFIG = {
     # Subagent delegation — override the provider:model used by delegate_task
     # so child agents can run on a different (cheaper/faster) provider and model.
     # Uses the same runtime provider resolution as CLI/gateway startup, so all
-    # configured providers (OpenRouter, Spark Portal, Z.ai, Kimi, etc.) are supported.
+    # configured providers (OpenRouter, Anthropic, Z.ai, Kimi, etc.) are supported.
     "delegation": {
         "model": "",  # e.g. "google/gemini-3-flash-preview" (empty = inherit parent model)
         "provider": "",  # e.g. "openrouter" (empty = inherit parent provider + credentials)
@@ -849,7 +849,7 @@ ENV_VARS_BY_VERSION: Dict[int, List[str]] = {
 
 # Required environment variables with metadata for migration prompts.
 # LLM provider is required but handled in the setup wizard's provider
-# selection step (Spark Portal / OpenRouter / Custom endpoint), so this
+# selection step (OpenRouter / Anthropic / Custom endpoint), so this
 # dict is intentionally empty — no single env var is universally required.
 REQUIRED_ENV_VARS = {}
 
@@ -1126,7 +1126,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "FIRECRAWL_GATEWAY_URL": {
-        "description": "Exact Firecrawl tool-gateway origin override for Spark Portal Subscribers only (optional)",
+        "description": "Exact Firecrawl tool-gateway origin override (hosted managed gateways are disabled)",
         "prompt": "Firecrawl gateway URL (leave empty to derive from domain)",
         "url": None,
         "password": False,
@@ -1134,7 +1134,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "TOOL_GATEWAY_DOMAIN": {
-        "description": "Shared tool-gateway domain suffix for Spark Portal Subscribers only, used to derive vendor hosts, e.g. automatedigital.ai -> automatedigital.ai",
+        "description": "Shared tool-gateway domain suffix for derived vendor hosts (hosted managed gateways are disabled)",
         "prompt": "Tool-gateway domain suffix",
         "url": None,
         "password": False,
@@ -1142,7 +1142,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "TOOL_GATEWAY_SCHEME": {
-        "description": "Shared tool-gateway URL scheme for Spark Portal Subscribers only, used to derive vendor hosts (`https` by default, set `http` for local gateway testing)",
+        "description": "Shared tool-gateway URL scheme for derived vendor hosts (`https` by default, set `http` for local gateway testing)",
         "prompt": "Tool-gateway URL scheme",
         "url": None,
         "password": False,
@@ -1150,7 +1150,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "TOOL_GATEWAY_USER_TOKEN": {
-        "description": "Explicit Spark Portal Subscriber access token for tool-gateway requests (optional; otherwise read from the Spark auth store)",
+        "description": "Explicit hosted tool-gateway access token (hosted managed gateways are disabled)",
         "prompt": "Tool-gateway user token",
         "url": None,
         "password": True,

@@ -919,12 +919,6 @@ def build_skills_system_prompt(
 
     return result
 
-
-def build_nous_subscription_prompt(valid_tool_names: "set[str] | None" = None) -> str:
-    """Nous subscription removed. Returns empty string."""
-    return ""
-
-
 # =========================================================================
 # Context files (SOUL.md, AGENTS.md, .cursorrules)
 # =========================================================================

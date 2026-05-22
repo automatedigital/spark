@@ -425,7 +425,7 @@ def _classify_by_status(
 
     if status_code == 401:
         # Not retryable on its own — credential pool rotation and
-        # provider-specific refresh (Codex, Anthropic, Spark Portal) run before
+        # provider-specific refresh (Codex, Anthropic, etc.) run before
         # the retryability check in run_agent.py.  If those succeed, the
         # loop `continue`s.  If they fail, retryable=False ensures we
         # hit the client-error abort path (which tries fallback first).

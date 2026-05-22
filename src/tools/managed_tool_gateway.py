@@ -1,4 +1,9 @@
-"""Generic managed-tool gateway helpers (gateway auth via Nous has been removed)."""
+"""Generic managed-tool gateway helpers.
+
+Managed hosted gateways were tied to the removed provider flow and are disabled.
+The URL helpers remain for diagnostics/tests, but runtime resolution
+intentionally returns ``None``.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +22,7 @@ _DEFAULT_TOOL_GATEWAY_SCHEME = "https"
 class ManagedToolGatewayConfig:
     vendor: str
     gateway_origin: str
-    nous_user_token: str
+    access_token: str
     managed_mode: bool
 
 
@@ -53,7 +58,7 @@ def resolve_managed_tool_gateway(
     gateway_builder: Optional[Callable[[str], str]] = None,
     token_reader: Optional[Callable[[], Optional[str]]] = None,
 ) -> Optional[ManagedToolGatewayConfig]:
-    """Managed tool gateways are disabled (Nous provider removed)."""
+    """Managed tool gateways are disabled after provider cleanup."""
     return None
 
 
@@ -62,10 +67,10 @@ def is_managed_tool_gateway_ready(
     gateway_builder: Optional[Callable[[str], str]] = None,
     token_reader: Optional[Callable[[], Optional[str]]] = None,
 ) -> bool:
-    """Return True when gateway URL and access token are available (always False — Nous removed)."""
+    """Return False while hosted managed gateways are disabled."""
     return False
 
 
-def read_nous_access_token() -> Optional[str]:
-    """Nous access token resolution removed. Returns None."""
+def read_managed_gateway_access_token() -> Optional[str]:
+    """Managed gateway token resolution is disabled."""
     return None

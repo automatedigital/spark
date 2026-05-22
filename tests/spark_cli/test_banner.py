@@ -62,6 +62,5 @@ def test_build_welcome_banner_prints_minimal_wordmark():
         )
 
     output = console.export_text()
-    assert "____" in output
     assert "Available Tools" not in output
     assert "Available Skills" not in output

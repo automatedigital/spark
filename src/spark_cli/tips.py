@@ -258,7 +258,7 @@ TIPS = [
     "Custom providers: save named endpoints in config.yaml under custom_providers.",
     "SPARK_EPHEMERAL_SYSTEM_PROMPT injects a system prompt that's never persisted to history.",
     "credential_pool_strategies supports fill_first, round_robin, least_used, and random rotation.",
-    "spark login supports OAuth-based auth for Spark Portal and OpenAI Codex providers.",
+    "spark auth supports OAuth-based auth for OpenAI Codex and Anthropic-compatible providers.",
     "The API server supports both Chat Completions and Responses API with server-side state.",
     "tool_preview_length: 0 in config shows full file paths in the spinner's activity feed.",
     "spark status --deep runs deeper diagnostic checks across all components.",
@@ -344,6 +344,5 @@ def get_random_tip(exclude_recent: int = 0) -> str:
             deduplication across sessions.
     """
     return random.choice(TIPS)
-
 
 

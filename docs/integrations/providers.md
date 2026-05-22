@@ -23,7 +23,6 @@ You can also choose **Reasoning** from the first `spark model` menu. Spark appli
 
 | Provider | How to set up |
 |----------|---------------|
-| **Spark Portal** | `spark model` (OAuth, subscription-based) |
 | **OpenAI Codex** | `spark model` (ChatGPT OAuth, Codex models) |
 | **GitHub Copilot** | `spark model` (OAuth device code, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token`) |
 | **GitHub Copilot ACP** | `spark model` (spawns local `copilot --acp --stdio`) |
@@ -496,9 +495,8 @@ Spark uses a multi-source resolution chain:
 4. Endpoint `/models` API
 5. Anthropic `/v1/models`
 6. OpenRouter API
-7. Spark Portal metadata
-8. [models.dev](https://models.dev) community registry (3800+ models)
-9. Broad fallback defaults (128K default)
+7. [models.dev](https://models.dev) community registry (3800+ models)
+8. Broad fallback defaults (128K default)
 
 Set it explicitly when auto-detection gets it wrong:
 
@@ -600,7 +598,7 @@ Conservative by design — only routes quick factual questions and lightweight s
 
 | Use Case | Recommended |
 |----------|-------------|
-| Just want it to work | OpenRouter or Spark Portal |
+| Just want it to work | OpenRouter or OpenAI Codex |
 | Local models, easy setup | Ollama |
 | Production GPU serving | vLLM or SGLang |
 | Mac / no GPU | Ollama or llama.cpp |

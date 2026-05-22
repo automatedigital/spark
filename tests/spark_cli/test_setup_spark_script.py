@@ -3,7 +3,7 @@ import subprocess
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SETUP_SCRIPT = REPO_ROOT / "setup-spark.sh"
+SETUP_SCRIPT = REPO_ROOT / "scripts" / "setup-spark.sh"
 
 
 def test_setup_spark_script_is_valid_shell():

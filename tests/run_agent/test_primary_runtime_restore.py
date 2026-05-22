@@ -315,15 +315,6 @@ class TestTryRecoverPrimaryTransport:
         )
         assert result is False
 
-    def test_skipped_for_nous_provider(self):
-        agent = _make_agent(provider="nous", base_url="https://inference.automatedigital.ai/v1")
-        error = _make_transport_error("ReadTimeout")
-
-        result = agent._try_recover_primary_transport(
-            error, retry_count=3, max_retries=3,
-        )
-        assert result is False
-
     def test_allowed_for_anthropic_direct(self):
         """Direct Anthropic endpoint should get recovery."""
         agent = _make_agent(provider="anthropic", base_url="https://api.anthropic.com")

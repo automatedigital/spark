@@ -170,7 +170,7 @@ class TestClient:
             mock_req.return_value = {"memory_count": 3}
             c.get_agent_model("spark")
             mock_req.assert_called_once_with(
-                "GET", "/v1/memory/agent.spark/model",
+                "GET", "/v1/memory/agent/spark/model",
                 params={"project": "test"}, timeout=4.0
             )
 

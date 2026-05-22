@@ -496,7 +496,7 @@ class CredentialPool:
         re-seeding a consumed single-use refresh token.
 
         Applies to any OAuth provider whose singleton lives in auth.json
-        (currently Spark Portal and OpenAI Codex).
+        (currently OpenAI Codex and Anthropic-compatible OAuth).
         """
         if entry.source != "device_code":
             return

@@ -9,7 +9,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TOOLS_DIR = REPO_ROOT / "tools"
+TOOLS_DIR = REPO_ROOT / "src" / "tools"
 
 
 def _load_module(module_name: str, path: Path):

@@ -285,34 +285,6 @@ def test_save_platform_tools_still_preserves_mcp_with_platform_default_present()
     assert "terminal" not in saved
 
 
-def test_visible_providers_include_nous_subscription_when_logged_in(monkeypatch):
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    config = {"model": {"provider": "nous"}}
-
-    monkeypatch.setattr(
-        "spark_cli.nous_subscription.get_nous_auth_status",
-        lambda: {"logged_in": True},
-    )
-
-    providers = _visible_providers(TOOL_CATEGORIES["browser"], config)
-
-    assert providers[0]["name"].startswith("Spark Subscription")
-
-
-def test_visible_providers_hide_nous_subscription_when_feature_flag_is_off(monkeypatch):
-    monkeypatch.delenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", raising=False)
-    config = {"model": {"provider": "nous"}}
-
-    monkeypatch.setattr(
-        "spark_cli.nous_subscription.get_nous_auth_status",
-        lambda: {"logged_in": True},
-    )
-
-    providers = _visible_providers(TOOL_CATEGORIES["browser"], config)
-
-    assert all(not provider["name"].startswith("Spark Subscription") for provider in providers)
-
-
 def test_local_browser_provider_is_saved_explicitly(monkeypatch):
     config = {}
     local_provider = next(
@@ -326,58 +298,6 @@ def test_local_browser_provider_is_saved_explicitly(monkeypatch):
 
     assert config["browser"]["cloud_provider"] == "local"
 
-
-def test_first_install_nous_auto_configures_managed_defaults(monkeypatch):
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    config = {
-        "model": {"provider": "nous"},
-        "platform_toolsets": {"cli": []},
-    }
-    for env_var in (
-        "VOICE_TOOLS_OPENAI_KEY",
-        "OPENAI_API_KEY",
-        "ELEVENLABS_API_KEY",
-        "FIRECRAWL_API_KEY",
-        "FIRECRAWL_API_URL",
-        "TAVILY_API_KEY",
-        "PARALLEL_API_KEY",
-        "BROWSERBASE_API_KEY",
-        "BROWSERBASE_PROJECT_ID",
-        "BROWSER_USE_API_KEY",
-        "FAL_KEY",
-    ):
-        monkeypatch.delenv(env_var, raising=False)
-
-    monkeypatch.setattr(
-        "spark_cli.tools_config._prompt_toolset_checklist",
-        lambda *args, **kwargs: {"web", "image_gen", "tts", "browser"},
-    )
-    monkeypatch.setattr("spark_cli.tools_config.save_config", lambda config: None)
-    # Prevent leaked platform tokens (e.g. DISCORD_BOT_TOKEN from gateway.run
-    # import) from adding extra platforms. The loop in tools_command runs
-    # apply_nous_managed_defaults per platform; a second iteration sees values
-    # set by the first as "explicit" and skips them.
-    monkeypatch.setattr(
-        "spark_cli.tools_config._get_enabled_platforms",
-        lambda: ["cli"],
-    )
-    monkeypatch.setattr(
-        "spark_cli.nous_subscription.get_nous_auth_status",
-        lambda: {"logged_in": True},
-    )
-
-    configured = []
-    monkeypatch.setattr(
-        "spark_cli.tools_config._configure_toolset",
-        lambda ts_key, config: configured.append(ts_key),
-    )
-
-    tools_command(first_install=True, config=config)
-
-    assert config["web"]["backend"] == "firecrawl"
-    assert config["tts"]["provider"] == "openai"
-    assert config["browser"]["cloud_provider"] == "browser-use"
-    assert configured == []
 
 # ── Platform / toolset consistency ────────────────────────────────────────────
 

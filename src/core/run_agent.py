@@ -5823,7 +5823,7 @@ class AIAgent:
         Anthropic, OpenAI, local models) where a TCP-level hiccup does not
         mean the provider is down.
 
-        Skipped for proxy/aggregator providers (OpenRouter, Spark Portal) which
+        Skipped for proxy/aggregator providers (OpenRouter-style endpoints) which
         already manage connection pools and retries server-side — if our
         retries through them are exhausted, one more rebuilt client won't help.
         """
@@ -6301,7 +6301,7 @@ class AIAgent:
             # model has adequate output budget for tool calls.
             api_kwargs.update(self._max_tokens_param(65536))
         elif (self._is_openrouter_url() or "automatedigital" in self._base_url_lower) and "claude" in (self.model or "").lower():
-            # OpenRouter and Spark Portal translate requests to Anthropic's
+            # Some OpenRouter-compatible endpoints translate requests to Anthropic's
             # Messages API, which requires max_tokens as a mandatory field.
             # When we omit it, the proxy picks a default that can be too
             # low — the model spends its output budget on thinking and has
@@ -6325,8 +6325,7 @@ class AIAgent:
 
         # Provider preferences (only, ignore, order, sort) are OpenRouter-
         # specific.  Only send to OpenRouter-compatible endpoints.
-        # TODO: Spark Portal will add transparent proxy support — re-enable
-        # for _is_spark when their backend is updated.
+        # Provider preferences are only sent to OpenRouter itself.
         if provider_preferences and _is_openrouter:
             extra_body["provider"] = provider_preferences
         _is_spark = "automatedigital" in self._base_url_lower
@@ -6339,10 +6338,9 @@ class AIAgent:
             else:
                 if self.reasoning_config is not None:
                     rc = dict(self.reasoning_config)
-                    # Spark Portal requires reasoning enabled — don't send
-                    # enabled=false to it (would cause 400).
+                    # Legacy hosted endpoints rejected enabled=false; omit it.
                     if _is_spark and rc.get("enabled") is False:
-                        pass  # omit reasoning entirely for Spark Portal when disabled
+                        pass  # omit reasoning entirely for legacy hosted endpoints
                     else:
                         extra_body["reasoning"] = rc
                 else:
@@ -6351,7 +6349,7 @@ class AIAgent:
                         "effort": "medium"
                     }
 
-        # Spark Portal product attribution
+        # Product attribution for legacy hosted endpoints.
         if _is_spark:
             extra_body["tags"] = ["product=spark-agent"]
 
@@ -6388,7 +6386,7 @@ class AIAgent:
 
         OpenRouter forwards unknown extra_body fields to upstream providers.
         Some providers/routes reject `reasoning` with 400s, so gate it to
-        known reasoning-capable model families and direct Spark Portal.
+        known reasoning-capable model families and legacy hosted endpoints.
         """
         if "automatedigital" in self._base_url_lower:
             return True

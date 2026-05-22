@@ -44,11 +44,6 @@ def _restore_tool_and_agent_modules():
         sys.modules.update(original_modules)
 
 
-@pytest.fixture(autouse=True)
-def _enable_managed_nous_tools(monkeypatch):
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-
-
 def _install_fake_tools_package():
     tools_package = types.ModuleType("tools")
     tools_package.__path__ = [str(TOOLS_DIR)]  # type: ignore[attr-defined]
@@ -161,81 +156,6 @@ def _install_fake_openai_module(captured, transcription_response=None):
     sys.modules["openai"] = fake_module
 
 
-def test_managed_fal_submit_uses_gateway_origin_and_nous_token(monkeypatch):
-    captured = {}
-    _install_fake_tools_package()
-    _install_fake_fal_client(captured)
-    monkeypatch.delenv("FAL_KEY", raising=False)
-    monkeypatch.setenv("FAL_QUEUE_GATEWAY_URL", "http://127.0.0.1:3009")
-    monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
-
-    image_generation_tool = _load_tool_module(
-        "tools.image_generation_tool",
-        "image_generation_tool.py",
-    )
-    monkeypatch.setattr(image_generation_tool.uuid, "uuid4", lambda: "fal-submit-123")
-
-    image_generation_tool._submit_fal_request(
-        "fal-ai/flux-2-pro",
-        {"prompt": "test prompt", "num_images": 1},
-    )
-
-    assert captured["submit_via"] == "managed_client"
-    assert captured["client_key"] == "nous-token"
-    assert captured["submit_url"] == "http://127.0.0.1:3009/fal-ai/flux-2-pro"
-    assert captured["method"] == "POST"
-    assert captured["arguments"] == {"prompt": "test prompt", "num_images": 1}
-    assert captured["headers"] == {"x-idempotency-key": "fal-submit-123"}
-    assert captured["sync_client_inits"] == 1
-
-
-def test_managed_fal_submit_reuses_cached_sync_client(monkeypatch):
-    captured = {}
-    _install_fake_tools_package()
-    _install_fake_fal_client(captured)
-    monkeypatch.delenv("FAL_KEY", raising=False)
-    monkeypatch.setenv("FAL_QUEUE_GATEWAY_URL", "http://127.0.0.1:3009")
-    monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
-
-    image_generation_tool = _load_tool_module(
-        "tools.image_generation_tool",
-        "image_generation_tool.py",
-    )
-
-    image_generation_tool._submit_fal_request("fal-ai/flux-2-pro", {"prompt": "first"})
-    first_client = captured["http_client"]
-    image_generation_tool._submit_fal_request("fal-ai/flux-2-pro", {"prompt": "second"})
-
-    assert captured["sync_client_inits"] == 1
-    assert captured["http_client"] is first_client
-
-
-def test_openai_tts_uses_managed_audio_gateway_when_direct_key_absent(
-    monkeypatch, tmp_path
-):
-    captured = {}
-    _install_fake_tools_package()
-    _install_fake_openai_module(captured)
-    monkeypatch.delenv("VOICE_TOOLS_OPENAI_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("TOOL_GATEWAY_DOMAIN", "automatedigital.ai")
-    monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
-
-    tts_tool = _load_tool_module("tools.tts_tool", "tts_tool.py")
-    monkeypatch.setattr(tts_tool.uuid, "uuid4", lambda: "tts-call-123")
-    output_path = tmp_path / "speech.mp3"
-    tts_tool._generate_openai_tts("hello world", str(output_path), {"openai": {}})
-
-    assert captured["api_key"] == "nous-token"
-    assert captured["base_url"] == "https://openai-audio-gateway.automatedigital.ai/v1"
-    assert captured["speech_kwargs"]["model"] == "gpt-4o-mini-tts"
-    assert captured["speech_kwargs"]["extra_headers"] == {
-        "x-idempotency-key": "tts-call-123"
-    }
-    assert captured["stream_to_file"] == str(output_path)
-    assert captured["close_calls"] == 1
-
-
 def test_openai_tts_accepts_openai_api_key_as_direct_fallback(monkeypatch, tmp_path):
     captured = {}
     _install_fake_tools_package()
@@ -254,53 +174,3 @@ def test_openai_tts_accepts_openai_api_key_as_direct_fallback(monkeypatch, tmp_p
     assert captured["close_calls"] == 1
 
 
-def test_transcription_uses_model_specific_response_formats(monkeypatch, tmp_path):
-    whisper_capture = {}
-    _install_fake_tools_package()
-    _install_fake_openai_module(
-        whisper_capture, transcription_response="hello from whisper"
-    )
-    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
-    (tmp_path / "config.yaml").write_text("stt:\n  provider: openai\n")
-    monkeypatch.delenv("VOICE_TOOLS_OPENAI_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("TOOL_GATEWAY_DOMAIN", "automatedigital.ai")
-    monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
-
-    transcription_tools = _load_tool_module(
-        "tools.transcription_tools",
-        "transcription_tools.py",
-    )
-    transcription_tools._load_stt_config = lambda: {"provider": "openai"}
-    audio_path = tmp_path / "audio.wav"
-    audio_path.write_bytes(b"RIFF0000WAVEfmt ")
-
-    whisper_result = transcription_tools.transcribe_audio(
-        str(audio_path), model="whisper-1"
-    )
-    assert whisper_result["success"] is True
-    assert (
-        whisper_capture["base_url"]
-        == "https://openai-audio-gateway.automatedigital.ai/v1"
-    )
-    assert whisper_capture["transcription_kwargs"]["response_format"] == "text"
-    assert whisper_capture["close_calls"] == 1
-
-    json_capture = {}
-    _install_fake_openai_module(
-        json_capture,
-        transcription_response=types.SimpleNamespace(text="hello from gpt-4o"),
-    )
-    transcription_tools = _load_tool_module(
-        "tools.transcription_tools",
-        "transcription_tools.py",
-    )
-
-    json_result = transcription_tools.transcribe_audio(
-        str(audio_path),
-        model="gpt-4o-mini-transcribe",
-    )
-    assert json_result["success"] is True
-    assert json_result["transcript"] == "hello from gpt-4o"
-    assert json_capture["transcription_kwargs"]["response_format"] == "json"
-    assert json_capture["close_calls"] == 1

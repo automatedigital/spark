@@ -223,6 +223,7 @@ class TestNonInteractiveSetup:
             "Full Setup - reconfigure everything",
             "Model & Provider",
             "Terminal Backend",
+            "Permissions",
             "Messaging Platforms (Gateway)",
             "Tools",
             "Agent Settings",

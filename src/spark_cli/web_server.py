@@ -1943,7 +1943,7 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
 #
 # Phase 1 surfaces *which OAuth providers exist* and whether each is
 # connected, plus a disconnect button. The actual login flow (PKCE for
-# Anthropic, device-code for Spark Portal/Codex) still runs in the CLI for now;
+# Anthropic and device-code OAuth flows still run in the CLI for now;
 # Phase 2 will add in-browser flows. For unconnected providers we return
 # the canonical ``spark auth add <provider>`` command so the dashboard
 # can surface a one-click copy.

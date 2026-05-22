@@ -58,10 +58,10 @@ class ManagedModalEnvironment(BaseModalExecutionEnvironment):
 
         gateway = resolve_managed_tool_gateway("modal")
         if gateway is None:
-            raise ValueError("Managed Modal requires a configured tool gateway and Spark Portal user token")
+            raise ValueError("Managed Modal requires a configured hosted tool gateway")
 
         self._gateway_origin = gateway.gateway_origin.rstrip("/")
-        self._nous_user_token = gateway.nous_user_token
+        self._gateway_access_token = gateway.access_token
         self._task_id = task_id
         self._persistent = persistent_filesystem
         self._image = image
@@ -231,7 +231,7 @@ class ManagedModalEnvironment(BaseModalExecutionEnvironment):
                  timeout: int = 30,
                  extra_headers: Dict[str, str] | None = None) -> requests.Response:
         headers = {
-            "Authorization": f"Bearer {self._nous_user_token}",
+            "Authorization": f"Bearer {self._gateway_access_token}",
             "Content-Type": "application/json",
         }
         if extra_headers:

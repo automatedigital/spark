@@ -98,101 +98,10 @@ class TestFirecrawlClientConfig:
     def test_no_config_raises_with_helpful_message(self):
         """Neither key nor URL → ValueError with guidance."""
         with patch("tools.web_tools.Firecrawl"):
-            with patch("tools.web_tools._read_nous_access_token", return_value=None):
-                from tools.web_tools import _get_firecrawl_client
+            from tools.web_tools import _get_firecrawl_client
 
-                with pytest.raises(ValueError, match="FIRECRAWL_API_KEY"):
-                    _get_firecrawl_client()
-
-    def test_tool_gateway_domain_builds_firecrawl_gateway_origin(self):
-        """Shared gateway domain should derive the Firecrawl vendor hostname."""
-        with patch.dict(os.environ, {"TOOL_GATEWAY_DOMAIN": "automatedigital.ai"}):
-            with patch(
-                "tools.web_tools._read_nous_access_token", return_value="nous-token"
-            ):
-                with patch("tools.web_tools.Firecrawl") as mock_fc:
-                    from tools.web_tools import _get_firecrawl_client
-
-                    result = _get_firecrawl_client()
-                    mock_fc.assert_called_once_with(
-                        api_key="nous-token",
-                        api_url="https://firecrawl-gateway.automatedigital.ai",
-                    )
-                    assert result is mock_fc.return_value
-
-    def test_tool_gateway_scheme_can_switch_derived_gateway_origin_to_http(self):
-        """Shared gateway scheme should allow local plain-http vendor hosts."""
-        with patch.dict(
-            os.environ,
-            {
-                "TOOL_GATEWAY_DOMAIN": "automatedigital.ai",
-                "TOOL_GATEWAY_SCHEME": "http",
-            },
-        ):
-            with patch(
-                "tools.web_tools._read_nous_access_token", return_value="nous-token"
-            ):
-                with patch("tools.web_tools.Firecrawl") as mock_fc:
-                    from tools.web_tools import _get_firecrawl_client
-
-                    result = _get_firecrawl_client()
-                    mock_fc.assert_called_once_with(
-                        api_key="nous-token",
-                        api_url="http://firecrawl-gateway.automatedigital.ai",
-                    )
-                    assert result is mock_fc.return_value
-
-    def test_invalid_tool_gateway_scheme_raises(self):
-        """Unexpected shared gateway schemes should fail fast."""
-        with patch.dict(
-            os.environ,
-            {
-                "TOOL_GATEWAY_DOMAIN": "automatedigital.ai",
-                "TOOL_GATEWAY_SCHEME": "ftp",
-            },
-        ):
-            with patch(
-                "tools.web_tools._read_nous_access_token", return_value="nous-token"
-            ):
-                from tools.web_tools import _get_firecrawl_client
-
-                with pytest.raises(ValueError, match="TOOL_GATEWAY_SCHEME"):
-                    _get_firecrawl_client()
-
-    def test_explicit_firecrawl_gateway_url_takes_precedence(self):
-        """An explicit Firecrawl gateway origin should override the shared domain."""
-        with patch.dict(
-            os.environ,
-            {
-                "FIRECRAWL_GATEWAY_URL": "https://firecrawl-gateway.localhost:3009/",
-                "TOOL_GATEWAY_DOMAIN": "automatedigital.ai",
-            },
-        ):
-            with patch(
-                "tools.web_tools._read_nous_access_token", return_value="nous-token"
-            ):
-                with patch("tools.web_tools.Firecrawl") as mock_fc:
-                    from tools.web_tools import _get_firecrawl_client
-
-                    _get_firecrawl_client()
-                    mock_fc.assert_called_once_with(
-                        api_key="nous-token",
-                        api_url="https://firecrawl-gateway.localhost:3009",
-                    )
-
-    def test_default_gateway_domain_targets_nous_production_origin(self):
-        """Default gateway origin should point at the Firecrawl vendor hostname."""
-        with patch(
-            "tools.web_tools._read_nous_access_token", return_value="nous-token"
-        ):
-            with patch("tools.web_tools.Firecrawl") as mock_fc:
-                from tools.web_tools import _get_firecrawl_client
-
+            with pytest.raises(ValueError, match="FIRECRAWL_API_KEY"):
                 _get_firecrawl_client()
-                mock_fc.assert_called_once_with(
-                    api_key="nous-token",
-                    api_url="https://firecrawl-gateway.automatedigital.ai",
-                )
 
     def test_direct_mode_is_preferred_over_tool_gateway(self):
         """Explicit Firecrawl config should win over the gateway fallback."""
@@ -203,46 +112,11 @@ class TestFirecrawlClientConfig:
                 "TOOL_GATEWAY_DOMAIN": "automatedigital.ai",
             },
         ):
-            with patch(
-                "tools.web_tools._read_nous_access_token", return_value="nous-token"
-            ):
-                with patch("tools.web_tools.Firecrawl") as mock_fc:
-                    from tools.web_tools import _get_firecrawl_client
+            with patch("tools.web_tools.Firecrawl") as mock_fc:
+                from tools.web_tools import _get_firecrawl_client
 
-                    _get_firecrawl_client()
-                mock_fc.assert_called_once_with(api_key="fc-test")
-
-    def test_nous_auth_token_respects_spark_home_override(self, tmp_path):
-        """Auth lookup should read from SPARK_HOME/auth.json, not ~/.spark/auth.json."""
-        real_home = tmp_path / "real-home"
-        (real_home / ".spark").mkdir(parents=True)
-
-        spark_home = tmp_path / "spark-home"
-        spark_home.mkdir()
-        (spark_home / "auth.json").write_text(
-            json.dumps(
-                {
-                    "providers": {
-                        "nous": {
-                            "access_token": "nous-token",
-                        }
-                    }
-                }
-            )
-        )
-
-        with patch.dict(
-            os.environ,
-            {
-                "HOME": str(real_home),
-                "SPARK_HOME": str(spark_home),
-            },
-            clear=False,
-        ):
-            import tools.web_tools
-
-            importlib.reload(tools.web_tools)
-            assert tools.web_tools._read_nous_access_token() == "nous-token"
+                _get_firecrawl_client()
+            mock_fc.assert_called_once_with(api_key="fc-test")
 
     def test_check_auxiliary_model_re_resolves_backend_each_call(self):
         """Availability checks should not be pinned to module import state."""
@@ -350,13 +224,10 @@ class TestFirecrawlClientConfig:
         """FIRECRAWL_API_KEY='' with no URL → should raise."""
         with patch.dict(os.environ, {"FIRECRAWL_API_KEY": ""}):
             with patch("tools.web_tools.Firecrawl"):
-                with patch(
-                    "tools.web_tools._read_nous_access_token", return_value=None
-                ):
-                    from tools.web_tools import _get_firecrawl_client
+                from tools.web_tools import _get_firecrawl_client
 
-                    with pytest.raises(ValueError):
-                        _get_firecrawl_client()
+                with pytest.raises(ValueError):
+                    _get_firecrawl_client()
 
 
 class TestBackendSelection:
@@ -752,45 +623,32 @@ class TestCheckWebApiKey:
 
             assert check_web_api_key() is True
 
-    def test_tool_gateway_returns_true(self):
-        with patch(
-            "tools.web_tools._read_nous_access_token", return_value="nous-token"
-        ):
-            from tools.web_tools import check_web_api_key
-
-            assert check_web_api_key() is True
-
     def test_configured_backend_must_match_available_provider(self):
         with patch(
             "tools.web_tools._load_web_config", return_value={"backend": "parallel"}
         ):
-            with patch(
-                "tools.web_tools._read_nous_access_token", return_value="nous-token"
+            with patch.dict(
+                os.environ,
+                {"FIRECRAWL_GATEWAY_URL": "http://127.0.0.1:3002"},
+                clear=False,
             ):
-                with patch.dict(
-                    os.environ,
-                    {"FIRECRAWL_GATEWAY_URL": "http://127.0.0.1:3002"},
-                    clear=False,
-                ):
-                    from tools.web_tools import check_web_api_key
+                from tools.web_tools import check_web_api_key
 
-                    assert check_web_api_key() is False
+                assert check_web_api_key() is False
 
-    def test_configured_firecrawl_backend_accepts_managed_gateway(self):
+    def test_configured_firecrawl_backend_no_direct_config_returns_false(self):
+        """With backend=firecrawl but no direct key/URL and gateway always off, returns False."""
         with patch(
             "tools.web_tools._load_web_config", return_value={"backend": "firecrawl"}
         ):
-            with patch(
-                "tools.web_tools._read_nous_access_token", return_value="nous-token"
+            with patch.dict(
+                os.environ,
+                {"FIRECRAWL_GATEWAY_URL": "http://127.0.0.1:3002"},
+                clear=False,
             ):
-                with patch.dict(
-                    os.environ,
-                    {"FIRECRAWL_GATEWAY_URL": "http://127.0.0.1:3002"},
-                    clear=False,
-                ):
-                    from tools.web_tools import check_web_api_key
+                from tools.web_tools import check_web_api_key
 
-                    assert check_web_api_key() is True
+                assert check_web_api_key() is False
 
 
 def test_web_requires_env_includes_exa_key():

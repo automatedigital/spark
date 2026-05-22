@@ -15,45 +15,7 @@ MODULE_SPEC.loader.exec_module(managed_tool_gateway)
 resolve_managed_tool_gateway = managed_tool_gateway.resolve_managed_tool_gateway
 
 
-def test_resolve_managed_tool_gateway_derives_vendor_origin_from_shared_domain():
-    with patch.dict(
-        os.environ,
-        {
-            "SPARK_ENABLE_NOUS_MANAGED_TOOLS": "1",
-            "TOOL_GATEWAY_DOMAIN": "automatedigital.ai",
-        },
-        clear=False,
-    ):
-        result = resolve_managed_tool_gateway(
-            "firecrawl",
-            token_reader=lambda: "nous-token",
-        )
-
-    assert result is not None
-    assert result.gateway_origin == "https://firecrawl-gateway.automatedigital.ai"
-    assert result.nous_user_token == "nous-token"
-    assert result.managed_mode is True
-
-
-def test_resolve_managed_tool_gateway_uses_vendor_specific_override():
-    with patch.dict(
-        os.environ,
-        {
-            "SPARK_ENABLE_NOUS_MANAGED_TOOLS": "1",
-            "BROWSER_USE_GATEWAY_URL": "http://browser-use-gateway.localhost:3009/",
-        },
-        clear=False,
-    ):
-        result = resolve_managed_tool_gateway(
-            "browser-use",
-            token_reader=lambda: "nous-token",
-        )
-
-    assert result is not None
-    assert result.gateway_origin == "http://browser-use-gateway.localhost:3009"
-
-
-def test_resolve_managed_tool_gateway_is_inactive_without_nous_token():
+def test_resolve_managed_tool_gateway_is_inactive_without_access_token():
     with patch.dict(
         os.environ,
         {
@@ -76,32 +38,8 @@ def test_resolve_managed_tool_gateway_is_disabled_without_feature_flag():
     ):
         result = resolve_managed_tool_gateway(
             "firecrawl",
-            token_reader=lambda: "nous-token",
+            token_reader=lambda: "gateway-token",
         )
 
     assert result is None
 
-
-def test_read_nous_access_token_refreshes_expiring_cached_token(tmp_path, monkeypatch):
-    monkeypatch.delenv("TOOL_GATEWAY_USER_TOKEN", raising=False)
-    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
-    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()
-    (tmp_path / "auth.json").write_text(
-        json.dumps(
-            {
-                "providers": {
-                    "nous": {
-                        "access_token": "stale-token",
-                        "refresh_token": "refresh-token",
-                        "expires_at": expires_at,
-                    }
-                }
-            }
-        )
-    )
-    monkeypatch.setattr(
-        "spark_cli.auth.resolve_nous_access_token",
-        lambda refresh_skew_seconds=120: "fresh-token",
-    )
-
-    assert managed_tool_gateway.read_nous_access_token() == "fresh-token"

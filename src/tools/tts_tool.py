@@ -878,7 +878,7 @@ def check_tts_requirements() -> bool:
 
 
 def _resolve_openai_audio_client_config() -> tuple[str, str]:
-    """Return direct OpenAI audio config or a managed gateway fallback."""
+    """Return direct OpenAI audio config."""
     direct_api_key = resolve_openai_audio_api_key()
     if direct_api_key:
         return direct_api_key, DEFAULT_OPENAI_BASE_URL
@@ -887,13 +887,13 @@ def _resolve_openai_audio_client_config() -> tuple[str, str]:
     if managed_gateway is None:
         raise ValueError("Neither VOICE_TOOLS_OPENAI_KEY nor OPENAI_API_KEY is set")
 
-    return managed_gateway.nous_user_token, urljoin(
+    return managed_gateway.access_token, urljoin(
         f"{managed_gateway.gateway_origin.rstrip('/')}/", "v1"
     )
 
 
 def _has_openai_audio_backend() -> bool:
-    """Return True when OpenAI audio can use direct credentials or the managed gateway."""
+    """Return True when OpenAI audio can use direct credentials."""
     return bool(resolve_openai_audio_api_key() or resolve_managed_tool_gateway("openai-audio"))
 
 

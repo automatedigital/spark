@@ -113,7 +113,7 @@ def test_run_doctor_sets_interactive_env_for_tool_checks(monkeypatch, tmp_path):
         check_tool_availability=fake_check_tool_availability,
         TOOLSET_REQUIREMENTS={},
     )
-    monkeypatch.setitem(sys.modules, "model_tools", fake_model_tools)
+    monkeypatch.setitem(sys.modules, "core.model_tools", fake_model_tools)
 
     with pytest.raises(SystemExit):
         doctor_mod.run_doctor(Namespace(fix=False))
@@ -273,6 +273,7 @@ def test_run_doctor_termux_does_not_mark_browser_available_without_agent_browser
         },
     )
     monkeypatch.setitem(sys.modules, "model_tools", fake_model_tools)
+    monkeypatch.setitem(sys.modules, "core.model_tools", fake_model_tools)
 
     try:
         from spark_cli import auth as _auth_mod

@@ -628,7 +628,7 @@ def fetch_models_with_pricing(
     """Fetch ``/v1/models`` and return ``{model_id: {prompt, completion}}`` pricing.
 
     Results are cached per *base_url* so repeated calls are free.
-    Works with any OpenRouter-compatible endpoint (OpenRouter, Spark Portal).
+    Works with any OpenRouter-compatible endpoint.
     """
     cache_key = (base_url or "").rstrip("/")
     if not force_refresh and cache_key in _pricing_cache:
@@ -827,7 +827,7 @@ def curated_models_for_provider(
     if normalized == "openrouter":
         return fetch_openrouter_models(force_refresh=force_refresh)
 
-    # Try live API first (Codex, Spark Portal, etc. all support /models)
+    # Try live API first for providers/endpoints that support /models.
     live = provider_model_ids(normalized)
     if live:
         return [(m, "") for m in live]

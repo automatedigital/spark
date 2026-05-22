@@ -13,8 +13,6 @@ model:
   # Inference provider selection:
   #   "auto"         - Auto-detect from credentials (default)
   #   "openrouter"   - OpenRouter (requires: OPENROUTER_API_KEY or OPENAI_API_KEY)
-  #   "nous"         - Nous Portal OAuth (requires: spark login)
-  #   "nous-api"     - Nous Portal API key (requires: NOUS_API_KEY)
   #   "anthropic"    - Direct Anthropic API (requires: ANTHROPIC_API_KEY)
   #   "openai-codex" - OpenAI Codex (requires: spark login --provider openai-codex)
   #   "copilot"      - GitHub Copilot / GitHub Models (requires: GITHUB_TOKEN)
@@ -319,11 +317,11 @@ compression:
 # Spark uses lightweight "auxiliary" models for side tasks: image analysis,
 # browser screenshot analysis, web page summarization, and context compression.
 #
-# By default these use Gemini Flash via OpenRouter or Nous Portal and are
+# By default these use Gemini Flash via OpenRouter or Codex and are
 # auto-detected from your credentials.  You do NOT need to change anything
 # here for normal usage.
 #
-# WARNING: Overriding these with providers other than OpenRouter or Nous Portal
+# WARNING: Overriding these with providers other than OpenRouter or Codex
 # is EXPERIMENTAL and may not work.  Not all models/providers support vision,
 # produce usable summaries, or accept the same API format.  Change at your own
 # risk — if things break, reset to "auto" / empty values.
@@ -333,9 +331,8 @@ compression:
 # local endpoint for compression (just needs text).
 #
 # Provider options:
-#   "auto"       - Best available: OpenRouter → Nous Portal → main endpoint (default)
+#   "auto"       - Best available: OpenRouter → Codex → main endpoint (default)
 #   "openrouter" - Force OpenRouter (requires OPENROUTER_API_KEY)
-#   "nous"       - Force Nous Portal (requires: spark login)
 #   "gemini"      - Force Google AI Studio direct (requires: GOOGLE_API_KEY or GEMINI_API_KEY)
 #   "codex"       - Force Codex OAuth (requires: spark model → Codex).
 #                  Uses gpt-5.3-codex which supports vision.
@@ -344,7 +341,7 @@ compression:
 #                  endpoint.  Also falls back to Codex OAuth and API-key providers.
 #
 # Model: leave empty to use the provider's default.  When empty, OpenRouter
-# uses "google/gemini-3-flash-preview" and Nous uses "gemini-3-flash".
+# uses "google/gemini-3-flash-preview".
 # Other providers pick a sensible default automatically.
 #
 # auxiliary:
@@ -494,7 +491,7 @@ agent:
   # Enable verbose logging
   verbose: false
   
-  # Reasoning effort level (OpenRouter and Nous Portal)
+  # Reasoning effort level (OpenRouter and compatible reasoning providers)
   # Controls how much "thinking" the model does before responding.
   # Options: "xhigh" (max), "high", "medium", "low", "minimal", "none" (disable)
   reasoning_effort: "medium"
@@ -748,7 +745,7 @@ delegation:
   # model: "google/gemini-3-flash-preview"    # Override model for subagents (empty = inherit parent)
   # provider: "openrouter"                    # Override provider for subagents (empty = inherit parent)
   #                                           # Resolves full credentials (base_url, api_key) automatically.
-  #                                           # Supported: openrouter, nous, zai, kimi-coding, minimax
+  #                                           # Supported: openrouter, zai, kimi-coding, minimax
 
 # =============================================================================
 # Honcho Integration (Cross-Session User Modeling)

@@ -69,7 +69,7 @@ class BrowserUseProvider(CloudBrowserProvider):
         return self._get_config_or_none() is not None
 
     # ------------------------------------------------------------------
-    # Config resolution (direct API key OR managed Spark Portal gateway)
+    # Config resolution (direct API key; managed hosted gateways are disabled)
     # ------------------------------------------------------------------
 
     def _get_config_or_none(self) -> Optional[Dict[str, Any]]:
@@ -86,7 +86,7 @@ class BrowserUseProvider(CloudBrowserProvider):
             return None
 
         return {
-            "api_key": managed.nous_user_token,
+            "api_key": managed.access_token,
             "base_url": managed.gateway_origin.rstrip("/"),
             "managed_mode": True,
         }

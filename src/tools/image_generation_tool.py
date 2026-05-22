@@ -184,14 +184,14 @@ def _get_managed_fal_client(managed_gateway):
 
     client_config = (
         managed_gateway.gateway_origin.rstrip("/"),
-        managed_gateway.nous_user_token,
+        managed_gateway.access_token,
     )
     with _managed_fal_client_lock:
         if _managed_fal_client is not None and _managed_fal_client_config == client_config:
             return _managed_fal_client
 
         _managed_fal_client = _ManagedFalSyncClient(
-            key=managed_gateway.nous_user_token,
+            key=managed_gateway.access_token,
             queue_run_origin=managed_gateway.gateway_origin,
         )
         _managed_fal_client_config = client_config

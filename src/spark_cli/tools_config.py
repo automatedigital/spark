@@ -929,13 +929,6 @@ def _configure_provider(provider: dict, config: dict):
         if provider.get("post_setup"):
             _run_post_setup(provider["post_setup"])
         _print_success(f"  {provider['name']} - no configuration needed!")
-        if managed_feature:
-            _print_info("  Requests for this tool will be billed to your Spark subscription.")
-            override_envs = provider.get("override_env_vars", [])
-            if any(get_env_value(env_var) for env_var in override_envs):
-                _print_warning(
-                    "  Direct credentials are still configured and may take precedence until you remove them from ~/.spark/.env."
-                )
         return
 
     # Prompt for each required env var
@@ -1135,13 +1128,6 @@ def _reconfigure_provider(provider: dict, config: dict):
         if provider.get("post_setup"):
             _run_post_setup(provider["post_setup"])
         _print_success(f"  {provider['name']} - no configuration needed!")
-        if managed_feature:
-            _print_info("  Requests for this tool will be billed to your Spark subscription.")
-            override_envs = provider.get("override_env_vars", [])
-            if any(get_env_value(env_var) for env_var in override_envs):
-                _print_warning(
-                    "  Direct credentials are still configured and may take precedence until you remove them from ~/.spark/.env."
-                )
         return
 
     for var in env_vars:

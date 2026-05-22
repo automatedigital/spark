@@ -859,9 +859,8 @@ def _query_local_context_length(model: str, base_url: str) -> Optional[int]:
 def _normalize_model_version(model: str) -> str:
     """Normalize version separators for matching.
 
-    Spark Portal uses dashes: claude-opus-4-6, claude-sonnet-4-5
-    OpenRouter uses dots: claude-opus-4.6, claude-sonnet-4.5
-    Normalize both to dashes for comparison.
+    Some provider catalogs use dashes (claude-opus-4-6), while others use
+    dots (claude-opus-4.6). Normalize both to dashes for comparison.
     """
     return model.replace(".", "-")
 
@@ -915,7 +914,7 @@ def get_model_context_length(
     3. Local server query (for local endpoints)
     4. Anthropic /v1/models API (API-key users only, not OAuth)
     5. OpenRouter live API metadata
-    6. Spark Portal suffix-match via OpenRouter cache
+    6. Provider suffix-match via OpenRouter cache
     7. models.dev registry lookup (provider-aware)
     8. Thin hardcoded defaults (broad family patterns)
     9. Default fallback (128K)

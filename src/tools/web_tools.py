@@ -4,8 +4,8 @@ Standalone Web Tools Module
 
 This module provides generic web tools that work with multiple backend providers.
 Backend is selected during ``spark tools`` setup (web.backend in config.yaml).
-When available, Spark can route Firecrawl calls through a Spark Portal-hosted tool-gateway
-for Spark Portal Subscribers only.
+Direct provider credentials are required; the previously hosted managed
+tool-gateway path is disabled.
 
 Available tools:
 - web_search_tool: Search the web for information
@@ -14,7 +14,7 @@ Available tools:
 
 Backend compatibility:
 - Exa: https://exa.ai (search, extract)
-- Firecrawl: https://docs.firecrawl.dev/introduction (search, extract, crawl; direct or derived firecrawl-gateway.<domain> for Spark Portal Subscribers)
+- Firecrawl: https://docs.firecrawl.dev/introduction (search, extract, crawl)
 - Parallel: https://docs.parallel.ai (search, extract)
 - Tavily: https://tavily.com (search, extract, crawl)
 
@@ -93,10 +93,9 @@ def _get_backend() -> str:
         return configured
 
     # Fallback for manual / legacy config — pick the highest-priority
-    # available backend. Firecrawl also counts as available when the managed
-    # tool gateway is configured for Spark Portal subscribers.
+    # available backend.
     backend_candidates = (
-        ("firecrawl", _has_env("FIRECRAWL_API_KEY") or _has_env("FIRECRAWL_API_URL") or _is_tool_gateway_ready()),
+        ("firecrawl", _has_env("FIRECRAWL_API_KEY") or _has_env("FIRECRAWL_API_URL")),
         ("parallel", _has_env("PARALLEL_API_KEY")),
         ("tavily", _has_env("TAVILY_API_KEY")),
         ("exa", _has_env("EXA_API_KEY")),
@@ -149,7 +148,7 @@ def _get_firecrawl_gateway_url() -> str:
 
 
 def _is_tool_gateway_ready() -> bool:
-    """Return True when gateway URL and a Spark Portal Subscriber token are available."""
+    """Return False while hosted managed gateways are disabled."""
     return resolve_managed_tool_gateway("firecrawl", token_reader=None) is not None
 
 
@@ -185,8 +184,7 @@ def _web_requires_env() -> list[str]:
 def _get_firecrawl_client():
     """Get or create Firecrawl client.
 
-    Direct Firecrawl takes precedence when explicitly configured. Otherwise
-    Spark falls back to the Firecrawl tool-gateway for logged-in Spark Portal Subscribers.
+    Direct Firecrawl configuration is required.
     """
     global _firecrawl_client, _firecrawl_client_config
 
@@ -203,13 +201,13 @@ def _get_firecrawl_client():
             _raise_web_backend_configuration_error()
 
         kwargs = {
-            "api_key": managed_gateway.nous_user_token,
+            "api_key": managed_gateway.access_token,
             "api_url": managed_gateway.gateway_origin,
         }
         client_config = (
             "tool-gateway",
             kwargs["api_url"],
-            managed_gateway.nous_user_token,
+            managed_gateway.access_token,
         )
 
     if _firecrawl_client is not None and _firecrawl_client_config == client_config:
@@ -426,7 +424,7 @@ def _extract_scrape_payload(scrape_result: Any) -> Dict[str, Any]:
 DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION = 5000
 
 def _is_spark_auxiliary_client(client: Any) -> bool:
-    """Return True when the resolved auxiliary backend is Spark Portal."""
+    """Return True for the legacy hosted auxiliary endpoint."""
     from urllib.parse import urlparse
 
     base_url = str(getattr(client, "base_url", "") or "")
@@ -1891,8 +1889,7 @@ def check_firecrawl_api_key() -> bool:
 
     Availability is true when either:
     1) direct Firecrawl config (`FIRECRAWL_API_KEY` or `FIRECRAWL_API_URL`), or
-    2) Firecrawl gateway origin + Spark Portal Subscriber access token
-       (fallback when direct Firecrawl is not configured).
+    2) hosted managed gateway availability, currently disabled.
 
     Returns:
         bool: True if direct Firecrawl or the tool-gateway can be used.

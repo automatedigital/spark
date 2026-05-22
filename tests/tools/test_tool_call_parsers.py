@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 # Ensure repo root is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 try:
     from environments.tool_call_parsers import (
