@@ -1,0 +1,9 @@
+agent:
+  max_turns: 50
+auxiliary:
+  compression:
+    model: google/gemini-3-flash-preview
+display:
+  skin: default
+memory:
+  provider: holographic

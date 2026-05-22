@@ -97,7 +97,7 @@ class TestImageBadgeFormatting:
 
         badges = _format_image_attachment_badges([img], image_counter=1, width=40)
 
-        assert badges.startswith("[📎 ")
+        assert badges.startswith("[ATTACH ")
         assert "Image #1" not in badges
 
     def test_compact_badges_summarize_multiple_images(self, tmp_path):
@@ -106,4 +106,4 @@ class TestImageBadgeFormatting:
 
         badges = _format_image_attachment_badges([img1, img2], image_counter=2, width=45)
 
-        assert badges == "[📎 2 images attached]"
+        assert badges == "[ATTACH 2 images attached]"

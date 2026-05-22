@@ -1700,8 +1700,11 @@ def save_config_value(key_path: str, value: any) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    # Use the same precedence as load_cli_config: user config first, then project config
-    user_config_path = _spark_home / "config.yaml"
+    # Use the same precedence as load_cli_config: user config first, then project config.
+    # Always call get_spark_home() here (not the module-level cache) so that a changed
+    # SPARK_HOME env var (e.g. during tests or profile switches) is respected.
+    from core.spark_constants import get_spark_home as _get_spark_home
+    user_config_path = _get_spark_home() / "config.yaml"
     project_config_path = Path(__file__).parent / "cli-config.yaml"
     config_path = user_config_path if user_config_path.exists() else project_config_path
 

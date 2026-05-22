@@ -8,9 +8,13 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_cli(env_overrides=None, config_overrides=None, **kwargs):
-    """Create a SparkCLI instance with minimal mocking."""
-    import importlib
+    """Create a SparkCLI instance with minimal mocking.
 
+    SparkCLI.__init__ does not call any prompt_toolkit APIs (those only run
+    inside run()), so we don't need to mock prompt_toolkit or reload the
+    module.  A simple import + attribute patch is sufficient and avoids the
+    sys.modules corruption that importlib.reload inside patch.dict caused.
+    """
     _clean_config = {
         "model": {
             "default": "anthropic/claude-opus-4.6",
@@ -26,30 +30,12 @@ def _make_cli(env_overrides=None, config_overrides=None, **kwargs):
     clean_env = {"LLM_MODEL": "", "SPARK_MAX_ITERATIONS": ""}
     if env_overrides:
         clean_env.update(env_overrides)
-    prompt_toolkit_stubs = {
-        "prompt_toolkit": MagicMock(),
-        "prompt_toolkit.history": MagicMock(),
-        "prompt_toolkit.styles": MagicMock(),
-        "prompt_toolkit.patch_stdout": MagicMock(),
-        "prompt_toolkit.application": MagicMock(),
-        "prompt_toolkit.layout": MagicMock(),
-        "prompt_toolkit.layout.processors": MagicMock(),
-        "prompt_toolkit.filters": MagicMock(),
-        "prompt_toolkit.layout.dimension": MagicMock(),
-        "prompt_toolkit.layout.menus": MagicMock(),
-        "prompt_toolkit.widgets": MagicMock(),
-        "prompt_toolkit.key_binding": MagicMock(),
-        "prompt_toolkit.completion": MagicMock(),
-        "prompt_toolkit.formatted_text": MagicMock(),
-        "prompt_toolkit.auto_suggest": MagicMock(),
-    }
-    with patch.dict(sys.modules, prompt_toolkit_stubs), \
+
+    import core.cli as _cli_mod
+    with patch.object(_cli_mod, "get_tool_definitions", return_value=[]), \
+         patch.dict(_cli_mod.__dict__, {"CLI_CONFIG": _clean_config}), \
          patch.dict("os.environ", clean_env, clear=False):
-        import core.cli as _cli_mod
-        _cli_mod = importlib.reload(_cli_mod)
-        with patch.object(_cli_mod, "get_tool_definitions", return_value=[]), \
-             patch.dict(_cli_mod.__dict__, {"CLI_CONFIG": _clean_config}):
-            return _cli_mod.SparkCLI(**kwargs)
+        return _cli_mod.SparkCLI(**kwargs)
 
 
 class TestMaxTurnsResolution:

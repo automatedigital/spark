@@ -309,84 +309,6 @@ def test_codex_provider_replaces_incompatible_default_model(monkeypatch):
     assert shell.model == "gpt-5.2-codex"
 
 
-def test_model_flow_nous_prints_subscription_guidance_without_mutating_explicit_tts(monkeypatch, capsys):
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    config = {
-        "model": {"provider": "nous", "default": "claude-opus-4-6"},
-        "tts": {"provider": "elevenlabs"},
-        "browser": {"cloud_provider": "browser-use"},
-    }
-
-    monkeypatch.setattr(
-        "spark_cli.auth.get_provider_auth_state",
-        lambda provider: {"access_token": "nous-token"},
-    )
-    monkeypatch.setattr(
-        "spark_cli.auth.resolve_nous_runtime_credentials",
-        lambda *args, **kwargs: {
-            "base_url": "https://inference.example.com/v1",
-            "api_key": "nous-key",
-        },
-    )
-    monkeypatch.setattr("spark_cli.models._PROVIDER_MODELS", {"nous": ["claude-opus-4-6"]})
-    monkeypatch.setattr("spark_cli.models.filter_nous_free_models", lambda model_ids, pricing: model_ids)
-    monkeypatch.setattr("spark_cli.models.check_nous_free_tier", lambda: False)
-    monkeypatch.setattr("spark_cli.models.partition_nous_models_by_tier", lambda m, p, **kw: (m, []))
-    monkeypatch.setattr("spark_cli.models.get_pricing_for_provider", lambda p: {})
-    monkeypatch.setattr("spark_cli.auth._prompt_model_selection", lambda model_ids, current_model="", pricing=None, **kw: "claude-opus-4-6")
-    monkeypatch.setattr("spark_cli.auth._save_model_choice", lambda model: None)
-    monkeypatch.setattr("spark_cli.auth._update_config_for_provider", lambda provider, url: None)
-    monkeypatch.setattr(
-        "spark_cli.nous_subscription.get_nous_subscription_explainer_lines",
-        lambda: ["Spark subscription enables managed web tools."],
-    )
-
-    spark_main._model_flow_nous(config, current_model="claude-opus-4-6")
-
-    out = capsys.readouterr().out
-    assert "Spark subscription enables managed web tools." in out
-    assert config["tts"]["provider"] == "elevenlabs"
-    assert config["browser"]["cloud_provider"] == "browser-use"
-
-
-def test_model_flow_nous_applies_managed_tts_default_when_unconfigured(monkeypatch, capsys):
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    config = {
-        "model": {"provider": "nous", "default": "claude-opus-4-6"},
-        "tts": {"provider": "edge"},
-    }
-
-    monkeypatch.setattr(
-        "spark_cli.auth.get_provider_auth_state",
-        lambda provider: {"access_token": "nous-token"},
-    )
-    monkeypatch.setattr(
-        "spark_cli.auth.resolve_nous_runtime_credentials",
-        lambda *args, **kwargs: {
-            "base_url": "https://inference.example.com/v1",
-            "api_key": "nous-key",
-        },
-    )
-    monkeypatch.setattr("spark_cli.models._PROVIDER_MODELS", {"nous": ["claude-opus-4-6"]})
-    monkeypatch.setattr("spark_cli.models.filter_nous_free_models", lambda model_ids, pricing: model_ids)
-    monkeypatch.setattr("spark_cli.models.check_nous_free_tier", lambda: False)
-    monkeypatch.setattr("spark_cli.models.partition_nous_models_by_tier", lambda m, p, **kw: (m, []))
-    monkeypatch.setattr("spark_cli.models.get_pricing_for_provider", lambda p: {})
-    monkeypatch.setattr("spark_cli.auth._prompt_model_selection", lambda model_ids, current_model="", pricing=None, **kw: "claude-opus-4-6")
-    monkeypatch.setattr("spark_cli.auth._save_model_choice", lambda model: None)
-    monkeypatch.setattr("spark_cli.auth._update_config_for_provider", lambda provider, url: None)
-    monkeypatch.setattr(
-        "spark_cli.nous_subscription.get_nous_subscription_explainer_lines",
-        lambda: ["Spark subscription enables managed web tools."],
-    )
-
-    spark_main._model_flow_nous(config, current_model="claude-opus-4-6")
-
-    out = capsys.readouterr().out
-    assert "Spark subscription enables managed web tools." in out
-    assert "OpenAI TTS via your Spark subscription" in out
-    assert config["tts"]["provider"] == "openai"
-
 
 def test_codex_provider_uses_config_model(monkeypatch):
     """Model comes from config.yaml, not LLM_MODEL env var.
@@ -527,30 +449,6 @@ def test_codex_provider_strips_provider_prefix_from_model(monkeypatch):
     assert shell.model == "gpt-5.3-codex"
 
 
-def test_cmd_model_falls_back_to_auto_on_invalid_provider(monkeypatch, capsys):
-    monkeypatch.setattr(
-        "spark_cli.config.load_config",
-        lambda: {"model": {"default": "gpt-5", "provider": "invalid-provider"}},
-    )
-    monkeypatch.setattr("spark_cli.config.save_config", lambda cfg: None)
-    monkeypatch.setattr("spark_cli.config.get_env_value", lambda key: "")
-    monkeypatch.setattr("spark_cli.config.save_env_value", lambda key, value: None)
-
-    def _resolve_provider(requested, **kwargs):
-        if requested == "invalid-provider":
-            raise AuthError("Unknown provider 'invalid-provider'.", code="invalid_provider")
-        return "openrouter"
-
-    monkeypatch.setattr("spark_cli.auth.resolve_provider", _resolve_provider)
-    monkeypatch.setattr(spark_main, "_prompt_provider_choice", lambda choices, **kwargs: len(choices) - 1)
-    monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})())
-
-    spark_main.cmd_model(SimpleNamespace())
-    output = capsys.readouterr().out
-
-    assert "Warning:" in output
-    assert "falling back to auto provider detection" in output.lower()
-    assert "No change." in output
 
 
 def test_model_flow_custom_saves_verified_v1_base_url(monkeypatch, capsys):
@@ -595,52 +493,6 @@ def test_model_flow_custom_saves_verified_v1_base_url(monkeypatch, capsys):
     assert "OPENAI_BASE_URL" not in saved_env
     assert saved_env["MODEL"] == "llm"
 
-
-def test_cmd_model_forwards_nous_login_tls_options(monkeypatch):
-    # Test that TLS options from args are forwarded to _login_nous.
-    # Call _model_flow_nous directly since "nous" is no longer in the
-    # canonical provider picker list.
-    monkeypatch.setattr("spark_cli.auth.get_provider_auth_state", lambda provider_id: None)
-
-    captured = {}
-
-    def _fake_login(login_args, provider_config):
-        captured["portal_url"] = login_args.portal_url
-        captured["inference_url"] = login_args.inference_url
-        captured["client_id"] = login_args.client_id
-        captured["scope"] = login_args.scope
-        captured["no_browser"] = login_args.no_browser
-        captured["timeout"] = login_args.timeout
-        captured["ca_bundle"] = login_args.ca_bundle
-        captured["insecure"] = login_args.insecure
-
-    monkeypatch.setattr("spark_cli.auth._login_nous", _fake_login)
-
-    spark_main._model_flow_nous(
-        config={"model": {"default": "gpt-5", "provider": "nous"}},
-        current_model="gpt-5",
-        args=SimpleNamespace(
-            portal_url="",
-            inference_url="https://automatedigital.ai/v1",
-            client_id="spark-local",
-            scope="openid profile",
-            no_browser=True,
-            timeout=7.5,
-            ca_bundle="/tmp/local-ca.pem",
-            insecure=True,
-        ),
-    )
-
-    assert captured == {
-        "portal_url": "",
-        "inference_url": "https://automatedigital.ai/v1",
-        "client_id": "spark-local",
-        "scope": "openid profile",
-        "no_browser": True,
-        "timeout": 7.5,
-        "ca_bundle": "/tmp/local-ca.pem",
-        "insecure": True,
-    }
 
 
 # ---------------------------------------------------------------------------

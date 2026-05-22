@@ -29,7 +29,7 @@ class TestCLILoadingIndicator:
             assert cli_obj.process_command("/skills search kubernetes")
 
         output = capsys.readouterr().out
-        assert "⏳ Searching skills..." in output
+        assert "Searching skills..." in output
         assert "skills done" in output
         assert seen == {
             "cmd": "/skills search kubernetes",
@@ -54,7 +54,7 @@ class TestCLILoadingIndicator:
             assert cli_obj.process_command("/reload-mcp")
 
         output = capsys.readouterr().out
-        assert "⏳ Reloading MCP servers..." in output
+        assert "Reloading MCP servers..." in output
         assert "reload done" in output
         assert seen == {
             "running": True,

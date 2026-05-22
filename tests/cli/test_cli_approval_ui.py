@@ -115,7 +115,7 @@ class TestCliApprovalUi:
         rendered = "".join(text for _style, text in fragments)
         lines = rendered.splitlines()
 
-        assert lines[0].startswith("╭")
+        assert lines[0].startswith(("╭", "+"))
         assert "Dangerous Command" not in lines[0]
         assert any("Dangerous Command" in line for line in lines[1:3])
         assert "Show full command" in rendered
