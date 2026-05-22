@@ -303,9 +303,9 @@ class TestCronDelivery(unittest.TestCase):
 
     def test_email_in_cron_platform_map(self):
         import cron.scheduler
-        import inspect
-        source = inspect.getsource(cron.scheduler)
-        self.assertIn('"email"', source)
+        # Email platform should be recognized as a valid delivery platform,
+        # either via hardcoded string or derived from Platform enum.
+        self.assertIn("email", cron.scheduler._KNOWN_DELIVERY_PLATFORMS)
 
 
 class TestToolset(unittest.TestCase):

@@ -79,41 +79,6 @@ def test_modal_backend_without_token_or_config_logs_specific_error(monkeypatch, 
     )
 
 
-def test_modal_backend_with_managed_gateway_does_not_require_direct_creds_or_minisweagent(monkeypatch, tmp_path):
-    _clear_terminal_env(monkeypatch)
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    monkeypatch.setenv("TERMINAL_ENV", "modal")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    monkeypatch.setenv("TERMINAL_MODAL_MODE", "managed")
-    monkeypatch.setattr(terminal_tool_module, "is_managed_tool_gateway_ready", lambda _vendor: True)
-    monkeypatch.setattr(
-        terminal_tool_module.importlib.util,
-        "find_spec",
-        lambda _name: (_ for _ in ()).throw(AssertionError("should not be called")),
-    )
-
-    assert terminal_tool_module.check_terminal_requirements() is True
-
-
-def test_modal_backend_auto_mode_prefers_managed_gateway_over_direct_creds(monkeypatch, tmp_path):
-    _clear_terminal_env(monkeypatch)
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    monkeypatch.setenv("TERMINAL_ENV", "modal")
-    monkeypatch.setenv("MODAL_TOKEN_ID", "tok-id")
-    monkeypatch.setenv("MODAL_TOKEN_SECRET", "tok-secret")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    monkeypatch.setattr(terminal_tool_module, "is_managed_tool_gateway_ready", lambda _vendor: True)
-    monkeypatch.setattr(
-        terminal_tool_module.importlib.util,
-        "find_spec",
-        lambda _name: (_ for _ in ()).throw(AssertionError("should not be called")),
-    )
-
-    assert terminal_tool_module.check_terminal_requirements() is True
-
-
 def test_modal_backend_direct_mode_does_not_fall_back_to_managed(monkeypatch, caplog, tmp_path):
     _clear_terminal_env(monkeypatch)
     monkeypatch.setenv("TERMINAL_ENV", "modal")
@@ -132,39 +97,3 @@ def test_modal_backend_direct_mode_does_not_fall_back_to_managed(monkeypatch, ca
     )
 
 
-def test_modal_backend_managed_mode_does_not_fall_back_to_direct(monkeypatch, caplog, tmp_path):
-    _clear_terminal_env(monkeypatch)
-    monkeypatch.setenv("TERMINAL_ENV", "modal")
-    monkeypatch.setenv("TERMINAL_MODAL_MODE", "managed")
-    monkeypatch.setenv("MODAL_TOKEN_ID", "tok-id")
-    monkeypatch.setenv("MODAL_TOKEN_SECRET", "tok-secret")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    monkeypatch.setattr(terminal_tool_module, "is_managed_tool_gateway_ready", lambda _vendor: False)
-
-    with caplog.at_level(logging.ERROR):
-        ok = terminal_tool_module.check_terminal_requirements()
-
-    assert ok is False
-    assert any(
-        "SPARK_ENABLE_NOUS_MANAGED_TOOLS is not enabled" in record.getMessage()
-        for record in caplog.records
-    )
-
-
-def test_modal_backend_managed_mode_without_feature_flag_logs_clear_error(monkeypatch, caplog, tmp_path):
-    _clear_terminal_env(monkeypatch)
-    monkeypatch.setenv("TERMINAL_ENV", "modal")
-    monkeypatch.setenv("TERMINAL_MODAL_MODE", "managed")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    monkeypatch.setattr(terminal_tool_module, "is_managed_tool_gateway_ready", lambda _vendor: False)
-
-    with caplog.at_level(logging.ERROR):
-        ok = terminal_tool_module.check_terminal_requirements()
-
-    assert ok is False
-    assert any(
-        "SPARK_ENABLE_NOUS_MANAGED_TOOLS is not enabled" in record.getMessage()
-        for record in caplog.records
-    )

@@ -49,7 +49,7 @@ class TestSanitizeApiMessagesRoleFilter:
             {"role": "user", "content": "hello"},
             {"role": "session_meta", "content": {"info": "test"}},
         ]
-        with caplog.at_level(logging.DEBUG, logger="run_agent"):
+        with caplog.at_level(logging.DEBUG, logger="core.run_agent"):
             AIAgent._sanitize_api_messages(msgs)
         assert any("invalid role" in r.message and "session_meta" in r.message for r in caplog.records)
 

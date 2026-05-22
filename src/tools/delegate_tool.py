@@ -259,7 +259,7 @@ def _build_child_agent(
     When override_* params are set (from delegation config), the child uses
     those credentials instead of inheriting from the parent.  This enables
     routing subagents to a different provider:model pair (e.g. cheap/fast
-    model on OpenRouter while the parent runs on Spark Portal).
+    model on OpenRouter while the parent runs on another provider).
     """
     from core.run_agent import AIAgent
 
@@ -292,7 +292,7 @@ def _build_child_agent(
 
     workspace_hint = _resolve_workspace_hint(parent_agent)
     child_prompt = _build_child_system_prompt(goal, context, workspace_path=workspace_hint)
-    # Extract parent's API key so subagents inherit auth (e.g. Spark Portal).
+    # Extract parent's API key so subagents inherit auth when appropriate.
     parent_api_key = getattr(parent_agent, "api_key", None)
     if (not parent_api_key) and hasattr(parent_agent, "_client_kwargs"):
         parent_api_key = parent_agent._client_kwargs.get("api_key")
@@ -913,7 +913,7 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
             f"Cannot resolve delegation provider '{configured_provider}': {exc}. "
             f"Check that the provider is configured (API key set, valid provider name), "
             f"or set delegation.base_url/delegation.api_key for a direct endpoint. "
-            f"Available providers: openrouter, nous, zai, kimi-coding, minimax."
+            f"Available providers: openrouter, zai, kimi-coding, minimax."
         ) from exc
 
     api_key = runtime.get("api_key", "")

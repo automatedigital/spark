@@ -23,10 +23,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
-from tools.tool_backend_helpers import (
-    managed_nous_tools_enabled as _managed_nous_tools_enabled,
-)
-
 _IS_WINDOWS = platform.system() == "Windows"
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Env var names written to .env that aren't in OPTIONAL_ENV_VARS
@@ -693,7 +689,7 @@ DEFAULT_CONFIG = {
     # Subagent delegation — override the provider:model used by delegate_task
     # so child agents can run on a different (cheaper/faster) provider and model.
     # Uses the same runtime provider resolution as CLI/gateway startup, so all
-    # configured providers (OpenRouter, Spark Portal, Z.ai, Kimi, etc.) are supported.
+    # configured providers (OpenRouter, Anthropic, Z.ai, Kimi, etc.) are supported.
     "delegation": {
         "model": "",  # e.g. "google/gemini-3-flash-preview" (empty = inherit parent model)
         "provider": "",  # e.g. "openrouter" (empty = inherit parent provider + credentials)
@@ -853,21 +849,13 @@ ENV_VARS_BY_VERSION: Dict[int, List[str]] = {
 
 # Required environment variables with metadata for migration prompts.
 # LLM provider is required but handled in the setup wizard's provider
-# selection step (Spark Portal / OpenRouter / Custom endpoint), so this
+# selection step (OpenRouter / Anthropic / Custom endpoint), so this
 # dict is intentionally empty — no single env var is universally required.
 REQUIRED_ENV_VARS = {}
 
 # Optional environment variables that enhance functionality
 OPTIONAL_ENV_VARS = {
     # ── Provider (handled in provider selection, not shown in checklists) ──
-    "NOUS_BASE_URL": {
-        "description": "Spark Portal base URL override",
-        "prompt": "Spark Portal base URL (leave empty for default)",
-        "url": None,
-        "password": False,
-        "category": "provider",
-        "advanced": True,
-    },
     "OPENROUTER_API_KEY": {
         "description": "OpenRouter API key (for vision, web scraping helpers, and MoA)",
         "prompt": "OpenRouter API key",
@@ -1138,7 +1126,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "FIRECRAWL_GATEWAY_URL": {
-        "description": "Exact Firecrawl tool-gateway origin override for Spark Portal Subscribers only (optional)",
+        "description": "Exact Firecrawl tool-gateway origin override (hosted managed gateways are disabled)",
         "prompt": "Firecrawl gateway URL (leave empty to derive from domain)",
         "url": None,
         "password": False,
@@ -1146,7 +1134,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "TOOL_GATEWAY_DOMAIN": {
-        "description": "Shared tool-gateway domain suffix for Spark Portal Subscribers only, used to derive vendor hosts, e.g. automatedigital.ai -> automatedigital.ai",
+        "description": "Shared tool-gateway domain suffix for derived vendor hosts (hosted managed gateways are disabled)",
         "prompt": "Tool-gateway domain suffix",
         "url": None,
         "password": False,
@@ -1154,7 +1142,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "TOOL_GATEWAY_SCHEME": {
-        "description": "Shared tool-gateway URL scheme for Spark Portal Subscribers only, used to derive vendor hosts (`https` by default, set `http` for local gateway testing)",
+        "description": "Shared tool-gateway URL scheme for derived vendor hosts (`https` by default, set `http` for local gateway testing)",
         "prompt": "Tool-gateway URL scheme",
         "url": None,
         "password": False,
@@ -1162,7 +1150,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "TOOL_GATEWAY_USER_TOKEN": {
-        "description": "Explicit Spark Portal Subscriber access token for tool-gateway requests (optional; otherwise read from the Spark auth store)",
+        "description": "Explicit hosted tool-gateway access token (hosted managed gateways are disabled)",
         "prompt": "Tool-gateway user token",
         "url": None,
         "password": True,
@@ -1632,14 +1620,13 @@ OPTIONAL_ENV_VARS = {
     },
 }
 
-if not _managed_nous_tools_enabled():
-    for _hidden_var in (
-        "FIRECRAWL_GATEWAY_URL",
-        "TOOL_GATEWAY_DOMAIN",
-        "TOOL_GATEWAY_SCHEME",
-        "TOOL_GATEWAY_USER_TOKEN",
-    ):
-        OPTIONAL_ENV_VARS.pop(_hidden_var, None)
+for _hidden_var in (
+    "FIRECRAWL_GATEWAY_URL",
+    "TOOL_GATEWAY_DOMAIN",
+    "TOOL_GATEWAY_SCHEME",
+    "TOOL_GATEWAY_USER_TOKEN",
+):
+    OPTIONAL_ENV_VARS.pop(_hidden_var, None)
 
 
 def get_missing_env_vars(required_only: bool = False) -> List[Dict[str, Any]]:
@@ -2817,7 +2804,7 @@ _FALLBACK_COMMENT = """
 # Supported providers:
 #   openrouter   (OPENROUTER_API_KEY)  — routes to any model
 #   openai-codex (OAuth — spark auth) — OpenAI Codex
-#   nous         (OAuth — spark auth) — Spark Portal
+
 #   zai          (ZAI_API_KEY)         — Z.AI / GLM
 #   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
 #   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)
@@ -2864,7 +2851,7 @@ _COMMENTED_SECTIONS = """
 # Supported providers:
 #   openrouter   (OPENROUTER_API_KEY)  — routes to any model
 #   openai-codex (OAuth — spark auth) — OpenAI Codex
-#   nous         (OAuth — spark auth) — Spark Portal
+
 #   zai          (ZAI_API_KEY)         — Z.AI / GLM
 #   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
 #   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)

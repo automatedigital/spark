@@ -121,7 +121,7 @@ class TestCmdUpdateBranchFallback:
         cmd_update(mock_args)
 
         captured = capsys.readouterr()
-        assert "Already up to date!" in captured.out
+        assert "Up to date." in captured.out
 
         # Should NOT have called pull
         commands = [" ".join(str(a) for a in c.args[0]) for c in mock_run.call_args_list]
@@ -133,7 +133,7 @@ class TestCmdUpdateBranchFallback:
         with patch("shutil.which", return_value=None), patch(
             "subprocess.run"
         ) as mock_run, patch("builtins.input") as mock_input, patch(
-            "spark_cli.config.get_missing_env_vars", return_value=["MISSING_KEY"]
+            "spark_cli.config.get_missing_env_vars", return_value=[{"name": "MISSING_KEY", "description": "test var", "is_required": True}]
         ), patch("spark_cli.config.get_missing_config_fields", return_value=[]), patch(
             "spark_cli.config.check_config_version", return_value=(1, 2)
         ), patch("spark_cli.main.sys") as mock_sys:
@@ -171,7 +171,7 @@ class TestCmdUpdateBranchFallback:
         sync_calls = []
 
         with patch("pathlib.Path.exists", autospec=True, side_effect=exists_side_effect), patch(
-            "core.spark_constants.get_spark_home", return_value=fake_home
+            "spark_cli.main.get_spark_home", return_value=fake_home
         ), patch("spark_cli.main.sys.stdin.isatty", return_value=True), patch(
             "spark_cli.main.sys.stdout.isatty", return_value=True
         ), patch(

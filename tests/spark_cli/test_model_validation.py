@@ -68,11 +68,6 @@ class TestParseModelInput:
         assert provider == "openrouter"
         assert model == "gpt-5.4"
 
-    def test_nous_provider_switch(self):
-        provider, model = parse_model_input("nous:spark-3", "openrouter")
-        assert provider == "nous"
-        assert model == "spark-3"
-
     def test_empty_model_after_colon_keeps_current(self):
         provider, model = parse_model_input("openrouter:", "nous")
         assert provider == "nous"

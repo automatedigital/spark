@@ -274,204 +274,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Spark Portal free-model filtering
-# ---------------------------------------------------------------------------
-# Models that are ALLOWED to appear when priced as free on Spark Portal.
-# Any other free model is hidden — prevents promotional/temporary free models
-# from cluttering the selection when users are paying subscribers.
-# Models in this list are ALSO filtered out if they are NOT free (i.e. they
-# should only appear in the menu when they are genuinely free).
-_NOUS_ALLOWED_FREE_MODELS: frozenset[str] = frozenset(
-    {
-        "xiaomi/mimo-v2-pro",
-        "xiaomi/mimo-v2-omni",
-    }
-)
-
-
-def _is_model_free(model_id: str, pricing: dict[str, dict[str, str]]) -> bool:
-    """Return True if *model_id* has zero-cost prompt AND completion pricing."""
-    p = pricing.get(model_id)
-    if not p:
-        return False
-    try:
-        return float(p.get("prompt", "1")) == 0 and float(p.get("completion", "1")) == 0
-    except (TypeError, ValueError):
-        return False
-
-
-def filter_nous_free_models(
-    model_ids: list[str],
-    pricing: dict[str, dict[str, str]],
-) -> list[str]:
-    """Filter the Spark Portal model list according to free-model policy.
-
-    Rules:
-      • Paid models that are NOT in the allowlist → keep (normal case).
-      • Free models that are NOT in the allowlist → drop.
-      • Allowlist models that ARE free → keep.
-      • Allowlist models that are NOT free → drop.
-    """
-    if not pricing:
-        return model_ids  # no pricing data — can't filter, show everything
-
-    result: list[str] = []
-    for mid in model_ids:
-        free = _is_model_free(mid, pricing)
-        if mid in _NOUS_ALLOWED_FREE_MODELS:
-            # Allowlist model: only show when it's actually free
-            if free:
-                result.append(mid)
-        else:
-            # Regular model: keep only when it's NOT free
-            if not free:
-                result.append(mid)
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Spark Portal account tier detection
-# ---------------------------------------------------------------------------
-
-
-def fetch_nous_account_tier(
-    access_token: str, portal_base_url: str = ""
-) -> dict[str, Any]:
-    """Fetch the user's Spark Portal account/subscription info.
-
-    Calls ``<portal>/api/oauth/account`` with the OAuth access token.
-
-    Returns the parsed JSON dict on success, e.g.::
-
-        {
-            "subscription": {
-                "plan": "Plus",
-                "tier": 2,
-                "monthly_charge": 20,
-                "credits_remaining": 1686.60,
-                ...
-            },
-            ...
-        }
-
-    Returns an empty dict on any failure (network, auth, parse).
-    """
-    base = (portal_base_url or "").rstrip("/")
-    url = f"{base}/api/oauth/account"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Accept": "application/json",
-    }
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return {}
-
-
-def is_nous_free_tier(account_info: dict[str, Any]) -> bool:
-    """Return True if the account info indicates a free (unpaid) tier.
-
-    Checks ``subscription.monthly_charge == 0``.  Returns False when
-    the field is missing or unparseable (assumes paid — don't block users).
-    """
-    sub = account_info.get("subscription")
-    if not isinstance(sub, dict):
-        return False
-    charge = sub.get("monthly_charge")
-    if charge is None:
-        return False
-    try:
-        return float(charge) == 0
-    except (TypeError, ValueError):
-        return False
-
-
-def partition_nous_models_by_tier(
-    model_ids: list[str],
-    pricing: dict[str, dict[str, str]],
-    free_tier: bool,
-) -> tuple[list[str], list[str]]:
-    """Split Spark Portal models into (selectable, unavailable) based on user tier.
-
-    For paid-tier users: all models are selectable, none unavailable
-    (free-model filtering is handled separately by ``filter_nous_free_models``).
-
-    For free-tier users: only free models are selectable; paid models
-    are returned as unavailable (shown grayed out in the menu).
-    """
-    if not free_tier:
-        return (model_ids, [])
-
-    if not pricing:
-        return (model_ids, [])  # can't determine, show everything
-
-    selectable: list[str] = []
-    unavailable: list[str] = []
-    for mid in model_ids:
-        if _is_model_free(mid, pricing):
-            selectable.append(mid)
-        else:
-            unavailable.append(mid)
-    return (selectable, unavailable)
-
-
-# ---------------------------------------------------------------------------
-# TTL cache for free-tier detection — avoids repeated API calls within a
-# session while still picking up upgrades quickly.
-# ---------------------------------------------------------------------------
-_FREE_TIER_CACHE_TTL: int = 180  # seconds (3 minutes)
-_free_tier_cache: tuple[bool, float] | None = None  # (result, timestamp)
-
-
-def check_nous_free_tier() -> bool:
-    """Check if the current Spark Portal user is on a free (unpaid) tier.
-
-    Results are cached for ``_FREE_TIER_CACHE_TTL`` seconds to avoid
-    hitting the Portal API on every call.  The cache is short-lived so
-    that an account upgrade is reflected within a few minutes.
-
-    Returns False (assume paid) on any error — never blocks paying users.
-    """
-    global _free_tier_cache
-    import time
-
-    now = time.monotonic()
-    if _free_tier_cache is not None:
-        cached_result, cached_at = _free_tier_cache
-        if now - cached_at < _FREE_TIER_CACHE_TTL:
-            return cached_result
-
-    try:
-        from spark_cli.auth import (
-            get_provider_auth_state,
-            resolve_nous_runtime_credentials,
-        )
-
-        # Ensure we have a fresh token (triggers refresh if needed)
-        resolve_nous_runtime_credentials(min_key_ttl_seconds=60)
-
-        state = get_provider_auth_state("nous")
-        if not state:
-            _free_tier_cache = (False, now)
-            return False
-        access_token = state.get("access_token", "")
-        portal_url = state.get("portal_base_url", "")
-        if not access_token:
-            _free_tier_cache = (False, now)
-            return False
-
-        account_info = fetch_nous_account_tier(access_token, portal_url)
-        result = is_nous_free_tier(account_info)
-        _free_tier_cache = (result, now)
-        return result
-    except Exception:
-        _free_tier_cache = (False, now)
-        return False  # default to paid on error — don't block users
-
-
-# ---------------------------------------------------------------------------
 # Canonical provider list — single source of truth for provider identity.
 # Every code path that lists, displays, or iterates providers derives from
 # this list:  spark model, /model, /provider, list_authenticated_providers.
@@ -826,7 +628,7 @@ def fetch_models_with_pricing(
     """Fetch ``/v1/models`` and return ``{model_id: {prompt, completion}}`` pricing.
 
     Results are cached per *base_url* so repeated calls are free.
-    Works with any OpenRouter-compatible endpoint (OpenRouter, Spark Portal).
+    Works with any OpenRouter-compatible endpoint.
     """
     cache_key = (base_url or "").rstrip("/")
     if not force_refresh and cache_key in _pricing_cache:
@@ -869,23 +671,10 @@ def _resolve_openrouter_api_key() -> str:
     return os.getenv("OPENROUTER_API_KEY", "").strip()
 
 
-def _resolve_nous_pricing_credentials() -> tuple[str, str]:
-    """Return ``(api_key, base_url)`` for Spark Portal pricing, or empty strings."""
-    try:
-        from spark_cli.auth import resolve_nous_runtime_credentials
-
-        creds = resolve_nous_runtime_credentials()
-        if creds:
-            return (creds.get("api_key", ""), creds.get("base_url", ""))
-    except Exception:
-        pass
-    return ("", "")
-
-
 def get_pricing_for_provider(
     provider: str, *, force_refresh: bool = False
 ) -> dict[str, dict[str, str]]:
-    """Return live pricing for providers that support it (openrouter, nous)."""
+    """Return live pricing for providers that support it (openrouter)."""
     normalized = normalize_provider(provider)
     if normalized == "openrouter":
         return fetch_models_with_pricing(
@@ -893,19 +682,6 @@ def get_pricing_for_provider(
             base_url="https://openrouter.ai/api",
             force_refresh=force_refresh,
         )
-    if normalized == "nous":
-        api_key, base_url = _resolve_nous_pricing_credentials()
-        if base_url:
-            # Spark Portal base_url typically looks like
-            # We need the part before /v1 for our fetch function
-            stripped = base_url.rstrip("/")
-            if stripped.endswith("/v1"):
-                stripped = stripped[:-3]
-            return fetch_models_with_pricing(
-                api_key=api_key,
-                base_url=stripped,
-                force_refresh=force_refresh,
-            )
     return {}
 
 
@@ -1051,7 +827,7 @@ def curated_models_for_provider(
     if normalized == "openrouter":
         return fetch_openrouter_models(force_refresh=force_refresh)
 
-    # Try live API first (Codex, Spark Portal, etc. all support /models)
+    # Try live API first for providers/endpoints that support /models.
     live = provider_model_ids(normalized)
     if live:
         return [(m, "") for m in live]

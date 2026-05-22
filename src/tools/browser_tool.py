@@ -3,8 +3,8 @@
 Browser Tool Module
 
 This module provides browser automation tools using agent-browser CLI.  It
-supports multiple backends — **Browser Use** (cloud, default for Spark Portal
-subscribers), **Browserbase** (cloud, direct credentials), and **local
+supports multiple backends — **Browser Use** (cloud), **Browserbase** (cloud,
+direct credentials), and **local
 Chromium** — with identical agent-facing behaviour.  The backend is
 auto-detected from config and available credentials.
 
@@ -286,7 +286,7 @@ def _get_cloud_provider() -> Optional[CloudBrowserProvider]:
         logger.debug("Could not read cloud_provider from config: %s", e)
 
     if _cached_cloud_provider is None:
-        # Prefer Browser Use (managed Spark Portal gateway or direct API key),
+        # Prefer Browser Use when a direct API key is configured,
         # fall back to Browserbase (direct credentials only).
         fallback_provider = BrowserUseProvider()
         if fallback_provider.is_configured():

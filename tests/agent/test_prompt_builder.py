@@ -16,7 +16,6 @@ from agent.prompt_builder import (
     _find_git_root,
     _strip_yaml_frontmatter,
     build_skills_system_prompt,
-    build_nous_subscription_prompt,
     build_context_files_prompt,
     build_environment_hints,
     build_soul_guidance,
@@ -31,7 +30,6 @@ from agent.prompt_builder import (
     WSL_ENVIRONMENT_HINT,
 )
 from spark_cli.default_soul import read_default_soul_md
-from spark_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
 
 
 # =========================================================================
@@ -411,62 +409,6 @@ class TestBuildSkillsSystemPrompt:
 
         result = build_skills_system_prompt()
         assert "backend-skill" in result
-
-
-class TestBuildNousSubscriptionPrompt:
-    def test_includes_active_subscription_features(self, monkeypatch):
-        monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-        monkeypatch.setattr(
-            "spark_cli.nous_subscription.get_nous_subscription_features",
-            lambda config=None: NousSubscriptionFeatures(
-                subscribed=True,
-                nous_auth_present=True,
-                provider_is_spark=True,
-                features={
-                    "web": NousFeatureState("web", "Web tools", True, True, True, True, False, True, "firecrawl"),
-                    "image_gen": NousFeatureState("image_gen", "Image generation", True, True, True, True, False, True, "Spark Subscription"),
-                    "tts": NousFeatureState("tts", "OpenAI TTS", True, True, True, True, False, True, "OpenAI TTS"),
-                    "browser": NousFeatureState("browser", "Browser automation", True, True, True, True, False, True, "Browser Use"),
-                    "modal": NousFeatureState("modal", "Modal execution", False, True, False, False, False, True, "local"),
-                },
-            ),
-        )
-
-        prompt = build_nous_subscription_prompt({"web_search", "browser_navigate"})
-
-        assert "Browser Use" in prompt
-        assert "Modal execution is optional" in prompt
-        assert "do not ask the user for Firecrawl, FAL, OpenAI TTS, or Browser-Use API keys" in prompt
-
-    def test_non_subscriber_prompt_includes_relevant_upgrade_guidance(self, monkeypatch):
-        monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-        monkeypatch.setattr(
-            "spark_cli.nous_subscription.get_nous_subscription_features",
-            lambda config=None: NousSubscriptionFeatures(
-                subscribed=False,
-                nous_auth_present=False,
-                provider_is_spark=False,
-                features={
-                    "web": NousFeatureState("web", "Web tools", True, False, False, False, False, True, ""),
-                    "image_gen": NousFeatureState("image_gen", "Image generation", True, False, False, False, False, True, ""),
-                    "tts": NousFeatureState("tts", "OpenAI TTS", True, False, False, False, False, True, ""),
-                    "browser": NousFeatureState("browser", "Browser automation", True, False, False, False, False, True, ""),
-                    "modal": NousFeatureState("modal", "Modal execution", False, False, False, False, False, True, ""),
-                },
-            ),
-        )
-
-        prompt = build_nous_subscription_prompt({"image_generate"})
-
-        assert "suggest Spark subscription as one option" in prompt
-        assert "Do not mention subscription unless" in prompt
-
-    def test_feature_flag_off_returns_empty_prompt(self, monkeypatch):
-        monkeypatch.delenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", raising=False)
-
-        prompt = build_nous_subscription_prompt({"web_search"})
-
-        assert prompt == ""
 
 
 # =========================================================================

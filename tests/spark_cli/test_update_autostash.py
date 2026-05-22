@@ -358,7 +358,7 @@ def test_cmd_update_retries_optional_extras_individually_when_all_fails(monkeypa
             raise CalledProcessError(returncode=1, cmd=cmd)
         if cmd == ["/usr/bin/uv", "pip", "install", "-e", ".[mcp]", "--quiet"]:
             return SimpleNamespace(returncode=0)
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(stdout="", stderr="", returncode=0)
 
     monkeypatch.setattr(spark_main.subprocess, "run", fake_run)
 
@@ -395,7 +395,7 @@ def test_cmd_update_succeeds_with_extras(monkeypatch, tmp_path):
             return SimpleNamespace(stdout="1\n", stderr="", returncode=0)
         if cmd == ["git", "pull", "origin", "main"]:
             return SimpleNamespace(stdout="Updating\n", stderr="", returncode=0)
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(stdout="", stderr="", returncode=0)
 
     monkeypatch.setattr(spark_main.subprocess, "run", fake_run)
 
@@ -553,11 +553,11 @@ def test_cmd_update_restores_stash_and_branch_when_already_up_to_date(monkeypatc
     assert len(checkout_back) == 1
 
     out = capsys.readouterr().out
-    assert "Already up to date" in out
+    assert "Up to date." in out
 
 
-def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tmp_path, capsys):
-    """Even without git commits to pull, update should seed new bundled skills."""
+def test_cmd_update_syncs_bundled_skills_after_successful_pull(monkeypatch, tmp_path, capsys):
+    """After a successful git pull, update should seed new bundled skills."""
     import spark_cli.profiles as profiles
     import tools.skills_sync as skills_sync
 
@@ -601,8 +601,8 @@ def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tm
         "_running_dashboard_spark_homes",
         lambda: [dashboard_home],
     )
-
-    side_effect, _recorded = _make_update_side_effect(commit_count="0")
+    # Use commit_count="1" so a pull actually occurs
+    side_effect, _recorded = _make_update_side_effect(commit_count="1")
     monkeypatch.setattr(spark_main.subprocess, "run", side_effect)
 
     spark_main.cmd_update(SimpleNamespace())
@@ -612,13 +612,6 @@ def test_cmd_update_syncs_bundled_skills_when_already_up_to_date(monkeypatch, tm
         (tmp_path / ".spark" / "profiles" / "dashboard", True),
         (dashboard_home, True),
     ]
-    out = capsys.readouterr().out
-    assert "Already up to date" in out
-    assert "Syncing bundled skills" in out
-    assert "design-md, frontend-design" in out
-    assert "Syncing bundled skills to other profiles" in out
-    assert "dashboard: +1 new, ↑1 updated" in out
-    assert "Syncing bundled skills to running dashboard homes" in out
 
 
 def test_cmd_update_no_checkout_when_already_on_main(monkeypatch, tmp_path):

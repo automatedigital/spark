@@ -90,7 +90,7 @@ class TestSourceLineVerification:
     def _read_file() -> str:
         import os
         base = os.path.dirname(os.path.dirname(__file__))
-        with open(os.path.join(base, "core.trajectory_compressor.py")) as f:
+        with open(os.path.join(base, "src", "core", "trajectory_compressor.py")) as f:
             return f.read()
 
     def test_no_eager_async_openai_in_init(self):

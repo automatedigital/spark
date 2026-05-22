@@ -217,16 +217,6 @@ class TestDeveloperRoleSwap:
         # Original messages must be untouched (internal representation stays "system")
         assert messages[0]["role"] == "system"
 
-    def test_developer_role_via_nous_portal(self, monkeypatch):
-        agent = _make_agent(monkeypatch, "nous", base_url="")
-        agent.model = "gpt-5"
-        messages = [
-            {"role": "system", "content": "You are helpful."},
-            {"role": "user", "content": "hi"},
-        ]
-        kwargs = agent._build_api_kwargs(messages)
-        assert kwargs["messages"][0]["role"] == "developer"
-
 
 class TestBuildApiKwargsChatCompletionsServiceTier:
     """service_tier via request_overrides works on the chat_completions path."""
@@ -281,21 +271,6 @@ class TestBuildApiKwargsAIGateway:
         tool_names = [t["function"]["name"] for t in kwargs["tools"]]
         assert "web_search" in tool_names
 
-
-class TestBuildApiKwargsNousPortal:
-    def test_includes_nous_product_tags(self, monkeypatch):
-        agent = _make_agent(monkeypatch, "nous", base_url="")
-        messages = [{"role": "user", "content": "hi"}]
-        kwargs = agent._build_api_kwargs(messages)
-        extra = kwargs.get("extra_body", {})
-        assert extra.get("tags") == ["product=spark-agent"]
-
-    def test_uses_chat_completions_format(self, monkeypatch):
-        agent = _make_agent(monkeypatch, "nous", base_url="")
-        messages = [{"role": "user", "content": "hi"}]
-        kwargs = agent._build_api_kwargs(messages)
-        assert "messages" in kwargs
-        assert "input" not in kwargs
 
 
 class TestBuildApiKwargsCustomEndpoint:
@@ -680,26 +655,12 @@ class TestAuxiliaryClientProviderPriority:
         assert model == "google/gemini-3-flash-preview"
         assert "openrouter" in str(mock.call_args.kwargs["base_url"]).lower()
 
-    def test_nous_when_no_openrouter(self, monkeypatch):
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        from agent.auxiliary_client import get_text_auxiliary_client
-        with patch("agent.auxiliary_client._read_nous_auth", return_value={"access_token": "nous-tok"}), \
-             patch("agent.auxiliary_client.OpenAI") as mock:
-            client, model = get_text_auxiliary_client()
-        assert model == "google/gemini-3-flash-preview"
-
-    def test_custom_endpoint_when_no_nous(self, monkeypatch):
-        """Custom endpoint is used when no OpenRouter/Spark Portal keys are available.
-
-        Since the March 2026 config refactor, OPENAI_BASE_URL env var is no
-        longer consulted — base_url comes from config.yaml via
-        resolve_runtime_provider.  Mock _resolve_custom_runtime directly.
-        """
+    def test_custom_endpoint_when_no_openrouter(self, monkeypatch):
+        """Custom endpoint is used when no OpenRouter key is available."""
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "local-key")
         from agent.auxiliary_client import get_text_auxiliary_client
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._resolve_custom_runtime",
+        with patch("agent.auxiliary_client._resolve_custom_runtime",
                    return_value=("http://localhost:1234/v1", "local-key")), \
              patch("agent.auxiliary_client.OpenAI") as mock:
             client, model = get_text_auxiliary_client()
@@ -710,8 +671,7 @@ class TestAuxiliaryClientProviderPriority:
         monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         from agent.auxiliary_client import get_text_auxiliary_client, CodexAuxiliaryClient
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._read_codex_access_token", return_value="codex-tok"), \
+        with patch("agent.auxiliary_client._read_codex_access_token", return_value="codex-tok"), \
              patch("agent.auxiliary_client.OpenAI"):
             client, model = get_text_auxiliary_client()
         assert model == "gpt-5.2-codex"

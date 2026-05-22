@@ -340,7 +340,14 @@ def test_select_provider_and_model_warns_if_named_custom_provider_disappears(
     cfg["custom_providers"] = [{"name": "Local", "base_url": "http://localhost:8080/v1"}]
     save_config(cfg)
 
+    _mode_call = [False]
+
     def fake_prompt_provider_choice(choices, default=0):
+        # First call is mode selection (Simple/Multi-model/Reasoning) — pick Simple (0)
+        if not _mode_call[0]:
+            _mode_call[0] = True
+            return 0
+        # Second call is provider selection — delete the custom provider and pick it
         current = load_config()
         current["custom_providers"] = []
         save_config(current)
@@ -384,87 +391,6 @@ def test_codex_setup_uses_runtime_access_token_for_live_model_list(tmp_path, mon
     assert reloaded["model"]["provider"] == "openai-codex"
 
 
-def test_modal_setup_can_use_nous_subscription_without_modal_creds(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
-    config = load_config()
-
-    def fake_prompt_choice(question, choices, default=0):
-        if question == "Select terminal backend:":
-            return 2
-        if question == "Select how Modal execution should be billed:":
-            return 0
-        raise AssertionError(f"Unexpected prompt_choice call: {question}")
-
-    def fake_prompt(message, *args, **kwargs):
-        assert "Modal Token" not in message
-        raise AssertionError(f"Unexpected prompt call: {message}")
-
-    monkeypatch.setattr("spark_cli.setup.prompt_choice", fake_prompt_choice)
-    monkeypatch.setattr("spark_cli.setup.prompt", fake_prompt)
-    monkeypatch.setattr("spark_cli.setup._prompt_container_resources", lambda config: None)
-    monkeypatch.setattr(
-        "spark_cli.setup.get_nous_subscription_features",
-        lambda config: type("Features", (), {"nous_auth_present": True})(),
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "tools.managed_tool_gateway",
-        types.SimpleNamespace(
-            is_managed_tool_gateway_ready=lambda vendor: vendor == "modal",
-            resolve_managed_tool_gateway=lambda vendor: None,
-        ),
-    )
-
-    from spark_cli.setup import setup_terminal_backend
-
-    setup_terminal_backend(config)
-
-    out = capsys.readouterr().out
-    assert config["terminal"]["backend"] == "modal"
-    assert config["terminal"]["modal_mode"] == "managed"
-    assert "bill to your subscription" in out
-
-
-def test_modal_setup_persists_direct_mode_when_user_chooses_their_own_account(tmp_path, monkeypatch):
-    monkeypatch.setenv("SPARK_ENABLE_NOUS_MANAGED_TOOLS", "1")
-    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
-    monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
-    monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
-    config = load_config()
-
-    def fake_prompt_choice(question, choices, default=0):
-        if question == "Select terminal backend:":
-            return 2
-        if question == "Select how Modal execution should be billed:":
-            return 1
-        raise AssertionError(f"Unexpected prompt_choice call: {question}")
-
-    prompt_values = iter(["token-id", "token-secret", ""])
-
-    monkeypatch.setattr("spark_cli.setup.prompt_choice", fake_prompt_choice)
-    monkeypatch.setattr("spark_cli.setup.prompt", lambda *args, **kwargs: next(prompt_values))
-    monkeypatch.setattr("spark_cli.setup._prompt_container_resources", lambda config: None)
-    monkeypatch.setattr(
-        "spark_cli.setup.get_nous_subscription_features",
-        lambda config: type("Features", (), {"nous_auth_present": True})(),
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "tools.managed_tool_gateway",
-        types.SimpleNamespace(
-            is_managed_tool_gateway_ready=lambda vendor: vendor == "modal",
-            resolve_managed_tool_gateway=lambda vendor: None,
-        ),
-    )
-    monkeypatch.setitem(sys.modules, "swe_rex", object())
-
-    from spark_cli.setup import setup_terminal_backend
-
-    setup_terminal_backend(config)
-
-    assert config["terminal"]["backend"] == "modal"
-    assert config["terminal"]["modal_mode"] == "direct"
 
 
 def test_resolve_spark_chat_argv_prefers_which(monkeypatch):
@@ -485,10 +411,13 @@ def test_resolve_spark_chat_argv_falls_back_to_module(monkeypatch):
 
 
 def test_offer_launch_chat_execs_fresh_process(monkeypatch):
+    import sys
     from spark_cli import setup as setup_mod
 
     monkeypatch.setattr(setup_mod, "prompt_yes_no", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(setup_mod, "_resolve_spark_chat_argv", lambda: ["/usr/local/bin/spark", "chat"])
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
 
     exec_calls = []
 
@@ -505,10 +434,13 @@ def test_offer_launch_chat_execs_fresh_process(monkeypatch):
 
 
 def test_offer_launch_chat_manual_fallback_when_unresolvable(monkeypatch, capsys):
+    import sys
     from spark_cli import setup as setup_mod
 
     monkeypatch.setattr(setup_mod, "prompt_yes_no", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(setup_mod, "_resolve_spark_chat_argv", lambda: None)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
 
     setup_mod._offer_launch_chat()
 

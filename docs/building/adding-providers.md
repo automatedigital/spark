@@ -91,7 +91,7 @@ Reference patterns in the existing providers:
 - Simple API-key: Z.AI, MiniMax
 - API-key with endpoint detection: Kimi, Z.AI
 - Native token resolution: Anthropic
-- OAuth / auth-store: Spark Portal, OpenAI Codex
+- OAuth / auth-store: OpenAI Codex
 
 Decide these before writing code:
 - Which env vars does Spark check, and in what priority order?

@@ -269,7 +269,7 @@ def _has_any_provider_configured() -> bool:
     except Exception:
         pass
 
-    # Check for Spark Portal OAuth credentials
+    # Check for active OAuth credentials
     auth_file = get_spark_home() / "auth.json"
     if auth_file.exists():
         try:
@@ -1350,8 +1350,6 @@ def select_provider_and_model(
         # Step 2: Provider-specific setup + model selection
         if selected_provider == "openrouter":
             _model_flow_openrouter(config, current_model)
-        elif selected_provider == "nous":
-            _model_flow_nous(config, current_model, args=args)
         elif selected_provider == "openai-codex":
             _model_flow_openai_codex(config, current_model)
         elif selected_provider == "qwen-oauth":
@@ -1551,183 +1549,6 @@ def _model_flow_openrouter(config, current_model=""):
         print("No change.")
 
 
-def _model_flow_nous(config, current_model="", args=None):
-    """Spark Portal provider: ensure logged in, then pick model."""
-    from spark_cli.auth import (
-        get_provider_auth_state,
-        _prompt_model_selection,
-        _save_model_choice,
-        _update_config_for_provider,
-        resolve_nous_runtime_credentials,
-        AuthError,
-        format_auth_error,
-        _login_nous,
-        PROVIDER_REGISTRY,
-    )
-    from spark_cli.config import get_env_value, save_config, save_env_value
-    from spark_cli.nous_subscription import (
-        apply_nous_provider_defaults,
-        get_nous_subscription_explainer_lines,
-    )
-    import argparse
-
-    state = get_provider_auth_state("nous")
-    if not state or not state.get("access_token"):
-        print("Not logged into Spark Portal. Starting login...")
-        print()
-        try:
-            mock_args = argparse.Namespace(
-                portal_url=getattr(args, "portal_url", None),
-                inference_url=getattr(args, "inference_url", None),
-                client_id=getattr(args, "client_id", None),
-                scope=getattr(args, "scope", None),
-                no_browser=bool(getattr(args, "no_browser", False)),
-                timeout=getattr(args, "timeout", None) or 15.0,
-                ca_bundle=getattr(args, "ca_bundle", None),
-                insecure=bool(getattr(args, "insecure", False)),
-            )
-            _login_nous(mock_args, PROVIDER_REGISTRY["nous"])
-            print()
-            for line in get_nous_subscription_explainer_lines():
-                print(line)
-        except SystemExit:
-            print("Login cancelled or failed.")
-            return
-        except Exception as exc:
-            print(f"Login failed: {exc}")
-            return
-        # login_nous already handles model selection + config update
-        return
-
-    # Already logged in — use curated model list (same as OpenRouter defaults).
-    # The live /models endpoint returns hundreds of models; the curated list
-    # shows only agentic models users recognize from OpenRouter.
-    from spark_cli.models import (
-        _PROVIDER_MODELS,
-        get_pricing_for_provider,
-        filter_nous_free_models,
-        check_nous_free_tier,
-        partition_nous_models_by_tier,
-    )
-
-    model_ids = _PROVIDER_MODELS.get("nous", [])
-    if not model_ids:
-        print("No curated models available for Spark Portal.")
-        return
-
-    # Verify credentials are still valid (catches expired sessions early)
-    try:
-        creds = resolve_nous_runtime_credentials(min_key_ttl_seconds=5 * 60)
-    except Exception as exc:
-        relogin = isinstance(exc, AuthError) and exc.relogin_required
-        msg = format_auth_error(exc) if isinstance(exc, AuthError) else str(exc)
-        if relogin:
-            print(f"Session expired: {msg}")
-            print("Re-authenticating with Spark Portal...\n")
-            try:
-                mock_args = argparse.Namespace(
-                    portal_url=None,
-                    inference_url=None,
-                    client_id=None,
-                    scope=None,
-                    no_browser=False,
-                    timeout=15.0,
-                    ca_bundle=None,
-                    insecure=False,
-                )
-                _login_nous(mock_args, PROVIDER_REGISTRY["nous"])
-            except Exception as login_exc:
-                print(f"Re-login failed: {login_exc}")
-            return
-        print(f"Could not verify credentials: {msg}")
-        return
-
-    # Fetch live pricing (non-blocking — returns empty dict on failure)
-    pricing = get_pricing_for_provider("nous")
-
-    # Check if user is on free tier
-    free_tier = check_nous_free_tier()
-
-    # For both tiers: apply the allowlist filter first (removes non-allowlisted
-    # free models and allowlist models that aren't actually free).
-    # Then for free users: partition remaining models into selectable/unavailable.
-    model_ids = filter_nous_free_models(model_ids, pricing)
-    unavailable_models: list[str] = []
-    if free_tier:
-        model_ids, unavailable_models = partition_nous_models_by_tier(
-            model_ids, pricing, free_tier=True
-        )
-
-    if not model_ids and not unavailable_models:
-        print("No models available for Spark Portal after filtering.")
-        return
-
-    # Resolve portal URL for upgrade links (may differ on staging)
-    _nous_portal_url = ""
-    try:
-        _nous_state = get_provider_auth_state("nous")
-        if _nous_state:
-            _nous_portal_url = _nous_state.get("portal_base_url", "")
-    except Exception:
-        pass
-
-    if free_tier and not model_ids:
-        print("No free models currently available.")
-        if unavailable_models:
-            from spark_cli.auth import DEFAULT_NOUS_PORTAL_URL
-
-            _url = (_nous_portal_url or DEFAULT_NOUS_PORTAL_URL).rstrip("/")
-            print(f"Upgrade at {_url} to access paid models.")
-        return
-
-    print(
-        f'Showing {len(model_ids)} curated models — use "Enter custom model name" for others.'
-    )
-
-    selected = _prompt_model_selection(
-        model_ids,
-        current_model=current_model,
-        pricing=pricing,
-        unavailable_models=unavailable_models,
-        portal_url=_nous_portal_url,
-    )
-    if selected:
-        _save_model_choice(selected)
-        # Reactivate Spark Portal as the provider and update config
-        inference_url = creds.get("base_url", "")
-        _update_config_for_provider("nous", inference_url)
-        current_model_cfg = config.get("model")
-        if isinstance(current_model_cfg, dict):
-            model_cfg = dict(current_model_cfg)
-        elif isinstance(current_model_cfg, str) and current_model_cfg.strip():
-            model_cfg = {"default": current_model_cfg.strip()}
-        else:
-            model_cfg = {}
-        model_cfg["provider"] = "nous"
-        model_cfg["default"] = selected
-        if inference_url and inference_url.strip():
-            model_cfg["base_url"] = inference_url.rstrip("/")
-        else:
-            model_cfg.pop("base_url", None)
-        config["model"] = model_cfg
-        # Clear any custom endpoint that might conflict
-        if get_env_value("OPENAI_BASE_URL"):
-            save_env_value("OPENAI_BASE_URL", "")
-            save_env_value("OPENAI_API_KEY", "")
-        changed_defaults = apply_nous_provider_defaults(config)
-        save_config(config)
-        print(f"Default model set to: {selected} (via Spark Portal)")
-        if "tts" in changed_defaults:
-            print("TTS provider set to: OpenAI TTS via your Spark subscription")
-        else:
-            current_tts = str(config.get("tts", {}).get("provider") or "edge")
-            if current_tts.lower() not in {"", "edge"}:
-                print(f"Keeping your existing TTS provider: {current_tts}")
-        print()
-        for line in get_nous_subscription_explainer_lines():
-            print(line)
-    else:
-        print("No change.")
 
 
 def _model_flow_openai_codex(config, current_model=""):
@@ -4693,8 +4514,6 @@ def cmd_update(args):
         if sys.platform == "win32":
             use_zip_update = True
         else:
-            from core.spark_constants import get_spark_home
-
             spark_home = get_spark_home()
             install_cmd = (
                 "curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install.sh "
@@ -6057,39 +5876,39 @@ For more help on a command:
     )
     model_parser.add_argument(
         "--portal-url",
-        help="Portal base URL for Spark Portal login (default: production portal)",
+        help="OAuth portal base URL (provider-specific; usually not needed)",
     )
     model_parser.add_argument(
         "--inference-url",
-        help="Inference API base URL for Spark Portal login (default: production inference API)",
+        help="Inference API base URL for OAuth-backed providers (usually not needed)",
     )
     model_parser.add_argument(
         "--client-id",
         default=None,
-        help="OAuth client id to use for Spark Portal login (default: spark-cli)",
+        help="OAuth client id to use for provider login (default: spark-cli)",
     )
     model_parser.add_argument(
-        "--scope", default=None, help="OAuth scope to request for Spark Portal login"
+        "--scope", default=None, help="OAuth scope to request for provider login"
     )
     model_parser.add_argument(
         "--no-browser",
         action="store_true",
-        help="Do not attempt to open the browser automatically during Spark Portal login",
+        help="Do not attempt to open the browser automatically during provider login",
     )
     model_parser.add_argument(
         "--timeout",
         type=float,
         default=15.0,
-        help="HTTP request timeout in seconds for Spark Portal login (default: 15)",
+        help="HTTP request timeout in seconds for provider login (default: 15)",
     )
     model_parser.add_argument(
         "--ca-bundle",
-        help="Path to CA bundle PEM file for Spark Portal TLS verification",
+        help="Path to CA bundle PEM file for provider TLS verification",
     )
     model_parser.add_argument(
         "--insecure",
         action="store_true",
-        help="Disable TLS verification for Spark Portal login (testing only)",
+        help="Disable TLS verification for provider login (testing only)",
     )
     model_parser.set_defaults(func=cmd_model)
 
@@ -6314,8 +6133,8 @@ For more help on a command:
     auth_add.add_argument(
         "--api-key", help="API key value (otherwise prompted securely)"
     )
-    auth_add.add_argument("--portal-url", help="Spark Portal portal base URL")
-    auth_add.add_argument("--inference-url", help="Spark Portal inference base URL")
+    auth_add.add_argument("--portal-url", help="OAuth portal base URL")
+    auth_add.add_argument("--inference-url", help="OAuth provider inference base URL")
     auth_add.add_argument("--client-id", help="OAuth client id")
     auth_add.add_argument("--scope", help="OAuth scope override")
     auth_add.add_argument(

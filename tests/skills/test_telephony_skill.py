@@ -6,6 +6,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[2]
@@ -15,6 +17,9 @@ SCRIPT_PATH = (
     / "scripts"
     / "telephony.py"
 )
+
+if not SCRIPT_PATH.exists():
+    pytest.skip("telephony skill not present in this checkout", allow_module_level=True)
 
 
 def load_module():

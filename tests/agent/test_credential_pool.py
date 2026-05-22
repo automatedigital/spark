@@ -436,42 +436,6 @@ def test_load_pool_removes_stale_seeded_env_entry(tmp_path, monkeypatch):
     auth_payload = json.loads((tmp_path / "spark" / "auth.json").read_text())
     assert auth_payload["credential_pool"]["openrouter"] == []
 
-
-def test_load_pool_migrates_nous_provider_state(tmp_path, monkeypatch):
-    monkeypatch.setenv("SPARK_HOME", str(tmp_path / "spark"))
-    _write_auth_store(
-        tmp_path,
-        {
-            "version": 1,
-            "active_provider": "nous",
-            "providers": {
-                "nous": {
-                    "portal_base_url": "https://portal.example.com",
-                    "inference_base_url": "https://inference.example.com/v1",
-                    "client_id": "spark-cli",
-                    "token_type": "Bearer",
-                    "scope": "inference:mint_agent_key",
-                    "access_token": "access-token",
-                    "refresh_token": "refresh-token",
-                    "expires_at": "2026-03-24T12:00:00+00:00",
-                    "agent_key": "agent-key",
-                    "agent_key_expires_at": "2026-03-24T13:30:00+00:00",
-                }
-            },
-        },
-    )
-
-    from agent.credential_pool import load_pool
-
-    pool = load_pool("nous")
-    entry = pool.select()
-
-    assert entry is not None
-    assert entry.source == "device_code"
-    assert entry.portal_base_url == "https://portal.example.com"
-    assert entry.agent_key == "agent-key"
-
-
 def test_load_pool_removes_stale_file_backed_singleton_entry(tmp_path, monkeypatch):
     monkeypatch.setenv("SPARK_HOME", str(tmp_path / "spark"))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -515,53 +479,6 @@ def test_load_pool_removes_stale_file_backed_singleton_entry(tmp_path, monkeypat
 
     auth_payload = json.loads((tmp_path / "spark" / "auth.json").read_text())
     assert auth_payload["credential_pool"]["anthropic"] == []
-
-
-def test_load_pool_migrates_nous_provider_state_preserves_tls(tmp_path, monkeypatch):
-    monkeypatch.setenv("SPARK_HOME", str(tmp_path / "spark"))
-    _write_auth_store(
-        tmp_path,
-        {
-            "version": 1,
-            "active_provider": "nous",
-            "providers": {
-                "nous": {
-                    "portal_base_url": "https://portal.example.com",
-                    "inference_base_url": "https://inference.example.com/v1",
-                    "client_id": "spark-cli",
-                    "token_type": "Bearer",
-                    "scope": "inference:mint_agent_key",
-                    "access_token": "access-token",
-                    "refresh_token": "refresh-token",
-                    "expires_at": "2026-03-24T12:00:00+00:00",
-                    "agent_key": "agent-key",
-                    "agent_key_expires_at": "2026-03-24T13:30:00+00:00",
-                    "tls": {
-                        "insecure": True,
-                        "ca_bundle": "/tmp/nous-ca.pem",
-                    },
-                }
-            },
-        },
-    )
-
-    from agent.credential_pool import load_pool
-
-    pool = load_pool("nous")
-    entry = pool.select()
-
-    assert entry is not None
-    assert entry.tls == {
-        "insecure": True,
-        "ca_bundle": "/tmp/nous-ca.pem",
-    }
-
-    auth_payload = json.loads((tmp_path / "spark" / "auth.json").read_text())
-    assert auth_payload["credential_pool"]["nous"][0]["tls"] == {
-        "insecure": True,
-        "ca_bundle": "/tmp/nous-ca.pem",
-    }
-
 
 def test_singleton_seed_does_not_clobber_manual_oauth_entry(tmp_path, monkeypatch):
     monkeypatch.setenv("SPARK_HOME", str(tmp_path / "spark"))

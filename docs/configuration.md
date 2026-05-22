@@ -12,7 +12,7 @@ Everything Spark needs lives under `~/.spark/`. Here's the full layout at a glan
 ~/.spark/
  config.yaml     # Settings (model, terminal, TTS, compression, etc.)
  .env            # API keys and secrets
- auth.json       # OAuth provider credentials (Spark Portal, etc.)
+ auth.json       # OAuth provider credentials (Codex, Anthropic, etc.)
  SOUL.md         # Primary agent identity (slot #1 in system prompt)
  memories/       # Persistent memory (MEMORY.md, USER.md)
  skills/         # Agent-created skills (managed via skill_manage tool)
@@ -198,7 +198,7 @@ compression:
 auxiliary:
   compression:
     model: "google/gemini-3-flash-preview"
-    provider: "auto"   # "auto", "openrouter", "nous", "codex", "main", etc.
+    provider: "auto"   # "auto", "openrouter", "codex", "main", etc.
     base_url: null     # Custom OpenAI-compatible endpoint (overrides provider)
 ```
 
@@ -214,14 +214,14 @@ compression:
   enabled: true
   threshold: 0.50
 ```
-Uses the first available provider (OpenRouter -> Spark Portal -> Codex) with Gemini Flash.
+Uses the first available provider (OpenRouter -> Codex -> main endpoint) with Gemini Flash.
 
 **Force a specific provider:**
 ```yaml
 auxiliary:
   compression:
-    provider: nous
-    model: gemini-3-flash
+    provider: openrouter
+    model: google/gemini-3-flash-preview
 ```
 
 **Custom endpoint (self-hosted, Ollama, DeepSeek, etc.):**
@@ -237,7 +237,7 @@ auxiliary:
 | `provider` | `base_url` | Result |
 |---|---|---|
 | `auto` (default) | not set | Auto-detect best available |
-| `nous` / `openrouter` / etc. | not set | Force that provider |
+| `openrouter` / `codex` / etc. | not set | Force that provider |
 | any | set | Use the custom endpoint directly |
 
 :::warning Summary model context length

@@ -199,7 +199,7 @@ class TestGatewayBridgeCodeParity:
 
     def test_gateway_has_auxiliary_bridge(self):
         """The gateway config bridge must include auxiliary.* bridging."""
-        gateway_path = Path(__file__).parent.parent.parent / "gateway" / "run.py"
+        gateway_path = Path(__file__).parent.parent.parent / "src" / "gateway" / "run.py"
         content = gateway_path.read_text()
         # Check for key patterns that indicate the bridge is present
         assert "AUXILIARY_VISION_PROVIDER" in content
@@ -213,7 +213,7 @@ class TestGatewayBridgeCodeParity:
 
     def test_gateway_no_compression_env_bridge(self):
         """Gateway should NOT bridge compression config to env vars (config-only)."""
-        gateway_path = Path(__file__).parent.parent.parent / "gateway" / "run.py"
+        gateway_path = Path(__file__).parent.parent.parent / "src" / "gateway" / "run.py"
         content = gateway_path.read_text()
         assert "CONTEXT_COMPRESSION_PROVIDER" not in content
         assert "CONTEXT_COMPRESSION_MODEL" not in content

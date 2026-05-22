@@ -8,6 +8,12 @@ import importlib.util
 repo_root = Path(__file__).parent.parent
 script_path = repo_root / "skills" / "optional" / "security" / "oss-forensics" / "scripts" / "evidence-store.py"
 
+if not script_path.exists():
+    pytest.skip(
+        f"Optional skill script not present: {script_path}",
+        allow_module_level=True,
+    )
+
 spec = importlib.util.spec_from_file_location("evidence_store", str(script_path))
 evidence_store = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(evidence_store)

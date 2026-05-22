@@ -17,7 +17,6 @@ Any OpenAI-compatible API works. Here's what's supported out of the box:
 | Provider | What you get |
 |----------|-------------|
 | [OpenRouter](https://openrouter.ai/) | Hundreds of models through a single API key — recommended for flexibility |
-| Spark Portal | Automate Digital's own inference endpoint |
 | OpenAI | GPT-4o, o1, o3, and more |
 | Anthropic | Claude models (via OpenRouter or compatible proxy) |
 | Google | Gemini models (via OpenRouter or compatible proxy) |
@@ -112,7 +111,7 @@ Yes. Import `AIAgent` and call it directly:
 ```python
 from run_agent import AIAgent
 
-agent = AIAgent(model="openrouter/nous/spark-3-llama-3.1-70b")
+agent = AIAgent(model="openrouter/anthropic/claude-sonnet-4.6")
 response = agent.chat("Explain quantum computing briefly")
 ```
 
@@ -198,7 +197,7 @@ Make sure the key matches the provider. An OpenAI key won't work with OpenRouter
 
 ```bash
 spark model                                                # browse available models
-spark config set SPARK_MODEL openrouter/nous/spark-3-llama-3.1-70b
+spark config set SPARK_MODEL openrouter/anthropic/claude-sonnet-4.6
 spark chat --model openrouter/meta-llama/llama-3.1-70b-instruct   # per-session override
 ```
 

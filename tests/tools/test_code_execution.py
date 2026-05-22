@@ -188,7 +188,7 @@ class TestExecuteCode(unittest.TestCase):
         """Sandboxed scripts can import modules that live at the repo root."""
         result = self._run('import core.spark_constants as spark_constants; print(spark_constants.__file__)')
         self.assertEqual(result["status"], "success")
-        self.assertIn("core.spark_constants.py", result["output"])
+        self.assertIn("spark_constants.py", result["output"])
 
     def test_single_tool_call(self):
         """Script calls terminal and prints the result."""

@@ -533,13 +533,6 @@ class TestGetTextAuxiliaryClient:
         call_kwargs = mock_openai.call_args
         assert call_kwargs.kwargs["api_key"] == "or-key"
 
-    def test_nous_takes_priority_over_codex(self, monkeypatch, codex_auth_dir):
-        with patch("agent.auxiliary_client._read_nous_auth") as mock_nous, \
-             patch("agent.auxiliary_client.OpenAI") as mock_openai:
-            mock_nous.return_value = {"access_token": "nous-tok"}
-            client, model = get_text_auxiliary_client()
-        assert model == "google/gemini-3-flash-preview"
-
     def test_custom_endpoint_over_codex(self, monkeypatch, codex_auth_dir):
         config = {
             "model": {
@@ -556,8 +549,7 @@ class TestGetTextAuxiliaryClient:
             "agent.auxiliary_client._read_codex_access_token",
             lambda: "codex-test-token-abc123",
         )
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client.OpenAI") as mock_openai:
+        with patch("agent.auxiliary_client.OpenAI") as mock_openai:
             client, model = get_text_auxiliary_client()
         assert model == "my-local-model"
         call_kwargs = mock_openai.call_args
@@ -575,8 +567,7 @@ class TestGetTextAuxiliaryClient:
         monkeypatch.setattr("spark_cli.config.load_config", lambda: config)
         monkeypatch.setattr("spark_cli.runtime_provider.load_config", lambda: config)
 
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._read_codex_access_token", return_value=None), \
+        with patch("agent.auxiliary_client._read_codex_access_token", return_value=None), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)), \
              patch("agent.auxiliary_client.OpenAI") as mock_openai:
             client, model = get_text_auxiliary_client()
@@ -587,8 +578,7 @@ class TestGetTextAuxiliaryClient:
         assert call_kwargs.kwargs["base_url"] == "http://localhost:1234/v1"
 
     def test_codex_fallback_when_nothing_else(self, codex_auth_dir):
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client.OpenAI") as mock_openai:
+        with patch("agent.auxiliary_client.OpenAI") as mock_openai:
             client, model = get_text_auxiliary_client()
         assert model == "gpt-5.2-codex"
         # Returns a CodexAuxiliaryClient wrapper, not a raw OpenAI client
@@ -625,8 +615,7 @@ class TestGetTextAuxiliaryClient:
         monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._read_codex_access_token", return_value=None), \
+        with patch("agent.auxiliary_client._read_codex_access_token", return_value=None), \
              patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)):
             client, model = get_text_auxiliary_client()
@@ -654,7 +643,6 @@ class TestVisionClientFallback:
         """Active provider appears in available backends when credentials exist."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "***")
         with (
-            patch("agent.auxiliary_client._read_nous_auth", return_value=None),
             patch("agent.auxiliary_client._read_main_provider", return_value="anthropic"),
             patch("agent.auxiliary_client._read_main_model", return_value="claude-sonnet-4"),
             patch("agent.anthropic_adapter.build_anthropic_client", return_value=MagicMock()),
@@ -667,7 +655,6 @@ class TestVisionClientFallback:
     def test_resolve_provider_client_returns_native_anthropic_wrapper(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-key")
         with (
-            patch("agent.auxiliary_client._read_nous_auth", return_value=None),
             patch("agent.anthropic_adapter.build_anthropic_client", return_value=MagicMock()),
             patch("agent.anthropic_adapter.resolve_anthropic_token", return_value="sk-ant-api03-key"),
         ):
@@ -679,33 +666,6 @@ class TestVisionClientFallback:
 
 
 class TestAuxiliaryPoolAwareness:
-    def test_try_nous_uses_pool_entry(self):
-        class _Entry:
-            access_token = "pooled-access-token"
-            agent_key = "pooled-agent-key"
-            inference_base_url = "https://inference.pool.example/v1"
-
-        class _Pool:
-            def has_credentials(self):
-                return True
-
-            def select(self):
-                return _Entry()
-
-        with (
-            patch("agent.auxiliary_client.load_pool", return_value=_Pool()),
-            patch("agent.auxiliary_client.OpenAI") as mock_openai,
-        ):
-            from agent.auxiliary_client import _try_nous
-
-            client, model = _try_nous()
-
-        assert client is not None
-        assert model == "gemini-3-flash"
-        call_kwargs = mock_openai.call_args.kwargs
-        assert call_kwargs["api_key"] == "pooled-agent-key"
-        assert call_kwargs["base_url"] == "https://inference.pool.example/v1"
-
     def test_resolve_provider_client_copilot_uses_runtime_credentials(self, monkeypatch):
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         monkeypatch.delenv("GH_TOKEN", raising=False)
@@ -780,10 +740,9 @@ class TestAuxiliaryPoolAwareness:
         assert client is mock_openai.return_value
 
     def test_vision_auto_uses_active_provider_as_fallback(self, monkeypatch):
-        """When no OpenRouter/Spark Portal available, vision auto falls back to active provider."""
+        """When no OpenRouter available, vision auto falls back to active provider."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "***")
         with (
-            patch("agent.auxiliary_client._read_nous_auth", return_value=None),
             patch("agent.auxiliary_client._read_main_provider", return_value="anthropic"),
             patch("agent.auxiliary_client._read_main_model", return_value="claude-sonnet-4"),
             patch("agent.anthropic_adapter.build_anthropic_client", return_value=MagicMock()),
@@ -800,7 +759,6 @@ class TestAuxiliaryPoolAwareness:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "***")
 
         with (
-            patch("agent.auxiliary_client._read_nous_auth", return_value=None),
             patch("agent.auxiliary_client._read_main_provider", return_value="anthropic"),
             patch("agent.auxiliary_client._read_main_model", return_value="claude-sonnet-4"),
             patch("agent.anthropic_adapter.build_anthropic_client", return_value=MagicMock()),
@@ -815,8 +773,7 @@ class TestAuxiliaryPoolAwareness:
         """Named custom provider works as active provider fallback in vision auto."""
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)), \
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)), \
              patch("agent.auxiliary_client._read_main_provider", return_value="custom:local"), \
              patch("agent.auxiliary_client._read_main_model", return_value="my-local-model"), \
              patch("agent.auxiliary_client.resolve_provider_client",
@@ -990,8 +947,7 @@ def test_resolve_provider_client_copilot_acp_requires_explicit_or_configured_mod
 class TestAuxiliaryMaxTokensParam:
     def test_codex_fallback_uses_max_tokens(self, monkeypatch):
         """Codex adapter translates max_tokens internally, so we return max_tokens."""
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._read_codex_access_token", return_value="tok"):
+        with patch("agent.auxiliary_client._read_codex_access_token", return_value="tok"):
             result = auxiliary_max_tokens_param(1024)
         assert result == {"max_tokens": 1024}
 
@@ -1001,8 +957,7 @@ class TestAuxiliaryMaxTokensParam:
         assert result == {"max_tokens": 1024}
 
     def test_no_provider_uses_max_tokens(self):
-        with patch("agent.auxiliary_client._read_nous_auth", return_value=None), \
-             patch("agent.auxiliary_client._read_codex_access_token", return_value=None):
+        with patch("agent.auxiliary_client._read_codex_access_token", return_value=None):
             result = auxiliary_max_tokens_param(1024)
         assert result == {"max_tokens": 1024}
 
@@ -1051,11 +1006,11 @@ class TestIsPaymentError:
 class TestGetProviderChain:
     """_get_provider_chain() resolves functions at call time (testable)."""
 
-    def test_returns_five_entries(self):
+    def test_returns_four_entries(self):
         chain = _get_provider_chain()
-        assert len(chain) == 5
+        assert len(chain) == 4
         labels = [label for label, _ in chain]
-        assert labels == ["openrouter", "nous", "local/custom", "openai-codex", "api-key"]
+        assert labels == ["openrouter", "local/custom", "openai-codex", "api-key"]
 
     def test_picks_up_patched_functions(self):
         """Patches on _try_* functions must be visible in the chain."""
@@ -1071,16 +1026,15 @@ class TestTryPaymentFallback:
     def test_skips_failed_provider(self):
         mock_client = MagicMock()
         with patch("agent.auxiliary_client._try_openrouter", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_nous", return_value=(mock_client, "nous-model")), \
+             patch("agent.auxiliary_client._try_custom_endpoint", return_value=(mock_client, "local-model")), \
              patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"):
             client, model, label = _try_payment_fallback("openrouter", task="compression")
         assert client is mock_client
-        assert model == "nous-model"
-        assert label == "nous"
+        assert model == "local-model"
+        assert label == "local/custom"
 
     def test_returns_none_when_no_fallback(self):
         with patch("agent.auxiliary_client._try_openrouter", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_nous", return_value=(None, None)), \
              patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
              patch("agent.auxiliary_client._try_codex", return_value=(None, None)), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)), \
@@ -1099,10 +1053,9 @@ class TestTryPaymentFallback:
         assert client is mock_client
         assert label == "openrouter"
 
-    def test_skips_to_codex_when_or_and_nous_fail(self):
+    def test_skips_to_codex_when_or_and_custom_fail(self):
         mock_codex = MagicMock()
         with patch("agent.auxiliary_client._try_openrouter", return_value=(None, None)), \
-             patch("agent.auxiliary_client._try_nous", return_value=(None, None)), \
              patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
              patch("agent.auxiliary_client._try_codex", return_value=(mock_codex, "gpt-5.2-codex")), \
              patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"):
@@ -1188,7 +1141,7 @@ class TestCallLlmPaymentFallback:
                     return_value=("auto", "model", None, None, None)), \
              patch("agent.auxiliary_client._is_connection_error", return_value=True), \
              patch("agent.auxiliary_client._try_payment_fallback",
-                    return_value=(fallback_client, "fb-model", "nous")) as mock_fb:
+                    return_value=(fallback_client, "fb-model", "local/custom")) as mock_fb:
             result = call_llm(
                 task="compression",
                 messages=[{"role": "user", "content": "hello"}],
@@ -1459,7 +1412,7 @@ class TestAsyncCallLlmFallback:
                     return_value=("auto", "model", None, None, None)), \
              patch("agent.auxiliary_client._is_connection_error", return_value=True), \
              patch("agent.auxiliary_client._try_payment_fallback",
-                    return_value=(fb_sync_client, "fb-model", "nous")) as mock_fb, \
+                    return_value=(fb_sync_client, "fb-model", "local/custom")) as mock_fb, \
              patch("agent.auxiliary_client._to_async_client",
                     return_value=(fb_async_client, "fb-model")):
             result = await async_call_llm(

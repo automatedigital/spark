@@ -21,6 +21,9 @@ class TestSaveConfigValueAtomic:
             "model": {"default": "test-model", "provider": "openrouter"},
             "display": {"skin": "default"},
         }))
+        # Set SPARK_HOME so get_spark_home() returns the right path regardless of
+        # which core.cli module object is in sys.modules (avoids stale cached _spark_home).
+        monkeypatch.setenv("SPARK_HOME", str(spark_home))
         monkeypatch.setattr("core.cli._spark_home", spark_home)
         return config_path
 

@@ -6,22 +6,20 @@ the best available backend without duplicating fallback logic.
 
 Resolution order for text tasks (auto mode):
   1. OpenRouter  (OPENROUTER_API_KEY)
-  2. Spark Portal (~/.spark/auth.json active provider)
-  3. Custom endpoint (config.yaml model.base_url + OPENAI_API_KEY)
-  4. Codex OAuth (Responses API via chatgpt.com with gpt-5.3-codex,
+  2. Custom endpoint (config.yaml model.base_url + OPENAI_API_KEY)
+  3. Codex OAuth (Responses API via chatgpt.com with gpt-5.3-codex,
      wrapped to look like a chat.completions client)
-  5. Native Anthropic
-  6. Direct API-key providers (z.ai/GLM, Kimi/Moonshot, MiniMax, MiniMax-CN)
-  7. None
+  4. Native Anthropic
+  5. Direct API-key providers (z.ai/GLM, Kimi/Moonshot, MiniMax, MiniMax-CN)
+  6. None
 
 Resolution order for vision/multimodal tasks (auto mode):
   1. Selected main provider, if it is one of the supported vision backends below
   2. OpenRouter
-  3. Spark Portal
-  4. Codex OAuth (gpt-5.3-codex supports vision via Responses API)
-  5. Native Anthropic
-  6. Custom endpoint (for local vision models: Qwen-VL, LLaVA, Pixtral, etc.)
-  7. None
+  3. Codex OAuth (gpt-5.3-codex supports vision via Responses API)
+  4. Native Anthropic
+  5. Custom endpoint (for local vision models: Qwen-VL, LLaVA, Pixtral, etc.)
+  6. None
 
 Per-task overrides are configured in config.yaml under the ``auxiliary:`` section
 (e.g. ``auxiliary.vision.provider``, ``auxiliary.compression.model``).
@@ -121,20 +119,8 @@ _OR_HEADERS = {
     "X-OpenRouter-Categories": "productivity,cli-agent",
 }
 
-# Spark Portal extra_body for product attribution.
-# Callers should pass this as extra_body in chat.completions.create()
-# when the auxiliary client is backed by Spark Portal.
-NOUS_EXTRA_BODY = {"tags": ["product=spark-agent"]}
-
-# Set at resolve time — True if the auxiliary client points to Spark Portal
-auxiliary_is_nous: bool = False
-
 # Default auxiliary models per provider
 _OPENROUTER_MODEL = "google/gemini-3-flash-preview"
-_NOUS_MODEL = "google/gemini-3-flash-preview"
-_NOUS_FREE_TIER_VISION_MODEL = "xiaomi/mimo-v2-omni"
-_NOUS_FREE_TIER_AUX_MODEL = "xiaomi/mimo-v2-pro"
-_NOUS_DEFAULT_BASE_URL = ""
 _ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
 _AUTH_JSON_PATH = get_spark_home() / "auth.json"
 
@@ -184,7 +170,7 @@ def _pool_runtime_api_key(entry: Any) -> str:
     if entry is None:
         return ""
     # Use the PooledCredential.runtime_api_key property which handles
-    # provider-specific fallback (e.g. agent_key for nous).
+    # provider-specific fallback (e.g. runtime_api_key property).
     key = getattr(entry, "runtime_api_key", None) or getattr(entry, "access_token", "")
     return str(key or "").strip()
 
@@ -192,7 +178,7 @@ def _pool_runtime_api_key(entry: Any) -> str:
 def _pool_runtime_base_url(entry: Any, fallback: str = "") -> str:
     if entry is None:
         return str(fallback or "").strip().rstrip("/")
-    # runtime_base_url handles provider-specific logic (e.g. nous prefers inference_base_url).
+    # runtime_base_url handles provider-specific base URL logic.
     # Fall back through inference_base_url and base_url for non-PooledCredential entries.
     url = (
         getattr(entry, "runtime_base_url", None)
@@ -586,53 +572,6 @@ class AsyncAnthropicAuxiliaryClient:
         self.base_url = sync_wrapper.base_url
 
 
-def _read_nous_auth() -> Optional[dict]:
-    """Read and validate ~/.spark/auth.json for an active Spark Portal provider.
-
-    Returns the provider state dict if Spark Portal is active with tokens,
-    otherwise None.
-    """
-    pool_present, entry = _select_pool_entry("nous")
-    if pool_present:
-        if entry is None:
-            return None
-        return {
-            "access_token": getattr(entry, "access_token", ""),
-            "refresh_token": getattr(entry, "refresh_token", None),
-            "agent_key": getattr(entry, "agent_key", None),
-            "inference_base_url": _pool_runtime_base_url(entry, _NOUS_DEFAULT_BASE_URL),
-            "portal_base_url": getattr(entry, "portal_base_url", None),
-            "client_id": getattr(entry, "client_id", None),
-            "scope": getattr(entry, "scope", None),
-            "token_type": getattr(entry, "token_type", "Bearer"),
-            "source": "pool",
-        }
-
-    try:
-        if not _AUTH_JSON_PATH.is_file():
-            return None
-        data = json.loads(_AUTH_JSON_PATH.read_text())
-        if data.get("active_provider") != "nous":
-            return None
-        provider = data.get("providers", {}).get("nous", {})
-        # Must have at least an access_token or agent_key
-        if not provider.get("agent_key") and not provider.get("access_token"):
-            return None
-        return provider
-    except Exception as exc:
-        logger.debug("Could not read Spark Portal auth: %s", exc)
-        return None
-
-
-def _nous_api_key(provider: dict) -> str:
-    """Extract the best API key from a Spark Portal provider state dict."""
-    return provider.get("agent_key") or provider.get("access_token", "")
-
-
-def _nous_base_url() -> str:
-    """Resolve the Spark Portal inference base URL from env or default."""
-    return os.getenv("NOUS_INFERENCE_BASE_URL", _NOUS_DEFAULT_BASE_URL)
-
 
 def _read_codex_access_token() -> Optional[str]:
     """Read a valid, non-expired Codex OAuth access token from Spark auth store.
@@ -772,35 +711,6 @@ def _try_openrouter() -> Tuple[Optional[OpenAI], Optional[str]]:
     return OpenAI(api_key=or_key, base_url=OPENROUTER_BASE_URL,
                    default_headers=_OR_HEADERS), _OPENROUTER_MODEL
 
-
-def _try_nous(vision: bool = False) -> Tuple[Optional[OpenAI], Optional[str]]:
-    nous = _read_nous_auth()
-    if not nous:
-        return None, None
-    global auxiliary_is_nous
-    auxiliary_is_nous = True
-    logger.debug("Auxiliary client: Spark Portal")
-    if nous.get("source") == "pool":
-        model = "gemini-3-flash"
-    else:
-        model = _NOUS_MODEL
-    # Free-tier users can't use paid auxiliary models — use the free
-    # models instead: mimo-v2-omni for vision, mimo-v2-pro for text tasks.
-    try:
-        from spark_cli.models import check_nous_free_tier
-        if check_nous_free_tier():
-            model = _NOUS_FREE_TIER_VISION_MODEL if vision else _NOUS_FREE_TIER_AUX_MODEL
-            logger.debug("Free-tier Spark Portal account — using %s for auxiliary/%s",
-                         model, "vision" if vision else "text")
-    except Exception:
-        pass
-    return (
-        OpenAI(
-            api_key=_nous_api_key(nous),
-            base_url=str(nous.get("inference_base_url") or _nous_base_url()).rstrip("/"),
-        ),
-        model,
-    )
 
 
 def _read_main_model() -> str:
@@ -988,13 +898,12 @@ def _try_anthropic() -> Tuple[Optional[Any], Optional[str]]:
 
 _AUTO_PROVIDER_LABELS = {
     "_try_openrouter": "openrouter",
-    "_try_nous": "nous",
     "_try_custom_endpoint": "local/custom",
     "_try_codex": "openai-codex",
     "_resolve_api_key_provider": "api-key",
 }
 
-_AGGREGATOR_PROVIDERS = frozenset({"openrouter", "nous"})
+_AGGREGATOR_PROVIDERS = frozenset({"openrouter"})
 
 _MAIN_RUNTIME_FIELDS = ("provider", "model", "base_url", "api_key", "api_mode")
 
@@ -1022,7 +931,6 @@ def _get_provider_chain() -> List[tuple]:
     """
     return [
         ("openrouter", _try_openrouter),
-        ("nous", _try_nous),
         ("local/custom", _try_custom_endpoint),
         ("openai-codex", _try_codex),
         ("api-key", _resolve_api_key_provider),
@@ -1097,7 +1005,7 @@ def _try_payment_fallback(
     if main_provider and main_provider.lower() in skip:
         skip_labels.add(main_provider.lower())
     # Map common resolved_provider values back to chain labels.
-    _alias_to_label = {"openrouter": "openrouter", "nous": "nous",
+    _alias_to_label = {"openrouter": "openrouter",
                        "openai-codex": "openai-codex", "codex": "openai-codex",
                        "custom": "local/custom", "local/custom": "local/custom"}
     skip_chain_labels = {_alias_to_label.get(s, s) for s in skip_labels}
@@ -1126,14 +1034,13 @@ def _resolve_auto(main_runtime: Optional[Dict[str, Any]] = None) -> Tuple[Option
     """Full auto-detection chain.
 
     Priority:
-      1. If the user's main provider is NOT an aggregator (OpenRouter / Spark Portal),
-         use their main provider + main model directly.  This ensures users on
-         Alibaba, DeepSeek, ZAI, etc. get auxiliary tasks handled by the same
-         provider they already have credentials for — no OpenRouter key needed.
-      2. OpenRouter → Spark Portal → custom → Codex → API-key providers (original chain).
+      1. Use the user's configured main provider + model directly (all provider
+         types, including aggregators like OpenRouter).  This ensures that
+         any globally configured model is always tried first — no auxiliary task
+         should ever fail when a global model is set.
+      2. OpenRouter → custom → Codex → API-key providers (original chain).
     """
-    global auxiliary_is_nous, _stale_base_url_warned
-    auxiliary_is_nous = False  # Reset — _try_nous() will set True if it wins
+    global _stale_base_url_warned
     runtime = _normalize_main_runtime(main_runtime)
     runtime_provider = runtime.get("provider", "")
     runtime_model = runtime.get("model", "")
@@ -1160,11 +1067,10 @@ def _resolve_auto(main_runtime: Optional[Dict[str, Any]] = None) -> Tuple[Option
             )
             _stale_base_url_warned = True
 
-    # ── Step 1: non-aggregator main provider → use main model directly ──
+    # ── Step 1: use configured main provider + model directly (all providers) ──
     main_provider = runtime_provider or _read_main_provider()
     main_model = runtime_model or _read_main_model()
     if (main_provider and main_model
-            and main_provider not in _AGGREGATOR_PROVIDERS
             and main_provider not in ("auto", "")):
         resolved_provider = main_provider
         explicit_base_url = None
@@ -1277,7 +1183,7 @@ def resolve_provider_client(
 
     Args:
         provider: Provider identifier.  One of:
-            "openrouter", "nous", "openai-codex" (or "codex"),
+            "openrouter", "openai-codex" (or "codex"),
             "zai", "kimi-coding", "minimax", "minimax-cn",
             "custom" (OPENAI_BASE_URL + OPENAI_API_KEY),
             "auto" (full auto-detection chain).
@@ -1359,17 +1265,6 @@ def resolve_provider_client(
         if client is None:
             logger.warning("resolve_provider_client: openrouter requested "
                            "but OPENROUTER_API_KEY not set")
-            return None, None
-        final_model = _normalize_resolved_model(model or default, provider)
-        return (_to_async_client(client, final_model) if async_mode
-                else (client, final_model))
-
-    # ── Spark Portal (OAuth) ──────────────────────────────────────────
-    if provider == "nous":
-        client, default = _try_nous()
-        if client is None:
-            logger.warning("resolve_provider_client: nous requested "
-                           "but Spark Portal not configured (run: spark auth)")
             return None, None
         final_model = _normalize_resolved_model(model or default, provider)
         return (_to_async_client(client, final_model) if async_mode
@@ -1588,8 +1483,6 @@ def resolve_provider_client(
 
     elif pconfig.auth_type in ("oauth_device_code", "oauth_external"):
         # OAuth providers — route through their specific try functions
-        if provider == "nous":
-            return resolve_provider_client("nous", model, async_mode)
         if provider == "openai-codex":
             return resolve_provider_client("openai-codex", model, async_mode)
         # Other OAuth providers not directly supported
@@ -1650,7 +1543,6 @@ def get_async_text_auxiliary_client(task: str = "", *, main_runtime: Optional[Di
 
 _VISION_AUTO_PROVIDER_ORDER = (
     "openrouter",
-    "nous",
 )
 
 
@@ -1662,8 +1554,6 @@ def _resolve_strict_vision_backend(provider: str) -> Tuple[Optional[Any], Option
     provider = _normalize_vision_provider(provider)
     if provider == "openrouter":
         return _try_openrouter()
-    if provider == "nous":
-        return _try_nous(vision=True)
     if provider == "openai-codex":
         return _try_codex()
     if provider == "anthropic":
@@ -1680,7 +1570,7 @@ def _strict_vision_backend_available(provider: str) -> bool:
 def get_available_vision_backends() -> List[str]:
     """Return the currently available vision backends in auto-selection order.
 
-    Order: active provider → OpenRouter → Spark Portal → stop.  This is the single
+    Order: active provider → OpenRouter → stop.  This is the single
     source of truth for setup, tool gating, and runtime auto-routing of
     vision tasks.
     """
@@ -1695,7 +1585,7 @@ def get_available_vision_backends() -> List[str]:
             client, _ = resolve_provider_client(main_provider, _read_main_model())
             if client is not None:
                 available.append(main_provider)
-    # 2. OpenRouter, 3. Spark Portal — skip if already covered by main provider.
+    # 2. OpenRouter — skip if already covered by main provider.
     for p in _VISION_AUTO_PROVIDER_ORDER:
         if p not in available and _strict_vision_backend_available(p):
             available.append(p)
@@ -1748,8 +1638,7 @@ def resolve_vision_provider_client(
         # Vision auto-detection order:
         #   1. Active provider + model (user's main chat config)
         #   2. OpenRouter  (known vision-capable default model)
-        #   3. Spark Portal (known vision-capable default model)
-        #   4. Stop
+        #   3. Stop
         main_provider = _read_main_provider()
         main_model = _read_main_model()
         if main_provider and main_provider not in ("auto", ""):
@@ -1796,12 +1685,8 @@ def resolve_vision_provider_client(
 
 
 def get_auxiliary_extra_body() -> dict:
-    """Return extra_body kwargs for auxiliary API calls.
-    
-    Includes Spark Portal product tags when the auxiliary client is backed
-    by Spark Portal. Returns empty dict otherwise.
-    """
-    return dict(NOUS_EXTRA_BODY) if auxiliary_is_nous else {}
+    """Return extra_body kwargs for auxiliary API calls."""
+    return {}
 
 
 def auxiliary_max_tokens_param(value: int) -> dict:
@@ -1816,7 +1701,6 @@ def auxiliary_max_tokens_param(value: int) -> dict:
     or_key = os.getenv("OPENROUTER_API_KEY")
     # Only use max_completion_tokens for direct OpenAI custom endpoints
     if (not or_key
-            and _read_nous_auth() is None
             and "api.openai.com" in custom_base.lower()):
         return {"max_completion_tokens": value}
     return {"max_tokens": value}
@@ -2204,7 +2088,7 @@ def _build_call_kwargs(
         kwargs["temperature"] = temperature
 
     if max_tokens is not None:
-        # Codex adapter handles max_tokens internally; OpenRouter/Spark Portal use max_tokens.
+        # Codex adapter handles max_tokens internally; OpenRouter use max_tokens.
         # Direct OpenAI api.openai.com with newer models needs max_completion_tokens.
         if provider == "custom":
             custom_base = base_url or _current_custom_base_url()
@@ -2220,8 +2104,6 @@ def _build_call_kwargs(
 
     # Provider-specific extra_body
     merged_extra = dict(extra_body or {})
-    if provider == "nous" or auxiliary_is_nous:
-        merged_extra.setdefault("tags", []).extend(["product=spark-agent"])
     if merged_extra:
         kwargs["extra_body"] = merged_extra
 

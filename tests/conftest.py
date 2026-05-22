@@ -31,6 +31,13 @@ def _isolate_spark_home(tmp_path, monkeypatch):
         monkeypatch.setattr(_plugins_mod, "_plugin_manager", None)
     except Exception:
         pass
+    # Patch the module-level DEFAULT_DB_PATH constant so SessionDB() picks up
+    # the redirected SPARK_HOME even when spark_state was already imported.
+    try:
+        import core.spark_state as _state_mod
+        monkeypatch.setattr(_state_mod, "DEFAULT_DB_PATH", fake_home / "state.db")
+    except Exception:
+        pass
     # Tests should not inherit the agent's current gateway/messaging surface.
     # Individual tests that need gateway behavior set these explicitly.
     monkeypatch.delenv("SPARK_SESSION_PLATFORM", raising=False)
@@ -39,6 +46,11 @@ def _isolate_spark_home(tmp_path, monkeypatch):
     monkeypatch.delenv("SPARK_GATEWAY_SESSION", raising=False)
     # Avoid making real calls during tests if this key is set in the env files
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    # Prevent API server env vars from leaking between tests
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)
+    monkeypatch.delenv("API_SERVER_ENABLED", raising=False)
+    monkeypatch.delenv("API_SERVER_HOST", raising=False)
+    monkeypatch.delenv("API_SERVER_PORT", raising=False)
 
 
 @pytest.fixture()

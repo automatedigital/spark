@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytest.importorskip("acp", reason="acp package not installed")
+
 import acp
 from acp.schema import (
     EnvVariable,

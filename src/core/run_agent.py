@@ -82,7 +82,7 @@ from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
     MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
     COMPUTER_USE_GUIDANCE,
-    APP_CREATION_GUIDANCE, build_nous_subscription_prompt, build_soul_guidance,
+    APP_CREATION_GUIDANCE, build_soul_guidance,
     build_workspace_guidance,
 )
 from agent.model_metadata import (
@@ -3207,9 +3207,6 @@ class AIAgent:
         if any(name in self.valid_tool_names for name in ("terminal", "write_file", "patch_file")):
             prompt_parts.append(APP_CREATION_GUIDANCE)
 
-        nous_subscription_prompt = build_nous_subscription_prompt(self.valid_tool_names)
-        if nous_subscription_prompt:
-            prompt_parts.append(nous_subscription_prompt)
         # Tool-use enforcement: tells the model to actually call tools instead
         # of describing intended actions.  Controlled by config.yaml
         # agent.tool_use_enforcement:
@@ -4615,41 +4612,6 @@ class AIAgent:
 
         return True
 
-    def _try_refresh_nous_client_credentials(self, *, force: bool = True) -> bool:
-        if self.api_mode != "chat_completions" or self.provider != "nous":
-            return False
-
-        try:
-            from spark_cli.auth import resolve_nous_runtime_credentials
-
-            creds = resolve_nous_runtime_credentials(
-                min_key_ttl_seconds=max(60, int(os.getenv("SPARK_NOUS_MIN_KEY_TTL_SECONDS", "1800"))),
-                timeout_seconds=float(os.getenv("SPARK_NOUS_TIMEOUT_SECONDS", "15")),
-                force_mint=force,
-            )
-        except Exception as exc:
-            logger.debug("Spark Portal credential refresh failed: %s", exc)
-            return False
-
-        api_key = creds.get("api_key")
-        base_url = creds.get("base_url")
-        if not isinstance(api_key, str) or not api_key.strip():
-            return False
-        if not isinstance(base_url, str) or not base_url.strip():
-            return False
-
-        self.api_key = api_key.strip()
-        self.base_url = base_url.strip().rstrip("/")
-        self._client_kwargs["api_key"] = self.api_key
-        self._client_kwargs["base_url"] = self.base_url
-        # Spark Portal requests should not inherit OpenRouter-only attribution headers.
-        self._client_kwargs.pop("default_headers", None)
-
-        if not self._replace_primary_openai_client(reason="nous_credential_refresh"):
-            return False
-
-        return True
-
     def _try_refresh_anthropic_client_credentials(self) -> bool:
         if self.api_mode != "anthropic_messages" or not hasattr(self, "_anthropic_api_key"):
             return False
@@ -5861,7 +5823,7 @@ class AIAgent:
         Anthropic, OpenAI, local models) where a TCP-level hiccup does not
         mean the provider is down.
 
-        Skipped for proxy/aggregator providers (OpenRouter, Spark Portal) which
+        Skipped for proxy/aggregator providers (OpenRouter-style endpoints) which
         already manage connection pools and retries server-side — if our
         retries through them are exhausted, one more rebuilt client won't help.
         """
@@ -5876,10 +5838,6 @@ class AIAgent:
         # Skip for aggregator providers — they manage their own retry infra
         if self._is_openrouter_url():
             return False
-        provider_lower = (self.provider or "").strip().lower()
-        if provider_lower in ("nous", "nous-research"):
-            return False
-
         try:
             # Close existing client to release stale connections
             if getattr(self, "client", None) is not None:
@@ -6343,7 +6301,7 @@ class AIAgent:
             # model has adequate output budget for tool calls.
             api_kwargs.update(self._max_tokens_param(65536))
         elif (self._is_openrouter_url() or "automatedigital" in self._base_url_lower) and "claude" in (self.model or "").lower():
-            # OpenRouter and Spark Portal translate requests to Anthropic's
+            # Some OpenRouter-compatible endpoints translate requests to Anthropic's
             # Messages API, which requires max_tokens as a mandatory field.
             # When we omit it, the proxy picks a default that can be too
             # low — the model spends its output budget on thinking and has
@@ -6367,8 +6325,7 @@ class AIAgent:
 
         # Provider preferences (only, ignore, order, sort) are OpenRouter-
         # specific.  Only send to OpenRouter-compatible endpoints.
-        # TODO: Spark Portal will add transparent proxy support — re-enable
-        # for _is_spark when their backend is updated.
+        # Provider preferences are only sent to OpenRouter itself.
         if provider_preferences and _is_openrouter:
             extra_body["provider"] = provider_preferences
         _is_spark = "automatedigital" in self._base_url_lower
@@ -6381,10 +6338,9 @@ class AIAgent:
             else:
                 if self.reasoning_config is not None:
                     rc = dict(self.reasoning_config)
-                    # Spark Portal requires reasoning enabled — don't send
-                    # enabled=false to it (would cause 400).
+                    # Legacy hosted endpoints rejected enabled=false; omit it.
                     if _is_spark and rc.get("enabled") is False:
-                        pass  # omit reasoning entirely for Spark Portal when disabled
+                        pass  # omit reasoning entirely for legacy hosted endpoints
                     else:
                         extra_body["reasoning"] = rc
                 else:
@@ -6393,7 +6349,7 @@ class AIAgent:
                         "effort": "medium"
                     }
 
-        # Spark Portal product attribution
+        # Product attribution for legacy hosted endpoints.
         if _is_spark:
             extra_body["tags"] = ["product=spark-agent"]
 
@@ -6430,7 +6386,7 @@ class AIAgent:
 
         OpenRouter forwards unknown extra_body fields to upstream providers.
         Some providers/routes reject `reasoning` with 400s, so gate it to
-        known reasoning-capable model families and direct Spark Portal.
+        known reasoning-capable model families and legacy hosted endpoints.
         """
         if "automatedigital" in self._base_url_lower:
             return True
@@ -8420,7 +8376,6 @@ class AIAgent:
             max_compression_attempts = 3
             codex_auth_retry_attempted=False
             anthropic_auth_retry_attempted=False
-            nous_auth_retry_attempted=False
             thinking_sig_retry_attempted = False
             has_retried_429 = False
             restart_with_compressed_messages = False
@@ -9155,16 +9110,6 @@ class AIAgent:
                         codex_auth_retry_attempted = True
                         if self._try_refresh_codex_client_credentials(force=True):
                             self._vprint(f"{self.log_prefix}🔐 Codex auth refreshed after 401. Retrying request...")
-                            continue
-                    if (
-                        self.api_mode == "chat_completions"
-                        and self.provider == "nous"
-                        and status_code == 401
-                        and not nous_auth_retry_attempted
-                    ):
-                        nous_auth_retry_attempted = True
-                        if self._try_refresh_nous_client_credentials(force=True):
-                            print(f"{self.log_prefix}🔐 Spark Portal agent key refreshed after 401. Retrying request...")
                             continue
                     if (
                         self.api_mode == "anthropic_messages"

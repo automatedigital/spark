@@ -20,11 +20,6 @@ from spark_cli.config import (
     load_config, save_config, get_env_value, save_env_value,
 )
 from spark_cli.colors import Colors, color
-from spark_cli.nous_subscription import (
-    apply_nous_managed_defaults,
-    get_nous_subscription_features,
-)
-from tools.tool_backend_helpers import managed_nous_tools_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -644,12 +639,6 @@ def _toolset_has_keys(ts_key: str, config: dict = None) -> bool:
         except Exception:
             return False
 
-    if ts_key in {"web", "image_gen", "tts", "browser"}:
-        features = get_nous_subscription_features(config)
-        feature = features.features.get(ts_key)
-        if feature and (feature.available or feature.managed_by_nous):
-            return True
-
     # Check TOOL_CATEGORIES first (provider-aware)
     cat = TOOL_CATEGORIES.get(ts_key)
     if cat:
@@ -790,15 +779,7 @@ def _configure_toolset(ts_key: str, config: dict):
 
 def _visible_providers(cat: dict, config: dict) -> list[dict]:
     """Return provider entries visible for the current auth/config state."""
-    features = get_nous_subscription_features(config)
-    visible = []
-    for provider in cat.get("providers", []):
-        if provider.get("managed_nous_feature") and not managed_nous_tools_enabled():
-            continue
-        if provider.get("requires_nous_auth") and not features.nous_auth_present:
-            continue
-        visible.append(provider)
-    return visible
+    return [p for p in cat.get("providers", []) if not p.get("requires_nous_auth") and not p.get("managed_nous_feature")]
 
 
 def _toolset_needs_configuration_prompt(ts_key: str, config: dict) -> bool:
@@ -891,26 +872,8 @@ def _configure_tool_category(ts_key: str, cat: dict, config: dict):
 
 def _is_provider_active(provider: dict, config: dict) -> bool:
     """Check if a provider entry matches the currently active config."""
-    managed_feature = provider.get("managed_nous_feature")
-    if managed_feature:
-        features = get_nous_subscription_features(config)
-        feature = features.features.get(managed_feature)
-        if feature is None:
-            return False
-        if managed_feature == "image_gen":
-            return feature.managed_by_nous
-        if provider.get("tts_provider"):
-            return (
-                feature.managed_by_nous
-                and config.get("tts", {}).get("provider") == provider["tts_provider"]
-            )
-        if "browser_provider" in provider:
-            current = config.get("browser", {}).get("cloud_provider")
-            return feature.managed_by_nous and provider["browser_provider"] == current
-        if provider.get("web_backend"):
-            current = config.get("web", {}).get("backend")
-            return feature.managed_by_nous and current == provider["web_backend"]
-        return feature.managed_by_nous
+    if provider.get("managed_nous_feature") or provider.get("requires_nous_auth"):
+        return False
 
     if provider.get("tts_provider"):
         return config.get("tts", {}).get("provider") == provider["tts_provider"]
@@ -938,13 +901,10 @@ def _detect_active_provider_index(providers: list, config: dict) -> int:
 def _configure_provider(provider: dict, config: dict):
     """Configure a single provider - prompt for API keys and set config."""
     env_vars = provider.get("env_vars", [])
-    managed_feature = provider.get("managed_nous_feature")
 
-    if provider.get("requires_nous_auth"):
-        features = get_nous_subscription_features(config)
-        if not features.nous_auth_present:
-            _print_warning("  Spark Subscription is only available after logging into Spark Portal.")
-            return
+    if provider.get("requires_nous_auth") or provider.get("managed_nous_feature"):
+        _print_warning("  This provider is no longer available.")
+        return
 
     # Set TTS provider in config if applicable
     if provider.get("tts_provider"):
@@ -969,13 +929,6 @@ def _configure_provider(provider: dict, config: dict):
         if provider.get("post_setup"):
             _run_post_setup(provider["post_setup"])
         _print_success(f"  {provider['name']} - no configuration needed!")
-        if managed_feature:
-            _print_info("  Requests for this tool will be billed to your Spark subscription.")
-            override_envs = provider.get("override_env_vars", [])
-            if any(get_env_value(env_var) for env_var in override_envs):
-                _print_warning(
-                    "  Direct credentials are still configured and may take precedence until you remove them from ~/.spark/.env."
-                )
         return
 
     # Prompt for each required env var
@@ -1148,13 +1101,10 @@ def _configure_tool_category_for_reconfig(ts_key: str, cat: dict, config: dict):
 def _reconfigure_provider(provider: dict, config: dict):
     """Reconfigure a provider - update API keys."""
     env_vars = provider.get("env_vars", [])
-    managed_feature = provider.get("managed_nous_feature")
 
-    if provider.get("requires_nous_auth"):
-        features = get_nous_subscription_features(config)
-        if not features.nous_auth_present:
-            _print_warning("  Spark Subscription is only available after logging into Spark Portal.")
-            return
+    if provider.get("requires_nous_auth") or provider.get("managed_nous_feature"):
+        _print_warning("  This provider is no longer available.")
+        return
 
     if provider.get("tts_provider"):
         config.setdefault("tts", {})["provider"] = provider["tts_provider"]
@@ -1178,13 +1128,6 @@ def _reconfigure_provider(provider: dict, config: dict):
         if provider.get("post_setup"):
             _run_post_setup(provider["post_setup"])
         _print_success(f"  {provider['name']} - no configuration needed!")
-        if managed_feature:
-            _print_info("  Requests for this tool will be billed to your Spark subscription.")
-            override_envs = provider.get("override_env_vars", [])
-            if any(get_env_value(env_var) for env_var in override_envs):
-                _print_warning(
-                    "  Direct credentials are still configured and may take precedence until you remove them from ~/.spark/.env."
-                )
         return
 
     for var in env_vars:
@@ -1294,14 +1237,7 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
                     label = next((l for k, l, _ in _get_effective_configurable_toolsets() if k == ts), ts)
                     print(color(f"  - {label}", Colors.RED))
 
-            auto_configured = apply_nous_managed_defaults(
-                config,
-                enabled_toolsets=new_enabled,
-            )
-            if managed_nous_tools_enabled():
-                for ts_key in sorted(auto_configured):
-                    label = next((l for k, l, _ in CONFIGURABLE_TOOLSETS if k == ts_key), ts_key)
-                    print(color(f"  ✓ {label}: using your Spark subscription defaults", Colors.GREEN))
+            auto_configured: set = set()
 
             # Walk through ALL selected tools that have provider options or
             # need API keys.  This ensures browser (Local vs Browserbase),

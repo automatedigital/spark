@@ -313,13 +313,12 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     },
     "model_provider": {
         "type": "select",
-        "description": "SMART model provider (for example openai-codex, openrouter, nous, anthropic, custom).",
+        "description": "SMART model provider (for example openai-codex, openrouter, anthropic, custom).",
         "options": [
             "",
             "openai-codex",
             "openrouter",
             "anthropic",
-            "nous",
             "qwen-oauth",
             "github-copilot",
             "copilot-acp",
@@ -365,13 +364,12 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     },
     "smart_model_routing.cheap_model.provider": {
         "type": "select",
-        "description": "FAST model provider for simple requests (for example openai-codex, openrouter, nous, anthropic, custom).",
+        "description": "FAST model provider for simple requests (for example openai-codex, openrouter, anthropic, custom).",
         "options": [
             "",
             "openai-codex",
             "openrouter",
             "anthropic",
-            "nous",
             "qwen-oauth",
             "github-copilot",
             "copilot-acp",
@@ -1548,7 +1546,21 @@ async def get_defaults():
 
 @app.get("/api/config/schema")
 async def get_schema():
-    return {"fields": CONFIG_SCHEMA, "category_order": _CATEGORY_ORDER}
+    schema = dict(CONFIG_SCHEMA)
+    try:
+        from spark_cli.config import load_config
+        cfg = load_config()
+        model_cfg = cfg.get("model", {})
+        if isinstance(model_cfg, dict):
+            main_model = str(model_cfg.get("default", "") or "").strip()
+            main_provider = str(model_cfg.get("provider", "") or "").strip()
+            if main_model and "delegation.model" in schema:
+                schema["delegation.model"] = {**schema["delegation.model"], "placeholder": main_model}
+            if main_provider and "delegation.provider" in schema:
+                schema["delegation.provider"] = {**schema["delegation.provider"], "placeholder": main_provider}
+    except Exception:
+        pass
+    return {"fields": schema, "category_order": _CATEGORY_ORDER}
 
 
 _EMPTY_MODEL_INFO: dict = {
@@ -1931,7 +1943,7 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
 #
 # Phase 1 surfaces *which OAuth providers exist* and whether each is
 # connected, plus a disconnect button. The actual login flow (PKCE for
-# Anthropic, device-code for Spark Portal/Codex) still runs in the CLI for now;
+# Anthropic and device-code OAuth flows still run in the CLI for now;
 # Phase 2 will add in-browser flows. For unconnected providers we return
 # the canonical ``spark auth add <provider>`` command so the dashboard
 # can surface a one-click copy.
@@ -2500,111 +2512,6 @@ async def _start_device_code_flow(provider_id: str) -> Dict[str, Any]:
         detail=f"Provider {provider_id} does not support device-code flow",
     )
 
-
-def _nous_poller(session_id: str) -> None:
-    """Background poller that drives a Spark Portal device-code flow to completion."""
-    from spark_cli.auth import _poll_for_token, refresh_nous_oauth_from_state
-    from datetime import datetime, timezone
-    import httpx
-
-    with _oauth_sessions_lock:
-        sess = _oauth_sessions.get(session_id)
-    if not sess:
-        return
-    portal_base_url = sess["portal_base_url"]
-    client_id = sess["client_id"]
-    device_code = sess["device_code"]
-    interval = sess["interval"]
-    expires_in = max(60, int(sess["expires_at"] - time.time()))
-    try:
-        with httpx.Client(
-            timeout=httpx.Timeout(15.0), headers={"Accept": "application/json"}
-        ) as client:
-            token_data = _poll_for_token(
-                client=client,
-                portal_base_url=portal_base_url,
-                client_id=client_id,
-                device_code=device_code,
-                expires_in=expires_in,
-                poll_interval=interval,
-            )
-        # Same post-processing as _nous_device_code_login (mint agent key)
-        now = datetime.now(timezone.utc)
-        token_ttl = int(token_data.get("expires_in") or 0)
-        auth_state = {
-            "portal_base_url": portal_base_url,
-            "inference_base_url": token_data.get("inference_base_url"),
-            "client_id": client_id,
-            "scope": token_data.get("scope"),
-            "token_type": token_data.get("token_type", "Bearer"),
-            "access_token": token_data["access_token"],
-            "refresh_token": token_data.get("refresh_token"),
-            "obtained_at": now.isoformat(),
-            "expires_at": (
-                datetime.fromtimestamp(
-                    now.timestamp() + token_ttl, tz=timezone.utc
-                ).isoformat()
-                if token_ttl
-                else None
-            ),
-            "expires_in": token_ttl,
-        }
-        full_state = refresh_nous_oauth_from_state(
-            auth_state,
-            min_key_ttl_seconds=300,
-            timeout_seconds=15.0,
-            force_refresh=False,
-            force_mint=True,
-        )
-        # Save into credential pool same as auth_commands.py does
-        from agent.credential_pool import (
-            PooledCredential,
-            load_pool,
-            AUTH_TYPE_OAUTH,
-            SOURCE_MANUAL,
-        )
-
-        pool = load_pool("nous")
-        entry = PooledCredential.from_dict(
-            "nous",
-            {
-                **full_state,
-                "label": "dashboard device_code",
-                "auth_type": AUTH_TYPE_OAUTH,
-                "source": f"{SOURCE_MANUAL}:dashboard_device_code",
-                "base_url": full_state.get("inference_base_url"),
-            },
-        )
-        pool.add_entry(entry)
-        # Also persist to auth store so get_nous_auth_status() sees it
-        # (matches what _login_nous in auth.py does for the CLI flow).
-        try:
-            from spark_cli.auth import (
-                _load_auth_store,
-                _save_provider_state,
-                _save_auth_store,
-                _auth_store_lock,
-            )
-
-            with _auth_store_lock():
-                auth_store = _load_auth_store()
-                _save_provider_state(auth_store, "nous", full_state)
-                _save_auth_store(auth_store)
-        except Exception as store_exc:
-            _log.warning(
-                "oauth/device: credential pool saved but auth store write failed "
-                "(session=%s): %s",
-                session_id,
-                store_exc,
-            )
-        with _oauth_sessions_lock:
-            sess["status"] = "approved"
-        _log.info("oauth/device: nous login completed (session=%s)", session_id)
-    except Exception as e:
-        _log.warning("nous device-code poll failed (session=%s): %s", session_id, e)
-        with _oauth_sessions_lock:
-            sess["status"] = "error"
-            sess["error_message"] = str(e)
 
 
 def _codex_full_login_worker(session_id: str) -> None:

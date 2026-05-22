@@ -10,7 +10,7 @@ import sys
 import importlib
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # Module-level reference to the cli module (set by _make_cli on first call)
 _cli_mod = None

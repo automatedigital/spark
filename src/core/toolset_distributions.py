@@ -192,7 +192,7 @@ DISTRIBUTIONS = {
         }
     },
     
-    # Terminal-focused tasks distribution (for nous-terminal-tasks.jsonl)
+    # Terminal-focused tasks distribution.
     "terminal_tasks": {
         "description": "Terminal-focused distribution with high terminal/file availability, occasional other tools",
         "toolsets": {
@@ -361,4 +361,3 @@ if __name__ == "__main__":
     print("-" * 40)
     print_distribution_info("image_gen")
     print_distribution_info("research")
-

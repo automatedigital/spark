@@ -185,7 +185,7 @@ class TestSourceLinesAreGuarded:
     @staticmethod
     def _read_file(rel_path: str) -> str:
         import os
-        base = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        base = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "src")
         with open(os.path.join(base, rel_path)) as f:
             return f.read()
 

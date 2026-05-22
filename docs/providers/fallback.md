@@ -37,7 +37,6 @@ Both `provider` and `model` are required. If either is missing, fallback is disa
 |----------|-------|-------------|
 | AI Gateway | `ai-gateway` | `AI_GATEWAY_API_KEY` |
 | OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
-| Spark Portal | `nous` | `spark auth` (OAuth) |
 | OpenAI Codex | `openai-codex` | `spark model` (ChatGPT OAuth) |
 | GitHub Copilot | `copilot` | `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` |
 | GitHub Copilot ACP | `copilot-acp` | External process (editor integration) |
@@ -95,15 +94,15 @@ fallback_model:
   model: anthropic/claude-sonnet-4
 ```
 
-**Spark Portal as fallback for OpenRouter:**
+**Anthropic as fallback for OpenRouter:**
 ```yaml
 model:
   provider: openrouter
   default: anthropic/claude-opus-4
 
 fallback_model:
-  provider: nous
-  model: nous-spark-3
+  provider: anthropic
+  model: claude-sonnet-4-6
 ```
 
 **Local model as fallback for cloud:**
@@ -161,14 +160,14 @@ When a task's provider is set to `"auto"` (the default), Spark tries providers i
 **Text tasks (compression, web extract, etc.):**
 
 ```text
-OpenRouter -> Spark Portal -> Custom endpoint -> Codex OAuth ->
+OpenRouter -> Codex OAuth -> Custom endpoint ->
 API-key providers (z.ai, Kimi, MiniMax, Xiaomi MiMo, Hugging Face, Anthropic) -> give up
 ```
 
 **Vision tasks:**
 
 ```text
-Main provider (if vision-capable) -> OpenRouter -> Spark Portal ->
+Main provider (if vision-capable) -> OpenRouter ->
 Codex OAuth -> Anthropic -> Custom endpoint -> give up
 ```
 
@@ -179,7 +178,7 @@ If the resolved provider fails at call time and it isn't OpenRouter and has no e
 ```yaml
 auxiliary:
   vision:
-    provider: "auto"              # auto | openrouter | nous | codex | main | anthropic
+    provider: "auto"              # auto | openrouter | codex | main | anthropic
     model: ""                     # e.g. "openai/gpt-4o"
     base_url: ""                  # direct endpoint (overrides provider)
     api_key: ""                   # API key for base_url
@@ -227,7 +226,6 @@ These options apply to `auxiliary:`, `compression:`, and `fallback_model:` — `
 |----------|-------------|-------------|
 | `"auto"` | Try providers in order until one works (default) | At least one provider configured |
 | `"openrouter"` | Force OpenRouter | `OPENROUTER_API_KEY` |
-| `"nous"` | Force Spark Portal | `spark auth` |
 | `"codex"` | Force Codex OAuth | `spark model` -> Codex |
 | `"main"` | Use whatever provider the main agent uses (auxiliary only) | Active main provider |
 | `"anthropic"` | Force Anthropic native | `ANTHROPIC_API_KEY` or Claude Code credentials |
@@ -255,7 +253,7 @@ Context compression uses `auxiliary.compression` to control which model handles 
 ```yaml
 auxiliary:
   compression:
-    provider: "auto"                              # auto | openrouter | nous | main
+    provider: "auto"                              # auto | openrouter | codex | main
     model: "google/gemini-3-flash-preview"
 ```
 

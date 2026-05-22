@@ -160,14 +160,10 @@ class PooledCredential:
 
     @property
     def runtime_api_key(self) -> str:
-        if self.provider == "nous":
-            return str(self.agent_key or self.access_token or "")
         return str(self.access_token or "")
 
     @property
     def runtime_base_url(self) -> Optional[str]:
-        if self.provider == "nous":
-            return self.inference_base_url or self.base_url
         return self.base_url
 
 
@@ -500,37 +496,14 @@ class CredentialPool:
         re-seeding a consumed single-use refresh token.
 
         Applies to any OAuth provider whose singleton lives in auth.json
-        (currently Spark Portal and OpenAI Codex).
+        (currently OpenAI Codex and Anthropic-compatible OAuth).
         """
         if entry.source != "device_code":
             return
         try:
             with _auth_store_lock():
                 auth_store = _load_auth_store()
-                if self.provider == "nous":
-                    state = _load_provider_state(auth_store, "nous")
-                    if state is None:
-                        return
-                    state["access_token"] = entry.access_token
-                    if entry.refresh_token:
-                        state["refresh_token"] = entry.refresh_token
-                    if entry.expires_at:
-                        state["expires_at"] = entry.expires_at
-                    if entry.agent_key:
-                        state["agent_key"] = entry.agent_key
-                    if entry.agent_key_expires_at:
-                        state["agent_key_expires_at"] = entry.agent_key_expires_at
-                    for extra_key in ("obtained_at", "expires_in", "agent_key_id",
-                                      "agent_key_expires_in", "agent_key_reused",
-                                      "agent_key_obtained_at"):
-                        val = entry.extra.get(extra_key)
-                        if val is not None:
-                            state[extra_key] = val
-                    if entry.inference_base_url:
-                        state["inference_base_url"] = entry.inference_base_url
-                    _save_provider_state(auth_store, "nous", state)
-
-                elif self.provider == "openai-codex":
+                if self.provider == "openai-codex":
                     state = _load_provider_state(auth_store, "openai-codex")
                     if not isinstance(state, dict):
                         return
@@ -602,37 +575,6 @@ class CredentialPool:
                     refresh_token=refreshed["refresh_token"],
                     last_refresh=refreshed.get("last_refresh"),
                 )
-            elif self.provider == "nous":
-                nous_state = {
-                    "access_token": entry.access_token,
-                    "refresh_token": entry.refresh_token,
-                    "client_id": entry.client_id,
-                    "portal_base_url": entry.portal_base_url,
-                    "inference_base_url": entry.inference_base_url,
-                    "token_type": entry.token_type,
-                    "scope": entry.scope,
-                    "obtained_at": entry.obtained_at,
-                    "expires_at": entry.expires_at,
-                    "agent_key": entry.agent_key,
-                    "agent_key_expires_at": entry.agent_key_expires_at,
-                    "tls": entry.tls,
-                }
-                refreshed = auth_mod.refresh_nous_oauth_from_state(
-                    nous_state,
-                    min_key_ttl_seconds=DEFAULT_AGENT_KEY_MIN_TTL_SECONDS,
-                    force_refresh=force,
-                    force_mint=force,
-                )
-                # Apply returned fields: dataclass fields via replace, extras via dict update
-                field_updates = {}
-                extra_updates = dict(entry.extra)
-                _field_names = {f.name for f in fields(entry)}
-                for k, v in refreshed.items():
-                    if k in _field_names:
-                        field_updates[k] = v
-                    elif k in _EXTRA_KEYS:
-                        extra_updates[k] = v
-                updated = replace(entry, extra=extra_updates, **field_updates)
             else:
                 return entry
         except Exception as exc:
@@ -759,11 +701,6 @@ class CredentialPool:
                 entry.access_token,
                 CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
             )
-        if self.provider == "nous":
-            # Spark Portal refresh/mint can require network access and should happen when
-            # runtime credentials are actually resolved, not merely when the pool
-            # is enumerated for listing, migration, or selection.
-            return False
         return False
 
     def select(self) -> Optional[PooledCredential]:
@@ -1125,32 +1062,6 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
                         "label": label_from_token(creds.get("accessToken", ""), source_name),
                     },
                 )
-
-    elif provider == "nous":
-        state = _load_provider_state(auth_store, "nous")
-        if state:
-            active_sources.add("device_code")
-            changed |= _upsert_entry(
-                entries,
-                provider,
-                "device_code",
-                {
-                    "source": "device_code",
-                    "auth_type": AUTH_TYPE_OAUTH,
-                    "access_token": state.get("access_token", ""),
-                    "refresh_token": state.get("refresh_token"),
-                    "expires_at": state.get("expires_at"),
-                    "token_type": state.get("token_type"),
-                    "scope": state.get("scope"),
-                    "client_id": state.get("client_id"),
-                    "portal_base_url": state.get("portal_base_url"),
-                    "inference_base_url": state.get("inference_base_url"),
-                    "agent_key": state.get("agent_key"),
-                    "agent_key_expires_at": state.get("agent_key_expires_at"),
-                    "tls": state.get("tls") if isinstance(state.get("tls"), dict) else None,
-                    "label": label_from_token(state.get("access_token", ""), "device_code"),
-                },
-            )
 
     elif provider == "openai-codex":
         state = _load_provider_state(auth_store, "openai-codex")

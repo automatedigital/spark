@@ -82,7 +82,7 @@ What would you like to do?
   5. Exit
 ```
 
-For providers that support both API keys and OAuth (Anthropic, Spark Portal, Codex), the add flow asks which type you want:
+For providers that support both API keys and OAuth (Anthropic, Codex), the add flow asks which type you want:
 
 ```
 anthropic supports both API keys and OAuth login.
@@ -169,7 +169,7 @@ Spark seeds pools automatically from multiple sources at startup:
 | Source | Example | Auto-seeded? |
 |--------|---------|-------------|
 | Environment variables | `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` | Yes |
-| OAuth tokens (auth.json) | Codex device code, Spark Portal device code | Yes |
+| OAuth tokens (auth.json) | Codex device code | Yes |
 | Claude Code credentials | `~/.claude/.credentials.json` | Yes (Anthropic) |
 | Spark PKCE OAuth | `~/.spark/auth.json` | Yes (Anthropic) |
 | Custom endpoint config | `model.api_key` in `config.yaml` | Yes (custom endpoints) |

@@ -39,7 +39,6 @@ from urllib.parse import urlencode
 import fal_client
 from tools.debug_helpers import DebugSession
 from tools.managed_tool_gateway import resolve_managed_tool_gateway
-from tools.tool_backend_helpers import managed_nous_tools_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -185,14 +184,14 @@ def _get_managed_fal_client(managed_gateway):
 
     client_config = (
         managed_gateway.gateway_origin.rstrip("/"),
-        managed_gateway.nous_user_token,
+        managed_gateway.access_token,
     )
     with _managed_fal_client_lock:
         if _managed_fal_client is not None and _managed_fal_client_config == client_config:
             return _managed_fal_client
 
         _managed_fal_client = _ManagedFalSyncClient(
-            key=managed_gateway.nous_user_token,
+            key=managed_gateway.access_token,
             queue_run_origin=managed_gateway.gateway_origin,
         )
         _managed_fal_client_config = client_config
@@ -416,10 +415,7 @@ def image_generate_tool(
         
         # Check API key availability
         if not (os.getenv("FAL_KEY") or _resolve_managed_fal_gateway()):
-            message = "FAL_KEY environment variable not set"
-            if managed_nous_tools_enabled():
-                message += " and managed FAL gateway is unavailable"
-            raise ValueError(message)
+            raise ValueError("FAL_KEY environment variable not set")
         
         # Validate other parameters
         validated_params = _validate_parameters(

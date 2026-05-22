@@ -14,7 +14,7 @@ Spark's CLI is a full terminal user interface — not a web app. You get multili
 spark                                        # interactive session (default)
 spark chat -q "Hello"                        # one-shot, non-interactive
 spark chat --model "anthropic/claude-sonnet-4"
-spark chat --provider nous                   # force a specific provider
+spark chat --provider anthropic              # force a specific provider
 spark chat --toolsets "web,terminal,skills"  # specific toolsets
 spark -s spark-agent-dev,github-auth         # preload skills
 spark --continue                             # resume last session (-c)

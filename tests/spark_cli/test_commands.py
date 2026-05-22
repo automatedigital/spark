@@ -154,7 +154,7 @@ class TestDerivedDicts:
 class TestGatewayKnownCommands:
     def test_excludes_cli_only_without_config_gate(self):
         for cmd in COMMAND_REGISTRY:
-            if cmd.cli_only and not cmd.gateway_config_gate:
+            if cmd.cli_only and not cmd.gateway_config_gate and not cmd.web_available:
                 assert cmd.name not in GATEWAY_KNOWN_COMMANDS, \
                     f"cli_only command '{cmd.name}' should not be in GATEWAY_KNOWN_COMMANDS"
 

@@ -33,7 +33,6 @@ Config takes priority over environment variables by design. A stale shell export
 |----------|-------|
 | AI Gateway (Vercel) | Fetches model list from `/models` endpoint |
 | OpenRouter | |
-| Spark Portal | |
 | OpenAI Codex | Uses Responses API (`codex_responses` mode) |
 | Copilot / Copilot ACP | |
 | Anthropic (native) | Full native Messages API path |

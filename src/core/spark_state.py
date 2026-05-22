@@ -30,7 +30,14 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-DEFAULT_DB_PATH = get_spark_home() / "state.db"
+def _default_db_path() -> Path:
+    """Compute the default DB path lazily so SPARK_HOME monkeypatching in tests works."""
+    return get_spark_home() / "state.db"
+
+
+# Legacy alias preserved for any code that imports DEFAULT_DB_PATH directly.
+# Use _default_db_path() for dynamic resolution.
+DEFAULT_DB_PATH = _default_db_path()
 
 SCHEMA_VERSION = 8
 
@@ -137,7 +144,7 @@ class SessionDB:
     _CHECKPOINT_EVERY_N_WRITES = 50
 
     def __init__(self, db_path: Path = None):
-        self.db_path = db_path or DEFAULT_DB_PATH
+        self.db_path = db_path or _default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.Lock()
@@ -321,7 +328,7 @@ class SessionDB:
                 # reasoning text and structured reasoning_details across gateway
                 # session turns.  Without these, reasoning chains are lost on
                 # session reload, breaking multi-turn reasoning continuity for
-                # providers that replay reasoning (OpenRouter, OpenAI, Spark Portal).
+                # providers that replay reasoning (OpenRouter, OpenAI-compatible providers).
                 for col_name, col_type in [
                     ("reasoning", "TEXT"),
                     ("reasoning_details", "TEXT"),
@@ -989,7 +996,7 @@ class SessionDB:
                     )
                     msg["tool_calls"] = []
             # Restore reasoning fields on assistant messages so providers
-            # that replay reasoning (OpenRouter, OpenAI, Spark Portal) receive
+            # that replay reasoning (OpenRouter, OpenAI-compatible providers) receive
             # coherent multi-turn reasoning context.
             if row["role"] == "assistant":
                 if row["reasoning"]:

@@ -78,11 +78,7 @@ Spark checks for Claude Code's own credential files first. Those credentials ref
 
 | Variable | What it does |
 |----------|--------------|
-| `SPARK_INFERENCE_PROVIDER` | Force a specific provider. Options: `auto`, `openrouter`, `nous`, `openai-codex`, `copilot`, `copilot-acp`, `anthropic`, `huggingface`, `zai`, `kimi-coding`, `kimi-coding-cn`, `minimax`, `minimax-cn`, `kilocode`, `xiaomi`, `arcee`, `alibaba`, `deepseek`, `opencode-zen`, `opencode-go`, `ai-gateway` (default: `auto`) |
-| `SPARK_PORTAL_BASE_URL` | Override Spark Portal URL (dev/testing) |
-| `NOUS_INFERENCE_BASE_URL` | Override Spark Portal inference API URL |
-| `SPARK_NOUS_MIN_KEY_TTL_SECONDS` | Min agent key TTL before re-mint (default: 1800 = 30 min) |
-| `SPARK_NOUS_TIMEOUT_SECONDS` | HTTP timeout for credential/token flows |
+| `SPARK_INFERENCE_PROVIDER` | Force a specific provider. Options: `auto`, `openrouter`, `openai-codex`, `copilot`, `copilot-acp`, `anthropic`, `huggingface`, `zai`, `kimi-coding`, `kimi-coding-cn`, `minimax`, `minimax-cn`, `kilocode`, `xiaomi`, `arcee`, `alibaba`, `deepseek`, `opencode-zen`, `opencode-go`, `ai-gateway` (default: `auto`) |
 | `SPARK_DUMP_REQUESTS` | Dump API request payloads to log files (`true`/`false`) |
 | `SPARK_PREFILL_MESSAGES_FILE` | JSON file of ephemeral prefill messages injected at API-call time |
 | `SPARK_TIMEZONE` | IANA timezone override (e.g. `America/New_York`) |

@@ -126,7 +126,7 @@ ACP sessions use the same config as the CLI:
 
 ```yaml
 # ~/.spark/config.yaml
-model: openrouter/nous/spark-3-llama-3.1-70b
+model: openrouter/anthropic/claude-sonnet-4.6
 ```
 
 Or set the `SPARK_MODEL` environment variable.
