@@ -33,7 +33,8 @@ function formatReset(reset_at?: number, reset_after_seconds?: number): string {
 }
 
 function UsageBar({ window: w }: { window: UsageWindow }) {
-  const pctRemaining = Math.max(0, Math.min(100, 100 - w.used_percent));
+  const pctUsed = Math.max(0, Math.min(100, w.used_percent));
+  const pctRemaining = 100 - pctUsed;
   const isLow = pctRemaining <= 25;
   const isEmpty = pctRemaining <= 5;
   const barColor = isEmpty ? "bg-destructive/80" : isLow ? "bg-amber-400/90" : "bg-emerald-500/90";
@@ -47,13 +48,13 @@ function UsageBar({ window: w }: { window: UsageWindow }) {
           {w.label}
         </span>
         <span className={`text-[9px] font-semibold leading-none tabular-nums ${textColor}`}>
-          {Math.round(pctRemaining)}%
+          {Math.round(pctUsed)}% Used
         </span>
       </div>
       <div className="h-[3px] w-full rounded-full bg-white/10 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-700 ${barColor}`}
-          style={{ width: `${pctRemaining}%` }}
+          style={{ width: `${pctUsed}%` }}
         />
       </div>
       {resetLabel && (
