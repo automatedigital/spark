@@ -6,6 +6,7 @@ interface SlashCommandMenuProps {
   query: string;
   onSelect: (command: string) => void;
   onClose: () => void;
+  onItemCountChange?: (count: number) => void;
 }
 
 function fuzzyMatch(query: string, cmd: SlashCommand): boolean {
@@ -19,7 +20,7 @@ function fuzzyMatch(query: string, cmd: SlashCommand): boolean {
 
 const CATEGORY_ORDER = ["Session", "Configuration", "Tools & Skills", "Skills", "Info"];
 
-export function SlashCommandMenu({ query, onSelect, onClose }: SlashCommandMenuProps) {
+export function SlashCommandMenu({ query, onSelect, onClose, onItemCountChange }: SlashCommandMenuProps) {
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,6 +47,11 @@ export function SlashCommandMenu({ query, onSelect, onClose }: SlashCommandMenuP
   useEffect(() => {
     setActiveIdx(0);
   }, [query]);
+
+  // Notify parent of visible item count
+  useEffect(() => {
+    onItemCountChange?.(flat.length);
+  }, [flat.length, onItemCountChange]);
 
   // Keyboard navigation
   useEffect(() => {

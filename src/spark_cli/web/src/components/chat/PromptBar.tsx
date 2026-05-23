@@ -53,6 +53,7 @@ export function PromptBar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showAtMenu, setShowAtMenu] = useState(false);
+  const [menuHasItems, setMenuHasItems] = useState(false);
   const [atQuery, setAtQuery] = useState("");
   const [uploading, setUploading] = useState(false);
 
@@ -74,9 +75,11 @@ export function PromptBar({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showMenu || showAtMenu) {
-      // Let the active menu handle arrow keys / enter / escape / tab
+      // Let the active menu handle arrow keys, escape, and tab
       if (["ArrowUp", "ArrowDown", "Escape"].includes(e.key)) return;
-      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) return;
+      if (e.key === "Tab") return;
+      // Enter selects from the menu when it has visible items
+      if (e.key === "Enter" && !e.shiftKey && menuHasItems) return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -110,6 +113,7 @@ export function PromptBar({
   const handleSlashSelect = (command: string) => {
     setInput(`/${command} `);
     setShowMenu(false);
+    setMenuHasItems(false);
     textareaRef.current?.focus();
   };
 
@@ -165,6 +169,7 @@ export function PromptBar({
           query={input.slice(1)} // strip leading /
           onSelect={handleSlashSelect}
           onClose={() => setShowMenu(false)}
+          onItemCountChange={setMenuHasItems}
         />
       )}
       {showAtMenu && (
