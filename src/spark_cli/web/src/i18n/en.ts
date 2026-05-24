@@ -59,7 +59,7 @@ export const en: Translations = {
       kanban: "Tasks",
       analytics: "Analytics",
       logs: "Logs",
-      cron: "Cron",
+      cron: "Schedule",
       skills: "Skills",
       admin: "Admin",
       config: "Config",
@@ -143,7 +143,7 @@ export const en: Translations = {
   },
 
   cron: {
-    newJob: "New Cron Job",
+    newJob: "New Scheduled Job",
     nameOptional: "Name (optional)",
     namePlaceholder: "e.g. Daily summary",
     prompt: "Prompt",
