@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, FolderOpen, LayoutGrid, MessageSquare, Clock, Package, Settings } from "lucide-react";
+import { Search, LayoutGrid, MessageSquare, Clock, Package, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CommandItem {
@@ -18,10 +18,9 @@ interface CommandPaletteProps {
 }
 
 const PAGE_ITEMS = [
-  { id: "workspace", label: "Workspace", description: "File tree and agent threads", icon: FolderOpen },
-  { id: "kanban", label: "Kanban", description: "Task board", icon: LayoutGrid },
-  { id: "conversations", label: "Conversations", description: "Chat history", icon: MessageSquare },
-  { id: "cron", label: "Cron", description: "Scheduled jobs", icon: Clock },
+  { id: "chat", label: "Chat", description: "Projects and conversations", icon: MessageSquare },
+  { id: "kanban", label: "Tasks", description: "Task board", icon: LayoutGrid },
+  { id: "cron", label: "Schedule", description: "Scheduled jobs", icon: Clock },
   { id: "skills", label: "Skills", description: "Skill manager", icon: Package },
 ];
 

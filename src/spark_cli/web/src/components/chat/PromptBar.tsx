@@ -169,7 +169,7 @@ export function PromptBar({
           query={input.slice(1)} // strip leading /
           onSelect={handleSlashSelect}
           onClose={() => setShowMenu(false)}
-          onItemCountChange={setMenuHasItems}
+          onItemCountChange={(count) => setMenuHasItems(count > 0)}
         />
       )}
       {showAtMenu && (

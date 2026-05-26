@@ -3320,26 +3320,53 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
 
 
 def _find_npm() -> Optional[str]:
-    """Find npm, checking PATH then common nvm/system locations."""
+    """Find npm, preferring a Node.js version ≥20 (required by Vite 7).
+
+    Checks nvm-managed versions newest-first, then PATH, then Homebrew/system
+    locations.  Falls back to any npm found if none satisfies the version
+    requirement (avoids hard failure on older setups).
+    """
     import shutil
     import glob
 
-    npm = shutil.which("npm")
-    if npm:
-        return npm
-    # nvm installs npm outside the default subprocess PATH
-    candidates = sorted(
+    def _node_major(npm_path: str) -> int:
+        """Return the Node.js major version for the given npm binary, or 0 on error."""
+        node_bin = Path(npm_path).parent / "node"
+        if not node_bin.exists():
+            # Resolve through PATH for system installs
+            node_bin_str = shutil.which("node") or ""
+        else:
+            node_bin_str = str(node_bin)
+        if not node_bin_str:
+            return 0
+        try:
+            r = subprocess.run(
+                [node_bin_str, "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            ver = r.stdout.strip().lstrip("v").split(".")[0]
+            return int(ver) if ver.isdigit() else 0
+        except Exception:
+            return 0
+
+    # Build an ordered candidate list: nvm newest-first, then PATH, then system
+    candidates: list[str] = []
+    nvm_npms = sorted(
         glob.glob(str(Path.home() / ".nvm/versions/node/*/bin/npm")),
-        reverse=True,  # newest version first
+        reverse=True,  # newest first
     )
+    candidates.extend(c for c in nvm_npms if Path(c).exists())
+    for c in [shutil.which("npm"), "/usr/local/bin/npm", "/opt/homebrew/bin/npm", "/usr/bin/npm"]:
+        if c and Path(c).exists() and c not in candidates:
+            candidates.append(c)
+
+    # Prefer the first candidate whose Node version is ≥20
     for c in candidates:
-        if Path(c).exists():
+        if _node_major(c) >= 20:
             return c
-    # Homebrew and common system locations
-    for c in ["/usr/local/bin/npm", "/opt/homebrew/bin/npm", "/usr/bin/npm"]:
-        if Path(c).exists():
-            return c
-    return None
+
+    # Fallback: return any npm rather than nothing
+    return candidates[0] if candidates else None
 
 
 def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:

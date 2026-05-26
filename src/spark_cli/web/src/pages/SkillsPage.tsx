@@ -67,6 +67,7 @@ export default function SkillsPage() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [togglingSkills, setTogglingSkills] = useState<Set<string>>(new Set());
+  const [togglingCategories, setTogglingCategories] = useState<Set<string>>(new Set());
   // Start collapsed by default
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string> | "all">("all");
   const { toast, showToast } = useToast();
@@ -102,6 +103,48 @@ export default function SkillsPage() {
       setTogglingSkills((prev) => {
         const next = new Set(prev);
         next.delete(skill.name);
+        return next;
+      });
+    }
+  };
+
+  /* ---- Toggle all skills in a category ---- */
+  const handleToggleCategory = async (categoryKey: string, catSkills: SkillInfo[], enableAll: boolean) => {
+    setTogglingCategories((prev) => new Set(prev).add(categoryKey));
+    // Mark all skills in category as toggling
+    setTogglingSkills((prev) => {
+      const next = new Set(prev);
+      catSkills.forEach((s) => next.add(s.name));
+      return next;
+    });
+    try {
+      const results = await Promise.allSettled(
+        catSkills.map((s) => api.toggleSkill(s.name, enableAll))
+      );
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+      // Update local state for succeeded skills
+      setSkills((prev) =>
+        prev.map((s) =>
+          catSkills.some((cs) => cs.name === s.name) ? { ...s, enabled: enableAll } : s
+        )
+      );
+      if (failed === 0) {
+        showToast(`${enableAll ? "Enabled" : "Disabled"} ${succeeded} skill${succeeded !== 1 ? "s" : ""} in ${catSkills[0]?.category ?? categoryKey}`, "success");
+      } else {
+        showToast(`${succeeded} toggled, ${failed} failed`, "error");
+      }
+    } catch {
+      showToast(t.common.failedToToggle, "error");
+    } finally {
+      setTogglingCategories((prev) => {
+        const next = new Set(prev);
+        next.delete(categoryKey);
+        return next;
+      });
+      setTogglingSkills((prev) => {
+        const next = new Set(prev);
+        catSkills.forEach((s) => next.delete(s.name));
         return next;
       });
     }
@@ -305,12 +348,20 @@ export default function SkillsPage() {
                         {t.skills.skillCount.replace("{count}", String(catSkills.length)).replace("{s}", catSkills.length !== 1 ? "s" : "")}
                       </Badge>
                     </div>
-                    <Badge
-                      variant={catEnabled === catSkills.length ? "success" : "outline"}
-                      className="text-[10px]"
-                    >
-                      {t.skills.enabledOf.replace("{enabled}", String(catEnabled)).replace("{total}", String(catSkills.length))}
-                    </Badge>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Badge
+                        variant={catEnabled === catSkills.length ? "success" : "outline"}
+                        className="text-[10px]"
+                      >
+                        {t.skills.enabledOf.replace("{enabled}", String(catEnabled)).replace("{total}", String(catSkills.length))}
+                      </Badge>
+                      <Switch
+                        checked={catEnabled === catSkills.length}
+                        disabled={togglingCategories.has(key)}
+                        onCheckedChange={(checked) => void handleToggleCategory(key, catSkills, checked)}
+                        aria-label={`${catEnabled === catSkills.length ? "Disable" : "Enable"} all ${name} skills`}
+                      />
+                    </div>
                   </div>
                 </CardHeader>
 

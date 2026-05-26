@@ -12,11 +12,17 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useI18n } from "@/i18n";
 import { CronCardSkeleton } from "@/components/Skeleton";
+import { timeUntil } from "@/lib/format";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString();
+}
+
+function formatNextRun(iso?: string | null): string {
+  if (!iso) return "—";
+  return timeUntil(new Date(iso));
 }
 
 const STATUS_VARIANT: Record<string, "success" | "warning" | "destructive"> = {
@@ -343,15 +349,21 @@ export default function CronPage() {
                     <Badge variant="outline">{job.deliver}</Badge>
                   )}
                 </div>
+                {/* Prompt preview — always shown when there's a name; avoids duplicate when name IS the prompt */}
                 {job.name && (
-                  <p className="text-xs text-muted-foreground truncate mb-1">
-                    {job.prompt.slice(0, 100)}{job.prompt.length > 100 ? "..." : ""}
+                  <p className="text-xs text-muted-foreground mb-1.5 line-clamp-2 leading-relaxed">
+                    {job.prompt.slice(0, 100)}{job.prompt.length > 100 ? "…" : ""}
                   </p>
                 )}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <span className="font-mono" title={job.schedule_display}>{cronToFriendly(job.schedule_display)}</span>
                   <span>{t.cron.last}: {formatTime(job.last_run_at)}</span>
-                  <span>{t.cron.next}: {formatTime(job.next_run_at)}</span>
+                  <span
+                    className={job.next_run_at && new Date(job.next_run_at) < new Date() ? "text-destructive" : ""}
+                    title={job.next_run_at ? new Date(job.next_run_at).toLocaleString() : undefined}
+                  >
+                    {t.cron.next}: {formatNextRun(job.next_run_at)}
+                  </span>
                 </div>
                 {job.last_error && (
                   <p className="text-xs text-destructive mt-1">{job.last_error}</p>

@@ -9,10 +9,10 @@ import {
   PlayCircle,
   Send,
   Sparkles,
-  Timer,
   Trash2,
   UserRound,
 } from "lucide-react";
+import { timeAgo } from "@/lib/utils";
 import {
   api,
   type KanbanBoardResponse,
@@ -66,6 +66,21 @@ const COLUMN_META: Record<string, { icon: ElementType; className: string }> = {
 
 function colLabel(key: string): string {
   return STATUS_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function PriorityDot({ priority }: { priority?: number }) {
+  if (priority === undefined || priority === null) return null;
+  const cls =
+    priority === 0 ? "bg-muted-foreground/40"
+    : priority === 1 ? "bg-blue-400"
+    : priority === 2 ? "bg-amber-400"
+    : "bg-red-500";
+  const title =
+    priority === 0 ? "No priority"
+    : priority === 1 ? "Low"
+    : priority === 2 ? "High"
+    : "Urgent";
+  return <span className={`h-2 w-2 rounded-full shrink-0 ${cls}`} title={title} />;
 }
 
 function formatTime(value?: number | null): string {
@@ -616,11 +631,12 @@ export default function KanbanPage() {
                     key={task.id}
                     draggable
                     onDragStart={(e) => onDragStart(e, task.id)}
-                    className={`rounded-sm border px-3 py-3 cursor-grab active:cursor-grabbing text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                    className={`rounded-sm border px-3 py-2.5 cursor-grab active:cursor-grabbing text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
                       selectedId === task.id ? "border-primary ring-2 ring-primary/15" : "border-border"
                     } bg-background/90`}
                     onClick={() => void openTask(task.id)}
                   >
+                    {/* Title row + priority dot */}
                     <div className="flex items-start gap-2">
                       <input
                         type="checkbox"
@@ -629,24 +645,33 @@ export default function KanbanPage() {
                           e.stopPropagation();
                           toggleSelect(task.id);
                         }}
-                        className="mt-1"
+                        className="mt-1 shrink-0"
                       />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{task.title}</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>{task.id}</span>
-                          <span className="inline-flex items-center gap-1">
-                            <UserRound className="h-3 w-3" />
-                            {String(task.assignee ?? "unassigned")}
-                          </span>
-                          {task.priority ? (
-                            <span className="inline-flex items-center gap-1">
-                              <Timer className="h-3 w-3" />
-                              P{String(task.priority)}
-                            </span>
-                          ) : null}
-                        </div>
+                      <div className="flex-1 min-w-0 flex items-start justify-between gap-1">
+                        <div className="font-medium truncate leading-snug">{task.title}</div>
+                        <PriorityDot priority={task.priority} />
                       </div>
+                    </div>
+                    {/* Body preview */}
+                    {task.body && (
+                      <p className="mt-1.5 ml-6 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                        {task.body.slice(0, 120)}
+                        {task.body.length > 120 ? "…" : ""}
+                      </p>
+                    )}
+                    {/* Meta row */}
+                    <div className="mt-2 ml-6 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      {task.assignee ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary/60 px-2 py-0.5 font-medium">
+                          <UserRound className="h-3 w-3" />
+                          {task.assignee}
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                      {task.updated_at ? (
+                        <span className="shrink-0 opacity-60">{timeAgo(task.updated_at)}</span>
+                      ) : null}
                     </div>
                   </div>
                 ))}

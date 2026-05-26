@@ -4,31 +4,30 @@ import {
   ChevronRight,
   Clock,
   Download,
-  FolderOpen,
   LayoutGrid,
   MessageSquare,
   Package,
   Settings,
 } from "lucide-react";
-import ConversationsPage from "@/pages/ConversationsPage";
+import ChatPage from "@/pages/ChatPage";
 import CronPage from "@/pages/CronPage";
 import KanbanPage from "@/pages/KanbanPage";
 import SkillsPage from "@/pages/SkillsPage";
-import WorkspacePage from "@/pages/WorkspacePage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
+import type { SessionsChangedData } from "@/lib/api";
 import { useUpdateModal } from "@/lib/UpdateModalContext";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
+import { useEventBus } from "@/hooks/useEventBus";
 
 
 const NAV_ITEMS = [
-  { id: "workspace", labelKey: "workspace" as const, icon: FolderOpen },
+  { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
-  { id: "conversations", labelKey: "conversations" as const, icon: MessageSquare },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
 ] as const;
@@ -36,14 +35,13 @@ const NAV_ITEMS = [
 type PageId = (typeof NAV_ITEMS)[number]["id"];
 
 const PAGE_COMPONENTS: Record<PageId, React.FC> = {
+  chat: ChatPage,
   kanban: KanbanPage,
-  workspace: WorkspacePage,
-  conversations: ConversationsPage,
   cron: CronPage,
   skills: SkillsPage,
 };
 
-const FULL_WIDTH_PAGES = new Set<PageId>(["workspace", "conversations"]);
+const FULL_WIDTH_PAGES = new Set<PageId>(["chat"]);
 
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
@@ -67,7 +65,7 @@ function SparkLogo({ className = "" }: { className?: string }) {
 export default function App() {
   const [page, setPage] = useState<PageId>(() => {
     const saved = localStorage.getItem("spark-active-page");
-    return (saved && NAV_ITEMS.some((item) => item.id === saved)) ? (saved as PageId) : "workspace";
+    return (saved && NAV_ITEMS.some((item) => item.id === saved)) ? (saved as PageId) : "chat";
   });
   const [navExpanded, setNavExpanded] = useState(() => {
     const saved = localStorage.getItem("spark-nav-expanded");
@@ -87,6 +85,12 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { updateAvailable, latestVersion, openUpdateModal } = useUpdateModal();
+
+  // ── Activity badge counts ──
+  const [activeSessionCount, setActiveSessionCount] = useState(0);
+  const [runningTaskCount, setRunningTaskCount] = useState(0);
+  // Lightweight map: session_id → is_active (avoids re-fetching all sessions on every SSE event)
+  const activeSessionMapRef = useRef(new Map<string, boolean>());
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -179,6 +183,40 @@ export default function App() {
     setAnimKey((k) => k + 1);
   }, [page]);
 
+  // ── Activity counts: initial fetch ──
+  useEffect(() => {
+    // Active chat sessions
+    api.getSessions(500, 0).then(({ sessions: s }) => {
+      const m = new Map<string, boolean>();
+      s.forEach((x) => m.set(x.id, x.is_active));
+      activeSessionMapRef.current = m;
+      setActiveSessionCount(s.filter((x) => x.is_active).length);
+    }).catch(() => {});
+
+    // Running kanban tasks — poll every 30s (kanban has its own SSE in KanbanPage)
+    const fetchKanban = () => {
+      api.getKanbanBoard({ board: "default", tenant: null, assignee: null, q: null })
+        .then((b) => setRunningTaskCount(b.columns?.running?.length ?? 0))
+        .catch(() => {});
+    };
+    fetchKanban();
+    const interval = setInterval(fetchKanban, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ── Activity counts: live session updates ──
+  useEventBus((env) => {
+    if (env.topic !== "sessions.changed") return;
+    const { action, session_id, session } = env.data as unknown as SessionsChangedData;
+    const m = activeSessionMapRef.current;
+    if (action === "deleted") {
+      m.delete(session_id);
+    } else {
+      m.set(session_id, session?.is_active ?? m.get(session_id) ?? false);
+    }
+    setActiveSessionCount(Array.from(m.values()).filter(Boolean).length);
+  });
+
   const sidebarOpen = navExpanded || navHovered;
 
   const PageComponent = PAGE_COMPONENTS[page];
@@ -228,9 +266,9 @@ export default function App() {
             <button
               type="button"
               className={`flex shrink-0 items-center gap-0 rounded-sm transition hover:opacity-75 cursor-pointer ${sidebarOpen ? "h-10 w-auto" : "h-10 w-10 justify-center"}`}
-              title="Go to Workspace"
-              aria-label="Go to Workspace"
-              onClick={() => navigateTo("workspace")}
+              title="Go to Chat"
+              aria-label="Go to Chat"
+              onClick={() => navigateTo("chat")}
             >
               <div className="grid h-10 w-10 shrink-0 place-items-center">
                 <SparkLogo />
@@ -265,7 +303,17 @@ export default function App() {
                     : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
                 } ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
               >
-                <Icon className="h-5 w-5 shrink-0" />
+                <div className="relative shrink-0">
+                  <Icon className="h-5 w-5" />
+                  {id === "chat" && activeSessionCount > 0 && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-green-400 ring-2 ring-background" />
+                  )}
+                  {id === "kanban" && runningTaskCount > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
+                      {runningTaskCount > 9 ? "9+" : runningTaskCount}
+                    </span>
+                  )}
+                </div>
                 {sidebarOpen && (
                   <span className="truncate text-sm font-medium">{t.app.nav[labelKey]}</span>
                 )}
@@ -339,11 +387,19 @@ export default function App() {
                     type="button"
                     title={t.app.nav[labelKey]}
                     onClick={() => navigateTo(id)}
-                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
+                    className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
                       page === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`}
                   >
                     <Icon className="h-4 w-4" />
+                    {id === "chat" && activeSessionCount > 0 && (
+                      <span className="absolute right-1 top-1 h-2 w-2 animate-pulse rounded-full bg-green-400 ring-1 ring-background" />
+                    )}
+                    {id === "kanban" && runningTaskCount > 0 && (
+                      <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-white">
+                        {runningTaskCount > 9 ? "9+" : runningTaskCount}
+                      </span>
+                    )}
                   </button>
                 ))}
                 {/* Settings button for mobile */}

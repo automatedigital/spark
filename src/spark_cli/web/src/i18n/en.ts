@@ -66,6 +66,7 @@ export const en: Translations = {
       keys: "Keys",
       board: "Board",
       workspace: "Workspace",
+      chat: "Chat",
     },
   },
 
