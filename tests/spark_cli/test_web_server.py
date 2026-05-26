@@ -774,6 +774,26 @@ class TestNewEndpoints:
         resp = self.client.get("/api/cron/jobs/nonexistent-id")
         assert resp.status_code == 404
 
+    def test_cron_job_update_accepts_schedule_string(self):
+        create_resp = self.client.post(
+            "/api/cron/jobs",
+            json={"prompt": "daily report", "schedule": "0 9 * * *", "name": "Report", "deliver": "local"},
+        )
+        assert create_resp.status_code == 200
+        job_id = create_resp.json()["id"]
+
+        update_resp = self.client.put(
+            f"/api/cron/jobs/{job_id}",
+            json={"updates": {"prompt": "updated report", "schedule": "30 13 * * *", "name": "Updated Report"}},
+        )
+
+        assert update_resp.status_code == 200
+        updated = update_resp.json()
+        assert updated["prompt"] == "updated report"
+        assert updated["name"] == "Updated Report"
+        assert updated["schedule"]["expr"] == "30 13 * * *"
+        assert updated["schedule_display"] == "30 13 * * *"
+
     def test_skills_list(self):
         resp = self.client.get("/api/skills")
         assert resp.status_code == 200

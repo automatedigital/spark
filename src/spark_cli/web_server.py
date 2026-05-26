@@ -3154,9 +3154,16 @@ async def create_cron_job(body: CronJobCreate):
 
 @app.put("/api/cron/jobs/{job_id}")
 async def update_cron_job(job_id: str, body: CronJobUpdate):
-    from cron.jobs import update_job
+    from cron.jobs import parse_schedule, update_job
 
-    job = update_job(job_id, body.updates)
+    try:
+        updates = dict(body.updates)
+        if isinstance(updates.get("schedule"), str):
+            updates["schedule"] = parse_schedule(updates["schedule"])
+        job = update_job(job_id, updates)
+    except Exception as e:
+        _log.exception("PUT /api/cron/jobs/%s failed", job_id)
+        raise HTTPException(status_code=400, detail=str(e))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job

@@ -30,6 +30,8 @@ dependencies = [
   "firecrawl-py>=4.16.0,<5",
   "parallel-web>=0.4.2,<1",
   "fal-client>=0.13.1,<1",
+  # Scheduler/dashboard cron expression parsing
+  "croniter>=6.0.0,<7",
   # Text-to-speech (Edge TTS is free, no API key needed)
   "edge-tts>=7.2.7,<8",
   # Skills Hub (GitHub App JWT auth — optional, only needed for bot identity)

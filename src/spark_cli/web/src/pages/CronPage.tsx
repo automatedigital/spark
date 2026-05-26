@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Clock, Pause, Play, Plus, Trash2, Zap } from "lucide-react";
+import { Check, Clock, Edit3, Pause, Play, Plus, Trash2, X, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CronJob } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
@@ -68,6 +68,41 @@ function cronToFriendly(expr: string): string {
   return expr;
 }
 
+function cronToPicker(expr: string): {
+  freq: Frequency;
+  time: string;
+  dayOfWeek: string;
+  dayOfMonth: string;
+  month: string;
+  custom: string;
+} {
+  const parts = expr.trim().split(/\s+/);
+  const fallback = { freq: "custom" as Frequency, time: "09:00", dayOfWeek: "1", dayOfMonth: "1", month: "1", custom: expr };
+  if (parts.length !== 5) return fallback;
+  const [min, hour, dom, mon, dow] = parts;
+  const minute = min.padStart(2, "0");
+  if (min !== "*" && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    return { ...fallback, freq: "hourly", time: `09:${minute}`, custom: "" };
+  }
+  if (min !== "*" && hour !== "*" && dom === "*" && mon === "*" && dow === "*") {
+    return { ...fallback, freq: "daily", time: `${hour.padStart(2, "0")}:${minute}`, custom: "" };
+  }
+  if (min !== "*" && hour !== "*" && dom === "*" && mon === "*" && dow !== "*") {
+    return { ...fallback, freq: "weekly", time: `${hour.padStart(2, "0")}:${minute}`, dayOfWeek: dow, custom: "" };
+  }
+  if (min !== "*" && hour !== "*" && dom !== "*" && mon === "*" && dow === "*") {
+    return { ...fallback, freq: "monthly", time: `${hour.padStart(2, "0")}:${minute}`, dayOfMonth: dom, custom: "" };
+  }
+  if (min !== "*" && hour !== "*" && dom !== "*" && mon !== "*" && dow === "*") {
+    return { ...fallback, freq: "yearly", time: `${hour.padStart(2, "0")}:${minute}`, dayOfMonth: dom, month: mon, custom: "" };
+  }
+  return fallback;
+}
+
+function jobScheduleExpr(job: CronJob): string {
+  return job.schedule?.expr || job.schedule_display || "";
+}
+
 export default function CronPage() {
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +116,17 @@ export default function CronPage() {
   const [name, setName] = useState("");
   const [deliver, setDeliver] = useState("local");
   const [creating, setCreating] = useState(false);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [savingJobId, setSavingJobId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editDeliver, setEditDeliver] = useState("local");
+  const [editFreq, setEditFreq] = useState<Frequency>("daily");
+  const [editSchedTime, setEditSchedTime] = useState("09:00");
+  const [editSchedDow, setEditSchedDow] = useState("1");
+  const [editSchedDom, setEditSchedDom] = useState("1");
+  const [editSchedMonth, setEditSchedMonth] = useState("1");
+  const [editCustomExpr, setEditCustomExpr] = useState("");
 
   // Friendly picker state
   const [freq, setFreq] = useState<Frequency>("daily");
@@ -125,6 +171,29 @@ export default function CronPage() {
     ? customExpr.trim()
     : friendlyToCron(freq, schedTime, schedDow, schedDom, schedMonth);
 
+  const resolvedEditSchedule = editFreq === "custom"
+    ? editCustomExpr.trim()
+    : friendlyToCron(editFreq, editSchedTime, editSchedDow, editSchedDom, editSchedMonth);
+
+  const startEdit = (job: CronJob) => {
+    const picker = cronToPicker(jobScheduleExpr(job));
+    setEditingJobId(job.id);
+    setEditName(job.name || "");
+    setEditPrompt(job.prompt);
+    setEditDeliver(job.deliver || "local");
+    setEditFreq(picker.freq);
+    setEditSchedTime(picker.time);
+    setEditSchedDow(picker.dayOfWeek);
+    setEditSchedDom(picker.dayOfMonth);
+    setEditSchedMonth(picker.month);
+    setEditCustomExpr(picker.custom);
+  };
+
+  const cancelEdit = () => {
+    setEditingJobId(null);
+    setSavingJobId(null);
+  };
+
   const handleCreate = async () => {
     if (!prompt.trim() || !resolvedSchedule) {
       showToast(`${t.cron.prompt} & ${t.cron.schedule} required`, "error");
@@ -166,6 +235,29 @@ export default function CronPage() {
       loadJobs();
     } catch (e) {
       showToast(`${t.status.error}: ${e}`, "error");
+    }
+  };
+
+  const handleSaveEdit = async (job: CronJob) => {
+    if (!editPrompt.trim() || !resolvedEditSchedule) {
+      showToast(`${t.cron.prompt} & ${t.cron.schedule} required`, "error");
+      return;
+    }
+    setSavingJobId(job.id);
+    try {
+      await api.updateCronJob(job.id, {
+        prompt: editPrompt.trim(),
+        schedule: resolvedEditSchedule,
+        name: editName.trim(),
+        deliver: editDeliver,
+      });
+      showToast(`${t.common.save} ✓`, "success");
+      cancelEdit();
+      loadJobs();
+    } catch (e) {
+      showToast(`${t.config.failedToSave}: ${e}`, "error");
+    } finally {
+      setSavingJobId(null);
     }
   };
 
@@ -356,12 +448,105 @@ export default function CronPage() {
           </Card>
         )}
 
-        {jobs.map((job) => (
+        {jobs.map((job) => {
+          const isEditing = editingJobId === job.id;
+          return (
           <div key={job.id} ref={(el) => { jobRefs.current[job.id] = el; }}>
             <Card className={cn(highlightedJobId === job.id && "ring-2 ring-primary/30")}>
-              <CardContent className="flex items-center gap-4 py-4">
-              {/* Info */}
+              <CardContent className="py-4">
+              <div className={cn("flex gap-4", isEditing ? "items-start" : "items-center")}>
               <div className="flex-1 min-w-0">
+                {isEditing ? (
+                  <div className="grid gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor={`cron-name-${job.id}`}>{t.cron.nameOptional}</Label>
+                      <Input id={`cron-name-${job.id}`} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`cron-prompt-${job.id}`}>{t.cron.prompt}</Label>
+                      <textarea
+                        id={`cron-prompt-${job.id}`}
+                        className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        value={editPrompt}
+                        onChange={(e) => setEditPrompt(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor={`cron-freq-${job.id}`}>{t.cron.schedule}</Label>
+                        <Select id={`cron-freq-${job.id}`} value={editFreq} onValueChange={(v) => setEditFreq(v as Frequency)}>
+                          <option value="hourly">Every Hour</option>
+                          <option value="daily">Every Day</option>
+                          <option value="weekly">Every Week</option>
+                          <option value="monthly">Every Month</option>
+                          <option value="yearly">Every Year</option>
+                          <option value="custom">Custom (cron expression)</option>
+                        </Select>
+                      </div>
+                      {editFreq !== "custom" && (
+                        <div className="grid gap-2">
+                          <Label htmlFor={`cron-time-${job.id}`}>Time</Label>
+                          <input
+                            id={`cron-time-${job.id}`}
+                            type="time"
+                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={editSchedTime}
+                            onChange={(e) => setEditSchedTime(e.target.value)}
+                          />
+                        </div>
+                      )}
+                      {editFreq === "weekly" && (
+                        <div className="grid gap-2">
+                          <Label htmlFor={`cron-dow-${job.id}`}>Day of Week</Label>
+                          <Select id={`cron-dow-${job.id}`} value={editSchedDow} onValueChange={setEditSchedDow}>
+                            {DAYS.map((d, i) => <option key={i} value={String(i)}>{d}</option>)}
+                          </Select>
+                        </div>
+                      )}
+                      {(editFreq === "monthly" || editFreq === "yearly") && (
+                        <div className="grid gap-2">
+                          <Label htmlFor={`cron-dom-${job.id}`}>Day of Month</Label>
+                          <Select id={`cron-dom-${job.id}`} value={editSchedDom} onValueChange={setEditSchedDom}>
+                            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                              <option key={d} value={String(d)}>{d}</option>
+                            ))}
+                          </Select>
+                        </div>
+                      )}
+                      {editFreq === "yearly" && (
+                        <div className="grid gap-2">
+                          <Label htmlFor={`cron-month-${job.id}`}>Month</Label>
+                          <Select id={`cron-month-${job.id}`} value={editSchedMonth} onValueChange={setEditSchedMonth}>
+                            {MONTHS.map((m, i) => <option key={i} value={String(i + 1)}>{m}</option>)}
+                          </Select>
+                        </div>
+                      )}
+                      {editFreq === "custom" && (
+                        <div className="grid gap-2">
+                          <Label htmlFor={`cron-schedule-${job.id}`}>Cron Expression</Label>
+                          <Input id={`cron-schedule-${job.id}`} value={editCustomExpr} onChange={(e) => setEditCustomExpr(e.target.value)} />
+                        </div>
+                      )}
+                      <div className="grid gap-2">
+                        <Label htmlFor={`cron-deliver-${job.id}`}>{t.cron.deliverTo}</Label>
+                        <Select id={`cron-deliver-${job.id}`} value={editDeliver} onValueChange={setEditDeliver}>
+                          <option value="local">{t.cron.delivery.local}</option>
+                          <option value="telegram">{t.cron.delivery.telegram}</option>
+                          <option value="discord">{t.cron.delivery.discord}</option>
+                          <option value="slack">{t.cron.delivery.slack}</option>
+                          <option value="email">{t.cron.delivery.email}</option>
+                        </Select>
+                      </div>
+                    </div>
+                    {resolvedEditSchedule && editFreq !== "custom" && (
+                      <p className="text-xs text-muted-foreground">
+                        Schedule: <code className="font-mono">{resolvedEditSchedule}</code>
+                        {" — "}{cronToFriendly(resolvedEditSchedule)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium text-sm truncate">
                     {job.name || job.prompt.slice(0, 60) + (job.prompt.length > 60 ? "..." : "")}
@@ -392,10 +577,45 @@ export default function CronPage() {
                 {job.last_error && (
                   <p className="text-xs text-destructive mt-1">{job.last_error}</p>
                 )}
+                  </>
+                )}
               </div>
 
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
+                {isEditing ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title={t.common.cancel}
+                      aria-label={t.common.cancel}
+                      onClick={cancelEdit}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title={t.common.save}
+                      aria-label={t.common.save}
+                      onClick={() => handleSaveEdit(job)}
+                      disabled={savingJobId === job.id}
+                    >
+                      <Check className="h-4 w-4 text-success" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t.common.edit}
+                  aria-label={t.common.edit}
+                  onClick={() => startEdit(job)}
+                >
+                  <Edit3 className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -429,11 +649,15 @@ export default function CronPage() {
                 >
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
+                  </>
+                )}
+              </div>
               </div>
               </CardContent>
             </Card>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

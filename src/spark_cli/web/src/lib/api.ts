@@ -175,6 +175,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(job),
     }),
+  updateCronJob: (id: string, updates: { prompt?: string; schedule?: string; name?: string; deliver?: string }) =>
+    fetchJSON<CronJob>(`/api/cron/jobs/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ updates }),
+    }),
   pauseCronJob: (id: string) =>
     fetchJSON<{ ok: boolean }>(`/api/cron/jobs/${id}/pause`, { method: "POST" }),
   resumeCronJob: (id: string) =>
