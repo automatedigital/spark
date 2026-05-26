@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Clock, Pause, Play, Plus, Trash2, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CronJob } from "@/lib/api";
@@ -13,6 +13,8 @@ import { Select } from "@/components/ui/select";
 import { useI18n } from "@/i18n";
 import { CronCardSkeleton } from "@/components/Skeleton";
 import { timeUntil } from "@/lib/format";
+import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { cn } from "@/lib/utils";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -69,6 +71,8 @@ function cronToFriendly(expr: string): string {
 export default function CronPage() {
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
+  const jobRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const { toast, showToast } = useToast();
   const { t } = useI18n();
 
@@ -96,6 +100,25 @@ export default function CronPage() {
 
   useEffect(() => {
     loadJobs();
+  }, []);
+
+  const focusJob = (id: string) => {
+    setHighlightedJobId(id);
+    window.setTimeout(() => {
+      jobRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  };
+
+  useEffect(() => {
+    const jobTarget = takeGlobalNavTarget("scheduled-task");
+    if (jobTarget) focusJob(jobTarget.id);
+
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<GlobalNavTarget>).detail;
+      if (target?.type === "scheduled-task") focusJob(target.id);
+    };
+    window.addEventListener(GLOBAL_NAV_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
   }, []);
 
   const resolvedSchedule = freq === "custom"
@@ -334,8 +357,9 @@ export default function CronPage() {
         )}
 
         {jobs.map((job) => (
-          <Card key={job.id}>
-            <CardContent className="flex items-center gap-4 py-4">
+          <div key={job.id} ref={(el) => { jobRefs.current[job.id] = el; }}>
+            <Card className={cn(highlightedJobId === job.id && "ring-2 ring-primary/30")}>
+              <CardContent className="flex items-center gap-4 py-4">
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
@@ -406,8 +430,9 @@ export default function CronPage() {
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         ))}
       </div>
     </div>

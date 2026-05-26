@@ -24,6 +24,7 @@ import {
 import { Toast } from "@/components/Toast";
 import { useI18n } from "@/i18n";
 import { useToast } from "@/hooks/useToast";
+import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 
 const DEFAULT_BOARD = "default";
 const COLUMN_ORDER = ["todo", "ready", "running", "user_review", "done"] as const;
@@ -225,6 +226,18 @@ export default function KanbanPage() {
       setErr(e instanceof Error ? e.message : String(e));
     }
   };
+
+  useEffect(() => {
+    const taskTarget = takeGlobalNavTarget("task");
+    if (taskTarget) void openTask(taskTarget.id);
+
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<GlobalNavTarget>).detail;
+      if (target?.type === "task") void openTask(target.id);
+    };
+    window.addEventListener(GLOBAL_NAV_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
+  }, []);
 
   const onDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("text/task-id", taskId);

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   Package,
   Search,
@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/i18n";
+import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 
 /* ------------------------------------------------------------------ */
 /*  Types & helpers                                                    */
@@ -70,6 +71,8 @@ export default function SkillsPage() {
   const [togglingCategories, setTogglingCategories] = useState<Set<string>>(new Set());
   // Start collapsed by default
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string> | "all">("all");
+  const [highlightedSkill, setHighlightedSkill] = useState<string | null>(null);
+  const skillRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const { toast, showToast } = useToast();
   const { t } = useI18n();
 
@@ -82,6 +85,39 @@ export default function SkillsPage() {
       .catch(() => showToast(t.common.loading, "error"))
       .finally(() => setLoading(false));
   }, []);
+
+  const focusSkill = (name: string) => {
+    setSearch(name);
+    setHighlightedSkill(name);
+  };
+
+  useEffect(() => {
+    const skillTarget = takeGlobalNavTarget("skill");
+    if (skillTarget) focusSkill(skillTarget.id);
+
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<GlobalNavTarget>).detail;
+      if (target?.type === "skill") focusSkill(target.id);
+    };
+    window.addEventListener(GLOBAL_NAV_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
+  }, []);
+
+  useEffect(() => {
+    if (!highlightedSkill || skills.length === 0) return;
+    const skill = skills.find((s) => s.name === highlightedSkill);
+    const categoryKey = skill?.category || "__none__";
+    setActiveCategory(null);
+    setCollapsedCategories((prev) => {
+      const allKeys = new Set(skills.map((s) => s.category || "__none__"));
+      allKeys.delete(categoryKey);
+      if (prev !== "all" && !prev.has(categoryKey)) return prev;
+      return allKeys;
+    });
+    window.setTimeout(() => {
+      skillRefs.current[highlightedSkill]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  }, [highlightedSkill, skills]);
 
   /* ---- Toggle skill ---- */
   const handleToggleSkill = async (skill: SkillInfo) => {
@@ -379,7 +415,10 @@ export default function SkillsPage() {
                       {catSkills.map((skill) => (
                         <div
                           key={skill.name}
-                          className="group flex items-start gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-muted/40"
+                          ref={(el) => { skillRefs.current[skill.name] = el; }}
+                          className={`group flex items-start gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-muted/40 ${
+                            highlightedSkill === skill.name ? "bg-primary/10 ring-1 ring-primary/25" : ""
+                          }`}
                         >
                           <div className="pt-0.5 shrink-0">
                             <Switch

@@ -44,6 +44,7 @@ import type { SparkEventEnvelope } from "@/hooks/useEventBus";
 import { threadTitle } from "@/components/chat/ThreadRow";
 import { FileTreePane, getFileCategory } from "@/components/workspace/FileTreePane";
 import { WorkspaceTerminalPanel } from "@/components/workspace/WorkspaceTerminalPanel";
+import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -791,10 +792,10 @@ export default function ChatPage() {
     }, 300);
   }, [searchQ, sessions]);
 
-  // Cmd+K focuses search
+  // Cmd+F focuses thread search; Cmd+K is reserved for global search.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
@@ -863,6 +864,43 @@ export default function ChatPage() {
     setComposingFor(null);
     setMobileSidebarOpen(false); // close mobile drawer on selection
   };
+
+  const openGlobalTarget = useCallback((target: GlobalNavTarget) => {
+    if (target.type === "thread") {
+      handleSelectThread(target.id);
+      setSearchQ("");
+      setSearchResults(null);
+      openLeftSidebar();
+      return;
+    }
+    if (target.type === "project") {
+      setSelectedId(null);
+      setComposingFor(target.id);
+      setSearchQ("");
+      setSearchResults(null);
+      openLeftSidebar();
+      setExpandedProjects((prev) => {
+        const next = new Set(prev);
+        next.add(target.id);
+        localStorage.setItem("spark-chat-expanded", JSON.stringify([...next]));
+        return next;
+      });
+    }
+  }, [sessions]);
+
+  useEffect(() => {
+    const projectTarget = takeGlobalNavTarget("project");
+    const threadTarget = projectTarget ? null : takeGlobalNavTarget("thread");
+    if (projectTarget) openGlobalTarget(projectTarget);
+    if (threadTarget) openGlobalTarget(threadTarget);
+
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<GlobalNavTarget>).detail;
+      if (target?.type === "project" || target?.type === "thread") openGlobalTarget(target);
+    };
+    window.addEventListener(GLOBAL_NAV_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
+  }, [openGlobalTarget]);
 
   const handleDeleteThread = async (id: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
