@@ -4169,19 +4169,35 @@ def _persist_web_turn_if_missing(
     result: Any,
     before_message_count: int,
 ) -> None:
-    """Persist a web turn if the agent did not write it to SQLite itself."""
+    """Persist any missing pieces of a web turn.
+
+    The agent may flush the current user message before the final assistant
+    response is available. Treating any new row as a fully persisted turn makes
+    the web UI lose the streamed answer when it reloads from SQLite.
+    """
     try:
         from core.spark_state import SessionDB
 
         db = SessionDB()
         try:
             messages = db.get_messages(session_id)
-            if len(messages) > before_message_count:
-                return
-            db.append_message(session_id, "user", content=user_message)
             final_response = _extract_final_response(result).strip()
+
+            new_messages = messages[before_message_count:]
+            has_user = any(
+                m.get("role") == "user" and m.get("content") == user_message
+                for m in new_messages
+            )
+            has_assistant = any(
+                m.get("role") == "assistant" and str(m.get("content") or "").strip()
+                for m in new_messages
+            )
+
+            if not has_user:
+                db.append_message(session_id, "user", content=user_message)
             if final_response:
-                db.append_message(session_id, "assistant", content=final_response)
+                if not has_assistant:
+                    db.append_message(session_id, "assistant", content=final_response)
         finally:
             db.close()
     except Exception:

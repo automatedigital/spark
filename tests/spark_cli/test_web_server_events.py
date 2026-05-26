@@ -230,7 +230,7 @@ class TestConversationControl:
         finally:
             db2.close()
 
-    def test_web_turn_fallback_does_not_duplicate_persisted_turn(self, web_client):
+    def test_web_turn_fallback_completes_partially_persisted_turn(self, web_client):
         import spark_cli.web_server as web_server
         from core.spark_state import SessionDB
 
@@ -251,8 +251,38 @@ class TestConversationControl:
         db2 = SessionDB()
         try:
             msgs = db2.get_messages("already_persisted_web")
-            assert len(msgs) == 1
+            assert len(msgs) == 2
             assert msgs[0]["content"] == "Already saved"
+            assert msgs[1]["role"] == "assistant"
+            assert msgs[1]["content"] == "Should not be added"
+        finally:
+            db2.close()
+
+    def test_web_turn_fallback_does_not_duplicate_persisted_assistant(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("fully_persisted_web", source="web", model="m1")
+            db.append_message("fully_persisted_web", "user", content="Already saved")
+            db.append_message("fully_persisted_web", "assistant", content="Already answered")
+        finally:
+            db.close()
+
+        web_server._persist_web_turn_if_missing(
+            "fully_persisted_web",
+            "Already saved",
+            {"final_response": "Should not be added"},
+            before_message_count=0,
+        )
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("fully_persisted_web")
+            assert len(msgs) == 2
+            assert msgs[0]["content"] == "Already saved"
+            assert msgs[1]["content"] == "Already answered"
         finally:
             db2.close()
 
