@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   X,
-  Bot,
   User,
   Loader2,
   GitFork,
@@ -117,6 +116,27 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
 
 // Highlight @file and /command tokens in plain text (used in user message bubbles)
 const BUBBLE_TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
+
+function SparkAgentIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <img
+      src="/icon_small-dark.png"
+      alt=""
+      aria-hidden="true"
+      className={cn("block object-contain", className)}
+      draggable={false}
+    />
+  );
+}
+
+function SparkAgentAvatar() {
+  return (
+    <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center bg-success/20">
+      <SparkAgentIcon />
+    </div>
+  );
+}
+
 function renderTokens(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let last = 0;
@@ -185,9 +205,7 @@ const UserRow = memo(function UserRow({
 const AssistantRow = memo(function AssistantRow({ msg }: { msg: AssistantMsg }) {
   return (
     <div className="flex gap-2">
-      <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-success/20 text-success">
-        <Bot className="h-3.5 w-3.5" />
-      </div>
+      <SparkAgentAvatar />
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground min-w-0">
         {msg.content ? (
           <Markdown content={msg.content} />
@@ -930,7 +948,7 @@ export function ChatPanel({
           </div>
         ) : chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Bot className="h-10 w-10 mb-3 opacity-30" />
+            <SparkAgentIcon className="mb-3 h-10 w-10 opacity-30" />
             <p className="text-sm">Start a conversation</p>
             <p className="text-xs mt-1 opacity-60">Type a message below</p>
           </div>
@@ -1000,9 +1018,7 @@ export function ChatPanel({
               if (isAlreadyStreamingAssistant) return null;
               return (
                 <div className="flex gap-2">
-                  <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-success/20 text-success">
-                    <Bot className="h-3.5 w-3.5" />
-                  </div>
+                  <SparkAgentAvatar />
                   <div className="rounded-lg px-3 py-2.5 text-sm bg-secondary">
                     <span className="flex gap-[4px] items-center">
                       <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
