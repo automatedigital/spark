@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Send, Square } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowUp, Brain, Check, ChevronDown, Loader2, Plus, Settings, Square } from "lucide-react";
+import { api } from "@/lib/api";
+import type { ModelStatusResponse, ModelSuggestionsResponse } from "@/lib/api";
 import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 import { AtFileMenu } from "@/components/chat/AtFileMenu";
 
@@ -15,7 +16,6 @@ interface PromptBarProps {
   workspaceSlug?: string;
 }
 
-// Match @tokens and /commands at line start (gm: ^ matches after each \n)
 const TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
 
 function renderMirror(text: string): React.ReactNode[] {
@@ -33,10 +33,281 @@ function renderMirror(text: string): React.ReactNode[] {
     last = m.index + m[0].length;
   }
   if (last < text.length) nodes.push(text.slice(last));
-  // Trailing space prevents div collapse when text ends with \n
   nodes.push(" ");
   return nodes;
 }
+
+export function shortModelName(model: string): string {
+  const m = model.toLowerCase();
+  if (m.includes("claude")) {
+    const parts = model.replace(/^claude-/i, "").split("-");
+    const name = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : "";
+    const version = parts.slice(1).join(".");
+    return version ? `${name} ${version}` : name;
+  }
+  if (m.startsWith("gpt")) return model.toUpperCase();
+  if (m.startsWith("gemini")) {
+    const parts = model.split("-");
+    const name = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+    const version = parts.slice(1, 3).join(".");
+    return version ? `${name} ${version}` : name;
+  }
+  const first = model.split(/[-_/]/)[0];
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+const REASONING_OPTIONS = [
+  { value: "none", label: "Off" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Max" },
+] as const;
+
+// ── Model dropdown ────────────────────────────────────────────────────────────
+
+function ModelDropdown({
+  value,
+  suggestions,
+  provider,
+  label,
+  saving,
+  onChange,
+}: {
+  value: string;
+  suggestions: string[];
+  provider: string;
+  label: string;
+  saving: boolean;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Build deduplicated list with current value always included
+  const allOptions = [value, ...suggestions.filter((s) => s !== value)];
+  const filtered = search
+    ? allOptions.filter((s) => s.toLowerCase().includes(search.toLowerCase()))
+    : allOptions;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const t = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 50);
+    else setSearch("");
+  }, [open]);
+
+  const select = (v: string) => {
+    setOpen(false);
+    if (v !== value) onChange(v);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+          {label}
+        </span>
+        {provider && (
+          <span className="text-[10px] text-muted-foreground/35">{provider}</span>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between rounded-md border border-input bg-background px-2.5 py-1.5 text-sm transition hover:border-border focus:outline-none"
+      >
+        <span className="truncate">{value || <span className="text-muted-foreground/40">Select model</span>}</span>
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/50" />}
+          <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground/40 transition-transform ${open ? "rotate-180" : ""}`} />
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 right-0 z-[60] rounded-md border border-border bg-popover shadow-xl overflow-hidden">
+          {/* Search */}
+          {allOptions.length > 5 && (
+            <div className="border-b border-border px-2 py-1.5">
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setOpen(false);
+                  if (e.key === "Enter" && filtered.length === 1) select(filtered[0]);
+                }}
+                placeholder="Search models…"
+                className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+              />
+            </div>
+          )}
+          {/* Options */}
+          <div className="max-h-[180px] overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-muted-foreground/40">No matches</div>
+            ) : (
+              filtered.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => select(opt)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-left transition hover:bg-secondary"
+                >
+                  <Check className={`h-3 w-3 shrink-0 ${opt === value ? "text-primary" : "opacity-0"}`} />
+                  <span className="truncate">{opt}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Quick-settings popover ────────────────────────────────────────────────────
+
+function ModelQuickSettings({
+  status,
+  suggestions,
+  onClose,
+  onStatusChange,
+}: {
+  status: ModelStatusResponse;
+  suggestions: ModelSuggestionsResponse | null;
+  onClose: () => void;
+  onStatusChange: (s: Partial<ModelStatusResponse>) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [savingSmartModel, setSavingSmartModel] = useState(false);
+  const [savingFastModel, setSavingFastModel] = useState(false);
+  const [savingReasoning, setSavingReasoning] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const t = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
+  }, [onClose]);
+
+  const saveSmartModel = async (model: string) => {
+    setSavingSmartModel(true);
+    try {
+      await api.setSmartModel(model);
+      onStatusChange({ smart_model: model });
+    } finally {
+      setSavingSmartModel(false);
+    }
+  };
+
+  const saveFastModel = async (model: string) => {
+    setSavingFastModel(true);
+    try {
+      await api.setFastModel(model);
+      onStatusChange({ fast_model: model });
+    } finally {
+      setSavingFastModel(false);
+    }
+  };
+
+  const setReasoning = async (effort: string) => {
+    if (savingReasoning || effort === status.reasoning_effort) return;
+    setSavingReasoning(true);
+    try {
+      await api.setReasoningEffort(effort);
+      onStatusChange({ reasoning_effort: effort });
+    } finally {
+      setSavingReasoning(false);
+    }
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full mb-2 left-0 right-0 mx-3 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
+    >
+      <div className="px-3 pt-3 pb-2 space-y-3">
+
+        {/* Smart model */}
+        <ModelDropdown
+          value={status.smart_model}
+          suggestions={suggestions?.smart ?? []}
+          provider={status.smart_provider}
+          label={status.multi_model_enabled ? "Smart model" : "Model"}
+          saving={savingSmartModel}
+          onChange={(v) => void saveSmartModel(v)}
+        />
+
+        {/* Fast model — only shown when multi-model is enabled */}
+        {status.multi_model_enabled && (
+          <ModelDropdown
+            value={status.fast_model}
+            suggestions={suggestions?.fast ?? []}
+            provider={status.fast_provider}
+            label="Fast model"
+            saving={savingFastModel}
+            onChange={(v) => void saveFastModel(v)}
+          />
+        )}
+
+        {/* Reasoning */}
+        {status.reasoning_supported && (
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <Brain className="h-3 w-3 text-muted-foreground/40" />
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                Reasoning
+              </span>
+            </div>
+            <div className="flex gap-1 flex-wrap">
+              {REASONING_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={savingReasoning}
+                  onClick={() => void setReasoning(value)}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-medium border transition disabled:pointer-events-none ${
+                    status.reasoning_effort === value
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-border px-3 py-1.5 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => { onClose(); document.dispatchEvent(new CustomEvent("spark:open-settings")); }}
+          className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition"
+        >
+          <Settings className="h-3 w-3" />
+          Full settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PromptBar ─────────────────────────────────────────────────────────────────
 
 export function PromptBar({
   input,
@@ -57,7 +328,28 @@ export function PromptBar({
   const [atQuery, setAtQuery] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  // Resize textarea to content
+  const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
+  const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestionsResponse | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const [isFocused, setIsFocused] = useState(false);
+  const [showHint, setShowHint] = useState(
+    () => !localStorage.getItem("spark-prompt-hint-dismissed")
+  );
+
+  useEffect(() => {
+    api.getModelStatus().then(setModelStatus).catch(() => {});
+    api.getModelSuggestions().then(setModelSuggestions).catch(() => {});
+  }, []);
+
+  const handleStatusChange = (patch: Partial<ModelStatusResponse>) => {
+    setModelStatus((prev) => prev ? { ...prev, ...patch } : prev);
+    // Re-fetch suggestions if the model changed (provider might have changed)
+    if (patch.smart_model || patch.fast_model) {
+      api.getModelSuggestions().then(setModelSuggestions).catch(() => {});
+    }
+  };
+
   const resize = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -75,35 +367,38 @@ export function PromptBar({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showMenu || showAtMenu) {
-      // Let the active menu handle arrow keys, escape, and tab
       if (["ArrowUp", "ArrowDown", "Escape"].includes(e.key)) return;
       if (e.key === "Tab") return;
-      // Enter selects from the menu when it has visible items
       if (e.key === "Enter" && !e.shiftKey && menuHasItems) return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSend();
+      handleSend();
     }
     if (e.key === "Escape") {
       setShowMenu(false);
       setShowAtMenu(false);
+      setShowSettings(false);
     }
+  };
+
+  const handleSend = () => {
+    if (showHint) {
+      setShowHint(false);
+      localStorage.setItem("spark-prompt-hint-dismissed", "1");
+    }
+    onSend();
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     const cursor = e.target.selectionStart ?? val.length;
     setInput(val);
-
-    // Slash command menu: only when input starts with /
     setShowMenu(val.startsWith("/"));
-
-    // @ file menu: detect @token immediately before cursor
     const beforeCursor = val.slice(0, cursor);
     const atMatch = /(@\S*)$/.exec(beforeCursor);
     if (atMatch) {
-      setAtQuery(atMatch[1].slice(1)); // strip the leading @
+      setAtQuery(atMatch[1].slice(1));
       setShowAtMenu(true);
     } else {
       setShowAtMenu(false);
@@ -124,20 +419,15 @@ export function PromptBar({
     const beforeCursor = input.slice(0, cursor);
     const atMatch = /(@\S*)$/.exec(beforeCursor);
     if (!atMatch) return;
-
     const atStart = cursor - atMatch[0].length;
-    // Dirs get a trailing slash so user can keep browsing; files get a space to close the token
     const newToken = `@${path}${isDir ? "/" : " "}`;
     const newInput = input.slice(0, atStart) + newToken + input.slice(cursor);
     setInput(newInput);
-
     if (isDir) {
       setAtQuery(`${path}/`);
     } else {
       setShowAtMenu(false);
     }
-
-    // Restore cursor after the completed token
     setTimeout(() => {
       const pos = atStart + newToken.length;
       textarea.selectionStart = textarea.selectionEnd = pos;
@@ -159,14 +449,21 @@ export function PromptBar({
     }
   };
 
-  const charCount = input.length;
   const blocked = disabled || streaming || uploading;
+  const canSend = !!input.trim() && !blocked;
+
+  const modelLabel = modelStatus?.smart_model ? shortModelName(modelStatus.smart_model) : null;
+  const effortLabel = (() => {
+    const e = modelStatus?.reasoning_effort;
+    if (!e || e === "none") return null;
+    return REASONING_OPTIONS.find((o) => o.value === e)?.label ?? e;
+  })();
 
   return (
-    <div className="border-t border-border px-4 py-3 shrink-0 relative">
+    <div className="px-3 pb-3 pt-2 shrink-0 relative">
       {showMenu && (
         <SlashCommandMenu
-          query={input.slice(1)} // strip leading /
+          query={input.slice(1)}
           onSelect={handleSlashSelect}
           onClose={() => setShowMenu(false)}
           onItemCountChange={(count) => setMenuHasItems(count > 0)}
@@ -181,52 +478,29 @@ export function PromptBar({
         />
       )}
 
-      <div
-        className={`flex gap-2 items-end rounded-md border transition-shadow ${
-          input.split("\n").length > 1 || input.length > 80
-            ? "shadow-[0_-2px_8px_rgba(0,0,0,0.3)]"
-            : ""
-        } border-transparent`}
-      >
-        {onUploadFiles && (
-          <>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="h-10 w-10 shrink-0"
-              disabled={blocked}
-              onClick={() => fileInputRef.current?.click()}
-              title="Add file"
-            >
-              {uploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => void handleFilesSelected(e.target.files)}
-            />
-          </>
-        )}
+      {showSettings && modelStatus && (
+        <ModelQuickSettings
+          status={modelStatus}
+          suggestions={modelSuggestions}
+          onClose={() => setShowSettings(false)}
+          onStatusChange={handleStatusChange}
+        />
+      )}
 
-        {/* Rich input: mirror div for highlights + transparent textarea on top */}
-        <div
-          className={`relative flex-1 rounded-md border border-input bg-background min-h-[40px] focus-within:ring-1 focus-within:ring-ring transition-opacity ${
-            blocked ? "opacity-50" : ""
-          }`}
-        >
+      {/* Unified card — no focus ring */}
+      <div className={`rounded-xl border border-input bg-card shadow-sm ${blocked ? "opacity-60" : ""}`}>
+        {/* Textarea */}
+        <div className="relative min-h-[52px]">
           <div
             ref={mirrorRef}
             aria-hidden
-            className="absolute inset-0 pointer-events-none overflow-hidden px-3 py-2 text-sm text-foreground whitespace-pre-wrap break-words select-none"
+            className="absolute inset-0 pointer-events-none overflow-hidden px-4 pt-3.5 pb-2 text-sm text-foreground whitespace-pre-wrap break-words select-none"
           >
-            {renderMirror(input)}
+            {input ? renderMirror(input) : (
+              isFocused && (
+                <span className="prompt-cursor inline-block w-px h-[1.1em] bg-foreground/70 align-text-bottom" />
+              )
+            )}
           </div>
           <textarea
             ref={textareaRef}
@@ -234,38 +508,96 @@ export function PromptBar({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onScroll={syncScroll}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             disabled={blocked}
-            placeholder={streaming ? "Responding…" : uploading ? "Uploading…" : "Ask anything…"}
+            placeholder={
+              isFocused ? "" : streaming ? "Responding…" : uploading ? "Uploading…" : "Ask anything · / for commands · @ for context"
+            }
             rows={1}
-            className="relative z-10 w-full resize-none bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed min-h-[40px] max-h-[240px] overflow-y-auto"
-            style={{ height: "40px", color: "transparent", caretColor: "hsl(var(--foreground))" }}
+            className="relative z-10 w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:cursor-not-allowed min-h-[52px] max-h-[240px] overflow-y-auto"
+            style={{ height: "52px", color: "transparent", caretColor: (isFocused && !input) ? "transparent" : "hsl(var(--primary))" }}
           />
         </div>
 
-        <div className="flex flex-col items-end gap-1 shrink-0">
+        {/* Toolbar */}
+        <div className="flex items-center gap-1 px-2 pb-2 pt-0">
+          {/* Attach */}
+          {onUploadFiles && (
+            <>
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => fileInputRef.current?.click()}
+                title="Add file"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground disabled:pointer-events-none"
+              >
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => void handleFilesSelected(e.target.files)}
+              />
+            </>
+          )}
+
+          {/* Model + reasoning pill */}
+          {modelLabel && (
+            <button
+              type="button"
+              onClick={() => setShowSettings((v) => !v)}
+              title="Quick model settings"
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition select-none ${
+                showSettings
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground/60 hover:bg-secondary hover:text-foreground"
+              }`}
+            >
+              <span>{modelLabel}</span>
+              {effortLabel && modelStatus?.reasoning_supported && (
+                <>
+                  <span className="text-muted-foreground/30">·</span>
+                  <Brain className="h-3 w-3 text-primary/60" />
+                  <span className="text-primary/70">{effortLabel}</span>
+                </>
+              )}
+              <ChevronDown className={`h-3 w-3 opacity-40 transition-transform ${showSettings ? "rotate-180" : ""}`} />
+            </button>
+          )}
+
+          <div className="flex-1" />
+
+          {/* Keyboard hint */}
+          {showHint && !streaming && (
+            <span className="hidden sm:flex items-center gap-0.5 text-[10px] text-muted-foreground/30 select-none mr-1">
+              <kbd className="font-sans">⏎</kbd>
+              <span>to send</span>
+            </span>
+          )}
+
+          {/* Send / Stop */}
           {streaming ? (
-            <Button
-              size="icon"
-              variant="destructive"
-              className="h-10 w-10"
+            <button
+              type="button"
               onClick={onStop}
               title="Stop"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
             >
-              <Square className="h-4 w-4" />
-            </Button>
+              <Square className="h-3.5 w-3.5" />
+            </button>
           ) : (
-            <Button
-              size="icon"
-              className="h-10 w-10"
-              disabled={!input.trim() || !!disabled || uploading}
-              onClick={onSend}
+            <button
+              type="button"
+              disabled={!canSend}
+              onClick={handleSend}
               title="Send (Enter)"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:opacity-30 disabled:pointer-events-none"
             >
-              <Send className="h-4 w-4" />
-            </Button>
-          )}
-          {charCount > 200 && (
-            <span className="text-[9px] text-muted-foreground tabular-nums">{charCount}</span>
+              <ArrowUp className="h-4 w-4" />
+            </button>
           )}
         </div>
       </div>

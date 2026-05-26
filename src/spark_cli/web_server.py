@@ -1770,6 +1770,194 @@ def get_model_info():
         return dict(_EMPTY_MODEL_INFO)
 
 
+@app.get("/api/model/status")
+def get_model_status():
+    """Return all model/routing/reasoning state needed by the prompt bar."""
+    try:
+        cfg = load_config()
+        model_cfg = cfg.get("model", "")
+        if isinstance(model_cfg, dict):
+            smart_model = str(model_cfg.get("default", model_cfg.get("name", "")) or "")
+            smart_provider = str(model_cfg.get("provider", "") or "")
+        else:
+            smart_model = str(model_cfg or "")
+            smart_provider = ""
+
+        routing_cfg = cfg.get("smart_model_routing", {}) or {}
+        multi_enabled = bool(routing_cfg.get("enabled", False))
+        cheap = routing_cfg.get("cheap_model", {}) or {}
+        fast_model = str(cheap.get("model", "") or "")
+        fast_provider = str(cheap.get("provider", "") or "")
+
+        agent_cfg = cfg.get("agent", {}) if isinstance(cfg.get("agent"), dict) else {}
+        effort = str(agent_cfg.get("reasoning_effort") or "").strip().lower() or "none"
+
+        # Reasoning support
+        reasoning_supported = False
+        try:
+            from agent.models_dev import get_model_capabilities
+            if smart_model:
+                mc = get_model_capabilities(provider=smart_provider, model=smart_model)
+                reasoning_supported = bool(mc and mc.supports_reasoning)
+        except Exception:
+            pass
+
+        return {
+            "smart_model": smart_model,
+            "smart_provider": smart_provider,
+            "fast_model": fast_model,
+            "fast_provider": fast_provider,
+            "multi_model_enabled": multi_enabled,
+            "reasoning_effort": effort,
+            "reasoning_supported": reasoning_supported,
+        }
+    except Exception:
+        _log.exception("GET /api/model/status failed")
+        return {
+            "smart_model": "", "smart_provider": "", "fast_model": "", "fast_provider": "",
+            "multi_model_enabled": False, "reasoning_effort": "none", "reasoning_supported": False,
+        }
+
+
+@app.get("/api/model/suggestions")
+def get_model_suggestions():
+    """Return provider-aware model name suggestions for the quick-settings popover."""
+    SUGGESTIONS: Dict[str, list] = {
+        "openai-codex": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini", "o3-mini"],
+        "openai": ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini"],
+        "anthropic": [
+            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+            "claude-opus-4-5", "claude-sonnet-4-5",
+        ],
+        "google": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+        "openrouter": ["anthropic/claude-sonnet-4-6", "openai/gpt-4o", "google/gemini-2.5-pro"],
+        "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+        "xai": ["grok-3", "grok-3-mini"],
+        "ollama": ["llama3.3", "qwen2.5-coder:32b", "mistral", "phi4"],
+    }
+    try:
+        cfg = load_config()
+        model_cfg = cfg.get("model", "")
+        smart_provider = ""
+        if isinstance(model_cfg, dict):
+            smart_provider = str(model_cfg.get("provider", "") or "")
+
+        routing_cfg = cfg.get("smart_model_routing", {}) or {}
+        cheap = routing_cfg.get("cheap_model", {}) or {}
+        fast_provider = str(cheap.get("provider", "") or "")
+
+        return {
+            "smart": SUGGESTIONS.get(smart_provider, []),
+            "fast": SUGGESTIONS.get(fast_provider, []),
+            "smart_provider": smart_provider,
+            "fast_provider": fast_provider,
+        }
+    except Exception:
+        _log.exception("GET /api/model/suggestions failed")
+        return {"smart": [], "fast": [], "smart_provider": "", "fast_provider": ""}
+
+
+@app.put("/api/model/fast")
+def set_fast_model(body: Dict[str, Any]):
+    """Update just the fast model name, preserving other routing config."""
+    try:
+        from spark_cli.config import save_config
+
+        new_model = str(body.get("model", "")).strip()
+        if not new_model:
+            return JSONResponse({"error": "model is required"}, status_code=400)
+
+        cfg = load_config()
+        if "smart_model_routing" not in cfg or not isinstance(cfg["smart_model_routing"], dict):
+            cfg["smart_model_routing"] = {}
+        if "cheap_model" not in cfg["smart_model_routing"] or not isinstance(cfg["smart_model_routing"]["cheap_model"], dict):
+            cfg["smart_model_routing"]["cheap_model"] = {}
+        cfg["smart_model_routing"]["cheap_model"]["model"] = new_model
+        save_config(cfg)
+        return {"ok": True, "model": new_model}
+    except Exception:
+        _log.exception("PUT /api/model/fast failed")
+        return JSONResponse({"error": "Failed to save fast model"}, status_code=500)
+
+
+@app.put("/api/model/smart")
+def set_smart_model(body: Dict[str, Any]):
+    """Update just the smart model name, preserving provider/url/api_mode."""
+    try:
+        from spark_cli.config import save_config
+
+        new_model = str(body.get("model", "")).strip()
+        if not new_model:
+            return JSONResponse({"error": "model is required"}, status_code=400)
+
+        cfg = load_config()
+        model_cfg = cfg.get("model", "")
+        if isinstance(model_cfg, dict):
+            model_cfg["default"] = new_model
+            cfg["model"] = model_cfg
+        else:
+            cfg["model"] = new_model
+        save_config(cfg)
+        return {"ok": True, "model": new_model}
+    except Exception:
+        _log.exception("PUT /api/model/smart failed")
+        return JSONResponse({"error": "Failed to save model"}, status_code=500)
+
+
+@app.get("/api/model/reasoning")
+def get_reasoning_effort():
+    """Return current reasoning effort and whether the active model supports it."""
+    try:
+        cfg = load_config()
+        agent_cfg = cfg.get("agent", {}) if isinstance(cfg.get("agent"), dict) else {}
+        effort = str(agent_cfg.get("reasoning_effort") or "").strip().lower() or "none"
+
+        # Check if active model supports reasoning
+        supported = False
+        try:
+            from agent.models_dev import get_model_capabilities
+
+            model_cfg = cfg.get("model", "")
+            if isinstance(model_cfg, dict):
+                model_name = model_cfg.get("default", model_cfg.get("name", ""))
+                provider = model_cfg.get("provider", "")
+            else:
+                model_name = str(model_cfg) if model_cfg else ""
+                provider = ""
+            if model_name:
+                mc = get_model_capabilities(provider=provider, model=model_name)
+                supported = bool(mc and mc.supports_reasoning)
+        except Exception:
+            pass
+
+        return {"effort": effort, "supported": supported}
+    except Exception:
+        _log.exception("GET /api/model/reasoning failed")
+        return {"effort": "none", "supported": False}
+
+
+@app.put("/api/model/reasoning")
+def set_reasoning_effort(body: Dict[str, Any]):
+    """Set reasoning effort level. Valid values: none, minimal, low, medium, high, xhigh."""
+    try:
+        from core.spark_constants import parse_reasoning_effort
+        from spark_cli.config import save_config
+
+        effort = str(body.get("effort", "none")).strip().lower()
+        if effort != "none" and parse_reasoning_effort(effort) is None:
+            return JSONResponse({"error": f"Invalid effort: {effort}"}, status_code=400)
+
+        cfg = load_config()
+        if "agent" not in cfg or not isinstance(cfg["agent"], dict):
+            cfg["agent"] = {}
+        cfg["agent"]["reasoning_effort"] = "" if effort == "none" else effort
+        save_config(cfg)
+        return {"effort": effort, "ok": True}
+    except Exception:
+        _log.exception("PUT /api/model/reasoning failed")
+        return JSONResponse({"error": "Failed to save reasoning effort"}, status_code=500)
+
+
 def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     """Reverse _normalize_config_for_web before saving.
 

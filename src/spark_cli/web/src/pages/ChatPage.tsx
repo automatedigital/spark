@@ -12,7 +12,8 @@ import {
   Loader2,
   Menu,
   MessageSquare,
-  PanelRight,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Search,
   SquareTerminal,
@@ -433,13 +434,13 @@ function WorkspaceRightPanel({
       <div className="spark-glass-panel flex w-9 shrink-0 flex-col items-center gap-2 border-l border-border py-2">
         <button
           type="button"
-          title="Expand file panel"
+          title="Show files"
           onClick={onToggle}
-          className="rounded p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+          className="rounded p-1.5 text-muted-foreground/40 transition hover:text-muted-foreground"
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
+          <PanelRightOpen className="h-4 w-4" />
         </button>
-        <div className="h-px w-5 bg-border" />
+        <div className="h-px w-4 bg-border" />
         <button
           type="button"
           title="Files"
@@ -486,7 +487,7 @@ function WorkspaceRightPanel({
           onClick={onToggle}
           className="ml-auto flex h-8 w-8 items-center justify-center text-muted-foreground transition hover:bg-secondary hover:text-foreground"
         >
-          <ChevronRight className="h-3.5 w-3.5" />
+          <PanelRightClose className="h-4 w-4" />
         </button>
       </div>
 
@@ -1146,23 +1147,7 @@ export default function ChatPage() {
                     {selectedSession ? threadTitle(selectedSession) : "Thread"}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {activeProjectSlug && (
-                    <button
-                      type="button"
-                      title={rightPanelOpen ? "Hide files" : "Show files"}
-                      onClick={toggleRightPanel}
-                      className={cn(
-                        "grid h-7 w-7 place-items-center rounded-sm border transition",
-                        rightPanelOpen
-                          ? "border-primary/50 bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
-                      )}
-                    >
-                      <PanelRight className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
+                <div className="flex shrink-0 items-center gap-2" />
               </div>
               <ChatPanel
                 sessionId={selectedId}
@@ -1185,11 +1170,19 @@ export default function ChatPage() {
               >
                 <Menu className="h-4 w-4" />
               </button>
-              <MessageSquare className="mb-4 h-12 w-12 opacity-20" />
-              <p className="text-sm font-medium text-foreground">Select a conversation</p>
-              <p className="mt-1 max-w-sm text-xs opacity-75">
-                Pick a thread from the sidebar, or click <span className="text-foreground">New chat</span> to start one.
+              <MessageSquare className="mb-4 h-10 w-10 opacity-15" />
+              <p className="text-sm font-semibold text-foreground/80">No conversation selected</p>
+              <p className="mt-1 max-w-xs text-xs opacity-50 leading-relaxed">
+                Pick a thread from the sidebar, or start fresh.
               </p>
+              <button
+                type="button"
+                onClick={handleNewGlobalChat}
+                className="mt-4 flex items-center gap-1.5 rounded-lg border border-border bg-card/60 px-3 py-1.5 text-xs font-medium text-foreground/70 transition hover:bg-secondary hover:text-foreground"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New chat
+              </button>
             </div>
           )}
         </div>

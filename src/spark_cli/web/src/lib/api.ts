@@ -108,6 +108,27 @@ export const api = {
   getDefaults: () => fetchJSON<Record<string, unknown>>("/api/config/defaults"),
   getSchema: () => fetchJSON<{ fields: Record<string, unknown>; category_order: string[] }>("/api/config/schema"),
   getModelInfo: () => fetchJSON<ModelInfoResponse>("/api/model/info"),
+  getModelStatus: () => fetchJSON<ModelStatusResponse>("/api/model/status"),
+  getModelSuggestions: () => fetchJSON<ModelSuggestionsResponse>("/api/model/suggestions"),
+  setSmartModel: (model: string) =>
+    fetchJSON<{ ok: boolean; model: string }>("/api/model/smart", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    }),
+  setFastModel: (model: string) =>
+    fetchJSON<{ ok: boolean; model: string }>("/api/model/fast", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    }),
+  getReasoningEffort: () => fetchJSON<ReasoningEffortResponse>("/api/model/reasoning"),
+  setReasoningEffort: (effort: string) =>
+    fetchJSON<{ effort: string; ok: boolean }>("/api/model/reasoning", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ effort }),
+    }),
   saveConfig: (config: Record<string, unknown>) =>
     fetchJSON<{ ok: boolean }>("/api/config", {
       method: "PUT",
@@ -1125,6 +1146,28 @@ export interface SessionsChangedData {
 }
 
 // ── Model info types ──────────────────────────────────────────────────
+
+export interface ReasoningEffortResponse {
+  effort: string;
+  supported: boolean;
+}
+
+export interface ModelStatusResponse {
+  smart_model: string;
+  smart_provider: string;
+  fast_model: string;
+  fast_provider: string;
+  multi_model_enabled: boolean;
+  reasoning_effort: string;
+  reasoning_supported: boolean;
+}
+
+export interface ModelSuggestionsResponse {
+  smart: string[];
+  fast: string[];
+  smart_provider: string;
+  fast_provider: string;
+}
 
 export interface ModelInfoResponse {
   model: string;

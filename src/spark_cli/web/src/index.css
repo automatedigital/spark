@@ -537,6 +537,15 @@ button {
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: bold; }
 
+/* ---- Prompt bar cursor blink ---- */
+@keyframes prompt-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.prompt-cursor {
+  animation: prompt-cursor-blink 1s step-end infinite;
+}
+
 /* ---- Reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   *,
