@@ -1184,9 +1184,20 @@ export default function ChatPage() {
                 <span className="text-[10px] uppercase tracking-widest text-muted-foreground/50">
                   Chats
                 </span>
-                {loadingSessions && !sessions.length && (
-                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40" />
-                )}
+                <div className="flex items-center gap-0.5">
+                  {loadingSessions && !sessions.length && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40" />
+                  )}
+                  <button
+                    type="button"
+                    title="New chat"
+                    className="rounded p-0.5 text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                    onClick={handleNewGlobalChat}
+                    disabled={selectMode}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
 
               {displayedGlobal.length === 0 && !loadingSessions && (
