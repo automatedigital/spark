@@ -11,5 +11,5 @@ Provides subcommands for:
 - spark cron          - Manage cron jobs
 """
 
-__version__ = "1.3.0"
-__release_date__ = "2026.5.6"
+__version__ = "1.3.5"
+__release_date__ = "2026.5.26"
