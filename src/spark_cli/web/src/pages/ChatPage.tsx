@@ -216,11 +216,6 @@ function ProjectFolder({
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground/80">
             {project.name}
           </span>
-          {threads.length > 0 && (
-            <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">
-              {threads.length}
-            </Badge>
-          )}
         </button>
         {/* Action buttons — visible on hover */}
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
@@ -241,6 +236,11 @@ function ProjectFolder({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
+        {threads.length > 0 && (
+          <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">
+            {threads.length}
+          </Badge>
+        )}
       </div>
 
       {/* Delete confirm */}
