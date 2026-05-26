@@ -68,7 +68,7 @@ def _safe_path(project_dir: Path, rel: str) -> Path:
     return resolved
 
 
-def _tree_node(path: Path, project_dir: Path, depth: int) -> dict[str, Any]:
+def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = False) -> dict[str, Any]:
     rel = str(path.relative_to(project_dir))
     if path.is_dir():
         children: list[dict[str, Any]] = []
@@ -76,9 +76,9 @@ def _tree_node(path: Path, project_dir: Path, depth: int) -> dict[str, Any]:
             try:
                 entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
                 for child in entries:
-                    if child.name.startswith("."):
+                    if not show_hidden and child.name.startswith("."):
                         continue
-                    children.append(_tree_node(child, project_dir, depth + 1))
+                    children.append(_tree_node(child, project_dir, depth + 1, show_hidden))
             except PermissionError:
                 pass
         return {"name": path.name, "path": rel, "type": "dir", "children": children}
@@ -154,7 +154,7 @@ def create_project(body: ProjectCreate):
 
 
 @router.get("/projects/{slug}/tree")
-def get_project_tree(slug: str):
+def get_project_tree(slug: str, show_hidden: bool = Query(default=False)):
     project_dir = _project_dir(slug)
     children: list[dict[str, Any]] = []
     try:
@@ -162,9 +162,9 @@ def get_project_tree(slug: str):
             project_dir.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
         )
         for entry in entries:
-            if entry.name.startswith("."):
+            if not show_hidden and entry.name.startswith("."):
                 continue
-            children.append(_tree_node(entry, project_dir, depth=1))
+            children.append(_tree_node(entry, project_dir, depth=1, show_hidden=show_hidden))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     return {"slug": slug, "path": str(project_dir), "tree": children}
@@ -259,7 +259,7 @@ async def upload_workspace_files(files: list[UploadFile] = File(...)):
 
 
 @router.get("/projects/{slug}/list")
-def list_project_dir(slug: str, path: str = Query(default="")):
+def list_project_dir(slug: str, path: str = Query(default=""), show_hidden: bool = Query(default=False)):
     """List one level of a directory in a workspace project for @ autocomplete."""
     project_dir = _project_dir(slug)
     target = _safe_path(project_dir, path) if path else project_dir
@@ -268,7 +268,7 @@ def list_project_dir(slug: str, path: str = Query(default="")):
     entries = []
     try:
         for entry in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
-            if entry.name.startswith("."):
+            if not show_hidden and entry.name.startswith("."):
                 continue
             rel = str(entry.relative_to(project_dir))
             entries.append({"name": entry.name, "path": rel, "type": "dir" if entry.is_dir() else "file"})
@@ -278,7 +278,7 @@ def list_project_dir(slug: str, path: str = Query(default="")):
 
 
 @router.get("/files/list")
-def list_chat_files(path: str = Query(default="")):
+def list_chat_files(path: str = Query(default=""), show_hidden: bool = Query(default=False)):
     """List chat-uploaded files for @ autocomplete. path='' returns the files/ dir entry."""
     workspace = _workspace_root()
     if not path:
@@ -298,7 +298,7 @@ def list_chat_files(path: str = Query(default="")):
     entries = []
     try:
         for entry in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
-            if entry.name.startswith("."):
+            if not show_hidden and entry.name.startswith("."):
                 continue
             entry_rel = str(entry.relative_to(workspace))
             entries.append({"name": entry.name, "path": entry_rel, "type": "dir" if entry.is_dir() else "file"})

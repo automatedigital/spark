@@ -553,8 +553,10 @@ export const api = {
       method: "DELETE",
     }),
 
-  getWorkspaceFileTree: (slug: string) =>
-    fetchJSON<WorkspaceTreeResponse>(`/api/workspace/projects/${encodeURIComponent(slug)}/tree`),
+  getWorkspaceFileTree: (slug: string, showHidden = false) =>
+    fetchJSON<WorkspaceTreeResponse>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/tree${showHidden ? "?show_hidden=true" : ""}`,
+    ),
 
   getWorkspaceFile: (slug: string, path: string) => {
     const qs = new URLSearchParams({ path });
@@ -596,15 +598,25 @@ export const api = {
     }>;
   },
 
-  listWorkspaceDir: (slug: string, path = "") =>
-    fetchJSON<FileListResponse>(
-      `/api/workspace/projects/${encodeURIComponent(slug)}/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
-    ),
+  listWorkspaceDir: (slug: string, path = "", showHidden = false) => {
+    const qs = new URLSearchParams();
+    if (path) qs.set("path", path);
+    if (showHidden) qs.set("show_hidden", "true");
+    const query = qs.toString();
+    return fetchJSON<FileListResponse>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/list${query ? `?${query}` : ""}`,
+    );
+  },
 
-  listChatFiles: (path = "") =>
-    fetchJSON<FileListResponse>(
-      `/api/workspace/files/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
-    ),
+  listChatFiles: (path = "", showHidden = false) => {
+    const qs = new URLSearchParams();
+    if (path) qs.set("path", path);
+    if (showHidden) qs.set("show_hidden", "true");
+    const query = qs.toString();
+    return fetchJSON<FileListResponse>(
+      `/api/workspace/files/list${query ? `?${query}` : ""}`,
+    );
+  },
 
   deleteChatFile: (path: string) => {
     const qs = new URLSearchParams({ path });

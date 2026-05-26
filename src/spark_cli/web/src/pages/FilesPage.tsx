@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
   File,
   FileText,
   Folder,
@@ -305,12 +306,13 @@ function FileBrowser({
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.listChatFiles(currentPath);
+      const res = await api.listChatFiles(currentPath, showHidden);
       setEntries(res.entries);
     } catch (e) {
       console.error("Failed to list files", e);
@@ -318,7 +320,7 @@ function FileBrowser({
     } finally {
       setLoading(false);
     }
-  }, [currentPath]);
+  }, [currentPath, showHidden]);
 
   useEffect(() => {
     setSearchQ("");
@@ -388,6 +390,18 @@ function FileBrowser({
               className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition"
             >
               <Plus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              title={showHidden ? "Hide hidden files" : "Show hidden files"}
+              aria-pressed={showHidden}
+              onClick={() => setShowHidden((v) => !v)}
+              className={cn(
+                "grid h-7 w-7 place-items-center rounded text-muted-foreground transition hover:bg-secondary hover:text-foreground",
+                showHidden && "bg-secondary text-foreground",
+              )}
+            >
+              <Eye className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"

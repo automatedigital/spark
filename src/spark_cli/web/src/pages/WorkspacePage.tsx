@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Eye,
   File,
   FileText,
   Folder,
@@ -1656,19 +1657,20 @@ function FileTreePane({
   const [loadingTree, setLoadingTree] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTree = useCallback(async () => {
     setLoadingTree(true);
     try {
-      const res = await api.getWorkspaceFileTree(slug);
+      const res = await api.getWorkspaceFileTree(slug, showHidden);
       setTree(res.tree);
     } catch (e) {
       console.error("Tree load failed", e);
     } finally {
       setLoadingTree(false);
     }
-  }, [slug]);
+  }, [slug, showHidden]);
 
   useEffect(() => { void loadTree(); }, [loadTree]);
 
@@ -1704,6 +1706,16 @@ function FileTreePane({
           {uploading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Upload files" onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className={cn("h-6 w-6 p-0", showHidden && "bg-secondary text-foreground")}
+            title={showHidden ? "Hide hidden files" : "Show hidden files"}
+            aria-pressed={showHidden}
+            onClick={() => setShowHidden((v) => !v)}
+          >
+            <Eye className="h-3.5 w-3.5" />
           </Button>
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Refresh" onClick={() => void loadTree()}>
             <Loader2 className={cn("h-3.5 w-3.5", loadingTree ? "animate-spin" : "opacity-40")} />
