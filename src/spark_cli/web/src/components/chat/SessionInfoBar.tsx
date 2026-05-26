@@ -34,9 +34,6 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
         onClick={() => setExpanded((p) => !p)}
         title={expanded ? "Collapse stats" : "Expand stats"}
       >
-        {stats.model && (
-          <span className="font-mono text-primary/60 truncate max-w-[140px]">{stats.model}</span>
-        )}
         {stats.inputTokens != null && stats.inputTokens > 0 && (
           <span title="Input tokens">↑ {fmt(stats.inputTokens)}</span>
         )}

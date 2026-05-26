@@ -452,7 +452,10 @@ export function PromptBar({
   const blocked = disabled || streaming || uploading;
   const canSend = !!input.trim() && !blocked;
 
-  const modelLabel = modelStatus?.smart_model ? shortModelName(modelStatus.smart_model) : null;
+  const activeModel = modelStatus
+    ? (modelStatus.multi_model_enabled && modelStatus.fast_model) || modelStatus.smart_model || null
+    : null;
+  const modelLabel = activeModel ? shortModelName(activeModel) : null;
   const effortLabel = (() => {
     const e = modelStatus?.reasoning_effort;
     if (!e || e === "none") return null;

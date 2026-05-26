@@ -16,8 +16,9 @@
   },
   "homepage": "https://github.com/automatedigital/spark#readme",
   "dependencies": {
-    "agent-browser": "^0.13.0",
-    "@askjo/camoufox-browser": "^1.0.0"
+    "@askjo/camoufox-browser": "^1.0.0",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "agent-browser": "^0.13.0"
   },
   "overrides": {
     "lodash": "4.18.1"

@@ -307,6 +307,52 @@ def list_chat_files(path: str = Query(default="")):
     return {"path": path, "entries": entries}
 
 
+class WriteFileBody(BaseModel):
+    content: str
+
+
+@router.put("/files")
+def write_chat_file(path: str = Query(...), body: WriteFileBody = ...):
+    """Write text content to a file in the workspace files directory."""
+    workspace = _workspace_root()
+    rel = path.lstrip("/")
+    target = (workspace / rel).resolve()
+    try:
+        target.relative_to(workspace.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path traversal detected")
+    if target.is_dir():
+        raise HTTPException(status_code=400, detail="Path is a directory")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        target.write_text(body.content, encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"ok": True, "path": path}
+
+
+@router.delete("/files")
+def delete_workspace_chat_file(path: str = Query(...)):
+    """Delete a file or directory from the workspace files directory."""
+    workspace = _workspace_root()
+    rel = path.lstrip("/")
+    target = (workspace / rel).resolve()
+    try:
+        target.relative_to(workspace.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path traversal detected")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
+    try:
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"ok": True, "deleted": path}
+
+
 @router.delete("/projects/{slug}")
 def delete_project(slug: str):
     project_dir = _project_dir(slug)

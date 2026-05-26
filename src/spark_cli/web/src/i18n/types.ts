@@ -67,6 +67,7 @@ export interface Translations {
       board: string;
       workspace: string;
       chat: string;
+      files: string;
     };
   };
 

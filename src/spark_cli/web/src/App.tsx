@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Clock,
   Download,
+  FolderOpen,
   LayoutGrid,
   MessageSquare,
   Package,
@@ -11,22 +12,22 @@ import {
 } from "lucide-react";
 import ChatPage from "@/pages/ChatPage";
 import CronPage from "@/pages/CronPage";
+import FilesPage from "@/pages/FilesPage";
 import KanbanPage from "@/pages/KanbanPage";
 import SkillsPage from "@/pages/SkillsPage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
-import type { SessionsChangedData } from "@/lib/api";
 import { useUpdateModal } from "@/lib/UpdateModalContext";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
-import { useEventBus } from "@/hooks/useEventBus";
 
 
 const NAV_ITEMS = [
   { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
+  { id: "files", labelKey: "files" as const, icon: FolderOpen },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
@@ -39,9 +40,10 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   kanban: KanbanPage,
   cron: CronPage,
   skills: SkillsPage,
+  files: FilesPage,
 };
 
-const FULL_WIDTH_PAGES = new Set<PageId>(["chat"]);
+const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files"]);
 
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
@@ -87,10 +89,7 @@ export default function App() {
   const { updateAvailable, latestVersion, openUpdateModal } = useUpdateModal();
 
   // ── Activity badge counts ──
-  const [activeSessionCount, setActiveSessionCount] = useState(0);
   const [runningTaskCount, setRunningTaskCount] = useState(0);
-  // Lightweight map: session_id → is_active (avoids re-fetching all sessions on every SSE event)
-  const activeSessionMapRef = useRef(new Map<string, boolean>());
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -185,14 +184,6 @@ export default function App() {
 
   // ── Activity counts: initial fetch ──
   useEffect(() => {
-    // Active chat sessions
-    api.getSessions(500, 0).then(({ sessions: s }) => {
-      const m = new Map<string, boolean>();
-      s.forEach((x) => m.set(x.id, x.is_active));
-      activeSessionMapRef.current = m;
-      setActiveSessionCount(s.filter((x) => x.is_active).length);
-    }).catch(() => {});
-
     // Running kanban tasks — poll every 30s (kanban has its own SSE in KanbanPage)
     const fetchKanban = () => {
       api.getKanbanBoard({ board: "default", tenant: null, assignee: null, q: null })
@@ -203,19 +194,6 @@ export default function App() {
     const interval = setInterval(fetchKanban, 30_000);
     return () => clearInterval(interval);
   }, []);
-
-  // ── Activity counts: live session updates ──
-  useEventBus((env) => {
-    if (env.topic !== "sessions.changed") return;
-    const { action, session_id, session } = env.data as unknown as SessionsChangedData;
-    const m = activeSessionMapRef.current;
-    if (action === "deleted") {
-      m.delete(session_id);
-    } else {
-      m.set(session_id, session?.is_active ?? m.get(session_id) ?? false);
-    }
-    setActiveSessionCount(Array.from(m.values()).filter(Boolean).length);
-  });
 
   const sidebarOpen = navExpanded || navHovered;
 
@@ -305,9 +283,6 @@ export default function App() {
               >
                 <div className="relative shrink-0">
                   <Icon className="h-5 w-5" />
-                  {id === "chat" && activeSessionCount > 0 && (
-                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-green-400 ring-2 ring-background" />
-                  )}
                   {id === "kanban" && runningTaskCount > 0 && (
                     <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
                       {runningTaskCount > 9 ? "9+" : runningTaskCount}
@@ -392,9 +367,6 @@ export default function App() {
                     }`}
                   >
                     <Icon className="h-4 w-4" />
-                    {id === "chat" && activeSessionCount > 0 && (
-                      <span className="absolute right-1 top-1 h-2 w-2 animate-pulse rounded-full bg-green-400 ring-1 ring-background" />
-                    )}
                     {id === "kanban" && runningTaskCount > 0 && (
                       <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-white">
                         {runningTaskCount > 9 ? "9+" : runningTaskCount}

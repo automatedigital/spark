@@ -606,6 +606,30 @@ export const api = {
       `/api/workspace/files/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
     ),
 
+  deleteChatFile: (path: string) => {
+    const qs = new URLSearchParams({ path });
+    return fetchJSON<{ ok: boolean; deleted: string }>(
+      `/api/workspace/files?${qs}`,
+      { method: "DELETE" },
+    );
+  },
+
+  readChatFile: async (path: string): Promise<string> => {
+    const url = mediaFileUrl(path);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+    return res.text();
+  },
+
+  writeChatFile: async (path: string, content: string): Promise<void> => {
+    const qs = new URLSearchParams({ path });
+    await fetchJSON<{ ok: boolean }>(`/api/workspace/files?${qs}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+  },
+
   deleteWorkspaceFile: (slug: string, path: string) => {
     const qs = new URLSearchParams({ path });
     return fetchJSON<{ ok: boolean; deleted: string }>(
