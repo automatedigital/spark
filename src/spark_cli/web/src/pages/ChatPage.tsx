@@ -9,9 +9,12 @@ import {
   File,
   FileText,
   FolderOpen,
+  GripVertical,
   Loader2,
   Menu,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Plus,
@@ -58,6 +61,36 @@ function languageForFile(filename: string): string | null {
     toml: "ini", txt: "plaintext", xml: "xml", yaml: "yaml", yml: "yaml",
   };
   return map[ext] ?? null;
+}
+
+// ── Resize divider ─────────────────────────────────────────────────────────────
+
+function ResizeDivider({ onDrag }: { onDrag: (delta: number) => void }) {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let lastX = e.clientX;
+    const onMove = (mv: MouseEvent) => {
+      const delta = mv.clientX - lastX;
+      lastX = mv.clientX;
+      onDrag(delta);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      className="group relative hidden w-2 shrink-0 cursor-col-resize items-center justify-center md:flex"
+    >
+      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-primary/50 group-active:bg-primary/70" />
+      <GripVertical className="relative z-10 h-4 w-4 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 group-active:text-primary/70" />
+    </div>
+  );
 }
 
 // ── CompactThreadRow ──────────────────────────────────────────────────────────
@@ -418,10 +451,12 @@ function WorkspaceRightPanel({
   slug,
   open,
   onToggle,
+  width,
 }: {
   slug: string;
   open: boolean;
   onToggle: () => void;
+  width: number;
 }) {
   const [activeTab, setActiveTab] = useState<RightTab>("files");
   const [selectedFile, setSelectedFile] = useState<WorkspaceFileNode | null>(null);
@@ -462,7 +497,10 @@ function WorkspaceRightPanel({
   }
 
   return (
-    <div className="spark-glass-panel flex w-[320px] shrink-0 flex-col overflow-hidden border-l border-border">
+    <div
+      className="spark-glass-panel flex shrink-0 flex-col overflow-hidden border-l border-border"
+      style={{ width }}
+    >
       {/* Tab bar */}
       <div className="flex h-8 shrink-0 items-center border-b border-border">
         {(["files", "terminal"] as RightTab[]).map((tab) => (
@@ -551,6 +589,13 @@ export default function ChatPage() {
   const [searching, setSearching] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem("spark-chat-sidebar-width");
+    return saved ? Math.max(260, parseInt(saved, 10)) : 260;
+  });
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() =>
+    localStorage.getItem("spark-chat-left-sidebar") !== "false"
+  );
 
   // ── Project creation ──
   const [creatingProject, setCreatingProject] = useState(false);
@@ -561,6 +606,10 @@ export default function ChatPage() {
   const [rightPanelOpen, setRightPanelOpen] = useState(() =>
     localStorage.getItem("spark-chat-right-panel") !== "false"
   );
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    const saved = localStorage.getItem("spark-chat-right-panel-width");
+    return saved ? Math.max(240, parseInt(saved, 10)) : 320;
+  });
 
   // ── Bulk select / delete ──
   const [selectMode, setSelectMode] = useState(false);
@@ -773,6 +822,35 @@ export default function ChatPage() {
     });
   };
 
+  const toggleLeftSidebar = () => {
+    setLeftSidebarOpen((v) => {
+      const next = !v;
+      localStorage.setItem("spark-chat-left-sidebar", String(next));
+      return next;
+    });
+  };
+
+  const openLeftSidebar = () => {
+    setLeftSidebarOpen(true);
+    localStorage.setItem("spark-chat-left-sidebar", "true");
+  };
+
+  const handleSidebarDrag = useCallback((delta: number) => {
+    setSidebarWidth((width) => {
+      const next = Math.max(260, Math.min(520, width + delta));
+      localStorage.setItem("spark-chat-sidebar-width", String(next));
+      return next;
+    });
+  }, []);
+
+  const handleRightPanelDrag = useCallback((delta: number) => {
+    setRightPanelWidth((width) => {
+      const next = Math.max(240, Math.min(720, width - delta));
+      localStorage.setItem("spark-chat-right-panel-width", String(next));
+      return next;
+    });
+  }, []);
+
   const handleSelectThread = (id: string) => {
     markSessionRead(id);
     // Sync lastMessageCountRef to the latest known count so we don't
@@ -898,17 +976,20 @@ export default function ChatPage() {
       )}
 
       {/* ── Sidebar ── */}
-      <aside className={cn(
-        "flex w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-card/50",
-        // Desktop: always visible
-        "md:relative md:flex md:translate-x-0",
-        // Mobile: absolute overlay drawer
-        "fixed inset-y-0 left-0 z-50 md:static",
-        mobileSidebarOpen ? "flex" : "hidden md:flex",
-      )}>
+      {leftSidebarOpen || mobileSidebarOpen ? (
+        <>
+          <aside className={cn(
+            "flex shrink-0 flex-col overflow-hidden border-r border-border bg-card/50",
+            // Desktop: always visible when expanded
+            "md:relative md:flex md:translate-x-0",
+            // Mobile: absolute overlay drawer
+            "fixed inset-y-0 left-0 z-50 md:static",
+            mobileSidebarOpen ? "flex" : "hidden md:flex",
+          )}
+          style={{ width: sidebarWidth }}>
 
-        {/* Toolbar */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-3">
+            {/* Toolbar */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-3">
           <Button
             size="sm"
             className="h-8 flex-1 gap-1.5 text-xs"
@@ -947,7 +1028,15 @@ export default function ChatPage() {
           >
             <Search className="h-3.5 w-3.5" />
           </button>
-        </div>
+          <button
+            type="button"
+            title="Hide threads"
+            className="hidden h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground md:grid"
+            onClick={toggleLeftSidebar}
+          >
+            <PanelLeftClose className="h-3.5 w-3.5" />
+          </button>
+            </div>
 
         {/* Search */}
         <div className="shrink-0 border-b border-border px-3 py-2">
@@ -1117,7 +1206,39 @@ export default function ChatPage() {
             </button>
           </div>
         )}
-      </aside>
+          </aside>
+
+          {leftSidebarOpen && <ResizeDivider onDrag={handleSidebarDrag} />}
+        </>
+      ) : (
+        <div className="spark-glass-panel hidden w-9 shrink-0 flex-col items-center gap-2 border-r border-border py-2 md:flex">
+          <button
+            type="button"
+            title="Show threads"
+            onClick={toggleLeftSidebar}
+            className="rounded p-1.5 text-muted-foreground/40 transition hover:text-muted-foreground"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+          <div className="h-px w-4 bg-border" />
+          <button
+            type="button"
+            title="New chat"
+            onClick={() => { openLeftSidebar(); handleNewGlobalChat(); }}
+            className="rounded p-1.5 text-muted-foreground/40 transition hover:text-muted-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Threads"
+            onClick={toggleLeftSidebar}
+            className="rounded p-1.5 text-foreground transition hover:text-muted-foreground"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* ── Main area ── */}
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -1190,10 +1311,12 @@ export default function ChatPage() {
         {/* Right panel — only when a workspace thread is selected; hidden on mobile */}
         {activeProjectSlug && (
           <div className="hidden md:flex">
+            {rightPanelOpen && <ResizeDivider onDrag={handleRightPanelDrag} />}
             <WorkspaceRightPanel
               slug={activeProjectSlug}
               open={rightPanelOpen}
               onToggle={toggleRightPanel}
+              width={rightPanelWidth}
             />
           </div>
         )}
