@@ -26,6 +26,7 @@ from pathlib import Path
 
 import fire
 import yaml
+from spark_constants import get_spark_home
 
 # Load .env from ~/.spark/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.

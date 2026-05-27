@@ -4682,7 +4682,7 @@ def cmd_update(args):
                     "✗ Authentication failed — check your git credentials or SSH key."
                 )
             else:
-                print(f"✗ Failed to fetch updates from origin.")
+                print("✗ Failed to fetch updates from origin.")
                 if stderr:
                     print(f"  {stderr.splitlines()[0]}")
             sys.exit(1)
@@ -4799,7 +4799,7 @@ def cmd_update(args):
                     print(
                         f"  ℹ️  Local changes preserved in stash (ref: {auto_stash_ref})"
                     )
-                    print(f"  Restore manually with: git stash apply")
+                    print("  Restore manually with: git stash apply")
                 else:
                     _restore_stashed_changes(
                         git_cmd,
@@ -5326,7 +5326,7 @@ def cmd_profile(args):
         try:
             set_active_profile(name)
             if name == "default":
-                print(f"Switched to: default (~/.spark)")
+                print("Switched to: default (~/.spark)")
             else:
                 print(f"Switched to: {name}")
         except (ValueError, FileNotFoundError) as e:
@@ -5399,9 +5399,9 @@ def cmd_profile(args):
                         if not _is_wrapper_dir_in_path():
                             print(f"\n⚠ {_get_wrapper_dir()} is not in your PATH.")
                             print(
-                                f"  Add to your shell config (~/.bashrc or ~/.zshrc):"
+                                "  Add to your shell config (~/.bashrc or ~/.zshrc):"
                             )
-                            print(f'    export PATH="$HOME/.local/bin:$PATH"')
+                            print('    export PATH="$HOME/.local/bin:$PATH"')
 
             # Profile dir for display
             try:
@@ -5410,7 +5410,7 @@ def cmd_profile(args):
                 profile_dir_display = str(profile_dir)
 
             # Next steps
-            print(f"\nNext steps:")
+            print("\nNext steps:")
             print(f"  {name} setup              Configure API keys and model")
             print(f"  {name} chat               Start chatting")
             print(f"  {name} gateway start      Start the messaging gateway")
@@ -5421,7 +5421,7 @@ def cmd_profile(args):
                 print(
                     f"\n  ⚠ This profile has no API keys yet. Run '{name} setup' first,"
                 )
-                print(f"    or it will inherit keys from your shell environment.")
+                print("    or it will inherit keys from your shell environment.")
                 print(f"  Edit {profile_dir_display}/SOUL.md to customize personality")
             print()
 

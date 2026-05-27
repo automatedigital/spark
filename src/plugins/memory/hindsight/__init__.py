@@ -295,7 +295,7 @@ class HindsightMemoryProvider(MemoryProvider):
         else:
             deps_to_install = [cloud_dep]
 
-        print(f"\n  Checking dependencies...")
+        print("\n  Checking dependencies...")
         uv_path = shutil.which("uv")
         if not uv_path:
             print("  ⚠ uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh")
@@ -306,14 +306,14 @@ class HindsightMemoryProvider(MemoryProvider):
                     [uv_path, "pip", "install", "--python", sys.executable, "--quiet", "--upgrade"] + deps_to_install,
                     check=True, timeout=120, capture_output=True,
                 )
-                print(f"  ✓ Dependencies up to date")
+                print("  ✓ Dependencies up to date")
             except Exception as e:
                 print(f"  ⚠ Install failed: {e}")
                 print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
 
         # Step 3: Mode-specific config
         if mode == "cloud":
-            print(f"\n  Get your API key at https://ui.hindsight.vectorize.io\n")
+            print("\n  Get your API key at https://ui.hindsight.vectorize.io\n")
             existing_key = os.environ.get("HINDSIGHT_API_KEY", "")
             if existing_key:
                 masked = f"...{existing_key[-4:]}" if len(existing_key) > 4 else "set"
@@ -400,8 +400,8 @@ class HindsightMemoryProvider(MemoryProvider):
 
         print(f"\n  ✓ Hindsight memory configured ({mode} mode)")
         if env_writes:
-            print(f"  API keys saved to .env")
-        print(f"\n  Start a new session to activate.\n")
+            print("  API keys saved to .env")
+        print("\n  Start a new session to activate.\n")
 
     def get_config_schema(self):
         return [

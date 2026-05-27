@@ -1125,7 +1125,6 @@ def setup_terminal_backend(config: dict):
     elif selected_backend == "modal":
         print_success("Terminal backend: Modal")
         print_info("Serverless cloud sandboxes. Each session gets its own container.")
-        from tools.tool_backend_helpers import normalize_modal_mode
 
         config["terminal"]["modal_mode"] = "direct"
         print_info("Requires a Modal account: https://modal.com")

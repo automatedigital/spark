@@ -4756,7 +4756,7 @@ class SparkCLI:
         try:
             # Try fzf first (most common fuzzy finder)
             result = subprocess.run(
-                ["fzf", "--height=40%", "--reverse", "--preview=head -20 {}", f"--preview-window=right:50%"],
+                ["fzf", "--height=40%", "--reverse", "--preview=head -20 {}", "--preview-window=right:50%"],
                 capture_output=True, text=True, timeout=60,
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -7408,7 +7408,7 @@ class SparkCLI:
                             f' --user-data-dir="{_data_dir}"'
                             f" --no-first-run --no-default-browser-check"
                         )
-                    print(f"     Launch Chrome manually:")
+                    print("     Launch Chrome manually:")
                     print(f"     {chrome_cmd}")
             else:
                 print(f"   WARN Port {_port} is not reachable at {cdp_url}")

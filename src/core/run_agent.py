@@ -80,8 +80,7 @@ from agent.retry_utils import jittered_backoff
 from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
-    MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
-    COMPUTER_USE_GUIDANCE,
+    SESSION_SEARCH_GUIDANCE, COMPUTER_USE_GUIDANCE,
     APP_CREATION_GUIDANCE, build_soul_guidance,
     build_workspace_guidance,
 )
@@ -4396,19 +4395,19 @@ class AIAgent:
         self._codex_streamed_text_parts: list = []
         for attempt in range(max_stream_retries + 1):
             collected_output_items: list = []
-            def _recover_from_stream_parts(exc: Exception) -> Any:
-                if collected_output_items:
+            def _recover_from_stream_parts(exc: Exception, _items: list = collected_output_items) -> Any:
+                if _items:
                     logger.warning(
                         "Codex stream failed after output items (%s); "
                         "recovering from %d collected output items. %s",
-                        exc, len(collected_output_items), self._client_log_context(),
+                        exc, len(_items), self._client_log_context(),
                     )
                     return SimpleNamespace(
-                        output=list(collected_output_items),
+                        output=list(_items),
                         status="completed",
                         model=api_kwargs.get("model"),
                     )
-                if self._codex_streamed_text_parts and not has_tool_calls:
+                if self._codex_streamed_text_parts and not has_tool_calls:  # noqa: B023
                     assembled = "".join(self._codex_streamed_text_parts)
                     logger.warning(
                         "Codex stream failed after text deltas (%s); "
@@ -8638,7 +8637,7 @@ class AIAgent:
                         elif _resp_error_code == 504:
                             _failure_hint = f"upstream gateway timeout (504, {api_duration:.0f}s)"
                         elif _resp_error_code == 429:
-                            _failure_hint = f"rate limited by upstream provider (429)"
+                            _failure_hint = "rate limited by upstream provider (429)"
                         elif _resp_error_code in (500, 502):
                             _failure_hint = f"upstream server error ({_resp_error_code}, {api_duration:.0f}s)"
                         elif _resp_error_code in (503, 529):

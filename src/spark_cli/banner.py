@@ -5,7 +5,6 @@ Pure display functions with no SparkCLI state dependency.
 
 import json
 import logging
-import shutil
 import subprocess
 import threading
 import time
@@ -14,8 +13,6 @@ from core.spark_constants import get_spark_home
 from typing import Dict, List, Optional
 
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 
 from prompt_toolkit import print_formatted_text as _pt_print
 from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
@@ -92,7 +89,7 @@ SPARK_CADUCEUS = """[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣴
 [#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⠿⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
 [#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]"""
 
-SPARK_WORDMARK = """[bold #FFD700]  ____                  _   [/]
+SPARK_WORDMARK = r"""[bold #FFD700]  ____                  _   [/]
 [bold #FFBF00] / ___| _ __   __ _ _ __| | __[/]
 [bold #FFBF00] \___ \| '_ \ / _` | '__| |/ /[/]
 [#CD7F32]  ___) | |_) | (_| | |  |   < [/]

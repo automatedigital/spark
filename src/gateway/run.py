@@ -26,7 +26,7 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, Any, List
+from typing import Optional, Any
 
 # ---------------------------------------------------------------------------
 # SSL certificate auto-detection for NixOS and other non-standard systems.

@@ -308,14 +308,14 @@ def run_debug_share(args):
 
     # Print results
     label_width = max(len(k) for k in urls)
-    print(f"\nDebug report uploaded:")
+    print("\nDebug report uploaded:")
     for label, url in urls.items():
         print(f"  {label:<{label_width}}  {url}")
 
     if failures:
         print(f"\n  (failed to upload: {', '.join(failures)})")
 
-    print(f"\nShare these links with the Spark team for support.")
+    print("\nShare these links with the Spark team for support.")
 
 
 def run_debug(args):

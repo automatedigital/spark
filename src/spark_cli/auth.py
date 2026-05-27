@@ -27,7 +27,6 @@ import subprocess
 import threading
 import time
 import uuid
-import webbrowser
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field

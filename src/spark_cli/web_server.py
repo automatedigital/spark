@@ -3953,7 +3953,7 @@ def _web_cmd_status(session_id: str) -> str:
     source = row.get("source") or "web"
     turn_count = sum(1 for m in messages if m.get("role") == "user")
     lines = [
-        f"**Session status**\n",
+        "**Session status**\n",
         f"• **ID:** `{session_id}`",
         f"• **Title:** {title}",
         f"• **Model:** {model}",
@@ -4068,7 +4068,6 @@ def _build_context_augmented_message(session_id: str, user_message: str, context
     if not context_items:
         return user_message
 
-    from pathlib import Path as _Path
     workspace_root = _get_workspace_root()
 
     parts: list[str] = []
@@ -5127,7 +5126,6 @@ async def _generate_summary(text: str, filename: str) -> str:
 
 @app.post("/api/summarize-file")
 async def summarize_file(body: SummarizeFileRequest):
-    from pathlib import Path as _Path
     from core.spark_state import SessionDB
 
     workspace_root = _get_workspace_root(body.workspace_slug or None)

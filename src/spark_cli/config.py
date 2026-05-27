@@ -2344,7 +2344,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             config["stt"] = stt
             save_config(config)
             if not quiet:
-                print(f"  ✓ Migrated legacy stt.model to provider-specific config")
+                print("  ✓ Migrated legacy stt.model to provider-specific config")
 
     # ── Version 14 → 15: add explicit gateway interim-message gate ──
     if current_ver < 15:

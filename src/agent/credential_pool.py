@@ -17,7 +17,6 @@ from core.spark_constants import OPENROUTER_BASE_URL
 import spark_cli.auth as auth_mod
 from spark_cli.auth import (
     CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
-    DEFAULT_AGENT_KEY_MIN_TTL_SECONDS,
     PROVIDER_REGISTRY,
     _auth_store_lock,
     _codex_access_token_is_expiring,

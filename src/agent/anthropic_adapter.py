@@ -18,7 +18,7 @@ from pathlib import Path
 
 from core.spark_constants import get_spark_home
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Optional
 
 try:
     import anthropic as _anthropic_sdk
@@ -240,7 +240,7 @@ def _common_betas_for_base_url(base_url: str | None) -> list[str]:
     return _COMMON_BETAS
 
 
-def build_anthropic_client(api_key: str, base_url: str = None):
+def build_anthropic_client(api_key: str, base_url: Optional[str] = None):
     """Create an Anthropic client, auto-detecting setup-tokens vs API keys.
 
     Returns an anthropic.Anthropic instance.

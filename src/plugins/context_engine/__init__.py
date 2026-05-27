@@ -23,7 +23,10 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from agent.context_engine import ContextEngine
 
 logger = logging.getLogger(__name__)
 

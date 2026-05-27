@@ -25,7 +25,6 @@ from agent.skill_utils import (
 from core.spark_constants import (
     display_spark_home,
     display_spark_workspace,
-    get_public_base_url,
     get_server_hostname,
     get_skills_dir,
     get_spark_home,
