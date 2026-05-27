@@ -142,23 +142,59 @@ function TokenBudgetIndicator({
   );
 }
 
-const TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
+const AT_RE = /(@\S+)/g;
+const SLASH_RE = new RegExp("((?:^|(?<=[ \\t]))\\/\\S+)", "gm");
 
-function renderMirror(text: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  let last = 0;
-  TOKEN_RE.lastIndex = 0;
+function renderMirror(text: string, cursorPos: number, showCursor: boolean): React.ReactNode[] {
+  type Range = { start: number; end: number; text: string };
+  const ranges: Range[] = [];
+
   let m: RegExpExecArray | null;
-  while ((m = TOKEN_RE.exec(text)) !== null) {
-    if (m.index > last) nodes.push(text.slice(last, m.index));
-    nodes.push(
-      <mark key={m.index} className="bg-transparent text-primary font-medium not-italic">
-        {m[0]}
-      </mark>
-    );
-    last = m.index + m[0].length;
+  AT_RE.lastIndex = 0;
+  while ((m = AT_RE.exec(text)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
   }
-  if (last < text.length) nodes.push(text.slice(last));
+  SLASH_RE.lastIndex = 0;
+  while ((m = SLASH_RE.exec(text)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+  }
+  ranges.sort((a, b) => a.start - b.start);
+
+  // Build a flat list of segments with optional cursor injected at cursorPos
+  type Seg = { pos: number; content: React.ReactNode; key: string };
+  const segs: Seg[] = [];
+  let last = 0;
+  for (const r of ranges) {
+    if (r.start > last) segs.push({ pos: last, content: text.slice(last, r.start), key: `t${last}` });
+    segs.push({ pos: r.start, content: <mark key={r.start} className="bg-transparent text-primary font-bold not-italic">{r.text}</mark>, key: `m${r.start}` });
+    last = r.end;
+  }
+  if (last < text.length) segs.push({ pos: last, content: text.slice(last), key: `t${last}` });
+
+  const nodes: React.ReactNode[] = [];
+  const cursor = showCursor ? <span key="caret" className="prompt-cursor inline-block w-px h-[1.1em] bg-foreground/70 align-text-bottom" /> : null;
+  let emitted = false;
+
+  for (const seg of segs) {
+    const content = seg.content;
+    if (!emitted && cursor !== null && typeof content === "string") {
+      const str = content as string;
+      const segEnd = seg.pos + str.length;
+      if (cursorPos <= segEnd) {
+        const off = cursorPos - seg.pos;
+        nodes.push(str.slice(0, off));
+        nodes.push(cursor);
+        nodes.push(str.slice(off));
+        emitted = true;
+        continue;
+      }
+    } else if (!emitted && cursor !== null && cursorPos === seg.pos) {
+      nodes.push(cursor);
+      emitted = true;
+    }
+    nodes.push(content);
+  }
+  if (!emitted && cursor !== null) nodes.push(cursor);
   nodes.push(" ");
   return nodes;
 }
@@ -457,6 +493,9 @@ export function PromptBar({
   const [showAtMenu, setShowAtMenu] = useState(false);
   const [menuHasItems, setMenuHasItems] = useState(false);
   const [atQuery, setAtQuery] = useState("");
+  const [slashTokenStart, setSlashTokenStart] = useState<number>(-1);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [cursorPos, setCursorPos] = useState(0);
   const [uploading, setUploading] = useState(false);
 
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
@@ -501,8 +540,8 @@ export function PromptBar({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showMenu || showAtMenu) {
       if (["ArrowUp", "ArrowDown", "Escape"].includes(e.key)) return;
-      if (e.key === "Tab") return;
-      if (e.key === "Enter" && !e.shiftKey && menuHasItems) return;
+      if (e.key === "Tab") { e.preventDefault(); return; }
+      if (e.key === "Enter" && !e.shiftKey && (menuHasItems || showAtMenu)) { e.preventDefault(); return; }
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -527,8 +566,19 @@ export function PromptBar({
     const val = e.target.value;
     const cursor = e.target.selectionStart ?? val.length;
     setInput(val);
-    setShowMenu(val.startsWith("/"));
+    setCursorPos(cursor);
     const beforeCursor = val.slice(0, cursor);
+    const slashMatch = /(^|\s)(\/\S*)$/.exec(beforeCursor);
+    if (slashMatch) {
+      const token = slashMatch[2];
+      setSlashQuery(token.slice(1));
+      setSlashTokenStart(cursor - token.length);
+      setShowMenu(true);
+    } else {
+      setShowMenu(false);
+      setSlashTokenStart(-1);
+      setSlashQuery("");
+    }
     const atMatch = /(@\S*)$/.exec(beforeCursor);
     if (atMatch) {
       setAtQuery(atMatch[1].slice(1));
@@ -539,10 +589,24 @@ export function PromptBar({
   };
 
   const handleSlashSelect = (command: string) => {
-    setInput(`/${command} `);
+    const textarea = textareaRef.current;
+    const insertToken = `/${command} `;
+    if (slashTokenStart >= 0) {
+      const tokenEnd = slashTokenStart + 1 + slashQuery.length;
+      const newInput = input.slice(0, slashTokenStart) + insertToken + input.slice(tokenEnd);
+      setInput(newInput);
+      setTimeout(() => {
+        const pos = slashTokenStart + insertToken.length;
+        if (textarea) { textarea.selectionStart = textarea.selectionEnd = pos; textarea.focus(); }
+      }, 0);
+    } else {
+      setInput(insertToken);
+      setTimeout(() => textarea?.focus(), 0);
+    }
     setShowMenu(false);
     setMenuHasItems(false);
-    textareaRef.current?.focus();
+    setSlashTokenStart(-1);
+    setSlashQuery("");
   };
 
   const handleAtSelect = (path: string, isDir: boolean) => {
@@ -555,13 +619,14 @@ export function PromptBar({
     const atStart = cursor - atMatch[0].length;
 
     if (!isDir && onAttachPath) {
-      // Route file selection into context tray; remove @token from prompt
-      const newInput = input.slice(0, atStart) + input.slice(cursor);
-      setInput(newInput.trimEnd());
+      const newToken = `@${path} `;
+      const newInput = input.slice(0, atStart) + newToken + input.slice(cursor);
+      setInput(newInput);
       setShowAtMenu(false);
       onAttachPath(path);
       setTimeout(() => {
-        textarea.selectionStart = textarea.selectionEnd = atStart;
+        const pos = atStart + newToken.length;
+        textarea.selectionStart = textarea.selectionEnd = pos;
         textarea.focus();
       }, 0);
       return;
@@ -613,7 +678,7 @@ export function PromptBar({
     <div className="px-3 pb-3 pt-2 shrink-0 relative">
       {showMenu && (
         <SlashCommandMenu
-          query={input.slice(1)}
+          query={slashQuery}
           onSelect={handleSlashSelect}
           onClose={() => setShowMenu(false)}
           onItemCountChange={(count) => setMenuHasItems(count > 0)}
@@ -646,19 +711,18 @@ export function PromptBar({
             aria-hidden
             className="absolute inset-0 pointer-events-none overflow-hidden px-4 pt-3.5 pb-2 text-sm text-foreground whitespace-pre-wrap break-words select-none"
           >
-            {input ? renderMirror(input) : (
-              isFocused && (
-                <span className="prompt-cursor inline-block w-px h-[1.1em] bg-foreground/70 align-text-bottom" />
-              )
-            )}
+            {renderMirror(input, cursorPos, isFocused)}
           </div>
           <textarea
             ref={textareaRef}
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onKeyUp={(e) => setCursorPos(e.currentTarget.selectionStart ?? 0)}
+            onClick={(e) => setCursorPos(e.currentTarget.selectionStart ?? 0)}
+            onSelect={(e) => setCursorPos(e.currentTarget.selectionStart ?? 0)}
             onScroll={syncScroll}
-            onFocus={() => setIsFocused(true)}
+            onFocus={(e) => { setIsFocused(true); setCursorPos(e.currentTarget.selectionStart ?? 0); }}
             onBlur={() => setIsFocused(false)}
             disabled={blocked}
             placeholder={
@@ -666,7 +730,7 @@ export function PromptBar({
             }
             rows={1}
             className="relative z-10 w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:cursor-not-allowed min-h-[52px] max-h-[240px] overflow-y-auto"
-            style={{ height: "52px", color: "transparent", caretColor: (isFocused && !input) ? "transparent" : "hsl(var(--primary))" }}
+            style={{ height: "52px", color: "transparent", caretColor: "transparent" }}
           />
         </div>
 

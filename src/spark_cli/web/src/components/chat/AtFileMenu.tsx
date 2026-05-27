@@ -48,7 +48,7 @@ export function AtFileMenu({ query, workspaceSlug, onSelect, onClose }: AtFileMe
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setActiveIdx((i) => (i - 1 + filtered.length) % filtered.length);
-      } else if (e.key === "Tab") {
+      } else if (e.key === "Tab" || e.key === "Enter") {
         e.preventDefault();
         const entry = filtered[activeIdx];
         if (entry) onSelect(entry.path, entry.type === "dir");
