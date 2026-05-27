@@ -26,15 +26,18 @@ import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
 import { FeedbackForm } from "@/components/chat/FeedbackForm";
 import { StatusPill } from "@/components/chat/StatusPill";
 import { PromptBar } from "@/components/chat/PromptBar";
+import { ContextTray } from "@/components/chat/ContextTray";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
 import { MessageRowSkeleton } from "@/components/Skeleton";
+import { makeFileContextItem } from "@/lib/context";
+import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
 
 type ChatMessage =
-  | { id: string; role: "user"; content: string; sessionIdx?: number }
+  | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[] }
   | { id: string; role: "assistant"; content: string; streaming?: boolean }
   | {
       id: string;
@@ -233,6 +236,10 @@ type ApprovalMsg = Extract<ChatMessage, { role: "approval" }>;
 type NoteMsg = Extract<ChatMessage, { role: "note" }>;
 type FeedbackFormMsg = Extract<ChatMessage, { role: "feedback_form" }>;
 
+const MODE_SHORT: Record<string, string> = {
+  path_only: "path", excerpt: "excerpt", summary: "summary", full: "full", search: "search",
+};
+
 const UserRow = memo(function UserRow({
   msg, hasSession, streaming, onEdit, onRetry, onFork, onCopy,
 }: {
@@ -244,31 +251,63 @@ const UserRow = memo(function UserRow({
   onFork: (idx: number) => void;
   onCopy: (text: string) => void;
 }) {
+  const [expandedChip, setExpandedChip] = useState<string | null>(null);
+
   return (
     <div className="flex gap-2 flex-row-reverse group/msg">
       <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-primary/20 text-primary">
         <User className="h-3.5 w-3.5" />
       </div>
-      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-primary/10 text-foreground relative">
-        <p className="whitespace-pre-wrap leading-relaxed">{renderTokens(msg.content)}</p>
-        {hasSession && msg.sessionIdx != null && (
-          <div className="absolute -top-2 right-0 opacity-0 group-hover/msg:opacity-100 flex gap-1 transition-opacity">
-            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Edit & retry"
-              onClick={() => onEdit(msg.sessionIdx!, msg.content)}>
-              <Pencil className="h-3 w-3" />
-            </Button>
-            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Retry"
-              disabled={streaming} onClick={() => onRetry(msg.sessionIdx!)}>
-              <RotateCcw className="h-3 w-3" />
-            </Button>
-            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Fork from here"
-              disabled={streaming} onClick={() => onFork(msg.sessionIdx!)}>
-              <GitFork className="h-3 w-3" />
-            </Button>
-            <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Copy"
-              onClick={() => onCopy(msg.content)}>
-              <Copy className="h-3 w-3" />
-            </Button>
+      <div className="max-w-[85%] flex flex-col items-end gap-1">
+        <div className="rounded-lg px-3 py-2 text-sm bg-primary/10 text-foreground relative">
+          <p className="whitespace-pre-wrap leading-relaxed">{renderTokens(msg.content)}</p>
+          {hasSession && msg.sessionIdx != null && (
+            <div className="absolute -top-2 right-0 opacity-0 group-hover/msg:opacity-100 flex gap-1 transition-opacity">
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Edit & retry"
+                onClick={() => onEdit(msg.sessionIdx!, msg.content)}>
+                <Pencil className="h-3 w-3" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Retry"
+                disabled={streaming} onClick={() => onRetry(msg.sessionIdx!)}>
+                <RotateCcw className="h-3 w-3" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Fork from here"
+                disabled={streaming} onClick={() => onFork(msg.sessionIdx!)}>
+                <GitFork className="h-3 w-3" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Copy"
+                onClick={() => onCopy(msg.content)}>
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+        {msg.contextItems && msg.contextItems.length > 0 && (
+          <div className="flex flex-wrap gap-1 justify-end">
+            {msg.contextItems.map((item) => {
+              const name = item.label ?? item.source_path?.split("/").pop() ?? item.id;
+              const modeLabel = MODE_SHORT[item.inclusion_mode] ?? item.inclusion_mode;
+              const isExpanded = expandedChip === item.id;
+              return (
+                <div key={item.id} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedChip(isExpanded ? null : item.id)}
+                    className="flex items-center gap-1 rounded border border-border/40 bg-secondary/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition"
+                    title={`${name} · ${modeLabel} mode`}
+                  >
+                    <span className="font-mono truncate max-w-[80px]">{name}</span>
+                    <span className="opacity-50">·</span>
+                    <span>{modeLabel}</span>
+                  </button>
+                  {isExpanded && item.content && (
+                    <div className="absolute bottom-full mb-1 right-0 z-50 w-72 rounded-md border border-border bg-card shadow-lg p-2 text-[11px] font-mono text-foreground/80 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                      {item.content}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -369,6 +408,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -676,7 +716,13 @@ export function ChatPanel({
 
     setInput("");
     setError(null);
-    setChatMessages((prev) => [...prev, { id: nid(), role: "user", content: text }]);
+    const itemsToSend = contextItems;
+    // Drop one-turn items after send; keep pinned items
+    setContextItems((prev) => prev.filter((i) => i.scope === "pinned"));
+    setChatMessages((prev) => [
+      ...prev,
+      { id: nid(), role: "user", content: text, contextItems: itemsToSend.length ? itemsToSend : undefined },
+    ]);
 
     // /feedback is handled entirely in the frontend — inject the form immediately,
     // send to backend only to prevent agent fallthrough (backend returns "").
@@ -691,14 +737,14 @@ export function ChatPanel({
       let sid = activeSessionId;
 
       if (!sid) {
-        const resp = await api.postConversation(text);
+        const resp = await api.postConversation(text, undefined, itemsToSend);
         sid = resp.session_id;
         activeSessionRef.current = sid;
         setActiveSessionId(sid);
         onSessionCreated?.(sid, text);
       } else {
         activeSessionRef.current = sid;
-        const resp = await api.postConversationMessage(sid, text);
+        const resp = await api.postConversationMessage(sid, text, itemsToSend);
         if (resp.session_id && resp.session_id !== sid) {
           sid = resp.session_id;
           activeSessionRef.current = sid;
@@ -803,17 +849,31 @@ export function ChatPanel({
     const res = workspaceSlug
       ? await api.uploadWorkspaceFiles(workspaceSlug, files, "files")
       : await api.uploadChatFiles(files);
-    const refs = res.saved.map((f) => {
+    for (const f of res.saved) {
       const path = "path" in f ? f.path : `files/${f.filename}`;
-      return `@${path}`;
-    });
-    if (!refs.length) return;
-    setInput((prev) => {
-      const prefix = prev.trimEnd();
-      const addition = refs.join(" ");
-      return prefix ? `${prefix}\n${addition} ` : `${addition} `;
-    });
+      const sizeBytes = "size" in f ? (f as { size?: number }).size ?? 0 : 0;
+      setContextItems((prev) => [...prev, makeFileContextItem(path, sizeBytes)]);
+    }
   }, [workspaceSlug]);
+
+  const attachPath = useCallback((path: string, sizeBytes = 0) => {
+    setContextItems((prev) => {
+      if (prev.some((i) => i.source_path === path)) return prev;
+      return [...prev, makeFileContextItem(path, sizeBytes)];
+    });
+  }, []);
+
+  const removeContextItem = useCallback((id: string) => {
+    setContextItems((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
+  const updateContextMode = useCallback((id: string, mode: InclusionMode) => {
+    setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, inclusion_mode: mode } : i));
+  }, []);
+
+  const updateContextScope = useCallback((id: string, scope: ContextScope) => {
+    setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, scope } : i));
+  }, []);
 
   // Stable handlers passed to memoized row components
   const handleEdit = useCallback((idx: number, text: string) => {
@@ -1139,6 +1199,13 @@ export function ChatPanel({
 
       <SessionInfoBar stats={sessionStats} />
 
+      <ContextTray
+        items={contextItems}
+        onRemove={removeContextItem}
+        onUpdateMode={updateContextMode}
+        onUpdateScope={updateContextScope}
+      />
+
       <PromptBar
         input={input}
         setInput={setInput}
@@ -1146,6 +1213,7 @@ export function ChatPanel({
         onSend={() => void sendMessage()}
         onStop={() => void stop()}
         onUploadFiles={uploadFiles}
+        onAttachPath={attachPath}
         disabled={!!editingUser}
         workspaceSlug={workspaceSlug}
       />

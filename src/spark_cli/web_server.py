@@ -3441,10 +3441,12 @@ class KanbanUpdate(BaseModel):
 class ConversationCreate(BaseModel):
     message: str
     model: Optional[str] = None
+    context_items: list = []
 
 
 class ConversationMessage(BaseModel):
     message: str
+    context_items: list = []
 
 
 class ConversationInterrupt(BaseModel):
@@ -3948,12 +3950,109 @@ def _web_cmd_status(session_id: str) -> str:
     return "\n".join(lines)
 
 
+def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional[str]:
+    """Return the text to inject for a context item, or None if nothing to inject."""
+    from spark_cli.context_models import InclusionMode
+
+    mode = item.get("inclusion_mode", "full")
+    source_path = item.get("source_path")
+    content = item.get("content")
+
+    if content:
+        return content
+
+    if not source_path:
+        return None
+
+    try:
+        resolved = (workspace_root / source_path.lstrip("/")).resolve()
+        resolved.relative_to(workspace_root.resolve())
+    except (ValueError, Exception):
+        return None
+
+    if mode == InclusionMode.path_only:
+        return None
+
+    if not resolved.exists() or not resolved.is_file():
+        return None
+
+    try:
+        if mode == InclusionMode.full:
+            return resolved.read_text(errors="replace")
+
+        if mode == InclusionMode.excerpt:
+            import json as _json
+            excerpt_range = item.get("excerpt_range")
+            lines = resolved.read_text(errors="replace").splitlines()
+            if excerpt_range:
+                try:
+                    start, end = _json.loads(excerpt_range) if isinstance(excerpt_range, str) else excerpt_range
+                    return "\n".join(lines[max(0, start - 1):end])
+                except Exception:
+                    pass
+            return "\n".join(lines[:100])
+
+        if mode == InclusionMode.search:
+            import re as _re
+            query = item.get("search_query", "")
+            if not query:
+                return None
+            text = resolved.read_text(errors="replace")
+            lines = text.splitlines()
+            pattern = _re.compile(_re.escape(query), _re.IGNORECASE)
+            snippets = []
+            for i, line in enumerate(lines):
+                if pattern.search(line):
+                    ctx_start = max(0, i - 3)
+                    ctx_end = min(len(lines), i + 4)
+                    snippets.append("\n".join(lines[ctx_start:ctx_end]))
+                    if len(snippets) >= 5:
+                        break
+            return "\n---\n".join(snippets) if snippets else None
+
+    except Exception:
+        return None
+
+    return None
+
+
+def _build_context_augmented_message(session_id: str, user_message: str, context_items: list) -> str:
+    """Prepend resolved context item content to the user message."""
+    if not context_items:
+        return user_message
+
+    from pathlib import Path as _Path
+    workspace_root = (get_spark_home() / "workspace").resolve()
+
+    parts: list[str] = []
+    for item in context_items:
+        source_path = item.get("source_path")
+        label = item.get("label") or (source_path.split("/")[-1] if source_path else "context")
+        mode = item.get("inclusion_mode", "full")
+        content = _resolve_context_item_content(item, workspace_root)
+
+        if mode == "path_only" and source_path:
+            parts.append(f"[Context file: {source_path}]")
+        elif content:
+            parts.append(f"[Context: {label}]\n{content}\n[/Context]")
+
+    if not parts:
+        return user_message
+
+    context_block = "\n\n".join(parts)
+    return f"{context_block}\n\n---\n\n{user_message}"
+
+
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
     conversation_history: Optional[list[dict[str, Any]]] = None,
+    context_items: Optional[list] = None,
 ) -> Any:
     from tools.approval import reset_current_session_key, set_current_session_key
+
+    if context_items:
+        user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
 
     tok = set_current_session_key(agent.session_id)
     try:
@@ -4218,6 +4317,98 @@ def _session_message_count(session_id: str) -> int:
         return 0
 
 
+_MAX_CONTEXT_ITEMS = 20
+_MAX_CONTEXT_ITEM_BYTES = 500 * 1024  # 500 KB per item in full mode
+
+
+def _validate_context_items(raw_items: list, workspace_slug: Optional[str] = None) -> list:
+    """Validate incoming context items. Returns validated list or raises HTTPException."""
+    if not raw_items:
+        return []
+    if len(raw_items) > _MAX_CONTEXT_ITEMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many context items: max {_MAX_CONTEXT_ITEMS}, got {len(raw_items)}",
+        )
+    from spark_cli.context_models import ContextItem, InclusionMode
+
+    workspace_root = (get_spark_home() / "workspace").resolve()
+    project_root = (workspace_root / workspace_slug).resolve() if workspace_slug else workspace_root
+
+    validated = []
+    for raw in raw_items:
+        try:
+            item = ContextItem.model_validate(raw)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid context item: {exc}") from exc
+
+        if item.source_path:
+            try:
+                resolved = (project_root / item.source_path.lstrip("/")).resolve()
+                resolved.relative_to(project_root)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path traversal detected in context item: {item.source_path!r}",
+                )
+
+        if item.inclusion_mode == InclusionMode.full and item.size_bytes > _MAX_CONTEXT_ITEM_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Context item {item.id!r} exceeds size limit "
+                    f"({item.size_bytes} > {_MAX_CONTEXT_ITEM_BYTES} bytes)"
+                ),
+            )
+
+        validated.append(item.model_dump())
+    return validated
+
+
+def _persist_context_items(session_id: str, raw_items: list) -> None:
+    if not raw_items:
+        return
+    try:
+        import json as _json
+        import time as _time
+        from spark_cli.context_models import ContextItem
+        from core.spark_state import SessionDB
+
+        items = [ContextItem.model_validate(i) for i in raw_items]
+        db = SessionDB()
+        try:
+            now = _time.time()
+            db._conn.executemany(
+                "INSERT OR REPLACE INTO context_items "
+                "(id, session_id, type, source_path, inclusion_mode, scope, content, "
+                "content_ref, size_bytes, excerpt_range, search_query, label, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        item.id,
+                        session_id,
+                        item.type,
+                        item.source_path,
+                        item.inclusion_mode,
+                        item.scope,
+                        item.content,
+                        item.content_ref,
+                        item.size_bytes,
+                        _json.dumps(item.excerpt_range) if item.excerpt_range else None,
+                        item.search_query,
+                        item.label,
+                        now,
+                    )
+                    for item in items
+                ],
+            )
+            db._conn.commit()
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("context items persist failed session=%s", session_id, exc_info=True)
+
+
 @app.patch("/api/sessions/{session_id}/kanban")
 async def update_session_kanban(session_id: str, body: KanbanUpdate):
     if body.status not in _KANBAN_STATUSES:
@@ -4389,6 +4580,8 @@ async def create_conversation(body: ConversationCreate):
         _log.debug("session create emit failed", exc_info=True)
 
     message = body.message
+    validated_items = _validate_context_items(body.context_items)
+    _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
@@ -4404,8 +4597,9 @@ async def create_conversation(body: ConversationCreate):
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
+                _items = validated_items
                 result = await loop.run_in_executor(
-                    None, lambda: _run_web_agent_turn(agent, message, None)
+                    None, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
         except Exception:
             _log.exception("Web chat agent error session=%s", session_id)
@@ -4492,6 +4686,8 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         db.close()
 
     message = body.message
+    validated_items = _validate_context_items(body.context_items)
+    _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
@@ -4507,8 +4703,9 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
+                _items = validated_items
                 result = await loop.run_in_executor(
-                    None, lambda: _run_web_agent_turn(agent, message, conversation_history)
+                    None, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
                 )
         except Exception:
             _log.exception("Web chat follow-up error session=%s", session_id)
@@ -4886,6 +5083,7 @@ register_workspace_routes(app)
 class WorkspaceConvCreate(BaseModel):
     message: str
     model: Optional[str] = None
+    context_items: list = []
 
 
 @app.post("/api/workspace/projects/{slug}/conversations")
@@ -4987,6 +5185,8 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
 
     context_prefix = f"[Project: {slug} | Path: {project_dir}]\n\n"
     message = context_prefix + body.message
+    validated_items = _validate_context_items(body.context_items, workspace_slug=slug)
+    _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
@@ -5005,8 +5205,9 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
+                _items = validated_items
                 result = await loop.run_in_executor(
-                    None, lambda: _run_web_agent_turn(agent, message, None)
+                    None, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
         except Exception:
             _log.exception("Workspace chat agent error session=%s slug=%s", session_id, slug)

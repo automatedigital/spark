@@ -219,19 +219,19 @@ export const api = {
     ),
 
   // Web chat conversations
-  postConversation: (message: string, model?: string) =>
+  postConversation: (message: string, model?: string, contextItems?: unknown[]) =>
     fetchJSON<{ session_id: string; ok: boolean }>("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, model }),
+      body: JSON.stringify({ message, model, context_items: contextItems ?? [] }),
     }),
-  postConversationMessage: (sessionId: string, message: string) =>
+  postConversationMessage: (sessionId: string, message: string, contextItems?: unknown[]) =>
     fetchJSON<{ session_id: string; ok: boolean }>(
       `/api/conversations/${encodeURIComponent(sessionId)}/messages`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, context_items: contextItems ?? [] }),
       },
     ),
   getConversationStream: (sessionId: string): EventSource =>

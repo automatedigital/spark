@@ -12,6 +12,7 @@ interface PromptBarProps {
   onSend: () => void;
   onStop: () => void;
   onUploadFiles?: (files: File[]) => Promise<void>;
+  onAttachPath?: (path: string, sizeBytes?: number) => void;
   disabled?: boolean;
   workspaceSlug?: string;
 }
@@ -316,6 +317,7 @@ export function PromptBar({
   onSend,
   onStop,
   onUploadFiles,
+  onAttachPath,
   disabled,
   workspaceSlug,
 }: PromptBarProps) {
@@ -420,6 +422,20 @@ export function PromptBar({
     const atMatch = /(@\S*)$/.exec(beforeCursor);
     if (!atMatch) return;
     const atStart = cursor - atMatch[0].length;
+
+    if (!isDir && onAttachPath) {
+      // Route file selection into context tray; remove @token from prompt
+      const newInput = input.slice(0, atStart) + input.slice(cursor);
+      setInput(newInput.trimEnd());
+      setShowAtMenu(false);
+      onAttachPath(path);
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = atStart;
+        textarea.focus();
+      }, 0);
+      return;
+    }
+
     const newToken = `@${path}${isDir ? "/" : " "}`;
     const newInput = input.slice(0, atStart) + newToken + input.slice(cursor);
     setInput(newInput);

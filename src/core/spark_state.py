@@ -96,6 +96,35 @@ CREATE INDEX IF NOT EXISTS idx_sessions_source ON sessions(source);
 CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS context_items (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    source_path TEXT,
+    inclusion_mode TEXT NOT NULL DEFAULT 'full',
+    scope TEXT NOT NULL DEFAULT 'one_turn',
+    content TEXT,
+    content_ref TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    excerpt_range TEXT,
+    search_query TEXT,
+    label TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_context_items_session ON context_items(session_id);
+
+CREATE TABLE IF NOT EXISTS session_briefs (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    text TEXT NOT NULL DEFAULT '',
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_manifests (
+    workspace_slug TEXT PRIMARY KEY,
+    data_json TEXT NOT NULL DEFAULT '{}',
+    updated_at REAL NOT NULL
+);
 """
 
 FTS_SQL = """
