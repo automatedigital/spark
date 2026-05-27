@@ -281,27 +281,27 @@ Large files are impractical to include in full. This phase adds AI-generated sum
 
 When the model produces outputs that were written to disk (files, reports, generated code), users should be able to attach and reference those outputs in subsequent turns without re-running the tool or copy-pasting paths.
 
-- [ ] **Detect persisted-output in tool bubbles**
+- [x] **Detect persisted-output in tool bubbles**
   _What_: Parse tool result bubbles in the chat UI to detect whether the output references a local file path (e.g., `Saved to /path/to/output.py`). Flag these tool results as "has persisted output" and store the detected paths alongside the message record.
   _Why_: Tool outputs that write files are the most natural candidates for follow-up context. Today, users must manually type or copy the path. Detecting it automatically is the first step to surface-level integration.
 
-- [ ] **Surface safe output paths as references**
+- [x] **Surface safe output paths as references**
   _What_: For tool results with detected output paths, show a small "Attach to tray" chip below the tool bubble. Clicking it adds the file to the context tray with a default inclusion mode (e.g., `path-only` or `summary`). Only surface paths that pass the workspace safety check (no traversal, within workspace root).
   _Why_: The chip closes the loop between "model produced this file" and "user can reference it in the next turn." Without it, the output sits in the chat as a string and the user has no obvious path to re-attach it.
 
-- [ ] **Pin/summarize/attach-excerpt actions for outputs**
+- [x] **Pin/summarize/attach-excerpt actions for outputs**
   _What_: Once a tool output is in the tray, it should support the same inclusion-mode controls as any other attachment: pin across turns, switch to summary (trigger on-demand summary generation), select an excerpt. The "Summarize" action is especially useful here since tool outputs are often large generated files.
   _Why_: Tool outputs can be very large (generated codebases, CSV reports, etc.). Without inclusion-mode controls, attaching them in full would always be expensive. The same controls that apply to user-added files should apply equally here.
 
-- [ ] **Avoid raw links to unsafe/non-local paths**
+- [x] **Avoid raw links to unsafe/non-local paths**
   _What_: If a tool output references a path outside the workspace root (e.g., `/tmp/something`), do not surface an "Attach" chip. Show the path as plain text only. Do not create a clickable link or tray attachment for it.
   _Why_: Tool outputs could theoretically reference sensitive system paths. We must not silently allow out-of-workspace files to enter the context tray through a trusted-looking chip.
 
-- [ ] **Large outputs can be summarized/attached without full dump**
+- [x] **Large outputs can be summarized/attached without full dump**
   _What_: If the detected output file is larger than the full-content threshold (from Phase 1), default the chip to `summary` mode rather than `full`. Show a tooltip explaining why and let the user override.
   _Why_: A tool that generates a 50KB file should not silently push 50KB of tokens into the next turn. Defaulting to summary mode for large outputs prevents the most common accidental over-inclusion scenario.
 
-- [ ] **Parsing & safe-path tests**
+- [x] **Parsing & safe-path tests**
   _What_: Tests for: (1) a tool result with a valid workspace path is detected and surfaced, (2) a tool result with no path produces no chip, (3) a path outside the workspace is detected but not surfaced as an attachment option, (4) a path-traversal string in the tool result does not create an attachment.
   _Why_: Path detection from unstructured text is fragile. Tests lock in the parser behavior and prevent security regressions if the detection logic is refactored.
 

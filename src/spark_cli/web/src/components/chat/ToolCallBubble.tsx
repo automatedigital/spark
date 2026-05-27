@@ -1,6 +1,19 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2, Paperclip } from "lucide-react";
 import { detectOutputType } from "@/lib/detectOutputType";
+
+// Detect file paths in tool result text (e.g. "Saved to /path/to/file.py")
+const PATH_RE = /(?:saved to|written to|output:|created:|file:|path:)\s+([^\s,\n"']+\.[a-zA-Z]{1,6})/gi;
+
+function extractOutputPaths(text: string): string[] {
+  const paths: string[] = [];
+  let m: RegExpExecArray | null;
+  PATH_RE.lastIndex = 0;
+  while ((m = PATH_RE.exec(text)) !== null) {
+    paths.push(m[1]);
+  }
+  return [...new Set(paths)];
+}
 
 const TOOL_FAMILIES: Record<string, { color: string; icon: typeof Wrench }> = {
   bash: { color: "amber", icon: Terminal },
@@ -95,6 +108,7 @@ export function ToolCallBubble({
   startedAt,
   endedAt,
   repeatCount,
+  onAttachPath,
 }: {
   name: string;
   args: Record<string, unknown>;
@@ -103,6 +117,7 @@ export function ToolCallBubble({
   startedAt?: number;
   endedAt?: number;
   repeatCount?: number;
+  onAttachPath?: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -173,6 +188,26 @@ export function ToolCallBubble({
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Result</div>
               <ResultPreview result={result} />
+              {onAttachPath && done && (() => {
+                const paths = extractOutputPaths(result);
+                if (paths.length === 0) return null;
+                return (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {paths.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => onAttachPath(p)}
+                        className="flex items-center gap-1 rounded border border-border/40 bg-secondary/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:border-border transition"
+                        title={`Attach ${p} to context tray`}
+                      >
+                        <Paperclip className="h-2.5 w-2.5" />
+                        <span className="font-mono truncate max-w-[120px]">{p.split("/").pop()}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

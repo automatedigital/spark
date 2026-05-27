@@ -358,13 +358,22 @@ const AssistantRow = memo(function AssistantRow({
   );
 });
 
-const ToolRow = memo(function ToolRow({ msg, repeatCount }: { msg: ToolMsg; repeatCount: number }) {
+const ToolRow = memo(function ToolRow({
+  msg,
+  repeatCount,
+  onAttachPath,
+}: {
+  msg: ToolMsg;
+  repeatCount: number;
+  onAttachPath?: (path: string) => void;
+}) {
   return (
     <div className="pl-9">
       <ToolCallBubble
         name={msg.name} args={msg.args} result={msg.result} done={msg.done}
         startedAt={msg.startedAt} endedAt={msg.endedAt}
         repeatCount={repeatCount > 0 ? repeatCount : undefined}
+        onAttachPath={onAttachPath}
       />
     </div>
   );
@@ -1165,7 +1174,7 @@ export function ChatPanel({
                   return <AssistantRow key={msg.id} msg={msg} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
                 }
                 if (msg.role === "tool") {
-                  return <ToolRow key={msg.id} msg={msg} repeatCount={repeatCount} />;
+                  return <ToolRow key={msg.id} msg={msg} repeatCount={repeatCount} onAttachPath={attachPath} />;
                 }
                 if (msg.role === "reasoning") {
                   return <ReasoningRow key={msg.id} msg={msg} isActive={streaming && idx === collapsed.length - 1} />;
