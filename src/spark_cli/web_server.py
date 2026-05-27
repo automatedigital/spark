@@ -10,6 +10,7 @@ Usage:
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import mimetypes
@@ -62,7 +63,7 @@ from spark_cli.workspace_routes import register_workspace_routes
 try:
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import FileResponse, JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -2948,7 +2949,12 @@ async def get_session_detail(session_id: str):
 
 
 @app.get("/api/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str, limit: int = 0, before_id: Optional[str] = None):
+async def get_session_messages(
+    request: Request,
+    session_id: str,
+    limit: int = 0,
+    before_id: Optional[str] = None,
+):
     from core.spark_state import SessionDB
 
     db = SessionDB()
@@ -2978,7 +2984,20 @@ async def get_session_messages(session_id: str, limit: int = 0, before_id: Optio
         }
         if leaf_sid != sid:
             resp["migrated_from"] = sid
-        return resp
+
+        # ETag: hash of message count + last message id for cheap revalidation.
+        last_id = messages[-1].get("id", "") if messages else ""
+        etag_src = f"{leaf_sid}:{total}:{last_id}:{limit}:{before_id}"
+        etag = f'"{hashlib.md5(etag_src.encode()).hexdigest()}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={
+                "ETag": etag,
+                "Cache-Control": "no-cache",
+            })
+        return JSONResponse(content=resp, headers={
+            "ETag": etag,
+            "Cache-Control": "no-cache",
+        })
     finally:
         db.close()
 
@@ -3055,6 +3074,67 @@ async def delete_session_endpoint(session_id: str):
         return {"ok": True}
     finally:
         db.close()
+
+
+@app.post("/api/sessions/{session_id}/warm")
+async def warm_session_agent(session_id: str):
+    """Pre-create the AIAgent for a session so the first real message doesn't pay cold-start costs.
+
+    Does not send a message or emit any chat.* SSE events.
+    Returns immediately with {"ok": true, "warm": true/false} indicating
+    whether the agent was already warm or was newly created.
+    """
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = db.get_session(sid)
+        if not row:
+            raise HTTPException(status_code=404, detail="Session not found")
+    finally:
+        db.close()
+
+    # Already warm — nothing to do.
+    if sid in _web_agents:
+        return {"ok": True, "warm": True}
+
+    # Resolve routing (model, provider, etc.) using an empty-string message
+    # so routing heuristics use the same defaults as a real turn.
+    try:
+        turn_route = _resolve_web_turn_route("")
+    except Exception:
+        return {"ok": True, "warm": False}
+
+    def _warm_in_thread() -> None:
+        from core.spark_state import SessionDB as _DB
+        _db = _DB()
+        try:
+            conversation_history = _db.get_messages_as_conversation(sid)
+        finally:
+            _db.close()
+        _new_web_agent(
+            session_id=sid,
+            model=turn_route["model"],
+            runtime=turn_route["runtime"],
+            request_overrides=turn_route.get("request_overrides"),
+            signature=turn_route["signature"],
+            token_callback=None,
+            tool_start_callback=None,
+            tool_complete_callback=None,
+            reasoning_callback=None,
+            status_callback=None,
+        )
+        # Load conversation history so the system prompt is built and cached.
+        agent = _web_agents.get(sid)
+        if agent and conversation_history:
+            agent.messages = list(conversation_history)
+
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _warm_in_thread)
+    return {"ok": True, "warm": False}
 
 
 # ---------------------------------------------------------------------------
@@ -3565,6 +3645,7 @@ def _turn_done_payload(result: Any) -> Dict[str, Any]:
             "input": result.get("input_tokens", 0) or 0,
             "output": result.get("output_tokens", 0) or 0,
             "cache_read": result.get("cache_read_tokens", 0) or 0,
+            "cache_write": result.get("cache_write_tokens", 0) or 0,
         },
         "cost_usd": result.get("estimated_cost_usd"),
         "model": result.get("model"),

@@ -86,6 +86,10 @@ export const api = {
       `/api/sessions/${encodeURIComponent(id)}/messages${q ? `?${q}` : ""}`,
     );
   },
+  warmSession: (id: string) =>
+    fetchJSON<{ ok: boolean; warm: boolean }>(`/api/sessions/${encodeURIComponent(id)}/warm`, {
+      method: "POST",
+    }),
   deleteSession: (id: string) =>
     fetchJSON<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",

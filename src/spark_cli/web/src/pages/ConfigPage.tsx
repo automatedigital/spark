@@ -482,6 +482,68 @@ export default function ConfigPage() {
     );
   };
 
+  /* ---- Context Management card (shown in compression category) ---- */
+  const renderContextManagementCard = () => {
+    const enabled = getNestedValue(config, "compression.enabled");
+    const isEnabled = enabled === true || enabled === "true" || (enabled == null ? true : false);
+    const threshold = numberValue(getNestedValue(config, "compression.threshold"), 50);
+    const targetRatio = numberValue(getNestedValue(config, "compression.target_ratio"), 20);
+    const protectLastN = numberValue(getNestedValue(config, "compression.protect_last_n"), 20);
+    return (
+      <div className="space-y-5 pb-2">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium">Auto-compress context</Label>
+            <p className="text-[11px] text-muted-foreground">When enabled, the agent summarises earlier turns once the context fills up, keeping costs in check on long sessions.</p>
+          </div>
+          <Switch checked={isEnabled} onCheckedChange={(v) => updateConfigValue("compression.enabled", v)} />
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Compression threshold</Label>
+            <span className="text-xs font-mono text-muted-foreground">{threshold}%</span>
+          </div>
+          <input
+            type="range" min={20} max={80} step={5}
+            value={threshold}
+            onChange={(e) => updateConfigValue("compression.threshold", Number(e.target.value) / 100)}
+            className="w-full accent-primary"
+          />
+          <p className="text-[11px] text-muted-foreground">Compress when context reaches this percentage of the model's limit. Lower = compress earlier = lower per-turn token cost on long sessions.</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Target ratio after compression</Label>
+            <span className="text-xs font-mono text-muted-foreground">{targetRatio}%</span>
+          </div>
+          <input
+            type="range" min={10} max={50} step={5}
+            value={targetRatio}
+            onChange={(e) => updateConfigValue("compression.target_ratio", Number(e.target.value) / 100)}
+            className="w-full accent-primary"
+          />
+          <p className="text-[11px] text-muted-foreground">How much of the threshold to preserve as the recent tail after compression. Lower = more aggressive summarisation = fewer tokens retained.</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Protect last N messages</Label>
+            <span className="text-xs font-mono text-muted-foreground">{protectLastN}</span>
+          </div>
+          <input
+            type="range" min={5} max={60} step={5}
+            value={protectLastN}
+            onChange={(e) => updateConfigValue("compression.protect_last_n", Number(e.target.value))}
+            className="w-full accent-primary"
+          />
+          <p className="text-[11px] text-muted-foreground">Never compress the most recent N messages, even when above threshold. Keeps the freshest context always fully visible to the agent.</p>
+        </div>
+      </div>
+    );
+  };
+
   /* ---- Render field list (shared between search & normal) ---- */
   const renderFields = (fields: [string, Record<string, unknown>][], showCategory = false) => {
     let lastSection = "";
@@ -711,7 +773,14 @@ export default function ConfigPage() {
                 </CardHeader>
                 <CardContent className="grid gap-2 px-4 pb-4">
                   {activeCategory === "general" && renderModelEditor()}
-                  {renderFields(activeFields)}
+                  {activeCategory === "compression" && renderContextManagementCard()}
+                  {activeCategory !== "compression" && renderFields(activeFields)}
+                  {activeCategory === "compression" && activeFields.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-[11px] text-muted-foreground cursor-pointer select-none">Advanced fields</summary>
+                      <div className="mt-2 grid gap-2">{renderFields(activeFields)}</div>
+                    </details>
+                  )}
                 </CardContent>
               </Card>
             )}

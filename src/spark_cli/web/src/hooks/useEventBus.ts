@@ -29,7 +29,7 @@ function notifyListeners(env: SparkEventEnvelope) {
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
-  const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
+  const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt) * (0.8 + Math.random() * 0.4);
   reconnectAttempt += 1;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;

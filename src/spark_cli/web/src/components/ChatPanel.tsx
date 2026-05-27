@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronLeft,
   X,
@@ -38,6 +39,8 @@ import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
 
+const MAX_RESULT_CHARS = 12_000;
+
 type ChatMessage =
   | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[] }
   | { id: string; role: "assistant"; content: string; streaming?: boolean }
@@ -48,6 +51,7 @@ type ChatMessage =
       name: string;
       args: Record<string, unknown>;
       result?: string;
+      resultTruncated?: boolean;
       done?: boolean;
       startedAt?: number;
       endedAt?: number;
@@ -373,6 +377,7 @@ const ToolRow = memo(function ToolRow({
         name={msg.name} args={msg.args} result={msg.result} done={msg.done}
         startedAt={msg.startedAt} endedAt={msg.endedAt}
         repeatCount={repeatCount > 0 ? repeatCount : undefined}
+        resultTruncated={msg.resultTruncated}
         onAttachPath={onAttachPath}
       />
     </div>
@@ -457,14 +462,12 @@ export function ChatPanel({
     forkCount: number;
   } | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
   const streamingRef = useRef(false);
   // Token batching: accumulate tokens and flush once per animation frame
   const tokenBufferRef = useRef("");
   const rafPendingRef = useRef<number | null>(null);
-  // Scroll: only scroll once per rAF frame, instant during streaming
-  const scrollRafRef = useRef<number | null>(null);
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
@@ -478,10 +481,6 @@ export function ChatPanel({
       cancelAnimationFrame(rafPendingRef.current);
       rafPendingRef.current = null;
       tokenBufferRef.current = "";
-    }
-    if (scrollRafRef.current !== null) {
-      cancelAnimationFrame(scrollRafRef.current);
-      scrollRafRef.current = null;
     }
     setActiveSessionId(sessionId);
     const optimistic: ChatMessage[] = initialMessage
@@ -518,27 +517,18 @@ export function ChatPanel({
           );
           setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? sessionId));
           setHasEarlier(resp.has_earlier ?? false);
+          // Fire-and-forget: pre-warm the agent cache so the first message
+          // doesn't pay cold-start costs (system prompt rebuild, memory load).
+          void api.warmSession(resp.session_id ?? sessionId).catch(() => {});
         })
         .catch(() => setError("Failed to load conversation history."))
         .finally(() => setLoadingHistory(false));
     }
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to bottom at most once per frame; instant during streaming to avoid stacking animations
-  const scheduleScroll = useCallback(() => {
-    if (scrollRafRef.current !== null) return;
-    scrollRafRef.current = requestAnimationFrame(() => {
-      scrollRafRef.current = null;
-      messagesEndRef.current?.scrollIntoView({
-        behavior: streamingRef.current ? "instant" : "smooth",
-      });
-    });
-  }, []);
-
   useEffect(() => {
-    scheduleScroll();
     rememberLocalTurn(activeSessionRef.current, chatMessages);
-  }, [chatMessages, scheduleScroll]);
+  }, [chatMessages]);
 
   const finalizeAssistant = useCallback(() => {
     setChatMessages((prev) => {
@@ -615,9 +605,12 @@ export function ChatPanel({
           for (let i = next.length - 1; i >= 0; i--) {
             const row = next[i];
             if (row.role === "tool" && row.toolId === tid) {
+              const full = String(data.result ?? "");
+              const truncated = full.length > MAX_RESULT_CHARS;
               next[i] = {
                 ...row,
-                result: String(data.result ?? ""),
+                result: truncated ? `${full.slice(0, MAX_RESULT_CHARS)}…` : full,
+                resultTruncated: truncated || undefined,
                 done: true,
                 endedAt: typeof data.ts === "number" ? data.ts : undefined,
               };
@@ -719,6 +712,7 @@ export function ChatPanel({
             inputTokens: (prev.inputTokens ?? 0) + (tokens?.input ?? 0),
             outputTokens: (prev.outputTokens ?? 0) + (tokens?.output ?? 0),
             cacheReadTokens: (prev.cacheReadTokens ?? 0) + (tokens?.cache_read ?? 0),
+            cacheWriteTokens: (prev.cacheWriteTokens ?? 0) + (tokens?.cache_write ?? 0),
             costUsd: (prev.costUsd ?? 0) + (cost ?? 0),
             turnCount: (prev.turnCount ?? 0) + 1,
           }));
@@ -726,15 +720,32 @@ export function ChatPanel({
         const cur = activeSessionRef.current;
         if (cur) {
           onSessionUpdated?.(cur);
-          // Sync session indices for retry/fork; delay to avoid competing with the final render
+          // Sync sessionIdx values on recent user messages for retry/fork.
+          // Fetch only the tail (last 20) to avoid transmitting the full history
+          // every turn. Patch sessionIdx in-place rather than replacing the list.
           setTimeout(() => {
             void api
-              .getSessionMessages(cur)
+              .getSessionMessages(cur, 20)
               .then((resp) => {
-                const mapped = sessionMessagesToChat(
-                  resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-                );
-                setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? cur));
+                const tail = resp.messages.filter((m) => m.role === "user");
+                if (tail.length === 0) return;
+                const tailByContent = new Map(tail.map((m, i) => [
+                  (m.content ?? "").trim(),
+                  resp.messages.indexOf(tail[i]),
+                ]));
+                setChatMessages((prev) => {
+                  let changed = false;
+                  const next = prev.map((m) => {
+                    if (m.role !== "user") return m;
+                    const newIdx = tailByContent.get(m.content.trim());
+                    if (newIdx != null && newIdx !== m.sessionIdx) {
+                      changed = true;
+                      return { ...m, sessionIdx: newIdx };
+                    }
+                    return m;
+                  });
+                  return changed ? next : prev;
+                });
               })
               .catch(() => {});
           }, 500);
@@ -992,29 +1003,41 @@ export function ChatPanel({
     return () => window.removeEventListener("keydown", handler);
   }, [searchOpen]);
 
-  // Build match positions from messages
-  const searchMatches = useMemo(() => {
+  // Build match positions from messages — debounced so a streaming update at
+  // 60fps doesn't trigger a full scan every frame when search is open.
+  // searchQuery changes flush immediately; chatMessages changes are debounced 300ms.
+  const [searchMatches, setSearchMatches] = useState<number[]>([]);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    const results: number[] = [];
-    chatMessages.forEach((msg, i) => {
-      const text =
-        msg.role === "user" || msg.role === "assistant"
-          ? msg.content?.toLowerCase() ?? ""
-          : msg.role === "reasoning"
-          ? msg.text?.toLowerCase() ?? ""
-          : "";
-      if (text.includes(q)) results.push(i);
-    });
-    return results;
+    if (!q) { setSearchMatches([]); return; }
+    const compute = () => {
+      const results: number[] = [];
+      chatMessages.forEach((msg, i) => {
+        const text =
+          msg.role === "user" || msg.role === "assistant"
+            ? msg.content?.toLowerCase() ?? ""
+            : msg.role === "reasoning"
+            ? msg.text?.toLowerCase() ?? ""
+            : "";
+        if (text.includes(q)) results.push(i);
+      });
+      setSearchMatches(results);
+    };
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(compute, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMessages, searchQuery]);
 
-  // Scroll active match into view
+  // Scroll active match into view using the virtualizer
   useEffect(() => {
     if (!searchMatches.length) return;
     const idx = searchMatches[searchMatchIdx % searchMatches.length];
-    const el = messageListRef.current?.children[idx] as HTMLElement | undefined;
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchMatchIdx, searchMatches]);
 
   // Drag-and-drop state
@@ -1049,6 +1072,58 @@ export function ChatPanel({
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) void uploadFiles(files);
   }, [uploadFiles]);
+
+  // Collapse consecutive same-name tool calls and append a typing indicator
+  // synthetic entry when streaming has started but no assistant token arrived yet.
+  type CollapsedItem = { msg: ChatMessage; repeatCount: number } | { msg: null; id: "typing" };
+  const collapsedMessages = useMemo<CollapsedItem[]>(() => {
+    const collapsed: CollapsedItem[] = [];
+    for (const msg of chatMessages) {
+      const prev = collapsed[collapsed.length - 1];
+      if (
+        msg.role === "tool" &&
+        prev && prev.msg !== null && prev.msg.role === "tool" &&
+        msg.name === (prev.msg as Extract<ChatMessage, { role: "tool" }>).name
+      ) {
+        collapsed[collapsed.length - 1] = { msg, repeatCount: (prev as { msg: ChatMessage; repeatCount: number }).repeatCount + 1 };
+      } else {
+        collapsed.push({ msg, repeatCount: 0 });
+      }
+    }
+    // Append typing indicator if streaming but last message isn't an active assistant bubble
+    if (streaming) {
+      const last = chatMessages[chatMessages.length - 1];
+      const isAlreadyStreamingAssistant = last?.role === "assistant" && (last.streaming || !last.content);
+      if (!isAlreadyStreamingAssistant) {
+        collapsed.push({ msg: null, id: "typing" } as CollapsedItem);
+      }
+    }
+    return collapsed;
+  }, [chatMessages, streaming]);
+
+  const virtualizer = useVirtualizer({
+    count: collapsedMessages.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 80,
+    overscan: 10,
+    gap: 12,
+  });
+
+  // Auto-scroll to bottom when new items arrive or streaming updates.
+  // Use scrollContainerRef directly to avoid stacking rAFs.
+  const prevCountRef = useRef(0);
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const count = collapsedMessages.length;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (count !== prevCountRef.current || (streaming && atBottom)) {
+      prevCountRef.current = count;
+      if (count > 0) {
+        virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming ? "instant" : "smooth" });
+      }
+    }
+  }, [collapsedMessages.length, streaming, virtualizer]);
 
   return (
     <div
@@ -1157,7 +1232,7 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4" ref={scrollContainerRef}>
         {loadingHistory ? (
           <div className="flex flex-col gap-4 py-2">
             <MessageRowSkeleton />
@@ -1170,7 +1245,7 @@ export function ChatPanel({
             <p className="text-xs mt-1 opacity-60">Type a message below</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3" ref={messageListRef}>
+          <div ref={messageListRef} style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
             {hasEarlier && (
               <div className="flex justify-center pt-1 pb-2">
                 <button
@@ -1183,81 +1258,80 @@ export function ChatPanel({
                 </button>
               </div>
             )}
-            {(() => {
-              // Collapse consecutive same-name tool calls into one bubble with a repeat count.
-              const collapsed: { msg: typeof chatMessages[number]; repeatCount: number }[] = [];
-              for (const msg of chatMessages) {
-                const prev = collapsed[collapsed.length - 1];
-                if (
-                  msg.role === "tool" &&
-                  prev?.msg.role === "tool" &&
-                  msg.name === (prev.msg as Extract<typeof msg, { role: "tool" }>).name
-                ) {
-                  collapsed[collapsed.length - 1] = { msg, repeatCount: prev.repeatCount + 1 };
-                } else {
-                  collapsed.push({ msg, repeatCount: 0 });
-                }
-              }
-              return collapsed.map(({ msg, repeatCount }, idx) => {
-                if (msg.role === "user") {
-                  return (
-                    <UserRow key={msg.id} msg={msg} hasSession={!!activeSessionId}
-                      streaming={streaming} onEdit={handleEdit} onRetry={handleRetry}
-                      onFork={handleFork} onCopy={copyText} />
-                  );
-                }
-                if (msg.role === "assistant") {
-                  if (!msg.content && !msg.streaming) return null;
-                  return <AssistantRow key={msg.id} msg={msg} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
-                }
-                if (msg.role === "tool") {
-                  return <ToolRow key={msg.id} msg={msg} repeatCount={repeatCount} onAttachPath={attachPath} />;
-                }
-                if (msg.role === "reasoning") {
-                  return <ReasoningRow key={msg.id} msg={msg} isActive={streaming && idx === collapsed.length - 1} />;
-                }
-                if (msg.role === "approval") {
-                  return <ApprovalRow key={msg.id} msg={msg} disabled={approvalBusy} onChoice={submitApproval} />;
-                }
-                if (msg.role === "note") {
-                  return <NoteRow key={msg.id} msg={msg} />;
-                }
-                if (msg.role === "feedback_form") {
-                  return (
-                    <FeedbackRow
-                      key={msg.id}
-                      msg={msg}
-                      sessionId={activeSessionId}
-                      onSubmitted={(id) =>
-                        setChatMessages((prev) =>
-                          prev.map((m) => (m.id === id ? { ...m, submitted: true } : m)),
-                        )
-                      }
-                    />
-                  );
-                }
-                return null;
-              });
-            })()}
-            {/* Typing indicator: shows immediately after send, before first token arrives */}
-            {streaming && (() => {
-              const last = chatMessages[chatMessages.length - 1];
-              const isAlreadyStreamingAssistant =
-                last?.role === "assistant" && (last.streaming || !last.content);
-              if (isAlreadyStreamingAssistant) return null;
-              return (
-                <div className="flex gap-2">
-                  <SparkAgentAvatar />
-                  <div className="rounded-lg px-3 py-2.5 text-sm bg-secondary">
-                    <span className="flex gap-[4px] items-center">
-                      <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
-                      <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
-                      <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
-                    </span>
+            {virtualizer.getVirtualItems().map((vItem) => {
+              const item = collapsedMessages[vItem.index];
+              if (!item) return null;
+
+              // Typing indicator synthetic item
+              if (item.msg === null) {
+                return (
+                  <div
+                    key="typing"
+                    data-index={vItem.index}
+                    ref={virtualizer.measureElement}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
+                  >
+                    <div className="flex gap-2">
+                      <SparkAgentAvatar />
+                      <div className="rounded-lg px-3 py-2.5 text-sm bg-secondary">
+                        <span className="flex gap-[4px] items-center">
+                          <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
+                          <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
+                          <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
+                        </span>
+                      </div>
+                    </div>
                   </div>
+                );
+              }
+
+              const { msg, repeatCount } = item as { msg: ChatMessage; repeatCount: number };
+              let rowContent: React.ReactNode = null;
+
+              if (msg.role === "user") {
+                rowContent = (
+                  <UserRow msg={msg} hasSession={!!activeSessionId}
+                    streaming={streaming} onEdit={handleEdit} onRetry={handleRetry}
+                    onFork={handleFork} onCopy={copyText} />
+                );
+              } else if (msg.role === "assistant") {
+                if (!msg.content && !msg.streaming) return null;
+                rowContent = <AssistantRow msg={msg} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
+              } else if (msg.role === "tool") {
+                rowContent = <ToolRow msg={msg} repeatCount={repeatCount} onAttachPath={attachPath} />;
+              } else if (msg.role === "reasoning") {
+                rowContent = <ReasoningRow msg={msg} isActive={streaming && vItem.index === collapsedMessages.length - 1} />;
+              } else if (msg.role === "approval") {
+                rowContent = <ApprovalRow msg={msg} disabled={approvalBusy} onChoice={submitApproval} />;
+              } else if (msg.role === "note") {
+                rowContent = <NoteRow msg={msg} />;
+              } else if (msg.role === "feedback_form") {
+                rowContent = (
+                  <FeedbackRow
+                    msg={msg}
+                    sessionId={activeSessionId}
+                    onSubmitted={(id) =>
+                      setChatMessages((prev) =>
+                        prev.map((m) => (m.id === id ? { ...m, submitted: true } : m)),
+                      )
+                    }
+                  />
+                );
+              }
+
+              if (rowContent === null) return null;
+
+              return (
+                <div
+                  key={msg.id}
+                  data-index={vItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
+                >
+                  {rowContent}
                 </div>
               );
-            })()}
+            })}
           </div>
         )}
         {error && (
@@ -1265,7 +1339,6 @@ export function ChatPanel({
             <p className="text-xs text-destructive">{error}</p>
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {editingUser && (

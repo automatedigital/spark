@@ -104,6 +104,7 @@ export function ToolCallBubble({
   name,
   args,
   result,
+  resultTruncated,
   done,
   startedAt,
   endedAt,
@@ -113,6 +114,7 @@ export function ToolCallBubble({
   name: string;
   args: Record<string, unknown>;
   result?: string;
+  resultTruncated?: boolean;
   done?: boolean;
   startedAt?: number;
   endedAt?: number;
@@ -188,6 +190,9 @@ export function ToolCallBubble({
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Result</div>
               <ResultPreview result={result} />
+              {resultTruncated && (
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Output truncated for display — full result sent to agent.</p>
+              )}
               {onAttachPath && done && (() => {
                 const paths = extractOutputPaths(result);
                 if (paths.length === 0) return null;

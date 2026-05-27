@@ -6,6 +6,7 @@ export interface SessionStats {
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   costUsd?: number;
   turnCount?: number;
 }
@@ -26,6 +27,13 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
   const hasData = stats.model || stats.inputTokens || stats.turnCount;
   if (!hasData) return null;
 
+  // Approximate cache savings: cached tokens cost ~10% of full input price.
+  // Show savings pct when cache hits are meaningful (>5% of total input).
+  const totalInput = (stats.inputTokens ?? 0) + (stats.cacheReadTokens ?? 0) + (stats.cacheWriteTokens ?? 0);
+  const cachePct = totalInput > 0 && (stats.cacheReadTokens ?? 0) > 0
+    ? Math.round(((stats.cacheReadTokens ?? 0) * 0.9 / totalInput) * 100)
+    : 0;
+
   return (
     <div className="border-t border-border/40 bg-muted/10 px-4 py-1 shrink-0">
       <button
@@ -42,6 +50,9 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
         )}
         {stats.cacheReadTokens != null && stats.cacheReadTokens > 0 && (
           <span title="Cache read tokens" className="text-success/60">💾 {fmt(stats.cacheReadTokens)}</span>
+        )}
+        {stats.cacheWriteTokens != null && stats.cacheWriteTokens > 0 && (
+          <span title="Cache write tokens" className="text-muted-foreground/50">✎ {fmt(stats.cacheWriteTokens)}</span>
         )}
         {stats.costUsd != null && stats.costUsd > 0 && (
           <span title="Estimated cost">~{fmtCost(stats.costUsd)}</span>
@@ -64,7 +75,13 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
             <><span>Output tokens</span><span>{stats.outputTokens.toLocaleString()}</span></>
           )}
           {stats.cacheReadTokens != null && stats.cacheReadTokens > 0 && (
-            <><span>Cached</span><span className="text-success/70">{stats.cacheReadTokens.toLocaleString()}</span></>
+            <><span>Cache read</span><span className="text-success/70">{stats.cacheReadTokens.toLocaleString()}</span></>
+          )}
+          {stats.cacheWriteTokens != null && stats.cacheWriteTokens > 0 && (
+            <><span>Cache write</span><span className="text-muted-foreground/60">{stats.cacheWriteTokens.toLocaleString()}</span></>
+          )}
+          {cachePct > 0 && (
+            <><span>Cache savings</span><span className="text-success/70">~{cachePct}% of input cost</span></>
           )}
           {stats.costUsd != null && stats.costUsd > 0 && (
             <><span>Est. cost</span><span>{fmtCost(stats.costUsd)}</span></>
