@@ -886,7 +886,7 @@ export function ChatPanel({
       ? await api.uploadWorkspaceFiles(workspaceSlug, files, "files")
       : await api.uploadChatFiles(files);
     for (const f of res.saved) {
-      const path = "path" in f ? f.path : `files/${f.filename}`;
+      const path = "path" in f ? (f as { path: string }).path : `files/${f.filename}`;
       const sizeBytes = "size" in f ? (f as { size?: number }).size ?? 0 : 0;
       setContextItems((prev) => [...prev, makeFileContextItem(path, sizeBytes)]);
     }
