@@ -125,6 +125,16 @@ CREATE TABLE IF NOT EXISTS workspace_manifests (
     data_json TEXT NOT NULL DEFAULT '{}',
     updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS file_summaries (
+    path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    mtime REAL NOT NULL,
+    summary_text TEXT NOT NULL,
+    model_used TEXT,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (path, size_bytes, mtime)
+);
 """
 
 FTS_SQL = """
@@ -1381,6 +1391,46 @@ class SessionDB:
                 (workspace_slug, _json.dumps(data), _time.time()),
             )
         self._execute_write(_do)
+
+    # ── File summaries ────────────────────────────────────────────────────────
+
+    def get_summary(self, path: str, size_bytes: int, mtime: float) -> str | None:
+        """Return cached summary text if freshness matches, else None."""
+        with self._lock:
+            cursor = self._conn.execute(
+                "SELECT summary_text FROM file_summaries WHERE path = ? AND size_bytes = ? AND mtime = ?",
+                (path, size_bytes, mtime),
+            )
+            row = cursor.fetchone()
+        return row["summary_text"] if row else None
+
+    def set_summary(self, path: str, size_bytes: int, mtime: float, summary_text: str, model_used: str = "") -> None:
+        """Upsert a file summary, keyed by path + size + mtime."""
+        import time as _time
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO file_summaries (path, size_bytes, mtime, summary_text, model_used, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(path, size_bytes, mtime) DO UPDATE SET "
+                "summary_text=excluded.summary_text, model_used=excluded.model_used",
+                (path, size_bytes, mtime, summary_text, model_used, _time.time()),
+            )
+        self._execute_write(_do)
+
+    def is_summary_fresh(self, path: str) -> tuple[bool, str | None]:
+        """
+        Check if a cached summary exists and whether the file still matches.
+        Returns (is_fresh, cached_text | None).
+        """
+        import os as _os
+        try:
+            st = _os.stat(path)
+            size = st.st_size
+            mtime = st.st_mtime
+            text = self.get_summary(path, size, mtime)
+            return (text is not None, text)
+        except OSError:
+            return (False, None)
 
     def prune_sessions(self, older_than_days: int = 90, source: str = None) -> int:
         """Delete sessions older than N days. Returns count of deleted sessions.

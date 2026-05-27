@@ -205,35 +205,35 @@ Users should know before they send a message whether they're about to blow the c
 
 Long-running sessions accumulate context that gets re-sent in every turn. Briefs and manifests give users a durable, compact summary layer they can curate and reuse, reducing repeated token cost.
 
-- [ ] **Storage for briefs & manifests (profile-scoped)**
+- [x] **Storage for briefs & manifests (profile-scoped)**
   _What_: Add a storage layer for two distinct object types: (1) a **session brief** — a short user-editable text block attached to one chat session, summarising key decisions, constraints, or background; (2) a **workspace manifest** — a set of pinned files, notes, and brief text that applies to all chats in a workspace. Both must be stored per-profile (under `get_spark_home()`), not globally.
   _Why_: Briefs and manifests need to persist across page reloads and sessions. Mixing them into the main session table would couple unrelated concerns; separate storage makes CRUD simpler and isolation testable.
 
-- [ ] **CRUD endpoints for session briefs and workspace manifests**
+- [x] **CRUD endpoints for session briefs and workspace manifests**
   _What_: Implement REST endpoints: `GET/PUT /api/sessions/{id}/brief` for session briefs; `GET/PUT /api/workspaces/{id}/manifest` for manifests. Support partial updates (don't require sending the full object to change one field). Return 404 if the session/workspace doesn't exist.
   _Why_: The frontend needs to read the current brief on page load, save edits on change, and reset it. Clean CRUD endpoints are easier to cache and test than embedding brief state in message or session objects.
 
-- [ ] **Editable brief panel in chat**
+- [x] **Editable brief panel in chat**
   _What_: Add a collapsible "Brief" panel in the chat sidebar or above the prompt bar. It shows the current session brief text in an editable textarea. Changes auto-save after a short debounce (1–2 seconds). An empty brief hides the panel or shows a "Add a brief…" placeholder.
   _Why_: The brief needs to be instantly editable without leaving the chat flow. A separate settings page would add too much friction. The panel should feel like a sticky note attached to the chat.
 
-- [ ] **"Promote to brief" actions**
+- [x] **"Promote to brief" actions**
   _What_: Add a "Promote to brief" action to: (1) any assistant message (promotes the message text or a user-selected portion), (2) any context item in the tray (promotes its content or summary). The action opens a small editor pre-filled with the selected content and lets the user edit before saving.
   _Why_: The most valuable things to put in a brief are the outputs and decisions the model already produced. Making it easy to pull those up into the brief, rather than forcing users to copy-paste, encourages use.
 
-- [ ] **Current brief included as context on next turn**
+- [x] **Current brief included as context on next turn**
   _What_: When building the message payload for any turn in a chat that has a non-empty brief, prepend the brief as a system or user context block — clearly labelled so the model treats it as persistent context, not user input. For workspace manifests, include pinned files/notes similarly.
   _Why_: The brief only has value if the model can actually see it. This is the payload-level wire-up that makes the brief part of every turn without the user having to copy-paste it into the prompt.
 
-- [ ] **Brief edits survive streaming/reload**
+- [x] **Brief edits survive streaming/reload**
   _What_: Verify that edits made to a brief while a streamed response is in progress are not lost when the response completes and the UI updates. Also verify edits survive a browser reload (i.e., they were persisted server-side, not only in React state).
   _Why_: Briefs are meant to be living documents that users edit mid-session. Losing an edit during a stream would be a trust-destroying bug.
 
-- [ ] **Brief not duplicated in prompt**
+- [x] **Brief not duplicated in prompt**
   _What_: Confirm that the brief content is injected by the backend as a separate context block — not by the frontend appending it to the prompt string. If the user also quotes brief content in their prompt manually, that should not cause double-inclusion.
   _Why_: Duplicate content wastes tokens and can confuse the model (conflicting signals if the user edited the brief after quoting it). The backend must own the canonical inclusion, not the frontend.
 
-- [ ] **Persistence/profile-isolation tests**
+- [x] **Persistence/profile-isolation tests**
   _What_: Tests covering: (1) brief survives a session reload, (2) brief for session A does not appear in session B, (3) workspace manifest for workspace X does not bleed into workspace Y, (4) brief is cleared when a session is deleted.
   _Why_: Profile and session isolation failures are silent data leaks. These tests are the proof that the storage layer enforces the boundaries it claims to enforce.
 
@@ -243,35 +243,35 @@ Long-running sessions accumulate context that gets re-sent in every turn. Briefs
 
 Large files are impractical to include in full. This phase adds AI-generated summaries and bounded search so users can attach useful slices of big files without blowing the context window.
 
-- [ ] **Metadata storage for summaries**
+- [x] **Metadata storage for summaries**
   _What_: Create a storage table or JSON sidecar (outside user files, under `get_spark_home()`) that maps a file's path + size + mtime to its cached summary text. Each record stores: path, size_bytes, mtime, summary_text, model_used, created_at.
   _Why_: Generating a summary is expensive (requires an LLM call). Caching by path+size+mtime means we only regenerate when the file actually changes. Storing summaries outside user files keeps the workspace clean.
 
-- [ ] **File/folder summary endpoints with size/binary checks**
+- [x] **File/folder summary endpoints with size/binary checks**
   _What_: Add `POST /api/summarize-file` and `POST /api/summarize-folder` endpoints. Both must: (1) check the file is within the workspace (path safety), (2) reject binary files (detect by extension or MIME sniff), (3) reject files over a configurable size cap (suggest 2 MB), and (4) return the cached summary if fresh, otherwise generate and cache a new one.
   _Why_: Without size and binary checks, a user trying to summarize a 500MB video file would trigger an enormous LLM call. The endpoint must be defensive because users will try unusual inputs.
 
-- [ ] **Track summary freshness (path, size, mtime)**
+- [x] **Track summary freshness (path, size, mtime)**
   _What_: Before returning a cached summary, check the file's current size and mtime against the cached values. If either has changed, mark the summary stale and regenerate. Surface a "stale" flag in the tray UI so users can see when a summary might be out of date.
   _Why_: A cached summary of a file that has since been edited is misleading. Freshness tracking prevents the model from receiving outdated information while still benefiting from caching for unchanged files.
 
-- [ ] **UI actions: summarize file/folder, select lines/excerpts**
+- [x] **UI actions: summarize file/folder, select lines/excerpts**
   _What_: In the context tray and file browser, add: (1) a "Summarize" button for any attached file that triggers generation and switches its inclusion mode to `summary`; (2) a "Select lines" action that opens a simple line-range picker and switches mode to `excerpt` with the chosen range.
   _Why_: Summaries and excerpts are only useful if they're easy to trigger. Hiding the controls in a settings panel would mean almost no one uses them. The actions need to be discoverable at the point of attachment.
 
-- [ ] **Diff-only context where baseline exists**
+- [x] **Diff-only context where baseline exists**
   _What_: For files that have a known baseline (e.g., the git HEAD version), add a `diff` inclusion mode that sends only the lines that changed, with a small surrounding context window (e.g., ±3 lines). Surface this option in the inclusion-mode selector when the file is in a git repo.
   _Why_: When reviewing recent edits, sending a 2000-line file in full is wasteful. A diff is typically under 100 lines and tells the model exactly what changed, which is usually what matters.
 
-- [ ] **Bounded search snippets as context**
+- [x] **Bounded search snippets as context**
   _What_: For `search` inclusion mode, implement a backend that runs a grep/ripgrep-style search within the file for a user-provided query string, returns the top-N matching line ranges (e.g., 5 matches × 10 surrounding lines each), and sends only those snippets. The tray should show a query input for `search`-mode items.
   _Why_: When a user wants the model to focus on how a specific function or keyword is used in a large file, sending the whole file is overkill. Bounded snippets give surgical precision without blowing the budget.
 
-- [ ] **Summaries stored outside user files by default**
+- [x] **Summaries stored outside user files by default**
   _What_: Confirm that summary files are written to a path under `get_spark_home()/summaries/` (or equivalent), never inside the workspace file tree. Add a test that creates a summary and asserts the file does not exist inside the workspace directory.
   _Why_: Writing AI-generated content into the user's project directory would pollute their workspace and could interfere with version control. The spark home is the right place for all generated metadata.
 
-- [ ] **Path safety, freshness, binary-skip tests**
+- [x] **Path safety, freshness, binary-skip tests**
   _What_: Tests covering: (1) a path-traversal attempt returns 400, (2) a binary file returns a clear error, (3) an oversized file returns a clear error, (4) requesting a summary twice for the same unchanged file returns the cached version (no second LLM call), (5) after modifying the file, the next request regenerates the summary.
   _Why_: Caching + security logic is easy to get subtly wrong. These tests are the specification and the regression net.
 

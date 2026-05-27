@@ -12,6 +12,7 @@ import {
   ChevronUp,
   ChevronDown,
   CornerUpLeft,
+  FileText,
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api } from "@/lib/api";
@@ -27,10 +28,11 @@ import { FeedbackForm } from "@/components/chat/FeedbackForm";
 import { StatusPill } from "@/components/chat/StatusPill";
 import { PromptBar } from "@/components/chat/PromptBar";
 import { ContextTray } from "@/components/chat/ContextTray";
+import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
 import { MessageRowSkeleton } from "@/components/Skeleton";
-import { makeFileContextItem } from "@/lib/context";
+import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 
 let _msgId = 0;
@@ -315,11 +317,17 @@ const UserRow = memo(function UserRow({
   );
 });
 
-const AssistantRow = memo(function AssistantRow({ msg }: { msg: AssistantMsg }) {
+const AssistantRow = memo(function AssistantRow({
+  msg,
+  onPromoteToBrief,
+}: {
+  msg: AssistantMsg;
+  onPromoteToBrief?: (text: string) => void;
+}) {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 group/amsg">
       <SparkAgentAvatar />
-      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground min-w-0">
+      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground min-w-0 relative">
         {msg.content ? (
           <Markdown content={msg.content} />
         ) : (
@@ -331,6 +339,20 @@ const AssistantRow = memo(function AssistantRow({ msg }: { msg: AssistantMsg }) 
         {msg.streaming && msg.content ? (
           <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-success align-middle" />
         ) : null}
+        {!msg.streaming && msg.content && onPromoteToBrief && (
+          <div className="absolute -top-2 right-0 opacity-0 group-hover/amsg:opacity-100 transition-opacity">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              title="Promote to brief"
+              onClick={() => onPromoteToBrief(msg.content)}
+            >
+              <FileText className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -875,12 +897,43 @@ export function ChatPanel({
     setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, scope } : i));
   }, []);
 
+  const updateContextItem = useCallback((id: string, patch: Partial<ContextItem>) => {
+    setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
+  }, []);
+
   // Stable handlers passed to memoized row components
   const handleEdit = useCallback((idx: number, text: string) => {
     setEditingUser({ sessionIdx: idx, text });
   }, []);
   const handleRetry = useCallback((idx: number) => { void doRetry(idx); }, [doRetry]);
   const handleFork = useCallback((idx: number) => { void doFork(idx); }, [doFork]);
+
+  const summarizeContextItem = useCallback(async (id: string) => {
+    const item = contextItems.find((i) => i.id === id);
+    if (!item?.source_path) return;
+    try {
+      const res = await fetch("/api/summarize-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: item.source_path, workspace_slug: workspaceSlug }),
+      });
+      if (!res.ok) return;
+      const { summary } = await res.json() as { summary: string };
+      updateContextMode(id, "summary");
+      setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, content: summary, inclusion_mode: "summary" } : i));
+    } catch {
+      // silently ignore — user can retry
+    }
+  }, [contextItems, workspaceSlug, updateContextMode]);
+
+  const handlePromoteToBrief = useCallback((text: string) => {
+    if (!activeSessionId) return;
+    briefApi.get(activeSessionId).then((r) => {
+      const current = r.text.trim();
+      const appended = current ? `${current}\n\n${text}` : text;
+      return briefApi.set(activeSessionId, appended);
+    }).catch(() => {});
+  }, [activeSessionId]);
 
   // In-session search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1109,7 +1162,7 @@ export function ChatPanel({
                 }
                 if (msg.role === "assistant") {
                   if (!msg.content && !msg.streaming) return null;
-                  return <AssistantRow key={msg.id} msg={msg} />;
+                  return <AssistantRow key={msg.id} msg={msg} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
                 }
                 if (msg.role === "tool") {
                   return <ToolRow key={msg.id} msg={msg} repeatCount={repeatCount} />;
@@ -1199,11 +1252,15 @@ export function ChatPanel({
 
       <SessionInfoBar stats={sessionStats} />
 
+      {activeSessionId && <BriefPanel sessionId={activeSessionId} />}
+
       <ContextTray
         items={contextItems}
         onRemove={removeContextItem}
         onUpdateMode={updateContextMode}
         onUpdateScope={updateContextScope}
+        onUpdateItem={updateContextItem}
+        onSummarize={(id) => void summarizeContextItem(id)}
       />
 
       <PromptBar

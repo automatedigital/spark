@@ -2,7 +2,7 @@ import { getDashboardToken } from "@/lib/api";
 
 export type ContextScope = "one_turn" | "pinned";
 
-export type InclusionMode = "path_only" | "excerpt" | "summary" | "full" | "search";
+export type InclusionMode = "path_only" | "excerpt" | "summary" | "full" | "search" | "diff";
 
 export type ContextItemType = "file" | "excerpt" | "note" | "tool_output" | "url";
 
@@ -85,6 +85,18 @@ export const contextApi = {
         context_items: params.contextItems,
       }),
     }),
+};
+
+export const briefApi = {
+  get: (sessionId: string) =>
+    fetchJSON<{ session_id: string; text: string }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/brief`,
+    ),
+  set: (sessionId: string, text: string) =>
+    fetchJSON<{ session_id: string; text: string }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/brief`,
+      { method: "PUT", body: JSON.stringify({ text }) },
+    ),
 };
 
 let _nextId = 0;

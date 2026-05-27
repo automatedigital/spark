@@ -4010,6 +4010,31 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional
                         break
             return "\n---\n".join(snippets) if snippets else None
 
+        if mode == "diff":
+            import subprocess as _sub
+            try:
+                result = _sub.run(
+                    ["git", "diff", "HEAD", "--", str(resolved)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(resolved.parent),
+                    timeout=10,
+                )
+                diff_text = result.stdout.strip()
+                if diff_text:
+                    return diff_text
+                # No unstaged diff — try staged
+                result2 = _sub.run(
+                    ["git", "diff", "--cached", "--", str(resolved)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(resolved.parent),
+                    timeout=10,
+                )
+                return result2.stdout.strip() or None
+            except Exception:
+                return None
+
     except Exception:
         return None
 
@@ -4043,6 +4068,22 @@ def _build_context_augmented_message(session_id: str, user_message: str, context
     return f"{context_block}\n\n---\n\n{user_message}"
 
 
+def _inject_brief_if_present(session_id: str, user_message: str) -> str:
+    """Prepend the session brief (if any) as a labelled context block."""
+    try:
+        from core.spark_state import SessionDB
+        db = SessionDB()
+        try:
+            brief = db.get_brief(session_id)
+        finally:
+            db.close()
+        if brief and brief.strip():
+            return f"[Session Brief]\n{brief.strip()}\n[/Session Brief]\n\n---\n\n{user_message}"
+    except Exception:
+        pass
+    return user_message
+
+
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
@@ -4053,6 +4094,8 @@ def _run_web_agent_turn(
 
     if context_items:
         user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
+
+    user_message = _inject_brief_if_present(agent.session_id, user_message)
 
     tok = set_current_session_key(agent.session_id)
     try:
@@ -4953,6 +4996,155 @@ async def get_session_forks(session_id: str):
             "parent_session_id": parent_id,
             "parent_title": (parent.get("title") or parent_id) if parent else None,
         }
+    finally:
+        db.close()
+
+
+class BriefUpdate(BaseModel):
+    text: str
+
+
+@app.get("/api/sessions/{session_id}/brief")
+async def get_session_brief(session_id: str):
+    from core.spark_state import SessionDB
+    db = SessionDB()
+    try:
+        session = db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        text = db.get_brief(session_id) or ""
+        return {"session_id": session_id, "text": text}
+    finally:
+        db.close()
+
+
+@app.put("/api/sessions/{session_id}/brief")
+async def update_session_brief(session_id: str, body: BriefUpdate):
+    from core.spark_state import SessionDB
+    db = SessionDB()
+    try:
+        session = db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        db.set_brief(session_id, body.text)
+        return {"session_id": session_id, "text": body.text}
+    finally:
+        db.close()
+
+
+class ManifestUpdate(BaseModel):
+    data: dict = {}
+
+
+@app.get("/api/workspace/projects/{slug}/manifest")
+async def get_workspace_manifest(slug: str):
+    from core.spark_state import SessionDB
+    db = SessionDB()
+    try:
+        data = db.get_manifest(slug)
+        return {"workspace_slug": slug, "data": data}
+    finally:
+        db.close()
+
+
+@app.put("/api/workspace/projects/{slug}/manifest")
+async def update_workspace_manifest(slug: str, body: ManifestUpdate):
+    from core.spark_state import SessionDB
+    db = SessionDB()
+    try:
+        db.set_manifest(slug, body.data)
+        return {"workspace_slug": slug, "data": body.data}
+    finally:
+        db.close()
+
+
+_BINARY_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".svg",
+    ".pdf", ".zip", ".gz", ".tar", ".rar", ".7z", ".exe", ".dll", ".so",
+    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".mkv", ".woff", ".woff2",
+    ".ttf", ".otf", ".pyc", ".class", ".o", ".a", ".db", ".sqlite",
+}
+_SUMMARIZE_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
+class SummarizeFileRequest(BaseModel):
+    path: str
+    workspace_slug: Optional[str] = None
+
+
+async def _generate_summary(text: str, filename: str) -> str:
+    """Generate a summary via the configured LLM."""
+    from spark_cli.model_config import read_global_model_config
+    from spark_cli.runtime_provider import resolve_runtime_provider
+    import openai as _openai
+
+    runtime = resolve_runtime_provider(requested=None)
+    model_cfg = read_global_model_config()
+    model = model_cfg.model or "gpt-4o-mini"
+    api_key = runtime.get("api_key")
+    base_url = runtime.get("base_url")
+
+    client = _openai.OpenAI(api_key=api_key, base_url=base_url)
+    max_chars = 40_000
+    excerpt = text[:max_chars] + ("…[truncated]" if len(text) > max_chars else "")
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"Summarize the following file ({filename}) in 3-5 sentences. "
+                    f"Focus on its purpose, key concepts, and main structure.\n\n{excerpt}"
+                ),
+            }
+        ],
+        max_tokens=300,
+    )
+    return response.choices[0].message.content or ""
+
+
+@app.post("/api/summarize-file")
+async def summarize_file(body: SummarizeFileRequest):
+    from pathlib import Path as _Path
+    from core.spark_state import SessionDB
+
+    workspace_root = (get_spark_home() / "workspace").resolve()
+    if body.workspace_slug:
+        workspace_root = (workspace_root / body.workspace_slug).resolve()
+
+    # Safety: resolve and check path stays within workspace
+    try:
+        resolved = (workspace_root / body.path.lstrip("/")).resolve()
+        resolved.relative_to(workspace_root)
+    except (ValueError, Exception):
+        raise HTTPException(status_code=400, detail="Path traversal not allowed")
+
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Reject binary files
+    if resolved.suffix.lower() in _BINARY_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Binary files cannot be summarized")
+
+    stat = resolved.stat()
+    if stat.st_size > _SUMMARIZE_MAX_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large ({stat.st_size // 1024}KB). Max: {_SUMMARIZE_MAX_BYTES // 1024}KB",
+        )
+
+    db = SessionDB()
+    try:
+        # Check cache freshness
+        is_fresh, cached = db.is_summary_fresh(str(resolved))
+        if is_fresh and cached:
+            return {"path": body.path, "summary": cached, "cached": True, "stale": False}
+
+        # Generate new summary
+        text = resolved.read_text(errors="replace")
+        summary = await _generate_summary(text, resolved.name)
+        db.set_summary(str(resolved), stat.st_size, stat.st_mtime, summary)
+        return {"path": body.path, "summary": summary, "cached": False, "stale": False}
     finally:
         db.close()
 

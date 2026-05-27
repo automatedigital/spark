@@ -16,6 +16,7 @@ class InclusionMode(StrEnum):
     summary = "summary"
     full = "full"
     search = "search"
+    diff = "diff"
 
 
 class ContextItemType(StrEnum):

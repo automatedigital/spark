@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { AlertTriangle, File, FileText, Globe, Hammer, Minus, Pin, PinOff, X, ChevronDown } from "lucide-react";
+import { AlertTriangle, File, FileText, Globe, Hammer, Minus, Pin, PinOff, X, ChevronDown, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 
@@ -8,6 +8,8 @@ interface ContextTrayProps {
   onRemove: (id: string) => void;
   onUpdateMode: (id: string, mode: InclusionMode) => void;
   onUpdateScope: (id: string, scope: ContextScope) => void;
+  onUpdateItem?: (id: string, patch: Partial<ContextItem>) => void;
+  onSummarize?: (id: string) => void;
   className?: string;
 }
 
@@ -17,9 +19,10 @@ const MODE_LABELS: Record<InclusionMode, string> = {
   summary: "Summary",
   full: "Full",
   search: "Search",
+  diff: "Diff",
 };
 
-const MODE_ORDER: InclusionMode[] = ["path_only", "excerpt", "summary", "full", "search"];
+const MODE_ORDER: InclusionMode[] = ["path_only", "excerpt", "summary", "full", "search", "diff"];
 
 function itemIcon(type: ContextItem["type"]) {
   switch (type) {
@@ -49,13 +52,21 @@ const ContextTrayItem = memo(function ContextTrayItem({
   onRemove,
   onUpdateMode,
   onUpdateScope,
+  onUpdateItem,
+  onSummarize,
 }: {
   item: ContextItem;
   onRemove: (id: string) => void;
   onUpdateMode: (id: string, mode: InclusionMode) => void;
   onUpdateScope: (id: string, scope: ContextScope) => void;
+  onUpdateItem?: (id: string, patch: Partial<ContextItem>) => void;
+  onSummarize?: (id: string) => void;
 }) {
   const [modeOpen, setModeOpen] = useState(false);
+  const [excerptInput, setExcerptInput] = useState(
+    item.excerpt_range ? `${item.excerpt_range[0]}-${item.excerpt_range[1]}` : ""
+  );
+  const [searchInput, setSearchInput] = useState(item.search_query ?? "");
   const displayName = item.label ?? item.source_path?.split("/").pop() ?? item.id;
   const isPinned = item.scope === "pinned";
   const sizeLabel = item.inclusion_mode !== "path_only" ? formatBytes(item.size_bytes) : "";
@@ -114,6 +125,49 @@ const ContextTrayItem = memo(function ContextTrayItem({
         )}
       </div>
 
+      {/* Excerpt range input */}
+      {item.inclusion_mode === "excerpt" && onUpdateItem && (
+        <input
+          type="text"
+          value={excerptInput}
+          onChange={(e) => setExcerptInput(e.target.value)}
+          onBlur={() => {
+            const match = excerptInput.match(/^(\d+)-(\d+)$/);
+            if (match) {
+              onUpdateItem(item.id, { excerpt_range: [parseInt(match[1]), parseInt(match[2])] });
+            }
+          }}
+          placeholder="1-50"
+          className="w-14 rounded border border-border/50 bg-background px-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+          title="Line range (e.g. 1-50)"
+        />
+      )}
+
+      {/* Search query input */}
+      {item.inclusion_mode === "search" && onUpdateItem && (
+        <input
+          type="text"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onBlur={() => onUpdateItem(item.id, { search_query: searchInput })}
+          placeholder="search…"
+          className="w-20 rounded border border-border/50 bg-background px-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+          title="Search query for bounded snippet extraction"
+        />
+      )}
+
+      {/* Summarize action (file items only) */}
+      {onSummarize && item.type === "file" && item.inclusion_mode !== "summary" && (
+        <button
+          type="button"
+          title="Summarize this file"
+          onClick={() => onSummarize(item.id)}
+          className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-primary transition opacity-0 group-hover:opacity-100"
+        >
+          <Sparkles className="h-3 w-3" />
+        </button>
+      )}
+
       {/* Pin toggle */}
       <button
         type="button"
@@ -147,6 +201,8 @@ export const ContextTray = memo(function ContextTray({
   onRemove,
   onUpdateMode,
   onUpdateScope,
+  onUpdateItem,
+  onSummarize,
   className,
 }: ContextTrayProps) {
   if (items.length === 0) return null;
@@ -160,6 +216,8 @@ export const ContextTray = memo(function ContextTray({
           onRemove={onRemove}
           onUpdateMode={onUpdateMode}
           onUpdateScope={onUpdateScope}
+          onUpdateItem={onUpdateItem}
+          onSummarize={onSummarize}
         />
       ))}
     </div>
