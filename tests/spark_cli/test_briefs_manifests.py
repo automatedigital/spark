@@ -1,6 +1,5 @@
 """Tests for session brief and workspace manifest storage (Phase 3)."""
 
-import os
 import pytest
 from fastapi.testclient import TestClient
 

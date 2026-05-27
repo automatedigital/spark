@@ -1,6 +1,5 @@
 """Tests for file summary storage and /api/summarize-file endpoint (Phase 4)."""
 
-import os
 import pytest
 from fastapi.testclient import TestClient
 
@@ -53,8 +52,9 @@ def test_summary_stale_after_file_change(tmp_path, monkeypatch):
     monkeypatch.setenv("SPARK_HOME", str(tmp_path))
     real_file = tmp_path / "changed.py"
     real_file.write_text("original")
-    from core.spark_state import SessionDB
     import time
+
+    from core.spark_state import SessionDB
     db = SessionDB()
     st = real_file.stat()
     db.set_summary(str(real_file), st.st_size, st.st_mtime, "stale summary")

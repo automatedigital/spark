@@ -311,39 +311,39 @@ When the model produces outputs that were written to disk (files, reports, gener
 
 Final quality pass: performance, accessibility, mobile, and the test suite needed before shipping.
 
-- [ ] **Debounce/cancel directory requests**
+- [x] **Debounce/cancel directory requests**
   _What_: Any file browser or autocomplete component that fires requests on every keystroke (e.g., `AtFileMenu`) must debounce by at least 200 ms and cancel in-flight requests when a new one starts. Audit all such components and apply `AbortController` consistently.
   _Why_: Fast typing currently generates a flood of requests in the `@file` menu. This wastes server resources and can cause out-of-order responses that produce confusing autocomplete results.
 
-- [ ] **Virtualize long lists as needed**
+- [x] **Virtualize long lists as needed**
   _What_: If the file browser, tray, or any list component can render hundreds of items, switch to a windowed/virtual list (e.g., `react-window` or `react-virtual`). Profile first — only virtualize lists that actually have performance problems.
   _Why_: Rendering 500 file chips in the DOM causes noticeable lag on mid-range hardware. Virtualization keeps the UI responsive without visible change to the user.
 
-- [ ] **Incremental long history loading**
+- [x] **Incremental long history loading**
   _What_: For chat sessions with many turns, load history in pages (e.g., 50 turns at a time) and prepend earlier turns on scroll-up. Do not load the entire history on mount. Show a "Load earlier messages" button or auto-trigger on scroll.
   _Why_: Long sessions today can cause slow initial loads and large DOM trees. Incremental loading keeps the initial render fast regardless of session length.
 
-- [ ] **Consolidate file helpers**
+- [x] **Consolidate file helpers**
   _What_: Audit the codebase for duplicate file-path utilities, workspace-root helpers, and path-safety functions across the frontend and backend. Merge duplicates into single canonical helpers. Document where each lives.
   _Why_: Phase 1–4 added several new path-handling code paths. Without consolidation, future changes will need to update multiple copies, and the safety logic can drift between them.
 
-- [ ] **Clear empty/error states for tray, estimates, summaries, manifests**
+- [x] **Clear empty/error states for tray, estimates, summaries, manifests**
   _What_: Every new UI surface needs a designed empty state and an error state: the tray when nothing is attached, the budget indicator when estimation fails, the brief panel when no brief exists, the summary when generation fails. None should show a blank space or a raw error message.
   _Why_: Empty and error states are the most common UX a new user sees. Blank spaces feel broken; raw errors feel hostile. Good empty states guide users toward the first action.
 
-- [ ] **Keyboard navigation for menus, tray, send, stop**
+- [x] **Keyboard navigation for menus, tray, send, stop**
   _What_: Audit all new interactive surfaces for keyboard accessibility: (1) tray items navigable by arrow keys, (2) inclusion-mode dropdowns openable and navigable by keyboard, (3) Tab/Shift-Tab cycles through tray → prompt → send without focus traps, (4) Escape closes any open popover.
   _Why_: Power users and screen-reader users rely on keyboard navigation. A tray that requires mouse clicks is inaccessible. This is also a baseline requirement for any production UI.
 
-- [ ] **Mobile layout works for chat & tray**
+- [x] **Mobile layout works for chat & tray**
   _What_: Test the chat + tray layout on viewport widths of 375px and 430px. The tray should either collapse into a bottom sheet / drawer on mobile or be accessible via a dedicated icon. Context chips in the tray must be scrollable if they overflow.
   _Why_: Mobile users exist. The tray is a new persistent UI element that could easily obscure the prompt bar or overflow off-screen on small viewports without explicit mobile testing.
 
-- [ ] **Code checks: `ruff`, `mypy`, targeted backend tests, frontend build**
+- [x] **Code checks: `ruff`, `mypy`, targeted backend tests, frontend build**
   _What_: Before marking Phase 6 complete: run `ruff check src/` with zero errors, run `mypy src/agent/ src/spark_cli/` with zero errors in new code, confirm the frontend builds without TypeScript errors, and run targeted backend tests for all new endpoints.
   _Why_: These checks catch real bugs and type mismatches that slip through manual testing. They are the minimum bar for code quality and match the project's existing lint/type standards.
 
-- [ ] **Full test suite**
+- [x] **Full test suite**
   _What_: Run `python -m pytest tests/ -q` and confirm it passes. Fix any tests that break due to new features (don't skip them). Add any integration tests needed to cover critical paths not covered by unit tests.
   _Why_: The full suite is the final regression check. Shipping without it risks breaking existing features that were not touched intentionally.
 

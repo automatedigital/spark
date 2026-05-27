@@ -2948,7 +2948,7 @@ async def get_session_detail(session_id: str):
 
 
 @app.get("/api/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str):
+async def get_session_messages(session_id: str, limit: int = 0, before_id: Optional[str] = None):
     from core.spark_state import SessionDB
 
     db = SessionDB()
@@ -2961,7 +2961,21 @@ async def get_session_messages(session_id: str):
         # parent session row. Forks are not followed (different end_reason).
         leaf_sid = db.resolve_latest_descendant(sid)
         messages = db.get_messages(leaf_sid)
-        resp: dict[str, Any] = {"session_id": leaf_sid, "messages": messages}
+        total = len(messages)
+        # Apply pagination: if limit > 0 and/or before_id specified, return a page
+        if before_id:
+            idx = next((i for i, m in enumerate(messages) if m.get("id") == before_id), None)
+            if idx is not None:
+                messages = messages[:idx]
+        if limit > 0:
+            messages = messages[-limit:]
+        has_earlier = len(messages) < total
+        resp: dict[str, Any] = {
+            "session_id": leaf_sid,
+            "messages": messages,
+            "total": total,
+            "has_earlier": has_earlier,
+        }
         if leaf_sid != sid:
             resp["migrated_from"] = sid
         return resp
@@ -2978,7 +2992,7 @@ def _resolve_workspace_media_path(path: str) -> Path:
     if not candidate.is_absolute():
         candidate = get_spark_home() / "workspace" / candidate
     resolved = candidate.resolve()
-    workspace_root = (get_spark_home() / "workspace").resolve()
+    workspace_root = _get_workspace_root()
     try:
         resolved.relative_to(workspace_root)
     except ValueError:
@@ -3950,6 +3964,14 @@ def _web_cmd_status(session_id: str) -> str:
     return "\n".join(lines)
 
 
+def _get_workspace_root(slug: Optional[str] = None) -> "Path":
+    """Return the resolved workspace root, optionally scoped to a project slug."""
+    base = (get_spark_home() / "workspace").resolve()
+    if slug:
+        return (base / slug).resolve()
+    return base
+
+
 def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional[str]:
     """Return the text to inject for a context item, or None if nothing to inject."""
     from spark_cli.context_models import InclusionMode
@@ -4047,7 +4069,7 @@ def _build_context_augmented_message(session_id: str, user_message: str, context
         return user_message
 
     from pathlib import Path as _Path
-    workspace_root = (get_spark_home() / "workspace").resolve()
+    workspace_root = _get_workspace_root()
 
     parts: list[str] = []
     for item in context_items:
@@ -4375,8 +4397,8 @@ def _validate_context_items(raw_items: list, workspace_slug: Optional[str] = Non
         )
     from spark_cli.context_models import ContextItem, InclusionMode
 
-    workspace_root = (get_spark_home() / "workspace").resolve()
-    project_root = (workspace_root / workspace_slug).resolve() if workspace_slug else workspace_root
+    workspace_root = _get_workspace_root()
+    project_root = _get_workspace_root(workspace_slug) if workspace_slug else workspace_root
 
     validated = []
     for raw in raw_items:
@@ -4501,7 +4523,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
                             sess = db.get_session(body.session_id)
                             if sess and sess.get("workspace_slug"):
                                 slug = sess["workspace_slug"]
-                                workspace_root = (get_spark_home() / "workspace" / slug).resolve()
+                                workspace_root = _get_workspace_root(slug)
                         except Exception:
                             pass
                 if not content and item.get("source_path") and workspace_root:
@@ -5108,9 +5130,7 @@ async def summarize_file(body: SummarizeFileRequest):
     from pathlib import Path as _Path
     from core.spark_state import SessionDB
 
-    workspace_root = (get_spark_home() / "workspace").resolve()
-    if body.workspace_slug:
-        workspace_root = (workspace_root / body.workspace_slug).resolve()
+    workspace_root = _get_workspace_root(body.workspace_slug or None)
 
     # Safety: resolve and check path stays within workspace
     try:

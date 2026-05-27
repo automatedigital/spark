@@ -77,8 +77,15 @@ export const api = {
     if (source) qs.set("source", source);
     return fetchJSON<PaginatedSessions>(`/api/sessions?${qs.toString()}`);
   },
-  getSessionMessages: (id: string) =>
-    fetchJSON<SessionMessagesResponse>(`/api/sessions/${encodeURIComponent(id)}/messages`),
+  getSessionMessages: (id: string, limit = 0, beforeId?: string) => {
+    const qs = new URLSearchParams();
+    if (limit > 0) qs.set("limit", String(limit));
+    if (beforeId) qs.set("before_id", beforeId);
+    const q = qs.toString();
+    return fetchJSON<SessionMessagesResponse>(
+      `/api/sessions/${encodeURIComponent(id)}/messages${q ? `?${q}` : ""}`,
+    );
+  },
   deleteSession: (id: string) =>
     fetchJSON<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -901,6 +908,8 @@ export interface SessionMessage {
 export interface SessionMessagesResponse {
   session_id: string;
   messages: SessionMessage[];
+  total?: number;
+  has_earlier?: boolean;
   /**
    * Set when the requested session was a parent of a compression-driven
    * lineage; identifies the originally-requested ID. The returned messages

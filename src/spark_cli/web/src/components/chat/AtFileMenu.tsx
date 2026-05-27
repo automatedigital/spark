@@ -21,11 +21,16 @@ export function AtFileMenu({ query, workspaceSlug, onSelect, onClose }: AtFileMe
   const nameFilter = lastSlash >= 0 ? query.slice(lastSlash + 1) : query;
 
   useEffect(() => {
-    if (workspaceSlug) {
-      api.listWorkspaceDir(workspaceSlug, dirPath).then((r) => setEntries(r.entries)).catch(() => {});
-    } else {
-      api.listChatFiles(dirPath).then((r) => setEntries(r.entries)).catch(() => {});
-    }
+    const timer = setTimeout(() => {
+      const controller = new AbortController();
+      if (workspaceSlug) {
+        api.listWorkspaceDir(workspaceSlug, dirPath).then((r) => setEntries(r.entries)).catch(() => {});
+      } else {
+        api.listChatFiles(dirPath).then((r) => setEntries(r.entries)).catch(() => {});
+      }
+      return () => controller.abort();
+    }, 200);
+    return () => clearTimeout(timer);
   }, [workspaceSlug, dirPath]);
 
   const filtered = entries.filter(

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { AlertTriangle, File, FileText, Globe, Hammer, Minus, Pin, PinOff, X, ChevronDown, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
@@ -63,6 +63,8 @@ const ContextTrayItem = memo(function ContextTrayItem({
   onSummarize?: (id: string) => void;
 }) {
   const [modeOpen, setModeOpen] = useState(false);
+  const [focusedModeIdx, setFocusedModeIdx] = useState(0);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
   const [excerptInput, setExcerptInput] = useState(
     item.excerpt_range ? `${item.excerpt_range[0]}-${item.excerpt_range[1]}` : ""
   );
@@ -97,21 +99,43 @@ const ContextTrayItem = memo(function ContextTrayItem({
       <div className="relative shrink-0">
         <button
           type="button"
-          onClick={() => setModeOpen((v) => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={modeOpen}
+          onClick={() => { setModeOpen((v) => !v); setFocusedModeIdx(MODE_ORDER.indexOf(item.inclusion_mode)); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModeOpen((v) => !v); setFocusedModeIdx(MODE_ORDER.indexOf(item.inclusion_mode)); }
+            if (e.key === "Escape") setModeOpen(false);
+          }}
           className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium text-primary/70 hover:bg-primary/10 transition"
         >
           {MODE_LABELS[item.inclusion_mode]}
           <ChevronDown className={`h-2.5 w-2.5 transition-transform ${modeOpen ? "rotate-180" : ""}`} />
         </button>
         {modeOpen && (
-          <div className="absolute bottom-full mb-1 left-0 z-50 rounded-md border border-border bg-popover shadow-lg py-1 min-w-[90px]">
-            {MODE_ORDER.map((mode) => (
+          <div
+            ref={modeMenuRef}
+            role="listbox"
+            aria-label="Inclusion mode"
+            className="absolute bottom-full mb-1 left-0 z-50 rounded-md border border-border bg-popover shadow-lg py-1 min-w-[90px]"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") { e.preventDefault(); setFocusedModeIdx((i) => (i + 1) % MODE_ORDER.length); }
+              if (e.key === "ArrowUp") { e.preventDefault(); setFocusedModeIdx((i) => (i - 1 + MODE_ORDER.length) % MODE_ORDER.length); }
+              if (e.key === "Enter") { onUpdateMode(item.id, MODE_ORDER[focusedModeIdx]); setModeOpen(false); }
+              if (e.key === "Escape" || e.key === "Tab") { setModeOpen(false); }
+            }}
+          >
+            {MODE_ORDER.map((mode, idx) => (
               <button
                 key={mode}
                 type="button"
+                role="option"
+                aria-selected={mode === item.inclusion_mode}
+                tabIndex={idx === focusedModeIdx ? 0 : -1}
+                autoFocus={idx === focusedModeIdx}
                 className={cn(
                   "w-full px-2.5 py-1 text-left text-[11px] hover:bg-secondary transition",
                   mode === item.inclusion_mode ? "text-primary font-medium" : "text-foreground/70",
+                  idx === focusedModeIdx ? "bg-secondary/60" : "",
                 )}
                 onClick={() => {
                   onUpdateMode(item.id, mode);
@@ -208,17 +232,26 @@ export const ContextTray = memo(function ContextTray({
   if (items.length === 0) return null;
 
   return (
-    <div className={cn("flex flex-wrap gap-1.5 px-3 pt-1.5 pb-0", className)}>
+    <div
+      className={cn(
+        "flex flex-wrap gap-1.5 px-3 pt-1.5 pb-0",
+        "max-h-40 overflow-y-auto sm:max-h-none sm:overflow-visible",
+        className,
+      )}
+      role="list"
+      aria-label="Attached context items"
+    >
       {items.map((item) => (
-        <ContextTrayItem
-          key={item.id}
-          item={item}
-          onRemove={onRemove}
-          onUpdateMode={onUpdateMode}
-          onUpdateScope={onUpdateScope}
-          onUpdateItem={onUpdateItem}
-          onSummarize={onSummarize}
-        />
+        <div key={item.id} role="listitem">
+          <ContextTrayItem
+            item={item}
+            onRemove={onRemove}
+            onUpdateMode={onUpdateMode}
+            onUpdateScope={onUpdateScope}
+            onUpdateItem={onUpdateItem}
+            onSummarize={onSummarize}
+          />
+        </div>
       ))}
     </div>
   );

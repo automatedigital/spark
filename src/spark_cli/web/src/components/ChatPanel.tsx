@@ -443,7 +443,10 @@ export function ChatPanel({
   const [streaming, setStreaming] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [hasEarlier, setHasEarlier] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const HISTORY_PAGE = 50;
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
@@ -499,8 +502,9 @@ export function ChatPanel({
         });
       }).catch(() => {});
       setLoadingHistory(true);
+      setHasEarlier(false);
       api
-        .getSessionMessages(sessionId)
+        .getSessionMessages(sessionId, HISTORY_PAGE)
         .then((resp) => {
           // If the requested session was compressed, the backend returns
           // the leaf session_id. Re-pin our refs so streaming events and
@@ -513,6 +517,7 @@ export function ChatPanel({
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
           setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? sessionId));
+          setHasEarlier(resp.has_earlier ?? false);
         })
         .catch(() => setError("Failed to load conversation history."))
         .finally(() => setLoadingHistory(false));
@@ -917,6 +922,26 @@ export function ChatPanel({
   const handleRetry = useCallback((idx: number) => { void doRetry(idx); }, [doRetry]);
   const handleFork = useCallback((idx: number) => { void doFork(idx); }, [doFork]);
 
+  const loadEarlierMessages = useCallback(async () => {
+    const sid = activeSessionRef.current;
+    if (!sid || loadingEarlier) return;
+    const firstMsg = chatMessages.find((m) => (m as { sessionIdx?: number }).sessionIdx != null);
+    const beforeId = (firstMsg as { id?: string })?.id;
+    setLoadingEarlier(true);
+    try {
+      const resp = await api.getSessionMessages(sid, HISTORY_PAGE, beforeId);
+      const mapped = sessionMessagesToChat(
+        resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+      );
+      setChatMessages((prev) => [...mapped, ...prev]);
+      setHasEarlier(resp.has_earlier ?? false);
+    } catch {
+      // silently ignore
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [chatMessages, loadingEarlier, HISTORY_PAGE]);
+
   const summarizeContextItem = useCallback(async (id: string) => {
     const item = contextItems.find((i) => i.id === id);
     if (!item?.source_path) return;
@@ -1146,6 +1171,18 @@ export function ChatPanel({
           </div>
         ) : (
           <div className="flex flex-col gap-3" ref={messageListRef}>
+            {hasEarlier && (
+              <div className="flex justify-center pt-1 pb-2">
+                <button
+                  type="button"
+                  disabled={loadingEarlier}
+                  onClick={() => void loadEarlierMessages()}
+                  className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground border border-border/40 rounded px-3 py-1 transition disabled:opacity-40"
+                >
+                  {loadingEarlier ? "Loading…" : "Load earlier messages"}
+                </button>
+              </div>
+            )}
             {(() => {
               // Collapse consecutive same-name tool calls into one bubble with a repeat count.
               const collapsed: { msg: typeof chatMessages[number]; repeatCount: number }[] = [];

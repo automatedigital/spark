@@ -3,7 +3,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ── Path extraction unit tests ────────────────────────────────────────────────
 
 def test_extract_output_paths_from_result():
