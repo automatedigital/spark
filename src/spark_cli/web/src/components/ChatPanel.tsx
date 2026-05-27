@@ -109,6 +109,80 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
   return out;
 }
 
+const localTurnCache = new Map<string, ChatMessage[]>();
+
+function rememberLocalTurn(sessionId: string | null, messages: ChatMessage[]) {
+  if (!sessionId) return;
+  const lastUserIdx = messages.reduce(
+    (latest, msg, idx) => (msg.role === "user" ? idx : latest),
+    -1,
+  );
+  const turn = lastUserIdx >= 0 ? messages.slice(lastUserIdx + 1) : messages;
+  if (turn.some((m) => m.role === "assistant" && Boolean(m.content.trim()))) {
+    localTurnCache.set(sessionId, turn);
+  }
+}
+
+function mergeSyncedMessages(
+  mapped: ChatMessage[],
+  prev: ChatMessage[],
+  sessionId: string | null,
+): ChatMessage[] {
+  if (mapped.length === 0 && prev.length > 0) return prev;
+
+  const forms = prev.filter((m) => m.role === "feedback_form");
+  const withForms = (messages: ChatMessage[]) => (
+    forms.length > 0 ? [...messages, ...forms] : messages
+  );
+
+  const cachedTurn = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
+  const recoveryMessages = prev.some(
+    (m) => m.role === "assistant" && Boolean(m.content.trim()),
+  ) ? prev : cachedTurn;
+  const latestLocalAssistant = [...recoveryMessages]
+    .reverse()
+    .find((m): m is Extract<ChatMessage, { role: "assistant" }> =>
+      m.role === "assistant" && Boolean(m.content.trim()),
+    );
+  if (!latestLocalAssistant) return withForms(mapped);
+
+  const localContent = latestLocalAssistant.content.trim();
+  const mappedAssistantContents = mapped
+    .filter((m): m is Extract<ChatMessage, { role: "assistant" }> => m.role === "assistant")
+    .map((m) => m.content.trim())
+    .filter(Boolean);
+  const recoveryAssistantCount = recoveryMessages.filter(
+    (m) => m.role === "assistant" && Boolean(m.content.trim()),
+  ).length;
+  const mappedHasLocalAssistant = mappedAssistantContents.some((content) => content === localContent);
+  if (mappedHasLocalAssistant) return withForms(mapped);
+
+  const latestMappedContent = mappedAssistantContents[mappedAssistantContents.length - 1] ?? "";
+  if (latestMappedContent.includes(localContent)) return withForms(mapped);
+
+  if (mappedAssistantContents.length < recoveryAssistantCount || !latestMappedContent) {
+    const missingLocalRows = cachedTurn.filter((msg) => {
+      if (msg.role === "assistant") {
+        return !mappedAssistantContents.includes(msg.content.trim());
+      }
+      if (msg.role === "reasoning") {
+        return !mapped.some((m) => m.role === "reasoning" && m.text.trim() === msg.text.trim());
+      }
+      return false;
+    });
+    return withForms([
+      ...mapped,
+      ...(missingLocalRows.length > 0
+        ? missingLocalRows.map((msg) => (
+            msg.role === "assistant" ? { ...msg, streaming: false } : msg
+          ))
+        : [{ ...latestLocalAssistant, streaming: false }]),
+    ]);
+  }
+
+  return withForms(mapped);
+}
+
 // ── Memoized row components ───────────────────────────────────────────────────
 // Defined at module scope so their identity is stable — React.memo bails out
 // any row whose props haven't changed, preventing re-renders of the full
@@ -367,7 +441,7 @@ export function ChatPanel({
           const mapped = sessionMessagesToChat(
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
-          setChatMessages((prev) => (mapped.length === 0 && prev.length > 0 ? prev : mapped));
+          setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? sessionId));
         })
         .catch(() => setError("Failed to load conversation history."))
         .finally(() => setLoadingHistory(false));
@@ -387,6 +461,7 @@ export function ChatPanel({
 
   useEffect(() => {
     scheduleScroll();
+    rememberLocalTurn(activeSessionRef.current, chatMessages);
   }, [chatMessages, scheduleScroll]);
 
   const finalizeAssistant = useCallback(() => {
@@ -583,12 +658,7 @@ export function ChatPanel({
                 const mapped = sessionMessagesToChat(
                   resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
                 );
-                setChatMessages((prev) => {
-                  if (mapped.length === 0 && prev.length > 0) return prev;
-                  // Preserve ephemeral feedback forms across the DB sync
-                  const forms = prev.filter((m) => m.role === "feedback_form");
-                  return forms.length > 0 ? [...mapped, ...forms] : mapped;
-                });
+                setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? cur));
               })
               .catch(() => {});
           }, 500);
