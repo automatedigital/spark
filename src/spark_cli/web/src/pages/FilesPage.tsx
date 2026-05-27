@@ -510,14 +510,25 @@ function FileBrowser({
           >
             <FileIcon name={entry.name} />
             <span className="flex-1 truncate">{entry.name}</span>
-            <button
-              type="button"
-              title="Delete"
-              className="ml-1 hidden shrink-0 text-muted-foreground/40 hover:text-destructive group-hover:block"
-              onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry.path); }}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <div className="ml-1 hidden shrink-0 items-center gap-1.5 group-hover:flex">
+              <a
+                href={mediaFileUrl(entry.path)}
+                download={entry.name}
+                onClick={(e) => e.stopPropagation()}
+                title="Download"
+                className="text-muted-foreground/40 hover:text-foreground"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
+              <button
+                type="button"
+                title="Delete"
+                className="text-muted-foreground/40 hover:text-destructive"
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(entry.path); }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         ))}
 

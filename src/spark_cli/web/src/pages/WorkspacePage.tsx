@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   Edit3,
   Eye,
   File,
@@ -192,12 +193,14 @@ function FileNodeRow({
   onSelect,
   selectedPath,
   onDelete,
+  slug,
 }: {
   node: WorkspaceFileNode;
   depth: number;
   onSelect: (node: WorkspaceFileNode) => void;
   selectedPath: string | null;
   onDelete: (node: WorkspaceFileNode) => void;
+  slug: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isDir = node.type === "dir";
@@ -241,16 +244,27 @@ function FileNodeRow({
         )}
         <span className="flex-1 truncate">{node.name}</span>
         {!isDir && (
-          <button
-            type="button"
-            className="ml-1 hidden text-muted-foreground/50 hover:text-destructive group-hover:block"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(node);
-            }}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
+          <div className="ml-1 hidden items-center gap-0.5 group-hover:flex">
+            <a
+              href={workspaceRawFileUrl(slug, node.path)}
+              download={node.name}
+              onClick={(e) => e.stopPropagation()}
+              className="text-muted-foreground/50 hover:text-foreground"
+              title="Download"
+            >
+              <Download className="h-3 w-3" />
+            </a>
+            <button
+              type="button"
+              className="text-muted-foreground/50 hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(node);
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
         )}
       </div>
       {isDir && expanded && node.children && (
@@ -263,6 +277,7 @@ function FileNodeRow({
               onSelect={onSelect}
               selectedPath={selectedPath}
               onDelete={onDelete}
+              slug={slug}
             />
           ))}
           {node.children.length === 0 && (
@@ -1748,6 +1763,7 @@ function FileTreePane({
             onSelect={onOpenFile}
             selectedPath={activePath}
             onDelete={(n) => void handleDelete(n)}
+            slug={slug}
           />
         ))}
       </div>
