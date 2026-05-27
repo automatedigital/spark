@@ -81,7 +81,7 @@ export const contextApi = {
       method: "POST",
       body: JSON.stringify({
         session_id: params.sessionId ?? null,
-        prompt_text: params.promptText,
+        prompt: params.promptText,
         context_items: params.contextItems,
       }),
     }),

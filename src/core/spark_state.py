@@ -1330,6 +1330,58 @@ class SessionDB:
             return True
         return self._execute_write(_do)
 
+    # ── Session briefs ────────────────────────────────────────────────────────
+
+    def get_brief(self, session_id: str) -> str | None:
+        """Return the brief text for a session, or None if not set."""
+        with self._lock:
+            cursor = self._conn.execute(
+                "SELECT text FROM session_briefs WHERE session_id = ?", (session_id,)
+            )
+            row = cursor.fetchone()
+        return row["text"] if row else None
+
+    def set_brief(self, session_id: str, text: str) -> None:
+        """Upsert the brief for a session."""
+        import time as _time
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO session_briefs (session_id, text, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET text=excluded.text, updated_at=excluded.updated_at",
+                (session_id, text, _time.time()),
+            )
+        self._execute_write(_do)
+
+    # ── Workspace manifests ───────────────────────────────────────────────────
+
+    def get_manifest(self, workspace_slug: str) -> dict[str, Any]:
+        """Return the manifest data for a workspace as a dict."""
+        import json as _json
+        with self._lock:
+            cursor = self._conn.execute(
+                "SELECT data_json FROM workspace_manifests WHERE workspace_slug = ?",
+                (workspace_slug,),
+            )
+            row = cursor.fetchone()
+        if row:
+            try:
+                return _json.loads(row["data_json"])
+            except Exception:
+                return {}
+        return {}
+
+    def set_manifest(self, workspace_slug: str, data: dict[str, Any]) -> None:
+        """Upsert the manifest for a workspace."""
+        import json as _json
+        import time as _time
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO workspace_manifests (workspace_slug, data_json, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(workspace_slug) DO UPDATE SET data_json=excluded.data_json, updated_at=excluded.updated_at",
+                (workspace_slug, _json.dumps(data), _time.time()),
+            )
+        self._execute_write(_do)
+
     def prune_sessions(self, older_than_days: int = 90, source: str = None) -> int:
         """Delete sessions older than N days. Returns count of deleted sessions.
 

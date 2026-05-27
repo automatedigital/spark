@@ -159,43 +159,43 @@ The Context Tray is the central UI surface where users see and manage everything
 
 Users should know before they send a message whether they're about to blow the context window or incur a large token cost. This phase adds a preflight estimate so they can make informed decisions.
 
-- [ ] **Preflight token estimate endpoint**
+- [x] **Preflight token estimate endpoint**
   _What_: Add a `POST /api/estimate-tokens` endpoint that accepts: the current prompt text, the list of `ContextItem`s (with their inclusion modes), any pinned brief text, and the message history count. Returns a `ContextEstimate` with a breakdown by component and a total.
   _Why_: Token counting must happen server-side to match the exact tokenizer the model uses. A client-side approximation would give misleading numbers.
 
-- [ ] **Use existing token helpers where possible**
+- [x] **Use existing token helpers where possible**
   _What_: Before writing new tokenization code, audit the codebase for existing helpers (`count_tokens`, tiktoken usage, etc.) in `src/core/` or the web server. Reuse them in the estimate endpoint rather than duplicating logic.
   _Why_: Duplicate token-counting implementations will diverge over time, producing inconsistent numbers. Using one source of truth is simpler and cheaper to maintain.
 
-- [ ] **Estimate: prompt, attached, pinned, history**
+- [x] **Estimate: prompt, attached, pinned, history**
   _What_: The `ContextEstimate` response must break down token counts into four labeled buckets: (1) current prompt text, (2) attached context items (per item and total), (3) pinned brief, (4) conversation history included in the next turn. Surface each bucket in the UI so users know which component is costing the most.
   _Why_: A total token count with no breakdown is hard to act on. When a user sees they're over budget, they need to know whether to trim the prompt, remove an attachment, or clear history — not just that the total is too high.
 
-- [ ] **Warn for likely compression or costly attachments**
+- [x] **Warn for likely compression or costly attachments**
   _What_: If the total estimate exceeds 80% of the model's context window, show a yellow warning in the tray ("Context may be compressed"). If it exceeds 95%, show a red warning ("Likely to hit context limit"). Also flag any single attachment that accounts for more than 50% of the total.
   _Why_: Context compression silently degrades response quality. Warning users before they send — and telling them what's expensive — gives them a chance to fix it rather than just experiencing a worse reply.
 
-- [ ] **Debounce/cancel estimate during typing**
+- [x] **Debounce/cancel estimate during typing**
   _What_: The estimate should re-trigger whenever the prompt text changes, a context item is added/removed, or an inclusion mode changes. Debounce the request by 400–600 ms after the last change. Cancel any in-flight estimate request when a new one starts (use `AbortController`).
   _Why_: Without debouncing, every keystroke fires a request, creating noisy network activity and flickering UI. Without cancellation, slow responses arrive out of order.
 
-- [ ] **Budget indicator near send; expanded details in tray**
+- [x] **Budget indicator near send; expanded details in tray**
   _What_: Add a compact token budget indicator in the prompt bar footer (e.g., "4,200 / 200K tokens") that turns yellow/red when thresholds are hit. Clicking it (or expanding the tray) shows the full breakdown by bucket.
   _Why_: The indicator should be glanceable without being intrusive. The expanded view is for users who want to dig into what's using their budget.
 
-- [ ] **Quick actions to remove/switch mode**
+- [x] **Quick actions to remove/switch mode**
   _What_: When the budget indicator shows a warning, surface direct action buttons in the expanded view: e.g., "Switch [file.py] to summary" or "Remove pinned brief". These should apply the action and re-trigger the estimate immediately.
   _Why_: A warning without an escape hatch is frustrating. Offering a one-click fix closes the loop and makes the budgeting feature feel helpful rather than just alarming.
 
-- [ ] **Live updates as prompt/context change**
+- [x] **Live updates as prompt/context change**
   _What_: Ensure the estimate display updates in real time as the user types, adds/removes context items, and changes inclusion modes. The UI state should reflect the current pending request clearly (e.g., a spinner or subtle "updating…" label while the estimate loads).
   _Why_: Stale numbers are worse than no numbers — they create false confidence. The indicator must always reflect the current state, not a cached one from 30 seconds ago.
 
-- [ ] **Graceful UI for estimate failures**
+- [x] **Graceful UI for estimate failures**
   _What_: If the estimate endpoint returns an error or times out, hide the indicator or show "—" rather than a stale or incorrect number. Do not block the user from sending. Log the error for debugging.
   _Why_: Token estimation is a convenience feature, not a safety gate. Failing closed (blocking send) when the estimate is unavailable would be worse than showing nothing.
 
-- [ ] **Estimate boundary tests**
+- [x] **Estimate boundary tests**
   _What_: Backend tests that verify: (1) a prompt with no context returns a non-zero estimate, (2) adding a 10KB full-content file increases the estimate by approximately the right amount, (3) a request near the model limit triggers the warning threshold fields in the response, and (4) an empty request doesn't error.
   _Why_: Estimation logic has subtle edge cases (empty context, very large files, history truncation). Tests catch regressions before they reach users who rely on the numbers to make decisions.
 

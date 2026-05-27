@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 import type { ModelStatusResponse, ModelSuggestionsResponse } from "@/lib/api";
 import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 import { AtFileMenu } from "@/components/chat/AtFileMenu";
+import { useTokenEstimate } from "@/hooks/useTokenEstimate";
+import type { ContextItem, ContextEstimate } from "@/lib/context";
 
 interface PromptBarProps {
   input: string;
@@ -13,8 +15,131 @@ interface PromptBarProps {
   onStop: () => void;
   onUploadFiles?: (files: File[]) => Promise<void>;
   onAttachPath?: (path: string, sizeBytes?: number) => void;
+  onRemoveContextItem?: (id: string) => void;
+  onUpdateContextMode?: (id: string, mode: import("@/lib/context").InclusionMode) => void;
   disabled?: boolean;
   workspaceSlug?: string;
+  contextItems?: ContextItem[];
+  sessionId?: string | null;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
+
+interface TokenBudgetIndicatorProps {
+  estimate: ContextEstimate | null;
+  loading: boolean;
+  contextItems?: ContextItem[];
+  onRemoveItem?: (id: string) => void;
+  onUpdateMode?: (id: string, mode: import("@/lib/context").InclusionMode) => void;
+}
+
+function TokenBudgetIndicator({
+  estimate,
+  loading,
+  contextItems = [],
+  onRemoveItem,
+  onUpdateMode,
+}: TokenBudgetIndicatorProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (loading && !estimate) {
+    return (
+      <span className="text-[10px] text-muted-foreground/30 tabular-nums">
+        <Loader2 className="inline h-2.5 w-2.5 animate-spin mr-0.5" />
+      </span>
+    );
+  }
+
+  if (!estimate) return null;
+
+  const pct = estimate.utilization;
+  const colorClass = pct >= 0.95
+    ? "text-destructive"
+    : pct >= 0.80
+    ? "text-yellow-500"
+    : "text-muted-foreground/40";
+
+  const label = `${formatTokens(estimate.total_tokens)} / ${formatTokens(estimate.context_window)}`;
+
+  // Large attached items that can be switched to summary (over 10% of context window)
+  const bigItems = estimate.warning
+    ? contextItems.filter(
+        (item) => item.size_bytes > 5_000 && item.inclusion_mode === "full" && item.type === "file"
+      )
+    : [];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        title="Token budget breakdown"
+        className={`text-[10px] tabular-nums transition hover:opacity-80 ${colorClass}`}
+      >
+        {label}
+      </button>
+      {expanded && (
+        <div className="absolute bottom-full mb-1 right-0 z-50 bg-popover border border-border rounded-lg shadow-lg p-3 text-[11px] w-60">
+          <div className="font-medium text-foreground mb-2">Token budget</div>
+          {estimate.buckets.map((b) => (
+            <div key={b.label} className="flex justify-between text-muted-foreground py-0.5">
+              <span>{b.label}</span>
+              <span className="tabular-nums">{formatTokens(b.tokens)}</span>
+            </div>
+          ))}
+          <div className="border-t border-border mt-1 pt-1 flex justify-between font-medium text-foreground">
+            <span>Total</span>
+            <span className={`tabular-nums ${colorClass}`}>{formatTokens(estimate.total_tokens)}</span>
+          </div>
+          {estimate.warning && (
+            <div className={`mt-1.5 text-[10px] rounded px-1.5 py-0.5 ${
+              estimate.warning === "limit_exceeded"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-yellow-500/10 text-yellow-600"
+            }`}>
+              {estimate.warning === "limit_exceeded" ? "Likely to hit context limit" : "Context may be compressed"}
+            </div>
+          )}
+          {bigItems.length > 0 && (
+            <div className="mt-2 border-t border-border pt-2 space-y-1">
+              <div className="text-muted-foreground/70 mb-1">Quick fixes</div>
+              {bigItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-1">
+                  <span className="truncate text-muted-foreground max-w-[120px]" title={item.label ?? item.source_path ?? ""}>
+                    {item.label ?? item.source_path?.split("/").pop() ?? "file"}
+                  </span>
+                  <div className="flex gap-1 shrink-0">
+                    {onUpdateMode && (
+                      <button
+                        type="button"
+                        onClick={() => { onUpdateMode(item.id, "summary"); setExpanded(false); }}
+                        className="rounded px-1 py-0.5 bg-secondary hover:bg-secondary/80 text-foreground"
+                      >
+                        → summary
+                      </button>
+                    )}
+                    {onRemoveItem && (
+                      <button
+                        type="button"
+                        onClick={() => { onRemoveItem(item.id); setExpanded(false); }}
+                        className="rounded px-1 py-0.5 bg-secondary hover:bg-secondary/80 text-muted-foreground"
+                      >
+                        remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
@@ -318,8 +443,12 @@ export function PromptBar({
   onStop,
   onUploadFiles,
   onAttachPath,
+  onRemoveContextItem,
+  onUpdateContextMode,
   disabled,
   workspaceSlug,
+  contextItems = [],
+  sessionId,
 }: PromptBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
@@ -338,6 +467,8 @@ export function PromptBar({
   const [showHint, setShowHint] = useState(
     () => !localStorage.getItem("spark-prompt-hint-dismissed")
   );
+
+  const { estimate, loading: estimateLoading } = useTokenEstimate(input, contextItems, sessionId);
 
   useEffect(() => {
     api.getModelStatus().then(setModelStatus).catch(() => {});
@@ -588,6 +719,15 @@ export function PromptBar({
           )}
 
           <div className="flex-1" />
+
+          {/* Token budget indicator */}
+          <TokenBudgetIndicator
+            estimate={estimate}
+            loading={estimateLoading}
+            contextItems={contextItems}
+            onRemoveItem={onRemoveContextItem}
+            onUpdateMode={onUpdateContextMode}
+          />
 
           {/* Keyboard hint */}
           {showHint && !streaming && (

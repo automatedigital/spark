@@ -4409,6 +4409,121 @@ def _persist_context_items(session_id: str, raw_items: list) -> None:
         _log.debug("context items persist failed session=%s", session_id, exc_info=True)
 
 
+def _count_tokens_fast(text: str) -> int:
+    """Count tokens using tiktoken cl100k_base, falling back to char/4."""
+    if not text:
+        return 0
+    try:
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text))
+    except Exception:
+        return len(text) // 4
+
+
+class TokenEstimateRequest(BaseModel):
+    prompt: str = ""
+    context_items: list = []
+    brief: str = ""
+    session_id: Optional[str] = None
+    history_message_count: int = 0
+    model: Optional[str] = None
+
+
+@app.post("/api/estimate-tokens")
+async def estimate_tokens(body: TokenEstimateRequest):
+    from spark_cli.context_models import ContextBucket, ContextEstimate
+
+    prompt_tokens = _count_tokens_fast(body.prompt)
+
+    # Count attached context item tokens
+    attached_tokens = 0
+    item_buckets: list[ContextBucket] = []
+    if body.context_items:
+        workspace_root: Optional[Path] = None
+        for raw in body.context_items:
+            item = raw if isinstance(raw, dict) else (raw.model_dump() if hasattr(raw, "model_dump") else {})
+            label = item.get("label") or item.get("source_path") or item.get("id", "item")
+            mode = item.get("inclusion_mode", "full")
+            if mode == "path_only":
+                t = _count_tokens_fast(item.get("source_path", ""))
+            else:
+                content = item.get("content") or ""
+                if not content and item.get("source_path") and workspace_root is None:
+                    # Try to resolve workspace root from session
+                    if body.session_id:
+                        try:
+                            from core.spark_state import SessionDB
+                            db = SessionDB()
+                            sess = db.get_session(body.session_id)
+                            if sess and sess.get("workspace_slug"):
+                                slug = sess["workspace_slug"]
+                                workspace_root = (get_spark_home() / "workspace" / slug).resolve()
+                        except Exception:
+                            pass
+                if not content and item.get("source_path") and workspace_root:
+                    content = _resolve_context_item_content(item, workspace_root) or ""
+                t = _count_tokens_fast(content)
+            attached_tokens += t
+            item_buckets.append(ContextBucket(label=label, tokens=t))
+
+    pinned_tokens = _count_tokens_fast(body.brief)
+
+    # Estimate history tokens from DB if session_id provided
+    history_tokens = 0
+    if body.session_id and body.history_message_count > 0:
+        try:
+            from core.spark_state import SessionDB
+            db = SessionDB()
+            messages = db.get_messages(body.session_id)
+            db.close()
+            # Take the most recent history_message_count messages
+            recent = messages[-body.history_message_count:]
+            for m in recent:
+                history_tokens += _count_tokens_fast(m.get("content") or "")
+        except Exception:
+            pass
+
+    total = prompt_tokens + attached_tokens + pinned_tokens + history_tokens
+
+    # Determine context window from model capabilities
+    context_window = 200_000
+    if body.model:
+        try:
+            from agent.models_dev import get_model_capabilities
+            mc = get_model_capabilities(model=body.model)
+            if mc and mc.context_window > 0:
+                context_window = mc.context_window
+        except Exception:
+            pass
+
+    utilization = total / context_window if context_window > 0 else 0.0
+    warning = None
+    if utilization >= 0.95:
+        warning = "limit_exceeded"
+    elif utilization >= 0.80:
+        warning = "compression_likely"
+
+    buckets = [
+        ContextBucket(label="Prompt", tokens=prompt_tokens),
+        ContextBucket(label="Attached", tokens=attached_tokens, items=[b.label for b in item_buckets]),
+        ContextBucket(label="Brief", tokens=pinned_tokens),
+        ContextBucket(label="History", tokens=history_tokens),
+    ]
+
+    return ContextEstimate(
+        prompt_tokens=prompt_tokens,
+        attached_tokens=attached_tokens,
+        pinned_tokens=pinned_tokens,
+        history_tokens=history_tokens,
+        total_tokens=total,
+        context_window=context_window,
+        utilization=utilization,
+        warning=warning,
+        buckets=buckets,
+    )
+
+
 @app.patch("/api/sessions/{session_id}/kanban")
 async def update_session_kanban(session_id: str, body: KanbanUpdate):
     if body.status not in _KANBAN_STATUSES:

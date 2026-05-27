@@ -1214,8 +1214,12 @@ export function ChatPanel({
         onStop={() => void stop()}
         onUploadFiles={uploadFiles}
         onAttachPath={attachPath}
+        onRemoveContextItem={removeContextItem}
+        onUpdateContextMode={updateContextMode}
         disabled={!!editingUser}
         workspaceSlug={workspaceSlug}
+        contextItems={contextItems}
+        sessionId={activeSessionId}
       />
     </div>
   );
