@@ -3008,7 +3008,7 @@ def run_setup_wizard(args):
             config = load_config()
 
         setup_mode = prompt_choice("How would you like to set up Spark?", [
-            "Quick setup — provider, model & messaging (recommended)",
+            "Essential setup — provider, model & messaging (recommended)",
             "Full setup — configure everything",
         ], 0)
 
@@ -3137,6 +3137,11 @@ def _run_first_time_quick_setup(config: dict, spark_home, is_existing: bool):
     setup_model_provider(config, quick=True)
 
     # Step 2: Permissions — which toolsets the agent can use
+    print()
+    print_info("Next: choose what the agent is allowed to do.")
+    print_info("  Standard lets it run shell commands, read/write files, and search the web.")
+    print_info("  Full adds browser automation, image generation, and removes approval prompts.")
+    print_info("  You can change this any time with: spark setup permissions")
     print()
     setup_permissions(config)
 
