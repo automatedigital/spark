@@ -64,9 +64,9 @@ gh release create "$TAG" \
   --notes "## Spark Desktop v${VERSION}
 
 ### Install
-1. Download **Spark.dmg**
-2. Double-click **Install Spark** on the disk image (recommended)
-3. Or drag Spark to Applications; first launch may require **right-click → Open** (unsigned build)
+1. **Recommended:** `curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install_desktop.sh | bash`
+2. Or download **Spark.dmg**, drag Spark to Applications, **right-click → Open** on first launch (unsigned)
+3. For silent Gatekeeper: run `scripts/notarize_mac.sh` before release (Apple Developer ID required)
 
 ### Requirements
 - macOS 13+
