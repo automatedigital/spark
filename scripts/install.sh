@@ -1194,25 +1194,21 @@ install_node_deps() {
             ubuntu|debian|raspbian|pop|linuxmint|elementary|zorin|kali|parrot)
                 log_info "Playwright may request sudo to install browser system dependencies (shared libraries)."
                 log_info "This is standard Playwright setup - Spark itself does not require root access."
-                PLAYWRIGHT_OUT=$(cd "$INSTALL_DIR" && npx playwright install --with-deps chromium 2>&1) || {
-                    if echo "$PLAYWRIGHT_OUT" | grep -q "does not support chromium on"; then
-                        UNSUPPORTED_PLATFORM=$(echo "$PLAYWRIGHT_OUT" | grep -o "does not support chromium on [^ ]*" | head -1 || true)
-                        log_warn "Playwright $UNSUPPORTED_PLATFORM"
-                        log_info "Trying to install Playwright Chromium without system deps (may still work)..."
-                        if cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null; then
-                            log_success "Playwright Chromium installed (system deps skipped)"
-                        else
-                            log_warn "Playwright browser not installed - browser tools will be limited."
-                            log_info "Once Playwright adds support for your OS version, run:"
-                            log_info "  cd $INSTALL_DIR && npx playwright install --with-deps chromium"
-                            log_info "Alternatively, install the system chromium package:"
-                            log_info "  sudo apt install chromium-browser"
-                        fi
+                if cd "$INSTALL_DIR" && npx playwright install --with-deps chromium 2>/dev/null; then
+                    : # success
+                else
+                    log_info "System-deps install failed, trying browser-only install..."
+                    if cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null; then
+                        log_success "Playwright Chromium installed (system deps skipped)"
+                        log_info "If browser tools don't work, install system deps manually:"
+                        log_info "  sudo apt install libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libgbm1 libasound2t64"
                     else
-                        log_warn "Playwright browser installation failed - browser tools will not work."
-                        log_warn "Try running manually: cd $INSTALL_DIR && npx playwright install --with-deps chromium"
+                        log_warn "Playwright browser not installed - browser tools will be limited."
+                        log_info "Install system chromium as a workaround: sudo apt install chromium-browser"
+                        log_info "Or wait for Playwright to add support for your OS version, then run:"
+                        log_info "  cd $INSTALL_DIR && npx playwright install --with-deps chromium"
                     fi
-                }
+                fi
                 ;;
             arch|manjaro)
                 if command -v pacman &> /dev/null; then
