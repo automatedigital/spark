@@ -93,3 +93,4 @@ Print the release URL from `gh` output.
 - DMG is ~400MB; GitHub allows up to 2GB per asset.
 - Requires `gh auth status` to succeed.
 - Add code signing/notarization in `scripts/build_desktop.sh` before wide public distribution.
+- **`Spark.dmg` is in `.gitignore`** — publish to GitHub Releases only; never `git add` the DMG. Commit `Cargo.lock` after version bumps if it changed.

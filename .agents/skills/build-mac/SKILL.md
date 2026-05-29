@@ -45,3 +45,4 @@ If a stage fails, show the relevant log lines and the fix hint from the table ab
 - Build takes ~10–15 minutes (PyInstaller + Rust are slow).
 - Must run on **Apple Silicon** Mac (frozen sidecar is aarch64).
 - `scripts/build_desktop.sh` activates the venv; no manual `source venv` needed.
+- **Do not commit** `Spark.dmg` (or copy it to repo root for release). It is listed in `.gitignore`; ship binaries only via `/release-mac` → GitHub Releases.

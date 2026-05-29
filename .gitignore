@@ -82,3 +82,5 @@ src/spark_cli/web/src-tauri/target/
 src/spark_cli/web/src-tauri/gen/
 # Frozen PyInstaller --onedir sidecar, staged here by build_desktop.sh
 src/spark_cli/web/src-tauri/resources/
+# DMG: built locally, uploaded via /release-mac — never commit (~400MB)
+Spark.dmg
