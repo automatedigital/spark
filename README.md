@@ -73,17 +73,15 @@ A native **Spark.app** bundles the Web UI and Python backend in one drag-to-inst
 
 **Requirements:** macOS 13+, Apple Silicon (M1/M2/M3)
 
-**Install (recommended — one command):**
+**Install:**
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install_desktop.sh | bash
-```
+1. Download **Spark.dmg** and open it.
+2. Drag **Spark.app** to Applications.
+3. On first launch, **right-click → Open** (unsigned build).
 
-This downloads the release DMG, installs to `/Applications`, clears macOS download quarantine, and launches Spark. No manual `xattr` steps.
+If macOS blocks the app: **System Settings → Privacy & Security → Open Anyway**.
 
-**Install from the DMG:** download **Spark.dmg**, drag **Spark.app** to Applications, then **right-click → Open** on first launch. If macOS blocks the app, open **System Settings → Privacy & Security → Open Anyway**.
-
-Unsigned builds cannot pass Gatekeeper with a normal double-click until the app is **notarized** with an Apple Developer ID (`scripts/notarize_mac.sh` for maintainers).
+Fully silent installs require Apple notarization (`scripts/notarize_mac.sh` for maintainers with a Developer ID).
 
 The desktop app uses the same `~/.spark/` config and state as the CLI.
 

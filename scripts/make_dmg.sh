@@ -25,31 +25,13 @@ RW_DMG="$WORK/rw.dmg"
 MOUNT="/Volumes/$VOL_NAME"
 trap 'hdiutil detach "$MOUNT" -quiet 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
-# Stage contents: Spark.app, README, and Applications symlink.
+# Stage contents: the app + an Applications symlink.
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/$APP_NAME"
 ln -s /Applications "$STAGE/Applications"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cat > "$STAGE/README.txt" <<'EOF'
-Spark Desktop — Install
-=====================
-
-RECOMMENDED (no Gatekeeper workarounds):
-  Open Terminal and run:
-
-  curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install_desktop.sh | bash
-
-FROM THIS DISK IMAGE:
-  1. Drag Spark.app onto Applications
-  2. Right-click Spark.app in Applications → Open (first launch only)
-
-If macOS blocked the app: System Settings → Privacy & Security → Open Anyway
-
-Fully silent installs require a notarized build (Apple Developer ID).
-EOF
-
 # cp -R breaks signatures; re-sign the staged app before packaging.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$REPO_ROOT/scripts/sign_mac_app.sh" "$STAGE/$APP_NAME"
 
 # Size the read-write image with headroom over the staged payload.
@@ -68,13 +50,12 @@ tell application "Finder"
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {200, 120, 800, 520}
+    set the bounds of container window to {200, 120, 800, 480}
     set theViewOptions to the icon view options of container window
     set arrangement of theViewOptions to not arranged
     set icon size of theViewOptions to 120
-    set position of item "README.txt" of container window to {120, 120}
-    set position of item "$APP_NAME" of container window to {280, 220}
-    set position of item "Applications" of container window to {480, 220}
+    set position of item "$APP_NAME" of container window to {150, 180}
+    set position of item "Applications" of container window to {450, 180}
     update without registering applications
     delay 1
     close
