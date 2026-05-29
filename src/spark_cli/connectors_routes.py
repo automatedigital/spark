@@ -49,8 +49,8 @@ def _redirect_uri() -> str:
 @router.get("/api/connectors")
 async def list_connectors():
     try:
-        from spark_cli.google_connector import get_connection_status, is_configured
-        google_status = get_connection_status()
+        from spark_cli.google_connector import get_connection_status_async
+        google_status = await get_connection_status_async()
     except Exception as exc:
         logger.warning("Error getting Google connector status: %s", exc)
         google_status = {"connected": False, "configured": False, "error": str(exc)}
@@ -73,8 +73,8 @@ async def list_connectors():
 @router.get("/api/connectors/google/status")
 async def google_status():
     try:
-        from spark_cli.google_connector import get_connection_status
-        return JSONResponse(get_connection_status())
+        from spark_cli.google_connector import get_connection_status_async
+        return JSONResponse(await get_connection_status_async())
     except Exception as exc:
         logger.warning("Error getting Google status: %s", exc)
         return JSONResponse({"connected": False, "configured": False, "error": str(exc)})

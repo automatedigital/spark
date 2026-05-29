@@ -229,8 +229,9 @@ def get_user_info(access_token: str) -> dict:
     return resp.json()
 
 
-def get_connection_status() -> dict:
-    """Return a status dict for the frontend."""
+async def get_connection_status_async() -> dict:
+    """Return a status dict for the frontend (async-safe)."""
+    import asyncio
     token = load_token()
     if not token:
         return {
@@ -241,7 +242,8 @@ def get_connection_status() -> dict:
             "picture": None,
         }
 
-    access_token = get_valid_access_token()
+    # Run the potentially-blocking token refresh in a thread
+    access_token = await asyncio.get_event_loop().run_in_executor(None, get_valid_access_token)
     if not access_token:
         return {
             "connected": False,
@@ -262,9 +264,10 @@ def get_connection_status() -> dict:
             "picture": token.get("picture"),
         }
 
-    # Fetch and cache profile
+    # Fetch and cache profile (run in thread to avoid blocking event loop)
     try:
-        info = get_user_info(access_token)
+        import asyncio
+        info = await asyncio.get_event_loop().run_in_executor(None, get_user_info, access_token)
         token["email"] = info.get("email")
         token["name"] = info.get("name")
         token["picture"] = info.get("picture")
