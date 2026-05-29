@@ -67,32 +67,23 @@ def _get_google_config() -> dict:
         return {}
 
 
-# Spark's registered Google OAuth client (Desktop app type — public, no secret needed).
-# See: https://console.cloud.google.com/apis/credentials
-SPARK_GOOGLE_CLIENT_ID = "688733154744-3o0lgqp488dk3li23qpldld4r0qc3t3k.apps.googleusercontent.com"
-
-
 def get_client_id() -> str:
-    # Allow override via env or config, fall back to the baked-in app client ID
     return (
         os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
         or _get_google_config().get("client_id", "")
-        or SPARK_GOOGLE_CLIENT_ID
     )
 
 
 def get_client_secret() -> str:
-    # Desktop app + PKCE requires no client_secret — this is intentionally empty
     return (
         os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
         or _get_google_config().get("client_secret", "")
-        or ""
     )
 
 
 def is_configured() -> bool:
-    """Always True — client_id is baked in."""
-    return True
+    """Return True if client credentials are available."""
+    return bool(get_client_id() and get_client_secret())
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +166,8 @@ def exchange_code(code: str, code_verifier: str, redirect_uri: str) -> dict:
         payload["client_secret"] = secret
 
     resp = httpx.post(GOOGLE_TOKEN_URL, data=payload, timeout=15)
+    if not resp.is_success:
+        logger.error("Google token exchange failed %s: %s", resp.status_code, resp.text)
     resp.raise_for_status()
     token = resp.json()
     # Normalize: store absolute expiry timestamp
