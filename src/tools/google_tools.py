@@ -19,10 +19,21 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_token() -> str | None:
+def _check_google_connected() -> bool:
+    """check_fn: only expose these tools when a Google token exists."""
+    try:
+        from spark_cli.google_connector import load_token
+        return bool(load_token())
+    except Exception:
+        return False
+
+
+async def _get_token_async() -> str | None:
+    import asyncio
     try:
         from spark_cli.google_connector import get_valid_access_token
-        return get_valid_access_token()
+        # Run the synchronous token fetch in a thread to avoid blocking the event loop
+        return await asyncio.get_event_loop().run_in_executor(None, get_valid_access_token)
     except Exception:
         return None
 
@@ -30,7 +41,7 @@ def _get_token() -> str | None:
 def _not_connected() -> str:
     return json.dumps({
         "error": "not_connected",
-        "message": "Google Workspace is not connected. Open the Connectors tab in the dashboard and click 'Connect Google'.",
+        "message": "Google Workspace is not connected. Open Settings → Connectors and click 'Connect Google'.",
     })
 
 
@@ -42,10 +53,10 @@ def _gmail_headers(access_token: str) -> dict:
 # Gmail search
 # ---------------------------------------------------------------------------
 
-def _gmail_search(args: dict[str, Any]) -> str:
+async def _gmail_search(args: dict[str, Any]) -> str:
     import httpx
 
-    access_token = _get_token()
+    access_token = await _get_token_async()
     if not access_token:
         return _not_connected()
 
@@ -53,45 +64,45 @@ def _gmail_search(args: dict[str, Any]) -> str:
     max_results = min(int(args.get("max_results", 10)), 50)
 
     try:
-        resp = httpx.get(
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-            params={"q": query, "maxResults": max_results},
-            headers=_gmail_headers(access_token),
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        messages = data.get("messages", [])
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                params={"q": query, "maxResults": max_results},
+                headers=_gmail_headers(access_token),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            messages = data.get("messages", [])
 
-        if not messages:
-            return json.dumps({"results": [], "total": 0, "query": query})
+            if not messages:
+                return json.dumps({"results": [], "total": 0, "query": query})
 
-        # Fetch snippets for each message
-        results = []
-        for msg in messages[:max_results]:
-            try:
-                detail = httpx.get(
-                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}",
-                    params={"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
-                    headers=_gmail_headers(access_token),
-                    timeout=10,
-                )
-                detail.raise_for_status()
-                d = detail.json()
-                headers = {
-                    h["name"]: h["value"]
-                    for h in d.get("payload", {}).get("headers", [])
-                }
-                results.append({
-                    "id": msg["id"],
-                    "subject": headers.get("Subject", "(no subject)"),
-                    "from": headers.get("From", ""),
-                    "date": headers.get("Date", ""),
-                    "snippet": d.get("snippet", ""),
-                    "thread_id": d.get("threadId", ""),
-                })
-            except Exception as exc:
-                logger.debug("Failed to fetch message %s: %s", msg["id"], exc)
+            # Fetch all message details concurrently
+            import asyncio
+            async def fetch_detail(msg_id: str) -> dict | None:
+                try:
+                    r = await client.get(
+                        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}",
+                        params={"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
+                        headers=_gmail_headers(access_token),
+                    )
+                    r.raise_for_status()
+                    d = r.json()
+                    hdrs = {h["name"]: h["value"] for h in d.get("payload", {}).get("headers", [])}
+                    return {
+                        "id": msg_id,
+                        "subject": hdrs.get("Subject", "(no subject)"),
+                        "from": hdrs.get("From", ""),
+                        "date": hdrs.get("Date", ""),
+                        "snippet": d.get("snippet", ""),
+                        "thread_id": d.get("threadId", ""),
+                    }
+                except Exception as exc:
+                    logger.debug("Failed to fetch message %s: %s", msg_id, exc)
+                    return None
+
+            details = await asyncio.gather(*[fetch_detail(m["id"]) for m in messages[:max_results]])
+            results = [d for d in details if d is not None]
 
         return json.dumps({
             "results": results,
@@ -107,6 +118,8 @@ def _gmail_search(args: dict[str, Any]) -> str:
 registry.register(
     name="gmail_search",
     toolset="google_workspace",
+    is_async=True,
+    check_fn=_check_google_connected,
     schema={
         "name": "gmail_search",
         "description": "Search Gmail messages. Returns subject, sender, date, and snippet for each result.",
@@ -136,11 +149,11 @@ registry.register(
 # Calendar list events
 # ---------------------------------------------------------------------------
 
-def _calendar_list_events(args: dict[str, Any]) -> str:
+async def _calendar_list_events(args: dict[str, Any]) -> str:
     import httpx
     from datetime import datetime, timezone
 
-    access_token = _get_token()
+    access_token = await _get_token_async()
     if not access_token:
         return _not_connected()
 
@@ -149,19 +162,19 @@ def _calendar_list_events(args: dict[str, Any]) -> str:
     time_min = args.get("time_min") or datetime.now(timezone.utc).isoformat()
 
     try:
-        resp = httpx.get(
-            f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events",
-            params={
-                "maxResults": max_results,
-                "orderBy": "startTime",
-                "singleEvents": "true",
-                "timeMin": time_min,
-            },
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events",
+                params={
+                    "maxResults": max_results,
+                    "orderBy": "startTime",
+                    "singleEvents": "true",
+                    "timeMin": time_min,
+                },
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
         events = []
         for item in data.get("items", []):
@@ -174,9 +187,7 @@ def _calendar_list_events(args: dict[str, Any]) -> str:
                 "start": start.get("dateTime") or start.get("date"),
                 "end": end.get("dateTime") or end.get("date"),
                 "location": item.get("location", ""),
-                "attendees": [
-                    a.get("email") for a in item.get("attendees", [])
-                ],
+                "attendees": [a.get("email") for a in item.get("attendees", [])],
                 "html_link": item.get("htmlLink", ""),
                 "status": item.get("status", ""),
             })
@@ -195,6 +206,8 @@ def _calendar_list_events(args: dict[str, Any]) -> str:
 registry.register(
     name="calendar_list_events",
     toolset="google_workspace",
+    is_async=True,
+    check_fn=_check_google_connected,
     schema={
         "name": "calendar_list_events",
         "description": "List upcoming Google Calendar events. Returns title, start/end time, location, and attendees.",

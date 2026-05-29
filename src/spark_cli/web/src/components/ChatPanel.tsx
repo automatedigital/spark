@@ -780,6 +780,10 @@ export function ChatPanel({
     setStreaming(true);
     setStatusLabel("Thinking…");
 
+    // Yield to the browser paint cycle so the stop button renders
+    // before we block on the API call.
+    await new Promise((r) => setTimeout(r, 0));
+
     try {
       let sid = activeSessionId;
 
