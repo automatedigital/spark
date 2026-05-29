@@ -1194,9 +1194,24 @@ install_node_deps() {
             ubuntu|debian|raspbian|pop|linuxmint|elementary|zorin|kali|parrot)
                 log_info "Playwright may request sudo to install browser system dependencies (shared libraries)."
                 log_info "This is standard Playwright setup - Spark itself does not require root access."
-                cd "$INSTALL_DIR" && npx playwright install --with-deps chromium 2>/dev/null || {
-                    log_warn "Playwright browser installation failed - browser tools will not work."
-                    log_warn "Try running manually: cd $INSTALL_DIR && npx playwright install --with-deps chromium"
+                PLAYWRIGHT_OUT=$(cd "$INSTALL_DIR" && npx playwright install --with-deps chromium 2>&1) || {
+                    if echo "$PLAYWRIGHT_OUT" | grep -q "does not support chromium on"; then
+                        UNSUPPORTED_PLATFORM=$(echo "$PLAYWRIGHT_OUT" | grep -o "does not support chromium on [^ ]*" | head -1 || true)
+                        log_warn "Playwright $UNSUPPORTED_PLATFORM"
+                        log_info "Trying to install Playwright Chromium without system deps (may still work)..."
+                        if cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null; then
+                            log_success "Playwright Chromium installed (system deps skipped)"
+                        else
+                            log_warn "Playwright browser not installed - browser tools will be limited."
+                            log_info "Once Playwright adds support for your OS version, run:"
+                            log_info "  cd $INSTALL_DIR && npx playwright install --with-deps chromium"
+                            log_info "Alternatively, install the system chromium package:"
+                            log_info "  sudo apt install chromium-browser"
+                        fi
+                    else
+                        log_warn "Playwright browser installation failed - browser tools will not work."
+                        log_warn "Try running manually: cd $INSTALL_DIR && npx playwright install --with-deps chromium"
+                    fi
                 }
                 ;;
             arch|manjaro)
@@ -1425,7 +1440,14 @@ maybe_start_gateway() {
             if $SPARK_CMD gateway restart 2>/dev/null; then
                 log_success "Gateway restarted with latest packages!"
                 log_info "Waiting for gateway to initialize..."
-                sleep 7
+                GATEWAY_WAIT=0
+                while [ "$GATEWAY_WAIT" -lt 20 ]; do
+                    sleep 2
+                    GATEWAY_WAIT=$((GATEWAY_WAIT + 2))
+                    if systemctl --user is-active --quiet spark-gateway.service 2>/dev/null; then
+                        break
+                    fi
+                done
                 if systemctl --user is-active --quiet spark-gateway.service 2>/dev/null; then
                     RECENT_LOGS=$(journalctl --user -u spark-gateway.service -n 50 --no-pager 2>/dev/null || true)
                     if echo "$RECENT_LOGS" | grep -q "not installed\|No adapter available"; then
