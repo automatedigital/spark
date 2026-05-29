@@ -48,7 +48,10 @@ import asyncio
 from typing import List, Dict, Any, Optional
 import httpx
 try:
-    from firecrawl import Firecrawl
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        from firecrawl import Firecrawl
 except ImportError:
     Firecrawl = None  # type: ignore[assignment,misc]
 from agent.auxiliary_client import (
