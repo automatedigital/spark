@@ -58,6 +58,7 @@ environments/benchmarks/evals/
 dist/
 build/
 *.egg-link
+*.spec.bak
 
 # Test coverage
 .coverage
@@ -75,3 +76,9 @@ mini-swe-agent/
 .direnv/
 result
 website/static/api/skills-index.json
+
+# Tauri / desktop build artifacts
+src/spark_cli/web/src-tauri/target/
+src/spark_cli/web/src-tauri/gen/
+# Frozen PyInstaller --onedir sidecar, staged here by build_desktop.sh
+src/spark_cli/web/src-tauri/resources/

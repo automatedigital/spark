@@ -16,7 +16,7 @@ Spark.app
 
 - [ ] Verify Rust toolchain installed (`rustc --version`); install via `rustup` if missing
 - [ ] Verify Xcode Command Line Tools installed (`xcode-select -p`)
-- [ ] Verify PyInstaller available: `pip install pyinstaller` (add to `dev` extras in `pyproject.toml`)
+- [x] Verify PyInstaller available: `pip install pyinstaller` (add to `dev` extras in `pyproject.toml`)
 - [ ] Node/npm available in `src/spark_cli/web/`
 
 ---
@@ -25,28 +25,22 @@ Spark.app
 
 Goal: produce a single self-contained binary `spark-server` that runs `spark dashboard --port 9119 --no-browser`.
 
-- [ ] Create `scripts/build_sidecar.py` — a PyInstaller spec helper that:
-  - Entry point: `src/spark_cli/main.py` (or a thin wrapper `scripts/sidecar_entry.py` that calls `start_server()` directly)
-  - Includes all `src/` packages: `core`, `agent`, `spark_cli`, `tools`, `gateway`, `cron`, `acp_adapter`, `plugins`
+- [x] ~~Create `scripts/build_sidecar.py` — a PyInstaller spec helper~~ — folded directly into `spark-server.spec` (a working --onedir spec replaces the need for a separate generator helper):
+  - Entry point: thin wrapper `scripts/sidecar_entry.py` that calls `start_server()` directly
+  - Includes all `src/` packages: `core`, `agent`, `spark_cli`, `tools`, `gateway`, `cron`, `acp_adapter`, `plugins` (via `collect_submodules`)
   - Bundles `src/spark_cli/web_dist/` as data (so the server can serve the pre-built frontend as fallback)
   - Output binary name: `spark-server`
-- [ ] Create `scripts/sidecar_entry.py` — minimal entrypoint:
-  ```python
-  import sys
-  from spark_cli.web_server import start_server
-  port = int(sys.argv[1]) if len(sys.argv) > 1 else 9119
-  start_server(host="127.0.0.1", port=port, open_browser=False)
-  ```
-- [ ] Create `spark-server.spec` PyInstaller spec at repo root (use `--onefile` or `--onedir`; `--onedir` is faster cold-start)
-- [ ] Run `pyinstaller spark-server.spec` and verify the binary starts and serves on port 9119
-- [ ] Add `dist/`, `build/`, `*.spec` output dirs to `.gitignore`
+- [x] Create `scripts/sidecar_entry.py` — minimal entrypoint that runs `start_server(host="127.0.0.1", port=argv[1] or 9119, open_browser=False)`, with `src/` added to `sys.path` for source runs
+- [x] Create `spark-server.spec` PyInstaller spec at repo root (uses `--onedir` for faster cold-start)
+- [x] Run `pyinstaller spark-server.spec` and verify the binary starts and serves on port 9119 (verified: `/` → HTTP 200, `/api/status` → valid JSON)
+- [x] Add `dist/`, `build/`, `*.spec` output dirs to `.gitignore` (`dist/`, `build/` already present; added `*.spec.bak`)
 
 ---
 
 ## Phase 2 — Scaffold Tauri App
 
-- [ ] `cd src/spark_cli/web && npm install -D @tauri-apps/cli`
-- [ ] Run `npx tauri init` with:
+- [x] `cd src/spark_cli/web && npm install -D @tauri-apps/cli`
+- [x] Run `npx tauri init` with:
   - App name: `Spark`
   - Window title: `Spark`
   - Web assets: `../../web_dist` (pre-built frontend; Tauri will also load from URL at runtime)
@@ -61,12 +55,12 @@ Goal: produce a single self-contained binary `spark-server` that runs `spark das
 
 Tauri sidecars are binaries placed in `src-tauri/binaries/` and declared in `tauri.conf.json`.
 
-- [ ] Copy (or symlink for dev) the frozen `spark-server` binary into:
+- [ ] Copy (or symlink for dev) the frozen `spark-server` binary into:  *(deferred — frozen binary produced by `build_desktop.sh`; config + binaries/README.md are wired)*
   ```
   src/spark_cli/web/src-tauri/binaries/spark-server-aarch64-apple-darwin
   ```
   *(Tauri requires the target-triple suffix; use `rustc -vV | grep host` to confirm the triple)*
-- [ ] Edit `src/spark_cli/web/src-tauri/tauri.conf.json`:
+- [x] Edit `src/spark_cli/web/src-tauri/tauri.conf.json`:
   ```json
   {
     "bundle": {
@@ -74,14 +68,14 @@ Tauri sidecars are binaries placed in `src-tauri/binaries/` and declared in `tau
     }
   }
   ```
-- [ ] Add sidecar allowlist in `capabilities` (Tauri v2) or `tauri.allowlist` (Tauri v1):
+- [x] Add sidecar allowlist in `capabilities` (Tauri v2) or `tauri.allowlist` (Tauri v1):
   ```json
   "shell": {
     "sidecar": true,
     "scope": [{ "name": "binaries/spark-server", "sidecar": true }]
   }
   ```
-- [ ] Write `src/spark_cli/web/src/sidecar.ts` — Tauri frontend helper that:
+- [x] Write `src/spark_cli/web/src/sidecar.ts` — Tauri frontend helper that:
   1. Spawns the sidecar on app launch via `@tauri-apps/api/shell` `Command.sidecar()`
   2. Waits for the server to be ready (poll `http://127.0.0.1:9119/health` or listen for stdout line)
   3. Once ready, navigates the window to `http://127.0.0.1:9119`
@@ -91,7 +85,7 @@ Tauri sidecars are binaries placed in `src-tauri/binaries/` and declared in `tau
 
 ## Phase 4 — App Window Configuration
 
-- [ ] Edit `tauri.conf.json` window settings:
+- [x] Edit `tauri.conf.json` window settings:
   ```json
   "windows": [{
     "url": "http://127.0.0.1:9119",
@@ -103,28 +97,28 @@ Tauri sidecars are binaries placed in `src-tauri/binaries/` and declared in `tau
     "decorations": true
   }]
   ```
-- [ ] Show a loading screen (simple HTML in `web_dist/` or inline) while the sidecar starts up
-- [ ] Set `bundle.identifier` to `studio.fromtheroot.spark`
+- [x] Show a loading screen (simple HTML in `web_dist/` or inline) while the sidecar starts up
+- [x] Set `bundle.identifier` to `studio.fromtheroot.spark`
 
 ---
 
 ## Phase 5 — App Icons
 
-- [ ] Source or create a 1024×1024 PNG icon
-- [ ] Run `npx tauri icon <path>.png` — generates all sizes into `src-tauri/icons/`
-- [ ] Verify `bundle.icon` in `tauri.conf.json` includes the `.icns` path
+- [x] Source or create a 1024×1024 PNG icon
+- [x] Run `npx tauri icon <path>.png` — generates all sizes into `src-tauri/icons/`
+- [x] Verify `bundle.icon` in `tauri.conf.json` includes the `.icns` path
 
 ---
 
 ## Phase 6 — Build Scripts
 
-- [ ] Add to `src/spark_cli/web/package.json`:
+- [x] Add to `src/spark_cli/web/package.json`:
   ```json
   "tauri":          "tauri",
   "desktop:dev":    "tauri dev",
   "desktop:build":  "tauri build"
   ```
-- [ ] Create top-level `scripts/build_desktop.sh`:
+- [x] Create top-level `scripts/build_desktop.sh`:
   ```bash
   #!/usr/bin/env bash
   set -e
@@ -139,8 +133,8 @@ Tauri sidecars are binaries placed in `src-tauri/binaries/` and declared in `tau
   echo "✅  App: src/spark_cli/web/src-tauri/target/release/bundle/macos/Spark.app"
   echo "✅  DMG: src/spark_cli/web/src-tauri/target/release/bundle/dmg/"
   ```
-- [ ] Make it executable: `chmod +x scripts/build_desktop.sh`
-- [ ] Add the following to `.gitignore` (build artifacts — never commit these):
+- [x] Make it executable: `chmod +x scripts/build_desktop.sh`
+- [x] Add the following to `.gitignore` (build artifacts — never commit these):
   ```
   # Tauri / desktop build artifacts
   src/spark_cli/web/src-tauri/target/
@@ -171,10 +165,10 @@ The existing APIs (`PUT /api/config`, `PUT /api/env`, `PUT /api/model/smart`) ha
 
 ### Detection
 
-- [ ] Add `GET /api/onboarding/status` endpoint to `web_server.py`:
+- [x] Add `GET /api/onboarding/status` endpoint to `web_server.py`:
   - Returns `{ "needs_onboarding": bool, "has_model": bool, "has_api_key": bool }`
   - `needs_onboarding` is true when `~/.spark/config.yaml` doesn't exist **or** `model.provider` is unset/empty
-- [ ] In `App.tsx`, call this endpoint before rendering — if `needs_onboarding: true`, render `<OnboardingWizard>` instead of the main app
+- [x] In `App.tsx`, call this endpoint before rendering — if `needs_onboarding: true`, render `<OnboardingWizard>` instead of the main app
 
 ### Wizard structure: 4 steps, one question each
 
@@ -225,19 +219,19 @@ Three sub-variants of this step:
 
 ### Files to create/modify
 
-- [ ] `src/spark_cli/web/src/components/OnboardingWizard.tsx` — the 4-step wizard component
+- [x] `src/spark_cli/web/src/components/OnboardingWizard.tsx` — the 4-step wizard component
   - Uses the same design tokens (card backgrounds, border colors, primary button) as the rest of the app — no new CSS variables needed
   - Step indicator: small numbered dots at the top (1–4)
   - Animated step transitions (CSS `fade-in` already defined in `index.css`)
   - Full-screen centered layout (replaces entire viewport, not a modal)
-- [ ] `src/spark_cli/web/src/App.tsx` — add onboarding gate logic:
+- [x] `src/spark_cli/web/src/App.tsx` — add onboarding gate logic:
   ```tsx
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
   // fetch /api/onboarding/status on mount
   // if needs_onboarding && !localStorage.getItem('spark-onboarding-complete')
   //   render <OnboardingWizard onComplete={() => setNeedsOnboarding(false)} />
   ```
-- [ ] `src/spark_cli/web_server.py` — add `GET /api/onboarding/status` (≈15 lines)
+- [x] `src/spark_cli/web_server.py` — add `GET /api/onboarding/status` (≈15 lines)
 
 ### Provider → env var + default model mapping (used in Step 3)
 
@@ -273,15 +267,24 @@ Three sub-variants of this step:
 
 ## Phase 10 — Full Build & Smoke Test
 
-- [ ] Run `./scripts/build_desktop.sh` from repo root
-- [ ] Open `Spark.app` from Finder — sidecar should auto-start, window should load dashboard
-- [ ] Verify API calls work (sessions, config, tools)
-- [ ] Quit the app — confirm the Python sidecar process is killed (check `ps aux | grep spark-server`)
-- [ ] Test the `.dmg` installer on a clean path
+- [x] Run `./scripts/build_desktop.sh` from repo root — builds `Spark.app` (1.0 GB) + `Spark.dmg` (489 MB)
+- [x] Open `Spark.app` — sidecar auto-starts, window loads dashboard (cold start ~3–9 s)
+- [x] Verify API calls work (`/api/status` → 200, dashboard SPA loads)
+- [x] Quit the app — Python sidecar is killed (verified 0 orphans on graceful quit **and** on hard SIGKILL of the GUI, thanks to the parent-death watchdog in `sidecar_entry.py`)
+- [ ] Test the `.dmg` installer on a clean path (dmg builds + mounts; not yet drag-installed on a pristine machine)
 
 ---
 
 ## Notes
+
+### Implementation deviations from the original plan (decided during integration)
+
+- **Sidecar shipped as a bundle resource, not `externalBin`.** Tauri's `externalBin`/`Command.sidecar()` requires a single self-contained file. PyInstaller `--onefile` satisfies that but has a **~53 s cold start** (unpacks ~545 MB to temp on every launch) and **leaks an orphaned server** (its bootloader re-execs a child that escapes Tauri's kill). We use **`--onedir`** instead: fast start (~3–9 s) and no re-exec child. The `dist/spark-server/` tree is injected into `Spark.app/Contents/Resources/spark-server/` by `build_desktop.sh` *after* `tauri build`, because Tauri's resource walker can't traverse the tree's versioned dylib symlinks ("Not a directory"). A plain `cp -R` copies them faithfully. Rust resolves the binary via `resource_dir()` (= `Contents/Resources/`), so the runtime path is unchanged.
+- **Sidecar spawned + killed from Rust** (`src-tauri/src/lib.rs`), not from JS. The `@tauri-apps/plugin-shell` dependency (Rust crate, npm package, and capability permissions) was removed. `boot.js` / `sidecar.ts` now only poll for readiness and redirect.
+- **Process teardown is guaranteed by a parent-death watchdog** in `scripts/sidecar_entry.py`: a daemon thread exits the server when its parent (the Tauri shell) dies. This covers the case where the GUI is SIGKILLed/crashes and Rust's clean-exit kill never runs.
+- **DMG built with `hdiutil`**, not Tauri's dmg target (the sidecar is injected post-`tauri build`, so the dmg is packaged from the already-injected `.app`).
+- **Qt and notebook stacks are excluded** in `spark-server.spec` — PyInstaller vacuums PyQt5/IPython/etc. from the surrounding anaconda env; they're not Spark deps and their symlinked frameworks bloat the bundle.
+- **Toolchain note:** building current Tauri required Rust ≥ edition2024; the default toolchain was upgraded to **1.96.0** via `rustup` (was 1.77.1). `Cargo.toml` still pins `rust-version = "1.77.1"` cosmetically but won't build on it.
 
 - **User data** — `~/.spark/` is still the data dir; the bundled app reads/writes it normally.
 - **API keys** — Users still configure `~/.spark/.env`; the sidecar inherits the user's environment.

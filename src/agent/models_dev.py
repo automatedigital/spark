@@ -33,10 +33,20 @@ logger = logging.getLogger(__name__)
 
 MODELS_DEV_URL = "https://models.dev/api.json"
 _MODELS_DEV_CACHE_TTL = 3600  # 1 hour in-memory
+# (connect, read) timeout. Kept tight: this fetch is non-essential metadata
+# (callers fall back to a 128K default), and it runs synchronously on the agent
+# construction path. A long timeout here stalls every new chat thread when
+# models.dev is slow/unreachable (e.g. flaky IPv6).
+_MODELS_DEV_TIMEOUT = (3.05, 6)
+# After a failed network fetch, don't hammer the network again on every agent
+# construction — back off for this long. Without this, an unreachable
+# models.dev means each new thread re-pays the full timeout.
+_MODELS_DEV_FAIL_BACKOFF = 600  # 10 minutes
 
 # In-memory cache
 _models_dev_cache: Dict[str, Any] = {}
 _models_dev_cache_time: float = 0
+_models_dev_last_fail_time: float = 0
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +218,7 @@ def fetch_models_dev(force_refresh: bool = False) -> Dict[str, Any]:
 
     Returns the full registry dict keyed by provider ID, or empty dict on failure.
     """
-    global _models_dev_cache, _models_dev_cache_time
+    global _models_dev_cache, _models_dev_cache_time, _models_dev_last_fail_time
 
     # Check in-memory cache
     if (
@@ -218,23 +228,35 @@ def fetch_models_dev(force_refresh: bool = False) -> Dict[str, Any]:
     ):
         return _models_dev_cache
 
-    # Try network fetch
-    try:
-        response = requests.get(MODELS_DEV_URL, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        if isinstance(data, dict) and data:
-            _models_dev_cache = data
-            _models_dev_cache_time = time.time()
-            _save_disk_cache(data)
-            logger.debug(
-                "Fetched models.dev registry: %d providers, %d total models",
-                len(data),
-                sum(len(p.get("models", {})) for p in data.values() if isinstance(p, dict)),
-            )
-            return data
-    except Exception as e:
-        logger.debug("Failed to fetch models.dev: %s", e)
+    # Back off after a recent failure so we don't re-pay the network timeout on
+    # every agent construction when models.dev is unreachable. Serve disk cache
+    # (loaded below) or empty instead.
+    recently_failed = (
+        not force_refresh
+        and _models_dev_last_fail_time
+        and (time.time() - _models_dev_last_fail_time) < _MODELS_DEV_FAIL_BACKOFF
+    )
+
+    # Try network fetch (unless we're in the post-failure backoff window)
+    if not recently_failed:
+        try:
+            response = requests.get(MODELS_DEV_URL, timeout=_MODELS_DEV_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict) and data:
+                _models_dev_cache = data
+                _models_dev_cache_time = time.time()
+                _models_dev_last_fail_time = 0
+                _save_disk_cache(data)
+                logger.debug(
+                    "Fetched models.dev registry: %d providers, %d total models",
+                    len(data),
+                    sum(len(p.get("models", {})) for p in data.values() if isinstance(p, dict)),
+                )
+                return data
+        except Exception as e:
+            _models_dev_last_fail_time = time.time()
+            logger.debug("Failed to fetch models.dev: %s", e)
 
     # Fall back to disk cache — use a short TTL (5 min) so we retry
     # the network fetch soon instead of serving stale data for a full hour.

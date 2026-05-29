@@ -52,6 +52,8 @@ dev = [
   # Lint + type checking — pinned so CI and local dev stay in sync
   "ruff>=0.9.0,<1",
   "mypy>=1.13.0,<2",
+  # Desktop app: freeze the Python backend into a sidecar binary
+  "pyinstaller>=6.0,<7",
 ]
 telegram = ["python-telegram-bot[webhooks]>=22.6,<23", "aiohttp>=3.13.3,<4"]
 discord = ["discord.py[voice]>=2.7.1,<3", "aiohttp>=3.13.3,<4"]

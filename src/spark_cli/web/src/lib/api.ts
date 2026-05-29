@@ -72,6 +72,10 @@ async function getSessionToken(): Promise<string> {
 
 export const api = {
   getStatus: () => fetchJSON<StatusResponse>("/api/status"),
+  getOnboardingStatus: () =>
+    fetchJSON<{ needs_onboarding: boolean; has_model: boolean; has_api_key: boolean }>(
+      "/api/onboarding/status",
+    ),
   getSessions: (limit = 20, offset = 0, source?: string) => {
     const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (source) qs.set("source", source);
@@ -550,6 +554,12 @@ export const api = {
       },
     );
   },
+  openExternalUrl: (url: string) =>
+    fetchJSON<{ opened: boolean }>(`/api/system/open-external`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }),
 
   // Slash commands list (gateway-available only)
   getCommands: () => fetchJSON<SlashCommand[]>("/api/commands"),
@@ -746,6 +756,23 @@ export const api = {
       { method: "DELETE" },
     ),
 };
+
+/**
+ * Open an external URL reliably across desktop and browser.
+ *
+ * In the Tauri desktop app the webview can't open new windows/tabs, so we ask
+ * the local backend to open it via the OS. In a plain browser the backend
+ * reports `opened: false` and we fall back to window.open.
+ */
+export async function openExternal(url: string): Promise<void> {
+  try {
+    const res = await api.openExternalUrl(url);
+    if (res.opened) return;
+  } catch {
+    // fall through to window.open
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 
 export interface PlatformStatus {
   error_code?: string;
@@ -1298,7 +1325,10 @@ export type OAuthStartResponse =
   | {
       session_id: string;
       flow: "device_code";
-      user_code: string;
+      // null while OpenAI's (often-slow) device-auth call is still in flight;
+      // the UI then polls until the code arrives.
+      status?: "starting" | "polling";
+      user_code: string | null;
       verification_url: string;
       expires_in: number;
       poll_interval: number;
@@ -1315,6 +1345,9 @@ export interface OAuthPollResponse {
   status: "pending" | "approved" | "denied" | "expired" | "error";
   error_message?: string | null;
   expires_at?: number | null;
+  // Populated once the device-auth call returns (may lag the /start response).
+  user_code?: string | null;
+  verification_url?: string | null;
 }
 
 // ── Workspace types ───────────────────────────────────────────────────────

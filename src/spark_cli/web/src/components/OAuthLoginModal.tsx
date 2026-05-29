@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Copy, X, Check, Loader2 } from "lucide-react";
-import { api, type OAuthProvider, type OAuthStartResponse } from "@/lib/api";
+import { api, openExternal, type OAuthProvider, type OAuthStartResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/i18n";
@@ -23,6 +23,7 @@ export function OAuthLoginModal({ provider, onClose, onSuccess, onError }: Props
   const [codeCopied, setCodeCopied] = useState(false);
   const isMounted = useRef(true);
   const pollTimer = useRef<number | null>(null);
+  const verificationOpened = useRef(false);
   const { t } = useI18n();
 
   // Initiate flow on mount
@@ -36,10 +37,12 @@ export function OAuthLoginModal({ provider, onClose, onSuccess, onError }: Props
         setSecondsLeft(resp.expires_in);
         setPhase(resp.flow === "device_code" ? "polling" : "awaiting_user");
         if (resp.flow === "pkce") {
-          window.open(resp.auth_url, "_blank", "noopener,noreferrer");
-        } else {
-          window.open(resp.verification_url, "_blank", "noopener,noreferrer");
+          void openExternal(resp.auth_url);
+        } else if (resp.user_code) {
+          verificationOpened.current = true;
+          void openExternal(resp.verification_url);
         }
+        // device_code with no user_code yet: poll loop surfaces it shortly.
       })
       .catch((e) => {
         if (!isMounted.current) return;
@@ -79,6 +82,22 @@ export function OAuthLoginModal({ provider, onClose, onSuccess, onError }: Props
       try {
         const resp = await api.pollOAuthSession(provider.id, sid);
         if (!isMounted.current) return;
+        if (resp.user_code) {
+          setStart((prev) =>
+            prev && prev.flow === "device_code" && !prev.user_code
+              ? {
+                  ...prev,
+                  user_code: resp.user_code as string,
+                  verification_url:
+                    resp.verification_url || prev.verification_url,
+                }
+              : prev,
+          );
+          if (!verificationOpened.current) {
+            verificationOpened.current = true;
+            void openExternal(resp.verification_url || start.verification_url);
+          }
+        }
         if (resp.status === "approved") {
           setPhase("approved");
           if (pollTimer.current !== null) window.clearInterval(pollTimer.current);
@@ -236,7 +255,18 @@ export function OAuthLoginModal({ provider, onClose, onSuccess, onError }: Props
           )}
 
           {/* ── Device code: show code + URL, polling ──────── */}
-          {start?.flow === "device_code" && phase === "polling" && (
+          {start?.flow === "device_code" &&
+            phase === "polling" &&
+            !(start as Extract<OAuthStartResponse, { flow: "device_code" }>).user_code && (
+              <div className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Requesting a sign-in code from OpenAI… this can take up to a minute.
+              </div>
+            )}
+
+          {start?.flow === "device_code" &&
+            phase === "polling" &&
+            !!(start as Extract<OAuthStartResponse, { flow: "device_code" }>).user_code && (
             <>
               <p className="text-sm text-muted-foreground">
                 {t.oauth.enterCodePrompt}
@@ -250,7 +280,7 @@ export function OAuthLoginModal({ provider, onClose, onSuccess, onError }: Props
                   size="sm"
                   onClick={() =>
                     handleCopyUserCode(
-                      (start as Extract<OAuthStartResponse, { flow: "device_code" }>).user_code,
+                      (start as Extract<OAuthStartResponse, { flow: "device_code" }>).user_code ?? "",
                     )
                   }
                   className="text-xs"
@@ -258,15 +288,19 @@ export function OAuthLoginModal({ provider, onClose, onSuccess, onError }: Props
                   {codeCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                 </Button>
               </div>
-              <a
-                href={(start as Extract<OAuthStartResponse, { flow: "device_code" }>).verification_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void openExternal(
+                    (start as Extract<OAuthStartResponse, { flow: "device_code" }>).verification_url,
+                  )
+                }
+                className="w-full gap-2 text-xs"
               >
                 <ExternalLink className="h-3 w-3" />
                 {t.oauth.reOpenVerification}
-              </a>
+              </Button>
               <div className="flex items-center gap-2 text-xs text-muted-foreground border-t border-border pt-3">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 {t.oauth.waitingAuth}
@@ -302,15 +336,17 @@ export function OAuthLoginModal({ provider, onClose, onSuccess, onError }: Props
                     setStart(null);
                     setPkceCode("");
                     setPhase("starting");
+                    verificationOpened.current = false;
                     api.startOAuthLogin(provider.id).then((resp) => {
                       if (!isMounted.current) return;
                       setStart(resp);
                       setSecondsLeft(resp.expires_in);
                       setPhase(resp.flow === "device_code" ? "polling" : "awaiting_user");
                       if (resp.flow === "pkce") {
-                        window.open(resp.auth_url, "_blank", "noopener,noreferrer");
-                      } else {
-                        window.open(resp.verification_url, "_blank", "noopener,noreferrer");
+                        void openExternal(resp.auth_url);
+                      } else if (resp.user_code) {
+                        verificationOpened.current = true;
+                        void openExternal(resp.verification_url);
                       }
                     }).catch((e) => {
                       if (!isMounted.current) return;

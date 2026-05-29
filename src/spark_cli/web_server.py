@@ -106,6 +106,30 @@ def _init_memory_store() -> None:
         _log.warning("Memory store init skipped: %s", exc)
 
 
+def _prewarm_agent_stack() -> None:
+    """Pay the agent import/tool-discovery cold-start cost at boot.
+
+    Importing AIAgent pulls in the model SDKs + runs tool discovery
+    (``_discover_tools()`` at import). On a frozen app this is the first time
+    many .so/.dylib files are loaded from the bundle (and, on an unsigned macOS
+    build, scanned by Gatekeeper), which can take seconds. Doing it here — while
+    the desktop loading screen is already showing — means the first new chat
+    thread doesn't pay it. Best-effort; failures are non-fatal.
+    """
+    try:
+        import core.model_tools  # noqa: F401  (runs _discover_tools at import)
+        from core.run_agent import AIAgent  # noqa: F401
+
+        # Warm the models.dev metadata fetch now (during the desktop loading
+        # screen) rather than on the first chat turn — it runs synchronously in
+        # AIAgent.__init__ and can stall for seconds when models.dev is slow.
+        from agent.models_dev import fetch_models_dev
+
+        fetch_models_dev()
+    except Exception:
+        _log.debug("agent prewarm skipped", exc_info=True)
+
+
 async def _lifespan(_app: FastAPI):
     global _web_event_loop
     _web_event_loop = asyncio.get_running_loop()
@@ -114,6 +138,7 @@ async def _lifespan(_app: FastAPI):
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _prefetch_update_check)
     loop.run_in_executor(None, _init_memory_store)
+    loop.run_in_executor(None, _prewarm_agent_stack)
     try:
         yield
     finally:
@@ -1541,6 +1566,65 @@ async def get_config():
     return {k: v for k, v in config.items() if not k.startswith("_")}
 
 
+@app.get("/api/onboarding/status")
+async def get_onboarding_status():
+    """First-run detection for the desktop onboarding wizard.
+
+    ``needs_onboarding`` is true when no config.yaml exists yet, or when
+    ``model.provider`` is unset/empty.
+    """
+    config_exists = get_config_path().exists()
+
+    config = load_config() if config_exists else {}
+    model = config.get("model") if isinstance(config, dict) else {}
+    if not isinstance(model, dict):
+        model = {}
+    provider = (model.get("provider") or "").strip()
+    has_model = bool(provider)
+
+    env_on_disk = load_env()
+    has_api_key = any(
+        bool(env_on_disk.get(var_name))
+        for var_name in ("OPENAI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY")
+    )
+
+    return {
+        "needs_onboarding": (not config_exists) or (not has_model),
+        "has_model": has_model,
+        "has_api_key": has_api_key,
+    }
+
+
+class OpenExternalRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/system/open-external")
+async def open_external(req: OpenExternalRequest):
+    """Open a URL in the user's default browser.
+
+    Only acts when running as the local desktop sidecar (SPARK_DESKTOP=1) —
+    in the Tauri webview, window.open()/<a target=_blank> are no-ops, so the
+    frontend asks the backend to open the URL via the OS. Returns
+    ``{opened: false}`` otherwise so the web client falls back to window.open.
+    """
+    url = (req.url or "").strip()
+    if not (url.startswith("https://") or url.startswith("http://")):
+        raise HTTPException(status_code=400, detail="Only http(s) URLs allowed")
+    if not os.environ.get("SPARK_DESKTOP"):
+        return {"opened": False}
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", url])
+        elif sys.platform.startswith("win"):
+            os.startfile(url)  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", url])
+        return {"opened": True}
+    except Exception as exc:  # noqa: BLE001
+        return {"opened": False, "error": str(exc)}
+
+
 @app.get("/api/config/defaults")
 async def get_defaults():
     return DEFAULT_CONFIG
@@ -2669,8 +2753,12 @@ async def _start_device_code_flow(provider_id: str) -> Dict[str, Any]:
             daemon=True,
             name=f"oauth-codex-{sid[:6]}",
         ).start()
-        # Block briefly until the worker has populated the user_code, OR error.
-        deadline = time.time() + 10
+        # Wait briefly for the worker to populate the user_code. OpenAI's
+        # device-auth endpoint is often slow (observed 30–120 s), so we do NOT
+        # block until it returns — if the code isn't ready quickly we return a
+        # "starting" response and the UI polls GET /poll/{session_id} until the
+        # user_code appears (the same endpoint it already polls for approval).
+        deadline = time.time() + 8
         while time.time() < deadline:
             with _oauth_sessions_lock:
                 s = _oauth_sessions.get(sid)
@@ -2683,16 +2771,14 @@ async def _start_device_code_flow(provider_id: str) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=500, detail=s.get("error_message") or "device-auth failed"
             )
-        if not s.get("user_code"):
-            raise HTTPException(
-                status_code=504,
-                detail="device-auth timed out before returning a user code",
-            )
+        # user_code may be empty here — that's expected when OpenAI is slow.
         return {
             "session_id": sid,
             "flow": "device_code",
-            "user_code": s["user_code"],
-            "verification_url": s["verification_url"],
+            "status": "starting" if not s.get("user_code") else "polling",
+            "user_code": s.get("user_code") or None,
+            "verification_url": s.get("verification_url")
+            or "https://auth.openai.com/codex/device",
             "expires_in": int(s.get("expires_in") or 900),
             "poll_interval": int(s.get("interval") or 5),
         }
@@ -2729,8 +2815,12 @@ def _codex_full_login_worker(session_id: str) -> None:
 
         issuer = "https://auth.openai.com"
 
-        # Step 1: request device code
-        with httpx.Client(timeout=httpx.Timeout(15.0)) as client:
+        # Step 1: request device code. OpenAI's usercode endpoint can take well
+        # over a minute to respond, so use a generous read timeout (connect stays
+        # short). The UI shows a "requesting code" state meanwhile.
+        with httpx.Client(
+            timeout=httpx.Timeout(180.0, connect=15.0)
+        ) as client:
             resp = client.post(
                 f"{issuer}/api/accounts/deviceauth/usercode",
                 json={"client_id": CODEX_OAUTH_CLIENT_ID},
@@ -2913,6 +3003,10 @@ async def poll_oauth_session(provider_id: str, session_id: str):
         "status": sess["status"],
         "error_message": sess.get("error_message"),
         "expires_at": sess.get("expires_at"),
+        # Surfaced once the (often-slow) device-auth call returns, so a UI that
+        # received a "starting" /start response can display the code on arrival.
+        "user_code": sess.get("user_code") or None,
+        "verification_url": sess.get("verification_url") or None,
     }
 
 
@@ -4804,18 +4898,25 @@ async def create_conversation(body: ConversationCreate):
     model = turn_route["model"]
 
     try:
-        agent = _new_web_agent(
-            session_id=session_id,
-            model=model,
-            runtime=turn_route["runtime"],
-            request_overrides=turn_route.get("request_overrides"),
-            signature=turn_route["signature"],
-            token_callback=token_callback,
-            tool_start_callback=tool_start_callback,
-            tool_complete_callback=tool_complete_callback,
-            reasoning_callback=reasoning_callback,
-            status_callback=status_callback,
-            session_migrated_callback=session_migrated_callback,
+        # Build the agent off the event loop: constructing AIAgent triggers
+        # heavy imports + (on a frozen app) dylib loads that can take seconds on
+        # first use. Running it inline would block the loop and freeze the whole
+        # UI (SSE pings, session list, animations) while a new thread spins up.
+        agent = await loop.run_in_executor(
+            None,
+            lambda: _new_web_agent(
+                session_id=session_id,
+                model=model,
+                runtime=turn_route["runtime"],
+                request_overrides=turn_route.get("request_overrides"),
+                signature=turn_route["signature"],
+                token_callback=token_callback,
+                tool_start_callback=tool_start_callback,
+                tool_complete_callback=tool_complete_callback,
+                reasoning_callback=reasoning_callback,
+                status_callback=status_callback,
+                session_migrated_callback=session_migrated_callback,
+            ),
         )
     except (ValueError, Exception) as e:
         _web_queues.pop(session_id, None)

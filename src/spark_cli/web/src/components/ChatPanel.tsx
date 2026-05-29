@@ -488,7 +488,13 @@ export function ChatPanel({
       : [];
     setChatMessages(optimistic);
     setError(null);
-    setStatusLabel(null);
+    // Mounting with an initialMessage means the composer just started a turn for
+    // this new thread (its postConversation already kicked off the agent). Show
+    // the typing indicator right away instead of waiting for the first token —
+    // which can be many seconds on a slow model. Cleared below if history shows
+    // the turn already finished, and by the chat.turn_done event otherwise.
+    setStreaming(!!initialMessage);
+    setStatusLabel(initialMessage ? "Thinking…" : null);
     setEditingUser(null);
     setSessionStats({});
     setForkInfo(null);
@@ -517,6 +523,15 @@ export function ChatPanel({
           );
           setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? sessionId));
           setHasEarlier(resp.has_earlier ?? false);
+          // If history already contains an assistant reply, the turn finished
+          // before/at mount — clear the optimistic streaming flag so we don't
+          // show a perpetual typing indicator (the turn_done event would
+          // otherwise be the only thing to clear it, and it may have fired
+          // before we subscribed).
+          if (streamingRef.current && mapped.some((m) => m.role === "assistant")) {
+            setStreaming(false);
+            setStatusLabel(null);
+          }
           // Fire-and-forget: pre-warm the agent cache so the first message
           // doesn't pay cold-start costs (system prompt rebuild, memory load).
           void api.warmSession(resp.session_id ?? sessionId).catch(() => {});

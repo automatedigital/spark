@@ -23,6 +23,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
+import { OnboardingWizard } from "@/components/OnboardingWizard";
 
 
 const NAV_ITEMS = [
@@ -87,6 +88,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { updateAvailable, latestVersion, openUpdateModal } = useUpdateModal();
+  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
 
   // ── Activity badge counts ──
   const [runningTaskCount, setRunningTaskCount] = useState(0);
@@ -174,6 +176,26 @@ export default function App() {
   }, []);
 
 
+  // ── First-run onboarding gate ──
+  useEffect(() => {
+    let cancelled = false;
+    if (localStorage.getItem("spark-onboarding-complete")) {
+      setNeedsOnboarding(false);
+      return;
+    }
+    (async () => {
+      try {
+        const status = await api.getOnboardingStatus();
+        if (!cancelled) setNeedsOnboarding(status.needs_onboarding);
+      } catch {
+        if (!cancelled) setNeedsOnboarding(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     if (initialRef.current) {
       initialRef.current = false;
@@ -207,6 +229,10 @@ export default function App() {
     setTokenInput("");
     window.location.reload();
   };
+
+  if (needsOnboarding) {
+    return <OnboardingWizard onComplete={() => setNeedsOnboarding(false)} />;
+  }
 
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground">
