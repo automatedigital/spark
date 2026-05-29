@@ -726,6 +726,25 @@ export const api = {
       `/api/workspace/projects/${encodeURIComponent(slug)}/conversations?${qs}`,
     );
   },
+
+  // Connectors
+  listConnectors: () =>
+    fetchJSON<ConnectorStatus[]>("/api/connectors"),
+
+  getGoogleStatus: () =>
+    fetchJSON<ConnectorStatus>("/api/connectors/google/status"),
+
+  connectGoogle: () =>
+    fetchJSON<{ auth_url?: string; error?: string; message?: string }>(
+      "/api/connectors/google/connect",
+      { method: "POST" },
+    ),
+
+  disconnectGoogle: () =>
+    fetchJSON<{ disconnected?: boolean; error?: string }>(
+      "/api/connectors/google",
+      { method: "DELETE" },
+    ),
 };
 
 export interface PlatformStatus {
@@ -1364,3 +1383,16 @@ export type WorkspaceTerminalEvent =
   | { type: "state"; status: string; cwd?: string }
   | { type: "output"; stream?: string; text: string }
   | { type: "done"; status: string; exit_code: number | null };
+
+export interface ConnectorStatus {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  connected: boolean;
+  configured: boolean;
+  email?: string | null;
+  name_display?: string | null;
+  picture?: string | null;
+  error?: string;
+}

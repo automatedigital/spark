@@ -1,0 +1,259 @@
+"""
+Connectors API routes — handles OAuth flows for third-party services.
+
+Currently supports: Google Workspace
+
+OAuth flow:
+  1. POST /api/connectors/google/connect  → returns {auth_url}
+  2. Frontend opens auth_url in a popup window
+  3. User consents → Google redirects to GET /oauth/google/callback
+  4. Server exchanges code for tokens, saves them
+  5. Frontend polls GET /api/connectors/google/status → {connected: true}
+"""
+
+from __future__ import annotations
+
+import logging
+import secrets
+from typing import Optional
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Module-level state
+# ---------------------------------------------------------------------------
+
+_server_port: int = 9119
+_pending_states: dict[str, str] = {}  # state → code_verifier
+
+
+def set_server_port(port: int) -> None:
+    """Called by web_server.py at startup so we know our callback URL."""
+    global _server_port
+    _server_port = port
+
+
+def _redirect_uri() -> str:
+    return f"http://localhost:{_server_port}/oauth/google/callback"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/connectors — list all connectors
+# ---------------------------------------------------------------------------
+
+@router.get("/api/connectors")
+async def list_connectors():
+    try:
+        from spark_cli.google_connector import get_connection_status, is_configured
+        google_status = get_connection_status()
+    except Exception as exc:
+        logger.warning("Error getting Google connector status: %s", exc)
+        google_status = {"connected": False, "configured": False, "error": str(exc)}
+
+    return JSONResponse([
+        {
+            "id": "google",
+            "name": "Google Workspace",
+            "description": "Gmail, Google Calendar",
+            "icon": "google",
+            **google_status,
+        }
+    ])
+
+
+# ---------------------------------------------------------------------------
+# GET /api/connectors/google/status
+# ---------------------------------------------------------------------------
+
+@router.get("/api/connectors/google/status")
+async def google_status():
+    try:
+        from spark_cli.google_connector import get_connection_status
+        return JSONResponse(get_connection_status())
+    except Exception as exc:
+        logger.warning("Error getting Google status: %s", exc)
+        return JSONResponse({"connected": False, "configured": False, "error": str(exc)})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/connectors/google/connect — start OAuth flow
+# ---------------------------------------------------------------------------
+
+@router.post("/api/connectors/google/connect")
+async def google_connect():
+    from spark_cli.google_connector import (
+        is_configured,
+        generate_pkce_pair,
+        build_auth_url,
+    )
+
+    if not is_configured():
+        return JSONResponse(
+            {
+                "error": "not_configured",
+                "message": (
+                    "Google OAuth is not configured. Add your client_id and "
+                    "client_secret to config.yaml under connectors.google, "
+                    "or set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET "
+                    "environment variables."
+                ),
+            },
+            status_code=400,
+        )
+
+    state = secrets.token_urlsafe(32)
+    code_verifier, code_challenge = generate_pkce_pair()
+    _pending_states[state] = code_verifier
+
+    auth_url = build_auth_url(
+        state=state,
+        code_challenge=code_challenge,
+        redirect_uri=_redirect_uri(),
+    )
+
+    return JSONResponse({"auth_url": auth_url})
+
+
+# ---------------------------------------------------------------------------
+# GET /oauth/google/callback — Google redirects here after consent
+# ---------------------------------------------------------------------------
+
+_CALLBACK_SUCCESS_HTML = """<!DOCTYPE html>
+<html>
+<head>
+  <title>Google Connected</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; display: flex; align-items: center;
+            justify-content: center; height: 100vh; margin: 0; background: #0a0a0a; color: #fff; }}
+    .card {{ text-align: center; padding: 2rem; }}
+    .icon {{ font-size: 3rem; margin-bottom: 1rem; }}
+    h1 {{ font-size: 1.25rem; margin: 0 0 0.5rem; }}
+    p {{ color: #888; font-size: 0.875rem; margin: 0; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✓</div>
+    <h1>Google Connected</h1>
+    <p>You can close this window and return to Spark.</p>
+    <script>
+      setTimeout(() => {{ try {{ window.close(); }} catch(e) {{}} }}, 1500);
+    </script>
+  </div>
+</body>
+</html>"""
+
+_CALLBACK_ERROR_HTML = """<!DOCTYPE html>
+<html>
+<head>
+  <title>Connection Failed</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; display: flex; align-items: center;
+            justify-content: center; height: 100vh; margin: 0; background: #0a0a0a; color: #fff; }}
+    .card {{ text-align: center; padding: 2rem; }}
+    .icon {{ font-size: 3rem; margin-bottom: 1rem; }}
+    h1 {{ font-size: 1.25rem; margin: 0 0 0.5rem; }}
+    p {{ color: #f87171; font-size: 0.875rem; margin: 0; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✗</div>
+    <h1>Connection Failed</h1>
+    <p>{error}</p>
+  </div>
+</body>
+</html>"""
+
+
+@router.get("/oauth/google/callback")
+async def google_oauth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    if error:
+        logger.warning("Google OAuth error: %s", error)
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=error))
+
+    if not code or not state:
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Missing code or state parameter"))
+
+    code_verifier = _pending_states.pop(state, None)
+    if not code_verifier:
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Invalid or expired state. Please try connecting again."))
+
+    try:
+        from spark_cli.google_connector import (
+            exchange_code,
+            get_user_info,
+            save_token,
+        )
+
+        token = exchange_code(
+            code=code,
+            code_verifier=code_verifier,
+            redirect_uri=_redirect_uri(),
+        )
+
+        # Fetch and cache profile info immediately
+        try:
+            info = get_user_info(token["access_token"])
+            token["email"] = info.get("email")
+            token["name"] = info.get("name")
+            token["picture"] = info.get("picture")
+        except Exception as exc:
+            logger.warning("Could not fetch user info after connect: %s", exc)
+
+        save_token(token)
+        logger.info("Google Workspace connected: %s", token.get("email", "unknown"))
+        return HTMLResponse(_CALLBACK_SUCCESS_HTML)
+
+    except Exception as exc:
+        logger.exception("Google OAuth token exchange failed: %s", exc)
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=f"Token exchange failed: {exc}"))
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/connectors/google — disconnect
+# ---------------------------------------------------------------------------
+
+@router.delete("/api/connectors/google")
+async def google_disconnect():
+    try:
+        from spark_cli.google_connector import clear_token, load_token
+        import httpx
+
+        # Best-effort token revocation
+        token = load_token()
+        if token:
+            try:
+                access_token = token.get("access_token", "")
+                if access_token:
+                    httpx.post(
+                        "https://oauth2.googleapis.com/revoke",
+                        params={"token": access_token},
+                        timeout=5,
+                    )
+            except Exception:
+                pass
+
+        clear_token()
+        return JSONResponse({"disconnected": True})
+    except Exception as exc:
+        logger.warning("Error disconnecting Google: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
+
+def register_connectors_routes(app) -> None:
+    app.include_router(router)

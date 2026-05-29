@@ -59,6 +59,7 @@ from spark_cli.dashboard_auth import (
 )
 from spark_cli.kanban_routes import register_kanban_routes
 from spark_cli.workspace_routes import register_workspace_routes
+from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
 
 try:
     from fastapi import FastAPI, HTTPException, Request
@@ -5481,6 +5482,7 @@ def mount_spa(application: FastAPI):
 
 register_kanban_routes(app)
 register_workspace_routes(app)
+register_connectors_routes(app)
 
 
 # ── Workspace conversation endpoints ─────────────────────────────────────────
@@ -5660,6 +5662,7 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
     from core.spark_constants import get_public_base_url, is_server_environment
 
     ensure_dashboard_token_file()
+    _set_connectors_port(port)
     public_url = get_public_base_url(host, port)
 
     _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
