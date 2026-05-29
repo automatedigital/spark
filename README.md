@@ -65,6 +65,22 @@ After install, reload your shell so `spark` is on your `PATH`:
 source ~/.bashrc   # or: source ~/.zshrc
 ```
 
+### macOS Desktop App
+
+A native **Spark.app** bundles the Web UI and Python backend in one drag-to-install package — no separate `spark dashboard` step.
+
+**[Download Spark Desktop v0.1.0](https://github.com/automatedigital/spark/releases/tag/desktop-v0.1.0)** (401 MB DMG, Apple Silicon)
+
+**Requirements:** macOS 13+, Apple Silicon (M1/M2/M3)
+
+**Install:**
+
+1. Download **Spark.dmg** from the release above.
+2. Open the DMG and drag **Spark** to Applications.
+3. On first launch, **right-click → Open** (unsigned build; macOS Gatekeeper blocks a normal double-click until you do this once).
+
+The desktop app uses the same `~/.spark/` config and state as the CLI. New installs default to the **Slate** WebUI theme (Settings → Appearance).
+
 ### Manual / development install
 
 See **[Installation](./docs/getting-started/installation.md)** in the docs (clone with submodules, venv, `pip install -e .`, shell hook).
