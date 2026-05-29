@@ -30,6 +30,10 @@ mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/$APP_NAME"
 ln -s /Applications "$STAGE/Applications"
 
+# cp -R breaks any existing signature; re-sign the staged copy before packaging.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+"$REPO_ROOT/scripts/sign_mac_app.sh" "$STAGE/$APP_NAME"
+
 # Size the read-write image with headroom over the staged payload.
 SIZE_MB=$(( $(du -sm "$STAGE" | cut -f1) + 80 ))
 hdiutil create -srcfolder "$STAGE" -volname "$VOL_NAME" -fs APFS \

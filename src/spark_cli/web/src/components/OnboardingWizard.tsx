@@ -532,6 +532,11 @@ export function OnboardingWizard({ onComplete }: Props) {
   };
 
   const openSpark = () => {
+    const key =
+      typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+        ? "spark-desktop-onboarding-complete"
+        : "spark-onboarding-complete";
+    localStorage.setItem(key, "true");
     localStorage.setItem("spark-onboarding-complete", "true");
     onComplete();
   };

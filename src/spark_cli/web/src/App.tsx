@@ -24,6 +24,7 @@ import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { isTauri } from "@/sidecar";
 
 
 const NAV_ITEMS = [
@@ -179,16 +180,44 @@ export default function App() {
   // ── First-run onboarding gate ──
   useEffect(() => {
     let cancelled = false;
-    if (localStorage.getItem("spark-onboarding-complete")) {
+    const onboardingKey = isTauri()
+      ? "spark-desktop-onboarding-complete"
+      : "spark-onboarding-complete";
+
+    // Browser: trust local opt-out. Desktop uses a separate key (same origin as
+    // spark dashboard in a browser tab would otherwise skip onboarding).
+    if (!isTauri() && localStorage.getItem(onboardingKey)) {
       setNeedsOnboarding(false);
       return;
     }
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
     (async () => {
-      try {
-        const status = await api.getOnboardingStatus();
-        if (!cancelled) setNeedsOnboarding(status.needs_onboarding);
-      } catch {
-        if (!cancelled) setNeedsOnboarding(false);
+      const attempts = isTauri() ? 24 : 1;
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const status = await api.getOnboardingStatus();
+          if (cancelled) return;
+          if (status.needs_onboarding) {
+            setNeedsOnboarding(true);
+            return;
+          }
+          if (localStorage.getItem(onboardingKey)) {
+            setNeedsOnboarding(false);
+            return;
+          }
+          setNeedsOnboarding(false);
+          return;
+        } catch {
+          if (i < attempts - 1) await sleep(500);
+        }
+      }
+      if (!cancelled) {
+        // Desktop: if the API never answered, show onboarding rather than skip it.
+        setNeedsOnboarding(
+          isTauri() ? !localStorage.getItem(onboardingKey) : false,
+        );
       }
     })();
     return () => {

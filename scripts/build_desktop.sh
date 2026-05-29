@@ -43,11 +43,9 @@ rm -rf "$APP/Contents/Resources/spark-server"
 cp -R "$REPO_ROOT/dist/spark-server" "$APP/Contents/Resources/spark-server"
 chmod +x "$APP/Contents/Resources/spark-server/spark-server"
 
-# 4b. Re-sign after sidecar injection --------------------------------------
-# Copying spark-server into Resources invalidates Tauri's signature; without
-# re-signing, macOS reports the app as "damaged" (even via right-click → Open).
+# 4b. Re-sign after sidecar injection (DMG staging will sign again after cp -R)
 echo "==> Ad-hoc signing app bundle"
-codesign --force --deep --sign - "$APP"
+"$REPO_ROOT/scripts/sign_mac_app.sh" "$APP"
 
 # 5. Package a styled drag-to-install .dmg ---------------------------------
 echo "==> Packaging DMG"
