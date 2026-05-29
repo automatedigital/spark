@@ -3,12 +3,12 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type React from "react";
 
 export const WEBUI_THEMES = [
-  { id: "spark", name: "Spark", description: "Amber graphite glass" },
-  { id: "codex", name: "Codex", description: "Neutral compact console" },
+  { id: "codex", name: "Slate", description: "Neutral compact console" },
+  { id: "spark", name: "Amber", description: "Amber graphite glass" },
   { id: "daylight", name: "Daylight", description: "Bright workspace" },
   { id: "signal", name: "Signal", description: "Green terminal glow" },
   { id: "aurora", name: "Aurora", description: "Polar ink with cyan light" },
-  { id: "ember", name: "Ember", description: "Charcoal with hot copper" },
+  { id: "ember", name: "Copper", description: "Charcoal with hot copper" },
   { id: "orchid", name: "Orchid", description: "Night violet command deck" },
   { id: "harbor", name: "Harbor", description: "Deep navy and sea glass" },
 ] as const;
@@ -31,7 +31,7 @@ function isTheme(value: string | null): value is WebUITheme {
 export function WebUIThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<WebUITheme>(() => {
     const saved = typeof localStorage === "undefined" ? null : localStorage.getItem(STORAGE_KEY);
-    return isTheme(saved) ? saved : "spark";
+    return isTheme(saved) ? saved : "codex";
   });
 
   useEffect(() => {
