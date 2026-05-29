@@ -25,6 +25,7 @@ Stream output. Stages:
 | 2 | PyInstaller → `dist/spark-server/` | Import errors; check `spark-server.spec` excludes |
 | 3 | `tauri build` — Rust + `.app` | Run `cargo check` in `src/spark_cli/web/src-tauri/` |
 | 4 | Inject sidecar into `.app` | Ensure `dist/spark-server/` exists |
+| 4b | `codesign --force --deep --sign -` on `.app` | Required after injection or macOS reports "damaged" |
 | 5 | `make_dmg.sh` — drag-to-install DMG | Requires macOS `hdiutil` |
 
 ## Step 2 — Report success

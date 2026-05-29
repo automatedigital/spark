@@ -79,6 +79,13 @@ A native **Spark.app** bundles the Web UI and Python backend in one drag-to-inst
 2. Open the DMG and drag **Spark** to Applications.
 3. On first launch, **right-click → Open** (unsigned build; macOS Gatekeeper blocks a normal double-click until you do this once).
 
+**If macOS says the app is "damaged":** the download quarantine flag is blocking an unsigned build. Clear it, then open again:
+
+```bash
+xattr -cr /Applications/Spark.app
+open /Applications/Spark.app
+```
+
 The desktop app uses the same `~/.spark/` config and state as the CLI.
 
 ### Manual / development install
