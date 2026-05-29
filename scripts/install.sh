@@ -1196,18 +1196,14 @@ install_node_deps() {
                 log_info "This is standard Playwright setup - Spark itself does not require root access."
                 if cd "$INSTALL_DIR" && npx playwright install --with-deps chromium 2>/dev/null; then
                     : # success
+                elif cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null; then
+                    log_success "Playwright Chromium installed (system deps skipped)"
+                    log_info "If browser tools don't work, install system deps manually:"
+                    log_info "  sudo apt install libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libgbm1 libasound2t64"
                 else
-                    log_info "System-deps install failed, trying browser-only install..."
-                    if cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null; then
-                        log_success "Playwright Chromium installed (system deps skipped)"
-                        log_info "If browser tools don't work, install system deps manually:"
-                        log_info "  sudo apt install libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libgbm1 libasound2t64"
-                    else
-                        log_warn "Playwright browser not installed - browser tools will be limited."
-                        log_info "Install system chromium as a workaround: sudo apt install chromium-browser"
-                        log_info "Or wait for Playwright to add support for your OS version, then run:"
-                        log_info "  cd $INSTALL_DIR && npx playwright install --with-deps chromium"
-                    fi
+                    log_info "Playwright does not support your OS version yet - browser automation tools will not work."
+                    log_info "Workaround: sudo apt install chromium-browser"
+                    log_info "Once Playwright adds support, run: cd $INSTALL_DIR && npx playwright install --with-deps chromium"
                 fi
                 ;;
             arch|manjaro)
@@ -1453,7 +1449,12 @@ maybe_start_gateway() {
                         log_success "Your bot is online!"
                     fi
                 else
-                    log_warn "Gateway may still be starting. Check: spark gateway status"
+                    GATEWAY_STATE=$(systemctl --user show spark-gateway.service --property=ActiveState --value 2>/dev/null || echo "unknown")
+                    if [ "$GATEWAY_STATE" = "failed" ]; then
+                        log_warn "Gateway failed to start. Check logs: journalctl --user -u spark-gateway.service -n 20"
+                    else
+                        log_info "Gateway is still starting (state: $GATEWAY_STATE). Check: spark gateway status"
+                    fi
                 fi
             else
                 log_warn "Service installed but failed to restart. Try: spark gateway restart"
