@@ -15,6 +15,7 @@
 // to the http URL is fine, so Rust polls the TCP port and then navigates.
 
 use std::net::TcpStream;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -25,6 +26,42 @@ struct Sidecar(Mutex<Option<Child>>);
 
 const SIDECAR_PORT: u16 = 9119;
 const READY_TIMEOUT_SECS: u64 = 120;
+
+/// Resolve the enclosing `.app` bundle from the running executable.
+fn spark_app_bundle() -> Option<PathBuf> {
+    let mut path = std::env::current_exe().ok()?;
+    loop {
+        if path.file_name().is_some_and(|n| n == "Spark.app") {
+            return Some(path);
+        }
+        if !path.pop() {
+            break;
+        }
+    }
+    None
+}
+
+/// Clear browser download quarantine on our bundle (best-effort).
+///
+/// Browsers set `com.apple.quarantine` on downloaded files. Removing it avoids
+/// the "damaged" / blocked-open dialogs. This only runs after the process has
+/// already launched; first open from a quarantined copy may still require using
+/// **Install Spark.app** on the DMG or right-click → Open. Fully frictionless
+/// installs require Apple Developer ID signing + notarization.
+fn clear_quarantine_on_bundle(bundle: &Path) {
+    let Some(path) = bundle.to_str() else {
+        return;
+    };
+    match Command::new("/usr/bin/xattr").args(["-cr", path]).status() {
+        Ok(status) if status.success() => {
+            eprintln!("[spark] cleared quarantine attributes on {path}");
+        }
+        Ok(status) => {
+            eprintln!("[spark] xattr -cr exited with {status:?} for {path}");
+        }
+        Err(e) => eprintln!("[spark] xattr -cr failed for {path}: {e}"),
+    }
+}
 
 /// Block until the backend is accepting connections, then point the window at
 /// it. Runs on a background thread so the UI (loading page) stays responsive.
@@ -51,6 +88,10 @@ fn wait_and_navigate(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if let Some(bundle) = spark_app_bundle() {
+        clear_quarantine_on_bundle(&bundle);
+    }
+
     tauri::Builder::default()
         .manage(Sidecar(Mutex::new(None)))
         .setup(|app| {

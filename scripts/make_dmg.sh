@@ -25,14 +25,18 @@ RW_DMG="$WORK/rw.dmg"
 MOUNT="/Volumes/$VOL_NAME"
 trap 'hdiutil detach "$MOUNT" -quiet 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
-# Stage contents: the app + an Applications symlink.
+# Stage contents: Spark.app, one-click installer, and Applications symlink.
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/$APP_NAME"
 ln -s /Applications "$STAGE/Applications"
 
-# cp -R breaks any existing signature; re-sign the staged copy before packaging.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTALLER="$STAGE/Install Spark.app"
+osacompile -o "$INSTALLER" "$REPO_ROOT/scripts/install_spark.applescript"
+
+# cp -R / osacompile break signatures; re-sign every .app in the stage.
 "$REPO_ROOT/scripts/sign_mac_app.sh" "$STAGE/$APP_NAME"
+"$REPO_ROOT/scripts/sign_mac_app.sh" "$INSTALLER"
 
 # Size the read-write image with headroom over the staged payload.
 SIZE_MB=$(( $(du -sm "$STAGE" | cut -f1) + 80 ))
@@ -50,12 +54,13 @@ tell application "Finder"
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {200, 120, 800, 480}
+    set the bounds of container window to {200, 120, 920, 480}
     set theViewOptions to the icon view options of container window
     set arrangement of theViewOptions to not arranged
     set icon size of theViewOptions to 120
-    set position of item "$APP_NAME" of container window to {150, 180}
-    set position of item "Applications" of container window to {450, 180}
+    set position of item "Install Spark.app" of container window to {120, 180}
+    set position of item "$APP_NAME" of container window to {320, 180}
+    set position of item "Applications" of container window to {520, 180}
     update without registering applications
     delay 1
     close

@@ -65,8 +65,8 @@ gh release create "$TAG" \
 
 ### Install
 1. Download **Spark.dmg**
-2. Open the DMG and drag Spark to Applications
-3. On first launch: **right-click → Open** (unsigned build)
+2. Double-click **Install Spark** on the disk image (recommended)
+3. Or drag Spark to Applications; first launch may require **right-click → Open** (unsigned build)
 
 ### Requirements
 - macOS 13+
