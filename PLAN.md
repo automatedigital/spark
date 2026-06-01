@@ -104,10 +104,14 @@ Two distinct mechanisms, kept strictly separate (see [CONTEXT.md](CONTEXT.md)).
 The "gets smarter over time" promise lives here, not in Dream. Runs at session end,
 cheap, no user action.
 
-- [ ] **Auto-update holographic memory by default.** Flip the holographic provider's
-      `auto_extract` on by default (`config.py` `DEFAULT_CONFIG`, bump
-      `_config_version` for migration). Verify `on_session_end` →
-      `_auto_extract_facts` fires on a normal session. Keep an opt-out flag.
+- [x] **Auto-update holographic memory by default.** Flipped the holographic
+      provider's `auto_extract` default `false`→`true` in
+      `plugins/memory/holographic/__init__.py` (the `on_session_end` `.get` default +
+      schema + docstring), with robust bool/string coercion. The holographic provider
+      is already the default `memory.provider`, so no config-migration needed — the
+      default simply changes when unset. `on_session_end`→`_auto_extract_facts` now
+      fires on every normal session; `auto_extract: false` opts out. Caching-safe
+      (session-end only). 5 new tests in `test_holographic_auto_extract.py`, all pass.
 - [ ] **Auto-update MEMORY.md** (net-new — doesn't exist today). MEMORY.md currently
       only changes when the model explicitly calls the memory tool mid-conversation.
       Add a session-end distillation step that proposes/merges durable facts into

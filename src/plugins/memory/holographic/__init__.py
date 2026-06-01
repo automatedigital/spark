@@ -9,7 +9,7 @@ Config in $SPARK_HOME/config.yaml (profile-scoped):
   plugins:
     spark-memory-store:
       db_path: $SPARK_HOME/memory_store.db   # omit to use the default
-      auto_extract: false
+      auto_extract: true   # default — extract facts at session end
       default_trust: 0.5
       min_trust_threshold: 0.3
       temporal_decay_half_life: 0
@@ -149,7 +149,7 @@ class HolographicMemoryProvider(MemoryProvider):
         _default_db = f"{display_spark_home()}/memory_store.db"
         return [
             {"key": "db_path", "description": "SQLite database path", "default": _default_db},
-            {"key": "auto_extract", "description": "Auto-extract facts at session end", "default": "false", "choices": ["true", "false"]},
+            {"key": "auto_extract", "description": "Auto-extract facts at session end", "default": "true", "choices": ["true", "false"]},
             {"key": "default_trust", "description": "Default trust score for new facts", "default": "0.5"},
             {"key": "hrr_dim", "description": "HRR vector dimensions", "default": "1024"},
         ]
@@ -234,7 +234,13 @@ class HolographicMemoryProvider(MemoryProvider):
         return tool_error(f"Unknown tool: {tool_name}")
 
     def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
-        if not self._config.get("auto_extract", False):
+        # Auto-extract is ON by default — Spark "gets smarter over time" without
+        # the user asking. Runs only at session end (never mid-conversation), so
+        # it cannot break prompt caching. Set auto_extract: false to opt out.
+        auto = self._config.get("auto_extract", True)
+        if isinstance(auto, str):
+            auto = auto.strip().lower() in ("1", "true", "yes", "on")
+        if not auto:
             return
         if not self._store or not messages:
             return
