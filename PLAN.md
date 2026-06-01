@@ -78,15 +78,20 @@ makes every later "did I break it?" question unanswerable.
 
 Delete the stale duplicate surfaces. Confirmed orphaned (imported nowhere):
 
-- [ ] Delete `src/spark_cli/web/src/pages/WorkspacePage.tsx` (2,209 LOC stale
+- [x] Delete `src/spark_cli/web/src/pages/WorkspacePage.tsx` (2,209 LOC stale
       duplicate of `ChatPage`).
-- [ ] Delete `src/spark_cli/web/src/pages/ConversationsPage.tsx` and
-      `ConnectorsPage.tsx` (orphaned).
-- [ ] Grep for any now-unused imports/components/`lib/api` helpers left dangling by
-      the deletions; remove them too (e.g. anything only `WorkspacePage` used).
-- [ ] `npm run build` (in `src/spark_cli/web/`) + `eslint .` clean.
-- [ ] Verify the dashboard still loads and Chat/Files/Kanban/Cron/Skills nav all
-      render (preview tools — start server, snapshot, screenshot).
+- [x] Delete `src/spark_cli/web/src/pages/ConversationsPage.tsx` and
+      `ConnectorsPage.tsx` (orphaned). All three had **0 external references**.
+- [x] Checked for dangling imports — **none.** The orphans imported only shared
+      components (`ChatPanel`, `ui/*`, `chat/*`, hooks, `lib/api`) that `ChatPage`
+      and other live pages still use. Nothing became unreferenced.
+- [x] `npm run build` (tsc + vite) — **clean** (`tsc -b` passed → no dangling refs;
+      2,077 modules transformed). Note: `eslint .` has ~13.7K *pre-existing* errors
+      (separate lint debt, tracked for a later phase); the deletions added none.
+      Restored the gitignored `web_dist/` build artifacts so the commit is source-only.
+- [x] Verified via preview tools: dashboard loads, all nav renders (Chat / Files /
+      Tasks / Schedule / Skills + Settings), Chat surface intact. Only console errors
+      are `500`s from the absent backend (vite-only preview) — unrelated to deletions.
 
 ---
 
