@@ -6095,6 +6095,63 @@ class SparkCLI:
         print(f"(._.) Unknown dream command: {sub}")
         print("  Available: now, schedule, unschedule, status, review")
 
+    def _handle_learnings_command(self, cmd: str):
+        """Handle /learnings — review recent Dream syntheses and confirm removals."""
+        from datetime import datetime
+
+        from core import dream as dream_mod
+
+        recent = dream_mod.list_recent_dreams(limit=5)
+        pending = dream_mod.get_pending_removals()
+
+        print()
+        print("+" + "-" * 60 + "+")
+        print("|" + " " * 22 + "Learnings" + " " * 29 + "|")
+        print("+" + "-" * 60 + "+")
+
+        if not recent and not pending:
+            print("  Nothing yet. Run /dream to reflect on past sessions.")
+            print()
+            return
+
+        if recent:
+            print("\n  Recent dreams:")
+            for d in recent:
+                try:
+                    when = datetime.fromtimestamp(d["modified"]).strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    when = ""
+                print(f"    • {d['title']}  ({when})")
+                print(f"      {d['path']}")
+
+        if not pending:
+            print("\n  No memory removals awaiting review.")
+            print()
+            return
+
+        print(f"\n  {len(pending)} fact(s) flagged stale by Dream — confirm removal?")
+        for it in pending:
+            fid = it.get("fact_id")
+            reason = it.get("reason", "")
+            print(f"\n    [fact {fid}] {reason}")
+            try:
+                choice = input("      (k)eep / (r)emove / (s)kip all  [k]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  Review cancelled.")
+                break
+            if choice in ("s", "skip"):
+                print("  Stopping review — remaining items stay queued.")
+                break
+            if choice in ("r", "remove"):
+                if dream_mod.resolve_removal(fid, confirm=True):
+                    print(f"      ✓ Removed fact {fid}.")
+                else:
+                    print(f"      (._.) Could not resolve fact {fid}.")
+            else:
+                dream_mod.resolve_removal(fid, confirm=False)
+                print(f"      ✓ Kept fact {fid} (dequeued).")
+        print()
+
     def _handle_curator_command(self, cmd: str):
         """Handle /curator — background skill maintenance."""
         import shlex
@@ -6561,6 +6618,8 @@ class SparkCLI:
             self._handle_cron_command(cmd_original)
         elif canonical == "dream":
             self._handle_dream_command(cmd_original)
+        elif canonical == "learnings":
+            self._handle_learnings_command(cmd_original)
         elif canonical == "curator":
             self._handle_curator_command(cmd_original)
         elif canonical == "goal":

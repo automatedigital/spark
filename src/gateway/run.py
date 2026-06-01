@@ -2915,6 +2915,9 @@ class GatewayRunner:
         if canonical == "dream":
             return await self._handle_dream_command(event)
 
+        if canonical == "learnings":
+            return await self._handle_learnings_command(event)
+
         if canonical == "goal":
             return await self._handle_goal_command(event)
 
@@ -6086,6 +6089,41 @@ class GatewayRunner:
             )
 
         return f"Unknown /dream subcommand: {sub}\nAvailable: now, schedule, unschedule, status, review"
+
+    async def _handle_learnings_command(self, event: MessageEvent) -> str:
+        """Handle /learnings — read-only review of recent dreams + pending removals.
+
+        Removals are confirmed from the TUI (`/learnings`) since the gateway has no
+        interactive prompt; here we surface what's queued and how to act on it.
+        """
+        from core import dream as dream_mod
+
+        recent = await asyncio.to_thread(dream_mod.list_recent_dreams, 5)
+        pending = await asyncio.to_thread(dream_mod.get_pending_removals)
+
+        if not recent and not pending:
+            return "🧠 No learnings yet. Run /dream to reflect on past sessions."
+
+        lines = ["🧠 Learnings"]
+        if recent:
+            lines.append("\nRecent dreams:")
+            for d in recent:
+                try:
+                    when = datetime.fromtimestamp(d["modified"]).strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    when = ""
+                lines.append(f"  • {d['title']} ({when})")
+
+        if pending:
+            lines.append(f"\n{len(pending)} fact(s) flagged stale (confirm from the TUI with /learnings):")
+            for it in pending[:20]:
+                lines.append(f"  [{it.get('fact_id')}] {it.get('reason', '')}")
+            if len(pending) > 20:
+                lines.append(f"  ... and {len(pending) - 20} more.")
+        else:
+            lines.append("\nNo memory removals awaiting review.")
+
+        return "\n".join(lines)
 
     async def _handle_goal_command(self, event: MessageEvent) -> str:
         """Handle /goal — durable cross-session objective tracking via Kanban board."""

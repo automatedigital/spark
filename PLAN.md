@@ -152,11 +152,14 @@ Repair the existing pass and make it visible — but it stays explicitly invoked
       rewrite** — the proposal + a before/after unified diff (`_unified_memory_diff`)
       are written into the Dream wiki entry for review; MEMORY.md on disk is untouched.
       3 new tests (incl. one asserting MEMORY.md is byte-unchanged after a proposal).
-- [ ] **`/learnings` review surface** (targeted new) — read-only TUI command +
-      dashboard panel showing recent Dream syntheses and the `pending-removals`
-      queue so users can see and confirm removals without digging into
-      `~/.spark/dreams/`. (3-file slash-command rule: `commands.py` + `cli.py` +
-      gateway handler.)
+- [x] **`/learnings` review surface** — built across all three surfaces.
+      Backend API in `dream.py` (`get_pending_removals`, `resolve_removal`,
+      `list_recent_dreams`). **CLI** `/learnings` (interactive keep/remove/skip on
+      flagged facts) via the 3-file rule (`commands.py` + `cli.py` + gateway). The
+      **gateway** and **web dashboard** (command palette, `_web_cmd_learnings`)
+      surfaces are read-only — they show recent dreams + the pending queue; removals
+      are confirmed from the CLI where the prompt lives. Alias `/learned`. Unlike
+      `/dream review` (display-only), this actually resolves the queue.
 - [x] **Skill-usage telemetry** — the per-session counter **already exists**
       (`spark_state.py` records `tool_name`/`tool_call_count`; `agent/insights.py`
       `InsightsEngine._get_tool_usage` aggregates it; `/api/analytics/skills` serves
@@ -166,7 +169,10 @@ Repair the existing pass and make it visible — but it stays explicitly invoked
       "TOOL / SKILL USAGE" block in the synthesis prompt so Dream grounds insights in
       the user's real workflow. Tool names only (no PII). 4 new tests; 20/20 dream
       tests pass.
-- [ ] Tests for `/learnings`, telemetry, and the "Dream never auto-fires" guard.
+- [x] Tests for `/learnings`, telemetry, compaction, and the "Dream never
+      auto-fires" guard — all in `tests/core/test_dream.py` (14 → **28 tests**).
+      Dream docs updated in `docs/cli/slash-commands.md` (new inputs, MEMORY.md
+      compaction, `/learnings`, and an Auto-memory section).
 
 ---
 

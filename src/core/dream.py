@@ -513,6 +513,86 @@ def _queue_stale(payload: dict) -> int:
     return queued
 
 
+# ---------------------------------------------------------------------------
+# Review surface (/learnings) — recent syntheses + pending-removal queue
+# ---------------------------------------------------------------------------
+
+def get_pending_removals() -> list[dict]:
+    """Return the stale-fact removal queue (facts Dream flagged, awaiting confirm)."""
+    path = _pending_removals_path()
+    if not path.exists():
+        return []
+    try:
+        items = json.loads(path.read_text())
+        return items if isinstance(items, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def resolve_removal(fact_id: int, confirm: bool) -> bool:
+    """Resolve one queued removal.
+
+    confirm=True  → delete the fact from the holographic store, then dequeue.
+    confirm=False → dismiss (keep the fact), just dequeue.
+
+    Returns True if the entry was found and dequeued. Removal of the fact from
+    the store is best-effort (a missing fact still counts as resolved).
+    """
+    try:
+        fid = int(fact_id)
+    except (TypeError, ValueError):
+        return False
+
+    items = get_pending_removals()
+    remaining = [it for it in items if it.get("fact_id") != fid]
+    if len(remaining) == len(items):
+        return False  # nothing matched
+
+    if confirm:
+        store, _err = _open_holographic_store()
+        if store is not None:
+            try:
+                store.remove_fact(fid)
+            except Exception as e:
+                logger.debug("resolve_removal: remove_fact(%s) failed: %s", fid, e)
+            finally:
+                try:
+                    store.close()
+                except Exception:
+                    pass
+
+    _write_json(_pending_removals_path(), remaining)
+    return True
+
+
+def list_recent_dreams(limit: int = 5) -> list[dict]:
+    """Recent Dream wiki entries, newest first: {name, path, title, modified}."""
+    dreams_dir = _resolve_wiki_path() / "dreams"
+    if not dreams_dir.exists():
+        return []
+    entries = []
+    for p in sorted(dreams_dir.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+        if p.name == "index.md":
+            continue
+        title = p.stem
+        try:
+            for line in p.read_text().splitlines():
+                if line.startswith("title:"):
+                    title = line.split(":", 1)[1].strip()
+                    break
+        except OSError:
+            pass
+        entries.append({
+            "name": p.name,
+            "path": str(p),
+            "title": title,
+            "modified": p.stat().st_mtime,
+        })
+        if len(entries) >= limit:
+            break
+    return entries
+
+
 def _slugify(text: str, maxlen: int = 40) -> str:
     text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return text[:maxlen] or "dream"

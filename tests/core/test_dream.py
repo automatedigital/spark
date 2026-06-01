@@ -445,3 +445,69 @@ def test_compaction_proposal_written_to_wiki_not_memory(dream_mod, tmp_path, mon
     assert "MEMORY.md compaction (proposed" in wiki_text
     assert "prefers tabs over spaces" in wiki_text
     assert "Merged duplicate tab preferences." in wiki_text
+
+
+# ---------------------------------------------------------------------------
+# /learnings review surface backend (Phase 2b)
+# ---------------------------------------------------------------------------
+
+def test_get_pending_removals_empty(dream_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    assert dream_mod.get_pending_removals() == []
+
+
+def test_resolve_removal_dismiss_keeps_fact(dream_mod, tmp_path, monkeypatch):
+    """confirm=False dequeues the removal but leaves the fact in the store."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    fact_ids = _populate_facts(tmp_path)
+    dream_mod._write_json(
+        dream_mod._pending_removals_path(),
+        [{"fact_id": fact_ids[0], "reason": "looks stale", "queued_at": "now"}],
+    )
+
+    assert dream_mod.resolve_removal(fact_ids[0], confirm=False) is True
+    assert dream_mod.get_pending_removals() == []  # dequeued
+
+    from plugins.memory.holographic.store import MemoryStore
+    store = MemoryStore(db_path=tmp_path / "memory_store.db")
+    ids = [f["fact_id"] for f in store.list_facts(limit=100)]
+    store.close()
+    assert fact_ids[0] in ids  # fact kept
+
+
+def test_resolve_removal_confirm_deletes_fact(dream_mod, tmp_path, monkeypatch):
+    """confirm=True removes the fact from the store and dequeues."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    fact_ids = _populate_facts(tmp_path)
+    dream_mod._write_json(
+        dream_mod._pending_removals_path(),
+        [{"fact_id": fact_ids[0], "reason": "stale", "queued_at": "now"}],
+    )
+
+    assert dream_mod.resolve_removal(fact_ids[0], confirm=True) is True
+    assert dream_mod.get_pending_removals() == []
+
+    from plugins.memory.holographic.store import MemoryStore
+    store = MemoryStore(db_path=tmp_path / "memory_store.db")
+    ids = [f["fact_id"] for f in store.list_facts(limit=100)]
+    store.close()
+    assert fact_ids[0] not in ids  # fact deleted
+
+
+def test_resolve_removal_unknown_id(dream_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    assert dream_mod.resolve_removal(99999, confirm=True) is False
+
+
+def test_list_recent_dreams(dream_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    _populate_sessions(tmp_path)
+    _populate_facts(tmp_path)
+    payload = {"insights": [], "consolidations": [], "stale": [], "summary": "dreamt"}
+    monkeypatch.setattr(dream_mod, "_call_synthesis_llm", _mock_llm(payload))
+    dream_mod.run_dream()
+
+    recent = dream_mod.list_recent_dreams(limit=5)
+    assert len(recent) >= 1
+    assert recent[0]["name"].endswith(".md")
+    assert "title" in recent[0]
