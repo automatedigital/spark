@@ -169,9 +169,13 @@ offline reflective consolidation over recent conversation transcripts and the \
 existing memory store. Your job is to surface durable insights, merge \
 semantically-duplicate facts, and flag stale or contradicted entries.
 
-You will receive two inputs:
+You will receive these inputs:
   1. A list of existing FACTS (each with id, content, trust_score)
-  2. Recent SESSION transcripts
+  2. A TOOL / SKILL USAGE summary (counts of what the user actually relies on)
+  3. Recent SESSION transcripts
+
+Use the usage summary to ground insights about the user's real workflow — e.g.
+which tools/skills dominate — rather than guessing from transcripts alone.
 
 Produce STRICT JSON matching this schema exactly — no prose, no markdown \
 fences. Every field is required (use empty arrays where applicable):
@@ -267,13 +271,46 @@ def _format_facts(facts: list[dict]) -> str:
     return "\n".join(out)
 
 
-def _call_synthesis_llm(facts_block: str, transcripts: str) -> dict:
+def _gather_tool_usage(session_db, since: float | None) -> list[dict]:
+    """Tool/skill usage counts since ``since`` (all-time if None).
+
+    Reuses the existing InsightsEngine, which reads tool_name / tool_calls from
+    the session DB — no separate telemetry store. Best-effort: returns [] on any
+    failure so a usage hiccup never blocks a dream.
+    """
+    try:
+        from agent.insights import InsightsEngine
+        cutoff = float(since) if since else 0.0
+        usage = InsightsEngine(session_db)._get_tool_usage(cutoff)
+        return sorted(usage, key=lambda r: r.get("count", 0), reverse=True)
+    except Exception as e:
+        logger.debug("Tool-usage gather failed (non-fatal): %s", e)
+        return []
+
+
+def _format_tool_usage(usage: list[dict], top: int = 15) -> str:
+    if not usage:
+        return "(no tool/skill usage recorded)"
+    out = []
+    for row in usage[:top]:
+        name = row.get("tool_name") or "?"
+        count = row.get("count", 0)
+        out.append(f"  {name}: {count}")
+    return "\n".join(out)
+
+
+def _call_synthesis_llm(facts_block: str, transcripts: str, usage_block: str = "") -> dict:
     """Run the single-shot synthesis call and parse the JSON response."""
     from agent.auxiliary_client import call_llm
 
+    usage_section = (
+        f"TOOL / SKILL USAGE (how the user actually works):\n{usage_block}\n\n"
+        if usage_block else ""
+    )
     user_msg = (
         "EXISTING FACTS:\n"
         f"{facts_block}\n\n"
+        f"{usage_section}"
         "RECENT SESSIONS:\n"
         f"{transcripts}\n\n"
         "Emit the JSON object now — no prose, no fences."
@@ -670,8 +707,9 @@ def run_dream(*, since: float | None = None, dry_run: bool = False) -> DreamResu
         transcripts, sources = _format_transcripts(session_db, sessions)
         result.sources = sources
         facts_block = _format_facts(facts)
+        usage_block = _format_tool_usage(_gather_tool_usage(session_db, since))
 
-        payload = _call_synthesis_llm(facts_block, transcripts)
+        payload = _call_synthesis_llm(facts_block, transcripts, usage_block)
         result.raw_summary = (payload.get("summary") or "")[:5000]
 
         if dry_run:

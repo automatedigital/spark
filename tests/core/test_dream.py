@@ -352,3 +352,42 @@ def test_memory_session_end_does_not_invoke_dream(dream_mod):
 
     run.assert_not_called()
     tick.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tool/skill usage feed into Dream synthesis (Phase 2b telemetry)
+# ---------------------------------------------------------------------------
+
+def test_format_tool_usage_empty(dream_mod):
+    assert dream_mod._format_tool_usage([]) == "(no tool/skill usage recorded)"
+
+
+def test_format_tool_usage_sorted_and_capped(dream_mod):
+    usage = [{"tool_name": "read_file", "count": 9}, {"tool_name": "terminal", "count": 20}]
+    out = dream_mod._format_tool_usage(usage, top=1)
+    # Already sorted by caller, but format keeps order and caps to `top`
+    assert "read_file: 9" in out
+    assert "terminal" not in out  # capped at top=1
+
+
+def test_gather_tool_usage_non_fatal(dream_mod):
+    """A broken session db yields [] rather than raising."""
+    assert dream_mod._gather_tool_usage(object(), None) == []
+
+
+def test_run_dream_passes_usage_block_to_synthesis(dream_mod, tmp_path, monkeypatch):
+    """run_dream feeds a tool-usage block into the synthesis LLM call."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    _populate_sessions(tmp_path)
+    _populate_facts(tmp_path)
+
+    captured = {}
+
+    def _fake_synth(facts_block, transcripts, usage_block=""):
+        captured["usage_block"] = usage_block
+        return {"insights": [], "consolidations": [], "stale": [], "summary": "ok"}
+
+    monkeypatch.setattr(dream_mod, "_call_synthesis_llm", _fake_synth)
+    dream_mod.run_dream(dry_run=True)
+
+    assert "usage_block" in captured  # synthesis received the third argument

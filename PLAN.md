@@ -156,9 +156,15 @@ Repair the existing pass and make it visible — but it stays explicitly invoked
       queue so users can see and confirm removals without digging into
       `~/.spark/dreams/`. (3-file slash-command rule: `commands.py` + `cli.py` +
       gateway handler.)
-- [ ] **Skill-usage telemetry** (targeted new) — lightweight per-session counter of
-      which skills/tools fire, feeding Dream's synthesis context. Store via
-      `get_spark_home()`; no PII; opt-out flag.
+- [x] **Skill-usage telemetry** — the per-session counter **already exists**
+      (`spark_state.py` records `tool_name`/`tool_call_count`; `agent/insights.py`
+      `InsightsEngine._get_tool_usage` aggregates it; `/api/analytics/skills` serves
+      it). So no redundant store/dispatch-hook/opt-out was built — the missing piece
+      was *feeding it to Dream*. Added `_gather_tool_usage` + `_format_tool_usage` to
+      `dream.py` (reusing `InsightsEngine`, best-effort/non-fatal) and a third
+      "TOOL / SKILL USAGE" block in the synthesis prompt so Dream grounds insights in
+      the user's real workflow. Tool names only (no PII). 4 new tests; 20/20 dream
+      tests pass.
 - [ ] Tests for `/learnings`, telemetry, and the "Dream never auto-fires" guard.
 
 ---
