@@ -288,8 +288,8 @@ class TestCLIDefaultsHaveAuxiliaryKeys:
         # carries over keys from file_config that aren't in defaults.
         # So auxiliary config from config.yaml gets merged even though
         # cli.py's defaults dict doesn't define it.
-        import core.cli as _cli_mod
-        source = Path(_cli_mod.__file__).read_text()
+        import core.cli.config_state as _cfg_mod
+        source = Path(_cfg_mod.__file__).read_text()
         assert "auxiliary_config = defaults.get(\"auxiliary\"" in source
         assert "AUXILIARY_VISION_PROVIDER" in source
         assert "AUXILIARY_VISION_MODEL" in source
