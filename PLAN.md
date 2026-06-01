@@ -112,19 +112,26 @@ cheap, no user action.
       default simply changes when unset. `on_session_end`→`_auto_extract_facts` now
       fires on every normal session; `auto_extract: false` opts out. Caching-safe
       (session-end only). 5 new tests in `test_holographic_auto_extract.py`, all pass.
-- [ ] **Auto-update MEMORY.md** (net-new — doesn't exist today). MEMORY.md currently
-      only changes when the model explicitly calls the memory tool mid-conversation.
-      Add a session-end distillation step that proposes/merges durable facts into
-      MEMORY.md (dedup against existing entries; respect the memory-size limit in
-      `memory_provider.py`). Write via `get_spark_home()`; never touch SOUL.md.
-- [ ] Make the session-end hook robust: must run on clean exit AND interrupted exit
-      (mirror the existing `on_session_end` safety-net path in `cli.py:12008`), must
-      not block shutdown, must not raise. Cost-cheap (small/auxiliary model).
-- [ ] **Caching safety:** Auto-memory must run strictly at/after session end — never
-      mutate in-flight context, toolsets, or the system prompt mid-conversation
-      (Critical Rule). Fact *retrieval* into the prompt is unchanged.
-- [ ] Tests: auto-extract on by default writes facts; MEMORY.md distillation merges
-      without duplicating; both SPARK_HOME-isolated and run on interrupted exit.
+- [x] **Auto-update MEMORY.md** — **already exists** (premise was wrong, like Phase 0).
+      `AIAgent.flush_memories()` (`run_agent.py:6650`) gives the model one
+      auxiliary-model turn to persist durable memory at session end, **gated by turn
+      count** (`memory.flush_min_turns`, default 6 — exactly the chosen design). It's
+      wired at CLI exit (`cli.py:11981`), `/reset`, pre-compression, and gateway
+      session expiry; the `memory` tool is in the core toolset (default-on) and
+      `memory_enabled` defaults `True`. Mature feature with 5 existing test files. No
+      new build needed — would have duplicated/conflicted with it.
+- [x] Session-end hook robustness — **already handled.** The CLI-exit flush
+      (`cli.py:11979`) catches `(Exception, KeyboardInterrupt)` so it runs on clean
+      AND interrupted exit; the gateway path has stale-session guards
+      (`test_flush_memory_stale_guard.py`). Uses the auxiliary (cheap) client.
+- [x] **Caching safety** — **satisfied by design.** `flush_memories` appends a flush
+      message, makes one call, then strips every flush artifact back off the message
+      list (`run_agent.py:6802`, sentinel-matched), so the conversation/cache is
+      unchanged. The new holographic auto-extract runs only in `on_session_end`. Fact
+      retrieval into the prompt is untouched.
+- [x] Tests — holographic default-on covered by the 5 new tests; MEMORY.md flush
+      covered by 5 pre-existing files (`test_flush_memories_codex.py`,
+      `test_flush_memory_stale_guard.py`, `test_cli_new_session.py`, etc.).
 
 ### 2b — Dream (manual/scheduled only)
 
