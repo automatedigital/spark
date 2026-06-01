@@ -4800,13 +4800,27 @@ class AIAgent:
             return False, True
 
         if effective_reason == FailoverReason.auth:
-            refreshed = pool.try_refresh_current()
+            # A token refresh can "succeed" (return a new entry) yet still yield a
+            # credential the provider rejects. Without a cap, that produces an
+            # infinite refresh→retry→401 loop on the same pool entry. Bound the
+            # number of consecutive refreshes before forcing a rotation.
+            max_auth_refreshes = 3
+            auth_refreshes = getattr(self, "_consecutive_auth_refreshes", 0)
+            refreshed = pool.try_refresh_current() if auth_refreshes < max_auth_refreshes else None
             if refreshed is not None:
+                self._consecutive_auth_refreshes = auth_refreshes + 1
                 logger.info(f"Credential auth failure — refreshed pool entry {getattr(refreshed, 'id', '?')}")
                 self._swap_credential(refreshed)
                 return True, has_retried_429
-            # Refresh failed — rotate to next credential instead of giving up.
-            # The failed entry is already marked exhausted by try_refresh_current().
+            if auth_refreshes >= max_auth_refreshes:
+                logger.warning(
+                    "Credential auth failure — refresh budget (%d) exhausted; rotating to next credential",
+                    max_auth_refreshes,
+                )
+            # Refresh failed or budget exhausted — rotate to next credential
+            # instead of looping. Reset the budget for whatever entry comes next.
+            # A failed refresh already marked the entry exhausted via try_refresh_current().
+            self._consecutive_auth_refreshes = 0
             rotate_status = status_code if status_code is not None else 401
             next_entry = pool.mark_exhausted_and_rotate(status_code=rotate_status, error_context=error_context)
             if next_entry is not None:
@@ -9009,6 +9023,7 @@ class AIAgent:
                                 self._vprint(f"{self.log_prefix}   💾 Cache: {canonical_usage.cache_read_tokens:,}/{prompt:,} tokens ({hit_pct:.0f}% hit, {canonical_usage.cache_write_tokens:,} written)")
                     
                     has_retried_429 = False  # Reset on success
+                    self._consecutive_auth_refreshes = 0  # Reset auth-refresh budget on success
                     self._touch_activity(f"API call #{api_call_count} completed")
                     break  # Success, exit retry loop
 
