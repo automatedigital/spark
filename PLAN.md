@@ -180,16 +180,34 @@ Repair the existing pass and make it visible — but it stays explicitly invoked
 
 Mechanical decomposition, no behavior change. `SparkCLI` stays the public class.
 
-- [ ] Map `cli.py` into cohesive seams: command dispatch, rendering/diff display,
-      session lifecycle, input/prompt handling, slash-command handlers. Write the
-      target module list in the PR before moving code.
-- [ ] Extract into `core/cli/` submodules incrementally; keep `from core.cli import
-      SparkCLI` working (re-export from `core/cli/__init__.py`).
-- [ ] No logic edits during the move — pure relocation. Note the known pitfalls
-      (no `\033[K` under `patch_stdout`; `curses` not `simple_term_menu`).
-- [ ] Full suite green after each extraction commit; `mypy src/spark_cli/` clean.
-- [ ] Smoke-test the live TUI (`spark`) — launch, run a slash command, edit a file,
-      confirm diff rendering + spinner still work.
+Staged extraction, full suite green after each commit. `SparkCLI` stays the public
+class; `core.cli` stays the import + monkeypatch namespace via re-export.
+
+- [x] **Stage 1** — `core/cli.py` → `core/cli/__init__.py` (package skeleton). Same
+      namespace, so all `from core.cli import X` + the ~47 test files patching
+      `core.cli.X` keep working. Only 2 source-inspection tests updated (hardcoded path).
+- [x] **Stage 2** — worktree helpers (~383 lines) → `core/cli/worktree.py`. Shared
+      `_active_worktree` global handled via a `set_active_worktree()` accessor.
+- [x] **Stage 3** — attachment/file-drop helpers (~247 lines) → `core/cli/attachments.py`
+      (incl. `_IMAGE_EXTENSIONS`). `os.path` patches still work (shared `os` module).
+- [x] **Stage 4** — config/arg parsers (~116 lines) → `core/cli/parsing.py`. Broadened
+      the `sys.modules` wipe in `test_cli_provider_resolution` to clear `core.cli.*`.
+- [ ] **Architectural finding / blocker:** the remaining helpers (formatting/`_cprint`,
+      `load_cli_config`) and the 167-method `SparkCLI` class are all coupled through
+      the **`CLI_CONFIG`** module global (assigned once at load, line 493; read/mutated
+      in ~30+ places) and **`_cprint`** (patched 56× as `core.cli._cprint`). Splitting
+      further requires **de-globalizing** `CLI_CONFIG`/`_cprint` into a shared
+      `core/cli/_state.py` imported by both `__init__` and future mixin modules, then
+      updating the `core.cli.CLI_CONFIG`/`_cprint` test patch targets. This is the
+      larger refactor the clean extractions don't reach.
+- [ ] De-globalize `CLI_CONFIG` + `_cprint` into a shared state module.
+- [ ] Extract formatting/render helpers (`_cprint`, `_SkinAwareAnsi`, `ChatConsole`,
+      `_build_compact_banner`) → `core/cli/render.py`.
+- [ ] Split the `SparkCLI` class (167 methods) into concern-based mixins.
+- [ ] Smoke-test the live TUI; `mypy src/spark_cli/` clean.
+
+Progress so far: ~810 lines extracted into 3 submodules; `__init__.py` 12,328 → 11,590.
+Suite green (11,267) after every stage.
 
 ---
 
