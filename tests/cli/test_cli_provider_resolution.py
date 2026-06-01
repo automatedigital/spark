@@ -110,7 +110,8 @@ def _install_prompt_toolkit_stubs():
 
 def _import_cli():
     for name in list(sys.modules):
-        if name in ("cli", "core.cli") or name == "run_agent" or name == "tools" or name.startswith("tools."):
+        if (name in ("cli", "core.cli") or name.startswith("core.cli.")
+                or name == "run_agent" or name == "tools" or name.startswith("tools.")):
             sys.modules.pop(name, None)
 
     if "firecrawl" not in sys.modules:
