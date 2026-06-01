@@ -17,28 +17,28 @@
 @font-face { font-family: "Mondwest"; src: url("/fonts/Mondwest-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 
 @theme {
-  /* ---- Spark palette (#FDA632 amber + #272727 graphite) ---- */
-  --color-background: #1a1a1a;
-  --color-foreground: #f0ece4;
-  --color-card: #272727;
-  --color-card-foreground: #f0ece4;
-  --color-primary: #FDA632;
-  --color-primary-foreground: #0e0b06;
-  --color-secondary: #2e2e2e;
-  --color-secondary-foreground: #f0ece4;
-  --color-muted: #212121;
-  --color-muted-foreground: #8a8880;
-  --color-accent: #FDA632;
-  --color-accent-foreground: #0e0b06;
+  /* ---- Slate palette (default — neutral compact console) ---- */
+  --color-background: #101112;
+  --color-foreground: #e8edf2;
+  --color-card: #181a1d;
+  --color-card-foreground: #e8edf2;
+  --color-primary: #d7dde5;
+  --color-primary-foreground: #111315;
+  --color-secondary: #202326;
+  --color-secondary-foreground: #e8edf2;
+  --color-muted: #151719;
+  --color-muted-foreground: #8d98a5;
+  --color-accent: #b9c4d0;
+  --color-accent-foreground: #111315;
   --color-destructive: #f97316;
   --color-destructive-foreground: #fff;
-  --color-success: #FDA632;
+  --color-success: #7ee787;
   --color-warning: #f59e0b;
-  --color-border: color-mix(in srgb, #ffffff 10%, transparent);
-  --color-input: color-mix(in srgb, #ffffff 13%, transparent);
-  --color-ring: #FDA632;
-  --color-popover: #212121;
-  --color-popover-foreground: #f0ece4;
+  --color-border: color-mix(in srgb, #ffffff 11%, transparent);
+  --color-input: color-mix(in srgb, #ffffff 14%, transparent);
+  --color-ring: #d7dde5;
+  --color-popover: #171a1d;
+  --color-popover-foreground: #e8edf2;
 
   /* ---- Font stacks ---- */
   --font-sans: "Avenir Next", "Segoe UI", sans-serif;
@@ -66,6 +66,28 @@
   --color-ring: #d7dde5;
   --color-popover: #171a1d;
   --color-popover-foreground: #e8edf2;
+}
+
+:root[data-webui-theme="spark"] {
+  /* ---- Spark palette (#FDA632 amber + #272727 graphite) ---- */
+  --color-background: #1a1a1a;
+  --color-foreground: #f0ece4;
+  --color-card: #272727;
+  --color-card-foreground: #f0ece4;
+  --color-primary: #FDA632;
+  --color-primary-foreground: #0e0b06;
+  --color-secondary: #2e2e2e;
+  --color-secondary-foreground: #f0ece4;
+  --color-muted: #212121;
+  --color-muted-foreground: #8a8880;
+  --color-accent: #FDA632;
+  --color-accent-foreground: #0e0b06;
+  --color-success: #FDA632;
+  --color-border: color-mix(in srgb, #ffffff 10%, transparent);
+  --color-input: color-mix(in srgb, #ffffff 13%, transparent);
+  --color-ring: #FDA632;
+  --color-popover: #212121;
+  --color-popover-foreground: #f0ece4;
 }
 
 :root[data-webui-theme="daylight"] {

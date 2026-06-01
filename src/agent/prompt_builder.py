@@ -222,6 +222,23 @@ def build_workspace_guidance() -> str:
     )
 
 
+def build_name_guidance() -> str:
+    """Tell the agent the user-chosen name, set during onboarding."""
+    try:
+        from spark_cli.config import load_config
+
+        name = ((load_config().get("agent") or {}).get("name") or "").strip()
+    except Exception:
+        name = ""
+    if not name or name == "Spark":
+        return ""
+    return (
+        "# Name\n"
+        f"Your name is {name}. Refer to yourself as {name} when introducing "
+        "yourself or when the user asks what you're called."
+    )
+
+
 def build_soul_guidance() -> str:
     """Describe Spark's profile-scoped SOUL.md identity file for the agent."""
     soul_path = get_spark_home() / "SOUL.md"

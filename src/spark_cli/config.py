@@ -387,6 +387,9 @@ DEFAULT_CONFIG = {
     "credential_pool_strategies": {},
     "toolsets": ["spark-cli"],
     "agent": {
+        # User-facing name for the agent, set during onboarding. Surfaced in the
+        # system prompt so the agent knows what to call itself.
+        "name": "Spark",
         "max_turns": 90,
         # Inactivity timeout for gateway agent execution (seconds).
         # The agent can run indefinitely as long as it's actively calling
@@ -709,6 +712,7 @@ DEFAULT_CONFIG = {
     # always goes to ~/.spark/skills/.
     "skills": {
         "external_dirs": [],  # e.g. ["~/.agents/skills", "/shared/team-skills"]
+        "onboarding_mode": "",  # "recommended" | "minimal" | "none" — set during setup
     },
     # Honcho AI-native memory -- reads ~/.honcho/config.json as single source of truth.
     # This section is only needed for spark-specific overrides; everything else
@@ -818,7 +822,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 21,
+    "_config_version": 22,
 }
 
 # =============================================================================

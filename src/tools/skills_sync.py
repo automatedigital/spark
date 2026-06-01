@@ -27,7 +27,7 @@ import os
 import shutil
 from pathlib import Path
 from core.spark_constants import get_spark_home
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -180,9 +180,13 @@ def _dir_hash(directory: Path) -> str:
     return hasher.hexdigest()
 
 
-def sync_skills(quiet: bool = False) -> dict:
+def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
     """
     Sync bundled skills into ~/.spark/skills/ using the manifest.
+
+    Args:
+        only: when provided, only skills whose name is in this set are synced.
+              Used by onboarding to seed a minimal subset.
 
     Returns:
         dict with keys: copied (list), updated (list), skipped (int),
@@ -198,6 +202,8 @@ def sync_skills(quiet: bool = False) -> dict:
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     manifest = _read_manifest()
     bundled_skills = _discover_bundled_skills(bundled_dir)
+    if only is not None:
+        bundled_skills = [(n, s) for n, s in bundled_skills if n in only]
     bundled_names = {name for name, _ in bundled_skills}
 
     copied = []

@@ -109,6 +109,9 @@ pub fn run() {
                 match Command::new(&exe)
                     .arg(SIDECAR_PORT.to_string())
                     .env("SPARK_DESKTOP", "1")
+                    // SPARK_DESKTOP_VERSION lets the backend compare the running
+                    // .app shell against the latest GitHub release for self-update.
+                    .env("SPARK_DESKTOP_VERSION", env!("CARGO_PKG_VERSION"))
                     .spawn()
                 {
                     Ok(child) => {

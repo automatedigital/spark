@@ -24,7 +24,10 @@ export function AutoField({
   onChange,
 }: AutoFieldProps) {
   const rawLabel = schemaKey.split(".").pop() ?? schemaKey;
-  const label = rawLabel.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const label =
+    typeof schema.label === "string" && schema.label
+      ? schema.label
+      : rawLabel.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   if (schema.type === "boolean") {
     return (

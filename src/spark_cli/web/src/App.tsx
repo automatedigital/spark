@@ -88,7 +88,7 @@ export default function App() {
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const { updateAvailable, latestVersion, openUpdateModal } = useUpdateModal();
+  const { updateAvailable, latestVersion, openUpdateModal, macUpdateAvailable, macLatestVersion, openMacUpdateModal } = useUpdateModal();
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
 
   // ── Activity badge counts ──
@@ -370,6 +370,23 @@ export default function App() {
                 )}
                 <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                   Update available{latestVersion ? ` · ${latestVersion}` : ""}
+                </span>
+              </button>
+            )}
+            {macUpdateAvailable && (
+              <button
+                type="button"
+                title="macOS app update available"
+                aria-label="Update macOS App"
+                onClick={openMacUpdateModal}
+                className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+              >
+                <Download className="h-5 w-5 shrink-0" />
+                {sidebarOpen && (
+                  <span className="truncate text-sm font-medium">App update available</span>
+                )}
+                <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
+                  macOS app update{macLatestVersion ? ` · v${macLatestVersion}` : ""}
                 </span>
               </button>
             )}

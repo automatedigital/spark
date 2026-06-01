@@ -152,7 +152,7 @@ async function persistModelConfig(
 function StepDots({ step }: { step: number }) {
   return (
     <div className="flex items-center justify-center gap-2">
-      {[1, 2, 3, 4].map((n) => (
+      {[1, 2, 3, 4, 5, 6].map((n) => (
         <span
           key={n}
           className={`h-2 w-2 rounded-full transition-colors ${
@@ -447,6 +447,8 @@ export function OnboardingWizard({ onComplete }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedSummary, setSavedSummary] = useState<string>("");
+  const [agentName, setAgentName] = useState("");
+  const [skillsMode, setSkillsMode] = useState<"recommended" | "minimal" | "none">("recommended");
 
   const chooseProvider = (p: ProviderMeta) => {
     setProvider(p);
@@ -466,6 +468,38 @@ export function OnboardingWizard({ onComplete }: Props) {
   const finish = (summary: string) => {
     setSavedSummary(summary);
     setStep(4);
+  };
+
+  const handleNameContinue = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const name = agentName.trim();
+      if (name) {
+        const current = (await api.getConfig()) as Record<string, unknown>;
+        const agent = { ...((current.agent as Record<string, unknown>) ?? {}) };
+        agent.name = name;
+        await api.saveConfig({ ...current, agent });
+      }
+      setStep(5);
+    } catch (e) {
+      setError(`Could not save: ${e}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSkillsContinue = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.setupOnboardingSkills(skillsMode);
+      setStep(6);
+    } catch (e) {
+      setError(`Could not set up skills: ${e}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleApiKeyContinue = async () => {
@@ -731,8 +765,101 @@ export function OnboardingWizard({ onComplete }: Props) {
             </div>
           )}
 
-          {/* ── Step 4 — Done ── */}
+          {/* ── Step 4 — Name your agent ── */}
           {step === 4 && (
+            <div className="flex flex-col gap-5">
+              <div className="text-center">
+                <h1 className="text-xl font-semibold tracking-tight">Name your agent</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Give your agent a name. You can change it anytime in Settings.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Input
+                  value={agentName}
+                  onChange={(e) => setAgentName(e.target.value)}
+                  placeholder="Spark"
+                  onKeyDown={(e) => e.key === "Enter" && handleNameContinue()}
+                  autoFocus
+                />
+              </div>
+              {error && <p className="text-xs text-destructive">{error}</p>}
+              <Button onClick={handleNameContinue} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue"}
+              </Button>
+            </div>
+          )}
+
+          {/* ── Step 5 — Skills setup ── */}
+          {step === 5 && (
+            <div className="flex flex-col gap-5">
+              <div className="text-center">
+                <h1 className="text-xl font-semibold tracking-tight">How should skills be set up?</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Skills give your agent specialized abilities. You can add or remove them later.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                {(
+                  [
+                    {
+                      id: "recommended" as const,
+                      title: "Base Included Skills",
+                      badge: "Recommended",
+                      desc: "Comes bundled with the Spark recommended skills.",
+                    },
+                    {
+                      id: "minimal" as const,
+                      title: "Minimal Included Skills",
+                      desc: "Comes bundled with only a few top Spark skills.",
+                    },
+                    {
+                      id: "none" as const,
+                      title: "No skills, a blank slate",
+                      desc: "Add and configure your own skills. Spark will also make skills as you use the platform.",
+                    },
+                  ]
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setSkillsMode(opt.id)}
+                    className={`group flex items-start gap-3 border p-4 text-left transition ${
+                      skillsMode === opt.id
+                        ? "border-primary/70 bg-foreground/5"
+                        : "border-border bg-background/40 hover:border-primary/40 hover:bg-foreground/5"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
+                        skillsMode === opt.id ? "border-primary" : "border-border"
+                      }`}
+                    >
+                      {skillsMode === opt.id && <span className="h-2 w-2 rounded-full bg-primary" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">{opt.title}</span>
+                        {opt.badge && (
+                          <span className="rounded-sm border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-primary">
+                            {opt.badge}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">{opt.desc}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {error && <p className="text-xs text-destructive">{error}</p>}
+              <Button onClick={handleSkillsContinue} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue"}
+              </Button>
+            </div>
+          )}
+
+          {/* ── Step 6 — Done ── */}
+          {step === 6 && (
             <div className="flex flex-col items-center gap-5 text-center">
               <span className="grid h-14 w-14 place-items-center rounded-full border border-success/40 bg-success/10 text-success">
                 <Check className="h-7 w-7" />

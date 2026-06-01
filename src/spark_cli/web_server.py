@@ -17,6 +17,7 @@ import mimetypes
 import os
 import platform
 import queue as thread_queue
+import re
 import secrets
 import subprocess
 import sys
@@ -95,6 +96,15 @@ def _prefetch_update_check() -> None:
         pass
 
 
+def _prefetch_mac_update_check() -> None:
+    """Warm the macOS release-update cache at startup (desktop app only)."""
+    try:
+        if _is_desktop_app():
+            _check_mac_update(force=True)
+    except Exception:
+        pass
+
+
 def _init_memory_store() -> None:
     """Initialize the holographic memory store on startup (non-fatal)."""
     try:
@@ -137,6 +147,7 @@ async def _lifespan(_app: FastAPI):
     # Warm the update cache in the background so /api/status has it immediately
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _prefetch_update_check)
+    loop.run_in_executor(None, _prefetch_mac_update_check)
     loop.run_in_executor(None, _init_memory_store)
     loop.run_in_executor(None, _prewarm_agent_stack)
     try:
@@ -333,6 +344,12 @@ async def sse_events_bus(request: Request, topics: str = "sessions,chat"):
 
 # Manual overrides for fields that need select options or custom types
 _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "agent.name": {
+        "type": "string",
+        "description": "The name your agent uses for itself. Applies to new conversations.",
+        "category": "general",
+        "label": "Agent name",
+    },
     "model": {
         "type": "string",
         "description": "SMART model for complex / coding tasks. Use `spark model` → Multi-model to configure SMART and FAST models together.",
@@ -1100,6 +1117,18 @@ async def get_status():
         "active_sessions": active_sessions,
         "commits_behind": commits_behind,
         "update_available": bool(commits_behind and commits_behind > 0),
+        "desktop": _is_desktop_app(),
+        "desktop_version": _desktop_app_version(),
+        "mac_update_available": bool(
+            _is_desktop_app()
+            and _mac_update_cache.get("result")
+            and _mac_update_cache["result"].get("update_available")
+        ),
+        "mac_latest_version": (
+            (_mac_update_cache.get("result") or {}).get("latest_version")
+            if _is_desktop_app()
+            else None
+        ),
         "dashboard_auth": {
             "token_file": str(dashboard_token_path()),
             "require_auth_nonlocal": bool(_dash.get("require_auth_nonlocal", True)),
@@ -1123,6 +1152,124 @@ async def check_update_available():
         }
     except Exception:
         return {"update_available": False, "commits_behind": None}
+
+
+# --------------------------------------------------------------------------- #
+# macOS desktop app updates (separate from the webapp/code update above)       #
+#                                                                              #
+# The webapp/code update (`/api/update/*`, `update.run`) pulls the latest      #
+# Spark source and reinstalls in place. That does NOT update the bundled       #
+# macOS .app shell, which ships as a signed DMG via GitHub Releases. The mac    #
+# update flow below checks GitHub Releases for a newer DMG and installs it.    #
+# --------------------------------------------------------------------------- #
+
+GITHUB_REPO = "automatedigital/spark"
+_mac_update_cache: dict[str, Any] = {"checked_at": 0.0, "result": None}
+
+
+def _is_desktop_app() -> bool:
+    """True when running as the bundled macOS desktop sidecar."""
+    return os.environ.get("SPARK_DESKTOP") == "1"
+
+
+def _desktop_app_version() -> str | None:
+    """Version of the running .app shell, injected by Tauri at spawn time."""
+    return os.environ.get("SPARK_DESKTOP_VERSION") or None
+
+
+def _parse_version(tag: str) -> tuple[int, ...]:
+    nums = re.findall(r"\d+", tag or "")
+    return tuple(int(n) for n in nums) if nums else (0,)
+
+
+def _fetch_latest_mac_release(timeout: float = 8.0) -> dict | None:
+    """Query GitHub Releases for the latest tag and its .dmg asset."""
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    req = urllib.request.Request(
+        url,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "spark-desktop"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode())
+    download_url = None
+    for asset in data.get("assets", []) or []:
+        if str(asset.get("name", "")).lower().endswith(".dmg"):
+            download_url = asset.get("browser_download_url")
+            break
+    return {
+        "tag": data.get("tag_name") or data.get("name") or "",
+        "download_url": download_url,
+        "release_url": data.get("html_url"),
+    }
+
+
+def _check_mac_update(force: bool = False) -> dict:
+    """Compare the running app version against the latest GitHub release."""
+    current = _desktop_app_version()
+    result = {
+        "update_available": False,
+        "latest_version": None,
+        "current_version": current,
+        "download_url": None,
+        "release_url": None,
+    }
+    now = time.time()
+    if (
+        not force
+        and _mac_update_cache["result"] is not None
+        and (now - _mac_update_cache["checked_at"]) < 21600
+    ):
+        return _mac_update_cache["result"]
+    try:
+        rel = _fetch_latest_mac_release()
+    except Exception:
+        return result
+    if not rel:
+        return result
+    latest = rel.get("tag") or ""
+    result["latest_version"] = latest.lstrip("v") or None
+    result["download_url"] = rel.get("download_url")
+    result["release_url"] = rel.get("release_url")
+    if current and result["latest_version"]:
+        result["update_available"] = _parse_version(result["latest_version"]) > _parse_version(current)
+    _mac_update_cache.update(checked_at=now, result=result)
+    return result
+
+
+@app.get("/api/mac/update/check")
+async def check_mac_update():
+    """Check whether a newer macOS desktop app release is available."""
+    if not _is_desktop_app():
+        return {
+            "update_available": False,
+            "latest_version": None,
+            "current_version": None,
+            "download_url": None,
+            "release_url": None,
+        }
+    return await asyncio.to_thread(_check_mac_update, True)
+
+
+@app.post("/api/mac/update/run")
+async def run_mac_update():
+    """Download the latest macOS DMG and open it for the user to install."""
+    if not _is_desktop_app():
+        raise HTTPException(status_code=400, detail="Not running as the macOS desktop app")
+    info = await asyncio.to_thread(_check_mac_update, True)
+    download_url = info.get("download_url")
+    if not download_url:
+        raise HTTPException(status_code=400, detail="No downloadable macOS release found")
+
+    import tempfile
+
+    dest = Path(tempfile.gettempdir()) / f"Spark-{info.get('latest_version') or 'latest'}.dmg"
+
+    def _download_and_open() -> None:
+        urllib.request.urlretrieve(download_url, dest)
+        subprocess.Popen(["open", str(dest)])
+
+    await asyncio.to_thread(_download_and_open)
+    return {"ok": True, "path": str(dest), "latest_version": info.get("latest_version")}
 
 
 @app.get("/api/admin/actions")
@@ -1592,6 +1739,54 @@ async def get_onboarding_status():
         "needs_onboarding": (not config_exists) or (not has_model),
         "has_model": has_model,
         "has_api_key": has_api_key,
+    }
+
+
+# Skill names seeded for the "minimal" onboarding choice.
+_MINIMAL_SKILLS = {"find-skills", "codebase-inspection", "frontend-design", "excalidraw", "claude-code"}
+
+
+class OnboardingSkillsRequest(BaseModel):
+    mode: str  # "recommended" | "minimal" | "none"
+
+
+@app.post("/api/onboarding/skills")
+async def setup_onboarding_skills(req: OnboardingSkillsRequest):
+    """Seed the user's skills directory according to their onboarding choice.
+
+    - ``recommended``: seed all bundled Spark skills.
+    - ``minimal``: seed a small curated subset.
+    - ``none``: seed nothing (blank slate; Spark creates skills over time).
+
+    The choice is persisted under ``skills.onboarding_mode`` in config.
+    """
+    mode = (req.mode or "").strip().lower()
+    if mode not in {"recommended", "minimal", "none"}:
+        raise HTTPException(status_code=400, detail=f"Unknown skills mode: {mode}")
+
+    result: dict = {"copied": [], "total_bundled": 0}
+    if mode in {"recommended", "minimal"}:
+        from tools.skills_sync import sync_skills
+
+        only = _MINIMAL_SKILLS if mode == "minimal" else None
+        result = await asyncio.to_thread(sync_skills, True, only)
+
+    # Persist the choice so re-running setup / diagnostics knows the intent.
+    try:
+        cfg = load_config()
+        if isinstance(cfg, dict):
+            skills_cfg = dict(cfg.get("skills") or {})
+            skills_cfg["onboarding_mode"] = mode
+            cfg["skills"] = skills_cfg
+            save_config(cfg)
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "mode": mode,
+        "seeded": len(result.get("copied", [])),
+        "total_bundled": result.get("total_bundled", 0),
     }
 
 

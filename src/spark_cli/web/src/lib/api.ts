@@ -495,6 +495,23 @@ export const api = {
     }),
   getDiagnosticsSummary: () => fetchJSON<DiagnosticsSummary>("/api/diagnostics/summary"),
   checkForUpdate: () => fetchJSON<{ update_available: boolean; commits_behind: number | null }>("/api/update/check"),
+  checkMacUpdate: () =>
+    fetchJSON<{
+      update_available: boolean;
+      latest_version: string | null;
+      current_version: string | null;
+      download_url: string | null;
+      release_url: string | null;
+    }>("/api/mac/update/check"),
+  runMacUpdate: () =>
+    fetchJSON<{ ok: boolean; path: string; latest_version: string | null }>("/api/mac/update/run", {
+      method: "POST",
+    }),
+  setupOnboardingSkills: (mode: "recommended" | "minimal" | "none") =>
+    fetchJSON<{ ok: boolean; mode: string; seeded: number; total_bundled: number }>(
+      "/api/onboarding/skills",
+      { method: "POST", body: JSON.stringify({ mode }), headers: { "Content-Type": "application/json" } },
+    ),
 
   getCodexUsage: () =>
     fetchJSON<{ available: boolean; reason?: string; data?: Record<string, unknown> }>("/api/model/codex-usage"),
@@ -799,6 +816,10 @@ export interface StatusResponse {
   version: string;
   update_available?: boolean;
   commits_behind?: number | null;
+  desktop?: boolean;
+  desktop_version?: string | null;
+  mac_update_available?: boolean;
+  mac_latest_version?: string | null;
   dashboard_auth?: {
     token_file: string;
     require_auth_nonlocal: boolean;

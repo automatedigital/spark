@@ -8,12 +8,18 @@ interface UpdateModalContextValue {
   updateAvailable: boolean;
   latestVersion: string | null;
   openUpdateModal: () => void;
+  macUpdateAvailable: boolean;
+  macLatestVersion: string | null;
+  openMacUpdateModal: () => void;
 }
 
 const UpdateModalContext = createContext<UpdateModalContextValue>({
   updateAvailable: false,
   latestVersion: null,
   openUpdateModal: () => {},
+  macUpdateAvailable: false,
+  macLatestVersion: null,
+  openMacUpdateModal: () => {},
 });
 
 export function useUpdateModal() {
@@ -30,27 +36,46 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
   const startedInstanceIdRef = useRef<string | null>(null);
   const sawUnavailableRef = useRef(false);
 
+  // macOS desktop app update (separate from the code/webapp update above)
+  const [macUpdateAvailable, setMacUpdateAvailable] = useState(false);
+  const [macLatestVersion, setMacLatestVersion] = useState<string | null>(null);
+  const [macModalOpen, setMacModalOpen] = useState(false);
+  const [macStatus, setMacStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [macError, setMacError] = useState<string | null>(null);
+
   // Check for updates on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let isDesktop = false;
       try {
         const s = await api.getStatus();
+        isDesktop = Boolean(s.desktop);
         if (!cancelled && s.update_available) {
           setUpdateAvailable(true);
           if (s.commits_behind != null)
             setLatestVersion(`${s.commits_behind} new commit${s.commits_behind === 1 ? "" : "s"}`);
-          return;
+        } else {
+          try {
+            const result = await api.checkForUpdate();
+            if (!cancelled && result.update_available) {
+              setUpdateAvailable(true);
+              if (result.commits_behind != null)
+                setLatestVersion(`${result.commits_behind} new commit${result.commits_behind === 1 ? "" : "s"}`);
+            }
+          } catch {}
         }
       } catch {}
-      try {
-        const result = await api.checkForUpdate();
-        if (!cancelled && result.update_available) {
-          setUpdateAvailable(true);
-          if (result.commits_behind != null)
-            setLatestVersion(`${result.commits_behind} new commit${result.commits_behind === 1 ? "" : "s"}`);
-        }
-      } catch {}
+      // Only the bundled macOS app can update its own .app shell.
+      if (isDesktop) {
+        try {
+          const mac = await api.checkMacUpdate();
+          if (!cancelled && mac.update_available) {
+            setMacUpdateAvailable(true);
+            setMacLatestVersion(mac.latest_version);
+          }
+        } catch {}
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -124,8 +149,36 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const openMacUpdateModal = () => {
+    setMacModalOpen(true);
+    setMacStatus("idle");
+    setMacError(null);
+  };
+
+  const startMacUpdate = async () => {
+    setMacStatus("running");
+    setMacError(null);
+    try {
+      await api.runMacUpdate();
+      setMacStatus("done");
+      setMacUpdateAvailable(false);
+    } catch (e) {
+      setMacError(e instanceof Error ? e.message : String(e));
+      setMacStatus("failed");
+    }
+  };
+
   return (
-    <UpdateModalContext.Provider value={{ updateAvailable, latestVersion, openUpdateModal }}>
+    <UpdateModalContext.Provider
+      value={{
+        updateAvailable,
+        latestVersion,
+        openUpdateModal,
+        macUpdateAvailable,
+        macLatestVersion,
+        openMacUpdateModal,
+      }}
+    >
       {children}
 
       {modalOpen && (
@@ -245,6 +298,90 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
                   className="h-9 rounded-sm border border-border px-4 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
                 >
                   Try Again
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {macModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative flex w-full max-w-lg flex-col rounded-sm border border-border bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Download className="h-4 w-4 text-amber-400" />
+                <span className="text-sm font-semibold text-foreground">
+                  Update macOS App{macLatestVersion ? ` (v${macLatestVersion})` : ""}
+                </span>
+              </div>
+              {macStatus !== "running" && (
+                <button
+                  type="button"
+                  onClick={() => setMacModalOpen(false)}
+                  className="grid h-7 w-7 place-items-center rounded-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="px-5 py-4 flex flex-col gap-3">
+              {macStatus === "idle" && (
+                <p className="text-sm text-muted-foreground">
+                  A new version of the Spark desktop app is available. Spark will download the latest
+                  installer and open it — drag Spark to your Applications folder to finish, then relaunch.
+                </p>
+              )}
+              {macStatus === "running" && (
+                <p className="text-sm text-amber-400 flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Downloading the latest installer…
+                </p>
+              )}
+              {macStatus === "done" && (
+                <p className="text-sm text-emerald-400">
+                  Installer downloaded and opened. Drag Spark to Applications, then relaunch the app.
+                </p>
+              )}
+              {macStatus === "failed" && (
+                <p className="text-sm text-red-400">Update failed{macError ? `: ${macError}` : "."}</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+              {macStatus === "idle" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setMacModalOpen(false)}
+                    className="h-9 rounded-sm border border-border px-4 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void startMacUpdate()}
+                    className="flex h-9 items-center gap-2 rounded-sm bg-amber-500 px-4 text-xs font-semibold text-black transition hover:bg-amber-400"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download & Install
+                  </button>
+                </>
+              )}
+              {macStatus === "running" && (
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Downloading…
+                </span>
+              )}
+              {(macStatus === "done" || macStatus === "failed") && (
+                <button
+                  type="button"
+                  onClick={() => setMacModalOpen(false)}
+                  className="h-9 rounded-sm border border-border px-4 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                >
+                  Close
                 </button>
               )}
             </div>

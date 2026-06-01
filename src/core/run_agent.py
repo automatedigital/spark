@@ -81,7 +81,7 @@ from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
     SESSION_SEARCH_GUIDANCE, COMPUTER_USE_GUIDANCE,
-    APP_CREATION_GUIDANCE, build_soul_guidance,
+    APP_CREATION_GUIDANCE, build_name_guidance, build_soul_guidance,
     build_workspace_guidance,
 )
 from agent.model_metadata import (
@@ -3188,6 +3188,9 @@ class AIAgent:
             prompt_parts = [DEFAULT_AGENT_IDENTITY]
 
         prompt_parts.append(build_soul_guidance())
+        _name_guidance = build_name_guidance()
+        if _name_guidance:
+            prompt_parts.append(_name_guidance)
         prompt_parts.append(build_workspace_guidance())
 
         # Tool-aware behavioral guidance: only inject when the tools are loaded.
