@@ -7,18 +7,12 @@ command handlers and their show_* helpers. Combined into SparkCLI via inheritanc
 
 from __future__ import annotations
 
-import asyncio
-import json
 import os
-import platform
-import re
-import subprocess
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
 from rich.markup import escape as _escape
 
 from core.cli.attachments import (

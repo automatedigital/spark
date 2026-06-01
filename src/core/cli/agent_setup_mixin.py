@@ -12,7 +12,7 @@ import logging
 from rich.markup import escape as _escape
 
 from core.cli import ChatConsole  # defined before this import; no cycle
-from core.cli.render import _ACCENT, _DIM, _RST, _accent_hex, _cprint
+from core.cli.render import _DIM, _RST, _accent_hex, _cprint
 from core.run_agent import AIAgent
 
 logger = logging.getLogger(__name__)

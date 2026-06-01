@@ -19,7 +19,7 @@ from prompt_toolkit.layout import (
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style as PTStyle
 
-from core.cli.render import _ACCENT, _DIM, _PT_ANSI, _RST
+from core.cli.render import _PT_ANSI
 
 
 class _TuiMixin:

@@ -15,7 +15,6 @@ from agent.usage_pricing import (
     estimate_usage_cost,
     format_duration_compact,
 )
-from core.cli.render import _ACCENT, _DIM, _RST, _cprint
 
 
 class _InfoCommandsMixin:

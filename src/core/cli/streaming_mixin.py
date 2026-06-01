@@ -6,9 +6,7 @@ rendering and the busy-command spinner. Combined into SparkCLI via inheritance.
 
 from __future__ import annotations
 
-import re
 import shutil
-import time
 from contextlib import contextmanager
 
 from core.cli import _COMMAND_SPINNER_FRAMES  # defined before this import; no cycle

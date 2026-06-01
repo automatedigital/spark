@@ -12,7 +12,7 @@ import shutil
 from datetime import datetime
 
 from core.cli import _build_compact_banner  # defined before this import; no cycle
-from core.cli.render import _ACCENT, _DIM, _RST, _accent_hex, _cprint
+from core.cli.render import _accent_hex
 from core.model_tools import get_tool_definitions
 from core.spark_constants import display_spark_home, get_spark_home
 from spark_cli.banner import build_welcome_banner

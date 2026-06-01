@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from agent.usage_pricing import format_duration_compact, format_token_count_compact
-from core.cli.render import _ACCENT, _DIM, _RST
 from spark_cli.banner import _format_context_length
 
 

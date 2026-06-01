@@ -8,7 +8,6 @@ than reaching into the cli package namespace.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -16,7 +15,7 @@ from typing import Any, Dict
 
 import yaml
 
-from core.spark_constants import display_spark_home, get_spark_home
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 

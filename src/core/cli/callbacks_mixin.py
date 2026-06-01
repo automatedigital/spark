@@ -14,7 +14,7 @@ import textwrap
 import threading
 
 from core.cli.config_state import CLI_CONFIG
-from core.cli.render import _ACCENT, _DIM, _RST, _cprint
+from core.cli.render import _DIM, _RST, _cprint
 from spark_cli.callbacks import prompt_for_secret
 
 logger = logging.getLogger(__name__)

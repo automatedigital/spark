@@ -7,7 +7,7 @@ pipeline, and provider listing. Combined into SparkCLI via inheritance.
 from __future__ import annotations
 
 from core.cli import _looks_like_slash_command  # defined before this import; no cycle
-from core.cli.render import _ACCENT, _DIM, _RST, _cprint
+from core.cli.render import _cprint
 
 
 class _ModelMixin:
