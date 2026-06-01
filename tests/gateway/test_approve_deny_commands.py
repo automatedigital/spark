@@ -385,7 +385,7 @@ class TestBlockingApprovalE2E:
         t = threading.Thread(target=agent_thread)
         t.start()
 
-        for _ in range(50):
+        for _ in range(200):
             if notified:
                 break
             time.sleep(0.05)
@@ -394,7 +394,7 @@ class TestBlockingApprovalE2E:
         assert "rm -rf /important" in notified[0]["command"]
 
         resolve_gateway_approval(session_key, "once")
-        t.join(timeout=5)
+        t.join(timeout=20)
 
         assert result_holder[0] is not None
         assert result_holder[0]["approved"] is True
@@ -432,13 +432,13 @@ class TestBlockingApprovalE2E:
 
         t = threading.Thread(target=agent_thread)
         t.start()
-        for _ in range(50):
+        for _ in range(200):
             if notified:
                 break
             time.sleep(0.05)
 
         resolve_gateway_approval(session_key, "deny")
-        t.join(timeout=5)
+        t.join(timeout=20)
 
         assert result_holder[0]["approved"] is False
         assert "BLOCKED" in result_holder[0]["message"]
@@ -523,7 +523,7 @@ class TestBlockingApprovalE2E:
             t.start()
 
         # Wait for all 3 to block
-        for _ in range(100):
+        for _ in range(200):
             if len(notified) >= 3:
                 break
             time.sleep(0.05)
@@ -536,7 +536,7 @@ class TestBlockingApprovalE2E:
         assert count == 3
 
         for t in threads:
-            t.join(timeout=5)
+            t.join(timeout=20)
 
         assert all(r is not None for r in results)
         assert all(r["approved"] is True for r in results)
@@ -582,7 +582,7 @@ class TestBlockingApprovalE2E:
         # relying on a fixed sleep.  The approval module stores entries in
         # _gateway_queues[session_key] — poll until we see 2 entries.
         from tools.approval import _gateway_queues
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if len(_gateway_queues.get(session_key, [])) >= 2:
                 break
@@ -593,7 +593,7 @@ class TestBlockingApprovalE2E:
         resolve_gateway_approval(session_key, "deny")   # next
 
         for t in threads:
-            t.join(timeout=5)
+            t.join(timeout=20)
 
         assert all(r is not None for r in results)
         assert sorted(r["approved"] for r in results) == [False, True]

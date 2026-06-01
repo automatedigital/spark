@@ -57,12 +57,20 @@ makes every later "did I break it?" question unanswerable.
       Result: **14/14 HA integration tests pass.**
 - [x] Run the **full** default suite — **11,247 passed, 150 skipped, 0 deterministic
       failures.** Baseline is green.
-- [ ] **(New finding) Stabilize intermittent xdist flakiness.** A handful of E2E
-      gateway tests (e.g. `test_session_hygiene`, `test_approve_deny_commands`) pass
-      in isolation but each pass of the full 12-worker run flakes a *different* one
-      (cross-worker state/timing leak). This is the real remaining trustworthiness
-      gap — pre-existing, unrelated to the HA fix. Isolate the shared state and make
-      these deterministic (or mark them `-m serial`/non-parallel).
+- [x] **(New finding) Stabilize intermittent xdist flakiness.** Root cause: the E2E
+      approval tests (`TestBlockingApprovalE2E`) spawn real threads with tight
+      2.5–5s waits that starve under 12-worker CPU contention (`notified`/`results`
+      empty before the deadline). **Fix:** widened the thread-wait windows
+      (poll loops 2.5s→10s, `join`/deadline 5s→20s); they return early in the happy
+      path, so the suite isn't slower. **Full suite now green 3/3 consecutive runs**
+      (11,248 passed).
+      - **Rejected approach — serial marker via xdist `loadgroup`:** wiring the
+        existing `serial` marker through `--dist loadgroup` (+ a `tryfirst` conftest
+        hook) *did* correctly pin serial tests to one worker, but switching the global
+        dist mode destabilized the **whole** suite — it changed distribution for all
+        11k tests and unmasked latent cross-test contamination (module reloads,
+        env-var and global-config bleed), producing 9–18 failures vs. the 0–1 of
+        default `load`. Net-negative; reverted. Recorded here so it isn't retried.
 
 ---
 
