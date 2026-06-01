@@ -42,13 +42,13 @@ src/tools/*.py  (each calls registry.register() at import time)
        ↑
 src/core/model_tools.py  (imports registry + triggers _discover_tools())
        ↑
-src/core/run_agent.py, src/core/cli.py, environments/
+src/core/run_agent.py, src/core/cli/, environments/
 ```
 
 ### Key Classes
 
 - **`AIAgent`** (`src/core/run_agent.py`) — core conversation loop. `chat()` for simple use; `run_conversation()` for full control. Synchronous; uses OpenAI message format.
-- **`SparkCLI`** (`src/core/cli.py`) — prompt_toolkit interactive TUI. `process_command()` dispatches slash commands via `resolve_command()`.
+- **`SparkCLI`** (`src/core/cli/` package — composed from concern mixins) — prompt_toolkit interactive TUI. `process_command()` dispatches slash commands via `resolve_command()`.
 - **`SessionDB`** (`src/core/spark_state.py`) — SQLite session store with FTS5 full-text search.
 - **Slash Command Registry** (`src/spark_cli/commands.py`) — single `COMMAND_REGISTRY` list of `CommandDef` objects drives CLI dispatch, gateway hooks, Telegram menus, Slack routing, and autocomplete. Adding an alias only requires updating `aliases=` on the `CommandDef`.
 
@@ -61,7 +61,7 @@ src/core/run_agent.py, src/core/cli.py, environments/
 ### Adding a Slash Command (3 files)
 
 1. Add `CommandDef` to `COMMAND_REGISTRY` in `src/spark_cli/commands.py`.
-2. Add handler in `SparkCLI.process_command()` in `src/core/cli.py`.
+2. Add handler in `SparkCLI.process_command()` (`src/core/cli/__init__.py`), or the relevant `*_mixin.py` if it's a grouped command.
 3. If gateway-available, add handler in `src/gateway/run.py`.
 
 ### Adding Config

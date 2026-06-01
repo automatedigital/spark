@@ -15,7 +15,9 @@ spark-agent/
 ├── src/                  # All Python source
 │   ├── core/             # Agent runtime
 │   │   ├── run_agent.py      # AIAgent class — core conversation loop
-│   │   ├── cli.py            # SparkCLI class — interactive CLI (prompt_toolkit)
+│   │   ├── cli/             # SparkCLI (prompt_toolkit) — __init__.py + concern mixins
+│   │   │                    #   (commands_mixin, display_mixin, streaming_mixin, voice_mixin,
+│   │   │                    #    callbacks_mixin, tui_mixin, model_mixin, …) + render/config_state
 │   │   ├── spark_state.py    # SessionDB — SQLite session store (FTS5 search)
 │   │   ├── model_tools.py    # Tool orchestration, _discover_tools(), handle_function_call()
 │   │   ├── toolsets.py       # Toolset definitions (_SPARK_CORE_TOOLS, etc.)
@@ -102,7 +104,7 @@ src/tools/*.py  (each calls registry.register() at import time)
        ↑
 src/core/model_tools.py  (imports tools/registry + triggers _discover_tools())
        ↑
-src/core/run_agent.py, src/core/cli.py, src/core/batch_runner.py, environments/
+src/core/run_agent.py, src/core/cli/, src/core/batch_runner.py, environments/
 ```
 
 ---
@@ -153,11 +155,22 @@ Messages follow OpenAI format: `{"role": "system/user/assistant/tool", ...}`. Re
 
 ---
 
-## CLI Architecture (cli.py)
+## CLI Architecture (`core/cli/` package)
+
+`SparkCLI` lives in `src/core/cli/__init__.py` and is composed from concern mixins
+(`commands_mixin`, `display_mixin`, `streaming_mixin`, `status_bar_mixin`,
+`voice_mixin`, `callbacks_mixin`, `tui_mixin`, `model_mixin`, `agent_setup_mixin`,
+`info_mixin`, `session_ops_mixin`) via inheritance. Shared helpers live in
+`render.py` (`_cprint`, ANSI/skin) and `config_state.py` (`CLI_CONFIG`,
+`load_cli_config`, `save_config_value`). `core.cli` re-exports the public + tested
+names, so `from core.cli import X` and `monkeypatch core.cli.X` both still work — but
+when patching a helper a *mixin method* uses, target the owning module
+(e.g. `core.cli.commands_mixin._cprint`). Core orchestration (`__init__`,
+`process_command`, `chat`, `run`, `main`) stays in `__init__.py`.
 
 - **Rich** for banner/panels, **prompt_toolkit** for input with autocomplete
 - **KawaiiSpinner** (`src/agent/display.py`) — animated faces during API calls, `┊` activity feed for tool results
-- `load_cli_config()` in cli.py merges hardcoded defaults + user config YAML
+- `load_cli_config()` in `core/cli/config_state.py` merges hardcoded defaults + user config YAML
 - **Skin engine** (`src/spark_cli/skin_engine.py`) — data-driven CLI theming; initialized from `display.skin` config key at startup; skins customize banner colors, spinner faces/verbs/wings, tool prefix, response box, branding text
 - `process_command()` is a method on `SparkCLI` — dispatches on canonical command name resolved via `resolve_command()` from the central registry
 - Skill slash commands: `src/agent/skill_commands.py` scans `~/.spark/skills/`, injects as **user message** (not system prompt) to preserve prompt caching
@@ -181,7 +194,7 @@ All slash commands are defined in a central `COMMAND_REGISTRY` list of `CommandD
 CommandDef("mycommand", "Description of what it does", "Session",
            aliases=("mc",), args_hint="[arg]"),
 ```
-2. Add handler in `SparkCLI.process_command()` in `src/core/cli.py`:
+2. Add handler in `SparkCLI.process_command()` (`src/core/cli/__init__.py`); put the handler body in the relevant `core/cli/*_mixin.py`:
 ```python
 elif canonical == "mycommand":
     self._handle_mycommand(cmd_original)
@@ -191,7 +204,7 @@ elif canonical == "mycommand":
 if canonical == "mycommand":
     return await self._handle_mycommand(event)
 ```
-4. For persistent settings, use `save_config_value()` in `src/core/cli.py`
+4. For persistent settings, use `save_config_value()` from `core/cli/config_state.py`
 
 **CommandDef fields:**
 - `name` — canonical name without slash (e.g. `"background"`)

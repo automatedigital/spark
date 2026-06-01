@@ -192,22 +192,29 @@ class; `core.cli` stays the import + monkeypatch namespace via re-export.
       (incl. `_IMAGE_EXTENSIONS`). `os.path` patches still work (shared `os` module).
 - [x] **Stage 4** — config/arg parsers (~116 lines) → `core/cli/parsing.py`. Broadened
       the `sys.modules` wipe in `test_cli_provider_resolution` to clear `core.cli.*`.
-- [ ] **Architectural finding / blocker:** the remaining helpers (formatting/`_cprint`,
-      `load_cli_config`) and the 167-method `SparkCLI` class are all coupled through
-      the **`CLI_CONFIG`** module global (assigned once at load, line 493; read/mutated
-      in ~30+ places) and **`_cprint`** (patched 56× as `core.cli._cprint`). Splitting
-      further requires **de-globalizing** `CLI_CONFIG`/`_cprint` into a shared
-      `core/cli/_state.py` imported by both `__init__` and future mixin modules, then
-      updating the `core.cli.CLI_CONFIG`/`_cprint` test patch targets. This is the
-      larger refactor the clean extractions don't reach.
-- [ ] De-globalize `CLI_CONFIG` + `_cprint` into a shared state module.
-- [ ] Extract formatting/render helpers (`_cprint`, `_SkinAwareAnsi`, `ChatConsole`,
-      `_build_compact_banner`) → `core/cli/render.py`.
-- [ ] Split the `SparkCLI` class (167 methods) into concern-based mixins.
-- [ ] Smoke-test the live TUI; `mypy src/spark_cli/` clean.
+- [x] **Stage 5** — ANSI/render helpers (`_cprint`, `_SkinAwareAnsi`, `_ACCENT`/`_DIM`,
+      ~88 lines) → `core/cli/render.py`. `_cprint` has no `CLI_CONFIG` coupling, so
+      callers staying in `__init__` keep `core.cli._cprint` patches working.
+- [x] **Stage 6 — de-globalize `CLI_CONFIG`** → `core/cli/config_state.py` (with
+      `load_cli_config`/`save_config_value`, ~425 lines). The shared config module
+      mixins import directly; re-exported so existing patches keep working.
+- [x] **Stages 7–19 — split the 167-method `SparkCLI` class into 14 concern-based
+      mixins**, combined via inheritance (`SparkCLI(_CommandHandlersMixin, …)`):
+      `commands_mixin` (slash handlers), `display_mixin` (commands+display),
+      `streaming_mixin`, `status_bar_mixin`, `voice_mixin`, `callbacks_mixin`,
+      `tui_mixin`, `model_mixin`, `agent_setup_mixin`, `info_mixin`, `session_ops_mixin`.
+      Each mixin imports its helpers from `render`/`config_state`/etc.; the heavily
+      patched `_cprint`/`save_config_value`/`CLI_CONFIG` test targets were redirected to
+      the owning mixin module (~12 test files). Core orchestration (`__init__`,
+      `process_command`, `chat`, `run`, `main`) stays in `__init__.py`.
+- [x] **Smoke-tested**: `SparkCLI()` constructs, all mixin methods resolve via the MRO,
+      `/help` dispatches, and `spark version` runs (RC 0). **mypy:** `core/` is *excluded*
+      from the mypy config (`exclude = [… "src/core/"]`), so the split was never in mypy
+      scope; the in-scope packages' pre-existing errors are unchanged by it.
 
-Progress so far: ~810 lines extracted into 3 submodules; `__init__.py` 12,328 → 11,590.
-Suite green (11,267) after every stage.
+**Result: `__init__.py` 12,328 → 4,086 lines (67% reduction); 14 cohesive submodules.**
+Full suite green (**11,267 passed**) after every one of the 19 stages. `core.cli` stays
+the public import + monkeypatch namespace via re-export throughout.
 
 ---
 
