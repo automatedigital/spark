@@ -172,7 +172,8 @@ semantically-duplicate facts, and flag stale or contradicted entries.
 You will receive these inputs:
   1. A list of existing FACTS (each with id, content, trust_score)
   2. A TOOL / SKILL USAGE summary (counts of what the user actually relies on)
-  3. Recent SESSION transcripts
+  3. The current CURATED MEMORY (MEMORY.md) entries
+  4. Recent SESSION transcripts
 
 Use the usage summary to ground insights about the user's real workflow — e.g.
 which tools/skills dominate — rather than guessing from transcripts alone.
@@ -190,6 +191,10 @@ fences. Every field is required (use empty arrays where applicable):
   "stale": [
     { "fact_id": <int>, "reason": "<why this looks stale or contradicted>" }
   ],
+  "memory_compaction": {
+    "proposed": ["<consolidated MEMORY.md entry>", "..."],
+    "rationale": "<one or two sentences on what was merged/dropped and why>"
+  },
   "summary": "<markdown narrative, 3-6 short paragraphs, suitable as a wiki entry body>"
 }
 
@@ -198,6 +203,10 @@ Rules:
   - Insights must be durable facts about the user, their projects, preferences,
     or recurring patterns — NOT one-off task details or transient debugging notes.
   - Stale entries are flagged only; the user reviews and confirms removal later.
+  - memory_compaction.proposed is a PROPOSAL only — a cleaner MEMORY.md with
+    near-duplicates merged and obsolete notes dropped, preserving all durable
+    meaning. It is shown to the user for review, never auto-applied. Leave
+    "proposed" empty ([]) if MEMORY.md is already tight or empty.
   - The summary should read like a journal entry: what was learned, what changed,
     what's worth remembering.
 """
@@ -299,7 +308,27 @@ def _format_tool_usage(usage: list[dict], top: int = 15) -> str:
     return "\n".join(out)
 
 
-def _call_synthesis_llm(facts_block: str, transcripts: str, usage_block: str = "") -> dict:
+def _gather_memory_md() -> list[str]:
+    """Current MEMORY.md entries (curated agent notes). Best-effort → [] on error."""
+    try:
+        from tools.memory_tool import MemoryStore
+        store = MemoryStore()
+        store.load_from_disk()
+        return [e for e in (store.memory_entries or []) if e and e.strip()]
+    except Exception as e:
+        logger.debug("MEMORY.md gather failed (non-fatal): %s", e)
+        return []
+
+
+def _format_memory_md(entries: list[str]) -> str:
+    if not entries:
+        return "(MEMORY.md is empty)"
+    return "\n".join(f"  {i}. {e.replace(chr(10), ' ')}" for i, e in enumerate(entries, 1))
+
+
+def _call_synthesis_llm(
+    facts_block: str, transcripts: str, usage_block: str = "", memory_md_block: str = "",
+) -> dict:
     """Run the single-shot synthesis call and parse the JSON response."""
     from agent.auxiliary_client import call_llm
 
@@ -307,10 +336,16 @@ def _call_synthesis_llm(facts_block: str, transcripts: str, usage_block: str = "
         f"TOOL / SKILL USAGE (how the user actually works):\n{usage_block}\n\n"
         if usage_block else ""
     )
+    memory_section = (
+        f"CURATED MEMORY (MEMORY.md — propose a deduped/consolidated rewrite):\n"
+        f"{memory_md_block}\n\n"
+        if memory_md_block else ""
+    )
     user_msg = (
         "EXISTING FACTS:\n"
         f"{facts_block}\n\n"
         f"{usage_section}"
+        f"{memory_section}"
         "RECENT SESSIONS:\n"
         f"{transcripts}\n\n"
         "Emit the JSON object now — no prose, no fences."
@@ -355,11 +390,13 @@ def _parse_llm_json(raw: str) -> dict:
             raise ValueError("Expected JSON object at top level")
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning("Could not parse dream LLM response as JSON: %s", e)
-        return {"insights": [], "consolidations": [], "stale": [], "summary": raw}
+        return {"insights": [], "consolidations": [], "stale": [],
+                "memory_compaction": {}, "summary": raw}
 
     parsed.setdefault("insights", [])
     parsed.setdefault("consolidations", [])
     parsed.setdefault("stale", [])
+    parsed.setdefault("memory_compaction", {})
     parsed.setdefault("summary", "")
     return parsed
 
@@ -481,11 +518,29 @@ def _slugify(text: str, maxlen: int = 40) -> str:
     return text[:maxlen] or "dream"
 
 
-def _write_wiki_entry(payload: dict, sources: list[str], counts: dict) -> Path:
+def _unified_memory_diff(before: list[str], after: list[str]) -> list[str]:
+    """Entry-level unified diff (one entry per line) for the wiki compaction view."""
+    import difflib
+
+    def _norm(entries: list[str]) -> list[str]:
+        return [e.replace("\n", " ").strip() for e in entries]
+
+    diff = difflib.unified_diff(_norm(before), _norm(after), lineterm="", n=0)
+    out = [ln for ln in diff if not ln.startswith(("---", "+++", "@@"))]
+    return out or ["(no textual change)"]
+
+
+def _write_wiki_entry(
+    payload: dict, sources: list[str], counts: dict,
+    memory_md_before: list[str] | None = None,
+) -> Path:
     """Write the dream summary into the llm-wiki under dreams/.
 
     Creates the wiki dreams/ subdir, the entry file, dreams/index.md, and
     appends a one-liner to <wiki>/log.md (matching the wiki skill convention).
+
+    The MEMORY.md compaction proposal is written here as a reviewable before/after
+    diff — Dream never rewrites MEMORY.md directly.
     """
     wiki_root = _resolve_wiki_path()
     dreams_dir = wiki_root / "dreams"
@@ -546,6 +601,20 @@ def _write_wiki_entry(payload: dict, sources: list[str], counts: dict) -> Path:
             fid = item.get("fact_id")
             reason = (item.get("reason") or "").strip()
             body_parts.append(f"- fact `{fid}` — {reason}")
+
+    compaction = payload.get("memory_compaction") or {}
+    proposed = compaction.get("proposed") or []
+    before = memory_md_before or []
+    if proposed:
+        rationale = (compaction.get("rationale") or "").strip()
+        body_parts.append("\n## MEMORY.md compaction (proposed — review before applying)\n")
+        if rationale:
+            body_parts.append(f"_{rationale}_\n")
+        body_parts.append(f"Before: {len(before)} entries → After: {len(proposed)} entries\n")
+        body_parts.append("```diff")
+        for line in _unified_memory_diff(before, proposed):
+            body_parts.append(line)
+        body_parts.append("```\n")
 
     body_parts.append(
         f"\n---\n_Counts: {counts.get('insights_added', 0)} insights, "
@@ -708,8 +777,12 @@ def run_dream(*, since: float | None = None, dry_run: bool = False) -> DreamResu
         result.sources = sources
         facts_block = _format_facts(facts)
         usage_block = _format_tool_usage(_gather_tool_usage(session_db, since))
+        memory_md = _gather_memory_md()
+        memory_md_block = _format_memory_md(memory_md)
 
-        payload = _call_synthesis_llm(facts_block, transcripts, usage_block)
+        payload = _call_synthesis_llm(
+            facts_block, transcripts, usage_block, memory_md_block,
+        )
         result.raw_summary = (payload.get("summary") or "")[:5000]
 
         if dry_run:
@@ -730,7 +803,7 @@ def run_dream(*, since: float | None = None, dry_run: bool = False) -> DreamResu
             "stale_queued": queued,
             "sessions_scanned": result.sessions_scanned,
         }
-        result.wiki_entry = _write_wiki_entry(payload, sources, counts)
+        result.wiki_entry = _write_wiki_entry(payload, sources, counts, memory_md)
 
         state["last_run_at"] = time.time()
         state["first_run_completed"] = True

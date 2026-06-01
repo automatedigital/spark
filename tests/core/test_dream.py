@@ -383,11 +383,65 @@ def test_run_dream_passes_usage_block_to_synthesis(dream_mod, tmp_path, monkeypa
 
     captured = {}
 
-    def _fake_synth(facts_block, transcripts, usage_block=""):
+    def _fake_synth(facts_block, transcripts, usage_block="", memory_md_block=""):
         captured["usage_block"] = usage_block
+        captured["memory_md_block"] = memory_md_block
         return {"insights": [], "consolidations": [], "stale": [], "summary": "ok"}
 
     monkeypatch.setattr(dream_mod, "_call_synthesis_llm", _fake_synth)
     dream_mod.run_dream(dry_run=True)
 
     assert "usage_block" in captured  # synthesis received the third argument
+    assert "memory_md_block" in captured  # and the MEMORY.md block (fourth)
+
+
+# ---------------------------------------------------------------------------
+# MEMORY.md compaction proposal (Phase 2b) — proposal only, never auto-applied
+# ---------------------------------------------------------------------------
+
+def test_format_memory_md_empty(dream_mod):
+    assert dream_mod._format_memory_md([]) == "(MEMORY.md is empty)"
+
+
+def test_unified_memory_diff_shows_changes(dream_mod):
+    before = ["uses zsh", "likes tabs", "likes tabs over spaces"]
+    after = ["uses zsh", "prefers tabs over spaces"]
+    diff = dream_mod._unified_memory_diff(before, after)
+    joined = "\n".join(diff)
+    assert any(line.startswith("-") for line in diff)
+    assert any(line.startswith("+") for line in diff)
+    assert "prefers tabs over spaces" in joined
+
+
+def test_compaction_proposal_written_to_wiki_not_memory(dream_mod, tmp_path, monkeypatch):
+    """A compaction proposal lands in the wiki entry; MEMORY.md is untouched."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    _populate_sessions(tmp_path)
+    _populate_facts(tmp_path)
+
+    # Seed MEMORY.md with redundant entries
+    mem_dir = tmp_path / "memories"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    memory_file = mem_dir / "MEMORY.md"
+    original = "likes tabs\n§\nlikes tabs over spaces\n§\nuses zsh"
+    memory_file.write_text(original)
+
+    payload = {
+        "insights": [], "consolidations": [], "stale": [],
+        "memory_compaction": {
+            "proposed": ["prefers tabs over spaces", "uses zsh"],
+            "rationale": "Merged duplicate tab preferences.",
+        },
+        "summary": "compacted",
+    }
+    monkeypatch.setattr(dream_mod, "_call_synthesis_llm", _mock_llm(payload))
+
+    result = dream_mod.run_dream()
+    assert result.error is None
+    # MEMORY.md itself is NOT rewritten by Dream
+    assert memory_file.read_text() == original
+    # The proposal + diff are in the wiki entry
+    wiki_text = Path(result.wiki_entry).read_text()
+    assert "MEMORY.md compaction (proposed" in wiki_text
+    assert "prefers tabs over spaces" in wiki_text
+    assert "Merged duplicate tab preferences." in wiki_text

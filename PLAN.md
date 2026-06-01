@@ -146,11 +146,12 @@ Repair the existing pass and make it visible — but it stays explicitly invoked
       (`cron/scheduler.py:924`), itself gated by an opt-in daily schedule that is
       **disabled by default**. No session-end path touches Dream. Added 2 guard tests:
       `test_dream_disabled_by_default` and `test_memory_session_end_does_not_invoke_dream`.
-- [ ] **MEMORY.md compaction** (targeted new) — give Dream a pass that dedups and
-      consolidates MEMORY.md, cleaning up the cruft Auto-memory (2a) appends over
-      time. Heavy consolidation lives here, not in the per-session hook. Stale/merged
-      entries route through the existing `pending-removals` confirm flow — never a
-      silent rewrite of the curated file. Surface a before/after diff in the wiki entry.
+- [x] **MEMORY.md compaction** — Dream now reads MEMORY.md (`_gather_memory_md`),
+      feeds it to the synthesis LLM as a 4th input, and the model proposes a deduped/
+      consolidated rewrite (`memory_compaction` schema field). **Never a silent
+      rewrite** — the proposal + a before/after unified diff (`_unified_memory_diff`)
+      are written into the Dream wiki entry for review; MEMORY.md on disk is untouched.
+      3 new tests (incl. one asserting MEMORY.md is byte-unchanged after a proposal).
 - [ ] **`/learnings` review surface** (targeted new) — read-only TUI command +
       dashboard panel showing recent Dream syntheses and the `pending-removals`
       queue so users can see and confirm removals without digging into
