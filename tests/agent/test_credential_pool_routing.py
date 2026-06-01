@@ -348,3 +348,55 @@ class TestPoolRotationCycle:
         )
         assert recovered is False
         assert has_retried is False
+
+
+# ---------------------------------------------------------------------------
+# 7. Auth-failure refresh budget via _recover_with_credential_pool
+# ---------------------------------------------------------------------------
+
+class TestPoolAuthRefreshBudget(TestPoolRotationCycle):
+    """A token refresh that keeps succeeding but still yields a 401-ing credential
+    must not loop forever — it is bounded and then forced to rotate."""
+
+    def _make_agent_with_refresh(self, pool_entries=3):
+        agent, pool, entries = self._make_agent_with_pool(pool_entries)
+        # try_refresh_current always "succeeds" (returns the same entry),
+        # simulating a refresh that produces a still-invalid credential.
+        pool.try_refresh_current = MagicMock(return_value=entries[0])
+        return agent, pool, entries
+
+    def test_auth_refresh_is_bounded_then_rotates(self):
+        agent, pool, entries = self._make_agent_with_refresh(3)
+
+        # First 3 auth failures refresh in place without rotating.
+        for _ in range(3):
+            recovered, _ = agent._recover_with_credential_pool(
+                status_code=401, has_retried_429=False
+            )
+            assert recovered is True
+        pool.mark_exhausted_and_rotate.assert_not_called()
+        assert pool.try_refresh_current.call_count == 3
+
+        # 4th consecutive auth failure exhausts the budget and forces a rotation.
+        recovered, _ = agent._recover_with_credential_pool(
+            status_code=401, has_retried_429=False
+        )
+        assert recovered is True
+        pool.mark_exhausted_and_rotate.assert_called_once()
+        # Budget reset for the freshly-rotated credential.
+        assert agent._consecutive_auth_refreshes == 0
+
+    def test_auth_refresh_budget_gives_up_when_pool_exhausted(self):
+        agent, pool, entries = self._make_agent_with_refresh(1)
+
+        # Exhaust the refresh budget on the single entry.
+        for _ in range(3):
+            assert agent._recover_with_credential_pool(
+                status_code=401, has_retried_429=False
+            )[0] is True
+
+        # Budget gone, only one entry — rotation finds nothing, so we give up.
+        recovered, _ = agent._recover_with_credential_pool(
+            status_code=401, has_retried_429=False
+        )
+        assert recovered is False
