@@ -319,3 +319,36 @@ def test_scheduler_tick_does_not_fire_within_23h(dream_mod):
         fired = dream_mod.scheduler_tick()
     assert fired is False
     run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Guard: Dream is explicit-only — it must NEVER auto-fire at session end
+# (Phase 2b). It runs only via /dream or an opt-in daily schedule.
+# ---------------------------------------------------------------------------
+
+def test_dream_disabled_by_default(dream_mod):
+    """A fresh install has no Dream schedule — it never runs unprompted."""
+    assert dream_mod.get_schedule()["enabled"] is False
+
+
+def test_memory_session_end_does_not_invoke_dream(dream_mod):
+    """The memory provider's on_session_end must not trigger Dream.
+
+    Session end auto-updates memory (holographic auto-extract + MEMORY.md flush),
+    but Dream — the heavy synthesis pass — stays explicit. Guards against a future
+    regression wiring run_dream/scheduler_tick into the session-end path.
+    """
+    from unittest.mock import MagicMock
+
+    from plugins.memory.holographic import HolographicMemoryProvider
+
+    provider = HolographicMemoryProvider(config={})
+    provider._store = MagicMock()
+
+    messages = [{"role": "user", "content": "I prefer concise replies"}]
+    with patch.object(dream_mod, "run_dream") as run, \
+         patch.object(dream_mod, "scheduler_tick") as tick:
+        provider.on_session_end(messages)
+
+    run.assert_not_called()
+    tick.assert_not_called()

@@ -137,11 +137,15 @@ cheap, no user action.
 
 Repair the existing pass and make it visible — but it stays explicitly invoked.
 
-- [ ] **Fix Dream** (covered in Phase 0) and confirm `/dream` runs end-to-end:
-      wiki entry + `dream`-category holographic facts written.
-- [ ] **Guard against implicit runs.** Audit every caller of `run_dream` /
-      `scheduler_tick`; confirm the only triggers are the `/dream` command and an
-      explicit user schedule. Add a test asserting session end does NOT invoke Dream.
+- [x] **Fix Dream / confirm it runs** — Dream was never broken (the Phase 0 "6
+      failures" were an interpreter artifact). `test_dream.py` passes 16/16: dry-run,
+      wiki-entry write, `dream`-category fact insertion, consolidation, stale-queueing.
+- [x] **Guard against implicit runs.** Audited all callers of `run_dream` /
+      `scheduler_tick`: the **only** triggers are the `/dream` command (`cli.py:6008`,
+      `gateway/run.py:6062`) and `scheduler_tick()` from the cron loop
+      (`cron/scheduler.py:924`), itself gated by an opt-in daily schedule that is
+      **disabled by default**. No session-end path touches Dream. Added 2 guard tests:
+      `test_dream_disabled_by_default` and `test_memory_session_end_does_not_invoke_dream`.
 - [ ] **MEMORY.md compaction** (targeted new) — give Dream a pass that dedups and
       consolidates MEMORY.md, cleaning up the cruft Auto-memory (2a) appends over
       time. Heavy consolidation lives here, not in the per-session hook. Stale/merged
