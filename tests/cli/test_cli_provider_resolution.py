@@ -165,7 +165,7 @@ def test_runtime_resolution_failure_is_not_sticky(monkeypatch):
 
     monkeypatch.setattr("spark_cli.runtime_provider.resolve_runtime_provider", _runtime_resolve)
     monkeypatch.setattr("spark_cli.runtime_provider.format_runtime_provider_error", lambda exc: str(exc))
-    monkeypatch.setattr(cli, "AIAgent", _DummyAgent)
+    monkeypatch.setattr(cli.agent_setup_mixin, "AIAgent", _DummyAgent)
 
     shell = cli.SparkCLI(model="gpt-5", compact=True, max_turns=1)
 
