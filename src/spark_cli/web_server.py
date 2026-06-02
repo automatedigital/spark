@@ -59,6 +59,7 @@ from spark_cli.dashboard_auth import (
     get_configured_dashboard_secret,
     validate_dashboard_request,
 )
+from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.kanban_routes import register_kanban_routes
 from spark_cli.workspace_routes import register_workspace_routes
 from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
@@ -5358,6 +5359,67 @@ async def get_conversation_models():
     return {"models": [{"id": mid, "hint": h} for mid, h in curated]}
 
 
+class CanvasChatBody(BaseModel):
+    message: str
+    history: list[dict] = []
+    model: Optional[str] = None
+    slug: Optional[str] = None
+
+
+@app.post("/api/canvas/chat")
+async def canvas_chat(body: CanvasChatBody):
+    """Run a single, *stateless* agent turn for a Canvas chat node.
+
+    Unlike /api/conversations this never creates a persisted SessionDB session, so
+    canvas chats stay canvas-local and do not appear in the Chat tab. Prior turns are
+    replayed via ``prefill_messages`` so each node keeps its own conversation context.
+    For a project-scoped canvas, ``slug`` sets the agent's working directory.
+    """
+    from core.run_agent import AIAgent
+
+    turn_route = _resolve_web_turn_route(body.message)
+    runtime = turn_route.get("runtime") or {}
+
+    working_dir = None
+    if body.slug:
+        from spark_cli.workspace_routes import _project_dir
+
+        working_dir = str(_project_dir(body.slug))
+
+    prefill = [
+        {"role": m.get("role", "user"), "content": str(m.get("content", ""))}
+        for m in (body.history or [])
+        if m.get("content")
+    ]
+
+    def _run() -> str:
+        agent = AIAgent(
+            session_id="canvas_" + uuid.uuid4().hex[:12],
+            model=turn_route["model"],
+            api_key=runtime.get("api_key"),
+            base_url=runtime.get("base_url"),
+            provider=runtime.get("provider"),
+            api_mode=runtime.get("api_mode"),
+            command=runtime.get("command"),
+            args=list(runtime.get("args") or []),
+            credential_pool=runtime.get("credential_pool"),
+            request_overrides=turn_route.get("request_overrides"),
+            prefill_messages=prefill,
+            quiet_mode=True,
+            platform="web",
+            session_db=None,
+            working_dir=working_dir,
+        )
+        return agent.chat(body.message)
+
+    loop = asyncio.get_running_loop()
+    try:
+        reply = await loop.run_in_executor(None, _run)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "reply": reply, "model": turn_route["model"]}
+
+
 @app.post("/api/conversations")
 async def create_conversation(body: ConversationCreate):
     """Start a new web chat session. Spawns AIAgent in a thread, returns session_id."""
@@ -6079,6 +6141,7 @@ def mount_spa(application: FastAPI):
 register_kanban_routes(app)
 register_workspace_routes(app)
 register_connectors_routes(app)
+register_canvas_routes(app)
 
 
 # ── Workspace conversation endpoints ─────────────────────────────────────────

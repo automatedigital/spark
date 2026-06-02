@@ -69,6 +69,7 @@ export interface Translations {
       workspace: string;
       chat: string;
       files: string;
+      canvas: string;
       connectors: string;
     };
   };

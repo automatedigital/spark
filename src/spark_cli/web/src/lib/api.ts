@@ -818,7 +818,49 @@ export const api = {
       "/api/connectors/google",
       { method: "DELETE" },
     ),
+
+  // ── Canvas ──
+  listCanvases: () => fetchJSON<CanvasListResponse>("/api/canvases"),
+
+  // Stateless, canvas-local agent turn (does NOT create a Chat-tab session).
+  postCanvasChat: (
+    message: string,
+    history: Array<{ role: string; content: string }> = [],
+    opts: { model?: string; slug?: string | null } = {},
+  ) =>
+    fetchJSON<{ ok: boolean; reply: string; model: string }>("/api/canvas/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, history, model: opts.model, slug: opts.slug ?? null }),
+    }),
+
+  getCanvas: (scope: CanvasScope, id: string, slug?: string | null) =>
+    fetchJSON<CanvasDoc>(canvasUrl(scope, id, slug)),
+
+  saveCanvas: (doc: CanvasDoc) =>
+    fetchJSON<{ ok: boolean; id: string; scope: CanvasScope; slug: string | null; updatedAt: string }>(
+      canvasUrl(doc.scope, doc.id, doc.slug),
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(doc),
+      },
+    ),
+
+  deleteCanvas: (scope: CanvasScope, id: string, slug?: string | null) =>
+    fetchJSON<{ ok: boolean; deleted: string }>(canvasUrl(scope, id, slug), {
+      method: "DELETE",
+    }),
 };
+
+function canvasUrl(scope: CanvasScope, id: string, slug?: string | null): string {
+  const encId = encodeURIComponent(id);
+  if (scope === "project") {
+    if (!slug) throw new Error("Project canvas requires a slug");
+    return `/api/canvases/project/${encodeURIComponent(slug)}/${encId}`;
+  }
+  return `/api/canvases/global/${encId}`;
+}
 
 /**
  * Open an external URL reliably across desktop and browser.
@@ -1429,6 +1471,59 @@ export interface WorkspaceProject {
 
 export interface WorkspaceProjectsResponse {
   projects: WorkspaceProject[];
+}
+
+// ── Canvas types ──────────────────────────────────────────────────────────
+export type CanvasScope = "global" | "project";
+
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface CanvasDoc {
+  id: string;
+  name: string;
+  scope: CanvasScope;
+  slug: string | null;
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  viewport: CanvasViewport;
+  version: number;
+  updatedAt?: string | null;
+}
+
+// React Flow node/edge shapes (loose — the canvas owns the concrete data types).
+export interface CanvasNode {
+  id: string;
+  type?: string;
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+  width?: number | null;
+  height?: number | null;
+  [key: string]: unknown;
+}
+
+export interface CanvasEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  [key: string]: unknown;
+}
+
+export interface CanvasSummary {
+  id: string;
+  name: string;
+  scope: CanvasScope;
+  slug: string | null;
+  updatedAt: string;
+}
+
+export interface CanvasListResponse {
+  canvases: CanvasSummary[];
 }
 
 export interface FileListEntry {
