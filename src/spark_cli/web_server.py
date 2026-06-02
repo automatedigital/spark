@@ -3977,6 +3977,8 @@ def _execute_web_slash_command(session_id: str, message: str) -> "str | None":
         return _web_cmd_history(session_id)
     if canonical == "memory":
         return _web_cmd_memory()
+    if canonical == "learnings":
+        return _web_cmd_learnings()
     if canonical == "sessions":
         return _web_cmd_sessions()
     if canonical == "config":
@@ -4073,6 +4075,46 @@ def _web_cmd_memory() -> str:
         return "\n\n".join(sections)
     except Exception as e:
         return f"Could not read memories: {e}"
+
+
+def _web_cmd_learnings() -> str:
+    """Read-only review of recent dreams + pending memory removals for the web UI."""
+    from datetime import datetime
+
+    try:
+        from core import dream as dream_mod
+        recent = dream_mod.list_recent_dreams(limit=5)
+        pending = dream_mod.get_pending_removals()
+    except Exception as e:
+        return f"Could not read learnings: {e}"
+
+    if not recent and not pending:
+        return "No learnings yet. Run `/dream` to reflect on past sessions."
+
+    sections = []
+    if recent:
+        lines = []
+        for d in recent:
+            try:
+                when = datetime.fromtimestamp(d["modified"]).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                when = ""
+            lines.append(f"- **{d['title']}** _({when})_")
+        sections.append("**Recent dreams**\n" + "\n".join(lines))
+
+    if pending:
+        lines = [f"- `fact {it.get('fact_id')}` — {it.get('reason', '')}" for it in pending[:20]]
+        if len(pending) > 20:
+            lines.append(f"- … and {len(pending) - 20} more")
+        sections.append(
+            f"**{len(pending)} fact(s) flagged stale**\n"
+            + "\n".join(lines)
+            + "\n\n_Confirm removals from the CLI with `/learnings`._"
+        )
+    else:
+        sections.append("_No memory removals awaiting review._")
+
+    return "\n\n".join(sections)
 
 
 def _web_cmd_sessions() -> str:

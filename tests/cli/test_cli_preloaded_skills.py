@@ -112,7 +112,12 @@ def test_show_banner_does_not_print_skills():
     cli_obj.preloaded_skills = ["spark-agent-dev", "github-auth"]
     cli_obj.console = MagicMock()
 
-    with patch("core.cli.build_welcome_banner") as mock_banner, patch(
+    # _make_real_cli reloads core.cli, which can leave a duplicate of the
+    # session_ops_mixin module. Patch build_welcome_banner in the exact globals
+    # the bound show_banner actually uses, not the importable module name.
+    banner_globals = cli_obj.show_banner.__func__.__globals__
+    mock_banner = MagicMock()
+    with patch.dict(banner_globals, {"build_welcome_banner": mock_banner}), patch(
         "shutil.get_terminal_size", return_value=os.terminal_size((120, 40))
     ):
         cli_obj.show_banner()

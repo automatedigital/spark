@@ -725,8 +725,10 @@ class TestBuildSystemPrompt:
                 "core.run_agent.check_toolset_requirements",
                 side_effect=AssertionError("should not re-check toolset requirements"),
             ),
-            patch("core.run_agent.get_toolset_for_tool", create=True, side_effect=toolset_map.get),
-            patch("core.run_agent.build_skills_system_prompt", return_value="SKILLS_PROMPT") as mock_skills,
+            # _build_system_prompt moved to run_agent/prompt_cache.py (Phase 4),
+            # so these are patched on the mixin module that now owns the names.
+            patch("core.run_agent.prompt_cache.get_toolset_for_tool", create=True, side_effect=toolset_map.get),
+            patch("core.run_agent.prompt_cache.build_skills_system_prompt", return_value="SKILLS_PROMPT") as mock_skills,
             patch("core.run_agent.OpenAI"),
         ):
             agent = AIAgent(

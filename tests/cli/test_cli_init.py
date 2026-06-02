@@ -252,7 +252,7 @@ class TestRootLevelProviderOverride:
         }))
 
         import core.cli as cli
-        monkeypatch.setattr(cli, "_spark_home", spark_home)
+        monkeypatch.setattr("core.cli.config_state._spark_home", spark_home)
         cfg = cli.load_cli_config()
 
         assert cfg["model"]["provider"] == "openrouter"
@@ -275,7 +275,7 @@ class TestRootLevelProviderOverride:
         }))
 
         import core.cli as cli
-        monkeypatch.setattr(cli, "_spark_home", spark_home)
+        monkeypatch.setattr("core.cli.config_state._spark_home", spark_home)
         cfg = cli.load_cli_config()
 
         # Root-level "opencode-go" must NOT leak through

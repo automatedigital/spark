@@ -165,7 +165,7 @@ class TestFlushRecovery:
         from unittest.mock import patch
         import shutil
         with patch.object(shutil, "get_terminal_size", return_value=os.terminal_size((80, 24))):
-            with patch("core.cli._cprint"):
+            with patch("core.cli.streaming_mixin._cprint"):
                 cli._flush_stream()
 
         assert not cli._in_reasoning_block
@@ -191,7 +191,7 @@ class TestLosslessStreamRendering:
 
         with patch.object(
             shutil, "get_terminal_size", return_value=os.terminal_size((42, 24))
-        ), patch("core.cli._cprint") as cprint:
+        ), patch("core.cli.streaming_mixin._cprint") as cprint:
             for chunk in chunks:
                 cli._stream_delta(chunk)
             cli._flush_stream()
@@ -209,7 +209,7 @@ class TestLosslessStreamRendering:
 
         with patch.object(
             shutil, "get_terminal_size", return_value=os.terminal_size((36, 24))
-        ), patch("core.cli._cprint") as cprint:
+        ), patch("core.cli.streaming_mixin._cprint") as cprint:
             for chunk in [text[:11], text[11:29], text[29:]]:
                 cli._stream_delta(chunk)
             cli._flush_stream()
@@ -227,7 +227,7 @@ class TestLosslessStreamRendering:
 
         with patch.object(
             shutil, "get_terminal_size", return_value=os.terminal_size((50, 24))
-        ), patch("core.cli._cprint") as cprint:
+        ), patch("core.cli.streaming_mixin._cprint") as cprint:
             cli._stream_delta(text[:7])
             cli._stream_delta(text[7:])
             cli._flush_stream()
@@ -247,7 +247,7 @@ class TestLosslessStreamRendering:
 
         with patch.object(
             shutil, "get_terminal_size", return_value=os.terminal_size((28, 24))
-        ), patch("core.cli._cprint") as cprint:
+        ), patch("core.cli.streaming_mixin._cprint") as cprint:
             cli._stream_delta("First response text")
             cli._stream_delta(None)
             cli._stream_delta("Second response text")

@@ -49,8 +49,10 @@ from core.spark_constants import get_spark_home
 # User-managed env files should override stale shell exports on restart.
 from spark_cli.env_loader import load_spark_dotenv
 
+# NOTE: this module now lives in the core/run_agent/ package (was core/run_agent.py),
+# so the dev-fallback .env still resolves to src/core/.env via .parent.parent.
 _spark_home = get_spark_home()
-_project_env = Path(__file__).parent / '.env'
+_project_env = Path(__file__).parent.parent / '.env'
 _loaded_env_paths = load_spark_dotenv(spark_home=_spark_home, project_env=_project_env)
 if _loaded_env_paths:
     for _env_path in _loaded_env_paths:
@@ -62,7 +64,6 @@ else:
 # Import our tool system
 from core.model_tools import (
     get_tool_definitions,
-    get_toolset_for_tool,
     handle_function_call,
     check_toolset_requirements,
 )
@@ -78,12 +79,10 @@ from core.spark_constants import OPENROUTER_BASE_URL
 from agent.memory_manager import build_memory_context_block
 from agent.retry_utils import jittered_backoff
 from agent.error_classifier import classify_api_error, FailoverReason
-from agent.prompt_builder import (
-    DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
-    SESSION_SEARCH_GUIDANCE, COMPUTER_USE_GUIDANCE,
-    APP_CREATION_GUIDANCE, build_name_guidance, build_soul_guidance,
-    build_workspace_guidance,
-)
+# Most prompt-content helpers/constants moved with _build_system_prompt into
+# run_agent/prompt_cache.py (Phase 4). DEFAULT_AGENT_IDENTITY is still used
+# elsewhere in this module (e.g. the codex_responses instructions fallback).
+from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
 from agent.model_metadata import (
     fetch_model_metadata,
     estimate_tokens_rough, estimate_messages_tokens_rough, estimate_request_tokens_rough,
@@ -95,7 +94,7 @@ from agent.model_metadata import (
 from agent.context_compressor import ContextCompressor
 from agent.subdirectory_hints import SubdirectoryHintTracker
 from agent.prompt_caching import apply_anthropic_cache_control
-from agent.prompt_builder import build_skills_system_prompt, build_context_files_prompt, build_environment_hints, load_soul_md, TOOL_USE_ENFORCEMENT_GUIDANCE, TOOL_USE_ENFORCEMENT_MODELS, DEVELOPER_ROLE_MODELS, GOOGLE_MODEL_OPERATIONAL_GUIDANCE, OPENAI_MODEL_EXECUTION_GUIDANCE
+from agent.prompt_builder import DEVELOPER_ROLE_MODELS
 from agent.usage_pricing import estimate_usage_cost, normalize_usage
 from agent.display import (
     KawaiiSpinner, build_tool_preview as _build_tool_preview,
@@ -111,388 +110,59 @@ from core.utils import atomic_json_write, env_var_enabled
 
 
 
-class _SafeWriter:
-    """Transparent stdio wrapper that catches OSError/ValueError from broken pipes.
-
-    When spark-agent runs as a systemd service, Docker container, or headless
-    daemon, the stdout/stderr pipe can become unavailable (idle timeout, buffer
-    exhaustion, socket reset). Any print() call then raises
-    ``OSError: [Errno 5] Input/output error``, which can crash agent setup or
-    run_conversation() — especially via double-fault when an except handler
-    also tries to print.
-
-    Additionally, when subagents run in ThreadPoolExecutor threads, the shared
-    stdout handle can close between thread teardown and cleanup, raising
-    ``ValueError: I/O operation on closed file`` instead of OSError.
-
-    This wrapper delegates all writes to the underlying stream and silently
-    catches both OSError and ValueError. It is transparent when the wrapped
-    stream is healthy.
-    """
-
-    __slots__ = ("_inner",)
-
-    def __init__(self, inner):
-        object.__setattr__(self, "_inner", inner)
-
-    def write(self, data):
-        try:
-            return self._inner.write(data)
-        except (OSError, ValueError):
-            return len(data) if isinstance(data, str) else 0
-
-    def flush(self):
-        try:
-            self._inner.flush()
-        except (OSError, ValueError):
-            pass
-
-    def fileno(self):
-        return self._inner.fileno()
-
-    def isatty(self):
-        try:
-            return self._inner.isatty()
-        except (OSError, ValueError):
-            return False
-
-    def __getattr__(self, name):
-        return getattr(self._inner, name)
-
-
-def _install_safe_stdio() -> None:
-    """Wrap stdout/stderr so best-effort console output cannot crash the agent."""
-    for stream_name in ("stdout", "stderr"):
-        stream = getattr(sys, stream_name, None)
-        if stream is not None and not isinstance(stream, _SafeWriter):
-            setattr(sys, stream_name, _SafeWriter(stream))
-
-
-class IterationBudget:
-    """Thread-safe iteration counter for an agent.
-
-    Each agent (parent or subagent) gets its own ``IterationBudget``.
-    The parent's budget is capped at ``max_iterations`` (default 90).
-    Each subagent gets an independent budget capped at
-    ``delegation.max_iterations`` (default 50) — this means total
-    iterations across parent + subagents can exceed the parent's cap.
-    Users control the per-subagent limit via ``delegation.max_iterations``
-    in config.yaml.
-
-    ``execute_code`` (programmatic tool calling) iterations are refunded via
-    :meth:`refund` so they don't eat into the budget.
-    """
-
-    def __init__(self, max_total: int):
-        self.max_total = max_total
-        self._used = 0
-        self._lock = threading.Lock()
-
-    def consume(self) -> bool:
-        """Try to consume one iteration.  Returns True if allowed."""
-        with self._lock:
-            if self._used >= self.max_total:
-                return False
-            self._used += 1
-            return True
-
-    def refund(self) -> None:
-        """Give back one iteration (e.g. for execute_code turns)."""
-        with self._lock:
-            if self._used > 0:
-                self._used -= 1
-
-    @property
-    def used(self) -> int:
-        return self._used
-
-    @property
-    def remaining(self) -> int:
-        with self._lock:
-            return max(0, self.max_total - self._used)
-
-
-# Tools that must never run concurrently (interactive / user-facing).
-# When any of these appear in a batch, we fall back to sequential execution.
-_NEVER_PARALLEL_TOOLS = frozenset({"clarify"})
-
-# Read-only tools with no shared mutable session state.
-_PARALLEL_SAFE_TOOLS = frozenset({
-    "ha_get_state",
-    "ha_list_entities",
-    "ha_list_services",
-    "read_file",
-    "search_files",
-    "session_search",
-    "skill_view",
-    "skills_list",
-    "vision_analyze",
-    "web_extract",
-    "web_search",
-})
-
-# File tools can run concurrently when they target independent paths.
-_PATH_SCOPED_TOOLS = frozenset({"read_file", "write_file", "patch"})
-
-# Maximum number of concurrent worker threads for parallel tool execution.
-_MAX_TOOL_WORKERS = 8
-
-# Patterns that indicate a terminal command may modify/delete files.
-_DESTRUCTIVE_PATTERNS = re.compile(
-    r"""(?:^|\s|&&|\|\||;|`)(?:
-        rm\s|rmdir\s|
-        mv\s|
-        sed\s+-i|
-        truncate\s|
-        dd\s|
-        shred\s|
-        git\s+(?:reset|clean|checkout)\s
-    )""",
-    re.VERBOSE,
+# Crash-safe stdio (_SafeWriter/_install_safe_stdio) and per-agent iteration
+# budgeting (IterationBudget) live in run_agent/stdio.py and
+# run_agent/iteration_budget.py (Phase 4 split). Re-exported here (redundant
+# `as` alias = intentional re-export) so `from core.run_agent import _SafeWriter`
+# / `IterationBudget` and the bare-name references below keep resolving. noqa:
+# mid-module placement keeps the names bound before the AIAgent class body.
+from core.run_agent.iteration_budget import IterationBudget as IterationBudget  # noqa: E402,I001
+from core.run_agent.stdio import (  # noqa: E402,I001
+    _SafeWriter as _SafeWriter,
+    _install_safe_stdio as _install_safe_stdio,
 )
-# Output redirects that overwrite files (> but not >>)
-_REDIRECT_OVERWRITE = re.compile(r'[^>]>[^>]|^>[^>]')
+
+# Caching-sensitive system-prompt assembly (ADR-0001 named home). Mixed into
+# AIAgent below; kept in its own module so the prompt-cache invariant has one
+# obvious place to live. noqa: import sits mid-module so the mixin is bound
+# before the AIAgent class statement.
+from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
 
 
-def _is_destructive_command(cmd: str) -> bool:
-    """Heuristic: does this terminal command look like it modifies/deletes files?"""
-    if not cmd:
-        return False
-    if _DESTRUCTIVE_PATTERNS.search(cmd):
-        return True
-    if _REDIRECT_OVERWRITE.search(cmd):
-        return True
-    return False
-
-
-def _should_parallelize_tool_batch(tool_calls) -> bool:
-    """Return True when a tool-call batch is safe to run concurrently."""
-    if len(tool_calls) <= 1:
-        return False
-
-    tool_names = [tc.function.name for tc in tool_calls]
-    if any(name in _NEVER_PARALLEL_TOOLS for name in tool_names):
-        return False
-
-    reserved_paths: list[Path] = []
-    for tool_call in tool_calls:
-        tool_name = tool_call.function.name
-        try:
-            function_args = json.loads(tool_call.function.arguments)
-        except Exception:
-            logging.debug(
-                "Could not parse args for %s — defaulting to sequential; raw=%s",
-                tool_name,
-                tool_call.function.arguments[:200],
-            )
-            return False
-        if not isinstance(function_args, dict):
-            logging.debug(
-                "Non-dict args for %s (%s) — defaulting to sequential",
-                tool_name,
-                type(function_args).__name__,
-            )
-            return False
-
-        if tool_name in _PATH_SCOPED_TOOLS:
-            scoped_path = _extract_parallel_scope_path(tool_name, function_args)
-            if scoped_path is None:
-                return False
-            if any(_paths_overlap(scoped_path, existing) for existing in reserved_paths):
-                return False
-            reserved_paths.append(scoped_path)
-            continue
-
-        if tool_name not in _PARALLEL_SAFE_TOOLS:
-            return False
-
-    return True
-
-
-def _extract_parallel_scope_path(tool_name: str, function_args: dict) -> Path | None:
-    """Return the normalized file target for path-scoped tools."""
-    if tool_name not in _PATH_SCOPED_TOOLS:
-        return None
-
-    raw_path = function_args.get("path")
-    if not isinstance(raw_path, str) or not raw_path.strip():
-        return None
-
-    expanded = Path(raw_path).expanduser()
-    if expanded.is_absolute():
-        return Path(os.path.abspath(str(expanded)))
-
-    # Avoid resolve(); the file may not exist yet.
-    return Path(os.path.abspath(str(Path.cwd() / expanded)))
-
-
-def _paths_overlap(left: Path, right: Path) -> bool:
-    """Return True when two paths may refer to the same subtree."""
-    left_parts = left.parts
-    right_parts = right.parts
-    if not left_parts or not right_parts:
-        # Empty paths shouldn't reach here (guarded upstream), but be safe.
-        return bool(left_parts) == bool(right_parts) and bool(left_parts)
-    common_len = min(len(left_parts), len(right_parts))
-    return left_parts[:common_len] == right_parts[:common_len]
+# Tool-batch parallelism heuristics live in run_agent/parallelism.py (Phase 4
+# split). Re-exported (redundant `as` alias to mark intentional re-export) so
+# `from core.run_agent import _paths_overlap` and the bare-name references inside
+# the loop below keep resolving unchanged. noqa: this block is deliberately placed
+# mid-module so the names are bound before the AIAgent class uses them.
+from core.run_agent.parallelism import (  # noqa: E402,I001
+    _DESTRUCTIVE_PATTERNS as _DESTRUCTIVE_PATTERNS,
+    _MAX_TOOL_WORKERS as _MAX_TOOL_WORKERS,
+    _NEVER_PARALLEL_TOOLS as _NEVER_PARALLEL_TOOLS,
+    _PARALLEL_SAFE_TOOLS as _PARALLEL_SAFE_TOOLS,
+    _PATH_SCOPED_TOOLS as _PATH_SCOPED_TOOLS,
+    _REDIRECT_OVERWRITE as _REDIRECT_OVERWRITE,
+    _extract_parallel_scope_path as _extract_parallel_scope_path,
+    _is_destructive_command as _is_destructive_command,
+    _paths_overlap as _paths_overlap,
+    _should_parallelize_tool_batch as _should_parallelize_tool_batch,
+)
 
 
 
-_SURROGATE_RE = re.compile(r'[\ud800-\udfff]')
-
-
-
-
-def _sanitize_surrogates(text: str) -> str:
-    """Replace lone surrogate code points with U+FFFD (replacement character).
-
-    Surrogates are invalid in UTF-8 and will crash ``json.dumps()`` inside the
-    OpenAI SDK.  This is a fast no-op when the text contains no surrogates.
-    """
-    if _SURROGATE_RE.search(text):
-        return _SURROGATE_RE.sub('\ufffd', text)
-    return text
-
-
-def _sanitize_messages_surrogates(messages: list) -> bool:
-    """Sanitize surrogate characters from all string content in a messages list.
-
-    Walks message dicts in-place. Returns True if any surrogates were found
-    and replaced, False otherwise. Covers content/text, name, and tool call
-    metadata/arguments so retries don't fail on a non-content field.
-    """
-    found = False
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        content = msg.get("content")
-        if isinstance(content, str) and _SURROGATE_RE.search(content):
-            msg["content"] = _SURROGATE_RE.sub('\ufffd', content)
-            found = True
-        elif isinstance(content, list):
-            for part in content:
-                if isinstance(part, dict):
-                    text = part.get("text")
-                    if isinstance(text, str) and _SURROGATE_RE.search(text):
-                        part["text"] = _SURROGATE_RE.sub('\ufffd', text)
-                        found = True
-        name = msg.get("name")
-        if isinstance(name, str) and _SURROGATE_RE.search(name):
-            msg["name"] = _SURROGATE_RE.sub('\ufffd', name)
-            found = True
-        tool_calls = msg.get("tool_calls")
-        if isinstance(tool_calls, list):
-            for tc in tool_calls:
-                if not isinstance(tc, dict):
-                    continue
-                tc_id = tc.get("id")
-                if isinstance(tc_id, str) and _SURROGATE_RE.search(tc_id):
-                    tc["id"] = _SURROGATE_RE.sub('\ufffd', tc_id)
-                    found = True
-                fn = tc.get("function")
-                if isinstance(fn, dict):
-                    fn_name = fn.get("name")
-                    if isinstance(fn_name, str) and _SURROGATE_RE.search(fn_name):
-                        fn["name"] = _SURROGATE_RE.sub('\ufffd', fn_name)
-                        found = True
-                    fn_args = fn.get("arguments")
-                    if isinstance(fn_args, str) and _SURROGATE_RE.search(fn_args):
-                        fn["arguments"] = _SURROGATE_RE.sub('\ufffd', fn_args)
-                        found = True
-    return found
-
-
-def _strip_non_ascii(text: str) -> str:
-    """Remove non-ASCII characters, replacing with closest ASCII equivalent or removing.
-
-    Used as a last resort when the system encoding is ASCII and can't handle
-    any non-ASCII characters (e.g. LANG=C on Chromebooks).
-    """
-    return text.encode('ascii', errors='ignore').decode('ascii')
-
-
-def _sanitize_messages_non_ascii(messages: list) -> bool:
-    """Strip non-ASCII characters from all string content in a messages list.
-
-    This is a last-resort recovery for systems with ASCII-only encoding
-    (LANG=C, Chromebooks, minimal containers).  Returns True if any
-    non-ASCII content was found and sanitized.
-    """
-    found = False
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        # Sanitize content (string)
-        content = msg.get("content")
-        if isinstance(content, str):
-            sanitized = _strip_non_ascii(content)
-            if sanitized != content:
-                msg["content"] = sanitized
-                found = True
-        elif isinstance(content, list):
-            for part in content:
-                if isinstance(part, dict):
-                    text = part.get("text")
-                    if isinstance(text, str):
-                        sanitized = _strip_non_ascii(text)
-                        if sanitized != text:
-                            part["text"] = sanitized
-                            found = True
-        # Sanitize name field (can contain non-ASCII in tool results)
-        name = msg.get("name")
-        if isinstance(name, str):
-            sanitized = _strip_non_ascii(name)
-            if sanitized != name:
-                msg["name"] = sanitized
-                found = True
-        # Sanitize tool_calls
-        tool_calls = msg.get("tool_calls")
-        if isinstance(tool_calls, list):
-            for tc in tool_calls:
-                if isinstance(tc, dict):
-                    fn = tc.get("function", {})
-                    if isinstance(fn, dict):
-                        fn_args = fn.get("arguments")
-                        if isinstance(fn_args, str):
-                            sanitized = _strip_non_ascii(fn_args)
-                            if sanitized != fn_args:
-                                fn["arguments"] = sanitized
-                                found = True
-    return found
-
-
-def _sanitize_tools_non_ascii(tools: list) -> bool:
-    """Strip non-ASCII characters from tool payloads in-place."""
-    return _sanitize_structure_non_ascii(tools)
-
-
-def _sanitize_structure_non_ascii(payload: Any) -> bool:
-    """Strip non-ASCII characters from nested dict/list payloads in-place."""
-    found = False
-
-    def _walk(node):
-        nonlocal found
-        if isinstance(node, dict):
-            for key, value in node.items():
-                if isinstance(value, str):
-                    sanitized = _strip_non_ascii(value)
-                    if sanitized != value:
-                        node[key] = sanitized
-                        found = True
-                elif isinstance(value, (dict, list)):
-                    _walk(value)
-        elif isinstance(node, list):
-            for idx, value in enumerate(node):
-                if isinstance(value, str):
-                    sanitized = _strip_non_ascii(value)
-                    if sanitized != value:
-                        node[idx] = sanitized
-                        found = True
-                elif isinstance(value, (dict, list)):
-                    _walk(value)
-
-    _walk(payload)
-    return found
+# Payload sanitization (surrogate + non-ASCII) lives in run_agent/sanitize.py
+# (Phase 4 split). Re-exported here (redundant `as` alias = intentional re-export)
+# so `from core.run_agent import _sanitize_surrogates` (used in core/cli) and the
+# bare-name references inside the loop below keep resolving unchanged. noqa:
+# mid-module placement is required so the names bind before the AIAgent class.
+from core.run_agent.sanitize import (  # noqa: E402,I001
+    _SURROGATE_RE as _SURROGATE_RE,
+    _sanitize_messages_non_ascii as _sanitize_messages_non_ascii,
+    _sanitize_messages_surrogates as _sanitize_messages_surrogates,
+    _sanitize_structure_non_ascii as _sanitize_structure_non_ascii,
+    _sanitize_surrogates as _sanitize_surrogates,
+    _sanitize_tools_non_ascii as _sanitize_tools_non_ascii,
+    _strip_non_ascii as _strip_non_ascii,
+)
 
 
 
@@ -524,7 +194,7 @@ def _qwen_portal_headers() -> dict:
     }
 
 
-class AIAgent:
+class AIAgent(_PromptCacheMixin):
     """
     AI Agent with tool calling capabilities.
 
@@ -3158,191 +2828,8 @@ class AIAgent:
 
 
 
-    def _build_system_prompt(self, system_message: str = None) -> str:
-        """
-        Assemble the full system prompt from all layers.
-        
-        Called once per session (cached on self._cached_system_prompt) and only
-        rebuilt after context compression events. This ensures the system prompt
-        is stable across all turns in a session, maximizing prefix cache hits.
-        """
-        # Layers (in order):
-        #   1. Agent identity — SOUL.md when available, else DEFAULT_AGENT_IDENTITY
-        #   2. User / gateway system prompt (if provided)
-        #   3. Persistent memory (frozen snapshot)
-        #   4. Skills guidance (if skills tools are loaded)
-        #   5. Context files (AGENTS.md, .cursorrules — SOUL.md excluded here when used as identity)
-        #   6. Current date & time (frozen at build time)
-        #   7. Platform-specific formatting hint
-
-        # Try SOUL.md as primary identity (unless context files are skipped)
-        _soul_loaded = False
-        if not self.skip_context_files:
-            _soul_content = load_soul_md()
-            if _soul_content:
-                prompt_parts = [_soul_content]
-                _soul_loaded = True
-
-        if not _soul_loaded:
-            # Fallback to hardcoded identity
-            prompt_parts = [DEFAULT_AGENT_IDENTITY]
-
-        prompt_parts.append(build_soul_guidance())
-        _name_guidance = build_name_guidance()
-        if _name_guidance:
-            prompt_parts.append(_name_guidance)
-        prompt_parts.append(build_workspace_guidance())
-
-        # Tool-aware behavioral guidance: only inject when the tools are loaded.
-        # MEMORY_GUIDANCE and SKILLS_GUIDANCE are intentionally omitted — their
-        # content duplicates what's already in the memory/skill_manage tool
-        # descriptions, costing ~220 tokens of cache space for no behavioral
-        # difference. session_search has no equivalent tool-side guidance,
-        # so keep it.
-        tool_guidance = []
-        if "session_search" in self.valid_tool_names:
-            tool_guidance.append(SESSION_SEARCH_GUIDANCE)
-        if "computer_use" in self.valid_tool_names:
-            tool_guidance.append(COMPUTER_USE_GUIDANCE)
-        if tool_guidance:
-            prompt_parts.append(" ".join(tool_guidance))
-        if any(name in self.valid_tool_names for name in ("terminal", "write_file", "patch_file")):
-            prompt_parts.append(APP_CREATION_GUIDANCE)
-
-        # Tool-use enforcement: tells the model to actually call tools instead
-        # of describing intended actions.  Controlled by config.yaml
-        # agent.tool_use_enforcement:
-        #   "auto" (default) — matches TOOL_USE_ENFORCEMENT_MODELS
-        #   true  — always inject (all models)
-        #   false — never inject
-        #   list  — custom model-name substrings to match
-        if self.valid_tool_names:
-            _enforce = self._tool_use_enforcement
-            _inject = False
-            if _enforce is True or (isinstance(_enforce, str) and _enforce.lower() in ("true", "always", "yes", "on")):
-                _inject = True
-            elif _enforce is False or (isinstance(_enforce, str) and _enforce.lower() in ("false", "never", "no", "off")):
-                _inject = False
-            elif isinstance(_enforce, list):
-                model_lower = (self.model or "").lower()
-                _inject = any(p.lower() in model_lower for p in _enforce if isinstance(p, str))
-            else:
-                # "auto" or any unrecognised value — use hardcoded defaults
-                model_lower = (self.model or "").lower()
-                _inject = any(p in model_lower for p in TOOL_USE_ENFORCEMENT_MODELS)
-            if _inject:
-                prompt_parts.append(TOOL_USE_ENFORCEMENT_GUIDANCE)
-                _model_lower = (self.model or "").lower()
-                # Google model operational guidance (conciseness, absolute
-                # paths, parallel tool calls, verify-before-edit, etc.)
-                if "gemini" in _model_lower or "gemma" in _model_lower:
-                    prompt_parts.append(GOOGLE_MODEL_OPERATIONAL_GUIDANCE)
-                # OpenAI GPT/Codex execution discipline (tool persistence,
-                # prerequisite checks, verification, anti-hallucination).
-                if "gpt" in _model_lower or "codex" in _model_lower:
-                    prompt_parts.append(OPENAI_MODEL_EXECUTION_GUIDANCE)
-
-        # so it can refer the user to them rather than reinventing answers.
-
-        # Note: ephemeral_system_prompt is NOT included here. It's injected at
-        # API-call time only so it stays out of the cached/stored system prompt.
-        if system_message is not None:
-            prompt_parts.append(system_message)
-
-        if self._memory_store:
-            if self._memory_enabled:
-                mem_block = self._memory_store.format_for_system_prompt("memory")
-                if mem_block:
-                    prompt_parts.append(mem_block)
-            # USER.md is always included when enabled.
-            if self._user_profile_enabled:
-                user_block = self._memory_store.format_for_system_prompt("user")
-                if user_block:
-                    prompt_parts.append(user_block)
-
-        # Active goal — injected so every turn is aware of the durable objective
-        try:
-            from core.goal import get_goal_block
-            _goal_block = get_goal_block()
-            if _goal_block:
-                prompt_parts.append(_goal_block)
-        except Exception:
-            pass
-
-        # External memory provider system prompt block (additive to built-in)
-        if self._memory_manager:
-            try:
-                _ext_mem_block = self._memory_manager.build_system_prompt()
-                if _ext_mem_block:
-                    prompt_parts.append(_ext_mem_block)
-            except Exception:
-                pass
-
-        has_skills_tools = any(name in self.valid_tool_names for name in ['skills_list', 'skill_view', 'skill_manage'])
-        if has_skills_tools:
-            avail_toolsets = {
-                toolset
-                for toolset in (
-                    get_toolset_for_tool(tool_name) for tool_name in self.valid_tool_names
-                )
-                if toolset
-            }
-            _eager_skills = os.getenv("SPARK_SKILLS_INDEX", "").lower() == "eager"
-            skills_prompt = build_skills_system_prompt(
-                available_tools=self.valid_tool_names,
-                available_toolsets=avail_toolsets,
-                lazy=not _eager_skills,
-            )
-        else:
-            skills_prompt = ""
-        if skills_prompt:
-            prompt_parts.append(skills_prompt)
-
-        if not self.skip_context_files:
-            # Use TERMINAL_CWD for context file discovery when set (gateway
-            # mode).  The gateway process runs from the spark-agent install
-            # dir, so os.getcwd() would pick up the repo's AGENTS.md and
-            # other dev files — inflating token usage by ~10k for no benefit.
-            _context_cwd = self.working_dir or os.getenv("TERMINAL_CWD") or None
-            context_files_prompt = build_context_files_prompt(
-                cwd=_context_cwd, skip_soul=_soul_loaded)
-            if context_files_prompt:
-                prompt_parts.append(context_files_prompt)
-
-        from core.spark_time import now as _spark_now
-        now = _spark_now()
-        timestamp_line = f"Conversation started: {now.strftime('%A, %B %d, %Y %I:%M %p')}"
-        if self.pass_session_id and self.session_id:
-            timestamp_line += f"\nSession ID: {self.session_id}"
-        if self.model:
-            timestamp_line += f"\nModel: {self.model}"
-        if self.provider:
-            timestamp_line += f"\nProvider: {self.provider}"
-        prompt_parts.append(timestamp_line)
-
-        # Alibaba Coding Plan API always returns "glm-4.7" as model name regardless
-        # of the requested model. Inject explicit model identity into the system prompt
-        # so the agent can correctly report which model it is (workaround for API bug).
-        if self.provider == "alibaba":
-            _model_short = self.model.split("/")[-1] if "/" in self.model else self.model
-            prompt_parts.append(
-                f"You are powered by the model named {_model_short}. "
-                f"The exact model ID is {self.model}. "
-                f"When asked what model you are, always answer based on this information, "
-                f"not on any model name returned by the API."
-            )
-
-        # Environment hints (WSL, Termux, etc.) — tell the agent about the
-        # execution environment so it can translate paths and adapt behavior.
-        _env_hints = build_environment_hints()
-        if _env_hints:
-            prompt_parts.append(_env_hints)
-
-        platform_key = (self.platform or "").lower().strip()
-        if platform_key in PLATFORM_HINTS:
-            prompt_parts.append(PLATFORM_HINTS[platform_key])
-
-        return "\n\n".join(p.strip() for p in prompt_parts if p.strip())
+    # _build_system_prompt lives in the _PromptCacheMixin (run_agent/prompt_cache.py),
+    # the ADR-0001 named home for caching-sensitive system-prompt assembly.
 
     # =========================================================================
     # Pre/post-call guardrails (inspired by PR #1321 — @alireza78a)
@@ -3504,16 +2991,7 @@ class AIAgent:
 
         return None
 
-    def _invalidate_system_prompt(self):
-        """
-        Invalidate the cached system prompt, forcing a rebuild on the next turn.
-        
-        Called after context compression events. Also reloads memory from disk
-        so the rebuilt prompt captures any writes from this session.
-        """
-        self._cached_system_prompt = None
-        if self._memory_store:
-            self._memory_store.load_from_disk()
+    # _invalidate_system_prompt lives in the _PromptCacheMixin (run_agent/prompt_cache.py).
 
     def _responses_tools(self, tools: Optional[List[Dict[str, Any]]] = None) -> Optional[List[Dict[str, Any]]]:
         """Convert chat-completions tool schemas to Responses function-tool schemas."""

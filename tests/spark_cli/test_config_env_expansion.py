@@ -107,7 +107,7 @@ class TestLoadCliConfigExpansion:
 
         monkeypatch.setenv("TEST_VISION_KEY_XYZ", "vis-key-123")
         # Patch the spark home so load_cli_config finds our test config
-        monkeypatch.setattr("core.cli._spark_home", tmp_path)
+        monkeypatch.setattr("core.cli.config_state._spark_home", tmp_path)
 
         from core.cli import load_cli_config
         config = load_cli_config()
@@ -124,7 +124,7 @@ class TestLoadCliConfigExpansion:
         config_file.write_text(config_yaml)
 
         monkeypatch.delenv("UNSET_CLI_VAR_ABC", raising=False)
-        monkeypatch.setattr("core.cli._spark_home", tmp_path)
+        monkeypatch.setattr("core.cli.config_state._spark_home", tmp_path)
 
         from core.cli import load_cli_config
         config = load_cli_config()

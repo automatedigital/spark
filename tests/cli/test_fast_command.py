@@ -50,8 +50,8 @@ class TestHandleFastCommand(unittest.TestCase):
         cli_mod = _import_cli()
         stub = self._make_cli(service_tier=None)
         with (
-            patch.object(cli_mod, "_cprint") as mock_cprint,
-            patch.object(cli_mod, "save_config_value") as mock_save,
+            patch.object(cli_mod.commands_mixin, "_cprint") as mock_cprint,
+            patch.object(cli_mod.commands_mixin, "save_config_value") as mock_save,
         ):
             cli_mod.SparkCLI._handle_fast_command(stub, "/fast")
 
@@ -65,8 +65,8 @@ class TestHandleFastCommand(unittest.TestCase):
         cli_mod = _import_cli()
         stub = self._make_cli(service_tier="priority")
         with (
-            patch.object(cli_mod, "_cprint") as mock_cprint,
-            patch.object(cli_mod, "save_config_value") as mock_save,
+            patch.object(cli_mod.commands_mixin, "_cprint") as mock_cprint,
+            patch.object(cli_mod.commands_mixin, "save_config_value") as mock_save,
         ):
             cli_mod.SparkCLI._handle_fast_command(stub, "/fast")
 
@@ -78,8 +78,8 @@ class TestHandleFastCommand(unittest.TestCase):
         cli_mod = _import_cli()
         stub = self._make_cli(service_tier="priority")
         with (
-            patch.object(cli_mod, "_cprint"),
-            patch.object(cli_mod, "save_config_value", return_value=True) as mock_save,
+            patch.object(cli_mod.commands_mixin, "_cprint"),
+            patch.object(cli_mod.commands_mixin, "save_config_value", return_value=True) as mock_save,
         ):
             cli_mod.SparkCLI._handle_fast_command(stub, "/fast normal")
 
@@ -99,8 +99,8 @@ class TestHandleFastCommand(unittest.TestCase):
         )
 
         with (
-            patch.object(cli_mod, "_cprint") as mock_cprint,
-            patch.object(cli_mod, "save_config_value") as mock_save,
+            patch.object(cli_mod.commands_mixin, "_cprint") as mock_cprint,
+            patch.object(cli_mod.commands_mixin, "save_config_value") as mock_save,
         ):
             cli_mod.SparkCLI._handle_fast_command(stub, "/fast")
 

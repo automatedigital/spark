@@ -307,7 +307,7 @@ class TestReasoningPreviewBuffering(unittest.TestCase):
         cli._invalidate = lambda *args, **kwargs: None
         return cli
 
-    @patch("core.cli._cprint")
+    @patch("core.cli.streaming_mixin._cprint")
     def test_streamed_reasoning_chunks_wait_for_boundary(self, mock_cprint):
         cli = self._make_cli()
 
@@ -323,7 +323,7 @@ class TestReasoningPreviewBuffering(unittest.TestCase):
         rendered = mock_cprint.call_args[0][0]
         self.assertIn("[thinking] Let me think about this.", rendered)
 
-    @patch("core.cli._cprint")
+    @patch("core.cli.streaming_mixin._cprint")
     def test_pending_reasoning_flushes_when_thinking_stops(self, mock_cprint):
         cli = self._make_cli()
 
@@ -341,7 +341,7 @@ class TestReasoningPreviewBuffering(unittest.TestCase):
         rendered = mock_cprint.call_args[0][0]
         self.assertIn("[thinking] see how this plays out", rendered)
 
-    @patch("core.cli._cprint")
+    @patch("core.cli.streaming_mixin._cprint")
     @patch("core.cli.shutil.get_terminal_size", return_value=SimpleNamespace(columns=50))
     def test_reasoning_preview_compacts_newlines_and_wraps_to_terminal(self, _mock_term, mock_cprint):
         cli = self._make_cli()
@@ -719,14 +719,14 @@ class TestReasoningShownThisTurnFlag(unittest.TestCase):
         cli._reasoning_preview_buf = ""
         return cli
 
-    @patch("core.cli._cprint")
+    @patch("core.cli.streaming_mixin._cprint")
     def test_streaming_reasoning_sets_turn_flag(self, mock_cprint):
         cli = self._make_cli()
         self.assertFalse(cli._reasoning_shown_this_turn)
         cli._stream_reasoning_delta("Thinking about it...")
         self.assertTrue(cli._reasoning_shown_this_turn)
 
-    @patch("core.cli._cprint")
+    @patch("core.cli.streaming_mixin._cprint")
     def test_turn_flag_survives_reset_stream_state(self, mock_cprint):
         """_reasoning_shown_this_turn must NOT be cleared by
         _reset_stream_state (called at intermediate turn boundaries)."""
@@ -740,7 +740,7 @@ class TestReasoningShownThisTurnFlag(unittest.TestCase):
         # Flag must persist
         self.assertTrue(cli._reasoning_shown_this_turn)
 
-    @patch("core.cli._cprint")
+    @patch("core.cli.streaming_mixin._cprint")
     def test_turn_flag_cleared_before_new_turn(self, mock_cprint):
         """The turn flag should be reset at the start of a new user turn.
         This happens outside _reset_stream_state, at the call site."""

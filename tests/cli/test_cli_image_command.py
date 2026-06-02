@@ -26,7 +26,7 @@ class TestImageCommand:
         img = _make_image(tmp_path / "photo.png")
         cli_obj = _make_cli()
 
-        with patch("core.cli._cprint"):
+        with patch("core.cli.display_mixin._cprint"):
             cli_obj._handle_image_command(f"/image {img}")
 
         assert cli_obj._attached_images == [img]
@@ -35,7 +35,7 @@ class TestImageCommand:
         img = _make_image(tmp_path / "my photo.png")
         cli_obj = _make_cli()
 
-        with patch("core.cli._cprint"):
+        with patch("core.cli.display_mixin._cprint"):
             cli_obj._handle_image_command(f'/image "{img}"')
 
         assert cli_obj._attached_images == [img]
@@ -45,7 +45,7 @@ class TestImageCommand:
         file_path.write_text("hello\n", encoding="utf-8")
         cli_obj = _make_cli()
 
-        with patch("core.cli._cprint") as mock_print:
+        with patch("core.cli.display_mixin._cprint") as mock_print:
             cli_obj._handle_image_command(f"/image {file_path}")
 
         assert cli_obj._attached_images == []

@@ -319,3 +319,195 @@ def test_scheduler_tick_does_not_fire_within_23h(dream_mod):
         fired = dream_mod.scheduler_tick()
     assert fired is False
     run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Guard: Dream is explicit-only — it must NEVER auto-fire at session end
+# (Phase 2b). It runs only via /dream or an opt-in daily schedule.
+# ---------------------------------------------------------------------------
+
+def test_dream_disabled_by_default(dream_mod):
+    """A fresh install has no Dream schedule — it never runs unprompted."""
+    assert dream_mod.get_schedule()["enabled"] is False
+
+
+def test_memory_session_end_does_not_invoke_dream(dream_mod):
+    """The memory provider's on_session_end must not trigger Dream.
+
+    Session end auto-updates memory (holographic auto-extract + MEMORY.md flush),
+    but Dream — the heavy synthesis pass — stays explicit. Guards against a future
+    regression wiring run_dream/scheduler_tick into the session-end path.
+    """
+    from unittest.mock import MagicMock
+
+    from plugins.memory.holographic import HolographicMemoryProvider
+
+    provider = HolographicMemoryProvider(config={})
+    provider._store = MagicMock()
+
+    messages = [{"role": "user", "content": "I prefer concise replies"}]
+    with patch.object(dream_mod, "run_dream") as run, \
+         patch.object(dream_mod, "scheduler_tick") as tick:
+        provider.on_session_end(messages)
+
+    run.assert_not_called()
+    tick.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tool/skill usage feed into Dream synthesis (Phase 2b telemetry)
+# ---------------------------------------------------------------------------
+
+def test_format_tool_usage_empty(dream_mod):
+    assert dream_mod._format_tool_usage([]) == "(no tool/skill usage recorded)"
+
+
+def test_format_tool_usage_sorted_and_capped(dream_mod):
+    usage = [{"tool_name": "read_file", "count": 9}, {"tool_name": "terminal", "count": 20}]
+    out = dream_mod._format_tool_usage(usage, top=1)
+    # Already sorted by caller, but format keeps order and caps to `top`
+    assert "read_file: 9" in out
+    assert "terminal" not in out  # capped at top=1
+
+
+def test_gather_tool_usage_non_fatal(dream_mod):
+    """A broken session db yields [] rather than raising."""
+    assert dream_mod._gather_tool_usage(object(), None) == []
+
+
+def test_run_dream_passes_usage_block_to_synthesis(dream_mod, tmp_path, monkeypatch):
+    """run_dream feeds a tool-usage block into the synthesis LLM call."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    _populate_sessions(tmp_path)
+    _populate_facts(tmp_path)
+
+    captured = {}
+
+    def _fake_synth(facts_block, transcripts, usage_block="", memory_md_block=""):
+        captured["usage_block"] = usage_block
+        captured["memory_md_block"] = memory_md_block
+        return {"insights": [], "consolidations": [], "stale": [], "summary": "ok"}
+
+    monkeypatch.setattr(dream_mod, "_call_synthesis_llm", _fake_synth)
+    dream_mod.run_dream(dry_run=True)
+
+    assert "usage_block" in captured  # synthesis received the third argument
+    assert "memory_md_block" in captured  # and the MEMORY.md block (fourth)
+
+
+# ---------------------------------------------------------------------------
+# MEMORY.md compaction proposal (Phase 2b) — proposal only, never auto-applied
+# ---------------------------------------------------------------------------
+
+def test_format_memory_md_empty(dream_mod):
+    assert dream_mod._format_memory_md([]) == "(MEMORY.md is empty)"
+
+
+def test_unified_memory_diff_shows_changes(dream_mod):
+    before = ["uses zsh", "likes tabs", "likes tabs over spaces"]
+    after = ["uses zsh", "prefers tabs over spaces"]
+    diff = dream_mod._unified_memory_diff(before, after)
+    joined = "\n".join(diff)
+    assert any(line.startswith("-") for line in diff)
+    assert any(line.startswith("+") for line in diff)
+    assert "prefers tabs over spaces" in joined
+
+
+def test_compaction_proposal_written_to_wiki_not_memory(dream_mod, tmp_path, monkeypatch):
+    """A compaction proposal lands in the wiki entry; MEMORY.md is untouched."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    _populate_sessions(tmp_path)
+    _populate_facts(tmp_path)
+
+    # Seed MEMORY.md with redundant entries
+    mem_dir = tmp_path / "memories"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    memory_file = mem_dir / "MEMORY.md"
+    original = "likes tabs\n§\nlikes tabs over spaces\n§\nuses zsh"
+    memory_file.write_text(original)
+
+    payload = {
+        "insights": [], "consolidations": [], "stale": [],
+        "memory_compaction": {
+            "proposed": ["prefers tabs over spaces", "uses zsh"],
+            "rationale": "Merged duplicate tab preferences.",
+        },
+        "summary": "compacted",
+    }
+    monkeypatch.setattr(dream_mod, "_call_synthesis_llm", _mock_llm(payload))
+
+    result = dream_mod.run_dream()
+    assert result.error is None
+    # MEMORY.md itself is NOT rewritten by Dream
+    assert memory_file.read_text() == original
+    # The proposal + diff are in the wiki entry
+    wiki_text = Path(result.wiki_entry).read_text()
+    assert "MEMORY.md compaction (proposed" in wiki_text
+    assert "prefers tabs over spaces" in wiki_text
+    assert "Merged duplicate tab preferences." in wiki_text
+
+
+# ---------------------------------------------------------------------------
+# /learnings review surface backend (Phase 2b)
+# ---------------------------------------------------------------------------
+
+def test_get_pending_removals_empty(dream_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    assert dream_mod.get_pending_removals() == []
+
+
+def test_resolve_removal_dismiss_keeps_fact(dream_mod, tmp_path, monkeypatch):
+    """confirm=False dequeues the removal but leaves the fact in the store."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    fact_ids = _populate_facts(tmp_path)
+    dream_mod._write_json(
+        dream_mod._pending_removals_path(),
+        [{"fact_id": fact_ids[0], "reason": "looks stale", "queued_at": "now"}],
+    )
+
+    assert dream_mod.resolve_removal(fact_ids[0], confirm=False) is True
+    assert dream_mod.get_pending_removals() == []  # dequeued
+
+    from plugins.memory.holographic.store import MemoryStore
+    store = MemoryStore(db_path=tmp_path / "memory_store.db")
+    ids = [f["fact_id"] for f in store.list_facts(limit=100)]
+    store.close()
+    assert fact_ids[0] in ids  # fact kept
+
+
+def test_resolve_removal_confirm_deletes_fact(dream_mod, tmp_path, monkeypatch):
+    """confirm=True removes the fact from the store and dequeues."""
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    fact_ids = _populate_facts(tmp_path)
+    dream_mod._write_json(
+        dream_mod._pending_removals_path(),
+        [{"fact_id": fact_ids[0], "reason": "stale", "queued_at": "now"}],
+    )
+
+    assert dream_mod.resolve_removal(fact_ids[0], confirm=True) is True
+    assert dream_mod.get_pending_removals() == []
+
+    from plugins.memory.holographic.store import MemoryStore
+    store = MemoryStore(db_path=tmp_path / "memory_store.db")
+    ids = [f["fact_id"] for f in store.list_facts(limit=100)]
+    store.close()
+    assert fact_ids[0] not in ids  # fact deleted
+
+
+def test_resolve_removal_unknown_id(dream_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    assert dream_mod.resolve_removal(99999, confirm=True) is False
+
+
+def test_list_recent_dreams(dream_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    _populate_sessions(tmp_path)
+    _populate_facts(tmp_path)
+    payload = {"insights": [], "consolidations": [], "stale": [], "summary": "dreamt"}
+    monkeypatch.setattr(dream_mod, "_call_synthesis_llm", _mock_llm(payload))
+    dream_mod.run_dream()
+
+    recent = dream_mod.list_recent_dreams(limit=5)
+    assert len(recent) >= 1
+    assert recent[0]["name"].endswith(".md")
+    assert "title" in recent[0]

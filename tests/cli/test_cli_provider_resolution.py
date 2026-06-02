@@ -110,7 +110,8 @@ def _install_prompt_toolkit_stubs():
 
 def _import_cli():
     for name in list(sys.modules):
-        if name in ("cli", "core.cli") or name == "run_agent" or name == "tools" or name.startswith("tools."):
+        if (name in ("cli", "core.cli") or name.startswith("core.cli.")
+                or name == "run_agent" or name == "tools" or name.startswith("tools.")):
             sys.modules.pop(name, None)
 
     if "firecrawl" not in sys.modules:
@@ -164,7 +165,7 @@ def test_runtime_resolution_failure_is_not_sticky(monkeypatch):
 
     monkeypatch.setattr("spark_cli.runtime_provider.resolve_runtime_provider", _runtime_resolve)
     monkeypatch.setattr("spark_cli.runtime_provider.format_runtime_provider_error", lambda exc: str(exc))
-    monkeypatch.setattr(cli, "AIAgent", _DummyAgent)
+    monkeypatch.setattr(cli.agent_setup_mixin, "AIAgent", _DummyAgent)
 
     shell = cli.SparkCLI(model="gpt-5", compact=True, max_turns=1)
 

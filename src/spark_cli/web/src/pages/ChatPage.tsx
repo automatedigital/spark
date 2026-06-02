@@ -503,11 +503,18 @@ function WorkspaceRightPanel({
       style={{ width }}
     >
       {/* Tab bar */}
-      <div className="flex h-8 shrink-0 items-center border-b border-border">
+      <div
+        className="flex h-8 shrink-0 items-center border-b border-border"
+        role="tablist"
+        aria-label="Project tools"
+      >
         {(["files", "terminal"] as RightTab[]).map((tab) => (
           <button
             key={tab}
             type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
+            aria-label={tab === "files" ? "Files" : "Terminal"}
             onClick={() => setActiveTab(tab)}
             className={cn(
               "flex h-8 items-center gap-1.5 border-r border-border px-3 text-[11px] capitalize transition",
@@ -647,6 +654,10 @@ export default function ChatPage() {
   const activeProjectSlug = useMemo(
     () => slugFromSource(selectedSession?.source ?? null),
     [selectedSession],
+  );
+  const activeWorkspaceSlug = useMemo(
+    () => activeProjectSlug ?? (composingFor && composingFor !== "global" ? composingFor : null),
+    [activeProjectSlug, composingFor],
   );
 
   const composingProjectName = useMemo(() => {
@@ -1060,7 +1071,8 @@ export default function ChatPage() {
           </button>
           <button
             type="button"
-            title="Search (⌘K)"
+            title="Search threads (⌘F)"
+            aria-label="Search threads"
             className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
             onClick={() => searchInputRef.current?.focus()}
           >
@@ -1358,11 +1370,11 @@ export default function ChatPage() {
         </div>
 
         {/* Right panel — only when a workspace thread is selected; hidden on mobile */}
-        {activeProjectSlug && (
+        {activeWorkspaceSlug && (
           <div className="hidden md:flex">
             {rightPanelOpen && <ResizeDivider onDrag={handleRightPanelDrag} />}
             <WorkspaceRightPanel
-              slug={activeProjectSlug}
+              slug={activeWorkspaceSlug}
               open={rightPanelOpen}
               onToggle={toggleRightPanel}
               width={rightPanelWidth}

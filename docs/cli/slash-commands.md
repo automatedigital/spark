@@ -65,6 +65,7 @@ Type `/` in the CLI to open the autocomplete menu. Built-in commands are case-in
 | `/browser [connect\|disconnect\|status]` | Manage local Chrome CDP connection. `connect` attaches browser tools to a running Chrome instance (default: `ws://localhost:9222`). `disconnect` detaches. `status` shows current connection. Auto-launches Chrome if no debugger is detected. |
 | `/skills` | Search, install, inspect, or manage skills from online registries |
 | `/dream [now\|schedule\|unschedule\|status\|review]` | Offline reflection pass over recent sessions and memory. See [Dream](#dream). |
+| `/learnings` | Review recent dream syntheses and confirm memory removals Dream flagged. See [Learnings](#learnings). |
 | `/goal [<objective>\|status\|pause\|resume\|done\|clear\|history]` | Set or manage a durable objective Spark pursues across every session. Backed by the Kanban board — manageable in the Dashboard in real time. See [Goal tracking](#goal-tracking). |
 | `/cron` | Manage scheduled tasks (list, add/create, edit, pause, resume, run, remove) |
 | `/reload-mcp` (alias: `/reload_mcp`) | Reload MCP servers from config.yaml |
@@ -158,13 +159,43 @@ These commands work inside Telegram, Discord, Slack, WhatsApp, Signal, Email, an
 
 `/dream` runs an offline reflective consolidation pass over recent session transcripts and the holographic memory store. A single LLM synthesis call extracts durable insights, merges semantically-duplicate facts, and writes a human-readable journal entry to the llm-wiki under `dreams/`.
 
+Dream is **explicit-only** — it runs solely when you invoke `/dream` or enable a daily schedule. It never fires automatically at the end of a session. (Lightweight memory *does* update every session — see [Auto-memory](#auto-memory) — but the heavy synthesis pass stays under your control.)
+
+The synthesis call is grounded in four inputs:
+
+1. **Existing facts** from the holographic store (with trust scores).
+2. **Tool / skill usage** — how often you actually rely on each tool/skill (read from the session database, no separate telemetry store), so insights reflect your real workflow.
+3. **Current `MEMORY.md`** — Dream proposes a deduped/consolidated rewrite. The proposal and a before/after diff are written into the dream's wiki entry for review; **`MEMORY.md` on disk is never rewritten automatically**.
+4. **Recent session transcripts.**
+
+Stale facts are *flagged*, never auto-deleted — you confirm removals with [`/learnings`](#learnings).
+
 | Subcommand | What it does |
 |-----------|--------------|
 | `/dream` or `/dream now` | Run a pass immediately (prompts on first run) |
 | `/dream schedule` | Enable daily automatic runs (fires at 03:00 local by default) |
 | `/dream unschedule` | Disable the daily schedule |
 | `/dream status` | Show last run time, total runs, schedule state, and wiki path |
-| `/dream review` | List facts flagged as potentially stale — confirm removal with `/memory` |
+| `/dream review` | List facts flagged as potentially stale (display only) |
+
+## Learnings
+
+`/learnings` is the review surface for what Dream has produced. It lists the most recent dream syntheses (with their wiki paths) and the queue of facts Dream flagged as stale, then lets you act on each one:
+
+- **keep** — dismiss the flag and leave the fact in memory.
+- **remove** — delete the fact from the holographic store.
+- **skip all** — stop reviewing; remaining items stay queued.
+
+In the **gateway** (Telegram/Discord/etc.) and the **web dashboard** command palette, `/learnings` is read-only — it shows recent dreams and the pending queue, but removals are confirmed from the CLI (where the interactive prompt lives). Alias: `/learned`.
+
+## Auto-memory
+
+Independently of Dream, Spark keeps memory current **automatically at the end of every session** — no command needed:
+
+- **Holographic facts** are auto-extracted from the conversation (`auto_extract`, on by default — set `plugins.spark-memory-store.auto_extract: false` to opt out).
+- **`MEMORY.md`** is updated via a turn-gated flush: for substantial sessions (default ≥ `memory.flush_min_turns` user turns) the model gets one cheap auxiliary-model turn to persist durable notes.
+
+This runs strictly at session end, so it never affects prompt caching mid-conversation. Dream then handles the heavier, periodic consolidation of what accumulates.
 
 ## Goal tracking
 

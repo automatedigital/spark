@@ -114,5 +114,3 @@ def _ensure_current_event_loop(request):
                 loop.close()
             finally:
                 asyncio.set_event_loop(None)
-
-

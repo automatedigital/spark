@@ -145,7 +145,9 @@ class HomeAssistantAdapter(BasePlatformAdapter):
         self._session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         )
-        self._ws = await self._session.ws_connect(ws_url, heartbeat=30, timeout=30)
+        self._ws = await self._session.ws_connect(
+            ws_url, heartbeat=30, timeout=aiohttp.ClientWSTimeout(ws_close=10.0)
+        )
 
         # Step 1: Receive auth_required
         msg = await self._ws.receive_json()

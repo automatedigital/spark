@@ -55,7 +55,6 @@ export default function SettingsPanel({ onClose, initialTab = "status" }: Settin
       />
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        aria-hidden="true"
         onClick={onClose}
       >
         <div
@@ -71,11 +70,18 @@ export default function SettingsPanel({ onClose, initialTab = "status" }: Settin
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Settings
             </span>
-            <div className="ml-2 flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-none">
+            <div
+              className="ml-2 flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-none"
+              role="tablist"
+              aria-label="Settings sections"
+            >
               {SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === id}
+                  aria-label={label}
                   onClick={() => handleTabChange(id)}
                   className={`flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-3 text-xs font-medium transition ${
                     activeTab === id
