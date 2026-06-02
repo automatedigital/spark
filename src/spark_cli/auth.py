@@ -1128,6 +1128,17 @@ def _codex_access_token_is_expiring(access_token: Any, skew_seconds: int) -> boo
     return float(exp) <= (time.time() + max(0, int(skew_seconds)))
 
 
+def _codex_token_exp(access_token: Any) -> float | None:
+    """Return a Codex access token's JWT ``exp`` (epoch seconds), or None.
+
+    Used to compare two tokens' freshness — e.g. deciding whether the Codex CLI
+    shared store holds a newer token than Spark's own, which signals Spark's
+    token was superseded by the CLI rotating their shared refresh token.
+    """
+    exp = _decode_jwt_claims(access_token).get("exp")
+    return float(exp) if isinstance(exp, (int, float)) else None
+
+
 def _qwen_cli_auth_path() -> Path:
     return Path.home() / ".qwen" / "oauth_creds.json"
 
@@ -1536,6 +1547,11 @@ def refresh_codex_oauth_pure(
     next_refresh = refresh_payload.get("refresh_token")
     if isinstance(next_refresh, str) and next_refresh.strip():
         updated["refresh_token"] = next_refresh.strip()
+    # Preserve a refreshed id_token when the server returns one. Dropping it
+    # left the stored id_token to expire while the access token kept rotating.
+    next_id = refresh_payload.get("id_token")
+    if isinstance(next_id, str) and next_id.strip():
+        updated["id_token"] = next_id.strip()
     return updated
 
 
@@ -1555,6 +1571,8 @@ def _refresh_codex_auth_tokens(
     updated_tokens = dict(tokens)
     updated_tokens["access_token"] = refreshed["access_token"]
     updated_tokens["refresh_token"] = refreshed["refresh_token"]
+    if refreshed.get("id_token"):
+        updated_tokens["id_token"] = refreshed["id_token"]
 
     _save_codex_tokens(updated_tokens)
     # Write back to ~/.codex/auth.json so Codex CLI / VS Code stay in sync.

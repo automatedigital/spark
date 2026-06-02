@@ -1065,23 +1065,46 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
     elif provider == "openai-codex":
         state = _load_provider_state(auth_store, "openai-codex")
         tokens = state.get("tokens") if isinstance(state, dict) else None
-        # Fallback: import from Codex CLI (~/.codex/auth.json) if Spark auth
-        # store has no tokens.  This mirrors resolve_codex_runtime_credentials()
-        # so that load_pool() and list_authenticated_providers() detect tokens
-        # that only exist in the Codex CLI shared file.
-        if not (isinstance(tokens, dict) and tokens.get("access_token")):
-            try:
-                from spark_cli.auth import _import_codex_cli_tokens, _save_codex_tokens
-                cli_tokens = _import_codex_cli_tokens()
-                if cli_tokens:
-                    logger.info("Importing Codex CLI tokens into Spark auth store.")
+        spark_access = tokens.get("access_token") if isinstance(tokens, dict) else None
+        # Recover from the Codex CLI shared store (~/.codex/auth.json) when Spark
+        # has no token OR when the CLI holds a *newer* one. The latter is the
+        # common multi-client failure: the Codex CLI (or VS Code extension)
+        # rotates the single-use refresh token that Spark also relies on, which
+        # silently invalidates Spark's stored access token *server-side*. That
+        # token still looks valid by its `exp` claim, so an expiry check alone
+        # misses it and Spark keeps sending a dead token ("Could not parse your
+        # authentication token"). Preferring the newer token re-syncs Spark.
+        #
+        # This does NOT require the Codex CLI: solo Spark users have no
+        # ~/.codex/auth.json to import from (`_import_codex_cli_tokens` returns
+        # None), so they simply keep using their own independently-refreshed
+        # token. It only kicks in to rescue users who also run the CLI.
+        try:
+            from spark_cli.auth import (
+                _codex_token_exp,
+                _import_codex_cli_tokens,
+                _save_codex_tokens,
+            )
+            cli_tokens = _import_codex_cli_tokens()  # None if absent or expired
+            if cli_tokens:
+                cli_access = cli_tokens.get("access_token")
+                spark_exp = _codex_token_exp(spark_access) if spark_access else None
+                cli_exp = _codex_token_exp(cli_access)
+                cli_is_newer = (
+                    not spark_access
+                    or (cli_exp is not None and (spark_exp is None or cli_exp > spark_exp))
+                )
+                if cli_is_newer:
+                    logger.info(
+                        "Codex: Spark's stored token is missing or superseded; "
+                        "importing the newer Codex CLI token to re-sync."
+                    )
                     _save_codex_tokens(cli_tokens)
-                    # Re-read state after import
                     auth_store = _load_auth_store()
                     state = _load_provider_state(auth_store, "openai-codex")
                     tokens = state.get("tokens") if isinstance(state, dict) else None
-            except Exception as exc:
-                logger.debug("Codex CLI token import failed: %s", exc)
+        except Exception as exc:
+            logger.debug("Codex CLI token import/re-sync failed: %s", exc)
         if isinstance(tokens, dict) and tokens.get("access_token"):
             active_sources.add("device_code")
             changed |= _upsert_entry(
