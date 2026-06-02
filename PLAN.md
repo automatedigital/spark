@@ -238,6 +238,13 @@ Do this last; it touches the caching-sensitive loop.
 - [ ] Extract into `core/run_agent/` submodules; isolate caching-sensitive code
       (system-prompt build + `cache_control` placement) into one named module
       (e.g. `run_agent/prompt_cache.py`). Re-export `AIAgent`.
+  - [x] **Stage 1** — `core/run_agent.py` → `core/run_agent/__init__.py` (package
+        skeleton). Same `core.run_agent` namespace, so all `from core.run_agent
+        import X` and the ~30 test files patching `core.run_agent.X` keep working.
+        Fixed the dev-fallback `.env` resolution (`Path(__file__).parent` →
+        `.parent.parent`) to still point at `src/core/.env`, and updated the one
+        source-inspection test (`test_voice_cli_integration.py`) to the new path.
+        Golden + run_agent suite green (834 passed).
 - [ ] No behavioral edits — relocation only. Golden test + full suite green per commit.
 - [ ] Manual cost-sanity check: run a multi-turn session, confirm cache-read tokens
       appear as before (no cache-miss regression).

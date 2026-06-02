@@ -49,8 +49,10 @@ from core.spark_constants import get_spark_home
 # User-managed env files should override stale shell exports on restart.
 from spark_cli.env_loader import load_spark_dotenv
 
+# NOTE: this module now lives in the core/run_agent/ package (was core/run_agent.py),
+# so the dev-fallback .env still resolves to src/core/.env via .parent.parent.
 _spark_home = get_spark_home()
-_project_env = Path(__file__).parent / '.env'
+_project_env = Path(__file__).parent.parent / '.env'
 _loaded_env_paths = load_spark_dotenv(spark_home=_spark_home, project_env=_project_env)
 if _loaded_env_paths:
     for _env_path in _loaded_env_paths:
