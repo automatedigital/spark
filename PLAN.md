@@ -223,12 +223,18 @@ the public import + monkeypatch namespace via re-export throughout.
 Governed by **[ADR-0001](docs/adr/0001-preserve-prompt-caching-while-splitting-run-agent.md)**.
 Do this last; it touches the caching-sensitive loop.
 
-- [ ] **First, author the caching-invariant golden test** (ADR-0001 §1): capture
+- [x] **First, author the caching-invariant golden test** (ADR-0001 §1): captured
       the exact serialized request (system blocks, `cache_control` positions, tool
-      schema order) for a representative conversation; assert byte-exact equality.
-      This gates every commit in this phase.
-- [ ] If the golden test is too entangled to write cheaply → **stop**, document
-      why, and defer the split (per ADR consequences). Don't proceed blind.
+      schema order) for a representative conversation; asserts byte-exact equality.
+      Landed in `tests/run_agent/test_caching_golden.py` (3 tests): the Anthropic
+      `system_and_3` breakpoints + tool order, the Codex Responses payload
+      (instructions/input order/`prompt_cache_key`), and a defense-in-depth
+      assertion that breakpoints never exceed Anthropic's max of 4. Gates every
+      commit in this phase.
+- [x] If the golden test is too entangled to write cheaply → **stop**. **Verdict:
+      not entangled.** The serialization is reachable through the existing
+      deterministic `_build_api_kwargs` + `apply_anthropic_cache_control` seam with
+      pinned tools/session_id, so the golden was cheap to write. Proceeding.
 - [ ] Extract into `core/run_agent/` submodules; isolate caching-sensitive code
       (system-prompt build + `cache_control` placement) into one named module
       (e.g. `run_agent/prompt_cache.py`). Re-export `AIAgent`.
