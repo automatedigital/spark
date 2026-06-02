@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +13,7 @@ export function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -29,13 +31,35 @@ export function Select({
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        listRef.current &&
+        !listRef.current.contains(target)
+      ) {
         close();
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open, close]);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (containerRef.current) {
+        setMenuRect(containerRef.current.getBoundingClientRect());
+      }
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open && listRef.current && highlightedIndex >= 0) {
@@ -108,12 +132,17 @@ export function Select({
         />
       </button>
 
-      {open && (
+      {open && menuRect && createPortal(
         <div
           ref={listRef}
           role="listbox"
+          style={{
+            left: menuRect.left,
+            top: menuRect.bottom + 4,
+            width: menuRect.width,
+          }}
           className={cn(
-            "absolute z-50 mt-1 w-full border border-border bg-popover text-popover-foreground shadow-lg",
+            "fixed z-[1000] border border-border bg-popover text-popover-foreground shadow-lg",
             "max-h-60 overflow-auto",
             "animate-[fade-in_100ms_ease-out]",
           )}
@@ -148,7 +177,8 @@ export function Select({
               </div>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

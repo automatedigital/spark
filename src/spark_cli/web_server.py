@@ -1607,13 +1607,16 @@ def _reveal_authorized(request: Request) -> bool:
         return True
     secret = get_configured_dashboard_secret()
     if not secret:
-        return False
-    from spark_cli.dashboard_auth import extract_bearer_token
-
-    tok = extract_bearer_token(auth)
-    if tok and secrets.compare_digest(tok, secret):
-        return True
-    return False
+        secret = ensure_dashboard_token_file()
+    client_host = request.client.host if request.client else None
+    qtoken = request.query_params.get("dashboard_token")
+    return validate_dashboard_request(
+        client_host,
+        auth,
+        require_for_remote=True,
+        secret=secret,
+        query_token=qtoken,
+    )
 
 
 @app.get("/api/sessions")

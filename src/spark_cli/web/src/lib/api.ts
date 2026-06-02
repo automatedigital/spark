@@ -96,6 +96,22 @@ async function withSessionToken<T>(run: (token: string) => Promise<T>): Promise<
   }
 }
 
+async function withDashboardOrSessionToken<T>(
+  run: (headers: HeadersInit) => Promise<T>,
+): Promise<T> {
+  const dashboardToken = getDashboardToken();
+  if (dashboardToken) {
+    try {
+      return await run({ Authorization: `Bearer ${dashboardToken}` });
+    } catch (e) {
+      if (!(e instanceof Error) || !e.message.startsWith("401")) {
+        throw e;
+      }
+    }
+  }
+  return withSessionToken((token) => run({ Authorization: `Bearer ${token}` }));
+}
+
 export const api = {
   getStatus: () => fetchJSON<StatusResponse>("/api/status"),
   getOnboardingStatus: () =>
@@ -550,38 +566,38 @@ export const api = {
   getOAuthProviders: () =>
     fetchJSON<OAuthProvidersResponse>("/api/providers/oauth"),
   disconnectOAuthProvider: (providerId: string) =>
-    withSessionToken((token) =>
+    withDashboardOrSessionToken((authHeader) =>
       fetchJSON<{ ok: boolean; provider: string }>(
         `/api/providers/oauth/${encodeURIComponent(providerId)}`,
         {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: authHeader,
         },
       ),
     ),
   startOAuthLogin: (providerId: string) =>
-    withSessionToken((token) =>
+    withDashboardOrSessionToken((authHeader) =>
       fetchJSON<OAuthStartResponse>(
         `/api/providers/oauth/${encodeURIComponent(providerId)}/start`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            ...authHeader,
           },
           body: "{}",
         },
       ),
     ),
   submitOAuthCode: (providerId: string, sessionId: string, code: string) =>
-    withSessionToken((token) =>
+    withDashboardOrSessionToken((authHeader) =>
       fetchJSON<OAuthSubmitResponse>(
         `/api/providers/oauth/${encodeURIComponent(providerId)}/submit`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            ...authHeader,
           },
           body: JSON.stringify({ session_id: sessionId, code }),
         },
@@ -592,12 +608,12 @@ export const api = {
       `/api/providers/oauth/${encodeURIComponent(providerId)}/poll/${encodeURIComponent(sessionId)}`,
     ),
   cancelOAuthSession: (sessionId: string) =>
-    withSessionToken((token) =>
+    withDashboardOrSessionToken((authHeader) =>
       fetchJSON<{ ok: boolean }>(
         `/api/providers/oauth/sessions/${encodeURIComponent(sessionId)}`,
         {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: authHeader,
         },
       ),
     ),
