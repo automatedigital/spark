@@ -599,7 +599,7 @@ export default function ChatPage() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("spark-chat-sidebar-width");
-    return saved ? Math.max(280, parseInt(saved, 10)) : 280;
+    return saved ? Math.max(296, parseInt(saved, 10)) : 296;
   });
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(() =>
     localStorage.getItem("spark-chat-left-sidebar") !== "false"
@@ -849,7 +849,7 @@ export default function ChatPage() {
 
   const handleSidebarDrag = useCallback((delta: number) => {
     setSidebarWidth((width) => {
-      const next = Math.max(280, Math.min(520, width + delta));
+      const next = Math.max(296, Math.min(520, width + delta));
       localStorage.setItem("spark-chat-sidebar-width", String(next));
       return next;
     });
