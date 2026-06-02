@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import {
   Code,
   Download,
@@ -13,6 +13,8 @@ import {
   FileText,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { OAuthProvider } from "@/lib/api";
+import { OAuthLoginModal } from "@/components/OAuthLoginModal";
 import { getNestedValue, setNestedValue } from "@/lib/nested";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/Toast";
@@ -96,6 +98,166 @@ const MODEL_PROVIDER_OPTIONS = [
   { value: "ollama", label: "Ollama" },
   { value: "custom", label: "Custom" },
 ];
+
+// OAuth-backed providers that can be (re)connected from the dashboard. When one
+// of these is the selected provider, the model editor surfaces an inline
+// connection status + Reconnect button so the user can refresh rotated auth.
+const OAUTH_RECONNECT_PROVIDERS = new Set(["openai-codex", "qwen-oauth", "anthropic"]);
+
+/**
+ * Model name field that adapts to the selected provider:
+ *  - Fixed/managed catalogs (openai-codex, qwen-oauth) → strict dropdown.
+ *  - Open-ended providers (ollama, openrouter, custom, …) → free-text input
+ *    with the known names offered as `datalist` suggestions.
+ * The current value is always preserved as a selectable option so an existing
+ * or hand-entered config value is never silently dropped.
+ */
+function ModelField({
+  provider,
+  value,
+  onChange,
+  placeholder,
+}: {
+  provider: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [models, setModels] = useState<string[]>([]);
+  const [strict, setStrict] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!provider) {
+      setModels([]);
+      setStrict(false);
+      return;
+    }
+    api
+      .getAvailableModels(provider)
+      .then((r) => {
+        if (cancelled) return;
+        setModels(Array.isArray(r.models) ? r.models : []);
+        setStrict(!!r.strict);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setModels([]);
+        setStrict(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
+
+  if (strict && models.length > 0) {
+    const options = value && !models.includes(value) ? [...models, value] : models;
+    return (
+      <Select value={value} onValueChange={onChange}>
+        {!value && <SelectOption value="">Select a model…</SelectOption>}
+        {options.map((m) => (
+          <SelectOption key={m} value={m}>
+            {m}
+          </SelectOption>
+        ))}
+      </Select>
+    );
+  }
+
+  const listId = `model-options-${provider || "none"}`;
+  return (
+    <>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        list={models.length > 0 ? listId : undefined}
+      />
+      {models.length > 0 && (
+        <datalist id={listId}>
+          {models.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+      )}
+    </>
+  );
+}
+
+/**
+ * Inline OAuth connection status + (re)connect control for the selected
+ * provider. Renders nothing for non-OAuth providers. Reuses the existing
+ * device-code/PKCE flow via OAuthLoginModal so rotated auth can be refreshed
+ * without leaving the Config tab.
+ */
+function ProviderConnection({
+  providerId,
+  onError,
+  onSuccess,
+}: {
+  providerId: string;
+  onError: (msg: string) => void;
+  onSuccess: (msg: string) => void;
+}) {
+  const [provider, setProvider] = useState<OAuthProvider | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const refresh = useCallback(() => {
+    api
+      .getOAuthProviders()
+      .then((r) => setProvider(r.providers.find((p) => p.id === providerId) ?? null))
+      .catch(() => setProvider(null));
+  }, [providerId]);
+
+  useEffect(() => {
+    if (OAUTH_RECONNECT_PROVIDERS.has(providerId)) refresh();
+    else setProvider(null);
+  }, [providerId, refresh]);
+
+  if (!OAUTH_RECONNECT_PROVIDERS.has(providerId) || !provider) return null;
+
+  const loggedIn = !!provider.status.logged_in;
+  return (
+    <div className="md:col-span-2 flex items-center justify-between gap-3 border border-border/60 bg-muted/20 px-3 py-2">
+      <div className="flex items-center gap-2 text-xs">
+        <span
+          className={[
+            "inline-block h-2 w-2 rounded-full",
+            loggedIn ? "bg-emerald-500" : "bg-amber-500",
+          ].join(" ")}
+          aria-hidden
+        />
+        <span className="text-muted-foreground">
+          {provider.name}{" "}
+          {loggedIn ? "connected" : "not connected"}
+          {loggedIn && provider.status.token_preview ? (
+            <span className="text-muted-foreground/60"> ·{provider.status.token_preview}</span>
+          ) : null}
+        </span>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setModalOpen(true)}
+      >
+        {loggedIn ? "Reconnect" : "Connect"}
+      </Button>
+      {modalOpen && (
+        <OAuthLoginModal
+          provider={provider}
+          onClose={() => setModalOpen(false)}
+          onSuccess={(msg) => {
+            setModalOpen(false);
+            refresh();
+            onSuccess(msg);
+          }}
+          onError={onError}
+        />
+      )}
+    </div>
+  );
+}
 
 function textValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
@@ -354,12 +516,18 @@ export default function ConfigPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">Model</Label>
-                <Input
+                <ModelField
+                  provider={smartProvider}
                   value={smartModel}
-                  onChange={(e) => updateConfigValue("model", e.target.value)}
+                  onChange={(value) => updateConfigValue("model", value)}
                   placeholder="gpt-5.5"
                 />
               </div>
+              <ProviderConnection
+                providerId={smartProvider}
+                onError={(msg) => showToast(msg, "error")}
+                onSuccess={(msg) => showToast(msg, "success")}
+              />
               <div className="grid gap-1.5">
                 <Label className="text-xs">Base URL</Label>
                 <Input
@@ -436,12 +604,18 @@ export default function ConfigPage() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Model</Label>
-                  <Input
+                  <ModelField
+                    provider={fastProvider}
                     value={fastModel}
-                    onChange={(e) => updateConfigValue("smart_model_routing.cheap_model.model", e.target.value)}
+                    onChange={(value) => updateConfigValue("smart_model_routing.cheap_model.model", value)}
                     placeholder="gpt-5.4-mini"
                   />
                 </div>
+                <ProviderConnection
+                  providerId={fastProvider}
+                  onError={(msg) => showToast(msg, "error")}
+                  onSuccess={(msg) => showToast(msg, "success")}
+                />
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Base URL</Label>
                   <Input

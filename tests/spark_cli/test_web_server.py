@@ -116,6 +116,35 @@ class TestWebServerEndpoints:
         assert "triage" in data["columns"]
         assert "user_review" in data["columns"]
 
+    def test_available_models_codex_is_strict(self):
+        """Managed OAuth catalogs (openai-codex) return a fixed list + strict=True
+        so the Config editor renders a dropdown."""
+        resp = self.client.get("/api/model/available", params={"provider": "openai-codex"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provider"] == "openai-codex"
+        assert data["strict"] is True
+        assert "gpt-5.5" in data["models"]
+
+    def test_available_models_open_providers_are_freetext(self):
+        """Open-ended providers (ollama, openrouter) return strict=False so the
+        Config editor keeps a free-text field (suggestions only)."""
+        for provider in ("ollama", "openrouter"):
+            resp = self.client.get("/api/model/available", params={"provider": provider})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["provider"] == provider
+            assert data["strict"] is False
+            assert isinstance(data["models"], list)
+
+    def test_available_models_unknown_provider(self):
+        """Unknown/custom providers return an empty, non-strict catalog."""
+        resp = self.client.get("/api/model/available", params={"provider": "custom"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["models"] == []
+        assert data["strict"] is False
+
     def test_kanban_task_create_patch_comment_and_link(self):
         parent_resp = self.client.post(
             "/api/kanban/tasks",
