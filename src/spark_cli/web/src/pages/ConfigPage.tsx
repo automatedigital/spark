@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectOption } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n";
 
 /* ------------------------------------------------------------------ */
@@ -172,14 +173,22 @@ function ModelField({
   if (strict && models.length > 0) {
     const options = value && !models.includes(value) ? [...models, value] : models;
     return (
-      <Select value={value} onValueChange={onChange}>
-        {!value && <SelectOption value="">Select a model…</SelectOption>}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "flex h-9 w-full border border-border bg-background/40 px-3 py-1 font-courier text-sm text-left transition-colors",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/30 focus-visible:border-foreground/25",
+          "cursor-pointer",
+        )}
+      >
+        {!value && <option value="">Select a model...</option>}
         {options.map((m) => (
-          <SelectOption key={m} value={m}>
+          <option key={m} value={m}>
             {m}
-          </SelectOption>
+          </option>
         ))}
-      </Select>
+      </select>
     );
   }
 
