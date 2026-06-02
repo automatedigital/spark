@@ -302,15 +302,26 @@ Do this last; it touches the caching-sensitive loop.
 
 After the structural work, a focused UX pass on the surfaces users actually touch.
 
-- [ ] Audit the Settings sub-pages (`Status/Analytics/Admin/Logs/Env/Config/
-      Appearance/Updates`) — confirm each renders, loads data, and has no console
-      errors (preview tools). Fix the broken ones; note any kept intentionally bare.
-- [ ] Chat surface polish: verify file tree + terminal + multi-thread switching all
-      work post-Workspace-deletion; tighten obvious rough edges found during audit.
-- [ ] Onboarding wizard pass — confirm the name/skills steps (recent work) flow
-      cleanly on a fresh `SPARK_HOME`.
-- [ ] Accessibility/consistency sweep on `ui/` primitives if cheap (focus states,
-      keyboard nav for the command palette).
+- [x] Audit the Settings sub-pages (`Status/Analytics/Admin/Logs/Env/Config/
+      Appearance/Updates`) — confirmed all settings tabs render against the live
+      `spark dashboard` backend with no browser console errors. Fixed one
+      accessibility defect in the settings modal: the wrapper was `aria-hidden`,
+      hiding the dialog subtree from assistive tech; tabs now expose a named
+      `tablist` with one accessible `tab` per section. `npm run build` clean.
+- [x] Chat surface polish: verified global multi-thread switching, the Files page,
+      and project-scoped file tree + terminal against the live dashboard with no
+      console errors. Fixed one rough edge from the Workspace deletion: project
+      compose state now shows the project tools panel before a workspace thread has
+      been created, so empty projects can still access Files/Terminal. Also corrected
+      the sidebar thread-search hint from `⌘K` to `⌘F`.
+- [x] Onboarding wizard pass — launched a fresh isolated dashboard with temporary
+      `SPARK_HOME` (`/tmp/spark-phase5-onboarding.doshLj`) and walked the full
+      no-secret Ollama path: provider → name → skills → done → Open Spark. Name
+      and skills steps rendered and saved cleanly; no console errors.
+- [x] Accessibility/consistency sweep on `ui/` primitives if cheap (focus states,
+      keyboard nav for the command palette). Added dialog/combobox/listbox/option
+      semantics to the command palette, tab semantics to project Files/Terminal,
+      and fixed the Settings modal/tab semantics above. Final `npm run build` clean.
 
 ---
 

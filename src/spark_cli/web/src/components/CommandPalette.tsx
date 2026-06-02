@@ -174,9 +174,13 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
     <div
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-background/60 backdrop-blur-sm"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="presentation"
     >
       <div
         className="w-full max-w-lg rounded-xl border border-border bg-popover shadow-2xl overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         onKeyDown={handleKeyDown}
       >
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
@@ -187,6 +191,10 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
             placeholder="Search projects, threads, tasks, schedules, skills…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-palette-results"
+            aria-activedescendant={filtered[activeIdx] ? `command-palette-item-${filtered[activeIdx].id}` : undefined}
           />
           {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           <kbd className="text-[10px] text-muted-foreground border border-border rounded px-1 py-0.5">Esc</kbd>
@@ -195,10 +203,19 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
         {filtered.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">No results</div>
         ) : (
-          <ul ref={listRef} className="py-1 max-h-72 overflow-y-auto">
+          <ul
+            id="command-palette-results"
+            ref={listRef}
+            className="py-1 max-h-72 overflow-y-auto"
+            role="listbox"
+            aria-label="Command results"
+          >
             {filtered.map((item, i) => (
-              <li key={item.id}>
+              <li key={item.id} role="presentation">
                 <button
+                  id={`command-palette-item-${item.id}`}
+                  role="option"
+                  aria-selected={i === activeIdx}
                   className={cn(
                     "flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-accent/50 transition-colors",
                     i === activeIdx && "bg-accent/50"
