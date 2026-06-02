@@ -133,6 +133,7 @@ def test_auth_add_codex_oauth_persists_pool_entry(tmp_path, monkeypatch):
             "tokens": {
                 "access_token": token,
                 "refresh_token": "refresh-token",
+                "id_token": "id-token",
             },
             "base_url": "https://chatgpt.com/backend-api/codex",
             "last_refresh": "2026-03-23T10:00:00Z",
@@ -155,6 +156,7 @@ def test_auth_add_codex_oauth_persists_pool_entry(tmp_path, monkeypatch):
     assert entry["label"] == "codex@example.com"
     assert entry["source"] == "manual:device_code"
     assert entry["refresh_token"] == "refresh-token"
+    assert entry["id_token"] == "id-token"
     assert entry["base_url"] == "https://chatgpt.com/backend-api/codex"
 
 

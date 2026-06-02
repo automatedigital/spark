@@ -81,7 +81,7 @@ CUSTOM_POOL_PREFIX = "custom:"
 
 # Fields that are only round-tripped through JSON — never used for logic as attributes.
 _EXTRA_KEYS = frozenset({
-    "token_type", "scope", "client_id", "portal_base_url", "obtained_at",
+    "token_type", "scope", "client_id", "portal_base_url", "obtained_at", "id_token",
     "expires_in", "agent_key_id", "agent_key_expires_in", "agent_key_reused",
     "agent_key_obtained_at", "tls",
 })
@@ -512,6 +512,8 @@ class CredentialPool:
                     tokens["access_token"] = entry.access_token
                     if entry.refresh_token:
                         tokens["refresh_token"] = entry.refresh_token
+                    if entry.extra.get("id_token"):
+                        tokens["id_token"] = entry.extra["id_token"]
                     if entry.last_refresh:
                         state["last_refresh"] = entry.last_refresh
                     _save_provider_state(auth_store, "openai-codex", state)
@@ -573,6 +575,11 @@ class CredentialPool:
                     access_token=refreshed["access_token"],
                     refresh_token=refreshed["refresh_token"],
                     last_refresh=refreshed.get("last_refresh"),
+                    extra={
+                        **entry.extra,
+                        "id_token": refreshed.get("id_token")
+                        or entry.extra.get("id_token"),
+                    },
                 )
             else:
                 return entry
@@ -638,6 +645,11 @@ class CredentialPool:
                             last_status=STATUS_OK,
                             last_status_at=None,
                             last_error_code=None,
+                            extra={
+                                **synced.extra,
+                                "id_token": refreshed.get("id_token")
+                                or synced.extra.get("id_token"),
+                            },
                         )
                         self._replace_entry(synced, updated)
                         self._persist()
@@ -646,6 +658,7 @@ class CredentialPool:
                             _write_codex_cli_tokens(
                                 updated.access_token,
                                 updated.refresh_token,
+                                id_token=updated.extra.get("id_token"),
                                 last_refresh=updated.last_refresh,
                             )
                         except Exception as wexc:
@@ -682,6 +695,7 @@ class CredentialPool:
                 _write_codex_cli_tokens(
                     updated.access_token,
                     updated.refresh_token,
+                    id_token=updated.extra.get("id_token"),
                     last_refresh=updated.last_refresh,
                 )
             except Exception as wexc:
@@ -1116,6 +1130,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
                     "auth_type": AUTH_TYPE_OAUTH,
                     "access_token": tokens.get("access_token", ""),
                     "refresh_token": tokens.get("refresh_token"),
+                    "id_token": tokens.get("id_token"),
                     "base_url": "https://chatgpt.com/backend-api/codex",
                     "last_refresh": state.get("last_refresh"),
                     "label": label_from_token(tokens.get("access_token", ""), "device_code"),

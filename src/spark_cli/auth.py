@@ -71,6 +71,7 @@ CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 120
 QWEN_OAUTH_CLIENT_ID = "f0304373b74a44d2b584a3fb70ca9e56"
 QWEN_OAUTH_TOKEN_URL = "https://chat.qwen.ai/api/v1/oauth2/token"
 QWEN_ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 120
+_DEPRECATED_PROVIDERS = {"nous", "nous-research"}
 
 # =============================================================================
 # Multi-model setup UI (SMART / FAST slot for prompts)
@@ -1403,6 +1404,7 @@ def _write_codex_cli_tokens(
     access_token: str,
     refresh_token: str,
     *,
+    id_token: Optional[str] = None,
     last_refresh: Optional[str] = None,
 ) -> None:
     """Write refreshed tokens back to ~/.codex/auth.json.
@@ -1431,6 +1433,8 @@ def _write_codex_cli_tokens(
             tokens_dict = {}
         tokens_dict["access_token"] = access_token
         tokens_dict["refresh_token"] = refresh_token
+        if id_token:
+            tokens_dict["id_token"] = id_token
         existing["tokens"] = tokens_dict
         if last_refresh is not None:
             existing["last_refresh"] = last_refresh
@@ -1579,6 +1583,7 @@ def _refresh_codex_auth_tokens(
     _write_codex_cli_tokens(
         refreshed["access_token"],
         refreshed["refresh_token"],
+        id_token=updated_tokens.get("id_token"),
         last_refresh=refreshed.get("last_refresh"),
     )
     return updated_tokens
@@ -2560,6 +2565,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
     tokens = token_resp.json()
     access_token = tokens.get("access_token", "")
     refresh_token = tokens.get("refresh_token", "")
+    id_token = tokens.get("id_token", "")
 
     if not access_token:
         raise AuthError(
@@ -2578,6 +2584,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
         "tokens": {
             "access_token": access_token,
             "refresh_token": refresh_token,
+            "id_token": id_token,
         },
         "base_url": base_url,
         "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),

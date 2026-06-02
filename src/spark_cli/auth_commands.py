@@ -237,6 +237,7 @@ def auth_add_command(args) -> None:
             refresh_token=creds["tokens"].get("refresh_token"),
             base_url=creds.get("base_url"),
             last_refresh=creds.get("last_refresh"),
+            extra={"id_token": creds["tokens"].get("id_token")},
         )
         pool.add_entry(entry)
         print(

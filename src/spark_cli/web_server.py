@@ -249,6 +249,23 @@ def _truncate_str(s: Any, max_len: int = 16000) -> str:
     return t if len(t) <= max_len else t[: max_len - 1] + "…"
 
 
+def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
+    """Small response preview for auth diagnostics without exposing secrets."""
+    try:
+        body = resp.text
+    except Exception:
+        body = ""
+    preview = _truncate_str(body, max_len).strip()
+    if not preview:
+        return "(empty response)"
+    preview = re.sub(
+        r'(?i)("?(?:access_token|refresh_token|id_token|authorization_code|code_verifier|token)"?\s*[:=]\s*)"[^"]+"',
+        r'\1"[redacted]"',
+        preview,
+    )
+    return preview
+
+
 def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> None:
     loop = _web_event_loop
     if loop is None:
@@ -3059,7 +3076,10 @@ def _codex_full_login_worker(session_id: str) -> None:
                 headers={"Content-Type": "application/json"},
             )
         if resp.status_code != 200:
-            raise RuntimeError(f"deviceauth/usercode returned {resp.status_code}")
+            detail = _redacted_response_preview(resp)
+            raise RuntimeError(
+                f"deviceauth/usercode returned {resp.status_code}: {detail}"
+            )
         device_data = resp.json()
         user_code = device_data.get("user_code", "")
         device_auth_id = device_data.get("device_auth_id", "")
@@ -3128,6 +3148,7 @@ def _codex_full_login_worker(session_id: str) -> None:
         tokens = token_resp.json()
         access_token = tokens.get("access_token", "")
         refresh_token = tokens.get("refresh_token", "")
+        id_token = tokens.get("id_token", "")
         if not access_token:
             raise RuntimeError("token exchange did not return access_token")
 
@@ -3155,6 +3176,7 @@ def _codex_full_login_worker(session_id: str) -> None:
             access_token=access_token,
             refresh_token=refresh_token,
             base_url=base_url,
+            extra={"id_token": id_token},
         )
         pool.add_entry(entry)
         with _oauth_sessions_lock:

@@ -142,6 +142,22 @@ def test_save_codex_tokens_roundtrip(tmp_path, monkeypatch):
     assert data["tokens"]["refresh_token"] == "rt456"
 
 
+def test_save_codex_tokens_roundtrips_id_token(tmp_path, monkeypatch):
+    spark_home = tmp_path / "spark"
+    spark_home.mkdir(parents=True, exist_ok=True)
+    (spark_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("SPARK_HOME", str(spark_home))
+
+    _save_codex_tokens({
+        "access_token": "at123",
+        "refresh_token": "rt456",
+        "id_token": "id789",
+    })
+    data = _read_codex_tokens()
+
+    assert data["tokens"]["id_token"] == "id789"
+
+
 def test_import_codex_cli_tokens(tmp_path, monkeypatch):
     codex_home = tmp_path / "codex-cli"
     codex_home.mkdir(parents=True, exist_ok=True)
@@ -187,13 +203,19 @@ def test_write_codex_cli_tokens_creates_file(tmp_path, monkeypatch):
     codex_home = tmp_path / "codex-cli"
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
-    _write_codex_cli_tokens("new-access", "new-refresh", last_refresh="2026-04-12T00:00:00Z")
+    _write_codex_cli_tokens(
+        "new-access",
+        "new-refresh",
+        id_token="new-id",
+        last_refresh="2026-04-12T00:00:00Z",
+    )
 
     auth_path = codex_home / "auth.json"
     assert auth_path.exists()
     data = json.loads(auth_path.read_text())
     assert data["tokens"]["access_token"] == "new-access"
     assert data["tokens"]["refresh_token"] == "new-refresh"
+    assert data["tokens"]["id_token"] == "new-id"
     assert data["last_refresh"] == "2026-04-12T00:00:00Z"
     # Verify file permissions are restricted
     assert (auth_path.stat().st_mode & 0o777) == 0o600
