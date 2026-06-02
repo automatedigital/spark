@@ -253,6 +253,14 @@ Do this last; it touches the caching-sensitive loop.
         `from core.run_agent import _paths_overlap` and the loop's bare-name
         references keep working. Zero new lint debt (lint profile identical to
         Stage 1). `tests/run_agent/` green (755 passed).
+  - [x] **Stage 3** — payload sanitization (surrogate + non-ASCII scrubbing:
+        `_SURROGATE_RE`, `_sanitize_surrogates`, `_sanitize_messages_surrogates`,
+        `_strip_non_ascii`, `_sanitize_messages_non_ascii`, `_sanitize_tools_non_ascii`,
+        `_sanitize_structure_non_ascii`, ~155 lines) → `run_agent/sanitize.py`. Pure,
+        no `AIAgent` coupling. Re-exported via redundant-alias (also consumed by
+        `core/cli` via `from core.run_agent import _sanitize_surrogates`). Lint
+        profile identical to Stage 2; `core.cli` import verified. `tests/run_agent/`
+        green (755 passed).
 - [ ] No behavioral edits — relocation only. Golden test + full suite green per commit.
 - [ ] Manual cost-sanity check: run a multi-turn session, confirm cache-read tokens
       appear as before (no cache-miss regression).
