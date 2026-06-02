@@ -46,8 +46,14 @@ export function sseUrl(path: string): string {
 
 function authHeaders(base?: HeadersInit): Headers {
   const h = new Headers(base);
-  const tok = getDashboardToken();
-  if (tok) h.set("Authorization", `Bearer ${tok}`);
+  // Never clobber an Authorization header the caller set explicitly. The
+  // OAuth/reveal endpoints authenticate with the per-process *session token*
+  // (distinct from the dashboard token); overwriting it with the dashboard
+  // token here made those endpoints 401 whenever a dashboard token was set.
+  if (!h.has("Authorization")) {
+    const tok = getDashboardToken();
+    if (tok) h.set("Authorization", `Bearer ${tok}`);
+  }
   return h;
 }
 
@@ -63,11 +69,31 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-async function getSessionToken(): Promise<string> {
-  if (_sessionToken) return _sessionToken;
+async function getSessionToken(force = false): Promise<string> {
+  if (_sessionToken && !force) return _sessionToken;
   const resp = await fetchJSON<{ token: string }>("/api/auth/session-token");
   _sessionToken = resp.token;
   return _sessionToken;
+}
+
+/**
+ * Run a request that requires the per-process session token. The token is
+ * regenerated whenever the backend restarts, so a cached value can go stale and
+ * produce a 401. On a 401 we drop the cached token, refetch it, and retry once
+ * before surfacing the error.
+ */
+async function withSessionToken<T>(run: (token: string) => Promise<T>): Promise<T> {
+  const token = await getSessionToken();
+  try {
+    return await run(token);
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("401")) {
+      _sessionToken = null;
+      const fresh = await getSessionToken(true);
+      return run(fresh);
+    }
+    throw e;
+  }
 }
 
 export const api = {
@@ -174,17 +200,17 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key }),
     }),
-  revealEnvVar: async (key: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<{ key: string; value: string }>("/api/env/reveal", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ key }),
-    });
-  },
+  revealEnvVar: (key: string) =>
+    withSessionToken((token) =>
+      fetchJSON<{ key: string; value: string }>("/api/env/reveal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ key }),
+      }),
+    ),
 
   // Cron jobs
   getCronJobs: () => fetchJSON<CronJob[]>("/api/cron/jobs"),
@@ -523,58 +549,58 @@ export const api = {
   // OAuth provider management
   getOAuthProviders: () =>
     fetchJSON<OAuthProvidersResponse>("/api/providers/oauth"),
-  disconnectOAuthProvider: async (providerId: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<{ ok: boolean; provider: string }>(
-      `/api/providers/oauth/${encodeURIComponent(providerId)}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
-  },
-  startOAuthLogin: async (providerId: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<OAuthStartResponse>(
-      `/api/providers/oauth/${encodeURIComponent(providerId)}/start`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+  disconnectOAuthProvider: (providerId: string) =>
+    withSessionToken((token) =>
+      fetchJSON<{ ok: boolean; provider: string }>(
+        `/api/providers/oauth/${encodeURIComponent(providerId)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
         },
-        body: "{}",
-      },
-    );
-  },
-  submitOAuthCode: async (providerId: string, sessionId: string, code: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<OAuthSubmitResponse>(
-      `/api/providers/oauth/${encodeURIComponent(providerId)}/submit`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      ),
+    ),
+  startOAuthLogin: (providerId: string) =>
+    withSessionToken((token) =>
+      fetchJSON<OAuthStartResponse>(
+        `/api/providers/oauth/${encodeURIComponent(providerId)}/start`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: "{}",
         },
-        body: JSON.stringify({ session_id: sessionId, code }),
-      },
-    );
-  },
+      ),
+    ),
+  submitOAuthCode: (providerId: string, sessionId: string, code: string) =>
+    withSessionToken((token) =>
+      fetchJSON<OAuthSubmitResponse>(
+        `/api/providers/oauth/${encodeURIComponent(providerId)}/submit`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ session_id: sessionId, code }),
+        },
+      ),
+    ),
   pollOAuthSession: (providerId: string, sessionId: string) =>
     fetchJSON<OAuthPollResponse>(
       `/api/providers/oauth/${encodeURIComponent(providerId)}/poll/${encodeURIComponent(sessionId)}`,
     ),
-  cancelOAuthSession: async (sessionId: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<{ ok: boolean }>(
-      `/api/providers/oauth/sessions/${encodeURIComponent(sessionId)}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
-  },
+  cancelOAuthSession: (sessionId: string) =>
+    withSessionToken((token) =>
+      fetchJSON<{ ok: boolean }>(
+        `/api/providers/oauth/sessions/${encodeURIComponent(sessionId)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ),
+    ),
   openExternalUrl: (url: string) =>
     fetchJSON<{ opened: boolean }>(`/api/system/open-external`, {
       method: "POST",
