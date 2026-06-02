@@ -2100,22 +2100,55 @@ def get_model_status():
         }
 
 
+# Provider-aware model name catalogs. Used by both the quick-settings popover
+# (/api/model/suggestions) and the Config editor dropdown (/api/model/available).
+_PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
+    "openai-codex": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini", "o3-mini"],
+    "qwen-oauth": ["qwen3-coder-plus", "qwen3-coder-flash"],
+    "openai": ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini"],
+    "anthropic": [
+        "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+        "claude-opus-4-5", "claude-sonnet-4-5",
+    ],
+    "google": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+    "openrouter": ["anthropic/claude-sonnet-4-6", "openai/gpt-4o", "google/gemini-2.5-pro"],
+    "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+    "xai": ["grok-3", "grok-3-mini"],
+    "ollama": ["llama3.3", "qwen2.5-coder:32b", "mistral", "phi4"],
+}
+
+# Providers whose model catalog is fixed/managed (OAuth backends that only serve
+# a known set), so the Config editor presents a strict dropdown. Open-ended
+# providers (ollama local tags, openrouter's huge catalog, custom endpoints) keep
+# a free-text field — the suggestions are only hints there.
+_STRICT_MODEL_PROVIDERS = frozenset({"openai-codex", "qwen-oauth"})
+
+
+@app.get("/api/model/available")
+def get_available_models(provider: str = ""):
+    """Return the model catalog for a given provider plus whether the UI should
+    enforce a strict dropdown.
+
+    Query params:
+        provider — provider id (e.g. "openai-codex"). Defaults to "".
+
+    Response:
+        provider — echoed provider id
+        models   — list of known model names for that provider (may be empty)
+        strict   — True when the UI should only allow choosing from `models`
+                   (fixed/managed catalogs like openai-codex); False when the
+                   user may type a custom name (ollama, openrouter, custom).
+    """
+    provider = (provider or "").strip()
+    models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
+    strict = provider in _STRICT_MODEL_PROVIDERS
+    return {"provider": provider, "models": models, "strict": strict}
+
+
 @app.get("/api/model/suggestions")
 def get_model_suggestions():
     """Return provider-aware model name suggestions for the quick-settings popover."""
-    SUGGESTIONS: Dict[str, list] = {
-        "openai-codex": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini", "o3-mini"],
-        "openai": ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini"],
-        "anthropic": [
-            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
-            "claude-opus-4-5", "claude-sonnet-4-5",
-        ],
-        "google": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
-        "openrouter": ["anthropic/claude-sonnet-4-6", "openai/gpt-4o", "google/gemini-2.5-pro"],
-        "deepseek": ["deepseek-chat", "deepseek-reasoner"],
-        "xai": ["grok-3", "grok-3-mini"],
-        "ollama": ["llama3.3", "qwen2.5-coder:32b", "mistral", "phi4"],
-    }
+    SUGGESTIONS = _PROVIDER_MODEL_SUGGESTIONS
     try:
         cfg = load_config()
         model_cfg = cfg.get("model", "")

@@ -125,6 +125,10 @@ export const api = {
   getModelInfo: () => fetchJSON<ModelInfoResponse>("/api/model/info"),
   getModelStatus: () => fetchJSON<ModelStatusResponse>("/api/model/status"),
   getModelSuggestions: () => fetchJSON<ModelSuggestionsResponse>("/api/model/suggestions"),
+  getAvailableModels: (provider: string) =>
+    fetchJSON<{ provider: string; models: string[]; strict: boolean }>(
+      `/api/model/available?provider=${encodeURIComponent(provider)}`,
+    ),
   setSmartModel: (model: string) =>
     fetchJSON<{ ok: boolean; model: string }>("/api/model/smart", {
       method: "PUT",
