@@ -2676,8 +2676,12 @@ async def list_oauth_providers():
 @app.delete("/api/providers/oauth/{provider_id}")
 async def disconnect_oauth_provider(provider_id: str, request: Request):
     """Disconnect an OAuth provider. Token-protected (matches /env/reveal)."""
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {_SESSION_TOKEN}":
+    # Accept either the per-process session token OR the configured dashboard
+    # token (same dual-credential rule as /api/env/reveal). The desktop app and
+    # remote clients authenticate with the dashboard token, so a session-only
+    # check here made OAuth connect/disconnect 401 even though the rest of the
+    # dashboard was authorized.
+    if not _reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     valid_ids = {p["id"] for p in _OAUTH_PROVIDER_CATALOG}
@@ -3168,8 +3172,12 @@ def _codex_full_login_worker(session_id: str) -> None:
 @app.post("/api/providers/oauth/{provider_id}/start")
 async def start_oauth_login(provider_id: str, request: Request):
     """Initiate an OAuth login flow. Token-protected."""
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {_SESSION_TOKEN}":
+    # Accept either the per-process session token OR the configured dashboard
+    # token (same dual-credential rule as /api/env/reveal). The desktop app and
+    # remote clients authenticate with the dashboard token, so a session-only
+    # check here made OAuth connect/disconnect 401 even though the rest of the
+    # dashboard was authorized.
+    if not _reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     _gc_oauth_sessions()
     valid = {p["id"] for p in _OAUTH_PROVIDER_CATALOG}
@@ -3202,8 +3210,12 @@ class OAuthSubmitBody(BaseModel):
 @app.post("/api/providers/oauth/{provider_id}/submit")
 async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Request):
     """Submit the auth code for PKCE flows. Token-protected."""
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {_SESSION_TOKEN}":
+    # Accept either the per-process session token OR the configured dashboard
+    # token (same dual-credential rule as /api/env/reveal). The desktop app and
+    # remote clients authenticate with the dashboard token, so a session-only
+    # check here made OAuth connect/disconnect 401 even though the rest of the
+    # dashboard was authorized.
+    if not _reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     if provider_id == "anthropic":
         return await asyncio.get_event_loop().run_in_executor(
@@ -3241,8 +3253,12 @@ async def poll_oauth_session(provider_id: str, session_id: str):
 @app.delete("/api/providers/oauth/sessions/{session_id}")
 async def cancel_oauth_session(session_id: str, request: Request):
     """Cancel a pending OAuth session. Token-protected."""
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {_SESSION_TOKEN}":
+    # Accept either the per-process session token OR the configured dashboard
+    # token (same dual-credential rule as /api/env/reveal). The desktop app and
+    # remote clients authenticate with the dashboard token, so a session-only
+    # check here made OAuth connect/disconnect 401 even though the rest of the
+    # dashboard was authorized.
+    if not _reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     with _oauth_sessions_lock:
         sess = _oauth_sessions.pop(session_id, None)
