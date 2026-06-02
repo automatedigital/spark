@@ -245,6 +245,14 @@ Do this last; it touches the caching-sensitive loop.
         `.parent.parent`) to still point at `src/core/.env`, and updated the one
         source-inspection test (`test_voice_cli_integration.py`) to the new path.
         Golden + run_agent suite green (834 passed).
+  - [x] **Stage 2** — tool-batch parallelism heuristics (constants +
+        `_is_destructive_command`/`_should_parallelize_tool_batch`/
+        `_extract_parallel_scope_path`/`_paths_overlap`, ~120 lines) →
+        `run_agent/parallelism.py`. Pure stdlib, zero `AIAgent` coupling.
+        Re-exported into `__init__` via redundant-alias form so the tests'
+        `from core.run_agent import _paths_overlap` and the loop's bare-name
+        references keep working. Zero new lint debt (lint profile identical to
+        Stage 1). `tests/run_agent/` green (755 passed).
 - [ ] No behavioral edits — relocation only. Golden test + full suite green per commit.
 - [ ] Manual cost-sanity check: run a multi-turn session, confirm cache-read tokens
       appear as before (no cache-miss regression).
