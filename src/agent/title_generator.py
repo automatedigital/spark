@@ -6,7 +6,7 @@ adds latency to the user-facing reply.
 
 import logging
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
 from agent.auxiliary_client import call_llm
 
@@ -61,6 +61,7 @@ def auto_title_session(
     session_id: str,
     user_message: str,
     assistant_response: str,
+    on_titled: Optional[Callable[[str], None]] = None,
 ) -> None:
     """Generate and set a session title if one doesn't already exist.
 
@@ -69,6 +70,9 @@ def auto_title_session(
     - session_db is None
     - session already has a title (user-set or previously auto-generated)
     - title generation fails
+
+    When a title is successfully set, ``on_titled(title)`` is invoked (if
+    provided) so callers can broadcast the change to live clients.
     """
     if not session_db or not session_id:
         return
@@ -90,6 +94,13 @@ def auto_title_session(
         logger.debug("Auto-generated session title: %s", title)
     except Exception as e:
         logger.debug("Failed to set auto-generated title: %s", e)
+        return
+
+    if on_titled is not None:
+        try:
+            on_titled(title)
+        except Exception:
+            logger.debug("on_titled callback failed", exc_info=True)
 
 
 def maybe_auto_title(
@@ -98,6 +109,7 @@ def maybe_auto_title(
     user_message: str,
     assistant_response: str,
     conversation_history: list,
+    on_titled: Optional[Callable[[str], None]] = None,
 ) -> None:
     """Fire-and-forget title generation after the first exchange.
 
@@ -119,6 +131,7 @@ def maybe_auto_title(
     thread = threading.Thread(
         target=auto_title_session,
         args=(session_db, session_id, user_message, assistant_response),
+        kwargs={"on_titled": on_titled},
         daemon=True,
         name="auto-title",
     )

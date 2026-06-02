@@ -4938,6 +4938,38 @@ def _emit_web_session_updated(session_id: str) -> None:
         _log.debug("session update emit failed session=%s", session_id, exc_info=True)
 
 
+def _maybe_auto_title_web(
+    agent: Any, session_id: str, user_message: str, result: Any
+) -> None:
+    """Auto-generate a session title after the first web exchange.
+
+    Mirrors the CLI/gateway behaviour. Title generation runs in a background
+    thread; when a title is set we broadcast ``sessions.changed`` so the open
+    web client updates the thread name live (no reload required).
+    """
+    try:
+        final = _extract_final_response(result)
+        if not final:
+            return
+        session_db = getattr(agent, "_session_db", None)
+        if session_db is None:
+            return
+        messages = result.get("messages", []) if isinstance(result, dict) else []
+
+        from agent.title_generator import maybe_auto_title
+
+        maybe_auto_title(
+            session_db,
+            session_id,
+            user_message,
+            final,
+            messages,
+            on_titled=lambda _title: _emit_web_session_updated(session_id),
+        )
+    except Exception:
+        _log.debug("web auto-title failed session=%s", session_id, exc_info=True)
+
+
 def _extract_final_response(result: Any) -> str:
     if isinstance(result, dict):
         final = result.get("final_response")
@@ -5431,6 +5463,7 @@ async def create_conversation(body: ConversationCreate):
             unregister_gateway_notify(session_id)
             _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
+            _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
 
@@ -5537,6 +5570,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             unregister_gateway_notify(session_id)
             _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
+            _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
 
@@ -6187,6 +6221,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             _strip_user_message_prefix(session_id, context_prefix, raw_message)
             _persist_web_turn_if_missing(session_id, raw_message, result, before_message_count)
             _emit_web_session_updated(session_id)
+            _maybe_auto_title_web(agent, session_id, raw_message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
 

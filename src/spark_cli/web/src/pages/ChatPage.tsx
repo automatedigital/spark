@@ -42,6 +42,7 @@ import { PromptBar } from "@/components/chat/PromptBar";
 import { useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
 import { threadTitle } from "@/components/chat/ThreadRow";
+import { TypeOnTitle } from "@/components/chat/TypeOnTitle";
 import { FileTreePane, getFileCategory } from "@/components/workspace/FileTreePane";
 import { WorkspaceTerminalPanel } from "@/components/workspace/WorkspaceTerminalPanel";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
@@ -1325,9 +1326,10 @@ export default function ChatPage() {
                   >
                     <Menu className="h-4 w-4" />
                   </button>
-                  <p className="min-w-0 truncate text-sm font-medium">
-                    {selectedSession ? threadTitle(selectedSession) : "Thread"}
-                  </p>
+                  <TypeOnTitle
+                    text={selectedSession ? threadTitle(selectedSession) : "Thread"}
+                    className="min-w-0 truncate text-sm font-medium"
+                  />
                 </div>
                 <div className="flex shrink-0 items-center gap-2" />
               </div>

@@ -2,6 +2,7 @@
 import { MessageSquare, Trash2 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { TypeOnTitle } from "@/components/chat/TypeOnTitle";
 import type { SessionInfo } from "@/lib/api";
 
 export function threadTitle(session: SessionInfo | null | undefined) {
@@ -64,7 +65,7 @@ export function ThreadRow({
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-foreground">{threadTitle(session)}</span>
+          <TypeOnTitle text={threadTitle(session)} className="truncate text-[13px] font-medium text-foreground" />
           {session.is_active && (
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_12px_rgba(255,163,43,0.8)]" />
           )}
