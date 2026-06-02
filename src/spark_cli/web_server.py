@@ -18,6 +18,7 @@ import os
 import platform
 import queue as thread_queue
 import re
+import shutil
 import secrets
 import subprocess
 import sys
@@ -2160,7 +2161,15 @@ def get_available_models(provider: str = ""):
                    user may type a custom name (ollama, openrouter, custom).
     """
     provider = (provider or "").strip()
-    models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
+    if provider == "openai-codex":
+        try:
+            from spark_cli.codex_models import get_codex_model_ids
+
+            models = get_codex_model_ids()
+        except Exception:
+            models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
+    else:
+        models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
     strict = provider in _STRICT_MODEL_PROVIDERS
     return {"provider": provider, "models": models, "strict": strict}
 
@@ -3057,7 +3066,11 @@ def _codex_full_login_worker(session_id: str) -> None:
     single function — we need to surface the user_code to the dashboard the
     moment we receive it, well before polling completes.
     """
+    prefer_cli = _codex_cli_device_login_preferred()
     try:
+        if prefer_cli and _codex_cli_device_login_worker(session_id):
+            return
+
         import httpx
         from spark_cli.auth import (
             CODEX_OAUTH_CLIENT_ID,
@@ -3155,43 +3168,139 @@ def _codex_full_login_worker(session_id: str) -> None:
         if not access_token:
             raise RuntimeError("token exchange did not return access_token")
 
-        # Persist via credential pool — same shape as auth_commands.add_command
-        from agent.credential_pool import (
-            PooledCredential,
-            load_pool,
-            AUTH_TYPE_OAUTH,
-            SOURCE_MANUAL,
+        _persist_codex_dashboard_credential(
+            {"access_token": access_token, "refresh_token": refresh_token, "id_token": id_token},
+            "dashboard device_code",
         )
-        import uuid as _uuid
-
-        pool = load_pool("openai-codex")
-        base_url = (
-            os.getenv("SPARK_CODEX_BASE_URL", "").strip().rstrip("/")
-            or DEFAULT_CODEX_BASE_URL
-        )
-        entry = PooledCredential(
-            provider="openai-codex",
-            id=_uuid.uuid4().hex[:6],
-            label="dashboard device_code",
-            auth_type=AUTH_TYPE_OAUTH,
-            priority=0,
-            source=f"{SOURCE_MANUAL}:dashboard_device_code",
-            access_token=access_token,
-            refresh_token=refresh_token,
-            base_url=base_url,
-            extra={"id_token": id_token},
-        )
-        pool.add_entry(entry)
         with _oauth_sessions_lock:
             sess["status"] = "approved"
         _log.info("oauth/device: openai-codex login completed (session=%s)", session_id)
     except Exception as e:
+        if not prefer_cli and _codex_cli_device_login_worker(session_id, reason=str(e)):
+            return
         _log.warning("codex device-code worker failed (session=%s): %s", session_id, e)
         with _oauth_sessions_lock:
             s = _oauth_sessions.get(session_id)
             if s:
                 s["status"] = "error"
                 s["error_message"] = str(e)
+
+
+def _codex_cli_device_login_preferred() -> bool:
+    if os.getenv("SPARK_CODEX_DEVICE_AUTH_IMPL", "").strip().lower() == "inline":
+        return False
+    return shutil.which("codex") is not None
+
+
+def _persist_codex_dashboard_credential(tokens: dict[str, Any], label: str) -> None:
+    """Persist Codex tokens into the credential pool for WebUI OAuth login."""
+    from agent.credential_pool import (
+        AUTH_TYPE_OAUTH,
+        SOURCE_MANUAL,
+        PooledCredential,
+        load_pool,
+    )
+    from spark_cli.auth import DEFAULT_CODEX_BASE_URL
+
+    pool = load_pool("openai-codex")
+    base_url = (
+        os.getenv("SPARK_CODEX_BASE_URL", "").strip().rstrip("/")
+        or DEFAULT_CODEX_BASE_URL
+    )
+    entry = PooledCredential(
+        provider="openai-codex",
+        id=uuid.uuid4().hex[:6],
+        label=label,
+        auth_type=AUTH_TYPE_OAUTH,
+        priority=0,
+        source=f"{SOURCE_MANUAL}:dashboard_device_code",
+        access_token=str(tokens.get("access_token", "") or ""),
+        refresh_token=str(tokens.get("refresh_token", "") or ""),
+        base_url=base_url,
+        extra={"id_token": tokens.get("id_token")},
+    )
+    pool.add_entry(entry)
+
+
+def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool:
+    """Run the official Codex CLI device-auth flow and import its tokens.
+
+    Returns True when the CLI path handled the session, False when Spark should
+    fall back to its built-in device flow.
+    """
+    if os.getenv("SPARK_CODEX_DEVICE_AUTH_IMPL", "").strip().lower() == "inline":
+        return False
+    codex_bin = shutil.which("codex")
+    if not codex_bin:
+        return False
+
+    try:
+        proc = subprocess.Popen(
+            [codex_bin, "login", "--device-auth"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except Exception as exc:
+        _log.debug("codex CLI device auth unavailable: %s", exc)
+        return False
+
+    if reason:
+        _log.info("Falling back to Codex CLI device auth after inline flow failed: %s", reason)
+
+    code_re = re.compile(r"\b[A-Z0-9]{4}-[A-Z0-9]{5}\b")
+    url_re = re.compile(r"https://auth\.openai\.com/codex/device\b")
+    saw_code = False
+    verification_url = "https://auth.openai.com/codex/device"
+
+    try:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if not saw_code:
+                url_match = url_re.search(line)
+                if url_match:
+                    verification_url = url_match.group(0)
+                code_match = code_re.search(line)
+                if code_match:
+                    saw_code = True
+                    with _oauth_sessions_lock:
+                        sess = _oauth_sessions.get(session_id)
+                        if not sess:
+                            proc.terminate()
+                            return True
+                        sess["user_code"] = code_match.group(0)
+                        sess["verification_url"] = verification_url
+                        sess["interval"] = 5
+                        sess["expires_in"] = 15 * 60
+                        sess["expires_at"] = time.time() + sess["expires_in"]
+
+        rc = proc.wait(timeout=5)
+    except Exception as exc:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        _log.debug("codex CLI device auth failed while reading output: %s", exc)
+        return False
+
+    if rc != 0:
+        raise RuntimeError(f"Codex CLI device auth exited with status {rc}")
+
+    from spark_cli.auth import _import_codex_cli_tokens
+
+    tokens = _import_codex_cli_tokens()
+    if not tokens:
+        raise RuntimeError(
+            "Codex CLI login completed, but Spark could not import tokens from ~/.codex/auth.json. "
+            "Configure Codex CLI to use file-backed credentials or run `spark auth` in the terminal."
+        )
+    _persist_codex_dashboard_credential(tokens, "codex CLI device_code")
+    with _oauth_sessions_lock:
+        sess = _oauth_sessions.get(session_id)
+        if sess:
+            sess["status"] = "approved"
+    return True
 
 
 @app.post("/api/providers/oauth/{provider_id}/start")

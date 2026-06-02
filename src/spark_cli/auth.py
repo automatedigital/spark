@@ -2441,6 +2441,10 @@ def _codex_device_code_login() -> Dict[str, Any]:
     """Run the OpenAI device code login flow and return credentials dict."""
     import time as _time
 
+    cli_creds = _codex_cli_device_code_login()
+    if cli_creds is not None:
+        return cli_creds
+
     issuer = "https://auth.openai.com"
     client_id = CODEX_OAUTH_CLIENT_ID
 
@@ -2484,6 +2488,9 @@ def _codex_device_code_login() -> Dict[str, Any]:
     print(f"     \033[94m{issuer}/codex/device\033[0m\n")
     print("  2. Enter this code:")
     print(f"     \033[94m{user_code}\033[0m\n")
+    hint = _codex_user_code_hint(user_code)
+    if hint:
+        print(f"     {hint}\n")
     print("Waiting for sign-in... (press Ctrl+C to cancel)")
 
     # Step 3: Poll for authorization code
@@ -2590,6 +2597,74 @@ def _codex_device_code_login() -> Dict[str, Any]:
         "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "auth_mode": "chatgpt",
         "source": "device-code",
+    }
+
+
+def _codex_user_code_hint(user_code: str) -> str:
+    """Clarify visually ambiguous device-code characters for manual entry."""
+    hints = []
+    for char in user_code.replace("-", ""):
+        if char == "0":
+            hints.append("0 = zero")
+        elif char == "O":
+            hints.append("O = capital letter O")
+        elif char == "I":
+            hints.append("I = capital letter I")
+        elif char == "1":
+            hints.append("1 = one")
+    deduped = []
+    for hint in hints:
+        if hint not in deduped:
+            deduped.append(hint)
+    if not deduped:
+        return ""
+    return "Character hint: " + ", ".join(deduped)
+
+
+def _codex_cli_device_code_login() -> Optional[Dict[str, Any]]:
+    """Use official Codex CLI device auth when installed, then import tokens."""
+    if os.getenv("SPARK_CODEX_DEVICE_AUTH_IMPL", "").strip().lower() == "inline":
+        return None
+    codex_bin = shutil.which("codex")
+    if not codex_bin:
+        return None
+
+    print("Using official Codex CLI device-auth flow...")
+    print("(Set SPARK_CODEX_DEVICE_AUTH_IMPL=inline to use Spark's built-in fallback.)")
+    try:
+        completed = subprocess.run([codex_bin, "login", "--device-auth"], check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("Failed to run Codex CLI device auth: %s", exc)
+        return None
+
+    if completed.returncode != 0:
+        raise AuthError(
+            f"Codex CLI device-auth failed with exit status {completed.returncode}.",
+            provider="openai-codex",
+            code="codex_cli_device_auth_failed",
+            relogin_required=True,
+        )
+
+    tokens = _import_codex_cli_tokens()
+    if not tokens:
+        raise AuthError(
+            "Codex CLI login completed, but Spark could not import tokens from ~/.codex/auth.json. "
+            "Configure Codex CLI to use file-backed credentials or run with SPARK_CODEX_DEVICE_AUTH_IMPL=inline.",
+            provider="openai-codex",
+            code="codex_cli_tokens_missing",
+            relogin_required=True,
+        )
+
+    base_url = (
+        os.getenv("SPARK_CODEX_BASE_URL", "").strip().rstrip("/")
+        or DEFAULT_CODEX_BASE_URL
+    )
+    return {
+        "tokens": tokens,
+        "base_url": base_url,
+        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "auth_mode": "chatgpt",
+        "source": "codex-cli-device-auth",
     }
 
 

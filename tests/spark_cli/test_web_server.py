@@ -169,13 +169,30 @@ class TestWebServerEndpoints:
         dashboard middleware instead of being forced through session-token auth."""
         import spark_cli.web_server as ws
 
-        with patch.object(ws, "get_configured_dashboard_secret", return_value="testsecret"):
+        with patch.object(ws, "get_configured_dashboard_secret", return_value="testsecret"), \
+             patch.object(ws, "_start_device_code_flow", return_value={"session_id": "s", "flow": "device_code"}):
             resp = self.client.post(
                 "/api/providers/oauth/openai-codex/start",
                 headers={"Content-Type": "application/json"},
                 json={},
             )
             assert resp.status_code != 401
+
+    def test_codex_cli_auth_preference_only_when_installed(self, monkeypatch):
+        """Auto mode uses the official Codex CLI only when it is installed; users
+        without Codex installed still get Spark's built-in device-code flow."""
+        import spark_cli.web_server as ws
+
+        monkeypatch.delenv("SPARK_CODEX_DEVICE_AUTH_IMPL", raising=False)
+        monkeypatch.setattr(ws.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+        assert ws._codex_cli_device_login_preferred() is True
+
+        monkeypatch.setattr(ws.shutil, "which", lambda _name: None)
+        assert ws._codex_cli_device_login_preferred() is False
+
+        monkeypatch.setenv("SPARK_CODEX_DEVICE_AUTH_IMPL", "inline")
+        monkeypatch.setattr(ws.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+        assert ws._codex_cli_device_login_preferred() is False
 
     def test_kanban_task_create_patch_comment_and_link(self):
         parent_resp = self.client.post(
