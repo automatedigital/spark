@@ -194,6 +194,33 @@ class TestWebServerEndpoints:
         monkeypatch.setattr(ws.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)
         assert ws._codex_cli_device_login_preferred() is False
 
+    def test_codex_cli_auth_returns_false_when_no_code_is_emitted(self, monkeypatch):
+        """The WebUI must not sit forever at "requesting code" if an installed
+        Codex CLI does not print a device code; Spark should fall back inline."""
+        import spark_cli.web_server as ws
+
+        class SilentCodexProcess:
+            stdout = []
+
+            def poll(self):
+                return None
+
+            def terminate(self):
+                pass
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                pass
+
+        monkeypatch.delenv("SPARK_CODEX_DEVICE_AUTH_IMPL", raising=False)
+        monkeypatch.setenv("SPARK_CODEX_CLI_DEVICE_AUTH_CODE_TIMEOUT_SECONDS", "0.01")
+        monkeypatch.setattr(ws.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+        monkeypatch.setattr(ws.subprocess, "Popen", lambda *args, **kwargs: SilentCodexProcess())
+
+        assert ws._codex_cli_device_login_worker("missing-session") is False
+
     def test_kanban_task_create_patch_comment_and_link(self):
         parent_resp = self.client.post(
             "/api/kanban/tasks",

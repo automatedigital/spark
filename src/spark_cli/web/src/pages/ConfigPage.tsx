@@ -104,6 +104,17 @@ const MODEL_PROVIDER_OPTIONS = [
 // connection status + Reconnect button so the user can refresh rotated auth.
 const OAUTH_RECONNECT_PROVIDERS = new Set(["openai-codex", "qwen-oauth", "anthropic"]);
 
+const CODEX_MODEL_FALLBACKS = [
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.3-codex",
+  "gpt-5.2-codex",
+  "gpt-5.1-codex-max",
+  "gpt-5.1-codex-mini",
+  "gpt-5.3-codex-spark",
+];
+
 /**
  * Model name field that adapts to the selected provider:
  *  - Fixed/managed catalogs (openai-codex, qwen-oauth) → strict dropdown.
@@ -137,11 +148,19 @@ function ModelField({
       .getAvailableModels(provider)
       .then((r) => {
         if (cancelled) return;
-        setModels(Array.isArray(r.models) ? r.models : []);
-        setStrict(!!r.strict);
+        const apiModels = Array.isArray(r.models) ? r.models : [];
+        const fallbackModels =
+          provider === "openai-codex" && apiModels.length === 0 ? CODEX_MODEL_FALLBACKS : [];
+        setModels(apiModels.length > 0 ? apiModels : fallbackModels);
+        setStrict(!!r.strict || fallbackModels.length > 0);
       })
       .catch(() => {
         if (cancelled) return;
+        if (provider === "openai-codex") {
+          setModels(CODEX_MODEL_FALLBACKS);
+          setStrict(true);
+          return;
+        }
         setModels([]);
         setStrict(false);
       });

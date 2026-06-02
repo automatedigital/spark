@@ -3251,12 +3251,37 @@ def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool
 
     code_re = re.compile(r"\b[A-Z0-9]{4}-[A-Z0-9]{5}\b")
     url_re = re.compile(r"https://auth\.openai\.com/codex/device\b")
+    output: thread_queue.Queue[str | None] = thread_queue.Queue()
+
+    def _read_output() -> None:
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                output.put(line)
+        except Exception:
+            pass
+        finally:
+            output.put(None)
+
+    threading.Thread(target=_read_output, daemon=True).start()
+
     saw_code = False
     verification_url = "https://auth.openai.com/codex/device"
+    code_timeout = float(
+        os.getenv("SPARK_CODEX_CLI_DEVICE_AUTH_CODE_TIMEOUT_SECONDS", "12") or "12"
+    )
+    code_deadline = time.time() + max(1.0, code_timeout)
 
     try:
-        assert proc.stdout is not None
-        for line in proc.stdout:
+        while time.time() < code_deadline:
+            if proc.poll() is not None:
+                break
+            try:
+                line = output.get(timeout=0.25)
+            except thread_queue.Empty:
+                continue
+            if line is None:
+                break
             if not saw_code:
                 url_match = url_re.search(line)
                 if url_match:
@@ -3274,8 +3299,24 @@ def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool
                         sess["interval"] = 5
                         sess["expires_in"] = 15 * 60
                         sess["expires_at"] = time.time() + sess["expires_in"]
+                    break
 
-        rc = proc.wait(timeout=5)
+        if not saw_code:
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            _log.info(
+                "Codex CLI device auth did not produce a code within %.1fs; falling back to inline flow",
+                code_timeout,
+            )
+            return False
+
+        rc = proc.wait(timeout=15 * 60)
     except Exception as exc:
         try:
             proc.kill()
