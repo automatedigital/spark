@@ -235,9 +235,10 @@ Do this last; it touches the caching-sensitive loop.
       not entangled.** The serialization is reachable through the existing
       deterministic `_build_api_kwargs` + `apply_anthropic_cache_control` seam with
       pinned tools/session_id, so the golden was cheap to write. Proceeding.
-- [ ] Extract into `core/run_agent/` submodules; isolate caching-sensitive code
+- [x] Extract into `core/run_agent/` submodules; isolate caching-sensitive code
       (system-prompt build + `cache_control` placement) into one named module
-      (e.g. `run_agent/prompt_cache.py`). Re-export `AIAgent`.
+      (`run_agent/prompt_cache.py`). `AIAgent` re-exported throughout via the
+      preserved `core.run_agent` namespace.
   - [x] **Stage 1** — `core/run_agent.py` → `core/run_agent/__init__.py` (package
         skeleton). Same `core.run_agent` namespace, so all `from core.run_agent
         import X` and the ~30 test files patching `core.run_agent.X` keep working.
@@ -270,9 +271,30 @@ Do this last; it touches the caching-sensitive loop.
         (755 passed). **Remaining: the `AIAgent` class body (~10K LOC) + isolating
         `prompt_cache.py` — the higher-risk mixin-style split, deferred to its own
         sequence.**
-- [ ] No behavioral edits — relocation only. Golden test + full suite green per commit.
+  - [x] **Stage 5 (ADR-0001 named home)** — caching-sensitive system-prompt
+        assembly (`_build_system_prompt` ~185 lines + `_invalidate_system_prompt`)
+        → `run_agent/prompt_cache.py` as `_PromptCacheMixin`, mixed into
+        `AIAgent(_PromptCacheMixin)`. The complementary half of the invariant
+        (`cache_control` *placement*) already lives in `agent/prompt_caching.py`,
+        so the two halves now each have one obvious home. Removed the 16
+        prompt-builder imports that became unused in `__init__` once the method
+        moved (kept `DEFAULT_AGENT_IDENTITY`/`DEVELOPER_ROLE_MODELS`, still used);
+        redirected the one test that patched `core.run_agent.{get_toolset_for_tool,
+        build_skills_system_prompt}` to the `prompt_cache` module that now owns
+        them. Caching golden + full `tests/run_agent/` green (755 passed); F401
+        clean. **Note:** the rest of the ~10K-line `AIAgent` body is *not* further
+        decomposed — ADR-0001 only requires isolating the caching-sensitive code,
+        which is done; a full mixin split of the remaining methods is optional
+        future cleanup, not a Phase 4 requirement.
+- [x] No behavioral edits — relocation only. Every Stage (0–5) kept the caching
+      golden + full `tests/run_agent/` suite green and a byte-identical (or
+      strictly-reduced, for the prompt_cache move) lint profile.
 - [ ] Manual cost-sanity check: run a multi-turn session, confirm cache-read tokens
-      appear as before (no cache-miss regression).
+      appear as before (no cache-miss regression). **Pending live verification** —
+      requires real provider credentials + a multi-turn session, so it can't run in
+      CI/tests. The caching golden gives byte-exact assurance that the serialized
+      request (system blocks + `cache_control` positions) is unchanged, which is the
+      mechanism cache hits depend on; the live check is the final confirmation.
 
 ---
 
