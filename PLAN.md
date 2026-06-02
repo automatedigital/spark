@@ -261,6 +261,15 @@ Do this last; it touches the caching-sensitive loop.
         `core/cli` via `from core.run_agent import _sanitize_surrogates`). Lint
         profile identical to Stage 2; `core.cli` import verified. `tests/run_agent/`
         green (755 passed).
+  - [x] **Stage 4** — runtime primitives: crash-safe stdio (`_SafeWriter`,
+        `_install_safe_stdio`) → `run_agent/stdio.py`; thread-safe per-agent
+        `IterationBudget` → `run_agent/iteration_budget.py`. Both re-exported via
+        redundant-alias (tests import both from `core.run_agent`). The 15-line
+        `_qwen_portal_headers` helper left in `__init__` (too small to warrant a
+        module). Lint profile identical to Stage 3; `tests/run_agent/` green
+        (755 passed). **Remaining: the `AIAgent` class body (~10K LOC) + isolating
+        `prompt_cache.py` — the higher-risk mixin-style split, deferred to its own
+        sequence.**
 - [ ] No behavioral edits — relocation only. Golden test + full suite green per commit.
 - [ ] Manual cost-sanity check: run a multi-turn session, confirm cache-read tokens
       appear as before (no cache-miss regression).
