@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
+  Check,
+  ChevronDown,
   Code,
   Download,
   FormInput,
@@ -116,6 +119,195 @@ const CODEX_MODEL_FALLBACKS = [
   "gpt-5.3-codex-spark",
 ];
 
+function SearchableModelSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const selected = value || "";
+  const filtered = options.filter((model) =>
+    model.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+    setHighlightedIndex(0);
+  }, []);
+
+  const selectModel = useCallback(
+    (model: string) => {
+      onChange(model);
+      close();
+    },
+    [close, onChange],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (rootRef.current) setMenuRect(rootRef.current.getBoundingClientRect());
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        rootRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      close();
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [close, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.setTimeout(() => searchRef.current?.focus(), 0);
+  }, [open]);
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [query]);
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (!open && (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      setOpen(true);
+      return;
+    }
+    if (!open) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex((index) => Math.min(index + 1, filtered.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter" && filtered[highlightedIndex]) {
+      event.preventDefault();
+      selectModel(filtered[highlightedIndex]);
+    }
+  };
+
+  return (
+    <div ref={rootRef} className="relative" onKeyDown={onKeyDown}>
+      <button
+        type="button"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((current) => !current)}
+        className={cn(
+          "flex h-9 w-full items-center justify-between border border-border bg-background/40 px-3 py-1 font-courier text-sm text-left transition-colors",
+          "hover:border-foreground/20 hover:bg-foreground/[0.03]",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/30 focus-visible:border-foreground/25",
+          "cursor-pointer",
+        )}
+      >
+        <span className={cn("truncate", !selected && "text-muted-foreground")}>
+          {selected || "Select a model..."}
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {open &&
+        menuRect &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              left: menuRect.left,
+              top: menuRect.bottom + 4,
+              width: menuRect.width,
+            }}
+            className={cn(
+              "fixed z-[1000] overflow-hidden border border-border bg-card text-card-foreground shadow-2xl",
+              "backdrop-blur-sm",
+            )}
+          >
+            <div className="relative border-b border-border bg-background/80">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search models..."
+                className={cn(
+                  "h-9 w-full bg-transparent pl-9 pr-3 font-courier text-sm text-foreground placeholder:text-muted-foreground",
+                  "focus:outline-none",
+                )}
+              />
+            </div>
+            <div role="listbox" className="max-h-56 overflow-y-auto py-1">
+              {filtered.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-muted-foreground">
+                  No models found
+                </div>
+              ) : (
+                filtered.map((model, index) => {
+                  const isSelected = model === selected;
+                  const isHighlighted = index === highlightedIndex;
+                  return (
+                    <button
+                      key={model}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onMouseEnter={() => setHighlightedIndex(index)}
+                      onClick={() => selectModel(model)}
+                      className={cn(
+                        "flex h-8 w-full items-center gap-2 px-3 text-left font-courier text-sm transition-colors",
+                        "cursor-pointer",
+                        isHighlighted && "bg-foreground/10 text-foreground",
+                        !isHighlighted && "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
+                      )}
+                    >
+                      <Check
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0 text-foreground",
+                          isSelected ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <span className="truncate">{model}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 /**
  * Model name field that adapts to the selected provider:
  *  - Fixed/managed catalogs (openai-codex, qwen-oauth) → strict dropdown.
@@ -173,22 +365,7 @@ function ModelField({
   if (strict && models.length > 0) {
     const options = value && !models.includes(value) ? [...models, value] : models;
     return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "flex h-9 w-full border border-border bg-background/40 px-3 py-1 font-courier text-sm text-left transition-colors",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/30 focus-visible:border-foreground/25",
-          "cursor-pointer",
-        )}
-      >
-        {!value && <option value="">Select a model...</option>}
-        {options.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
+      <SearchableModelSelect value={value} options={options} onChange={onChange} />
     );
   }
 
