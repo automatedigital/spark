@@ -28,7 +28,7 @@ A modular AI harness that runs in your terminal, connects to any LLM provider, a
 ## Why Spark
 
 - **Works everywhere** — Same agent in the TUI, scheduled jobs, messaging bots, and [ACP-compatible editors](./docs/integrations/acp.md) (VS Code, Zed, JetBrains).
-- **Memory by default** — **Holographic** local memory is on by default, together with persistent, curated patterns (`MEMORY.md` / `USER.md`). Optional [memory provider plugins](./docs/memory/providers.md) (Mem0, Honcho, and others) let you swap backends when you need them.
+- **Memory by default** — **Holographic** local memory is on by default and **updates itself at the end of every session** (auto-extraction), alongside persistent, curated patterns (`MEMORY.md` / `USER.md`). Run `/dream` for a deeper reflection pass and `/learnings` to review what it proposes. Optional [memory provider plugins](./docs/memory/providers.md) (Mem0, Honcho, and others) let you swap backends when you need them.
 - **Coding-agent TUI** — File-aware context, tools, skills, checkpoints, and a polished terminal UI comparable in spirit to Claude Code or OpenCode-style workflows.
 - **Task board + web dashboard** — Durable multi-agent task board (SQLite `kanban.db`), `spark kanban` / `/kanban`, REST + SSE in the bundled dashboard (`spark dashboard`), optional embed alongside the gateway, and an Admin area for bounded gateway/profile/diagnostic/plugin/MCP/backup/update control. Gateway worker dispatch is opt-in via `kanban.dispatch_in_gateway`. Configure under `dashboard.*` and `kanban.*` in `config.yaml`.
 - **Simple layout** — One install directory, config and state under `~/.spark/` (or a [profile](./docs/cli/profiles.md)), and a clear split between CLI, gateway, tools, and plugins.
@@ -192,6 +192,7 @@ Type **`/`** to see slash commands. Commonly used:
 /files        Fuzzy file picker — insert @path into your message
 /memory       Show stored memories
 /dream        Reflect on past sessions and consolidate memory (run once or schedule daily)
+/learnings    Review recent dreams and confirm/keep memory changes Spark proposes
 /goal         Set a durable objective Spark works toward across every session
 /skills       Search and install skills
 /kanban       Board summary, task details, or opt-in gateway dispatch
@@ -212,8 +213,9 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 |------|----------------|
 | **Tools** | Terminal, files, web search, browser automation, vision, MCP, delegation, code execution, and more — grouped into [toolsets](./docs/reference/toolsets-reference.md) you can toggle per platform. |
 | **Skills** | Shareable instruction packs ([agentskills.io](https://agentskills.io/specification)-compatible); browse and install from the TUI with `/skills`. |
-| **Memory** | **Holographic** local store by default; optional backends (Mem0, Honcho, …) — see [Memory](./docs/memory.md) and [Memory providers](./docs/memory/providers.md). |
-| **Dream** | `/dream` — offline reflection pass that mines recent session transcripts + the holographic store via a single LLM synthesis call, adds insights back to memory, merges duplicates, and writes a human-readable summary to the llm-wiki under `dreams/`. Runs on demand or on a daily schedule. |
+| **Memory** | **Always-on by default**: at the end of each session Spark updates both the **Holographic** local store (auto-extraction) and curated `MEMORY.md`/`USER.md` — no action needed. This is the "gets smarter over time" behavior. Optional backends (Mem0, Honcho, …) — see [Memory](./docs/memory.md) and [Memory providers](./docs/memory/providers.md). |
+| **Dream** | `/dream` — a heavier, **explicitly-invoked** reflection pass (never auto-fires at session end) that mines recent session transcripts + the holographic store via a single LLM synthesis call, proposes consolidated insights and a `MEMORY.md` cleanup, merges duplicates, and writes a human-readable summary to the llm-wiki under `dreams/`. Runs on demand or on a daily schedule. |
+| **Learnings** | `/learnings` — review surface for what Spark has learned: see recent dreams and confirm/keep the memory changes Dream proposes (stale-fact removals are confirmed here, never applied silently). |
 | **Goal tracking** | `/goal <objective>` — set a durable, verifiable objective that Spark works toward across every session until you mark it done. Goals are backed by the Kanban board (`goals` board), so they're visible and manageable in the Dashboard in real time. Supports stopping conditions (`-- <done when>`), pause/resume, and a full history. |
 | **Context** | Auto-loads project files like `AGENTS.md`, `.spark.md`, `SOUL.md`; `@` references for files, folders, and URLs. |
 | **Gateway** | Same agent on Telegram, Discord, Slack, WhatsApp, Signal, and [other platforms](./docs/chat-platforms/index.md). |

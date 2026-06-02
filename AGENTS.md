@@ -14,7 +14,9 @@ source venv/bin/activate  # ALWAYS activate before running Python
 spark-agent/
 ├── src/                  # All Python source
 │   ├── core/             # Agent runtime
-│   │   ├── run_agent.py      # AIAgent class — core conversation loop
+│   │   ├── run_agent/       # AIAgent class — core conversation loop (__init__.py)
+│   │   │                    #   prompt_cache.py  — caching-sensitive system-prompt build (ADR-0001)
+│   │   │                    #   parallelism.py / sanitize.py / stdio.py / iteration_budget.py — leaf helpers
 │   │   ├── cli/             # SparkCLI (prompt_toolkit) — __init__.py + concern mixins
 │   │   │                    #   (commands_mixin, display_mixin, streaming_mixin, voice_mixin,
 │   │   │                    #    callbacks_mixin, tui_mixin, model_mixin, …) + render/config_state
@@ -104,12 +106,18 @@ src/tools/*.py  (each calls registry.register() at import time)
        ↑
 src/core/model_tools.py  (imports tools/registry + triggers _discover_tools())
        ↑
-src/core/run_agent.py, src/core/cli/, src/core/batch_runner.py, environments/
+src/core/run_agent/, src/core/cli/, src/core/batch_runner.py, environments/
 ```
 
 ---
 
-## AIAgent Class (run_agent.py)
+## AIAgent Class (run_agent/)
+
+> `core/run_agent.py` is now the `core/run_agent/` package: the `AIAgent` loop
+> lives in `__init__.py`, and the caching-sensitive system-prompt assembly
+> (`_build_system_prompt`/`_invalidate_system_prompt`) is isolated in
+> `prompt_cache.py` as `_PromptCacheMixin` per ADR-0001. The `core.run_agent`
+> import namespace is unchanged (`from core.run_agent import AIAgent`).
 
 ```python
 class AIAgent:
@@ -255,7 +263,7 @@ The registry handles schema collection, dispatch, availability checking, and err
 
 **State files**: If a tool stores persistent state (caches, logs, checkpoints), use `get_spark_home()` (`from core.spark_constants import get_spark_home`) for the base directory — never `Path.home() / ".spark"`. This ensures each profile gets its own state.
 
-**Agent-level tools** (todo, memory): intercepted by `run_agent.py` before `handle_function_call()`. See `todo_tool.py` for the pattern.
+**Agent-level tools** (todo, memory): intercepted by `run_agent/` (the `AIAgent` loop) before `handle_function_call()`. See `todo_tool.py` for the pattern.
 
 ---
 

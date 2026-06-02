@@ -327,14 +327,31 @@ After the structural work, a focused UX pass on the surfaces users actually touc
 
 ## Phase 6 — Docs & housekeeping — *close the loop*
 
-- [ ] Refresh `STRUCTURE.md` + `AGENTS.md` to reflect the new `core/cli/` and
-      `core/run_agent/` packages.
-- [ ] Update `README` "self-improving" claims to point at the now-working Dream +
-      `/learnings` surface (make the marketing match reality).
-- [ ] Update the `project_spark_state` memory: Dream is real, monoliths split,
-      orphans deleted, true test baseline.
-- [ ] Triage the 401 files carrying `TODO/FIXME` — not to fix all, but to convert
-      the few real ones into tracked issues and delete stale ones.
+- [x] Refresh `STRUCTURE.md` + `AGENTS.md` to reflect the new `core/cli/` and
+      `core/run_agent/` packages. `STRUCTURE.md` `src/core/` row now describes the
+      `run_agent/` package (incl. `prompt_cache.py` + leaf modules); `AGENTS.md`
+      project tree, dependency chain, and the "AIAgent Class" heading updated to
+      `run_agent/`, with a note that the `core.run_agent` import namespace is
+      unchanged.
+- [x] Update `README` "self-improving" claims to point at the now-working Dream +
+      `/learnings` surface. Reframed the Memory bullet/feature row around the
+      **always-on** auto-memory (the real "gets smarter over time" default), clarified
+      Dream as the heavier **explicitly-invoked** pass, added a **Learnings** feature
+      row, and added `/learnings` to the slash-command list.
+- [x] Update the `project_spark_state` memory: rewrote architecture (both monoliths
+      split into packages), corrected the Dream/test-baseline section (Dream is real
+      and passing; suite ~11,274 green under `.venv`; orphans deleted), and recorded
+      Phases 0–5 done / Phase 6 in progress + the Codex auth-loop side fix.
+- [x] Triage the 401 files carrying `TODO/FIXME`. **Verdict: false alarm — no
+      first-party debt.** The 401 figure (786 raw hits) is almost entirely (a) the
+      todo-list *feature* strings and (b) **vendored HuggingFace `transformers`**
+      bundled into the macOS app build output (`web/src-tauri/target/` and
+      `resources/.../spark-server/_internal/`). Filtering to genuine comment markers
+      (`# TODO`/`# FIXME`/`# XXX`/`# HACK`) in non-vendored `src/` yields exactly
+      **1** hit — a docstring in `agent/auxiliary_client.py` *quoting the OpenAI SDK's
+      own* `# TODO(someday)`, not a Spark action item. Nothing to convert to issues,
+      nothing stale to delete. (Separate hygiene finding flagged: the bundled
+      transformers library is tracked in git — out of scope for this docs phase.)
 
 ---
 
