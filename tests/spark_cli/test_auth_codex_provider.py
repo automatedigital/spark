@@ -274,6 +274,47 @@ def test_refresh_codex_auth_tokens_writes_back_to_cli(tmp_path, monkeypatch):
     assert cli_data["tokens"]["refresh_token"] == "refreshed-rt"
 
 
+def test_refresh_preserves_id_token(tmp_path, monkeypatch):
+    """A refreshed id_token from the token endpoint must be persisted, not dropped
+    (previously the refresh kept only access/refresh, letting id_token go stale)."""
+    from spark_cli.auth import _refresh_codex_auth_tokens
+
+    spark_home = tmp_path / "spark"
+    codex_home = tmp_path / "codex-cli"
+    spark_home.mkdir(parents=True, exist_ok=True)
+    codex_home.mkdir(parents=True, exist_ok=True)
+    (spark_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("SPARK_HOME", str(spark_home))
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    monkeypatch.setattr("spark_cli.auth.refresh_codex_oauth_pure", lambda *a, **kw: {
+        "access_token": "refreshed-at",
+        "refresh_token": "refreshed-rt",
+        "id_token": "refreshed-id",
+        "last_refresh": "2026-04-12T01:00:00Z",
+    })
+
+    updated = _refresh_codex_auth_tokens(
+        {"access_token": "old-at", "refresh_token": "old-rt", "id_token": "old-id"},
+        timeout_seconds=10,
+    )
+    assert updated["id_token"] == "refreshed-id"
+
+
+def test_codex_token_exp_extracts_and_compares():
+    """_codex_token_exp returns the JWT exp (for newer-token detection) and None
+    for non-JWT input."""
+    from spark_cli.auth import _codex_token_exp
+
+    older = _jwt_with_exp(1_000_000)
+    newer = _jwt_with_exp(2_000_000)
+    assert _codex_token_exp(older) == 1_000_000
+    assert _codex_token_exp(newer) == 2_000_000
+    assert _codex_token_exp(newer) > _codex_token_exp(older)
+    assert _codex_token_exp("not-a-jwt") is None
+    assert _codex_token_exp("") is None
+
+
 def test_resolve_returns_spark_auth_store_source(tmp_path, monkeypatch):
     spark_home = tmp_path / "spark"
     _setup_spark_auth(spark_home)
