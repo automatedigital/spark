@@ -145,6 +145,43 @@ class TestWebServerEndpoints:
         assert data["models"] == []
         assert data["strict"] is False
 
+    def test_oauth_endpoints_accept_dashboard_token(self):
+        """OAuth connect/disconnect must accept the dashboard token (not only the
+        per-process session token) — the desktop app authenticates with the
+        dashboard token, and a session-only check made these endpoints 401 even
+        though the rest of the dashboard was authorized."""
+        import spark_cli.web_server as ws
+
+        with patch.object(ws, "get_configured_dashboard_secret", return_value="testsecret"), \
+             patch("spark_cli.auth.clear_provider_auth", return_value=True):
+            # Wrong credential is still rejected.
+            bad = self.client.request(
+                "DELETE",
+                "/api/providers/oauth/openai-codex",
+                headers={"Authorization": "Bearer wrong-token"},
+            )
+            assert bad.status_code == 401
+
+            # The dashboard token now passes the auth gate (reaches the handler).
+            ok = self.client.request(
+                "DELETE",
+                "/api/providers/oauth/openai-codex",
+                headers={"Authorization": "Bearer testsecret"},
+            )
+            assert ok.status_code != 401
+
+    def test_oauth_start_rejects_wrong_token(self):
+        """The start endpoint still rejects an unknown bearer."""
+        import spark_cli.web_server as ws
+
+        with patch.object(ws, "get_configured_dashboard_secret", return_value="testsecret"):
+            resp = self.client.post(
+                "/api/providers/oauth/openai-codex/start",
+                headers={"Authorization": "Bearer not-the-token", "Content-Type": "application/json"},
+                json={},
+            )
+            assert resp.status_code == 401
+
     def test_kanban_task_create_patch_comment_and_link(self):
         parent_resp = self.client.post(
             "/api/kanban/tasks",
