@@ -788,7 +788,7 @@ export const api = {
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/status`,
     ),
 
-  startWorkspacePreview: (slug: string, options?: { command?: string; url?: string }) =>
+  startWorkspacePreview: (slug: string, options?: { command?: string; url?: string; port?: number }) =>
     fetchJSON<WorkspacePreviewStatus>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/start`,
       {
@@ -804,7 +804,7 @@ export const api = {
       { method: "POST" },
     ),
 
-  restartWorkspacePreview: (slug: string, options?: { command?: string; url?: string }) =>
+  restartWorkspacePreview: (slug: string, options?: { command?: string; url?: string; port?: number }) =>
     fetchJSON<WorkspacePreviewStatus>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/restart`,
       {
@@ -824,9 +824,80 @@ export const api = {
       },
     ),
 
+  // ── Canvas interaction ──
+  canvasInteract: (body: { scope: string; slug: string | null; canvas_id: string; widget_id: string; value: string }) =>
+    fetchJSON<{ ok: boolean }>(`/api/canvases/interact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  // ── Memory ──
+  getMemory: () => fetchJSON<MemoryListResponse>(`/api/memory`),
+  addMemoryEntry: (target: string, content: string) =>
+    fetchJSON<MemoryTargetPayload>(`/api/memory/${encodeURIComponent(target)}/entry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }),
+  replaceMemoryEntry: (target: string, oldText: string, newContent: string) =>
+    fetchJSON<MemoryTargetPayload>(`/api/memory/${encodeURIComponent(target)}/replace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ old_text: oldText, new_content: newContent }),
+    }),
+  removeMemoryEntry: (target: string, oldText: string) =>
+    fetchJSON<MemoryTargetPayload>(`/api/memory/${encodeURIComponent(target)}/entry`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ old_text: oldText }),
+    }),
+
   refreshWorkspacePreview: (slug: string) =>
     fetchJSON<{ ok: boolean; slug: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/refresh`,
+      { method: "POST" },
+    ),
+
+  // ── Streamed server-side browser (WebUI path) ──
+  streamBrowserNavigate: (slug: string, url: string, persistent = true) =>
+    fetchJSON<{ slug: string; url: string; title: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/navigate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, persistent }),
+      },
+    ),
+
+  /** Relative URL for the latest frame; pass a cache-buster to force a refetch. */
+  streamBrowserFrameUrl: (slug: string, bust: number) =>
+    `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/frame?t=${bust}`,
+
+  streamBrowserInput: (slug: string, input: StreamBrowserInput) =>
+    fetchJSON<{ slug: string; ok: boolean; url: string; title: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/input`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    ),
+
+  stopStreamBrowser: (slug: string) =>
+    fetchJSON<{ slug: string; stopped: boolean }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/stop`,
+      { method: "POST" },
+    ),
+
+  streamBrowserCookies: (slug: string) =>
+    fetchJSON<{ slug: string; cookies: { name: string; domain: string }[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/cookies`,
+    ),
+
+  clearStreamBrowser: (slug: string) =>
+    fetchJSON<{ slug: string; cleared: boolean }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/clear`,
       { method: "POST" },
     ),
 
@@ -1822,6 +1893,29 @@ export type WorkspacePreviewEvent =
   | ({ type: "state" } & WorkspacePreviewStatus)
   | WorkspacePreviewLog
   | { type: "refresh"; ts: number; reason?: string };
+
+export interface MemoryTargetPayload {
+  target: string;
+  entries: string[];
+  entry_count: number;
+  chars: number;
+  limit: number;
+  percent: number;
+}
+
+export interface MemoryListResponse {
+  targets: Record<string, MemoryTargetPayload>;
+}
+
+export interface StreamBrowserInput {
+  type: "click" | "scroll" | "type" | "key" | "back" | "forward";
+  x?: number;
+  y?: number;
+  dx?: number;
+  dy?: number;
+  text?: string;
+  key?: string;
+}
 
 export interface WorkspacePreviewSnapshot {
   slug: string;

@@ -1,8 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, memo } from "react";
+import { createContext, useContext, useState, memo } from "react";
 import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
 import { Loader2, Play, RefreshCw, ExternalLink, Settings2, CheckCircle2, XCircle } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
+import { api } from "@/lib/api";
 import { CATEGORY_ACCENT, type CanvasNodeData } from "./types";
 
 export interface CanvasNodeApi {
@@ -11,6 +12,9 @@ export interface CanvasNodeApi {
   runNode: (id: string) => void;
   openInspector: (id: string) => void;
   runningIds: Set<string>;
+  canvasId?: string;
+  scope?: string;
+  slug?: string | null;
 }
 
 const noop = () => {};
@@ -335,6 +339,62 @@ const RenderOutputNode = memo(({ id, data, selected }: NodeProps) => {
 });
 RenderOutputNode.displayName = "RenderOutputNode";
 
+const ActionsNode = memo(({ id, data, selected }: NodeProps) => {
+  const d = data as CanvasNodeData;
+  const ctx = useContext(CanvasNodeContext);
+  const prompt = String(d.params?.prompt ?? "");
+  const options = Array.isArray(d.params?.options) ? (d.params!.options as string[]) : [];
+  const widgetId = String(d.params?.widget_id ?? id);
+  const [chosen, setChosen] = useState<string | null>(null);
+
+  const click = (value: string) => {
+    if (chosen) return;
+    setChosen(value);
+    void api
+      .canvasInteract({
+        scope: ctx.scope ?? "global",
+        slug: ctx.slug ?? null,
+        canvas_id: ctx.canvasId ?? "",
+        widget_id: widgetId,
+        value,
+      })
+      .catch(() => setChosen(null));
+  };
+
+  return (
+    <div className={`w-64 overflow-hidden rounded-md border bg-card shadow-lg ${selected ? "border-primary ring-1 ring-primary/40" : "border-border"}`}>
+      {targetHandle}
+      <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
+        <span className="text-xs">🔘</span>
+        <span className="flex-1 truncate text-xs font-semibold text-muted-foreground">Actions</span>
+      </div>
+      <div className="nodrag space-y-2 p-2.5">
+        {prompt && <p className="text-xs text-foreground/90">{prompt}</p>}
+        <div className="flex flex-col gap-1.5">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              disabled={!!chosen}
+              onClick={() => click(opt)}
+              className={`rounded-md border px-2.5 py-1.5 text-left text-xs transition ${
+                chosen === opt
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-secondary disabled:opacity-40"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+        {chosen && <p className="text-[10px] text-muted-foreground/60">Sent: {chosen}</p>}
+      </div>
+      {sourceHandle}
+    </div>
+  );
+});
+ActionsNode.displayName = "ActionsNode";
+
 export const renderNodeTypes = {
   workflow: WorkflowNodeView,
   iframe: IframeNode,
@@ -342,4 +402,5 @@ export const renderNodeTypes = {
   media: MediaNode,
   note: NoteNode,
   render: RenderOutputNode,
+  actions: ActionsNode,
 };

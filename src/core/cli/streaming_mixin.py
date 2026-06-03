@@ -12,6 +12,12 @@ from contextlib import contextmanager
 from core.cli import _COMMAND_SPINNER_FRAMES  # defined before this import; no cycle
 from core.cli.render import _ACCENT, _DIM, _RST, _cprint
 
+# Frame budget for status-bar repaints during a streamed response. Streamed
+# content is plain-text append (no per-token markdown re-render); only the
+# fixed status/input area repaints, and this caps it to ~10 fps so fast token
+# streams don't thrash the renderer (important on SSH / slow terminals).
+_STREAM_REPAINT_MIN_INTERVAL = 0.1
+
 
 class _StreamingMixin:
     def _on_thinking(self, text: str) -> None:
@@ -221,7 +227,7 @@ class _StreamingMixin:
         # tokens are arriving so the elapsed time and token counters keep
         # moving during long streamed responses. _invalidate is throttled so
         # this stays cheap even under a fast token stream.
-        self._invalidate(min_interval=0.1)
+        self._invalidate(min_interval=_STREAM_REPAINT_MIN_INTERVAL)
 
         # -- Tag-based reasoning suppression --
         # Track whether we're inside a reasoning/thinking block.
@@ -449,6 +455,18 @@ class _StreamingMixin:
         # prompt_toolkit's repaint of the fixed input/status area.
         return max(20, width - 1)
 
+    def _buf_width_exceeds(self, buf: str, max_width: int) -> bool:
+        """Cheap per-token guard for 'does buf exceed max_width display cells?'.
+
+        Terminal display width is at most twice the codepoint count, so
+        ``2*len <= max_width`` guarantees it fits without the O(n) ``get_cwidth``
+        scan that ran on the full buffer every token. Only when the buffer is
+        long enough to possibly wrap do we compute the real width.
+        """
+        if len(buf) * 2 <= max_width:
+            return False
+        return self._status_bar_display_width(buf) > max_width
+
     def _drain_stream_buffer(self, *, final: bool) -> None:
         """Print complete streamed lines without live mid-line writes."""
         max_width = self._stream_content_width()
@@ -458,7 +476,7 @@ class _StreamingMixin:
             self._print_stream_line(line)
 
         while self._stream_buf and (
-            final or self._status_bar_display_width(self._stream_buf) > max_width
+            final or self._buf_width_exceeds(self._stream_buf, max_width)
         ):
             line, rest = self._split_stream_line_for_width(
                 self._stream_buf, max_width
@@ -467,10 +485,7 @@ class _StreamingMixin:
                 break
             self._print_stream_line(line)
             self._stream_buf = rest
-            if (
-                not final
-                and self._status_bar_display_width(self._stream_buf) <= max_width
-            ):
+            if not final and not self._buf_width_exceeds(self._stream_buf, max_width):
                 break
 
     def _flush_stream(self) -> None:

@@ -139,6 +139,7 @@ class TerminalResize(BaseModel):
 class PreviewStart(BaseModel):
     command: str | None = None
     url: str | None = None
+    port: int | None = None
 
 
 class PreviewNavigate(BaseModel):
@@ -149,6 +150,26 @@ class PreviewBrowserAction(BaseModel):
     selector: str | None = None
     text: str | None = None
     expression: str | None = None
+
+
+class StreamNavigate(BaseModel):
+    url: str
+    persistent: bool = True
+
+
+class StreamInput(BaseModel):
+    type: str  # click | scroll | type | key | back | forward
+    x: float | None = None
+    y: float | None = None
+    dx: float | None = None
+    dy: float | None = None
+    text: str | None = None
+    key: str | None = None
+
+
+class StreamLog(BaseModel):
+    text: str
+    stream: str = "console"  # console | network | error
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -708,6 +729,15 @@ def stop_terminal_run(slug: str, run_id: str):
 # ── Project preview ──────────────────────────────────────────────────────────
 
 
+def _port_is_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+        return True
+
+
 def _find_free_loopback_port() -> int:
     span = _PREVIEW_PORT_END - _PREVIEW_PORT_START + 1
     start = _PREVIEW_PORT_START + (uuid.uuid4().int % span)
@@ -889,9 +919,19 @@ def _is_local_preview_host(host: str | None) -> bool:
         return normalized.endswith(".local")
 
 
+_WILDCARD_HOSTS = {"0.0.0.0", "::", "[::]", "localhost", "::1", "[::1]"}
+
+
 def _canonical_probe_url(url: str) -> str:
+    """Rewrite non-routable / wildcard bind hosts to a reachable loopback host.
+
+    Dev servers commonly advertise ``0.0.0.0``, ``::``, ``localhost`` or ``::1``;
+    a browser/iframe needs a concrete reachable host, so collapse them all to
+    ``127.0.0.1`` while preserving port, path, and query.
+    """
     parsed = urllib.parse.urlparse(url)
-    if parsed.hostname == "0.0.0.0":
+    host = (parsed.hostname or "").lower()
+    if host in _WILDCARD_HOSTS or f"[{host}]" in _WILDCARD_HOSTS:
         netloc = f"127.0.0.1:{parsed.port}" if parsed.port else "127.0.0.1"
         return urllib.parse.urlunparse(parsed._replace(netloc=netloc))
     return url
@@ -1025,7 +1065,59 @@ def _message_text_parts(message: dict[str, Any]) -> list[str]:
     return parts
 
 
+def _preview_state_file() -> Path:
+    return get_spark_home() / "workspace-preview-state.json"
+
+
+def _remember_last_url(slug: str, url: str) -> None:
+    """Persist the last URL visited in a project's preview, keyed by slug."""
+    path = _preview_state_file()
+    try:
+        state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(state, dict):
+            state = {}
+    except Exception:
+        state = {}
+    state[slug] = {"url": url, "ts": time.time()}
+    try:
+        path.write_text(json.dumps(state), encoding="utf-8")
+    except OSError:
+        _log.debug("failed to persist preview last-url slug=%s", slug, exc_info=True)
+
+
+def _recall_last_url(slug: str) -> str | None:
+    path = _preview_state_file()
+    if not path.exists():
+        return None
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        entry = state.get(slug) if isinstance(state, dict) else None
+        if isinstance(entry, dict):
+            url = entry.get("url")
+            return url if isinstance(url, str) else None
+    except Exception:
+        return None
+    return None
+
+
 def _find_remembered_preview(project_dir: Path, slug: str) -> dict[str, Any] | None:
+    # Prefer an explicitly remembered last-visited URL that still responds.
+    last_url = _recall_last_url(slug)
+    if last_url and _probe_preview_url(last_url):
+        parsed = urllib.parse.urlparse(last_url)
+        return {
+            "kind": "remembered",
+            "command": None,
+            "url": last_url,
+            "port": int(parsed.port or (443 if parsed.scheme == "https" else 80)),
+            "process": None,
+            "auto_refresh": False,
+            "auto_verify": True,
+        }
+    return _find_remembered_preview_from_history(project_dir, slug)
+
+
+def _find_remembered_preview_from_history(project_dir: Path, slug: str) -> dict[str, Any] | None:
     try:
         from core.spark_state import SessionDB
 
@@ -1060,13 +1152,116 @@ def _find_remembered_preview(project_dir: Path, slug: str) -> dict[str, Any] | N
     return None
 
 
+_PORT_CONFIG_FILES = (
+    "vite.config.js", "vite.config.ts", "vite.config.mjs",
+    "next.config.js", "next.config.ts", "next.config.mjs",
+    ".env", ".env.local", ".env.development",
+    "Procfile",
+)
+_PORT_RE_PATTERNS = (
+    re.compile(r"(?im)^\s*PORT\s*[:=]\s*[\"']?(\d{2,5})"),
+    re.compile(r"(?i)\bport\s*[:=]\s*(\d{2,5})"),
+    re.compile(r"(?i)--port[=\s]+(\d{2,5})"),
+    re.compile(r"(?i)-p\s+(\d{2,5})"),
+)
+
+
+def _valid_port(value: int) -> bool:
+    return 1 <= value <= 65535
+
+
+def _scan_text_for_port(text: str) -> int | None:
+    for pattern in _PORT_RE_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            port = int(match.group(1))
+            if _valid_port(port):
+                return port
+    return None
+
+
+def _declared_project_port(project_dir: Path) -> int | None:
+    """Best-effort parse of the project's own config for a declared dev port.
+
+    Checks (in order) vite/next config, .env ``PORT=``, Procfile, the
+    ``scripts`` block of package.json, and docker-compose published ports.
+    Returns the first plausible port, or None to fall back to the free-port scan.
+    """
+    for name in _PORT_CONFIG_FILES:
+        path = project_dir / name
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")[:_MAX_FILE_READ_BYTES]
+        except OSError:
+            continue
+        port = _scan_text_for_port(text)
+        if port is not None:
+            return port
+
+    package_json = project_dir / "package.json"
+    if package_json.exists():
+        try:
+            package = json.loads(package_json.read_text(encoding="utf-8"))
+            scripts = package.get("scripts", {}) if isinstance(package, dict) else {}
+            for script in ("dev", "start", "serve", "preview"):
+                cmd = scripts.get(script) if isinstance(scripts, dict) else None
+                if isinstance(cmd, str):
+                    port = _scan_text_for_port(cmd)
+                    if port is not None:
+                        return port
+        except Exception:
+            pass
+
+    for compose_name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
+        compose = project_dir / compose_name
+        if not compose.exists():
+            continue
+        try:
+            text = compose.read_text(encoding="utf-8", errors="ignore")[:_MAX_FILE_READ_BYTES]
+        except OSError:
+            continue
+        match = re.search(r"(?m)-\s*[\"']?(\d{2,5}):\d{2,5}", text)
+        if match:
+            port = int(match.group(1))
+            if _valid_port(port):
+                return port
+    return None
+
+
 def _detect_preview(
     project_dir: Path,
     requested_command: str | None = None,
     requested_url: str | None = None,
     slug: str | None = None,
 ) -> dict[str, Any]:
+    """Resolve how to preview a project, in strict precedence order:
+
+    1. ``spark.preview.json`` — explicit ``command``/``url`` override (also
+       supplies ``autoRefresh``/``autoVerify`` defaults). An explicit/config
+       ``url`` that is local and currently reachable short-circuits as
+       ``kind="existing"`` (we attach to it, start nothing).
+    2. Remembered URL — a local preview URL seen in this workspace's session
+       history that still probes OK (``kind="remembered"``). Only consulted
+       when no command/url was requested.
+    3. Already-running server — a loopback listener whose process cwd is inside
+       the project dir and that responds (``kind="existing"``). Skipped if a
+       command was requested.
+    4. Requested command — caller/config supplied a launch command
+       (``kind="custom"``); we start it and assume the chosen free port.
+    5. Declared project port — parsed from the project's own config
+       (``vite.config``/``next.config``/``.env PORT=``/``package.json`` scripts,
+       etc.) so we launch and attach on the port the project actually uses.
+    6. ``package.json`` scripts — first of dev/start/serve/preview
+       (``kind="node"``).
+    7. Static ``index.html`` (root or ``public/``) served via
+       ``python -m http.server`` (``kind="static"``).
+    8. Otherwise HTTP 404 — nothing previewable detected.
+    """
     port = _find_free_loopback_port()
+    declared_port = _declared_project_port(project_dir)
+    if declared_port is not None and _port_is_free(declared_port):
+        port = declared_port
     config_path = project_dir / "spark.preview.json"
     config: dict[str, Any] = {}
     if config_path.exists():
@@ -1164,6 +1359,30 @@ def _cleanup_preview_sessions() -> None:
             pass
 
 
+def _capture_bound_url_from_log(slug: str, session: dict[str, Any], line: str) -> None:
+    """Adopt the real URL/port a dev server prints, if it differs from ours.
+
+    Vite/Next/CRA print e.g. ``Local: http://127.0.0.1:5173/`` and may pick a
+    different port than we requested (collision, fixed port in config). When we
+    spot such a local URL, update the session and notify the client.
+    """
+    if session.get("port_locked"):
+        return
+    for url in _extract_preview_urls(line):
+        parsed = urllib.parse.urlparse(url)
+        bound_port = parsed.port
+        if not bound_port or bound_port == session.get("port"):
+            continue
+        normalized = _canonical_probe_url(url)
+        with _preview_lock:
+            session["url"] = normalized
+            session["port"] = bound_port
+            session["updated_at"] = time.time()
+        _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+        _preview_emit(slug, {"type": "refresh", "ts": time.time(), "reason": "port_detected"})
+        return
+
+
 def _run_preview_process(slug: str, session: dict[str, Any]) -> None:
     proc: subprocess.Popen | None = session.get("process")
     try:
@@ -1171,6 +1390,7 @@ def _run_preview_process(slug: str, session: dict[str, Any]) -> None:
             return
         for line in proc.stdout:
             _append_preview_log(slug, session, line)
+            _capture_bound_url_from_log(slug, session, line)
         exit_code = proc.wait()
         with _preview_lock:
             if session.get("status") == "running":
@@ -1202,12 +1422,38 @@ def _snapshot_project_files(project_dir: Path) -> dict[str, float]:
     return snapshot
 
 
+def _reprobe_preview_port(slug: str, session: dict[str, Any], project_dir: Path) -> None:
+    """If the current preview URL stopped responding, adopt the project's new port.
+
+    Covers dev servers that restart on a different port (collision recovery,
+    config change) without re-printing a URL we caught from stdout.
+    """
+    if session.get("port_locked"):
+        return
+    url = session.get("url")
+    if url and _probe_preview_url(url):
+        return
+    running = _find_running_project_preview(project_dir)
+    if not running or running.get("port") == session.get("port"):
+        return
+    with _preview_lock:
+        session["url"] = _canonical_probe_url(running["url"])
+        session["port"] = running["port"]
+        session["updated_at"] = time.time()
+    _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+    _preview_emit(slug, {"type": "refresh", "ts": time.time(), "reason": "port_changed"})
+
+
 def _watch_preview_files(slug: str, session: dict[str, Any]) -> None:
     project_dir = Path(session["project_dir"])
     previous = _snapshot_project_files(project_dir)
     last_refresh = 0.0
+    cycles = 0
     while session.get("status") == "running":
         time.sleep(_PREVIEW_WATCH_INTERVAL_SECONDS)
+        cycles += 1
+        if cycles % 4 == 0:
+            _reprobe_preview_port(slug, session, project_dir)
         current = _snapshot_project_files(project_dir)
         if current != previous:
             previous = current
@@ -1232,14 +1478,23 @@ def start_preview(slug: str, body: PreviewStart | None = None):
     if existing and existing.get("status") == "running":
         return _preview_status_payload(slug, existing)
 
-    detected = _detect_preview(project_dir, body.command if body else None, body.url if body else None, slug)
+    override_port = body.port if body else None
+    if override_port is not None and not _valid_port(override_port):
+        raise HTTPException(status_code=400, detail=f"Invalid port: {override_port}")
+    override_url = body.url if body else None
+    if override_port is not None and not override_url:
+        override_url = f"http://127.0.0.1:{override_port}"
+    detected = _detect_preview(project_dir, body.command if body else None, override_url, slug)
+    if override_port is not None:
+        detected["url"] = f"http://127.0.0.1:{override_port}"
+        detected["port"] = override_port
     cwd = Path(detected.get("cwd") or project_dir)
     command = str(detected["command"]) if detected.get("command") else None
     env = {**os.environ, "HOST": "127.0.0.1", "PORT": str(detected["port"])}
     session = {
         "slug": slug,
         "status": "starting",
-        "url": detected["url"],
+        "url": _canonical_probe_url(detected["url"]),
         "command": command,
         "port": detected["port"],
         "kind": detected["kind"],
@@ -1249,6 +1504,7 @@ def start_preview(slug: str, body: PreviewStart | None = None):
         "project_dir": str(project_dir),
         "auto_refresh": detected.get("auto_refresh", True),
         "auto_verify": detected.get("auto_verify", True),
+        "port_locked": override_port is not None,
         "started_at": time.time(),
         "updated_at": time.time(),
     }
@@ -1324,6 +1580,7 @@ def restart_preview(slug: str, body: PreviewStart | None = None):
 def navigate_preview(slug: str, body: PreviewNavigate):
     _project_dir(slug)
     url = _normalize_browser_url(body.url)
+    _remember_last_url(slug, url)
     session = _preview_sessions.get(slug)
     if not session:
         session = {
@@ -1556,6 +1813,144 @@ def preview_type(slug: str, body: PreviewBrowserAction):
 @router.post("/projects/{slug}/preview/evaluate")
 def preview_evaluate(slug: str, body: PreviewBrowserAction):
     return _run_playwright_action(slug, "evaluate", body)
+
+
+# ── Streamed server-side browser (WebUI path) ────────────────────────────────
+
+
+def _emit_stream_log(slug: str, text: str, stream: str = "console") -> None:
+    """Push a browser console/network line into the preview log SSE channel."""
+    redacted = _SECRET_RE.sub(r"\1\2[redacted]", text)
+    entry = {"ts": time.time(), "type": "log", "stream": stream, "text": redacted[:4000]}
+    session = _preview_sessions.get(slug)
+    if session is not None:
+        with _preview_lock:
+            logs = session.setdefault("logs", [])
+            logs.append(entry)
+            if len(logs) > _PREVIEW_LOG_LIMIT:
+                del logs[: len(logs) - _PREVIEW_LOG_LIMIT]
+    _preview_emit(slug, entry)
+
+
+def _streamed_session(slug: str, *, persistent: bool = True):
+    """Resolve the per-workspace streamed browser session, mapping errors to HTTP."""
+    _project_dir(slug)
+    try:
+        from spark_cli.preview_browser import BrowserUnavailable, get_streamed_session
+    except Exception as exc:  # pragma: no cover - import guard
+        raise HTTPException(status_code=501, detail=f"Streamed browser unavailable: {exc}")
+    try:
+        session = get_streamed_session(
+            slug,
+            persistent=persistent,
+            on_log=lambda text, stream: _emit_stream_log(slug, text, stream),
+        )
+        return session, BrowserUnavailable
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Browser session failed: {exc}")
+
+
+@router.post("/projects/{slug}/preview/stream/navigate")
+async def stream_browser_navigate(slug: str, body: StreamNavigate):
+    url = _normalize_browser_url(body.url)
+    _remember_last_url(slug, url)
+    session, browser_unavailable = _streamed_session(slug, persistent=body.persistent)
+    try:
+        result = await asyncio.to_thread(session.navigate, url)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Navigation failed: {exc}")
+    return {"slug": slug, **result}
+
+
+@router.get("/projects/{slug}/preview/stream/frame")
+async def stream_browser_frame(slug: str):
+    session, browser_unavailable = _streamed_session(slug)
+    try:
+        png = await asyncio.to_thread(session.screenshot)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Frame capture failed: {exc}")
+    width, height = session.viewport
+    return StreamingResponse(
+        iter([png]),
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Preview-Viewport": f"{width}x{height}",
+        },
+    )
+
+
+@router.post("/projects/{slug}/preview/stream/input")
+async def stream_browser_input(slug: str, body: StreamInput):
+    session, browser_unavailable = _streamed_session(slug)
+
+    def _apply() -> None:
+        kind = body.type
+        if kind == "click":
+            session.click(body.x or 0, body.y or 0)
+        elif kind == "scroll":
+            session.scroll(body.dx or 0, body.dy or 0)
+        elif kind == "type":
+            session.type_text(body.text or "")
+        elif kind == "key":
+            session.press_key(body.key or "")
+        elif kind == "back":
+            session.go_back()
+        elif kind == "forward":
+            session.go_forward()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown input type: {kind}")
+
+    try:
+        await asyncio.to_thread(_apply)
+    except HTTPException:
+        raise
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Input failed: {exc}")
+    return {"slug": slug, "ok": True, "url": session.current_url, "title": session.title}
+
+
+@router.post("/projects/{slug}/preview/stream/stop")
+def stream_browser_stop(slug: str):
+    _project_dir(slug)
+    from spark_cli.preview_browser import close_streamed_session
+
+    return {"slug": slug, "stopped": close_streamed_session(slug)}
+
+
+@router.get("/projects/{slug}/preview/stream/cookies")
+async def stream_browser_cookies(slug: str):
+    session, browser_unavailable = _streamed_session(slug)
+    try:
+        cookies = await asyncio.to_thread(session.cookies)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Cookie read failed: {exc}")
+    return {"slug": slug, "cookies": cookies}
+
+
+@router.post("/projects/{slug}/preview/stream/clear")
+def stream_browser_clear(slug: str):
+    _project_dir(slug)
+    from spark_cli.preview_browser import clear_browsing_data
+
+    return {"slug": slug, "cleared": clear_browsing_data(slug)}
+
+
+@router.post("/projects/{slug}/preview/stream/log")
+def stream_browser_log(slug: str, body: StreamLog):
+    """Ingest a console/network line forwarded by the native webview's injected script."""
+    _project_dir(slug)
+    stream = body.stream if body.stream in {"console", "network", "error"} else "console"
+    _emit_stream_log(slug, body.text, stream)
+    return {"ok": True}
 
 
 @router.get("/projects/{slug}/preview/events")

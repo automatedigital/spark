@@ -19,6 +19,37 @@ from spark_cli.banner import build_welcome_banner
 
 
 class _SessionOpsMixin:
+    def _handle_export_command(self, cmd: str):
+        """Handle /export [session_id] [--publish] - write a redacted session export.
+
+        With --publish, opt-in to upload the redacted file to a public GitHub Gist.
+        """
+        from core.cli.render import _cprint, _DIM, _RST
+        from spark_cli.session_export import export_session_redacted, publish_export
+
+        tokens = cmd.strip().split()[1:]  # drop "/export"
+        publish = "--publish" in tokens
+        positional = [t for t in tokens if not t.startswith("--")]
+        session_id = positional[0] if positional else getattr(self, "session_id", None)
+        if not session_id:
+            _cprint(f"  {_DIM}No active session to export.{_RST}")
+            return
+        result = export_session_redacted(session_id, db=getattr(self, "_session_db", None))
+        if result.get("error"):
+            _cprint(f"  {_DIM}{result['error']}{_RST}")
+            return
+        _cprint(
+            f"  Exported {result['messages']} messages (secrets redacted) to:\n"
+            f"  {_DIM}{result['path']}{_RST}"
+        )
+        if publish:
+            _cprint(f"  {_DIM}Publishing to a public Gist…{_RST}")
+            pub = publish_export(result["path"])
+            if pub.get("ok"):
+                _cprint(f"  Published: {_DIM}{pub['url']}{_RST}")
+            else:
+                _cprint(f"  {_DIM}{pub.get('error', 'publish failed')}{_RST}")
+
     def show_banner(self):
         """Display the welcome banner in Claude Code style."""
         self.console.clear()

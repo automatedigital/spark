@@ -6,6 +6,7 @@ import {
   Download,
   FolderOpen,
   LayoutGrid,
+  Brain,
   MessageSquare,
   Package,
   Settings,
@@ -17,12 +18,14 @@ import FilesPage from "@/pages/FilesPage";
 import KanbanPage from "@/pages/KanbanPage";
 import CanvasPage from "@/pages/CanvasPage";
 import SkillsPage from "@/pages/SkillsPage";
+import MemoryPage from "@/pages/MemoryPage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 import { useUpdateModal } from "@/lib/UpdateModalContext";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
+import { GlobalToasts } from "@/components/GlobalToasts";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
@@ -37,6 +40,7 @@ const NAV_ITEMS = [
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
+  { id: "memory", labelKey: "memory" as const, icon: Brain },
 ] as const;
 
 type PageId = (typeof NAV_ITEMS)[number]["id"];
@@ -48,6 +52,7 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   skills: SkillsPage,
   files: FilesPage,
   canvas: CanvasPage,
+  memory: MemoryPage,
 };
 
 const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas"]);
@@ -288,6 +293,7 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <GlobalToasts />
 
       {/* Cursor-following glow blob */}
       <div

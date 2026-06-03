@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
+import queue as _queue
 import re
+import threading as _threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -191,6 +193,58 @@ def _delete_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, An
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to delete canvas: {exc}")
     return {"ok": True, "deleted": canvas_id}
+
+
+# ── Widget interaction (canvas → agent) ──────────────────────────────────────
+# A click on an interactive canvas widget is delivered to a per-widget queue;
+# the agent's `canvas_await` tool blocks on it and gets the value as its result.
+_interaction_queues: dict[str, _queue.Queue[str]] = {}
+_interaction_lock = _threading.Lock()
+
+
+def _interaction_key(scope: str, slug: str | None, canvas_id: str, widget_id: str) -> str:
+    return f"{scope}:{slug or ''}:{canvas_id}:{widget_id}"
+
+
+def _interaction_queue(key: str) -> _queue.Queue[str]:
+    with _interaction_lock:
+        q = _interaction_queues.get(key)
+        if q is None:
+            q = _queue.Queue(maxsize=8)
+            _interaction_queues[key] = q
+        return q
+
+
+def submit_interaction(scope: str, slug: str | None, canvas_id: str, widget_id: str, value: str) -> None:
+    _interaction_queue(_interaction_key(scope, slug, canvas_id, widget_id)).put(value)
+
+
+def wait_for_interaction(scope: str, slug: str | None, canvas_id: str, widget_id: str, timeout: float) -> str | None:
+    try:
+        return _interaction_queue(_interaction_key(scope, slug, canvas_id, widget_id)).get(timeout=timeout)
+    except _queue.Empty:
+        return None
+
+
+class InteractBody(BaseModel):
+    scope: str = "global"
+    slug: str | None = None
+    canvas_id: str
+    widget_id: str
+    value: str
+
+
+@router.post("/interact")
+def canvas_interact(body: InteractBody) -> dict[str, Any]:
+    """Receive a click from an interactive canvas widget and queue it for the agent."""
+    submit_interaction(body.scope, body.slug, body.canvas_id, body.widget_id, body.value)
+    try:
+        from spark_cli.web_server import _publish_event
+
+        _publish_event("canvas.interaction", {"canvas_id": body.canvas_id, "widget_id": body.widget_id, "value": body.value})
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 def register_canvas_routes(app) -> None:

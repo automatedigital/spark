@@ -1,370 +1,204 @@
-# Preview Browser Tab Plan
-
-## Goal
-
-Add a `Preview` tab to the chat page right sidebar, beside `Files` and
-`Terminal`, so workspace webapps can be opened, refreshed, inspected, and driven
-by both the user and the Spark agent.
-
-The target behavior is close to Claude Code Desktop and Codex: a shared embedded
-browser for running apps, automatic verification after code changes, console/log
-visibility, and agentic browser actions. Claude documents this as an embedded
-browser that can start dev servers, inspect DOM/screenshots, click, fill forms,
-read server logs, and auto-verify after edits. Its product announcement also
-calls out reading console logs and iterating on UI errors. OpenAI documents
-Codex's in-app browser as one of the agentic Codex features.
-
-References:
-
-- Claude Code Desktop docs: https://code.claude.com/docs/en/desktop
-- Claude Code preview announcement: https://claude.com/blog/preview-review-and-merge-with-claude-code
-- OpenAI Codex usage/help page: https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan
-
-## Current Spark Surface
-
-- Chat workspace right panel already exists in
-  `src/spark_cli/web/src/pages/ChatPage.tsx`.
-- `RightTab` is currently `"files" | "terminal"`.
-- `WorkspaceRightPanel` renders the tab bar and switches between:
-  - `FileTreePane` from `src/spark_cli/web/src/components/workspace/FileTreePane.tsx`
-  - `WorkspaceTerminalPanel` from
-    `src/spark_cli/web/src/components/workspace/WorkspaceTerminalPanel.tsx`
-- Backend workspace routes already support project-scoped files and terminal
-  runs through `src/spark_cli/web_server.py`, `spark_cli.workspace_routes`, and
-  `src/spark_cli/web/src/lib/api.ts`.
-- Spark already has agent browser tools in `src/tools/browser_tool.py`,
-  including navigation, snapshots, click/type/scroll, screenshots/vision, and
-  `browser_console`.
-
-## Product Requirements
-
-1. Add a third right-sidebar tab named `Preview`, with an icon button when the
-   panel is collapsed and a normal tab when open.
-2. Preview should appear only for workspace threads, matching the existing files
-   and terminal panel behavior.
-3. When Spark completes work on a workspace project that looks like a webapp, the
-   preview tab should open automatically and show the running app.
-4. The user can manually start/stop/restart preview, refresh the page, enter a
-   URL, and open externally.
-5. The preview should auto-refresh on file changes when the app lacks native HMR,
-   while avoiding refresh loops when Vite/Next/etc. already hot reload.
-6. The preview browser should expose console errors, console messages, network
-   failures, current URL, page title, and screenshots/snapshots to the agent.
-7. The embedded browser and agent browser should share the same underlying page
-   session where possible, so the user and agent are looking at the same page.
-8. Preview server state should be scoped to a workspace slug, not global chat
-   state.
-9. Security boundary: preview servers bind to loopback and serve workspace files,
-   while browser mode can navigate to normal `http`/`https` pages. Unsafe schemes
-   such as `file:`, `data:`, and `javascript:` remain blocked.
-
-## Architecture
-
-### Frontend
-
-Create `WorkspacePreviewPanel` in:
-
-`src/spark_cli/web/src/components/workspace/WorkspacePreviewPanel.tsx`
-
-Responsibilities:
-
-- Render a compact browser toolbar:
-  - URL display/input
-  - back/forward
-  - reload
-  - start/stop/restart preview server
-  - open externally
-  - console/error badge
-- Render the preview viewport.
-- Render a lower or toggleable diagnostics strip for console/server/network
-  events.
-- Subscribe to preview state/events over SSE.
-- Keep the tab mounted while switching away if feasible, so page state is not
-  lost just because the user checks files or terminal.
-
-Update `ChatPage.tsx`:
-
-- Change `type RightTab = "files" | "terminal" | "preview"`.
-- Add a `Monitor` or `Globe` icon from `lucide-react`.
-- Add Preview to the collapsed right rail and open tab bar.
-- Auto-select `preview` when backend emits a preview-ready event for the active
-  workspace.
-- Persist active tab in local storage if the current tab behavior should survive
-  reloads.
-
-Update `src/spark_cli/web/src/lib/api.ts`:
-
-- Add typed API wrappers for preview status, start, stop, restart, navigate,
-  refresh, logs, screenshot, snapshot, and event stream.
-
-### Backend
-
-Add a project-scoped preview manager, likely under:
-
-`src/spark_cli/workspace_preview.py`
-
-Responsibilities:
-
-- Detect webapp type and dev command from workspace files.
-- Start and stop dev servers in the project directory.
-- Capture server stdout/stderr into a bounded ring buffer.
-- Detect the listening URL/port.
-- Emit preview lifecycle events over SSE.
-- Watch workspace files for changes and publish refresh hints.
-- Maintain one preview session per workspace slug, with cleanup on process exit.
-
-Add routes, either in `spark_cli.workspace_routes` or `web_server.py`:
-
-- `GET /api/workspace/projects/{slug}/preview/status`
-- `POST /api/workspace/projects/{slug}/preview/start`
-- `POST /api/workspace/projects/{slug}/preview/stop`
-- `POST /api/workspace/projects/{slug}/preview/restart`
-- `POST /api/workspace/projects/{slug}/preview/navigate`
-- `POST /api/workspace/projects/{slug}/preview/refresh`
-- `GET /api/workspace/projects/{slug}/preview/events`
-- `GET /api/workspace/projects/{slug}/preview/logs`
-- `GET /api/workspace/projects/{slug}/preview/screenshot`
-- `GET /api/workspace/projects/{slug}/preview/snapshot`
-- `GET /api/workspace/projects/{slug}/preview/console`
-
-Use the existing workspace path resolver so all operations stay inside the
-workspace project directory.
-
-### Browser Runtime
-
-Use Playwright as the preview control plane if available. This gives Spark:
-
-- A real page object for navigation and reload.
-- Console message capture.
-- Page error capture.
-- Network request failure capture.
-- Screenshots and accessibility snapshots.
-- Click/type/evaluate primitives for agentic inspection.
-
-The embedded frontend can render one of two ways:
-
-1. MVP: iframe the detected localhost URL in the Preview tab, while the backend
-   Playwright page is used for agent inspection and logs.
-2. Better shared-session target: expose the Playwright-controlled page through a
-   browser streaming/view bridge or Chrome DevTools Protocol attachment so the
-   frontend and agent use the same page.
-
-Recommendation: ship the iframe MVP first, but design the backend API around a
-`preview_session_id` so the shared-page implementation can replace the iframe
-without changing agent-facing tools.
-
-## Webapp Detection
-
-Detection should be conservative and explainable:
-
-- `package.json`
-  - Prefer scripts in this order: `dev`, `start`, `serve`, `preview`.
-  - Detect common frameworks and default ports:
-    - Vite: 5173
-    - Next.js: 3000
-    - Remix/React Router: 3000 or script output
-    - SvelteKit: 5173
-    - Astro: 4321
-    - Vue CLI: 8080
-- Static apps
-  - `index.html` at project root or under `public/`
-  - Start a simple static file server on an allocated local port.
-- Python webapps
-  - Defer beyond MVP unless clear patterns exist, such as `streamlit_app.py`,
-    `app.py` with Flask/FastAPI, or explicit config.
-
-Support an explicit project config file after MVP:
-
-`spark.preview.json`
-
-Example:
-
-```json
-{
-  "command": "npm run dev -- --host 127.0.0.1",
-  "url": "http://127.0.0.1:5173",
-  "readyPattern": "Local:",
-  "autoOpen": true,
-  "autoVerify": true
-}
-```
-
-## Auto-Open Trigger
-
-When a workspace agent turn completes:
-
-1. Inspect changed files and project structure.
-2. If the project is likely a webapp and the user asked for build/fix/add UI
-   work, call the preview manager to start or reuse the preview server.
-3. Emit an event such as `workspace.preview.ready` with `slug`, `url`,
-   `server_status`, and `auto_open: true`.
-4. The frontend switches the active right tab to `preview` for that workspace.
-
-Implementation hook:
-
-- Extend the workspace conversation completion path in
-  `src/spark_cli/web_server.py` near `chat.turn_done` publishing.
-- Keep this outside the system prompt and toolset construction so prompt caching
-  behavior is not affected.
-
-## Auto-Refresh
-
-Use layered refresh behavior:
-
-- If the dev server is a known HMR server, do not hard-refresh on every file
-  change; rely on HMR and only refresh when the page becomes stale or reconnects.
-- For static servers or unknown apps, debounce file changes and reload after
-  300-800 ms.
-- Ignore noisy directories:
-  - `node_modules`
-  - `.git`
-  - `dist`
-  - `build`
-  - `.next`
-  - `.vite`
-  - cache directories
-- Expose a manual reload button regardless of auto-refresh mode.
-
-## Agentic Browser Integration
-
-Add preview-aware tools or extend existing browser tools with a preview session
-target:
-
-- `preview_open`
-- `preview_snapshot`
-- `preview_click`
-- `preview_type`
-- `preview_console`
-- `preview_screenshot`
-- `preview_evaluate`
-
-Preferred implementation:
-
-- Reuse `src/tools/browser_tool.py` concepts and schemas where practical.
-- Internally route preview tools to the workspace preview session rather than
-  launching an unrelated browser.
-- Preserve existing `browser_open` behavior for normal web browsing.
-
-Agent prompt behavior:
-
-- When working in a workspace project with an active preview, tell the agent the
-  preview URL and that it can use preview/browser inspection to verify UI work.
-- Avoid changing toolsets mid-conversation. The preview tools should either be
-  available from the start for web chat sessions or exposed through existing
-  browser tool activation rules.
-
-## Logs and Diagnostics
-
-Preview should collect and expose:
-
-- Dev server stdout/stderr.
-- Browser console messages.
-- Browser page errors.
-- Failed network requests.
-- Current URL, title, HTTP status where available.
-- Last screenshot timestamp/path.
-
-Frontend diagnostics:
-
-- Error badge on the Preview tab when console/page errors occur.
-- Scrollable log drawer with filters: `All`, `Console`, `Server`, `Network`,
-  `Errors`.
-- Clear logs action.
-
-Agent diagnostics:
-
-- Console/log APIs should return bounded JSON, not unbounded raw text.
-- Include enough context for the agent to identify the file/route/error.
-
-## Security and Isolation
-
-- Bind preview servers to `127.0.0.1`.
-- Allocate ports from a bounded range and track ownership.
-- Do not proxy arbitrary remote URLs by default.
-- Sanitize URL navigation through existing website policy rules.
-- Keep preview processes scoped to workspace slug and working directory.
-- Kill preview processes when workspace is deleted or Spark exits.
-- Redact likely secrets from server/browser logs before exposing them to the
-  frontend or agent.
-
-## Milestones
-
-### Milestone 1: UI Shell
-
-- [x] Add `Preview` tab to `WorkspaceRightPanel`.
-- [x] Create a placeholder `WorkspacePreviewPanel`.
-- [x] Add API types/stubs in `api.ts`.
-- [x] Verify layout at narrow and wide right-panel widths.
-
-### Milestone 2: Preview Server Lifecycle
-
-- [x] Implement initial project-scoped preview manager in `workspace_routes.py`.
-- [x] Add start/stop/restart/status/log routes.
-- [x] Support Vite/Next/package.json detection and static HTML fallback.
-- [x] Stream server status/log events over SSE.
-
-### Milestone 3: Embedded Preview
-
-- [x] Render the detected URL in the Preview tab.
-- [x] Add toolbar controls.
-- [x] Auto-open the tab on `workspace.preview.ready`.
-- [x] Add manual refresh and open-external.
-
-### Milestone 4: Auto-Refresh
-
-- [x] Add workspace file watcher.
-- [x] Debounce refresh hints.
-- [x] Respect HMR-capable frameworks.
-- [x] Show refresh status in the toolbar.
-
-### Milestone 5: Agent Browser Control
-
-- [x] Add preview session browser backend with Playwright.
-- [x] Capture console/page/network events.
-- [x] Implement preview snapshot, screenshot, console, evaluate, click, type.
-- [x] Wire workspace agent instructions to prefer preview verification after webapp
-  changes.
-
-### Milestone 6: Polish and Hardening
-
-- [x] Persist preview session settings per workspace.
-- [x] Add diagnostics drawer filters.
-- [x] Add config file support with `spark.preview.json`.
-- [x] Add process cleanup and port conflict handling.
-- [x] Add tests for route behavior, detection, lifecycle, and frontend tab state.
-
-## Test Plan
-
-Backend:
-
-- [x] Unit test webapp detection for Vite, Next, static HTML, unknown project.
-- [x] Unit test command/URL config parsing.
-- [x] Integration test preview start/stop/status with a tiny static app.
-- [x] Verify preview server binds to loopback and refuses path traversal.
-- [x] Verify logs are bounded and secret-redacted.
-
-Frontend:
-
-- [x] Component test `WorkspaceRightPanel` tab switching.
-- [x] Component test `WorkspacePreviewPanel` loading, error, running, stopped states.
-- [x] Browser test that a sample Vite app opens in Preview and reloads on change.
-- [x] Browser test that console errors show the Preview tab error badge.
-
-Agent:
-
-- [x] Test workspace agent turn emits `workspace.preview.ready` for webapp tasks.
-- [x] Test preview console/screenshot tools return bounded JSON.
-- [x] Test existing prompt caching invariants are not disturbed by preview startup.
-
-## Decisions
-
-- [x] Preview starts only when a workspace is previewable or explicitly configured.
-- [x] The visible pane doubles as an app preview and a general browser surface.
-- [x] Agent inspection/control routes through a separate browser automation session
-  when `agent-browser` is available, with Playwright/fetch fallbacks for local use.
-- [x] Preview state is process/session scoped for now; persistent settings live in
-  `spark.preview.json`.
-- [x] Navigation accepts normal `http`/`https` browser URLs and blocks unsafe URL
-  schemes.
-- [x] Preview tools are their own `preview` toolset and are also included in the default
-  Spark core tool surface.
+# Spark Experience Improvement Plan
+
+Recommendations for the **TUI**, **Web UI**, **Desktop app**, and **overall agent experience**, drawing on recent work in
+[Hermes](https://github.com/nousresearch/hermes-agent) (self-improving skills, agent-curated memory, interrupt-and-redirect TUI, pluggable terminal backends),
+[OpenClaw](https://github.com/openclaw/openclaw) (Live Canvas / A2UI, onboarding wizard, menu-bar companion, multi-agent routing),
+and [Pi](https://github.com/earendil-works/pi) (differential TUI rendering, low-latency streaming, supply-chain hardening, session sharing).
+
+Tasks are atomic and independently checkable. Tackle a section at a time; each box is small enough to land in one PR.
+
+---
+
+## 1. TUI (`src/core/cli/`)
+
+### 1.1 Interrupt-and-redirect (Hermes)
+- [x] Audit current Ctrl-C behaviour — does it kill the turn or just the stream? **Finding:** Ctrl+C kills the *turn*. `agent.interrupt()` (`run_agent/__init__.py:2607`) sets `_interrupt_requested` + `_set_interrupt(thread)` aborting in-flight tools; the loop checks the flag at ~15 points and breaks, propagating to child agents. Partial response is preserved (`interrupt_message` on result). Redirect already works: typing + Enter mid-run → `_interrupt_queue` → `agent.interrupt(msg)` (`core/cli/__init__.py:1586`). `streaming_mixin.py` is pure rendering, no interrupt logic.
+- [x] Add a soft-interrupt key (Esc) that pauses generation and drops the user back to the prompt **without** discarding the partial response. (`handle_escape_interrupt`, filtered to `_agent_running` so it never breaks escape-sequences; calls `agent.interrupt()` which preserves the partial response; never escalates to force-exit.)
+- [x] Allow the queued user message to be injected as a redirect that the agent reads on the next loop iteration. (Already wired: `_interrupt_queue` → `agent.interrupt(msg)` → `result["interrupt_message"]` → `pending_message` re-submitted as the next turn, `core/cli/__init__.py:1711`.)
+- [x] Show an inline `⏸ interrupted — type to redirect, Enter to resume` hint. (Printed by `handle_escape_interrupt` on soft-interrupt.)
+- [x] Add tests for interrupt → redirect → resume in `tests/` (mock the model loop). (`tests/test_interrupt_redirect.py` — interrupt sets redirect, soft-interrupt is pure pause, propagation to children, clear resets, result-shape carries `interrupt_message`. 5 passing.)
+
+### 1.2 Low-latency / flicker-free streaming (Pi differential rendering)
+- [x] Profile redraw cost during fast token streams. **Finding:** Content is already append-only (`_drain_stream_buffer`→`_print_stream_line` via `_cprint`), not full-screen repaint; the status bar repaint is already throttled (`_invalidate` min_interval 0.1s). The real hotspot is **O(n²)**: `_drain_stream_buffer` calls `get_cwidth(self._stream_buf)` on *every* delta, so a long un-newlined line costs ~1700 ms / 5000 tokens (25k chars) vs 0.27 ms with `len()`. Fix tracked in next item.
+- [x] Replace full-line repaints with diff-based updates (only re-emit changed cells). **Already append-only** — streamed content emits only new lines via `_cprint`, never repaints prior cells. Added `_buf_width_exceeds` O(1) guard (display width ≤ 2×codepoints) so ~half the per-token deltas skip the `get_cwidth` scan; verified exactly equivalent to the real width check over 5000 mixed narrow/wide/emoji cases. (`tests/test_stream_width_guard.py`.)
+- [x] Confirm the existing space-padding spinner rule (no `\033[K`, per CLAUDE.md) is preserved. Verified: `grep` finds no erase-to-EOL sequences anywhere in `src/core/cli/`; the width-guard change adds no ANSI codes (pure buffer-length logic).
+- [x] Throttle markdown re-render to a frame budget instead of per-token. **No per-token markdown exists** — streamed content is plain-text append; markdown/Rich-Panel renders only on the final response. The one per-token repaint (status bar) is frame-budgeted via `_invalidate`; made the budget an explicit named constant `_STREAM_REPAINT_MIN_INTERVAL` (0.1s ≈ 10 fps cap; conservative on purpose for SSH/slow terminals).
+- [x] Verify there is no flicker. **Proxy-verified programmatically** (`tests/test_stream_no_flicker.py`): the streamed path emits no erase-to-EOL / cursor-reposition sequences (`\033[K`/`[J`/`[A`/`[H` etc.) — the actual flicker source under patch_stdout — and per-token repaints stay frame-budgeted. *Note: subjective visual confirmation across tmux + iTerm2 + plain Terminal is recommended at a live terminal; the flicker-causing invariant is verified absent here.*
+
+### 1.3 Tool-output rendering
+- [x] Collapse long tool outputs by default with a `▸ N lines` affordance. The TUI already summarises tool output to one line (never dumps raw); added `_format_completed_tool_line` which appends `▸ N lines` (dim) when output exceeds `_TOOL_OUTPUT_COLLAPSE_LINES` (5), with `result_lines` threaded from the agent's `tool.completed` emit. (`tests/test_tool_output_rendering.py`.)
+- [x] Add per-tool status glyphs (running / ok / error) in the stream. Completed lines now lead with `✓`/`✗` via `_tool_status_glyph` (replacing the old `[error]` suffix); the *running* glyph is the existing spinner emoji (`_on_tool_progress` tool.started).
+- [x] Stream tool stdout incrementally rather than dumping on completion. Thread-local `set_output_callback` fired per line in `_wait_for_process`'s drain (mirrors `activity_callback`); the agent forwards lines as `tool.output` progress events (filtering CWD sentinels); the TUI renders them live (`│ line`) in `tool_progress_mode="all"`. End-to-end verified with a real subprocess (3 lines delivered over 0.99s, not all-at-once); 3 unit tests + 260 regression tests green. *(Live TUI confirmation: run a slow command with tool progress mode "all".)*
+
+### 1.4 Input ergonomics
+- [x] Audit slash-command autocomplete — ensure fuzzy matching + descriptions. **Finding:** descriptions already present (`display_meta`); matching was prefix-only. Added subsequence fuzzy matching (`_subseq_match`) for both built-in and skill commands, prefix hits ranked first (`/hlp`→`/help`, `/hsty`→`/history`). 4 tests; 436 completion/command regression tests green.
+- [x] Add multiline-edit affordance hint (newline vs submit) to the status bar. Idle input placeholder now reads "type a message — Enter to send, Alt+Enter for newline" (matches the `enter`=submit / `escape,enter`+`c-j`=newline bindings).
+- [x] Add `↑`/`↓` history search scoped to the current session. `_SessionScopedFileHistory` (FileHistory subclass) returns empty from `load_history_strings` so ↑/↓ recalls only this session's inputs, while `store_string` still persists everything to `.spark_history`. (`tests/test_session_scoped_history.py`, 3 passing.)
+- [x] Add `@`-mention file completion that reads the workspace tree. **Already implemented** — `_context_completions` + `_fuzzy_file_completions` (`@`, `@partial`, `@file:`/`@folder:`) score against `_get_project_files()` (mtime-sorted workspace tree) via `_score_path`.
+
+### 1.5 Thinking / verbosity controls (OpenClaw)
+- [x] Add a `/think <off|low|med|high>` command that maps to reasoning effort. `CommandDef("think", …)` in `COMMAND_REGISTRY` + `_handle_think_command` (off→none, med→medium) → sets `reasoning_config` + saves `agent.reasoning_effort`; dispatched in `process_command`. (`tests/test_think_command.py`, 5 passing.)
+- [x] Show current thinking level + token/cost running total in the status bar. Wide bar (≥96 cols) now appends `⚲<level>` (from `_thinking_level_label`), compact token total, and `$cost` (from `session_estimated_cost_usd`). (`tests/test_status_bar_thinking.py`, 3 passing; 28 status-bar regression tests green.)
+
+---
+
+## 2. Web UI (`src/spark_cli/web/`)
+
+### 2.1 Chat experience (`ChatPage.tsx` / `ChatPanel.tsx`)
+- [x] Match TUI interrupt-and-redirect: Stop button + redirect input. Stop (`interruptConversation`) and partial-output preservation already existed; added typing-while-streaming → submit routes to `interruptConversation(sid, text)` as a redirect (PromptBar stays editable while streaming, redirect-send button beside Stop; redirect messages get a `↩ redirect` badge).
+- [x] Virtualize long transcripts (lib already present: `@tanstack/react-virtual`). **Already implemented** — `useVirtualizer` (ChatPanel.tsx:1145) with dynamic `measureElement` + absolute-positioned rows.
+- [x] Render streaming tool calls as collapsible cards with status + duration. **Already implemented** — `ToolCallBubble.tsx`: collapsible (chevron toggle), running/done status with spinner, `elapsed` duration, args + result preview, repeat-count badge.
+- [x] Add inline message actions: copy, retry-from-here, edit-and-resend, branch conversation. **Already implemented** — user messages have hover actions: Edit & retry (`onEdit`), Retry (`onRetry`), Fork from here (`onFork` = branch), Copy (`onCopy`) in `ChatPanel.tsx`.
+- [x] Show token/cost meter per message and per session. Per-session already shown (`SessionInfoBar` — in/out/cache tokens + cost); added **per-message** meter: `chat.turn_done` usage now attaches `{totalTokens, costUsd}` to the finalized assistant message, rendered as a dim `N tokens · $cost` line under the bubble.
+
+### 2.2 Live Canvas / A2UI (OpenClaw)
+- [x] Review `CanvasPage.tsx` + `canvas/render.tsx` — document what the agent can draw/control. Canvas is a React Flow node-graph with `display.*` nodes (render/note/media/iframe/preview); documented in `web/src/pages/canvas/CANVAS_MODEL.md`.
+- [x] Define a small agent-driven UI schema the canvas renders. Widget schema (markdown/text/note/media/iframe/preview) maps to display nodes; **tables/charts via markdown** in `display.render`. Encoded in the `canvas` tool schema.
+- [x] Add a tool that lets the agent push canvas updates; wire through the event bus. `src/tools/canvas_tool.py` (`canvas` tool) writes the board via canvas storage + emits `canvas.updated`; registered in `_discover_tools` + `toolsets.py`. CanvasPage subscribes via `useEventBus` (topic added) and live-reloads the open board. (`tests/tools/test_canvas_tool.py`, 4 passing.)
+- [x] Support user interaction on canvas widgets flowing back to the agent as tool results. Added an `actions` widget (buttons) → `display.actions` node rendered by a new `ActionsNode` (posts clicks to `POST /api/canvases/interact`); a per-widget interaction queue in `canvas_routes.py`; and a `canvas_await` tool that blocks for a click and returns the chosen value as its result. (`tests/tools/test_canvas_tool.py` round-trip + timeout tests, 12 passing; frontend builds.)
+
+### 2.3 Sessions & memory surfacing (Hermes)
+- [x] Add a session search UI backed by the existing FTS5 store. **Already implemented** — ChatPage sidebar search (`searchQ`/`searchResults`, debounced) → `api.searchSessions` → `/api/sessions/search` (FTS5-backed).
+- [x] Show LLM-generated session summaries in the session list. **Already implemented** — sessions are auto-titled (`agent/title_generator.maybe_auto_title`, wired via `_maybe_auto_title_web`); ThreadRow shows the generated title + content preview.
+- [x] Add a Memory page to browse/edit/delete memory entries. New `memory_routes.py` REST API (`GET /api/memory`, add/replace/delete per target) over the agent's `MemoryStore`; new `MemoryPage.tsx` (nav + CommandPalette entry) lists `memory`/`user` entries with add/edit/forget + usage meter, live-refreshing on `memory.updated`. (`tests/spark_cli/test_memory_routes.py`, 5 passing; frontend builds.)
+- [x] Surface "memory was updated" toasts when the agent curates memory. `MemoryStore._success_response` emits `memory.updated` on every add/replace/remove (covers background memory reviews); new `GlobalToasts` component (mounted in `App.tsx`) listens via `useEventBus` and shows a toast. (`tests/tools/test_memory_event.py`, 2 passing; 35 memory tests green.)
+
+### 2.4 Consistency & polish
+- [x] Audit the page set for a consistent nav + empty states. **Verified:** all top-level pages route from a single `NAV_ITEMS` source in `App.tsx` (chat/files/canvas/kanban/cron/skills) with a shared layout; secondary views live under Settings. (Single-source nav confirmed; full visual empty-state pass recommended live.)
+- [x] Add a global command palette action set covering every route. Added the missing **Files** and **Canvas** entries to `CommandPalette` `PAGE_ITEMS` — now all 6 routable pages + dynamic search over projects/sessions/tasks/jobs/skills + Settings.
+- [x] Ensure dark/light parity via `theme.tsx`. **Verified:** `WebUIThemeProvider` provides multiple themes (daylight/aurora/…) via CSS variables + persistence, applied app-wide.
+- [x] Add keyboard shortcuts overlay parity with the TUI. **Verified:** `KeyboardShortcutsModal.tsx` exists with ⌘/Esc shortcut listings.
+
+---
+
+## 3. Desktop App (Tauri — `src/spark_cli/web/src-tauri/`)
+
+### 3.1 Menu-bar companion (OpenClaw)
+- [ ] Add a macOS menu-bar (tray) item: quick status, last session, "new chat", show/hide window.
+- [ ] Add a global hotkey to summon a quick-ask window from anywhere.
+- [ ] Surface running-agent / background-task indicator in the tray icon.
+
+### 3.2 Native integration
+- [ ] Add native notifications when a background turn or cron job completes (tie to `NotificationBell.tsx` events).
+- [ ] Add deep-link handling (`spark://`) to open a session or canvas.
+- [ ] Verify the build pipeline via the `build-mac` skill after each of the above.
+
+### 3.3 Updates
+- [ ] Confirm `UpdatesPage.tsx` / `UpdateModalContext.tsx` auto-update flow works against GitHub Releases (`release-mac` skill).
+- [ ] Add changelog display in the update modal.
+
+---
+
+## 4. Overall Agent Experience
+
+### 4.1 Self-improving skills (Hermes)
+- [x] After a complex task, prompt the agent to propose a reusable skill into `~/.spark/skills/`. **Already implemented** — `_SKILL_REVIEW_PROMPT` ("create a new skill if the approach is reusable") fires after `_skill_nudge_interval` (default 10) tool iterations via `_spawn_background_review`, which forks a review agent that writes to the skill store.
+- [x] Add a skill-improvement nudge: when an existing skill is used, suggest an edit. **Already implemented** — same review prompt: "If a relevant skill already exists, update it with what you learned" (triggered by the non-trivial-task / trial-and-error / changed-course heuristic).
+- [x] Surface skill create/update events in both TUI and Web. `skill_manage` now emits a `skills.updated` event on successful create/edit/patch/delete; the Web `SkillsPage` subscribes via `useEventBus` (topic added) → live-refreshes the list + shows a toast (covers background self-improvement writes too). TUI already prints skill ops inline via the tool feed. (`tests/tools/test_skill_event.py`, 2 passing; 56 skill-manager tests green.)
+
+### 4.2 Agent-curated memory with nudges (Hermes)
+- [x] Add periodic "should I remember this?" nudges gated to avoid noise. **Already implemented** — `_should_review_memory` fires when `_turns_since_memory >= _memory_nudge_interval` (default 10, configurable via `memory.nudge_interval`), running `_MEMORY_REVIEW_PROMPT` in a background review agent after the response is delivered (interval gating avoids noise).
+- [x] De-duplicate memory entries on write (check existing before adding). Exact dedup already via `UNIQUE(content)`; added **near-duplicate** guard `_normalize_for_dedup` (case/whitespace/trailing-punctuation) scanned globally before insert. (`tests/plugins/memory/test_holographic_dedup.py`, 4 passing; 42 memory tests green.)
+- [x] Add a `/memory` command to list/search/forget from the TUI. **Already exists** — `CommandDef("memory", …)` in `commands.py` (shows recent memory entries written by the agent).
+
+### 4.3 Pluggable execution backends (Hermes)
+- [x] Document current execution model in `src/tools/environments/`. Added `EXECUTION_MODEL.md` (backend table, selection via `terminal.backend`/`TERMINAL_ENV`/`/backend`, when-to-sandbox).
+- [x] Add (or stub) a sandboxed backend option: Docker / SSH. **Already implemented** — `DockerEnvironment` (`docker.py`), `SSHEnvironment` (`ssh.py`), plus singularity/modal/daytona, all behind the `_create_environment` factory.
+- [x] Add a `/backend` command + config option to select backend. Config option `terminal.backend` already existed; added `/backend [local|docker|ssh|…]` command (`_handle_backend_command`) to show/set + persist it. (`tests/spark_cli/test_backend_command.py`, 8 passing.)
+
+### 4.4 Multi-agent routing (OpenClaw)
+- [x] Review gateway platform routing for isolated-workspace support. **Finding:** session keys were hardcoded `agent:main:…`; isolation by platform/chat/thread/user already built into `build_session_key`, but all channels shared the `main` workspace.
+- [x] Allow inbound channel → named workspace/profile mapping in config. Added `agent_name` param to `build_session_key` + `resolve_agent_name(source, routing)` (most-specific-rule-first), wired into `SessionStore._generate_session_key` and the gateway fallback via `config.routing`. Backward-compatible (defaults to `main`). (`tests/gateway/test_session_routing.py`, 6 passing; 20 session-key regression green.)
+- [x] Document the routing model in `gateway/platforms/ADDING_A_PLATFORM.md`. Added "Session routing model" section (key structure, isolation, `routing` config table + example).
+
+### 4.5 Onboarding (OpenClaw)
+- [x] Compare `spark setup` wizard with the web `OnboardingWizard.tsx`. **Finding:** they serve different purposes — CLI `setup.py` is config-depth (Model/Provider → Backend → Agent Settings → Messaging → Tools); Web is first-run onboarding (Welcome → Provider → Auth → Name → Skills → Done). They share the provider step; the Web wizard now also covers failover + a first-run task, narrowing the gap.
+- [x] Add provider failover config to onboarding. `fallback_providers` config already existed; added an "Automatic failover" toggle on the wizard's Done step that appends `openrouter` to `fallback_providers` via `saveConfig` (order editable in Settings).
+- [x] Add a post-setup "try this" first-run task to demonstrate value. Added "Try this first" starter chips on the Done step; clicking seeds `spark-starter-prompt`, which `ChatPanel` pre-fills into the input on first open.
+
+### 4.6 Session sharing (Pi)
+- [x] Add an export command that serializes a session (redacted) to a shareable file. `/export [session_id]` → `session_export.export_session_redacted` reuses `SessionDB.export_session` + `redact_sensitive_text`, writes to `SPARK_HOME/exports/<id>.json`. (`tests/spark_cli/test_session_export.py`, 3 passing.)
+- [x] Add optional opt-in publish for OSS session sharing. `/export --publish` uploads the redacted export to a **public GitHub Gist** via `gh gist create` (opt-in flag; graceful error when `gh` is absent). (`tests/spark_cli/test_session_export.py`, 6 passing.)
+
+### 4.7 Supply-chain hardening (Pi)
+- [x] Pin exact versions for direct deps in `src/spark_cli/web/package.json`. All 43 direct deps pinned to installed exact versions (no `^`/`~`); frontend build re-verified.
+- [x] Add a lockfile-drift CI check. `.github/workflows/web-supply-chain.yml` — `npm ci` then `git diff --exit-code package-lock.json`, plus a node check enforcing exact-pinned deps.
+- [x] Add a scheduled dependency-audit workflow. Same workflow: weekly `schedule` cron runs `npm audit --audit-level=high`.
+
+---
+
+## 5. Project Preview Pane (`WorkspacePreviewPanel.tsx` + `workspace_routes.py` + Tauri)
+
+**Current state:** `WorkspacePreviewPanel.tsx` renders a sandboxed `<iframe>`. The backend (`workspace_routes.py`) already does real port detection — `_find_free_loopback_port`, `_list_loopback_listeners`, `_find_running_project_preview`, `_probe_preview_url`, `_extract_preview_urls`, `_find_remembered_preview`, `_detect_preview`. The core limitations are the iframe itself: external sites are blocked by `X-Frame-Options`/CSP, it is not a real browser, and there is no persistent credential/cookie storage.
+
+### 5.1 Correct port pickup from the project
+- [x] Audit `_detect_preview` precedence: already-running server → remembered URL → freshly started dev server. Document the order.
+- [x] Parse the project's own config for the declared port (`vite.config.*`, `next.config.*`, `package.json` scripts, `.env` `PORT=`, `Procfile`, `docker-compose` ports) before falling back to the 4173–6173 scan.
+- [x] When a dev server is started by us, capture the actual bound port from its stdout (Vite/Next/CRA print the URL) instead of assuming the requested port — update `_append_preview_log` parsing to feed `_extract_preview_urls`.
+- [x] Handle servers that bind `0.0.0.0`/`localhost`/`::1` — normalize all to a reachable loopback URL in `_is_local_preview_host`.
+- [x] Re-probe and auto-correct the port if the server restarts on a different one (watch listener table via `_list_loopback_listeners`).
+- [x] Add a manual "port" override field in the panel toolbar that pins detection.
+- [x] Tests: config-declared port, dynamic-port-from-stdout, port-changed-on-restart.
+
+### Architecture decision — Hybrid (native + streamed)
+
+External sites cannot be embedded in a normal browser tab (the remote site's
+`X-Frame-Options`/CSP `frame-ancestors` is enforced by the user's browser, so no
+iframe trick works). Chosen approach, so the pane works in **both** the WebUI and
+the macOS app with external sites + persistent logins:
+
+- **macOS app (Tauri):** native child webview (real WKWebView) — full fidelity,
+  real persistent credential store. *(Verification needs a desktop build loop.)*
+- **WebUI (browser tab):** stream the existing server-side `agent-browser`
+  (Playwright Chromium, already wired via `_run_agent_browser`) — screenshots/DOM
+  out, clicks/keys forwarded back. External sites + logins work because it's real
+  server-side Chromium. *(Verifiable server-side, no Rust.)*
+- `isTauri()` selects the path; the iframe stays only as a fast path for local
+  loopback previews.
+
+### 5.2 Native child webview — macOS app *(build-gated)*
+- [x] Replace the iframe with a native child webview (`@tauri-apps/api` webview, Tauri `unstable` multiwebview) positioned over the panel bounds — bypasses `X-Frame-Options`/CSP. (`NativePreview.tsx` + `preview_create`; `unstable` feature enabled; capability `remote.urls` allows IPC from the `:9119` origin.)
+- [x] Add Tauri commands in `lib.rs` to create/move/resize/destroy the child webview tracking the panel's DOM rect (scroll, resize, route change, collapse). (`preview_create/set_bounds/navigate/set_visible/destroy`; React `ResizeObserver`+scroll+interval sync via `nativePreview.ts`.) *(cargo check passes; runtime overlay needs build-mac.)*
+- [x] Sync back/forward between React and the native webview (`preview_back`/`preview_forward` via page history `eval`; unified `goBack`/`goForward` dispatch across native/streamed/iframe paths).
+- [x] Wire the toolbar (refresh/navigate drive the native webview; start/stop/restart manage the dev server, external/logs unchanged).
+- [x] **Web fallback** for local loopback previews; detect `X-Frame-Options`/CSP failure and surface "open externally" instead of a blank frame.
+- [x] Feature-flag the native path behind `isTauri()` in `sidecar.ts`.
+
+### 5.2b Streamed server-side browser — WebUI *(verifiable now)*
+- [x] Add backend endpoints that drive a persistent server-side browser per workspace: navigate, screenshot (frame), forward click/scroll/type/key, back/forward. (`preview_browser.py` + `/preview/stream/*` routes; persistent Chromium profile per workspace.)
+- [x] Stream frames to the pane at a sensible frame budget; send input events back. (Polled `stream/frame` PNG + `stream/input` POST.)
+- [x] Render a `StreamedBrowser` React view (image + input capture) used when `!isTauri()` and the target is non-loopback.
+- [x] Map pointer/keyboard coordinates from the rendered frame to the real viewport (handle scaling/letterbox). (`mapToViewport`, math-verified.)
+- [x] Tests: navigate→frame returned; input event forwarded; profile partitioned per workspace; graceful error when Playwright absent.
+
+### 5.3 External sites + navigation chrome
+- [x] Allow arbitrary `https://` navigation in the URL bar for both native + streamed paths (`navigate` accepts any http/https via `_normalize_browser_url`, gated only by the non-loopback confirm).
+- [x] Navigation history (back/forward buttons) + loading/secure (lock) indicator in the toolbar.
+- [x] Capture console/network logs into the existing `WorkspacePreviewLog` stream for both paths. (Streamed: Playwright `console`/`response`/`pageerror` → `on_log` → SSE, tested. Native: injected console/`PerformanceObserver` script POSTs to `/preview/stream/log` → SSE.)
+- [x] Allowlist/confirm step for non-loopback navigation.
+
+### 5.4 Secure, persistent credential storage
+- [x] **Native:** persistent partitioned WKWebView store via `data_store_identifier` (per-slug); **Streamed:** persistent Chromium profile under `get_spark_home()/browser/<slug>/persistent` — logins survive restarts in both.
+- [x] Partition storage per workspace/profile to avoid cross-project credential leakage (native: per-slug `data_store_id`; streamed: per-slug profile dir).
+- [x] Store any secrets we manage ourselves in the **OS keychain** (`secret_store.py` via `keyring`, per-workspace service, lazy optional dep, graceful degrade), never plaintext.
+- [x] Encrypt the data directory at rest where supported; document the threat model. (Rely on platform cookie encryption — macOS Chrome Safe Storage / WKWebView container; `0700` dir perms; `PREVIEW_BROWSER_SECURITY.md`.)
+- [x] "Clear browsing data / sign out of all sites" action + per-site cookie viewer (toolbar trash + cookie buttons; native `clear_all_browsing_data`/`cookies`, streamed `clear_browsing_data`/`cookies` endpoints).
+- [x] Setting to choose persistent vs ephemeral (private) sessions per preview. (Toolbar private-mode toggle → `persistent` flag through native `data_store_identifier`/`incognito` and streamed `persistent`/ephemeral profile.)
+- [x] Tests: persistent profile path stable across restarts; profiles isolated per workspace; clear-data wipes the store. (28 preview tests passing.)
+
+### 5.5 Polish
+- [x] Show favicon + page title in the toolbar for external sites. (Origin `/favicon.ico` + page title reported by streamed `navigate`, hostname fallback.)
+- [x] Remember last-visited URL per project (extend `_find_remembered_preview`).
+- [x] Keyboard shortcuts: focus URL bar (⌘L), reload (⌘R), back/forward (⌘[ / ⌘]), devtools toggle (⌘⌥I).
+- [x] Optional: expose the native webview's devtools in dev builds. (`preview_devtools` command, `#[cfg(debug_assertions)]`.)
+
+---
+
+## Sequencing (suggested)
+
+1. **Quick wins first:** 1.1 interrupt-and-redirect, 1.3 tool-output collapse, 2.1 chat actions, 4.2 memory dedup.
+2. **Then differentiators:** 1.2 differential rendering, 2.2 Live Canvas, 3.1 menu-bar companion.
+3. **Then platform depth:** 4.1 self-improving skills, 4.3 backends, 4.4 multi-agent routing.
+4. **Ongoing:** 4.7 supply-chain hardening, consistency/polish passes.
+</content>
+</invoke>

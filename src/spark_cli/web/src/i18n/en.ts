@@ -70,6 +70,7 @@ export const en: Translations = {
       chat: "Chat",
       files: "Files",
       canvas: "Canvas",
+      memory: "Memory",
       connectors: "Connectors",
     },
   },

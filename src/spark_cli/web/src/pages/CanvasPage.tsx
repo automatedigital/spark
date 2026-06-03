@@ -35,6 +35,7 @@ import {
 import { renderNodeTypes, CanvasNodeContext } from "./canvas/render";
 import { CANVAS_DND_MIME, renderTypeFor, defaultParams, type CanvasNodeData } from "./canvas/types";
 import Inspector from "./canvas/Inspector";
+import { useEventBus } from "@/hooks/useEventBus";
 
 const LAST_KEY = "spark-canvas-last";
 
@@ -244,8 +245,17 @@ function CanvasInner() {
   }, [buildDoc, applyResults, setRunning, refreshExecutions]);
 
   const nodeApi = useMemo(
-    () => ({ updateNodeData, updateParams, runNode, openInspector: setInspectorId, runningIds }),
-    [updateNodeData, updateParams, runNode, runningIds],
+    () => ({
+      updateNodeData,
+      updateParams,
+      runNode,
+      openInspector: setInspectorId,
+      runningIds,
+      canvasId: current?.id,
+      scope,
+      slug,
+    }),
+    [updateNodeData, updateParams, runNode, runningIds, current?.id, scope, slug],
   );
 
   const onConnect = useCallback(
@@ -421,6 +431,15 @@ function CanvasInner() {
     window.addEventListener(GLOBAL_NAV_EVENT, handler);
     return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
   }, [loadCanvas]);
+
+  // Live-reload when the agent's `canvas` tool updates the open board.
+  useEventBus((env) => {
+    if (env.topic !== "canvas.updated") return;
+    const cur = current;
+    if (cur && env.data?.id === cur.id && (env.data?.scope ?? "global") === cur.scope) {
+      void loadCanvas(cur);
+    }
+  });
 
   // ── Save / autosave ───────────────────────────────────────────────────────
   const doSave = useCallback(async () => {

@@ -662,7 +662,11 @@ export function PromptBar({
   };
 
   const blocked = disabled || streaming || uploading;
+  // The textarea stays editable while streaming so the user can type a redirect
+  // ("actually, do X instead") that interrupts the running turn on Enter.
+  const inputBlocked = disabled || uploading;
   const canSend = !!input.trim() && !blocked;
+  const canRedirect = !!input.trim() && streaming && !disabled && !uploading;
 
   const activeModel = modelStatus
     ? (modelStatus.multi_model_enabled && modelStatus.fast_model) || modelStatus.smart_model || null
@@ -703,7 +707,7 @@ export function PromptBar({
       )}
 
       {/* Unified card — no focus ring */}
-      <div className={`rounded-xl border border-input bg-card shadow-sm ${blocked ? "opacity-60" : ""}`}>
+      <div className={`rounded-xl border border-input bg-card shadow-sm ${inputBlocked ? "opacity-60" : ""}`}>
         {/* Textarea */}
         <div className="relative min-h-[52px]">
           <div
@@ -724,9 +728,9 @@ export function PromptBar({
             onScroll={syncScroll}
             onFocus={(e) => { setIsFocused(true); setCursorPos(e.currentTarget.selectionStart ?? 0); }}
             onBlur={() => setIsFocused(false)}
-            disabled={blocked}
+            disabled={inputBlocked}
             placeholder={
-              isFocused ? "" : streaming ? "Responding…" : uploading ? "Uploading…" : "Ask anything · / for commands · @ for context"
+              isFocused ? "" : streaming ? "Type to redirect · Enter to send while responding" : uploading ? "Uploading…" : "Ask anything · / for commands · @ for context"
             }
             rows={1}
             className="relative z-10 w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:cursor-not-allowed min-h-[52px] max-h-[240px] overflow-y-auto"
@@ -801,16 +805,28 @@ export function PromptBar({
             </span>
           )}
 
-          {/* Send / Stop */}
+          {/* Send / Redirect / Stop */}
           {streaming ? (
-            <button
-              type="button"
-              onClick={onStop}
-              title="Stop"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
-            >
-              <Square className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              {canRedirect && (
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  title="Redirect (interrupt with this message)"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onStop}
+                title="Stop"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
+              >
+                <Square className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ) : (
             <button
               type="button"

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, LayoutGrid, MessageSquare, Clock, Package, Settings, FolderOpen, ListTodo, Loader2 } from "lucide-react";
+import { Search, LayoutGrid, MessageSquare, Clock, Package, Settings, FolderOpen, ListTodo, Loader2, Square, Brain } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CronJob, KanbanTaskRow, SessionInfo, SkillInfo, WorkspaceProject } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
@@ -24,9 +24,12 @@ interface CommandPaletteProps {
 
 const PAGE_ITEMS = [
   { id: "chat", label: "Chat", description: "Projects and conversations", icon: MessageSquare },
+  { id: "files", label: "Files", description: "Workspace files", icon: FolderOpen },
+  { id: "canvas", label: "Canvas", description: "Visual board", icon: Square },
   { id: "kanban", label: "Tasks", description: "Task board", icon: LayoutGrid },
   { id: "cron", label: "Schedule", description: "Scheduled jobs", icon: Clock },
   { id: "skills", label: "Skills", description: "Skill manager", icon: Package },
+  { id: "memory", label: "Memory", description: "What the agent remembers", icon: Brain },
 ];
 
 export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: CommandPaletteProps) {

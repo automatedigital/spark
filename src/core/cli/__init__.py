@@ -80,6 +80,19 @@ from spark_cli.banner import _format_context_length, format_banner_version_label
 
 _COMMAND_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 
+
+class _SessionScopedFileHistory(FileHistory):
+    """FileHistory whose ↑/↓ recall is scoped to the current session.
+
+    New inputs are still persisted to the shared history file, but prior-session
+    entries are not preloaded into the navigable history — so arrow-up cycles
+    only through what was typed this session instead of surfacing unrelated
+    commands from past runs.
+    """
+
+    def load_history_strings(self):  # type: ignore[override]
+        return iter([])
+
 # Status verbs shown while the agent is working — rotate every 2 seconds.
 _AGENT_STATUS_VERBS = (
     "Browsing...",
@@ -1136,6 +1149,10 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             self._toggle_yolo()
         elif canonical == "reasoning":
             self._handle_reasoning_command(cmd_original)
+        elif canonical == "think":
+            self._handle_think_command(cmd_original)
+        elif canonical == "backend":
+            self._handle_backend_command(cmd_original)
         elif canonical == "fast":
             self._handle_fast_command(cmd_original)
         elif canonical == "compress":
@@ -1218,6 +1235,8 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                     )
         elif canonical == "sessions":
             self._handle_sessions_command()
+        elif canonical == "export":
+            self._handle_export_command(cmd_original)
         elif canonical == "files":
             self._handle_files_command()
         elif canonical == "memory":
@@ -2457,6 +2476,27 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                     self._should_exit = True
                     event.app.exit()
 
+        @kb.add("escape", filter=Condition(lambda: self._agent_running), eager=False)
+        def handle_escape_interrupt(event):
+            """Esc: soft-interrupt the running agent, preserving the partial response.
+
+            Filtered to only fire while the agent is running so it never
+            interferes with escape-prefixed sequences (arrows, alt-combos) at
+            the normal prompt. Unlike Ctrl+C it never escalates to force-exit;
+            the partial response is kept and the user drops back to the prompt
+            where typing + Enter redirects the agent.
+            """
+            import time as _time
+
+            if self._agent_running and self.agent:
+                # Don't prime the double-Ctrl+C force-exit window.
+                self._last_ctrl_c_time = 0
+                print(
+                    f"\n{_DIM}⏸ interrupted — type to redirect, Enter to resume{_RST}"
+                )
+                self.agent.interrupt()
+                event.app.invalidate()
+
         @kb.add("c-d")
         def handle_ctrl_d(event):
             """Handle Ctrl+D - exit."""
@@ -2664,7 +2704,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             multiline=True,
             wrap_lines=True,
             read_only=Condition(lambda: bool(cli_ref._command_running)),
-            history=FileHistory(str(self._history_file)),
+            history=_SessionScopedFileHistory(str(self._history_file)),
             completer=_completer,
             complete_while_typing=True,
             auto_suggest=SlashCommandAutoSuggest(
@@ -2807,7 +2847,8 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 return "type a message + Enter to interrupt, Ctrl+C to cancel"
             if cli_ref._voice_mode:
                 return "type or Ctrl+B to record"
-            return ""
+            # Idle: surface the multiline affordance (Enter sends, Alt+Enter newline).
+            return "type a message — Enter to send, Alt+Enter for newline"
 
         input_area.control.input_processors.append(
             _PlaceholderProcessor(_get_placeholder)

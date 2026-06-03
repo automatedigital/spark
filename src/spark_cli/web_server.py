@@ -6143,6 +6143,8 @@ register_kanban_routes(app)
 register_workspace_routes(app)
 register_connectors_routes(app)
 register_canvas_routes(app)
+from spark_cli.memory_routes import register_memory_routes
+register_memory_routes(app)
 register_workflow_routes(app)
 
 

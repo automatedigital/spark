@@ -3,6 +3,9 @@
   "identifier": "default",
   "description": "Capabilities granted to the Spark main window.",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:9119", "http://localhost:9119"]
+  },
   "permissions": [
     "core:default",
     "core:window:allow-close",

@@ -11,6 +11,7 @@ import {
 import { api } from "@/lib/api";
 import type { SkillInfo, ToolsetInfo } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
+import { useEventBus } from "@/hooks/useEventBus";
 import { Toast } from "@/components/Toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -85,6 +86,16 @@ export default function SkillsPage() {
       .catch(() => showToast(t.common.loading, "error"))
       .finally(() => setLoading(false));
   }, []);
+
+  // Live-refresh + toast when the agent creates/updates a skill (incl. the
+  // background self-improvement review).
+  useEventBus((env) => {
+    if (env.topic !== "skills.updated") return;
+    const action = String(env.data?.action ?? "updated");
+    const name = String(env.data?.name ?? "skill");
+    api.getSkills().then(setSkills).catch(() => {});
+    showToast(`Skill ${action}d: ${name}`, "success");
+  });
 
   const focusSkill = (name: string) => {
     setSearch(name);

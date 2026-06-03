@@ -98,6 +98,8 @@ COMMAND_REGISTRY: list[CommandDef] = [
                args_hint="[name]"),
     CommandDef("sessions", "Browse and resume recent sessions", "Session",
                aliases=("sess",), cli_only=True, web_available=True),
+    CommandDef("export", "Export the current session to a redacted JSON file (--publish to share as a Gist)", "Session",
+               args_hint="[session_id] [--publish]"),
     CommandDef("files", "List workspace files (use @path in message to reference)", "Tools & Skills",
                aliases=("f",), cli_only=True, web_available=True),
     CommandDef("memory", "Show recent memory entries written by the agent", "Tools & Skills",
@@ -136,9 +138,15 @@ COMMAND_REGISTRY: list[CommandDef] = [
                gateway_config_gate="display.tool_progress_command"),
     CommandDef("yolo", "Toggle YOLO mode (skip all dangerous command approvals)",
                "Configuration"),
+    CommandDef("backend", "Show or set the command-execution backend (local/docker/ssh/…)", "Configuration",
+               args_hint="[local|docker|ssh|singularity|modal|daytona]",
+               subcommands=("local", "docker", "ssh", "singularity", "modal", "daytona")),
     CommandDef("reasoning", "Manage reasoning effort and display", "Configuration",
                args_hint="[level|show|hide]",
                subcommands=("none", "minimal", "low", "medium", "high", "xhigh", "show", "hide", "on", "off")),
+    CommandDef("think", "Set reasoning effort quickly (off/low/med/high)", "Configuration",
+               args_hint="<off|low|med|high>",
+               subcommands=("off", "low", "med", "high")),
     CommandDef("fast", "Toggle fast mode — OpenAI Priority Processing / Anthropic Fast Mode (Normal/Fast)", "Configuration",
                args_hint="[normal|fast|status]",
                subcommands=("normal", "fast", "status", "on", "off")),
@@ -676,6 +684,12 @@ class SlashCommandCompleter(Completer):
             return {}
 
     @staticmethod
+    def _subseq_match(needle: str, haystack: str) -> bool:
+        """True if every char of needle appears in order within haystack."""
+        it = iter(haystack)
+        return all(ch in it for ch in needle)
+
+    @staticmethod
     def _completion_text(cmd_name: str, word: str) -> str:
         """Return replacement text for a completion.
 
@@ -1046,30 +1060,47 @@ class SlashCommandCompleter(Completer):
             return
 
         word = text[1:]
+        wl = word.lower()
 
+        # Prefix matches rank above fuzzy (subsequence) matches so exact-ish
+        # typing stays predictable while typos / abbreviations still resolve.
+        prefix_hits: list[tuple[str, str, str]] = []
+        fuzzy_hits: list[tuple[str, str, str]] = []
         for cmd, desc in COMMANDS.items():
             if not self._command_allowed(cmd):
                 continue
             cmd_name = cmd[1:]
-            if cmd_name.startswith(word):
-                yield Completion(
-                    self._completion_text(cmd_name, word),
-                    start_position=-len(word),
-                    display=cmd,
-                    display_meta=desc,
-                )
+            cl = cmd_name.lower()
+            if cl.startswith(wl):
+                prefix_hits.append((cmd, cmd_name, desc))
+            elif wl and self._subseq_match(wl, cl):
+                fuzzy_hits.append((cmd, cmd_name, desc))
+        for cmd, cmd_name, desc in prefix_hits + fuzzy_hits:
+            yield Completion(
+                self._completion_text(cmd_name, word),
+                start_position=-len(word),
+                display=cmd,
+                display_meta=desc,
+            )
 
+        skill_prefix: list[tuple[str, str, str]] = []
+        skill_fuzzy: list[tuple[str, str, str]] = []
         for cmd, info in self._iter_skill_commands().items():
             cmd_name = cmd[1:]
-            if cmd_name.startswith(word):
-                description = str(info.get("description", "Skill command"))
-                short_desc = description[:50] + ("..." if len(description) > 50 else "")
-                yield Completion(
-                    self._completion_text(cmd_name, word),
-                    start_position=-len(word),
-                    display=cmd,
-                    display_meta=f"⚡ {short_desc}",
-                )
+            cl = cmd_name.lower()
+            description = str(info.get("description", "Skill command"))
+            short_desc = description[:50] + ("..." if len(description) > 50 else "")
+            if cl.startswith(wl):
+                skill_prefix.append((cmd, cmd_name, short_desc))
+            elif wl and self._subseq_match(wl, cl):
+                skill_fuzzy.append((cmd, cmd_name, short_desc))
+        for cmd, cmd_name, short_desc in skill_prefix + skill_fuzzy:
+            yield Completion(
+                self._completion_text(cmd_name, word),
+                start_position=-len(word),
+                display=cmd,
+                display_meta=f"⚡ {short_desc}",
+            )
 
 
 # ---------------------------------------------------------------------------

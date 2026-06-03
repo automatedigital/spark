@@ -441,6 +441,7 @@ function InlineOAuth({
 export function OnboardingWizard({ onComplete }: Props) {
   const [step, setStep] = useState(1);
   const [provider, setProvider] = useState<ProviderMeta | null>(null);
+  const [enableFailover, setEnableFailover] = useState(true);
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("http://localhost:11434");
   const [customModel, setCustomModel] = useState("");
@@ -565,13 +566,31 @@ export function OnboardingWizard({ onComplete }: Props) {
     finish(`${provider.name} · signed in`);
   };
 
-  const openSpark = () => {
+  const openSpark = (starter?: string) => {
     const key =
       typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
         ? "spark-desktop-onboarding-complete"
         : "spark-onboarding-complete";
     localStorage.setItem(key, "true");
     localStorage.setItem("spark-onboarding-complete", "true");
+    // Seed a first-run "try this" prompt for the chat input (pre-filled, not sent).
+    if (starter) localStorage.setItem("spark-starter-prompt", starter);
+    // Persist automatic provider failover (best-effort) before leaving onboarding.
+    if (enableFailover) {
+      void (async () => {
+        try {
+          const current = (await api.getConfig()) as Record<string, unknown>;
+          const existing = Array.isArray(current.fallback_providers)
+            ? (current.fallback_providers as string[])
+            : [];
+          if (!existing.includes("openrouter")) {
+            await api.saveConfig({ ...current, fallback_providers: [...existing, "openrouter"] });
+          }
+        } catch {
+          /* non-fatal */
+        }
+      })();
+    }
     onComplete();
   };
 
@@ -870,7 +889,42 @@ export function OnboardingWizard({ onComplete }: Props) {
                 <br />
                 You can change providers and models anytime in Settings.
               </p>
-              <Button className="mt-2 w-full" size="lg" onClick={openSpark}>
+              <label className="flex w-full cursor-pointer items-start gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left">
+                <input
+                  type="checkbox"
+                  checked={enableFailover}
+                  onChange={(e) => setEnableFailover(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">Automatic failover</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Fall back to OpenRouter if your provider is rate-limited or down (needs an OpenRouter key; edit order in Settings).
+                  </span>
+                </span>
+              </label>
+              <div className="w-full">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                  Try this first
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    "Summarize what you can help me with and your top tools.",
+                    "Create a new skill from a task I describe.",
+                    "Search the web for today's top AI news and summarize it.",
+                  ].map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => openSpark(prompt)}
+                      className="rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-foreground transition hover:border-primary/50 hover:bg-secondary"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Button className="mt-2 w-full" size="lg" onClick={() => openSpark()}>
                 Open Spark
               </Button>
             </div>

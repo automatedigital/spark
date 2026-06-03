@@ -650,6 +650,14 @@ def skill_manage(
                 bump_patch(name)
         except Exception:
             pass
+        # Surface the change so the Web (SkillsPage/toast) can refresh and the
+        # user sees skills the agent created/updated (incl. background reviews).
+        try:
+            from spark_cli.web_server import _publish_event
+
+            _publish_event("skills.updated", {"action": action, "name": name})
+        except Exception:
+            pass
 
     return json.dumps(result, ensure_ascii=False)
 
