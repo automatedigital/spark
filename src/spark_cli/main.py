@@ -4864,6 +4864,18 @@ def cmd_update(args):
                 subprocess.run(
                     ["npm", "install", "--silent"], cwd=PROJECT_ROOT, check=False
                 )
+                print("→ Updating agent-browser runtime...")
+                try:
+                    from spark_cli.browser_runtime import install_agent_browser
+
+                    browser_result = install_agent_browser(quiet=True)
+                    if browser_result.get("ok"):
+                        print("  ✓ agent-browser ready")
+                    else:
+                        print(f"  ⚠ agent-browser setup failed: {browser_result.get('error')}")
+                        print("    Repair later with: spark doctor --fix")
+                except Exception as exc:
+                    print(f"  ⚠ agent-browser setup skipped: {exc}")
 
         # Build web UI frontend (optional — requires npm)
         _build_web_ui(Path(__file__).parent / "web")

@@ -6233,7 +6233,12 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             "IMPORTANT: All file operations, terminal commands, and searches MUST stay within "
             f"this directory ({project_dir}). Do NOT read from or write to any other project "
             "directory. If the user asks you to build or edit something, create or modify files "
-            f"only under {project_dir}."
+            f"only under {project_dir}.\n"
+            "If this project is a webapp and you need to verify UI behavior, use the "
+            f"workspace preview tools with slug '{slug}' after making changes. Start with "
+            "preview_open, then inspect preview_snapshot and preview_console; use "
+            "preview_screenshot or preview click/type/evaluate actions when visual or "
+            "interactive verification matters."
         )
     except (ValueError, Exception) as e:
         _web_queues.pop(session_id, None)
@@ -6287,6 +6292,12 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             _persist_web_turn_if_missing(session_id, raw_message, result, before_message_count)
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, raw_message, result)
+            try:
+                from spark_cli.workspace_routes import start_preview
+
+                start_preview(slug, None)
+            except Exception:
+                _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
 

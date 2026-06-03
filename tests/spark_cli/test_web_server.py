@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import urllib.request
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -380,6 +381,136 @@ class TestWebServerEndpoints:
         assert invalid.status_code == 400
         assert missing.status_code == 404
         assert empty.status_code == 404
+
+    def test_workspace_preview_serves_static_project(self):
+        created = self.client.post("/api/workspace/projects", json={"name": "preview-static"}).json()
+        slug = created["slug"]
+        project_dir = created["path"]
+        with open(os.path.join(project_dir, "index.html"), "w", encoding="utf-8") as fh:
+            fh.write("<!doctype html><title>Preview OK</title><h1>preview-ok</h1>")
+
+        start = self.client.post(f"/api/workspace/projects/{slug}/preview/start", json={})
+        try:
+            assert start.status_code == 200
+            body = start.json()
+            assert body["status"] == "running"
+            assert body["kind"] == "static"
+            assert body["url"].startswith("http://127.0.0.1:")
+            assert not body["url"].startswith("http://0.0.0.0")
+
+            html = ""
+            for _ in range(20):
+                try:
+                    with urllib.request.urlopen(body["url"], timeout=1) as resp:
+                        html = resp.read().decode("utf-8")
+                    break
+                except Exception:
+                    time.sleep(0.05)
+            assert "preview-ok" in html
+
+            logs = self.client.get(f"/api/workspace/projects/{slug}/preview/logs")
+            assert logs.status_code == 200
+            assert any("http.server" in item["text"] for item in logs.json()["logs"])
+        finally:
+            stopped = self.client.post(f"/api/workspace/projects/{slug}/preview/stop")
+            assert stopped.status_code == 200
+
+    def test_workspace_preview_navigation_is_general_browser(self):
+        created = self.client.post("/api/workspace/projects", json={"name": "preview-nav"}).json()
+        slug = created["slug"]
+
+        unsafe = self.client.post(
+            f"/api/workspace/projects/{slug}/preview/navigate",
+            json={"url": "javascript:alert(1)"},
+        )
+        external = self.client.post(
+            f"/api/workspace/projects/{slug}/preview/navigate",
+            json={"url": "https://example.com"},
+        )
+        shorthand = self.client.post(
+            f"/api/workspace/projects/{slug}/preview/navigate",
+            json={"url": "example.org/path"},
+        )
+
+        assert unsafe.status_code == 400
+        assert external.status_code == 200
+        assert external.json()["url"] == "https://example.com"
+        assert external.json()["kind"] == "browser"
+        assert shorthand.status_code == 200
+        assert shorthand.json()["url"] == "https://example.org/path"
+
+
+    def test_workspace_preview_snapshot_and_config(self):
+        created = self.client.post("/api/workspace/projects", json={"name": "preview-config"}).json()
+        slug = created["slug"]
+        project_dir = created["path"]
+        with open(os.path.join(project_dir, "index.html"), "w", encoding="utf-8") as fh:
+            fh.write("<!doctype html><title>Configured</title><main>configured-preview</main>")
+        with open(os.path.join(project_dir, "spark.preview.json"), "w", encoding="utf-8") as fh:
+            fh.write('{"autoRefresh": true, "autoVerify": false}')
+
+        start = self.client.post(f"/api/workspace/projects/{slug}/preview/start", json={})
+        try:
+            assert start.status_code == 200
+            assert 4173 <= int(start.json()["port"]) <= 6173
+            snapshot = self.client.get(f"/api/workspace/projects/{slug}/preview/snapshot")
+            assert snapshot.status_code == 200
+            body = snapshot.json()
+            assert body["title"] == "Configured"
+            assert "configured-preview" in body["text"]
+        finally:
+            self.client.post(f"/api/workspace/projects/{slug}/preview/stop")
+
+    def test_workspace_preview_logs_are_bounded_and_redacted(self):
+        from spark_cli import workspace_routes as routes
+
+        slug = "log-test"
+        session = {"logs": [], "updated_at": time.time()}
+        for idx in range(505):
+            routes._append_preview_log(
+                slug,
+                session,
+                f"line {idx} API_KEY=secret-{idx}\n",
+                "server",
+            )
+
+        assert len(session["logs"]) == 500
+        assert all("secret-" not in entry["text"] for entry in session["logs"])
+        assert any("[redacted]" in entry["text"] for entry in session["logs"])
+
+    def test_workspace_preview_invalid_config_reports_400(self):
+        created = self.client.post("/api/workspace/projects", json={"name": "preview-bad-config"}).json()
+        slug = created["slug"]
+        project_dir = created["path"]
+        with open(os.path.join(project_dir, "index.html"), "w", encoding="utf-8") as fh:
+            fh.write("<h1>bad config</h1>")
+        with open(os.path.join(project_dir, "spark.preview.json"), "w", encoding="utf-8") as fh:
+            fh.write("{bad json")
+
+        resp = self.client.post(f"/api/workspace/projects/{slug}/preview/start", json={})
+
+        assert resp.status_code == 400
+
+    def test_workspace_preview_agent_tools_return_bounded_json(self):
+        from tools import preview_tool
+
+        created = self.client.post("/api/workspace/projects", json={"name": "preview-tools"}).json()
+        slug = created["slug"]
+        project_dir = created["path"]
+        with open(os.path.join(project_dir, "index.html"), "w", encoding="utf-8") as fh:
+            fh.write("<!doctype html><title>Tools</title><main>tool-preview</main>")
+
+        try:
+            opened = preview_tool.preview_open(slug)
+            assert '"success": true' in opened
+            snapshot = preview_tool.preview_snapshot(slug)
+            assert len(snapshot) < 14000
+            assert "tool-preview" in snapshot
+            console = preview_tool.preview_console(slug)
+            assert len(console) < 14000
+            assert '"messages"' in console
+        finally:
+            self.client.post(f"/api/workspace/projects/{slug}/preview/stop")
 
     def test_kanban_complete_endpoint_moves_to_user_review(self):
         created = self.client.post(

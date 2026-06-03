@@ -1,218 +1,370 @@
-# Plan: Canvas → Workflows + Infinite Embed Canvas
+# Preview Browser Tab Plan
 
-The **Canvas** tab (name kept) becomes **one infinite surface with two coexisting kinds of
-nodes**:
+## Goal
 
-1. **Workflow nodes** — n8n-style: typed nodes pass data along connections, a **server-side
-   execution engine** runs the graph (manual / scheduled / webhook / file-watch triggered),
-   with an **agentic/iterative** layer for tool-calling agent loops.
-2. **Embed / media nodes** — free-form: live **iframe** embeds, **URL/web previews**, images,
-   video, PDFs, and rich notes — a moodboard/whiteboard that can sit next to (and feed) the
-   workflow graph on the same canvas.
+Add a `Preview` tab to the chat page right sidebar, beside `Files` and
+`Terminal`, so workspace webapps can be opened, refreshed, inspected, and driven
+by both the user and the Spark agent.
 
-The two are not separate apps: an embed node can be a *data source* for a workflow (e.g. a
-URL-preview node feeds its page text into an agent), and a workflow's output can render into
-an embed/preview node. Connections are optional — drop a lone iframe to just pin a live site.
+The target behavior is close to Claude Code Desktop and Codex: a shared embedded
+browser for running apps, automatic verification after code changes, console/log
+visibility, and agentic browser actions. Claude documents this as an embedded
+browser that can start dev servers, inspect DOM/screenshots, click, fill forms,
+read server logs, and auto-verify after edits. Its product announcement also
+calls out reading console logs and iterating on UI errors. OpenAI documents
+Codex's in-app browser as one of the agentic Codex features.
 
-The current canvas (React Flow surface, palette, drag-drop, save/load global+project,
-canvas-local chat) is the foundation — see [PR #21](https://github.com/automatedigital/spark/pull/21).
-This plan reshapes node semantics around **data flow + execution + live embeds**, not just layout.
+References:
 
----
+- Claude Code Desktop docs: https://code.claude.com/docs/en/desktop
+- Claude Code preview announcement: https://claude.com/blog/preview-review-and-merge-with-claude-code
+- OpenAI Codex usage/help page: https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan
 
-## What "works like n8n" means here
+## Current Spark Surface
 
-1. **Nodes pass data.** Every node receives an input array of JSON *items* and emits an
-   output array. Connections carry data, not just visual lines.
-2. **Triggers start runs.** Manual ▶, Schedule (cron), Webhook, File-watch.
-3. **Actions do work.** Each registered Spark **tool becomes a node**, its JSON schema
-   auto-rendered as a parameter form. Plus Agent, HTTP, Code, File, Set/Edit nodes.
-4. **Control flow.** IF / Switch (branch), Loop / SplitInBatches (iterate), Merge, Wait.
-5. **Agentic engines.** Agent node runs a tool-calling loop until done; can feed its output
-   back into the graph or into another agent (iterative refinement).
-6. **Execution is observable.** Run the whole flow or a single node; per-node input/output
-   JSON, status, timing, and errors in an inspector; execution history.
-7. **Files are first-class.** Pull in existing workspace/project files or upload new ones as
-   inputs; pass binary/text data between nodes; write results back to files.
-8. **Live embeds are first-class too.** Iframe / URL-preview / image / video / PDF nodes
-   render live content directly on the canvas, resizable, and can connect into the graph.
+- Chat workspace right panel already exists in
+  `src/spark_cli/web/src/pages/ChatPage.tsx`.
+- `RightTab` is currently `"files" | "terminal"`.
+- `WorkspaceRightPanel` renders the tab bar and switches between:
+  - `FileTreePane` from `src/spark_cli/web/src/components/workspace/FileTreePane.tsx`
+  - `WorkspaceTerminalPanel` from
+    `src/spark_cli/web/src/components/workspace/WorkspaceTerminalPanel.tsx`
+- Backend workspace routes already support project-scoped files and terminal
+  runs through `src/spark_cli/web_server.py`, `spark_cli.workspace_routes`, and
+  `src/spark_cli/web/src/lib/api.ts`.
+- Spark already has agent browser tools in `src/tools/browser_tool.py`,
+  including navigation, snapshots, click/type/scroll, screenshots/vision, and
+  `browser_console`.
 
----
+## Product Requirements
 
-## Architecture (grounded in the codebase)
+1. Add a third right-sidebar tab named `Preview`, with an icon button when the
+   panel is collapsed and a normal tab when open.
+2. Preview should appear only for workspace threads, matching the existing files
+   and terminal panel behavior.
+3. When Spark completes work on a workspace project that looks like a webapp, the
+   preview tab should open automatically and show the running app.
+4. The user can manually start/stop/restart preview, refresh the page, enter a
+   URL, and open externally.
+5. The preview should auto-refresh on file changes when the app lacks native HMR,
+   while avoiding refresh loops when Vite/Next/etc. already hot reload.
+6. The preview browser should expose console errors, console messages, network
+   failures, current URL, page title, and screenshots/snapshots to the agent.
+7. The embedded browser and agent browser should share the same underlying page
+   session where possible, so the user and agent are looking at the same page.
+8. Preview server state should be scoped to a workspace slug, not global chat
+   state.
+9. Security boundary: preview servers bind to loopback and serve workspace files,
+   while browser mode can navigate to normal `http`/`https` pages. Unsafe schemes
+   such as `file:`, `data:`, and `javascript:` remain blocked.
 
-**Backend**
-- Tool registry already exposes what a node catalog needs
-  ([src/tools/registry.py](src/tools/registry.py)):
-  `get_all_tool_names()`, `get_definitions(names)` (OpenAI/JSON-schema for form rendering),
-  `get_tool_to_toolset_map()`, `get_emoji()`, and `dispatch(name, args, **kwargs)` to run one.
-- Agent runtime: `AIAgent` ([src/core/run_agent/__init__.py](src/core/run_agent/__init__.py))
-  for agent nodes (reuse the stateless pattern from `POST /api/canvas/chat`).
-- Scheduling: [src/cron/](src/cron/) (`parse_schedule`, `compute_next_run`, `trigger_job`)
-  for Schedule triggers.
-- Webhooks: existing gateway webhook adapter (`tests/gateway/test_webhook_adapter.py`) for
-  Webhook triggers.
-- Files: [src/spark_cli/workspace_routes.py](src/spark_cli/workspace_routes.py)
-  (`_project_dir`, `_safe_path`, upload + read endpoints) for the File node + uploads.
-- Canvas persistence: [src/spark_cli/canvas_routes.py](src/spark_cli/canvas_routes.py) —
-  extend the saved doc with `nodes[].params`, typed edges, and `triggers`.
+## Architecture
 
-**Frontend**
-- [CanvasPage.tsx](src/spark_cli/web/src/pages/CanvasPage.tsx) +
-  [canvas/](src/spark_cli/web/src/pages/canvas/) (React Flow). Reshape `nodes.tsx`/`types.ts`
-  into a node-type *registry* with a generic param-form renderer.
-- API client [api.ts](src/spark_cli/web/src/lib/api.ts).
+### Frontend
 
----
+Create `WorkspacePreviewPanel` in:
 
-## Progress (branch `canvas-workflows`)
+`src/spark_cli/web/src/components/workspace/WorkspacePreviewPanel.tsx`
 
-**Shipped & verified** (engine round-trips end-to-end in the browser):
-- Phase 0 complete: `workflow_engine.py` (WorkflowDoc, item envelope, node-handler
-  registry, field-mapping resolver, topological executor) + frontend node model.
-- Phase 1 complete: `/api/workflows/run`, `/run-node`, async SSE execution events, cancel,
-  timeout/iteration guardrails, and SQLite execution history.
-- Phase 2 complete: `/node-types` exposes every Spark tool; schema-driven param form;
-  literal⇄field-mapping picker; tool dispatch; searchable node browser.
-- Phase 3 (partial): Set / IF / Switch / Loop / Merge nodes, Code / HTTP / Wait nodes,
-  and server-side trigger registration/execution for Schedule, Webhook, and File-watch.
-  *TODO: richer trigger management UI and project-relative file-watch path picker.*
-- Phase 4 complete: Agent node supports toolsets/iteration budget/memory toggle, plus
-  sub-workflow and context-memory nodes for composition/refinement loops.
-- Phase 5 complete: file source/write nodes, CSV/JSON/table helpers, binary file refs, and
-  drag-upload-to-node creation.
-- Phase 5b complete: sandboxed iframe, backend OG/text preview fetch, image/video/PDF media,
-  Markdown notes, render-output bridge, and free-placement display nodes.
-- Phase 6 complete: inspector, SSE run bar, Stop, last status, history drawer, edge preview,
-  node search/add, duplicate/copy/paste, undo/redo, and notes.
+Responsibilities:
 
-Tests: `test_workflow_engine.py` (21) + `test_workflow_routes.py` (11) + `test_canvas_routes.py`
-(5) all green.
+- Render a compact browser toolbar:
+  - URL display/input
+  - back/forward
+  - reload
+  - start/stop/restart preview server
+  - open externally
+  - console/error badge
+- Render the preview viewport.
+- Render a lower or toggleable diagnostics strip for console/server/network
+  events.
+- Subscribe to preview state/events over SSE.
+- Keep the tab mounted while switching away if feasible, so page state is not
+  lost just because the user checks files or terminal.
 
----
+Update `ChatPage.tsx`:
 
-## Phase 0 — Data model & node SDK (foundation)
-- [x] Define a **WorkflowDoc** schema (supersedes the loose CanvasDoc): `nodes[]` with
-      `{ id, type, params, position, credentials? }`, `edges[]` with `{ source, sourceOutput,
-      target, targetInput }`, `triggers[]`, `settings`. Version + migrate existing canvases.
-- [x] Define the **item/data envelope** passed along edges:
-      `{ json: object, binary?: { [key]: { fileRef, mimeType, name } } }[]`.
-- [x] Backend `workflow_engine.py`: a node-handler interface
-      `run(node, inputItems, ctx) -> outputItems` and a node-type registry.
-- [x] Frontend node-type registry (`canvas/nodeRegistry.ts`): each type declares
-      inputs/outputs, an icon, a param schema, and a React body renderer.
-- [x] Node **category** in the type definition: `trigger | action | control | agent | io |
-      display`. **`display` nodes** (iframe, preview, media, note) are non-executable by
-      default — they render on the canvas and may optionally expose output items — so the
-      embed/moodboard half and the workflow half share one model and one save file.
+- Change `type RightTab = "files" | "terminal" | "preview"`.
+- Add a `Monitor` or `Globe` icon from `lucide-react`.
+- Add Preview to the collapsed right rail and open tab bar.
+- Auto-select `preview` when backend emits a preview-ready event for the active
+  workspace.
+- Persist active tab in local storage if the current tab behavior should survive
+  reloads.
 
-## Phase 1 — Execution engine (server-side)
-- [x] `POST /api/workflows/{scope}/{id}/run` — execute a saved workflow; returns an
-      `executionId`. Topological scheduling from trigger node(s); pass items along edges.
-- [x] `POST /api/workflows/run-node` — run a single node with provided input items (for the
-      "execute node" button) without persisting.
-- [x] Per-node execution state streamed over SSE (reuse the SSE pattern in
-      [web_server.py](src/spark_cli/web_server.py)): `node.started/succeeded/failed`,
-      output items, duration, error.
-- [x] **Execution history**: persist runs under `~/.spark/workflows/executions/` (or SQLite);
-      `GET /api/workflows/.../executions` + a single execution view.
-- [x] Guardrails: max nodes, max iterations, per-run timeout, cancel endpoint.
+Update `src/spark_cli/web/src/lib/api.ts`:
 
-## Phase 2 — Tool nodes auto-generated from the registry
-- [x] `GET /api/workflows/node-types` — enumerate every registered tool as a node type
-      (name, toolset, emoji, JSON-schema params) via `registry.get_definitions()` +
-      `get_tool_to_toolset_map()`.
-- [x] Generic **param-form renderer**: turn a tool's JSON schema into form fields
-      (string/number/bool/enum/object/array). Each field can be set to a **literal** or
-      **mapped** to an upstream node's output field via a dropdown (`{node → field}`).
-- [x] **Mapping resolver** (backend): resolve each mapped param from the executing items
-      before dispatch. Design it as the single place expressions can later plug into.
-- [x] **Tool node** executes via `registry.dispatch(name, resolvedArgs)`; map the JSON-string
-      result back into output items.
-- [x] Palette becomes a **searchable node browser** grouped by toolset (40+ tools), not a
-      fixed list.
+- Add typed API wrappers for preview status, start, stop, restart, navigate,
+  refresh, logs, screenshot, snapshot, and event stream.
 
-## Phase 3 — Core control-flow & data nodes
-- [x] **Trigger nodes (all four ship in v1)**: Manual ▶, Schedule (cron via
-      [src/cron/](src/cron/)), Webhook (registers a gateway webhook route + per-workflow
-      secret), File-watch (watch a project path/glob).
-- [x] **IF / Switch** (branch-tagged outputs with source-handle edge routing).
-- [x] **Loop / SplitInBatches** (bounded item expansion for iterative/refinement flows) + **Merge**.
-- [x] **Set / Edit Fields** (build or transform the JSON item).
-- [x] **Code node** — run JS/Python over items in the existing sandbox (reuse `execute_code`).
-- [x] **HTTP Request** node.
-- [x] **Wait / Delay** node.
+### Backend
 
-## Phase 4 — Agentic / iterative engine
-- [x] **Agent node**: a tool-calling loop (`AIAgent`) with a selectable toolset, max-iteration
-      budget, and structured output; streams reasoning/tool-calls into the inspector.
-- [x] **Sub-workflow node**: call another saved workflow as a step (composition).
-- [x] **Agent-to-agent / refinement loop**: wire an agent's output back through IF/Loop for
-      iterative improvement until a condition is met.
-- [x] Memory/context node so agent nodes can share state across iterations.
+Add a project-scoped preview manager, likely under:
 
-## Phase 5 — Files & data I/O
-- [x] **File source node**: pick an existing file from a workspace **project** or the chat
-      **files** area (reuse `/api/workspace/...` listing); load as a binary/text item.
-- [x] **Upload**: drag a file onto the canvas (or a node) → upload via
-      [workspace_routes.py](src/spark_cli/workspace_routes.py) and create a File node.
-- [x] **Write File node**: persist an item's content back to a project/file path.
-- [x] Binary passthrough in the item envelope (reference by `fileRef`, not inlined bytes).
-- [x] Read/Write **Spreadsheet/CSV/JSON** helper nodes (lean on existing `xlsx`/file tools).
+`src/spark_cli/workspace_preview.py`
 
-## Phase 5b — Live embeds & rich media (the "infinite canvas" half)
-- [x] **Iframe / Embed node**: render an arbitrary URL in a sandboxed `<iframe>`
-      (`sandbox`, `referrerpolicy`, allowlist) directly on the canvas; resizable; refresh +
-      open-in-new-tab controls. Stored as `{ url, width, height, sandbox }` in the node.
-- [x] **URL / Web-preview node**: fetch a page's title/description/OG image/favicon (reuse
-      existing fetch/scrape tools) for a link-card preview; "expand to live iframe" toggle.
-      Exposes page text/metadata as **output items** so it can feed the workflow graph.
-- [x] **Image / Video / PDF nodes**: render media from a URL or an uploaded/workspace file
-      (reuse `mediaFileUrl` + the upload routes); pannable/zoomable, resizable.
-- [x] **Rich note / Markdown node** (upgrade the current Note): live-rendered Markdown.
-- [x] **Embed ↔ graph bridge**: embed/preview nodes can connect into workflow inputs, and a
-      workflow can target a **Preview/Render node** to display its output (HTML/image/text).
-- [x] **Free-placement mode**: embeds work with **no connections** (pure moodboard); the
-      canvas mixes connected workflow subgraphs and loose pinned embeds on one surface.
-- [x] **Security**: iframe sandboxing defaults, a domain allow/block setting, and respect for
-      desktop (Tauri) webview embed constraints; never auto-execute remote content beyond the
-      sandboxed iframe.
+Responsibilities:
 
-## Phase 6 — Builder UX & inspector
-- [x] **Node inspector panel** (right drawer): params form, plus **Input** / **Output** JSON
-      tabs showing the items from the last run; per-node run/error badges on the canvas.
-- [x] **Run bar**: ▶ Run, Run-from-node, Stop, last-execution status, execution-history drawer.
-- [x] Edge data preview (hover an edge → see items count/sample).
-- [x] Node search/add (drag from browser **or** click an output `+` to add the next node).
-- [x] Copy/paste, duplicate, multi-select, undo/redo, alignment helpers.
-- [x] Sticky notes / comments retained from the current Note node.
+- Detect webapp type and dev command from workspace files.
+- Start and stop dev servers in the project directory.
+- Capture server stdout/stderr into a bounded ring buffer.
+- Detect the listening URL/port.
+- Emit preview lifecycle events over SSE.
+- Watch workspace files for changes and publish refresh hints.
+- Maintain one preview session per workspace slug, with cleanup on process exit.
 
-## Phase 7 — Hardening, security, ship
-- [x] Sandbox/timeout/iteration limits enforced for Code, HTTP, Agent, and Loop nodes.
-- [x] Webhook auth + per-workflow secret; respect dashboard auth on all new routes.
-- [x] Profile-safe paths (`get_spark_home()`), no writes to `~/.spark/` in tests.
-- [x] Tests: engine (topo order, branching, loops, error propagation), tool-node dispatch,
-      file I/O, trigger registration; web build/typecheck/lint.
-- [x] Docs + rebuild `web_dist`; feature branch + PR.
+Add routes, either in `spark_cli.workspace_routes` or `web_server.py`:
 
----
+- `GET /api/workspace/projects/{slug}/preview/status`
+- `POST /api/workspace/projects/{slug}/preview/start`
+- `POST /api/workspace/projects/{slug}/preview/stop`
+- `POST /api/workspace/projects/{slug}/preview/restart`
+- `POST /api/workspace/projects/{slug}/preview/navigate`
+- `POST /api/workspace/projects/{slug}/preview/refresh`
+- `GET /api/workspace/projects/{slug}/preview/events`
+- `GET /api/workspace/projects/{slug}/preview/logs`
+- `GET /api/workspace/projects/{slug}/preview/screenshot`
+- `GET /api/workspace/projects/{slug}/preview/snapshot`
+- `GET /api/workspace/projects/{slug}/preview/console`
 
-## Decisions (locked)
+Use the existing workspace path resolver so all operations stay inside the
+workspace project directory.
 
-- **Execution: server-side.** The engine runs in the Spark backend so schedules/webhooks
-  fire without the browser open, and nodes reuse the real tool registry + `AIAgent`.
-- **Data mapping: field-mapping dropdowns for v1.** Nodes reference upstream output fields
-  via dropdowns (pick `{node → field}`), not free-text expressions. n8n-style
-  `{{ $json.x }}` expressions are a **post-v1** enhancement layered on the same resolver.
-- **Triggers: all four in v1.** Manual ▶, Schedule (cron), Webhook, and File-watch all ship
-  in Phase 3.
-- **Execution history: SQLite.** Persist runs in a new table (better for history queries)
-  rather than flat JSON.
+### Browser Runtime
 
-- **Tab name: stays "Canvas".** It hosts both executable workflows and a free-form infinite
-  surface of live embeds/media — one canvas, two modes that mix freely.
+Use Playwright as the preview control plane if available. This gives Spark:
 
-## Out of scope (for now)
-- Multi-user collaboration / real-time co-editing.
-- A marketplace of community workflow templates.
-- Visual debugging time-travel beyond per-node last-run I/O.
+- A real page object for navigation and reload.
+- Console message capture.
+- Page error capture.
+- Network request failure capture.
+- Screenshots and accessibility snapshots.
+- Click/type/evaluate primitives for agentic inspection.
+
+The embedded frontend can render one of two ways:
+
+1. MVP: iframe the detected localhost URL in the Preview tab, while the backend
+   Playwright page is used for agent inspection and logs.
+2. Better shared-session target: expose the Playwright-controlled page through a
+   browser streaming/view bridge or Chrome DevTools Protocol attachment so the
+   frontend and agent use the same page.
+
+Recommendation: ship the iframe MVP first, but design the backend API around a
+`preview_session_id` so the shared-page implementation can replace the iframe
+without changing agent-facing tools.
+
+## Webapp Detection
+
+Detection should be conservative and explainable:
+
+- `package.json`
+  - Prefer scripts in this order: `dev`, `start`, `serve`, `preview`.
+  - Detect common frameworks and default ports:
+    - Vite: 5173
+    - Next.js: 3000
+    - Remix/React Router: 3000 or script output
+    - SvelteKit: 5173
+    - Astro: 4321
+    - Vue CLI: 8080
+- Static apps
+  - `index.html` at project root or under `public/`
+  - Start a simple static file server on an allocated local port.
+- Python webapps
+  - Defer beyond MVP unless clear patterns exist, such as `streamlit_app.py`,
+    `app.py` with Flask/FastAPI, or explicit config.
+
+Support an explicit project config file after MVP:
+
+`spark.preview.json`
+
+Example:
+
+```json
+{
+  "command": "npm run dev -- --host 127.0.0.1",
+  "url": "http://127.0.0.1:5173",
+  "readyPattern": "Local:",
+  "autoOpen": true,
+  "autoVerify": true
+}
+```
+
+## Auto-Open Trigger
+
+When a workspace agent turn completes:
+
+1. Inspect changed files and project structure.
+2. If the project is likely a webapp and the user asked for build/fix/add UI
+   work, call the preview manager to start or reuse the preview server.
+3. Emit an event such as `workspace.preview.ready` with `slug`, `url`,
+   `server_status`, and `auto_open: true`.
+4. The frontend switches the active right tab to `preview` for that workspace.
+
+Implementation hook:
+
+- Extend the workspace conversation completion path in
+  `src/spark_cli/web_server.py` near `chat.turn_done` publishing.
+- Keep this outside the system prompt and toolset construction so prompt caching
+  behavior is not affected.
+
+## Auto-Refresh
+
+Use layered refresh behavior:
+
+- If the dev server is a known HMR server, do not hard-refresh on every file
+  change; rely on HMR and only refresh when the page becomes stale or reconnects.
+- For static servers or unknown apps, debounce file changes and reload after
+  300-800 ms.
+- Ignore noisy directories:
+  - `node_modules`
+  - `.git`
+  - `dist`
+  - `build`
+  - `.next`
+  - `.vite`
+  - cache directories
+- Expose a manual reload button regardless of auto-refresh mode.
+
+## Agentic Browser Integration
+
+Add preview-aware tools or extend existing browser tools with a preview session
+target:
+
+- `preview_open`
+- `preview_snapshot`
+- `preview_click`
+- `preview_type`
+- `preview_console`
+- `preview_screenshot`
+- `preview_evaluate`
+
+Preferred implementation:
+
+- Reuse `src/tools/browser_tool.py` concepts and schemas where practical.
+- Internally route preview tools to the workspace preview session rather than
+  launching an unrelated browser.
+- Preserve existing `browser_open` behavior for normal web browsing.
+
+Agent prompt behavior:
+
+- When working in a workspace project with an active preview, tell the agent the
+  preview URL and that it can use preview/browser inspection to verify UI work.
+- Avoid changing toolsets mid-conversation. The preview tools should either be
+  available from the start for web chat sessions or exposed through existing
+  browser tool activation rules.
+
+## Logs and Diagnostics
+
+Preview should collect and expose:
+
+- Dev server stdout/stderr.
+- Browser console messages.
+- Browser page errors.
+- Failed network requests.
+- Current URL, title, HTTP status where available.
+- Last screenshot timestamp/path.
+
+Frontend diagnostics:
+
+- Error badge on the Preview tab when console/page errors occur.
+- Scrollable log drawer with filters: `All`, `Console`, `Server`, `Network`,
+  `Errors`.
+- Clear logs action.
+
+Agent diagnostics:
+
+- Console/log APIs should return bounded JSON, not unbounded raw text.
+- Include enough context for the agent to identify the file/route/error.
+
+## Security and Isolation
+
+- Bind preview servers to `127.0.0.1`.
+- Allocate ports from a bounded range and track ownership.
+- Do not proxy arbitrary remote URLs by default.
+- Sanitize URL navigation through existing website policy rules.
+- Keep preview processes scoped to workspace slug and working directory.
+- Kill preview processes when workspace is deleted or Spark exits.
+- Redact likely secrets from server/browser logs before exposing them to the
+  frontend or agent.
+
+## Milestones
+
+### Milestone 1: UI Shell
+
+- [x] Add `Preview` tab to `WorkspaceRightPanel`.
+- [x] Create a placeholder `WorkspacePreviewPanel`.
+- [x] Add API types/stubs in `api.ts`.
+- [x] Verify layout at narrow and wide right-panel widths.
+
+### Milestone 2: Preview Server Lifecycle
+
+- [x] Implement initial project-scoped preview manager in `workspace_routes.py`.
+- [x] Add start/stop/restart/status/log routes.
+- [x] Support Vite/Next/package.json detection and static HTML fallback.
+- [x] Stream server status/log events over SSE.
+
+### Milestone 3: Embedded Preview
+
+- [x] Render the detected URL in the Preview tab.
+- [x] Add toolbar controls.
+- [x] Auto-open the tab on `workspace.preview.ready`.
+- [x] Add manual refresh and open-external.
+
+### Milestone 4: Auto-Refresh
+
+- [x] Add workspace file watcher.
+- [x] Debounce refresh hints.
+- [x] Respect HMR-capable frameworks.
+- [x] Show refresh status in the toolbar.
+
+### Milestone 5: Agent Browser Control
+
+- [x] Add preview session browser backend with Playwright.
+- [x] Capture console/page/network events.
+- [x] Implement preview snapshot, screenshot, console, evaluate, click, type.
+- [x] Wire workspace agent instructions to prefer preview verification after webapp
+  changes.
+
+### Milestone 6: Polish and Hardening
+
+- [x] Persist preview session settings per workspace.
+- [x] Add diagnostics drawer filters.
+- [x] Add config file support with `spark.preview.json`.
+- [x] Add process cleanup and port conflict handling.
+- [x] Add tests for route behavior, detection, lifecycle, and frontend tab state.
+
+## Test Plan
+
+Backend:
+
+- [x] Unit test webapp detection for Vite, Next, static HTML, unknown project.
+- [x] Unit test command/URL config parsing.
+- [x] Integration test preview start/stop/status with a tiny static app.
+- [x] Verify preview server binds to loopback and refuses path traversal.
+- [x] Verify logs are bounded and secret-redacted.
+
+Frontend:
+
+- [x] Component test `WorkspaceRightPanel` tab switching.
+- [x] Component test `WorkspacePreviewPanel` loading, error, running, stopped states.
+- [x] Browser test that a sample Vite app opens in Preview and reloads on change.
+- [x] Browser test that console errors show the Preview tab error badge.
+
+Agent:
+
+- [x] Test workspace agent turn emits `workspace.preview.ready` for webapp tasks.
+- [x] Test preview console/screenshot tools return bounded JSON.
+- [x] Test existing prompt caching invariants are not disturbed by preview startup.
+
+## Decisions
+
+- [x] Preview starts only when a workspace is previewable or explicitly configured.
+- [x] The visible pane doubles as an app preview and a general browser surface.
+- [x] Agent inspection/control routes through a separate browser automation session
+  when `agent-browser` is available, with Playwright/fetch fallbacks for local use.
+- [x] Preview state is process/session scoped for now; persistent settings live in
+  `spark.preview.json`.
+- [x] Navigation accepts normal `http`/`https` browser URLs and blocks unsafe URL
+  schemes.
+- [x] Preview tools are their own `preview` toolset and are also included in the default
+  Spark core tool surface.

@@ -634,22 +634,50 @@ def run_doctor(args):
     else:
         check_info("piper-tts not installed (optional, enables local TTS: pip install piper-tts)")
 
-    # Node.js + agent-browser (for browser automation tools)
+    # Node.js + managed agent-browser runtime
     if shutil.which("node"):
         check_ok("Node.js")
-        # Check if agent-browser is installed
-        agent_browser_path = PROJECT_ROOT / "node_modules" / "agent-browser"
-        if agent_browser_path.exists():
-            check_ok("agent-browser (Node.js)", "(browser automation)")
-        else:
-            if _is_termux():
+        try:
+            from spark_cli.browser_runtime import (
+                agent_browser_path,
+                agent_browser_ready,
+                agent_browser_version,
+                install_agent_browser,
+            )
+
+            binary = agent_browser_path()
+            if binary:
+                version = agent_browser_version()
+                check_ok("agent-browser package", f"({version or binary})")
+            elif _is_termux():
                 check_info("agent-browser is not installed (expected in the tested Termux path)")
                 check_info("Install it manually later with: npm install -g agent-browser && agent-browser install")
                 check_info("Termux browser setup:")
                 for step in _termux_browser_setup_steps(node_installed=True):
                     check_info(step)
+                binary = None
             else:
-                check_warn("agent-browser not installed", "(run: npm install)")
+                check_warn("agent-browser package not installed", "(managed browser runtime)")
+
+            if not _is_termux():
+                ready, detail = agent_browser_ready()
+                if ready:
+                    check_ok("agent-browser runtime", "(browser engine ready)")
+                elif should_fix:
+                    check_info("Installing agent-browser runtime...")
+                    result = install_agent_browser(quiet=True)
+                    if result.get("ok"):
+                        check_ok("agent-browser runtime repaired", f"({result.get('version') or result.get('binary')})")
+                        fixed_count += 1
+                    else:
+                        check_fail("agent-browser runtime setup failed", str(result.get("error") or detail))
+                        issues.append("agent-browser runtime setup failed")
+                else:
+                    check_warn("agent-browser runtime not ready", f"({detail})")
+                    issues.append("Run 'spark doctor --fix' to install agent-browser")
+        except Exception as exc:
+            check_warn("agent-browser check failed", f"({exc})")
+            issues.append("Run 'spark doctor --fix' to repair agent-browser")
     else:
         if _is_termux():
             check_info("Node.js not found (browser tools are optional in the tested Termux path)")
@@ -659,6 +687,7 @@ def run_doctor(args):
                 check_info(step)
         else:
             check_warn("Node.js not found", "(optional, needed for browser tools)")
+            issues.append("Install Node.js to enable Spark's browser tab")
     
     # npm audit for all Node.js packages
     if shutil.which("npm"):

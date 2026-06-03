@@ -46,6 +46,9 @@ _SPARK_CORE_TOOLS = [
     # Browser automation — entry point only; sub-tools (snapshot/click/type/…)
     # are gated behind a check_fn and activated once browser_open is called.
     "browser_open",
+    # Workspace preview verification for project-scoped webapps.
+    "preview_open", "preview_snapshot", "preview_console", "preview_screenshot",
+    "preview_click", "preview_type", "preview_evaluate",
     # Planning & memory
     "todo", "memory",
     # Session history search
@@ -119,6 +122,15 @@ TOOLSETS = {
             "browser_vision", "browser_console", "web_search"
         ],
         "includes": []
+    },
+
+    "preview": {
+        "description": "Workspace preview browser tools for project-scoped webapp verification",
+        "tools": [
+            "preview_open", "preview_snapshot", "preview_console", "preview_screenshot",
+            "preview_click", "preview_type", "preview_evaluate",
+        ],
+        "includes": [],
     },
     
     "cronjob": {

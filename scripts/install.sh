@@ -1178,77 +1178,26 @@ install_node_deps() {
     fi
 
     if [ -f "$INSTALL_DIR/package.json" ]; then
-        log_info "Installing Node.js dependencies (browser tools)..."
+        local runtime_python
+        if [ "$USE_VENV" = true ]; then
+            runtime_python="$INSTALL_DIR/.venv/bin/python"
+        else
+            runtime_python="$PYTHON_PATH"
+        fi
+        log_info "Installing Node.js dependencies (agent-browser)..."
         cd "$INSTALL_DIR"
         npm install --silent 2>/dev/null || {
-            log_warn "npm install failed (browser tools may not work)"
+            log_warn "npm install failed (agent-browser may not work)"
         }
         log_success "Node.js dependencies installed"
 
-        # Install Playwright browser + system dependencies.
-        # Playwright's --with-deps only supports apt-based systems natively.
-        # For Arch/Manjaro we install the system libs via pacman first.
-        # Other systems must install Chromium dependencies manually.
-        log_info "Installing browser engine (Playwright Chromium)..."
-        case "$DISTRO" in
-            ubuntu|debian|raspbian|pop|linuxmint|elementary|zorin|kali|parrot)
-                log_info "Playwright may request sudo to install browser system dependencies (shared libraries)."
-                log_info "This is standard Playwright setup - Spark itself does not require root access."
-                if cd "$INSTALL_DIR" && npx playwright install --with-deps chromium 2>/dev/null; then
-                    : # success
-                elif cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null; then
-                    log_success "Playwright Chromium installed (system deps skipped)"
-                    log_info "If browser tools don't work, install system deps manually:"
-                    log_info "  sudo apt install libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libgbm1 libasound2t64"
-                else
-                    log_info "Playwright does not support your OS version yet - browser automation tools will not work."
-                    log_info "Workaround: sudo apt install chromium-browser"
-                    log_info "Once Playwright adds support, run: cd $INSTALL_DIR && npx playwright install --with-deps chromium"
-                fi
-                ;;
-            arch|manjaro)
-                if command -v pacman &> /dev/null; then
-                    log_info "Arch/Manjaro detected - installing Chromium system dependencies via pacman..."
-                    if command -v sudo &> /dev/null && sudo -n true 2>/dev/null; then
-                        sudo NEEDRESTART_MODE=a pacman -S --noconfirm --needed \
-                            nss atk at-spi2-core cups libdrm libxkbcommon mesa pango cairo alsa-lib >/dev/null 2>&1 || true
-                    elif [ "$(id -u)" -eq 0 ]; then
-                        pacman -S --noconfirm --needed \
-                            nss atk at-spi2-core cups libdrm libxkbcommon mesa pango cairo alsa-lib >/dev/null 2>&1 || true
-                    else
-                        log_warn "Cannot install browser deps without sudo. Run manually:"
-                        log_warn "  sudo pacman -S nss atk at-spi2-core cups libdrm libxkbcommon mesa pango cairo alsa-lib"
-                    fi
-                fi
-                cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null || {
-                    log_warn "Playwright browser installation failed - browser tools will not work."
-                }
-                ;;
-            fedora|rhel|centos|rocky|alma)
-                log_warn "Playwright does not support automatic dependency installation on RPM-based systems."
-                log_info "Install Chromium system dependencies manually before using browser tools:"
-                log_info "  sudo dnf install nss atk at-spi2-core cups-libs libdrm libxkbcommon mesa-libgbm pango cairo alsa-lib"
-                cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null || {
-                    log_warn "Playwright browser installation failed - install dependencies above and retry."
-                }
-                ;;
-            opensuse*|sles)
-                log_warn "Playwright does not support automatic dependency installation on zypper-based systems."
-                log_info "Install Chromium system dependencies manually before using browser tools:"
-                log_info "  sudo zypper install mozilla-nss libatk-1_0-0 at-spi2-core cups-libs libdrm2 libxkbcommon0 Mesa-libgbm1 pango cairo libasound2"
-                cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null || {
-                    log_warn "Playwright browser installation failed - install dependencies above and retry."
-                }
-                ;;
-            *)
-                log_warn "Playwright does not support automatic dependency installation on $DISTRO."
-                log_info "Install Chromium/browser system dependencies for your distribution, then run:"
-                log_info "  cd $INSTALL_DIR && npx playwright install chromium"
-                log_info "Browser tools will not work until dependencies are installed."
-                cd "$INSTALL_DIR" && npx playwright install chromium 2>/dev/null || true
-                ;;
-        esac
-        log_success "Browser engine setup complete"
+        log_info "Installing agent-browser browser engine..."
+        if cd "$INSTALL_DIR" && "$runtime_python" -m spark_cli.browser_runtime install --quiet; then
+            log_success "agent-browser runtime ready"
+        else
+            log_warn "agent-browser setup failed"
+            log_info "Repair later with: spark doctor --fix"
+        fi
     fi
 
     # Install WhatsApp bridge dependencies

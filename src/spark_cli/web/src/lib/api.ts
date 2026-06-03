@@ -783,6 +783,103 @@ export const api = {
       },
     ),
 
+  getWorkspacePreviewStatus: (slug: string) =>
+    fetchJSON<WorkspacePreviewStatus>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/status`,
+    ),
+
+  startWorkspacePreview: (slug: string, options?: { command?: string; url?: string }) =>
+    fetchJSON<WorkspacePreviewStatus>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/start`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options ?? {}),
+      },
+    ),
+
+  stopWorkspacePreview: (slug: string) =>
+    fetchJSON<WorkspacePreviewStatus>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stop`,
+      { method: "POST" },
+    ),
+
+  restartWorkspacePreview: (slug: string, options?: { command?: string; url?: string }) =>
+    fetchJSON<WorkspacePreviewStatus>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options ?? {}),
+      },
+    ),
+
+  navigateWorkspacePreview: (slug: string, url: string) =>
+    fetchJSON<WorkspacePreviewStatus>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/navigate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      },
+    ),
+
+  refreshWorkspacePreview: (slug: string) =>
+    fetchJSON<{ ok: boolean; slug: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/refresh`,
+      { method: "POST" },
+    ),
+
+  getWorkspacePreviewLogs: (slug: string) =>
+    fetchJSON<{ slug: string; logs: WorkspacePreviewLog[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/logs`,
+    ),
+
+  getWorkspacePreviewSnapshot: (slug: string) =>
+    fetchJSON<WorkspacePreviewSnapshot>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/snapshot`,
+    ),
+
+  getWorkspacePreviewConsole: (slug: string) =>
+    fetchJSON<{ slug: string; messages: WorkspacePreviewLog[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/console`,
+    ),
+
+  workspacePreviewClick: (slug: string, selector: string) =>
+    fetchJSON<{ slug: string; action: string; result: unknown; messages: WorkspacePreviewLog[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/click`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selector }),
+      },
+    ),
+
+  workspacePreviewType: (slug: string, selector: string, text: string) =>
+    fetchJSON<{ slug: string; action: string; result: unknown; messages: WorkspacePreviewLog[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/type`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selector, text }),
+      },
+    ),
+
+  workspacePreviewEvaluate: (slug: string, expression: string) =>
+    fetchJSON<{ slug: string; action: string; result: unknown; messages: WorkspacePreviewLog[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/evaluate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expression }),
+      },
+    ),
+
+  streamWorkspacePreviewEvents: (slug: string): EventSource =>
+    new EventSource(
+      sseUrl(`/api/workspace/projects/${encodeURIComponent(slug)}/preview/events`),
+    ),
+
   startWorkspaceConversation: (slug: string, message: string, model?: string) =>
     fetchJSON<{ session_id: string; ok: boolean; source: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/conversations`,
@@ -1701,6 +1798,38 @@ export type WorkspaceTerminalEvent =
   | { type: "state"; status: string; cwd?: string }
   | { type: "output"; stream?: string; text: string }
   | { type: "done"; status: string; exit_code: number | null };
+
+export interface WorkspacePreviewStatus {
+  slug: string;
+  status: "starting" | "running" | "stopped" | "failed";
+  url: string | null;
+  command: string | null;
+  port: number | null;
+  kind: string | null;
+  error: string | null;
+  started_at: number | null;
+  updated_at: number | null;
+}
+
+export interface WorkspacePreviewLog {
+  ts: number;
+  type: "log";
+  stream: string;
+  text: string;
+}
+
+export type WorkspacePreviewEvent =
+  | ({ type: "state" } & WorkspacePreviewStatus)
+  | WorkspacePreviewLog
+  | { type: "refresh"; ts: number; reason?: string };
+
+export interface WorkspacePreviewSnapshot {
+  slug: string;
+  url: string | null;
+  title: string;
+  text: string;
+  html_length: number;
+}
 
 export interface ConnectorStatus {
   id: string;

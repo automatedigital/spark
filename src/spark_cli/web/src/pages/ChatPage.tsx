@@ -9,6 +9,7 @@ import {
   File,
   FileText,
   FolderOpen,
+  Globe,
   GripVertical,
   Loader2,
   Menu,
@@ -45,6 +46,7 @@ import { threadTitle } from "@/components/chat/ThreadRow";
 import { TypeOnTitle } from "@/components/chat/TypeOnTitle";
 import { FileTreePane, getFileCategory } from "@/components/workspace/FileTreePane";
 import { WorkspaceTerminalPanel } from "@/components/workspace/WorkspaceTerminalPanel";
+import { WorkspacePreviewPanel } from "@/components/workspace/WorkspacePreviewPanel";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -447,24 +449,43 @@ function SimpleFileViewer({ slug, node }: { slug: string; node: WorkspaceFileNod
 
 // ── WorkspaceRightPanel ───────────────────────────────────────────────────────
 
-type RightTab = "files" | "terminal";
+type RightTab = "files" | "terminal" | "preview";
+
+const RIGHT_TABS: RightTab[] = ["files", "terminal", "preview"];
+
+function rightTabLabel(tab: RightTab): string {
+  if (tab === "files") return "Files";
+  if (tab === "terminal") return "Terminal";
+  return "Browser";
+}
+
+function RightTabIcon({ tab }: { tab: RightTab }) {
+  if (tab === "files") return <FileText className="h-3.5 w-3.5" />;
+  if (tab === "terminal") return <SquareTerminal className="h-3.5 w-3.5" />;
+  return <Globe className="h-3.5 w-3.5" />;
+}
 
 function WorkspaceRightPanel({
   slug,
   open,
   onToggle,
   width,
+  forceTab,
 }: {
   slug: string;
   open: boolean;
   onToggle: () => void;
   width: number;
+  forceTab?: RightTab | null;
 }) {
   const [activeTab, setActiveTab] = useState<RightTab>("files");
   const [selectedFile, setSelectedFile] = useState<WorkspaceFileNode | null>(null);
 
   // Reset selected file when project changes
   useEffect(() => { setSelectedFile(null); }, [slug]);
+  useEffect(() => {
+    if (forceTab) setActiveTab(forceTab);
+  }, [forceTab]);
 
   if (!open) {
     return (
@@ -494,6 +515,14 @@ function WorkspaceRightPanel({
         >
           <SquareTerminal className="h-3.5 w-3.5" />
         </button>
+        <button
+          type="button"
+          title="Browser"
+          onClick={() => { setActiveTab("preview"); onToggle(); }}
+          className={cn("rounded p-1.5 transition", activeTab === "preview" ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
+        >
+          <Globe className="h-3.5 w-3.5" />
+        </button>
       </div>
     );
   }
@@ -509,13 +538,13 @@ function WorkspaceRightPanel({
         role="tablist"
         aria-label="Project tools"
       >
-        {(["files", "terminal"] as RightTab[]).map((tab) => (
+        {RIGHT_TABS.map((tab) => (
           <button
             key={tab}
             type="button"
             role="tab"
             aria-selected={activeTab === tab}
-            aria-label={tab === "files" ? "Files" : "Terminal"}
+            aria-label={rightTabLabel(tab)}
             onClick={() => setActiveTab(tab)}
             className={cn(
               "flex h-8 items-center gap-1.5 border-r border-border px-3 text-[11px] capitalize transition",
@@ -524,7 +553,7 @@ function WorkspaceRightPanel({
                 : "bg-card/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
           >
-            {tab === "files" ? <FileText className="h-3.5 w-3.5" /> : <SquareTerminal className="h-3.5 w-3.5" />}
+            <RightTabIcon tab={tab} />
             {tab}
           </button>
         ))}
@@ -566,8 +595,10 @@ function WorkspaceRightPanel({
               onOpenFile={setSelectedFile}
             />
           )
-        ) : (
+        ) : activeTab === "terminal" ? (
           <WorkspaceTerminalPanel slug={slug} />
+        ) : (
+          <WorkspacePreviewPanel slug={slug} />
         )}
       </div>
     </div>
@@ -615,6 +646,7 @@ export default function ChatPage() {
   const [rightPanelOpen, setRightPanelOpen] = useState(() =>
     localStorage.getItem("spark-chat-right-panel") !== "false"
   );
+  const [rightPanelForceTab, setRightPanelForceTab] = useState<RightTab | null>(null);
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
     const saved = localStorage.getItem("spark-chat-right-panel-width");
     return saved ? Math.max(240, parseInt(saved, 10)) : 320;
@@ -720,6 +752,16 @@ export default function ChatPage() {
 
   // ── Real-time updates ──
   useEventBus((env: SparkEventEnvelope) => {
+    if (env.topic === "workspace.preview.ready") {
+      const data = env.data as { slug?: string; url?: string | null };
+      if (data.slug && data.slug === activeWorkspaceSlug && data.url) {
+        setRightPanelOpen(true);
+        localStorage.setItem("spark-chat-right-panel", "true");
+        setRightPanelForceTab("preview");
+      }
+      return;
+    }
+
     if (env.topic !== "sessions.changed") return;
     const data = env.data as { action?: string; session_id?: string; session?: SessionInfo };
     const sid = data.session_id ?? "";
@@ -1380,6 +1422,7 @@ export default function ChatPage() {
               open={rightPanelOpen}
               onToggle={toggleRightPanel}
               width={rightPanelWidth}
+              forceTab={rightPanelForceTab}
             />
           </div>
         )}

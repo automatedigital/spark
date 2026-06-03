@@ -194,6 +194,26 @@ else
 fi
 
 # ============================================================================
+# Agent browser runtime
+# ============================================================================
+
+echo -e "${CYAN}->${NC} Installing agent-browser runtime..."
+if is_termux; then
+    echo -e "${YELLOW}WARN${NC} Skipping agent-browser auto-install on Termux"
+    echo "    Install later with: npm install -g agent-browser && agent-browser install"
+elif command -v npm >/dev/null 2>&1; then
+    if "$SETUP_PYTHON" -m spark_cli.browser_runtime install --quiet; then
+        echo -e "${GREEN}OK${NC} agent-browser ready"
+    else
+        echo -e "${YELLOW}WARN${NC} agent-browser setup failed"
+        echo "    Repair later with: spark doctor --fix"
+    fi
+else
+    echo -e "${YELLOW}WARN${NC} npm not found; browser runtime not installed"
+    echo "    Repair later with: spark doctor --fix"
+fi
+
+# ============================================================================
 # Submodules (terminal backend + RL training)
 # ============================================================================
 

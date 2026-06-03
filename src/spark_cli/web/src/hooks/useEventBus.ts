@@ -15,7 +15,7 @@ const listeners = new Set<Listener>();
 let source: EventSource | null = null;
 let reconnectAttempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-const topicsParam = "sessions,chat";
+const topicsParam = "sessions,chat,workspace";
 
 function notifyListeners(env: SparkEventEnvelope) {
   listeners.forEach((fn) => {

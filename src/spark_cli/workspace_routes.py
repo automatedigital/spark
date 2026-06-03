@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import fcntl
 import json
 import logging
@@ -13,12 +14,15 @@ import queue
 import re
 import shutil
 import signal
+import socket
 import struct
 import subprocess
 import termios
 import threading
 import time
 import uuid
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -36,10 +40,26 @@ _MAX_FILE_READ_BYTES = 512 * 1024  # 512 KB
 _MAX_TREE_DEPTH = 4
 _SLUG_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 _TERMINAL_RUN_TTL_SECONDS = 1800
+_PREVIEW_LOG_LIMIT = 500
+_PREVIEW_PORT_START = 4173
+_PREVIEW_PORT_END = 6173
+_PREVIEW_WATCH_INTERVAL_SECONDS = 0.75
+_PREVIEW_REFRESH_DEBOUNCE_SECONDS = 0.8
+_PREVIEW_FETCH_MAX_BYTES = 512 * 1024
+_AGENT_BROWSER_MAX_OUTPUT = 12000
+_PREVIEW_IGNORED_DIRS = {
+    ".git", ".next", ".vite", "__pycache__", "build", "dist", "node_modules", ".cache"
+}
+_SECRET_RE = re.compile(
+    r"(?i)(api[_-]?key|authorization|bearer|password|secret|token)([\"'\s:=]+)([^\s\"']+)"
+)
 
 _terminal_runs: dict[str, dict[str, Any]] = {}
 _terminal_run_queues: dict[str, queue.Queue[dict[str, Any] | None]] = {}
 _terminal_lock = threading.Lock()
+_preview_sessions: dict[str, dict[str, Any]] = {}
+_preview_queues: dict[str, list[queue.Queue[dict[str, Any] | None]]] = {}
+_preview_lock = threading.Lock()
 
 
 def _workspace_root() -> Path:
@@ -112,6 +132,21 @@ class TerminalInput(BaseModel):
 class TerminalResize(BaseModel):
     rows: int
     cols: int
+
+
+class PreviewStart(BaseModel):
+    command: str | None = None
+    url: str | None = None
+
+
+class PreviewNavigate(BaseModel):
+    url: str
+
+
+class PreviewBrowserAction(BaseModel):
+    selector: str | None = None
+    text: str | None = None
+    expression: str | None = None
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -356,6 +391,8 @@ def delete_workspace_chat_file(path: str = Query(...)):
 @router.delete("/projects/{slug}")
 def delete_project(slug: str):
     project_dir = _project_dir(slug)
+    if slug in _preview_sessions:
+        _stop_preview_session(slug)
     try:
         shutil.rmtree(project_dir)
     except Exception as exc:
@@ -666,5 +703,675 @@ def stop_terminal_run(slug: str, run_id: str):
     return {"ok": True, "run_id": run_id, "status": run.get("status")}
 
 
+# ── Project preview ──────────────────────────────────────────────────────────
+
+
+def _find_free_loopback_port() -> int:
+    span = _PREVIEW_PORT_END - _PREVIEW_PORT_START + 1
+    start = _PREVIEW_PORT_START + (uuid.uuid4().int % span)
+    ports = list(range(start, _PREVIEW_PORT_END + 1)) + list(range(_PREVIEW_PORT_START, start))
+    for port in ports:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise HTTPException(status_code=503, detail="No free preview ports available")
+
+
+def _preview_emit(slug: str, event: dict[str, Any]) -> None:
+    for q in list(_preview_queues.get(slug, [])):
+        try:
+            q.put_nowait(event)
+        except queue.Full:
+            pass
+
+
+def _publish_workspace_event(topic: str, data: dict[str, Any]) -> None:
+    try:
+        from spark_cli.web_server import _publish_event
+
+        _publish_event(topic, data)
+    except Exception:
+        pass
+
+
+def _append_preview_log(slug: str, session: dict[str, Any], text: str, stream: str = "server") -> None:
+    redacted = _SECRET_RE.sub(r"\1\2[redacted]", text)
+    entry = {"ts": time.time(), "type": "log", "stream": stream, "text": redacted}
+    with _preview_lock:
+        logs = session.setdefault("logs", [])
+        logs.append(entry)
+        if len(logs) > _PREVIEW_LOG_LIMIT:
+            del logs[: len(logs) - _PREVIEW_LOG_LIMIT]
+        session["updated_at"] = time.time()
+    _preview_emit(slug, entry)
+
+
+def _preview_status_payload(slug: str, session: dict[str, Any] | None = None) -> dict[str, Any]:
+    session = session or _preview_sessions.get(slug)
+    if not session:
+        return {
+            "slug": slug,
+            "status": "stopped",
+            "url": None,
+            "command": None,
+            "port": None,
+            "kind": None,
+            "error": None,
+            "started_at": None,
+            "updated_at": None,
+        }
+    proc = session.get("process")
+    if proc is not None and proc.poll() is not None and session.get("status") == "running":
+        session["status"] = "failed"
+        session["error"] = f"Preview process exited with code {proc.returncode}"
+    return {
+        "slug": slug,
+        "status": session.get("status", "stopped"),
+        "url": session.get("url"),
+        "command": session.get("command"),
+        "port": session.get("port"),
+        "kind": session.get("kind"),
+        "error": session.get("error"),
+        "started_at": session.get("started_at"),
+        "updated_at": session.get("updated_at"),
+    }
+
+
+def _normalize_browser_url(url: str) -> str:
+    candidate = url.strip()
+    if not candidate:
+        raise HTTPException(status_code=400, detail="URL is required")
+    initial = urllib.parse.urlparse(candidate)
+    if initial.scheme and initial.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Browser navigation supports http and https URLs")
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", candidate):
+        candidate = f"https://{candidate}"
+    parsed = urllib.parse.urlparse(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Browser navigation supports http and https URLs")
+    return urllib.parse.urlunparse(parsed)
+
+
+def _agent_browser_session_name(slug: str) -> str:
+    safe = re.sub(r"[^a-zA-Z0-9_.-]", "-", slug)
+    return f"spark-preview-{safe}"
+
+
+def _agent_browser_bin() -> str | None:
+    try:
+        from spark_cli.browser_runtime import agent_browser_path
+
+        return agent_browser_path()
+    except Exception:
+        return shutil.which("agent-browser")
+
+
+def _run_agent_browser(slug: str, args: list[str], timeout: float = 12.0) -> dict[str, Any] | None:
+    binary = _agent_browser_bin()
+    if not binary:
+        return None
+    command = [
+        binary,
+        "--session",
+        _agent_browser_session_name(slug),
+        "--json",
+        "--max-output",
+        str(_AGENT_BROWSER_MAX_OUTPUT),
+        *args,
+    ]
+    try:
+        proc = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "stdout": "", "stderr": ""}
+
+    output = (proc.stdout or "").strip()
+    parsed: Any = None
+    if output:
+        try:
+            parsed = json.loads(output)
+        except Exception:
+            parsed = output
+    success = proc.returncode == 0
+    if isinstance(parsed, dict) and "success" in parsed:
+        success = bool(parsed.get("success"))
+    return {
+        "success": success,
+        "returncode": proc.returncode,
+        "data": parsed,
+        "stdout": output,
+        "stderr": (proc.stderr or "").strip(),
+        "error": None if success else (parsed.get("error") if isinstance(parsed, dict) else proc.stderr or output),
+    }
+
+
+def _agent_browser_text(result: dict[str, Any] | None) -> str:
+    if not result:
+        return ""
+    data = result.get("data")
+    if isinstance(data, dict):
+        for key in ("data", "text", "content", "result", "value"):
+            value = data.get(key)
+            if isinstance(value, str):
+                return value
+        return json.dumps(data, default=str)
+    if isinstance(data, str):
+        return data
+    return result.get("stdout") or ""
+
+
+def _is_loopback_url(url: str) -> bool:
+    return urllib.parse.urlparse(url).hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def _detect_preview(project_dir: Path, requested_command: str | None = None, requested_url: str | None = None) -> dict[str, Any]:
+    port = _find_free_loopback_port()
+    config_path = project_dir / "spark.preview.json"
+    config: dict[str, Any] = {}
+    if config_path.exists():
+        try:
+            loaded = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                config = loaded
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid spark.preview.json: {exc}")
+    requested_command = requested_command or config.get("command")
+    requested_url = requested_url or config.get("url")
+    requested_url = _normalize_browser_url(requested_url) if requested_url else None
+    if requested_command:
+        return {
+            "kind": "custom",
+            "command": requested_command,
+            "url": requested_url or f"http://127.0.0.1:{port}",
+            "port": port,
+            "auto_refresh": bool(config.get("autoRefresh", True)),
+            "auto_verify": bool(config.get("autoVerify", True)),
+        }
+
+    package_json = project_dir / "package.json"
+    if package_json.exists():
+        try:
+            package = json.loads(package_json.read_text(encoding="utf-8"))
+        except Exception:
+            package = {}
+        scripts = package.get("scripts") if isinstance(package, dict) else {}
+        if isinstance(scripts, dict):
+            for script in ("dev", "start", "serve", "preview"):
+                if script in scripts:
+                    return {
+                        "kind": "node",
+                        "command": f"npm run {script} -- --host 127.0.0.1 --port {port}",
+                        "url": requested_url or f"http://127.0.0.1:{port}",
+                        "port": port,
+                        "auto_refresh": False,
+                        "auto_verify": bool(config.get("autoVerify", True)),
+                    }
+
+    if (project_dir / "index.html").exists() or (project_dir / "public" / "index.html").exists():
+        serve_dir = project_dir if (project_dir / "index.html").exists() else project_dir / "public"
+        return {
+            "kind": "static",
+            "command": f"{shutil.which('python3') or shutil.which('python') or 'python3'} -m http.server {port} --bind 127.0.0.1",
+            "url": requested_url or f"http://127.0.0.1:{port}",
+            "port": port,
+            "cwd": serve_dir,
+            "auto_refresh": bool(config.get("autoRefresh", True)),
+            "auto_verify": bool(config.get("autoVerify", True)),
+        }
+
+    raise HTTPException(status_code=404, detail="No previewable webapp detected")
+
+
+def _stop_preview_session(slug: str) -> dict[str, Any]:
+    session = _preview_sessions.get(slug)
+    if not session:
+        return _preview_status_payload(slug)
+    proc = session.get("process")
+    if proc is not None and proc.poll() is None:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except Exception:
+            proc.terminate()
+    session["status"] = "stopped"
+    session["updated_at"] = time.time()
+    _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+    return _preview_status_payload(slug, session)
+
+
+def _cleanup_preview_sessions() -> None:
+    for slug in list(_preview_sessions):
+        try:
+            _stop_preview_session(slug)
+        except Exception:
+            pass
+
+
+def _run_preview_process(slug: str, session: dict[str, Any]) -> None:
+    proc: subprocess.Popen | None = session.get("process")
+    try:
+        if proc is None or proc.stdout is None:
+            return
+        for line in proc.stdout:
+            _append_preview_log(slug, session, line)
+        exit_code = proc.wait()
+        with _preview_lock:
+            if session.get("status") == "running":
+                session["status"] = "failed" if exit_code else "stopped"
+                session["error"] = None if exit_code == 0 else f"Preview process exited with code {exit_code}"
+            session["updated_at"] = time.time()
+        _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+    except Exception as exc:
+        with _preview_lock:
+            session["status"] = "failed"
+            session["error"] = str(exc)
+            session["updated_at"] = time.time()
+        _append_preview_log(slug, session, f"{exc}\n", "error")
+        _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+
+
+def _snapshot_project_files(project_dir: Path) -> dict[str, float]:
+    snapshot: dict[str, float] = {}
+    for root, dirs, files in os.walk(project_dir):
+        dirs[:] = [d for d in dirs if d not in _PREVIEW_IGNORED_DIRS and not d.startswith(".pytest")]
+        root_path = Path(root)
+        for name in files:
+            path = root_path / name
+            try:
+                rel = str(path.relative_to(project_dir))
+                snapshot[rel] = path.stat().st_mtime
+            except OSError:
+                continue
+    return snapshot
+
+
+def _watch_preview_files(slug: str, session: dict[str, Any]) -> None:
+    project_dir = Path(session["project_dir"])
+    previous = _snapshot_project_files(project_dir)
+    last_refresh = 0.0
+    while session.get("status") == "running":
+        time.sleep(_PREVIEW_WATCH_INTERVAL_SECONDS)
+        current = _snapshot_project_files(project_dir)
+        if current != previous:
+            previous = current
+            now = time.time()
+            if session.get("auto_refresh") and now - last_refresh >= _PREVIEW_REFRESH_DEBOUNCE_SECONDS:
+                last_refresh = now
+                event = {"type": "refresh", "ts": now, "reason": "file_change"}
+                _preview_emit(slug, event)
+                _publish_workspace_event("workspace.preview.refresh", {"slug": slug, **event})
+
+
+@router.get("/projects/{slug}/preview/status")
+def get_preview_status(slug: str):
+    _project_dir(slug)
+    return _preview_status_payload(slug)
+
+
+@router.post("/projects/{slug}/preview/start")
+def start_preview(slug: str, body: PreviewStart | None = None):
+    project_dir = _project_dir(slug)
+    existing = _preview_sessions.get(slug)
+    if existing and existing.get("status") == "running":
+        return _preview_status_payload(slug, existing)
+
+    detected = _detect_preview(project_dir, body.command if body else None, body.url if body else None)
+    cwd = Path(detected.get("cwd") or project_dir)
+    command = str(detected["command"])
+    env = {**os.environ, "HOST": "127.0.0.1", "PORT": str(detected["port"])}
+    session = {
+        "slug": slug,
+        "status": "starting",
+        "url": detected["url"],
+        "command": command,
+        "port": detected["port"],
+        "kind": detected["kind"],
+        "error": None,
+        "process": None,
+        "logs": [],
+        "project_dir": str(project_dir),
+        "auto_refresh": detected.get("auto_refresh", True),
+        "auto_verify": detected.get("auto_verify", True),
+        "started_at": time.time(),
+        "updated_at": time.time(),
+    }
+    _preview_sessions[slug] = session
+    _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+
+    try:
+        proc = subprocess.Popen(
+            [os.environ.get("SHELL") or "/bin/bash", "-lc", command],
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            errors="replace",
+            env=env,
+            start_new_session=True,
+        )
+        session["process"] = proc
+        session["status"] = "running"
+        session["updated_at"] = time.time()
+        _append_preview_log(slug, session, f"$ {command}\n")
+        browser_result = _run_agent_browser(slug, ["open", str(session["url"])])
+        if browser_result and browser_result.get("success"):
+            _append_preview_log(slug, session, f"agent-browser opened {session['url']}", "browser")
+        elif browser_result:
+            _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
+        ready_payload = {"type": "state", **_preview_status_payload(slug, session)}
+        _preview_emit(slug, ready_payload)
+        _publish_workspace_event("workspace.preview.ready", ready_payload)
+        threading.Thread(target=_run_preview_process, args=(slug, session), daemon=True).start()
+        threading.Thread(target=_watch_preview_files, args=(slug, session), daemon=True).start()
+    except Exception as exc:
+        session["status"] = "failed"
+        session["error"] = str(exc)
+        session["updated_at"] = time.time()
+        _append_preview_log(slug, session, f"{exc}\n", "error")
+        _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return _preview_status_payload(slug, session)
+
+
+@router.post("/projects/{slug}/preview/stop")
+def stop_preview(slug: str):
+    _project_dir(slug)
+    return _stop_preview_session(slug)
+
+
+@router.post("/projects/{slug}/preview/restart")
+def restart_preview(slug: str, body: PreviewStart | None = None):
+    _project_dir(slug)
+    _stop_preview_session(slug)
+    return start_preview(slug, body)
+
+
+@router.post("/projects/{slug}/preview/navigate")
+def navigate_preview(slug: str, body: PreviewNavigate):
+    _project_dir(slug)
+    url = _normalize_browser_url(body.url)
+    session = _preview_sessions.get(slug)
+    if not session:
+        session = {
+            "slug": slug,
+            "status": "running",
+            "url": url,
+            "command": None,
+            "port": None,
+            "kind": "browser",
+            "error": None,
+            "process": None,
+            "logs": [],
+            "project_dir": str(_project_dir(slug)),
+            "auto_refresh": False,
+            "auto_verify": True,
+            "started_at": None,
+            "updated_at": time.time(),
+        }
+        _preview_sessions[slug] = session
+    else:
+        session["url"] = url
+        if not _is_loopback_url(url) or session.get("kind") in {None, "manual"}:
+            session["kind"] = "browser"
+        if session.get("process") is None:
+            session["status"] = "running"
+        session["updated_at"] = time.time()
+    browser_result = _run_agent_browser(slug, ["open", url])
+    if browser_result and browser_result.get("success"):
+        _append_preview_log(slug, session, f"agent-browser opened {url}", "browser")
+    elif browser_result:
+        _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
+    _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+    return _preview_status_payload(slug, session)
+
+
+@router.post("/projects/{slug}/preview/refresh")
+def refresh_preview(slug: str):
+    _project_dir(slug)
+    event = {"type": "refresh", "ts": time.time()}
+    _preview_emit(slug, event)
+    return {"ok": True, "slug": slug}
+
+
+@router.get("/projects/{slug}/preview/logs")
+def get_preview_logs(slug: str):
+    _project_dir(slug)
+    session = _preview_sessions.get(slug)
+    return {"slug": slug, "logs": list(session.get("logs", [])) if session else []}
+
+
+def _get_preview_session_or_404(slug: str) -> dict[str, Any]:
+    _project_dir(slug)
+    session = _preview_sessions.get(slug)
+    if not session or not session.get("url"):
+        raise HTTPException(status_code=404, detail="Preview session not found")
+    return session
+
+
+def _fetch_preview_html(session: dict[str, Any]) -> str:
+    url = _normalize_browser_url(str(session["url"]))
+    last_error: Exception | None = None
+    attempts = 20 if urllib.parse.urlparse(url).hostname in {"127.0.0.1", "localhost"} else 1
+    for _ in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                return resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace")
+        except Exception as exc:
+            last_error = exc
+            time.sleep(0.05)
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            return resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Preview fetch failed: {last_error or exc}")
+
+
+@router.get("/projects/{slug}/preview/snapshot")
+def get_preview_snapshot(slug: str):
+    session = _get_preview_session_or_404(slug)
+    agent_result = _run_agent_browser(slug, ["snapshot", "--compact", "--depth", "6"])
+    if agent_result and agent_result.get("success"):
+        text = _agent_browser_text(agent_result)
+        if text and "(empty page)" not in text:
+            return {
+                "slug": slug,
+                "url": session.get("url"),
+                "title": "",
+                "text": text[:12000],
+                "html_length": None,
+                "source": "agent-browser",
+            }
+    elif agent_result:
+        _append_preview_log(slug, session, f"agent-browser snapshot unavailable: {agent_result.get('error')}", "error")
+    html = _fetch_preview_html(session)
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.I | re.S)
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.I | re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return {
+        "slug": slug,
+        "url": session.get("url"),
+        "title": title_match.group(1).strip() if title_match else "",
+        "text": text[:12000],
+        "html_length": len(html),
+        "source": "fetch",
+    }
+
+
+@router.get("/projects/{slug}/preview/console")
+def get_preview_console(slug: str):
+    session = _get_preview_session_or_404(slug)
+    agent_result = _run_agent_browser(slug, ["console"])
+    if agent_result and agent_result.get("success"):
+        text = _agent_browser_text(agent_result)
+        if text:
+            _append_preview_log(slug, session, text[:12000], "console")
+    logs = [
+        item for item in session.get("logs", [])
+        if item.get("stream") in {"browser", "console", "network", "error", "server"}
+    ]
+    return {"slug": slug, "messages": logs[-200:]}
+
+
+@router.get("/projects/{slug}/preview/screenshot")
+def get_preview_screenshot(slug: str):
+    session = _get_preview_session_or_404(slug)
+    try:
+        from playwright.sync_api import sync_playwright  # type: ignore
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Playwright is not installed")
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            page.goto(str(session["url"]), wait_until="networkidle", timeout=8000)
+            png = page.screenshot(full_page=True)
+            browser.close()
+        return StreamingResponse(iter([png]), media_type="image/png")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Screenshot failed: {exc}")
+
+
+def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | None = None) -> dict[str, Any]:
+    session = _get_preview_session_or_404(slug)
+    body = body or PreviewBrowserAction()
+    agent_args: list[str] | None = None
+    if action == "click":
+        if not body.selector:
+            raise HTTPException(status_code=400, detail="selector is required")
+        agent_args = ["click", body.selector]
+    elif action == "type":
+        if not body.selector:
+            raise HTTPException(status_code=400, detail="selector is required")
+        agent_args = ["fill", body.selector, body.text or ""]
+    elif action == "evaluate":
+        if not body.expression:
+            raise HTTPException(status_code=400, detail="expression is required")
+        agent_args = ["eval", body.expression]
+    elif action == "snapshot":
+        agent_args = ["snapshot", "--compact", "--depth", "6"]
+
+    if agent_args:
+        agent_result = _run_agent_browser(slug, agent_args)
+        if agent_result and agent_result.get("success"):
+            text = _agent_browser_text(agent_result)
+            if text:
+                _append_preview_log(slug, session, text[:12000], "browser")
+            return {
+                "slug": slug,
+                "action": action,
+                "result": agent_result.get("data"),
+                "messages": [],
+                "source": "agent-browser",
+            }
+        if agent_result:
+            _append_preview_log(slug, session, f"agent-browser {action} unavailable: {agent_result.get('error')}", "error")
+    try:
+        from playwright.sync_api import sync_playwright  # type: ignore
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Playwright is not installed")
+    messages: list[dict[str, Any]] = []
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            page.on("console", lambda msg: messages.append({"stream": "console", "text": msg.text, "ts": time.time(), "type": "log"}))
+            page.on("pageerror", lambda err: messages.append({"stream": "error", "text": str(err), "ts": time.time(), "type": "log"}))
+            page.on("requestfailed", lambda req: messages.append({"stream": "network", "text": req.url, "ts": time.time(), "type": "log"}))
+            page.goto(str(session["url"]), wait_until="domcontentloaded", timeout=8000)
+            result: Any = None
+            if action == "click":
+                if not body.selector:
+                    raise HTTPException(status_code=400, detail="selector is required")
+                page.locator(body.selector).first.click(timeout=5000)
+            elif action == "type":
+                if not body.selector:
+                    raise HTTPException(status_code=400, detail="selector is required")
+                page.locator(body.selector).first.fill(body.text or "", timeout=5000)
+            elif action == "evaluate":
+                if not body.expression:
+                    raise HTTPException(status_code=400, detail="expression is required")
+                result = page.evaluate(body.expression)
+            elif action == "snapshot":
+                result = {
+                    "title": page.title(),
+                    "url": page.url,
+                    "text": page.locator("body").inner_text(timeout=5000)[:12000],
+                }
+            for msg in messages:
+                _append_preview_log(slug, session, msg["text"], msg["stream"])
+            browser.close()
+        return {"slug": slug, "action": action, "result": result, "messages": messages[-100:]}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _append_preview_log(slug, session, str(exc), "error")
+        raise HTTPException(status_code=502, detail=f"Browser action failed: {exc}")
+
+
+@router.post("/projects/{slug}/preview/click")
+def preview_click(slug: str, body: PreviewBrowserAction):
+    return _run_playwright_action(slug, "click", body)
+
+
+@router.post("/projects/{slug}/preview/type")
+def preview_type(slug: str, body: PreviewBrowserAction):
+    return _run_playwright_action(slug, "type", body)
+
+
+@router.post("/projects/{slug}/preview/evaluate")
+def preview_evaluate(slug: str, body: PreviewBrowserAction):
+    return _run_playwright_action(slug, "evaluate", body)
+
+
+@router.get("/projects/{slug}/preview/events")
+async def stream_preview_events(request: Request, slug: str):
+    _project_dir(slug)
+    q: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=512)
+    _preview_queues.setdefault(slug, []).append(q)
+
+    async def event_generator():
+        try:
+            yield f"data: {json.dumps({'type': 'state', **_preview_status_payload(slug)}, default=str)}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.to_thread(q.get, True, 20)
+                except queue.Empty:
+                    yield "event: ping\ndata: {}\n\n"
+                    continue
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+        finally:
+            queues = _preview_queues.get(slug)
+            if queues and q in queues:
+                queues.remove(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 def register_workspace_routes(app) -> None:
     app.include_router(router)
+
+
+atexit.register(_cleanup_preview_sessions)
