@@ -48,7 +48,10 @@ def _format_completed_tool_line(line: str, *, is_error: bool, result_lines: int 
         if result_lines > _TOOL_OUTPUT_COLLAPSE_LINES
         else ""
     )
-    return f"{glyph} {line}{suffix}"
+    # Explicit error marker in addition to the glyph: it survives copy-paste and
+    # log scraping where the ✗ glyph may not render or be greppable.
+    error_tag = f" {_DIM}[error]{_RST}" if is_error else ""
+    return f"{glyph} {line}{error_tag}{suffix}"
 
 
 class _CallbacksMixin:

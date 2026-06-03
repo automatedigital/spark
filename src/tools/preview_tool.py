@@ -29,7 +29,26 @@ def preview_open(slug: str, url: str | None = None) -> str:
 
     if url:
         return _call("preview_open", navigate_preview, slug, PreviewNavigate(url=url))
-    return _call("preview_open", start_preview, slug, None)
+
+    # start_preview returns as soon as the dev server is spawned; the session
+    # stays "starting" until an HTTP probe succeeds (readiness gate). Agents call
+    # preview_open and then immediately snapshot/verify, so block here until the
+    # preview is actually reachable (or has failed) — up to a bounded timeout.
+    def _start_and_wait(slug_: str, _body: Any) -> Any:
+        result = start_preview(slug_, None)
+        if not isinstance(result, dict) or result.get("status") != "starting":
+            return result
+        from spark_cli.workspace_routes import _preview_status_payload
+
+        deadline = time.time() + 50.0
+        while time.time() < deadline:
+            status = _preview_status_payload(slug_)
+            if status.get("status") != "starting":
+                return status
+            time.sleep(0.25)
+        return _preview_status_payload(slug_)
+
+    return _call("preview_open", _start_and_wait, slug, None)
 
 
 def preview_snapshot(slug: str) -> str:

@@ -56,6 +56,7 @@ from gateway.status import get_running_pid, read_runtime_status
 from spark_cli.dashboard_auth import (
     dashboard_token_path,
     ensure_dashboard_token_file,
+    extract_bearer_token,
     get_configured_dashboard_secret,
     validate_dashboard_request,
 )
@@ -1220,6 +1221,10 @@ def _fetch_latest_mac_release(timeout: float = 8.0) -> dict | None:
         "tag": data.get("tag_name") or data.get("name") or "",
         "download_url": download_url,
         "release_url": data.get("html_url"),
+        # Markdown release notes, shown as the changelog in the update modal (§3.3).
+        "release_notes": (data.get("body") or "").strip() or None,
+        "release_name": data.get("name") or None,
+        "published_at": data.get("published_at"),
     }
 
 
@@ -1232,6 +1237,9 @@ def _check_mac_update(force: bool = False) -> dict:
         "current_version": current,
         "download_url": None,
         "release_url": None,
+        "release_notes": None,
+        "release_name": None,
+        "published_at": None,
     }
     now = time.time()
     if (
@@ -1250,6 +1258,9 @@ def _check_mac_update(force: bool = False) -> dict:
     result["latest_version"] = latest.lstrip("v") or None
     result["download_url"] = rel.get("download_url")
     result["release_url"] = rel.get("release_url")
+    result["release_notes"] = rel.get("release_notes")
+    result["release_name"] = rel.get("release_name")
+    result["published_at"] = rel.get("published_at")
     if current and result["latest_version"]:
         result["update_available"] = _parse_version(result["latest_version"]) > _parse_version(current)
     _mac_update_cache.update(checked_at=now, result=result)
@@ -1620,6 +1631,26 @@ def _reveal_authorized(request: Request) -> bool:
         secret=secret,
         query_token=qtoken,
     )
+
+
+def _secret_reveal_authorized(request: Request) -> bool:
+    """Strict auth gate for endpoints that return *plaintext secrets*.
+
+    Unlike :func:`_reveal_authorized`, this does **not** grant a loopback /
+    trusted-local bypass: revealing an unredacted env var always requires the
+    ephemeral per-process session token (injected into the SPA) or a valid
+    configured dashboard token. A local TCP peer alone is not sufficient.
+    """
+    auth = request.headers.get("authorization", "")
+    if _SESSION_TOKEN and auth == f"Bearer {_SESSION_TOKEN}":
+        return True
+    secret = get_configured_dashboard_secret()
+    if not secret:
+        secret = ensure_dashboard_token_file()
+    if not secret:
+        return False
+    token = extract_bearer_token(auth) or (request.query_params.get("dashboard_token") or "").strip() or None
+    return bool(token and secrets.compare_digest(token, secret))
 
 
 @app.get("/api/sessions")
@@ -2446,8 +2477,8 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
     - Rate limiting (max 5 reveals per 30s window)
     - Audit logging
     """
-    # --- Token check ---
-    if not _reveal_authorized(request):
+    # --- Token check (strict: no loopback bypass for plaintext secrets) ---
+    if not _secret_reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     # --- Rate limit ---

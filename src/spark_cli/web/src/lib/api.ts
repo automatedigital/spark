@@ -548,6 +548,9 @@ export const api = {
       current_version: string | null;
       download_url: string | null;
       release_url: string | null;
+      release_notes?: string | null;
+      release_name?: string | null;
+      published_at?: string | null;
     }>("/api/mac/update/check"),
   runMacUpdate: () =>
     fetchJSON<{ ok: boolean; path: string; latest_version: string | null }>("/api/mac/update/run", {

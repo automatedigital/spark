@@ -20,7 +20,10 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{
-    webview::WebviewBuilder, LogicalPosition, LogicalSize, Manager, RunEvent, State, WebviewUrl,
+    menu::{Menu, MenuItem},
+    tray::{TrayIconBuilder, TrayIconId},
+    webview::WebviewBuilder,
+    Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, WebviewUrl,
 };
 
 /// Label of the embedded native preview webview (overlaid on the React panel).
@@ -300,14 +303,147 @@ fn wait_and_navigate(app: tauri::AppHandle) {
     eprintln!("[spark] backend did not come online within {READY_TIMEOUT_SECS}s");
 }
 
+/// Stable id for the menu-bar tray icon.
+const TRAY_ID: &str = "spark-tray";
+
+/// Show + focus the main window, bringing the app to the foreground.
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+/// Toggle the main window's visibility (used by the global hotkey + tray click).
+fn toggle_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        match window.is_visible() {
+            Ok(true) => {
+                let _ = window.hide();
+            }
+            _ => show_main_window(app),
+        }
+    }
+}
+
+/// Ask the frontend to start a brand-new chat, then surface the window.
+fn focus_new_chat(app: &tauri::AppHandle) {
+    show_main_window(app);
+    let _ = app.emit("spark://new-chat", ());
+}
+
+/// Forward a `spark://…` deep link to the frontend router and raise the window.
+///
+/// We hand the raw URL to JS (which owns React-Router) rather than hard-coding a
+/// path→route map in Rust; the frontend listens for `spark://open-url`.
+fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
+    show_main_window(app);
+    let _ = app.emit("spark://open-url", url.to_string());
+}
+
+/// Build the menu-bar (tray) companion: quick status line, new-chat, show/hide,
+/// quit. Returns the tooltip-capable tray so callers can update the indicator.
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let status = MenuItem::with_id(app, "status", "Spark — idle", false, None::<&str>)?;
+    let new_chat = MenuItem::with_id(app, "new_chat", "New Chat", true, Some("CmdOrCtrl+N"))?;
+    let toggle = MenuItem::with_id(app, "toggle", "Show / Hide Window", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Spark", true, Some("CmdOrCtrl+Q"))?;
+    let menu = Menu::with_items(app, &[&status, &new_chat, &toggle, &quit])?;
+
+    TrayIconBuilder::with_id(TrayIconId::new(TRAY_ID))
+        .icon(app.default_window_icon().cloned().ok_or_else(|| {
+            tauri::Error::AssetNotFound("default window icon".into())
+        })?)
+        .tooltip("Spark — idle")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "new_chat" => focus_new_chat(app),
+            "toggle" => toggle_main_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            use tauri::tray::{MouseButton, TrayIconEvent};
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                ..
+            } = event
+            {
+                toggle_main_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+/// Update the tray tooltip + status line to reflect agent / background activity
+/// (the "running-agent indicator", §3.1). Called from the frontend via IPC as
+/// turns start and finish.
+#[tauri::command]
+fn set_tray_status(app: tauri::AppHandle, busy: bool, label: Option<String>) -> Result<(), String> {
+    let text = label.unwrap_or_else(|| {
+        if busy {
+            "Spark — working…".to_string()
+        } else {
+            "Spark — idle".to_string()
+        }
+    });
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(&text));
+    }
+    Ok(())
+}
+
+/// Fire a native OS notification (§3.2). The frontend calls this when a
+/// background turn or cron job completes so the user is alerted even when the
+/// window is hidden.
+#[tauri::command]
+fn notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if let Some(bundle) = spark_app_bundle() {
         clear_quarantine_on_bundle(&bundle);
     }
 
+    // Cmd/Ctrl+Shift+Space summons (toggles) the main window from anywhere.
+    let quick_ask_shortcut = {
+        use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+        #[cfg(target_os = "macos")]
+        let mods = Modifiers::SUPER | Modifiers::SHIFT;
+        #[cfg(not(target_os = "macos"))]
+        let mods = Modifiers::CONTROL | Modifiers::SHIFT;
+        Shortcut::new(Some(mods), Code::Space)
+    };
+
     tauri::Builder::default()
         .manage(Sidecar(Mutex::new(None)))
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcut(quick_ask_shortcut)
+                .expect("valid quick-ask shortcut")
+                .with_handler(move |app, shortcut, event| {
+                    use tauri_plugin_global_shortcut::ShortcutState;
+                    if shortcut == &quick_ask_shortcut
+                        && event.state() == ShortcutState::Pressed
+                    {
+                        toggle_main_window(app);
+                    }
+                })
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             preview_create,
             preview_set_bounds,
@@ -319,8 +455,32 @@ pub fn run() {
             preview_clear_data,
             preview_devtools,
             preview_destroy,
+            set_tray_status,
+            notify,
         ])
         .setup(|app| {
+            // Menu-bar companion (§3.1).
+            if let Err(e) = build_tray(&app.handle().clone()) {
+                eprintln!("[spark] failed to build tray: {e}");
+            }
+
+            // Deep links (§3.2): handle the cold-start URL (app launched via a
+            // spark:// link) and any links that arrive while running.
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let handle = app.handle().clone();
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        handle_deep_link(&handle, url.as_str());
+                    }
+                }
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        handle_deep_link(&handle, url.as_str());
+                    }
+                });
+            }
             // Resource layout: Contents/Resources/spark-server/spark-server
             let exe = app
                 .path()

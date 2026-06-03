@@ -109,3 +109,50 @@ def test_remembered_preview_prefers_recalled_url(monkeypatch):
     assert result["url"] == "http://127.0.0.1:6100/"
     assert result["port"] == 6100
     assert result["kind"] == "remembered"
+
+
+def test_loopback_probe_url_forces_loopback_host():
+    assert w._loopback_probe_url("http://myhost.example.com:5173/app") == "http://127.0.0.1:5173/app"
+    assert w._loopback_probe_url("http://0.0.0.0:3000") == "http://127.0.0.1:3000"
+
+
+def test_client_facing_url_keeps_loopback_on_desktop(monkeypatch):
+    monkeypatch.setattr("core.spark_constants.is_server_environment", lambda: False)
+    assert w._client_facing_preview_url("http://0.0.0.0:5173/") == "http://127.0.0.1:5173/"
+    assert w._client_facing_preview_url("http://127.0.0.1:5173/") == "http://127.0.0.1:5173/"
+
+
+def test_client_facing_url_uses_hostname_in_server_env(monkeypatch):
+    monkeypatch.setattr("core.spark_constants.is_server_environment", lambda: True)
+    monkeypatch.setattr("core.spark_constants.get_public_base_url", lambda h, p, s="http": f"http://vps.example.com:{p}")
+    monkeypatch.setattr("core.spark_constants.get_server_hostname", lambda: "vps.example.com")
+    out = w._client_facing_preview_url("http://0.0.0.0:5173/dashboard")
+    assert out == "http://vps.example.com:5173/dashboard"
+
+
+def test_client_facing_url_leaves_concrete_host_alone(monkeypatch):
+    monkeypatch.setattr("core.spark_constants.is_server_environment", lambda: True)
+    assert w._client_facing_preview_url("http://10.0.0.5:8080/") == "http://10.0.0.5:8080/"
+
+
+def test_await_ready_promotes_on_successful_probe(monkeypatch):
+    events: list[dict] = []
+    monkeypatch.setattr(w, "_preview_emit", lambda slug, ev: events.append(ev))
+    monkeypatch.setattr(w, "_publish_workspace_event", lambda *a, **k: None)
+    monkeypatch.setattr(w, "_run_agent_browser", lambda *a, **k: None)
+    monkeypatch.setattr(w, "_probe_preview_url", lambda url: True)
+    monkeypatch.setattr(w.threading, "Thread", lambda *a, **k: type("T", (), {"start": lambda self: None})())
+    session = {"slug": "rdy", "status": "starting", "url": "http://127.0.0.1:5173/", "process": None}
+    w._await_preview_ready("rdy", session)
+    assert session["status"] == "running"
+    assert any(ev.get("status") == "running" for ev in events)
+
+
+def test_await_ready_times_out(monkeypatch):
+    monkeypatch.setattr(w, "_preview_emit", lambda slug, ev: None)
+    monkeypatch.setattr(w, "_probe_preview_url", lambda url: False)
+    monkeypatch.setattr(w, "_PREVIEW_READY_TIMEOUT_SECONDS", 0.0)
+    session = {"slug": "to", "status": "starting", "url": "http://127.0.0.1:5173/", "process": None}
+    w._await_preview_ready("to", session)
+    assert session["status"] == "failed"
+    assert "did not respond" in session["error"]

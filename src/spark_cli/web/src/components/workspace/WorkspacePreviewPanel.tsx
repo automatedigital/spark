@@ -84,6 +84,11 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
   const [pageTitle, setPageTitle] = useState("");
 
   const activeUrl = status?.url ?? "";
+  // A launching dev server reports "starting" until the backend's HTTP probe
+  // succeeds (see _await_preview_ready). Don't load the pane against a URL that
+  // isn't answering yet — it would show a connection-refused error that never
+  // recovers. Manual browser navigation has no "starting" phase.
+  const previewPending = status?.status === "starting";
 
   useEffect(() => {
     setFrameSrc(activeUrl);
@@ -415,7 +420,14 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
       </div>
 
       <div className="relative min-h-0 flex-1 bg-black/20">
-        {frameSrc && isTauri() ? (
+        {previewPending ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-muted-foreground/70">
+            <Loader2 className="h-5 w-5 animate-spin text-amber-300" />
+            <div className="font-mono-ui text-[11px]">
+              Waiting for dev server{activeUrl ? ` at ${hostOf(activeUrl)}` : ""}…
+            </div>
+          </div>
+        ) : frameSrc && isTauri() ? (
           // Desktop: a real native child webview overlays this region — handles
           // local previews and external sites alike, with persistent logins.
           <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} />

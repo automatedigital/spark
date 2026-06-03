@@ -39,7 +39,52 @@ def set_server_port(port: int) -> None:
 
 
 def _redirect_uri() -> str:
-    return f"http://localhost:{_server_port}/oauth/google/callback"
+    """OAuth callback URL Google should redirect back to after consent.
+
+    Resolution order:
+
+    1. ``connectors.oauth_redirect_base`` in ``config.yaml`` — an explicit base
+       (e.g. ``https://spark.example.com``) for deployments behind a proxy or
+       with a custom domain. The provider console must allow this exact URI.
+    2. Server environment / ``dashboard.public_url`` → derive a reachable base
+       via ``get_public_base_url`` so a remote browser is redirected back to a
+       host it can actually reach (not ``localhost``).
+    3. Desktop / local default → ``http://localhost:{port}``.
+
+    OAuth providers require the redirect URI to be pre-registered, so we keep
+    ``localhost`` as the default and only diverge when the deployment clearly
+    isn't local.
+    """
+    path = "/oauth/google/callback"
+
+    # 1. Explicit override
+    try:
+        import yaml  # type: ignore[import]
+
+        from spark_cli.config import get_spark_home
+
+        cfg_path = get_spark_home() / "config.yaml"
+        if cfg_path.exists():
+            with open(cfg_path) as fh:
+                cfg = yaml.safe_load(fh) or {}
+            base = ((cfg.get("connectors") or {}).get("oauth_redirect_base") or "").strip()
+            if base:
+                return f"{base.rstrip('/')}{path}"
+    except Exception:
+        pass
+
+    # 2. Server / public deployment → reachable host
+    try:
+        from core.spark_constants import get_public_base_url, is_server_environment
+
+        if is_server_environment():
+            base = get_public_base_url("0.0.0.0", _server_port).rstrip("/")
+            return f"{base}{path}"
+    except Exception:
+        pass
+
+    # 3. Local default
+    return f"http://localhost:{_server_port}{path}"
 
 
 # ---------------------------------------------------------------------------

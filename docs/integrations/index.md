@@ -18,9 +18,21 @@ Pick your inference backend with `spark model`, or set it directly in `config.ya
 | **[Provider Routing](../providers/routing.md)** | Control which sub-providers OpenRouter uses. Sort by cost, speed, or quality. Allowlist, blocklist, or explicitly order providers. |
 | **[Fallback Providers](../providers/fallback.md)** | Automatic failover when your primary model fails. Separate fallback chains for vision, compression, and web extraction. |
 
+## Connecting to Platforms — Order of Preference
+
+When wiring Spark to an external platform (Google Workspace, Slack, Notion, HubSpot, GitHub, …), reach for these in order. Skills and CLIs are preferred because they need no long-lived OAuth server, store their own credentials, and are installable on demand.
+
+1. **Skills (preferred).** Install a connector skill and call it from chat or as a slash command.
+   - Browse/search/install: `spark skills` (or `/skills` in the TUI), backed by `skills_hub.py`. Skills land in `~/.spark/skills/` and register slash commands via `src/agent/skill_commands.py`.
+   - Bundled skill families include `gws-*` (Google Workspace — Gmail, Calendar, Drive, Docs, Sheets, Slides, …), `email`, and many more under `skills/`.
+   - Enable per platform with `spark skills` and the toolset config in `tools_config.py`; gateway menus surface them from `commands.py`.
+2. **CLI wrappers.** When a vendor ships a CLI (e.g. `openskills`, `gh`), wrap it as a skill/tool rather than re-implementing OAuth. The CLI owns the credential lifecycle.
+3. **OAuth connectors (Web UI).** Only when no skill/CLI fits — see below. Built for Google today (`google_connector.py`, `connectors_routes.py`); callback URLs are environment-aware (`localhost` locally, public host in server environments, or `connectors.oauth_redirect_base` override).
+4. **MCP servers (fallback).** Last resort when none of the above exists.
+
 ## Tool Servers (MCP)
 
-- **[MCP Servers](../tools/mcp.md)** — Connect Spark to any external tool server via Model Context Protocol. GitHub, databases, file systems, browser stacks, internal APIs — no native tool writing required. Supports stdio and SSE transports, per-server tool filtering, and capability-aware resource/prompt registration.
+- **[MCP Servers](../tools/mcp.md)** — Connect Spark to any external tool server via Model Context Protocol. GitHub, databases, file systems, browser stacks, internal APIs — no native tool writing required. Supports stdio and SSE transports, per-server tool filtering, and capability-aware resource/prompt registration. Per the order above, prefer a skill or CLI before adding an MCP server.
 
 ## Web Search Backends
 

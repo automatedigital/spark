@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle, MessageSquare, XCircle, X } from "lucide-react";
 import { getDashboardToken } from "@/lib/api";
+import { nativeNotify } from "@/lib/desktop";
+import { isTauri } from "@/sidecar";
 import {
   dismissSessionNotification,
   clearAllSessionNotifications,
@@ -55,6 +57,12 @@ export function NotificationBell() {
         };
         setNotifications((prev) => [note, ...prev].slice(0, MAX_NOTIFICATIONS));
         setUnread((n) => n + 1);
+        // Desktop (§3.2): surface a native OS notification so the user is
+        // alerted even when the window is hidden / in the tray. No-ops on web.
+        if (document.hidden || (isTauri() && !document.hasFocus())) {
+          const title = note.success === false ? `⚠ ${note.job_name}` : note.job_name || "Spark";
+          void nativeNotify(title, note.summary || "Background task completed.");
+        }
       } catch {
         /* ignore malformed events */
       }

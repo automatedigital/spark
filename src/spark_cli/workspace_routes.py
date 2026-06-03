@@ -46,6 +46,11 @@ _PREVIEW_PORT_START = 4173
 _PREVIEW_PORT_END = 6173
 _PREVIEW_WATCH_INTERVAL_SECONDS = 0.75
 _PREVIEW_REFRESH_DEBOUNCE_SECONDS = 0.8
+# How long to wait for a freshly launched dev server to answer an HTTP probe
+# before we surface it as ready. Dev servers (Vite, Next, etc.) can take a few
+# seconds to compile on first boot, so keep this generous.
+_PREVIEW_READY_TIMEOUT_SECONDS = 45.0
+_PREVIEW_READY_POLL_INTERVAL_SECONDS = 0.5
 _PREVIEW_FETCH_MAX_BYTES = 512 * 1024
 _AGENT_BROWSER_MAX_OUTPUT = 12000
 _PREVIEW_IGNORED_DIRS = {
@@ -945,6 +950,64 @@ def _probe_preview_url(url: str) -> bool:
         return False
 
 
+def _loopback_probe_url(url: str) -> str:
+    """Force *url*'s host to loopback so the server always probes itself locally,
+    regardless of the (possibly public) host advertised to the client."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.port is None:
+        return _canonical_probe_url(url)
+    return urllib.parse.urlunparse(parsed._replace(netloc=f"127.0.0.1:{parsed.port}"))
+
+
+def _client_facing_preview_url(url: str) -> str:
+    """Rewrite a dev-server URL to a host the *WebUI client* can reach.
+
+    The server always probes on loopback (see ``_canonical_probe_url``), but the
+    URL we advertise to the browser must be reachable from where that browser
+    runs:
+
+    * **Desktop / local** → keep ``127.0.0.1`` (the default); the native webview
+      and a same-machine browser both reach loopback fine.
+    * **VPS / server** (``dashboard.public_url`` set, or a server environment) →
+      swap loopback/wildcard for ``dashboard.public_url``'s host or the machine
+      hostname, so a remote browser can actually load the dev server.
+
+    Only the host is rewritten; the dev server's own port/path/query are kept.
+    """
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or "").lower()
+    # Only loopback and wildcard binds are non-routable for a remote client. A
+    # concrete LAN/public host (private IP, hostname, .local) is already
+    # reachable, so leave it untouched.
+    _loopback = {"127.0.0.1", "localhost", "::1"}
+    if host not in _loopback and host not in _WILDCARD_HOSTS:
+        return url
+    port = parsed.port
+    if port is None:
+        return _canonical_probe_url(url)
+    try:
+        from core.spark_constants import (
+            get_public_base_url,
+            get_server_hostname,
+            is_server_environment,
+        )
+    except Exception:
+        return _canonical_probe_url(url)
+
+    # In a server environment, derive the externally reachable host. We reuse
+    # get_public_base_url for the dashboard's own host then graft the dev
+    # server's port onto it (the dashboard URL points at the dashboard port).
+    if not is_server_environment():
+        return _canonical_probe_url(url)
+    try:
+        base = get_public_base_url("0.0.0.0", port, parsed.scheme or "http")
+        base_host = urllib.parse.urlparse(base).hostname or get_server_hostname()
+    except Exception:
+        base_host = get_server_hostname()
+    netloc = f"{base_host}:{port}"
+    return urllib.parse.urlunparse(parsed._replace(netloc=netloc))
+
+
 def _process_cwd(pid: int) -> Path | None:
     proc_cwd = Path("/proc") / str(pid) / "cwd"
     try:
@@ -1393,7 +1456,7 @@ def _run_preview_process(slug: str, session: dict[str, Any]) -> None:
             _capture_bound_url_from_log(slug, session, line)
         exit_code = proc.wait()
         with _preview_lock:
-            if session.get("status") == "running":
+            if session.get("status") in {"running", "starting"}:
                 session["status"] = "failed" if exit_code else "stopped"
                 session["error"] = None if exit_code == 0 else f"Preview process exited with code {exit_code}"
             session["updated_at"] = time.time()
@@ -1405,6 +1468,57 @@ def _run_preview_process(slug: str, session: dict[str, Any]) -> None:
             session["updated_at"] = time.time()
         _append_preview_log(slug, session, f"{exc}\n", "error")
         _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+
+
+def _await_preview_ready(slug: str, session: dict[str, Any]) -> None:
+    """Poll the dev server until it answers, then flip status → ``running``.
+
+    The session is created as ``starting``; we only advertise it as ``running``
+    and emit ``workspace.preview.ready`` once an HTTP probe succeeds. This stops
+    the WebUI/native pane from loading a URL that is still compiling (which shows
+    a connection-refused error and never recovers on its own). On timeout the
+    session is marked ``failed`` with a clear message.
+    """
+    deadline = time.time() + _PREVIEW_READY_TIMEOUT_SECONDS
+    while time.time() < deadline:
+        if session.get("status") != "starting":
+            return  # stopped/failed elsewhere (e.g. process exited)
+        proc = session.get("process")
+        if proc is not None and proc.poll() is not None:
+            # Process died before becoming reachable; _run_preview_process
+            # will have set the failure state.
+            return
+        url = session.get("url")
+        if url and _probe_preview_url(_loopback_probe_url(url)):
+            with _preview_lock:
+                if session.get("status") != "starting":
+                    return
+                session["status"] = "running"
+                session["updated_at"] = time.time()
+            _append_preview_log(slug, session, f"Preview ready at {url}\n", "server")
+            browser_result = _run_agent_browser(slug, ["open", str(url)])
+            if browser_result and browser_result.get("success"):
+                _append_preview_log(slug, session, f"agent-browser opened {url}", "browser")
+            elif browser_result:
+                _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
+            ready_payload = {"type": "state", **_preview_status_payload(slug, session)}
+            _preview_emit(slug, ready_payload)
+            _publish_workspace_event("workspace.preview.ready", ready_payload)
+            threading.Thread(target=_watch_preview_files, args=(slug, session), daemon=True).start()
+            return
+        time.sleep(_PREVIEW_READY_POLL_INTERVAL_SECONDS)
+    # Timed out waiting for the server to answer.
+    with _preview_lock:
+        if session.get("status") != "starting":
+            return
+        session["status"] = "failed"
+        session["error"] = (
+            f"Preview server did not respond at {session.get('url')} "
+            f"within {int(_PREVIEW_READY_TIMEOUT_SECONDS)}s"
+        )
+        session["updated_at"] = time.time()
+    _append_preview_log(slug, session, f"{session['error']}\n", "error")
+    _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
 
 
 def _snapshot_project_files(project_dir: Path) -> dict[str, float]:
@@ -1431,13 +1545,13 @@ def _reprobe_preview_port(slug: str, session: dict[str, Any], project_dir: Path)
     if session.get("port_locked"):
         return
     url = session.get("url")
-    if url and _probe_preview_url(url):
+    if url and _probe_preview_url(_loopback_probe_url(url)):
         return
     running = _find_running_project_preview(project_dir)
     if not running or running.get("port") == session.get("port"):
         return
     with _preview_lock:
-        session["url"] = _canonical_probe_url(running["url"])
+        session["url"] = _client_facing_preview_url(running["url"])
         session["port"] = running["port"]
         session["updated_at"] = time.time()
     _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
@@ -1494,7 +1608,7 @@ def start_preview(slug: str, body: PreviewStart | None = None):
     session = {
         "slug": slug,
         "status": "starting",
-        "url": _canonical_probe_url(detected["url"]),
+        "url": _client_facing_preview_url(detected["url"]),
         "command": command,
         "port": detected["port"],
         "kind": detected["kind"],
@@ -1539,19 +1653,15 @@ def start_preview(slug: str, body: PreviewStart | None = None):
             start_new_session=True,
         )
         session["process"] = proc
-        session["status"] = "running"
+        # Stay "starting" until an HTTP probe succeeds — see _await_preview_ready.
+        session["status"] = "starting"
         session["updated_at"] = time.time()
         _append_preview_log(slug, session, f"$ {command}\n")
-        browser_result = _run_agent_browser(slug, ["open", str(session["url"])])
-        if browser_result and browser_result.get("success"):
-            _append_preview_log(slug, session, f"agent-browser opened {session['url']}", "browser")
-        elif browser_result:
-            _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
-        ready_payload = {"type": "state", **_preview_status_payload(slug, session)}
-        _preview_emit(slug, ready_payload)
-        _publish_workspace_event("workspace.preview.ready", ready_payload)
+        _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
         threading.Thread(target=_run_preview_process, args=(slug, session), daemon=True).start()
-        threading.Thread(target=_watch_preview_files, args=(slug, session), daemon=True).start()
+        # The file watcher is started by _await_preview_ready once the server
+        # answers, so it never polls a server that isn't up yet.
+        threading.Thread(target=_await_preview_ready, args=(slug, session), daemon=True).start()
     except Exception as exc:
         session["status"] = "failed"
         session["error"] = str(exc)

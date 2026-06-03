@@ -33,6 +33,7 @@ import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
 import { MessageRowSkeleton } from "@/components/Skeleton";
+import { setTrayStatus } from "@/lib/desktop";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 
@@ -496,6 +497,11 @@ export function ChatPanel({
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
+
+  // Desktop (§3.1): reflect agent activity in the menu-bar tray indicator.
+  useEffect(() => {
+    void setTrayStatus(streaming, streaming ? "Spark — working…" : undefined);
+  }, [streaming]);
 
   useEffect(() => {
     if (sessionId && sessionId === activeSessionRef.current && streamingRef.current) {

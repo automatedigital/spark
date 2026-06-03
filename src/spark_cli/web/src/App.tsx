@@ -29,7 +29,8 @@ import { GlobalToasts } from "@/components/GlobalToasts";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
-import { GLOBAL_NAV_EVENT, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { onDeepLink, onNewChat, deepLinkToNavTarget } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
 
 
@@ -132,6 +133,31 @@ export default function App() {
     setPage(id);
     localStorage.setItem("spark-active-page", id);
   };
+
+  // ── Desktop shell: tray "new chat" + spark:// deep links (§3.2) ──
+  useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    const unsubs: Array<() => void> = [];
+
+    void onNewChat(() => {
+      navigateTo("chat");
+      // ChatPage listens for this to spin up a fresh thread.
+      window.dispatchEvent(new CustomEvent("spark-new-chat"));
+    }).then((u) => (disposed ? u() : unsubs.push(u)));
+
+    void onDeepLink((url) => {
+      const target = deepLinkToNavTarget(url);
+      if (!target) return;
+      navigateTo(target.type === "canvas" ? "canvas" : "chat");
+      setGlobalNavTarget(target);
+    }).then((u) => (disposed ? u() : unsubs.push(u)));
+
+    return () => {
+      disposed = true;
+      unsubs.forEach((u) => u());
+    };
+  }, []);
 
   // A canvas nav target (e.g. opening a *.canvas.json from Files) switches to the
   // Canvas tab; CanvasPage itself consumes the target to open the right canvas.
