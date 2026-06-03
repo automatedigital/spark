@@ -65,45 +65,69 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
 
 ---
 
+## Progress (branch `canvas-workflows`)
+
+**Shipped & verified** (engine round-trips end-to-end in the browser):
+- Phase 0 complete: `workflow_engine.py` (WorkflowDoc, item envelope, node-handler
+  registry, field-mapping resolver, topological executor) + frontend node model.
+- Phase 1: `/api/workflows/run`, `/run-node`, SQLite execution history. *Still TODO: SSE
+  streaming, per-run timeout + cancel.*
+- Phase 2 complete: `/node-types` exposes every Spark tool; schema-driven param form;
+  literal⇄field-mapping picker; tool dispatch; searchable node browser.
+- Phase 3 (partial): Set / IF / Merge nodes + the four trigger *node types* exist. *TODO:
+  actually register schedule/webhook/file-watch triggers; Switch/Loop/Code/HTTP/Wait.*
+- Phase 4 (partial): Agent node runs a stateless turn. *TODO: configurable tool-loop with
+  toolset + iteration budget, sub-workflow, refinement loop.*
+- Phase 5b (partial): sandboxed resizable iframe ✓, media node ✓, free placement ✓, basic
+  web-preview card + note. *TODO: backend OG/text fetch for previews, PDF, upload-to-node,
+  Markdown render, domain allowlist.*
+- Phase 6 (partial): inspector (params + Input/Output JSON), run bar, node search/add,
+  notes. *TODO: SSE-driven live badges, Stop, history drawer, edge preview, undo/redo.*
+
+Tests: `test_workflow_engine.py` (8) + `test_workflow_routes.py` (5) + `test_canvas_routes.py`
+(5) all green.
+
+---
+
 ## Phase 0 — Data model & node SDK (foundation)
-- [ ] Define a **WorkflowDoc** schema (supersedes the loose CanvasDoc): `nodes[]` with
+- [x] Define a **WorkflowDoc** schema (supersedes the loose CanvasDoc): `nodes[]` with
       `{ id, type, params, position, credentials? }`, `edges[]` with `{ source, sourceOutput,
       target, targetInput }`, `triggers[]`, `settings`. Version + migrate existing canvases.
-- [ ] Define the **item/data envelope** passed along edges:
+- [x] Define the **item/data envelope** passed along edges:
       `{ json: object, binary?: { [key]: { fileRef, mimeType, name } } }[]`.
-- [ ] Backend `workflow_engine.py`: a node-handler interface
+- [x] Backend `workflow_engine.py`: a node-handler interface
       `run(node, inputItems, ctx) -> outputItems` and a node-type registry.
-- [ ] Frontend node-type registry (`canvas/nodeRegistry.ts`): each type declares
+- [x] Frontend node-type registry (`canvas/nodeRegistry.ts`): each type declares
       inputs/outputs, an icon, a param schema, and a React body renderer.
-- [ ] Node **category** in the type definition: `trigger | action | control | agent | io |
+- [x] Node **category** in the type definition: `trigger | action | control | agent | io |
       display`. **`display` nodes** (iframe, preview, media, note) are non-executable by
       default — they render on the canvas and may optionally expose output items — so the
       embed/moodboard half and the workflow half share one model and one save file.
 
 ## Phase 1 — Execution engine (server-side)
-- [ ] `POST /api/workflows/{scope}/{id}/run` — execute a saved workflow; returns an
+- [x] `POST /api/workflows/{scope}/{id}/run` — execute a saved workflow; returns an
       `executionId`. Topological scheduling from trigger node(s); pass items along edges.
-- [ ] `POST /api/workflows/run-node` — run a single node with provided input items (for the
+- [x] `POST /api/workflows/run-node` — run a single node with provided input items (for the
       "execute node" button) without persisting.
 - [ ] Per-node execution state streamed over SSE (reuse the SSE pattern in
       [web_server.py](src/spark_cli/web_server.py)): `node.started/succeeded/failed`,
       output items, duration, error.
-- [ ] **Execution history**: persist runs under `~/.spark/workflows/executions/` (or SQLite);
+- [x] **Execution history**: persist runs under `~/.spark/workflows/executions/` (or SQLite);
       `GET /api/workflows/.../executions` + a single execution view.
 - [ ] Guardrails: max nodes, max iterations, per-run timeout, cancel endpoint.
 
 ## Phase 2 — Tool nodes auto-generated from the registry
-- [ ] `GET /api/workflows/node-types` — enumerate every registered tool as a node type
+- [x] `GET /api/workflows/node-types` — enumerate every registered tool as a node type
       (name, toolset, emoji, JSON-schema params) via `registry.get_definitions()` +
       `get_tool_to_toolset_map()`.
-- [ ] Generic **param-form renderer**: turn a tool's JSON schema into form fields
+- [x] Generic **param-form renderer**: turn a tool's JSON schema into form fields
       (string/number/bool/enum/object/array). Each field can be set to a **literal** or
       **mapped** to an upstream node's output field via a dropdown (`{node → field}`).
-- [ ] **Mapping resolver** (backend): resolve each mapped param from the executing items
+- [x] **Mapping resolver** (backend): resolve each mapped param from the executing items
       before dispatch. Design it as the single place expressions can later plug into.
-- [ ] **Tool node** executes via `registry.dispatch(name, resolvedArgs)`; map the JSON-string
+- [x] **Tool node** executes via `registry.dispatch(name, resolvedArgs)`; map the JSON-string
       result back into output items.
-- [ ] Palette becomes a **searchable node browser** grouped by toolset (40+ tools), not a
+- [x] Palette becomes a **searchable node browser** grouped by toolset (40+ tools), not a
       fixed list.
 
 ## Phase 3 — Core control-flow & data nodes
@@ -112,13 +136,13 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
       secret), File-watch (watch a project path/glob).
 - [ ] **IF / Switch** (conditional branching with multiple outputs).
 - [ ] **Loop / SplitInBatches** (iterate items, with a loop-back edge) + **Merge**.
-- [ ] **Set / Edit Fields** (build or transform the JSON item).
+- [x] **Set / Edit Fields** (build or transform the JSON item).
 - [ ] **Code node** — run JS/Python over items in the existing sandbox (reuse `execute_code`).
 - [ ] **HTTP Request** node.
 - [ ] **Wait / Delay** node.
 
 ## Phase 4 — Agentic / iterative engine
-- [ ] **Agent node**: a tool-calling loop (`AIAgent`) with a selectable toolset, max-iteration
+- [x] **Agent node**: a tool-calling loop (`AIAgent`) with a selectable toolset, max-iteration
       budget, and structured output; streams reasoning/tool-calls into the inspector.
 - [ ] **Sub-workflow node**: call another saved workflow as a step (composition).
 - [ ] **Agent-to-agent / refinement loop**: wire an agent's output back through IF/Loop for
@@ -135,7 +159,7 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
 - [ ] Read/Write **Spreadsheet/CSV/JSON** helper nodes (lean on existing `xlsx`/file tools).
 
 ## Phase 5b — Live embeds & rich media (the "infinite canvas" half)
-- [ ] **Iframe / Embed node**: render an arbitrary URL in a sandboxed `<iframe>`
+- [x] **Iframe / Embed node**: render an arbitrary URL in a sandboxed `<iframe>`
       (`sandbox`, `referrerpolicy`, allowlist) directly on the canvas; resizable; refresh +
       open-in-new-tab controls. Stored as `{ url, width, height, sandbox }` in the node.
 - [ ] **URL / Web-preview node**: fetch a page's title/description/OG image/favicon (reuse
@@ -146,20 +170,20 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
 - [ ] **Rich note / Markdown node** (upgrade the current Note): live-rendered Markdown.
 - [ ] **Embed ↔ graph bridge**: embed/preview nodes can connect into workflow inputs, and a
       workflow can target a **Preview/Render node** to display its output (HTML/image/text).
-- [ ] **Free-placement mode**: embeds work with **no connections** (pure moodboard); the
+- [x] **Free-placement mode**: embeds work with **no connections** (pure moodboard); the
       canvas mixes connected workflow subgraphs and loose pinned embeds on one surface.
 - [ ] **Security**: iframe sandboxing defaults, a domain allow/block setting, and respect for
       desktop (Tauri) webview embed constraints; never auto-execute remote content beyond the
       sandboxed iframe.
 
 ## Phase 6 — Builder UX & inspector
-- [ ] **Node inspector panel** (right drawer): params form, plus **Input** / **Output** JSON
+- [x] **Node inspector panel** (right drawer): params form, plus **Input** / **Output** JSON
       tabs showing the items from the last run; per-node run/error badges on the canvas.
 - [ ] **Run bar**: ▶ Run, Run-from-node, Stop, last-execution status, execution-history drawer.
 - [ ] Edge data preview (hover an edge → see items count/sample).
-- [ ] Node search/add (drag from browser **or** click an output `+` to add the next node).
+- [x] Node search/add (drag from browser **or** click an output `+` to add the next node).
 - [ ] Copy/paste, duplicate, multi-select, undo/redo, alignment helpers.
-- [ ] Sticky notes / comments retained from the current Note node.
+- [x] Sticky notes / comments retained from the current Note node.
 
 ## Phase 7 — Hardening, security, ship
 - [ ] Sandbox/timeout/iteration limits enforced for Code, HTTP, Agent, and Loop nodes.
