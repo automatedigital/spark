@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 
 @pytest.fixture
 def client():
     fastapi = pytest.importorskip("fastapi")
-    from starlette.testclient import TestClient
-
     from spark_cli.workflow_routes import register_workflow_routes
+    from starlette.testclient import TestClient
 
     app = fastapi.FastAPI()
     register_workflow_routes(app)
@@ -77,3 +78,71 @@ def test_run_node_missing_404(client):
 
 def test_missing_execution_404(client):
     assert client.get("/api/workflows/executions/nope").status_code == 404
+
+
+def test_register_workflow_triggers(client):
+    doc = _simple_doc()
+    doc["nodes"][0] = {"id": "a", "type": "trigger.webhook", "params": {"secret": "hook-secret"}}
+    res = client.post("/api/workflows/triggers/register", json={"doc": doc})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["triggers"][0]["kind"] == "webhook"
+    assert body["triggers"][0]["secret"] == "hook-secret"
+
+    listed = client.get("/api/workflows/triggers?canvas=wf1").json()["triggers"]
+    assert listed[0]["kind"] == "webhook"
+
+
+def test_webhook_trigger_executes_registered_workflow(client):
+    doc = _simple_doc()
+    doc["nodes"] = [
+        {"id": "a", "type": "trigger.webhook", "params": {"secret": "hook-secret"}},
+        {"id": "b", "type": "data.set", "params": {"fields": {"fromWebhook": True}}},
+    ]
+    client.post("/api/workflows/triggers/register", json={"doc": doc})
+
+    res = client.post("/api/workflows/webhook/hook-secret", json={"event": "push"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status"] == "success"
+    b = next(n for n in body["nodes"] if n["nodeId"] == "b")
+    assert b["items"][0]["json"]["event"] == "push"
+    assert b["items"][0]["json"]["fromWebhook"] is True
+
+
+def test_schedule_tick_runs_due_trigger(client, monkeypatch):
+    from spark_cli import workflow_routes, workflow_store
+
+    now = time.time()
+    doc = _simple_doc()
+    doc["nodes"][0] = {"id": "a", "type": "trigger.schedule", "params": {"schedule": "1h"}}
+    res = client.post("/api/workflows/triggers/register", json={"doc": doc})
+    assert res.status_code == 200, res.text
+    trigger_id = res.json()["triggers"][0]["id"]
+    workflow_store.update_trigger_state(trigger_id, next_run_at=now - 1)
+    monkeypatch.setattr(workflow_routes, "_next_run_timestamp", lambda schedule, after=None: now + 3600)
+
+    ran = workflow_routes.tick_registered_triggers()
+    assert len(ran) == 1
+    assert ran[0]["status"] == "success"
+    updated = workflow_store.get_trigger(trigger_id)
+    assert updated["next_run_at"] == now + 3600
+
+
+def test_filewatch_tick_runs_when_mtime_changes(client, tmp_path):
+    from spark_cli import workflow_routes, workflow_store
+
+    watched = tmp_path / "watched.txt"
+    watched.write_text("one", encoding="utf-8")
+    doc = _simple_doc()
+    doc["nodes"][0] = {"id": "a", "type": "trigger.filewatch", "params": {"path": str(watched)}}
+    res = client.post("/api/workflows/triggers/register", json={"doc": doc})
+    assert res.status_code == 200, res.text
+    trigger_id = res.json()["triggers"][0]["id"]
+    workflow_store.update_trigger_state(trigger_id, last_file_mtime=0)
+
+    ran = workflow_routes.tick_registered_triggers()
+    assert len(ran) == 1
+    assert ran[0]["status"] == "success"
+    updated = workflow_store.get_trigger(trigger_id)
+    assert updated["last_file_mtime"] == watched.stat().st_mtime

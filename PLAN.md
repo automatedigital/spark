@@ -75,8 +75,9 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
 - Phase 2 complete: `/node-types` exposes every Spark tool; schema-driven param form;
   literal⇄field-mapping picker; tool dispatch; searchable node browser.
 - Phase 3 (partial): Set / IF / Switch / Loop / Merge nodes, Code / HTTP / Wait nodes,
-  and the four trigger *node types* exist. *TODO: actually register
-  schedule/webhook/file-watch triggers; multi-output branch routing and true loop-back edges.*
+  and server-side trigger registration/execution for Schedule, Webhook, and File-watch.
+  *TODO: trigger management UI, multi-output branch routing, true loop-back edges, and
+  project-relative file-watch path picking.*
 - Phase 4 (partial): Agent node runs a stateless turn. *TODO: configurable tool-loop with
   toolset + iteration budget, sub-workflow, refinement loop.*
 - Phase 5b (partial): sandboxed resizable iframe ✓, media node ✓, free placement ✓, basic
@@ -85,7 +86,7 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
 - Phase 6 (partial): inspector (params + Input/Output JSON), run bar, node search/add,
   notes. *TODO: SSE-driven live badges, Stop, history drawer, edge preview, undo/redo.*
 
-Tests: `test_workflow_engine.py` (8) + `test_workflow_routes.py` (5) + `test_canvas_routes.py`
+Tests: `test_workflow_engine.py` (13) + `test_workflow_routes.py` (9) + `test_canvas_routes.py`
 (5) all green.
 
 ---
@@ -132,7 +133,7 @@ Tests: `test_workflow_engine.py` (8) + `test_workflow_routes.py` (5) + `test_can
       fixed list.
 
 ## Phase 3 — Core control-flow & data nodes
-- [ ] **Trigger nodes (all four ship in v1)**: Manual ▶, Schedule (cron via
+- [x] **Trigger nodes (all four ship in v1)**: Manual ▶, Schedule (cron via
       [src/cron/](src/cron/)), Webhook (registers a gateway webhook route + per-workflow
       secret), File-watch (watch a project path/glob).
 - [x] **IF / Switch** (filter-style branching; multi-output edge routing still TODO).
