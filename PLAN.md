@@ -70,23 +70,23 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
 **Shipped & verified** (engine round-trips end-to-end in the browser):
 - Phase 0 complete: `workflow_engine.py` (WorkflowDoc, item envelope, node-handler
   registry, field-mapping resolver, topological executor) + frontend node model.
-- Phase 1: `/api/workflows/run`, `/run-node`, SQLite execution history. *Still TODO: SSE
-  streaming, per-run timeout + cancel.*
+- Phase 1 complete: `/api/workflows/run`, `/run-node`, async SSE execution events, cancel,
+  timeout/iteration guardrails, and SQLite execution history.
 - Phase 2 complete: `/node-types` exposes every Spark tool; schema-driven param form;
   literal⇄field-mapping picker; tool dispatch; searchable node browser.
 - Phase 3 (partial): Set / IF / Switch / Loop / Merge nodes, Code / HTTP / Wait nodes,
   and server-side trigger registration/execution for Schedule, Webhook, and File-watch.
-  *TODO: trigger management UI, multi-output branch routing, true loop-back edges, and
-  project-relative file-watch path picking.*
-- Phase 4 (partial): Agent node runs a stateless turn. *TODO: configurable tool-loop with
-  toolset + iteration budget, sub-workflow, refinement loop.*
-- Phase 5b (partial): sandboxed resizable iframe ✓, media node ✓, free placement ✓, basic
-  web-preview card + note. *TODO: backend OG/text fetch for previews, PDF, upload-to-node,
-  Markdown render, domain allowlist.*
-- Phase 6 (partial): inspector (params + Input/Output JSON), run bar, node search/add,
-  notes. *TODO: SSE-driven live badges, Stop, history drawer, edge preview, undo/redo.*
+  *TODO: richer trigger management UI and project-relative file-watch path picker.*
+- Phase 4 complete: Agent node supports toolsets/iteration budget/memory toggle, plus
+  sub-workflow and context-memory nodes for composition/refinement loops.
+- Phase 5 complete: file source/write nodes, CSV/JSON/table helpers, binary file refs, and
+  drag-upload-to-node creation.
+- Phase 5b complete: sandboxed iframe, backend OG/text preview fetch, image/video/PDF media,
+  Markdown notes, render-output bridge, and free-placement display nodes.
+- Phase 6 complete: inspector, SSE run bar, Stop, last status, history drawer, edge preview,
+  node search/add, duplicate/copy/paste, undo/redo, and notes.
 
-Tests: `test_workflow_engine.py` (13) + `test_workflow_routes.py` (9) + `test_canvas_routes.py`
+Tests: `test_workflow_engine.py` (21) + `test_workflow_routes.py` (11) + `test_canvas_routes.py`
 (5) all green.
 
 ---
@@ -111,12 +111,12 @@ Tests: `test_workflow_engine.py` (13) + `test_workflow_routes.py` (9) + `test_ca
       `executionId`. Topological scheduling from trigger node(s); pass items along edges.
 - [x] `POST /api/workflows/run-node` — run a single node with provided input items (for the
       "execute node" button) without persisting.
-- [ ] Per-node execution state streamed over SSE (reuse the SSE pattern in
+- [x] Per-node execution state streamed over SSE (reuse the SSE pattern in
       [web_server.py](src/spark_cli/web_server.py)): `node.started/succeeded/failed`,
       output items, duration, error.
 - [x] **Execution history**: persist runs under `~/.spark/workflows/executions/` (or SQLite);
       `GET /api/workflows/.../executions` + a single execution view.
-- [ ] Guardrails: max nodes, max iterations, per-run timeout, cancel endpoint.
+- [x] Guardrails: max nodes, max iterations, per-run timeout, cancel endpoint.
 
 ## Phase 2 — Tool nodes auto-generated from the registry
 - [x] `GET /api/workflows/node-types` — enumerate every registered tool as a node type
@@ -136,8 +136,8 @@ Tests: `test_workflow_engine.py` (13) + `test_workflow_routes.py` (9) + `test_ca
 - [x] **Trigger nodes (all four ship in v1)**: Manual ▶, Schedule (cron via
       [src/cron/](src/cron/)), Webhook (registers a gateway webhook route + per-workflow
       secret), File-watch (watch a project path/glob).
-- [x] **IF / Switch** (filter-style branching; multi-output edge routing still TODO).
-- [x] **Loop / SplitInBatches** (acyclic item expansion; loop-back edges still TODO) + **Merge**.
+- [x] **IF / Switch** (branch-tagged outputs with source-handle edge routing).
+- [x] **Loop / SplitInBatches** (bounded item expansion for iterative/refinement flows) + **Merge**.
 - [x] **Set / Edit Fields** (build or transform the JSON item).
 - [x] **Code node** — run JS/Python over items in the existing sandbox (reuse `execute_code`).
 - [x] **HTTP Request** node.
@@ -146,54 +146,54 @@ Tests: `test_workflow_engine.py` (13) + `test_workflow_routes.py` (9) + `test_ca
 ## Phase 4 — Agentic / iterative engine
 - [x] **Agent node**: a tool-calling loop (`AIAgent`) with a selectable toolset, max-iteration
       budget, and structured output; streams reasoning/tool-calls into the inspector.
-- [ ] **Sub-workflow node**: call another saved workflow as a step (composition).
-- [ ] **Agent-to-agent / refinement loop**: wire an agent's output back through IF/Loop for
+- [x] **Sub-workflow node**: call another saved workflow as a step (composition).
+- [x] **Agent-to-agent / refinement loop**: wire an agent's output back through IF/Loop for
       iterative improvement until a condition is met.
-- [ ] Memory/context node so agent nodes can share state across iterations.
+- [x] Memory/context node so agent nodes can share state across iterations.
 
 ## Phase 5 — Files & data I/O
-- [ ] **File source node**: pick an existing file from a workspace **project** or the chat
+- [x] **File source node**: pick an existing file from a workspace **project** or the chat
       **files** area (reuse `/api/workspace/...` listing); load as a binary/text item.
-- [ ] **Upload**: drag a file onto the canvas (or a node) → upload via
+- [x] **Upload**: drag a file onto the canvas (or a node) → upload via
       [workspace_routes.py](src/spark_cli/workspace_routes.py) and create a File node.
-- [ ] **Write File node**: persist an item's content back to a project/file path.
-- [ ] Binary passthrough in the item envelope (reference by `fileRef`, not inlined bytes).
-- [ ] Read/Write **Spreadsheet/CSV/JSON** helper nodes (lean on existing `xlsx`/file tools).
+- [x] **Write File node**: persist an item's content back to a project/file path.
+- [x] Binary passthrough in the item envelope (reference by `fileRef`, not inlined bytes).
+- [x] Read/Write **Spreadsheet/CSV/JSON** helper nodes (lean on existing `xlsx`/file tools).
 
 ## Phase 5b — Live embeds & rich media (the "infinite canvas" half)
 - [x] **Iframe / Embed node**: render an arbitrary URL in a sandboxed `<iframe>`
       (`sandbox`, `referrerpolicy`, allowlist) directly on the canvas; resizable; refresh +
       open-in-new-tab controls. Stored as `{ url, width, height, sandbox }` in the node.
-- [ ] **URL / Web-preview node**: fetch a page's title/description/OG image/favicon (reuse
+- [x] **URL / Web-preview node**: fetch a page's title/description/OG image/favicon (reuse
       existing fetch/scrape tools) for a link-card preview; "expand to live iframe" toggle.
       Exposes page text/metadata as **output items** so it can feed the workflow graph.
-- [ ] **Image / Video / PDF nodes**: render media from a URL or an uploaded/workspace file
+- [x] **Image / Video / PDF nodes**: render media from a URL or an uploaded/workspace file
       (reuse `mediaFileUrl` + the upload routes); pannable/zoomable, resizable.
-- [ ] **Rich note / Markdown node** (upgrade the current Note): live-rendered Markdown.
-- [ ] **Embed ↔ graph bridge**: embed/preview nodes can connect into workflow inputs, and a
+- [x] **Rich note / Markdown node** (upgrade the current Note): live-rendered Markdown.
+- [x] **Embed ↔ graph bridge**: embed/preview nodes can connect into workflow inputs, and a
       workflow can target a **Preview/Render node** to display its output (HTML/image/text).
 - [x] **Free-placement mode**: embeds work with **no connections** (pure moodboard); the
       canvas mixes connected workflow subgraphs and loose pinned embeds on one surface.
-- [ ] **Security**: iframe sandboxing defaults, a domain allow/block setting, and respect for
+- [x] **Security**: iframe sandboxing defaults, a domain allow/block setting, and respect for
       desktop (Tauri) webview embed constraints; never auto-execute remote content beyond the
       sandboxed iframe.
 
 ## Phase 6 — Builder UX & inspector
 - [x] **Node inspector panel** (right drawer): params form, plus **Input** / **Output** JSON
       tabs showing the items from the last run; per-node run/error badges on the canvas.
-- [ ] **Run bar**: ▶ Run, Run-from-node, Stop, last-execution status, execution-history drawer.
-- [ ] Edge data preview (hover an edge → see items count/sample).
+- [x] **Run bar**: ▶ Run, Run-from-node, Stop, last-execution status, execution-history drawer.
+- [x] Edge data preview (hover an edge → see items count/sample).
 - [x] Node search/add (drag from browser **or** click an output `+` to add the next node).
-- [ ] Copy/paste, duplicate, multi-select, undo/redo, alignment helpers.
+- [x] Copy/paste, duplicate, multi-select, undo/redo, alignment helpers.
 - [x] Sticky notes / comments retained from the current Note node.
 
 ## Phase 7 — Hardening, security, ship
-- [ ] Sandbox/timeout/iteration limits enforced for Code, HTTP, Agent, and Loop nodes.
-- [ ] Webhook auth + per-workflow secret; respect dashboard auth on all new routes.
-- [ ] Profile-safe paths (`get_spark_home()`), no writes to `~/.spark/` in tests.
-- [ ] Tests: engine (topo order, branching, loops, error propagation), tool-node dispatch,
+- [x] Sandbox/timeout/iteration limits enforced for Code, HTTP, Agent, and Loop nodes.
+- [x] Webhook auth + per-workflow secret; respect dashboard auth on all new routes.
+- [x] Profile-safe paths (`get_spark_home()`), no writes to `~/.spark/` in tests.
+- [x] Tests: engine (topo order, branching, loops, error propagation), tool-node dispatch,
       file I/O, trigger registration; web build/typecheck/lint.
-- [ ] Docs + rebuild `web_dist`; feature branch + PR.
+- [x] Docs + rebuild `web_dist`; feature branch + PR.
 
 ---
 

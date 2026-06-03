@@ -7,9 +7,14 @@ engine and the node-type listing stay cheap.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
+import mimetypes
+import re
 import time
+from html.parser import HTMLParser
+from io import StringIO
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -95,8 +100,7 @@ def _if_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[I
     for it in inputs:
         actual = (it.get("json") or {}).get(field)
         ok = (actual == expected) if expected is not None else bool(actual)
-        if ok:
-            out.append(it)
+        out.append(make_item({**(it.get("json") or {}), "__branch": "true" if ok else "false"}, it.get("binary")))
     return out
 
 
@@ -132,8 +136,9 @@ def _switch_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> li
     out: list[Item] = []
     for it in inputs:
         actual = (it.get("json") or {}).get(field)
-        if str(actual) in allowed:
-            out.append(it)
+        branch = str(actual)
+        if branch in allowed:
+            out.append(make_item({**(it.get("json") or {}), "__branch": branch}, it.get("binary")))
     return out
 
 
@@ -254,6 +259,106 @@ def _code_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list
     return [make_item({"output": output_text, "durationSeconds": result.get("duration_seconds")})]
 
 
+# ── Files / data I/O ───────────────────────────────────────────────────────
+@register_node_handler("io.file_source", category="io")
+def _file_source_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    params = resolve_params(node, ctx)
+    path = str(params.get("path") or "").strip()
+    if not path:
+        raise ValueError("File Source node missing 'path'")
+    file_path, file_ref = _workflow_file_path(params, ctx)
+    if not file_path.exists() or file_path.is_dir():
+        raise ValueError(f"File not found: {path}")
+    mime, _ = mimetypes.guess_type(file_path.name)
+    mode = str(params.get("mode") or "text")
+    stat = file_path.stat()
+    binary = {"file": {"fileRef": file_ref, "mimeType": mime or "application/octet-stream", "name": file_path.name}}
+    payload: dict[str, Any] = {"path": path, "fileRef": file_ref, "mimeType": mime, "name": file_path.name, "size": stat.st_size}
+    if mode != "binary":
+        payload["content"] = file_path.read_text(encoding="utf-8", errors="replace")
+    return [make_item(payload, binary)]
+
+
+@register_node_handler("io.write_file", category="io")
+def _write_file_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    params = resolve_params(node, ctx)
+    path = str(params.get("path") or "").strip()
+    if not path:
+        raise ValueError("Write File node missing 'path'")
+    file_path, file_ref = _workflow_file_path(params, ctx, for_write=True)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    content = params.get("content")
+    if content is None and inputs:
+        first = inputs[0].get("json") or {}
+        content = first.get("content", first)
+    text = content if isinstance(content, str) else json.dumps(content, indent=2)
+    file_path.write_text(text, encoding="utf-8")
+    return [make_item({"path": path, "fileRef": file_ref, "bytes": len(text.encode("utf-8"))})]
+
+
+@register_node_handler("io.read_table", category="io")
+def _read_table_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    params = resolve_params(node, ctx)
+    file_path, file_ref = _workflow_file_path(params, ctx)
+    suffix = file_path.suffix.lower()
+    if suffix == ".json":
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+        rows = data if isinstance(data, list) else [data]
+    elif suffix == ".csv":
+        rows = list(csv.DictReader(StringIO(file_path.read_text(encoding="utf-8", errors="replace"))))
+    else:
+        try:
+            import pandas as pd  # type: ignore
+        except ImportError as exc:
+            raise ValueError("Spreadsheet reading requires pandas/openpyxl") from exc
+        rows = pd.read_excel(file_path).to_dict(orient="records")
+    return [make_item({"row": row, "index": i, "fileRef": file_ref}) for i, row in enumerate(rows)]
+
+
+@register_node_handler("io.write_table", category="io")
+def _write_table_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    params = resolve_params(node, ctx)
+    file_path, file_ref = _workflow_file_path(params, ctx, for_write=True)
+    rows = params.get("rows")
+    if rows is None:
+        rows = [it.get("json") for it in inputs]
+    if isinstance(rows, str):
+        rows = json.loads(rows) if rows.strip() else []
+    if not isinstance(rows, list):
+        rows = [rows]
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    if file_path.suffix.lower() == ".csv":
+        text = _rows_to_csv(rows)
+        file_path.write_text(text, encoding="utf-8")
+    elif file_path.suffix.lower() == ".xlsx":
+        try:
+            import pandas as pd  # type: ignore
+        except ImportError as exc:
+            raise ValueError("Spreadsheet writing requires pandas/openpyxl") from exc
+        pd.DataFrame(rows).to_excel(file_path, index=False)
+    else:
+        file_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    return [make_item({"path": str(params.get("path") or ""), "fileRef": file_ref, "rows": len(rows)})]
+
+
+@register_node_handler("display.preview", category="display")
+def _preview_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    params = resolve_params(node, ctx)
+    url = str(params.get("url") or "").strip()
+    if not url:
+        return list(inputs)
+    return [make_item(_fetch_preview_metadata(url))]
+
+
+@register_node_handler("display.render", category="display")
+def _render_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    params = resolve_params(node, ctx)
+    content = params.get("content")
+    if content is None and inputs:
+        content = inputs[0].get("json")
+    return [make_item({"content": content, "format": params.get("format") or "text"})]
+
+
 def _wrap_code_script(code: str, inputs: list[Item]) -> str:
     encoded_items = json.dumps(inputs, ensure_ascii=False)
     return f"""import json
@@ -271,6 +376,105 @@ if output is not None:
     payload = [_spark_item(v) for v in output] if isinstance(output, list) else [_spark_item(output)]
     print("__SPARK_WORKFLOW_OUTPUT__=" + json.dumps(payload, ensure_ascii=False))
 """
+
+
+def _workflow_file_path(params: dict[str, Any], ctx: ExecContext, *, for_write: bool = False):
+    from spark_cli.workspace_routes import _project_dir, _safe_path, _workspace_root
+
+    path = str(params.get("path") or "").strip()
+    source = str(params.get("source") or ("project" if ctx.slug else "files"))
+    slug = str(params.get("slug") or ctx.slug or "")
+    if source == "project":
+        if not slug:
+            raise ValueError("Project file nodes require a project slug")
+        root = _project_dir(slug)
+        resolved = _safe_path(root, path)
+        file_ref = f"project:{slug}:{path}"
+    else:
+        root = _workspace_root()
+        rel = path if path.startswith("files/") else f"files/{path}"
+        resolved = _safe_path(root, rel)
+        file_ref = f"workspace:{rel}"
+    if not for_write and not resolved.exists():
+        raise ValueError(f"File not found: {path}")
+    return resolved, file_ref
+
+
+def _rows_to_csv(rows: list[Any]) -> str:
+    dict_rows = [r if isinstance(r, dict) else {"value": r} for r in rows]
+    fieldnames: list[str] = []
+    for row in dict_rows:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+    buf = StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames or ["value"])
+    writer.writeheader()
+    writer.writerows(dict_rows)
+    return buf.getvalue()
+
+
+class _PreviewParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title = ""
+        self.meta: dict[str, str] = {}
+        self._in_title = False
+        self.text_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attrs_d = {k.lower(): v or "" for k, v in attrs}
+        lower = tag.lower()
+        if lower == "title":
+            self._in_title = True
+        elif lower == "meta":
+            key = (attrs_d.get("property") or attrs_d.get("name") or "").lower()
+            if key and attrs_d.get("content"):
+                self.meta[key] = attrs_d["content"]
+        elif lower == "link" and "icon" in attrs_d.get("rel", "").lower():
+            self.meta.setdefault("favicon", attrs_d.get("href", ""))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "title":
+            self._in_title = False
+
+    def handle_data(self, data: str) -> None:
+        text = data.strip()
+        if not text:
+            return
+        if self._in_title:
+            self.title += text
+        elif len(" ".join(self.text_parts)) < 5000:
+            self.text_parts.append(text)
+
+
+def _fetch_preview_metadata(url: str) -> dict[str, Any]:
+    req = Request(url, headers={"User-Agent": "Spark-Workflow-Preview/1.0"})
+    with urlopen(req, timeout=15) as resp:  # noqa: S310 - user-configured URL preview
+        raw = resp.read(512_000)
+        final_url = resp.url
+        content_type = resp.headers.get("content-type", "")
+    parser = _PreviewParser()
+    parser.feed(raw.decode("utf-8", errors="replace"))
+    image = parser.meta.get("og:image") or parser.meta.get("twitter:image") or ""
+    favicon = parser.meta.get("favicon") or ""
+    return {
+        "url": final_url,
+        "title": parser.meta.get("og:title") or parser.title or final_url,
+        "description": parser.meta.get("og:description") or parser.meta.get("description") or "",
+        "image": _absolute_url(final_url, image),
+        "favicon": _absolute_url(final_url, favicon),
+        "contentType": content_type,
+        "text": re.sub(r"\s+", " ", " ".join(parser.text_parts)).strip()[:10000],
+    }
+
+
+def _absolute_url(base: str, maybe_url: str) -> str:
+    if not maybe_url:
+        return ""
+    from urllib.parse import urljoin
+
+    return urljoin(base, maybe_url)
 
 
 def _ensure_item(value: Any) -> Item:
@@ -330,11 +534,10 @@ def _tool_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list
     return [make_item(parsed)]
 
 
-# ── Agent node (stateless tool-calling turn) ────────────────────────────────
+# ── Agent / composition nodes ───────────────────────────────────────────────
 @register_node_handler("agent", category="agent")
 def _agent_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
-    """Run a single stateless agent turn. Mirrors POST /api/canvas/chat so canvas
-    agents never create Chat-tab sessions."""
+    """Run an agentic turn with configurable toolsets and iteration budget."""
     from core.run_agent import AIAgent
 
     params = resolve_params(node, ctx)
@@ -352,9 +555,14 @@ def _agent_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> lis
 
     model = params.get("model") or None
     runtime = _resolve_runtime(prompt, model)
+    toolsets = _coerce_list(params.get("toolsets"))
+    max_iterations = _coerce_int(params.get("maxIterations"), default=10, minimum=1, maximum=ctx.max_iterations)
+    skip_memory = _coerce_bool(params.get("skipMemory"), default=False)
     agent = AIAgent(
         session_id="wf_" + ctx.execution_id,
         model=runtime["model"],
+        max_iterations=max_iterations,
+        enabled_toolsets=toolsets or None,
         api_key=runtime["runtime"].get("api_key"),
         base_url=runtime["runtime"].get("base_url"),
         provider=runtime["runtime"].get("provider"),
@@ -366,10 +574,59 @@ def _agent_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> lis
         quiet_mode=True,
         platform="web",
         session_db=None,
+        skip_memory=skip_memory,
         working_dir=working_dir,
     )
+    ctx.emit("agent.started", {"nodeId": node.id, "model": runtime["model"], "maxIterations": max_iterations})
     reply = agent.chat(prompt)
+    ctx.emit("agent.finished", {"nodeId": node.id})
     return [make_item({"reply": reply, "model": runtime["model"]})]
+
+
+@register_node_handler("workflow.subworkflow", category="agent")
+def _subworkflow_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    """Execute another saved canvas workflow and return its terminal outputs."""
+    from spark_cli.canvas_routes import _read_canvas
+    from spark_cli.workflow_engine import WorkflowDoc, execute_workflow
+
+    params = resolve_params(node, ctx)
+    canvas_id = str(params.get("canvasId") or "").strip()
+    if not canvas_id:
+        raise ValueError("Sub-workflow node missing 'canvasId'")
+    scope = str(params.get("scope") or ctx.doc.scope or "global")
+    slug = params.get("slug") or ctx.doc.slug
+    doc = WorkflowDoc(**_read_canvas(scope, slug, canvas_id))
+    exec_id = f"{ctx.execution_id}_{node.id}"
+    result = execute_workflow(
+        doc,
+        execution_id=exec_id,
+        seed=inputs,
+        cancelled=ctx.cancelled,
+        max_iterations=ctx.max_iterations,
+        emit=lambda event, data: ctx.emit(f"subworkflow.{event}", {"nodeId": node.id, **data}),
+    )
+    if result.status != "success":
+        raise ValueError(result.error or "Sub-workflow failed")
+    if not result.nodes:
+        return []
+    return result.nodes[-1].items
+
+
+@register_node_handler("memory.context", category="agent")
+def _context_memory_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list[Item]:
+    """Read/write transient workflow-run state that downstream nodes can map."""
+    params = resolve_params(node, ctx)
+    key = str(params.get("key") or "default")
+    mode = str(params.get("mode") or "write").lower()
+    value = params.get("value")
+    if mode in {"write", "set"}:
+        ctx.state[key] = value if value is not None else [it.get("json") for it in inputs]
+    elif mode == "append":
+        ctx.state.setdefault(key, [])
+        if not isinstance(ctx.state[key], list):
+            ctx.state[key] = [ctx.state[key]]
+        ctx.state[key].extend(value if isinstance(value, list) else [value if value is not None else inputs])
+    return [make_item({"key": key, "value": ctx.state.get(key), "state": dict(ctx.state)})]
 
 
 def _resolve_runtime(prompt: str, model: str | None) -> dict[str, Any]:
@@ -382,8 +639,32 @@ def _resolve_runtime(prompt: str, model: str | None) -> dict[str, Any]:
     return route
 
 
+def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _coerce_list(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(v).strip() for v in parsed if str(v).strip()]
+        except json.JSONDecodeError:
+            pass
+        return [v.strip() for v in value.split(",") if v.strip()]
+    return [str(value)]
+
+
 # ── Display nodes (non-executable; pass through) ────────────────────────────
-for _display_type in ("display.note", "display.iframe", "display.preview", "display.media"):
+for _display_type in ("display.note", "display.iframe", "display.media"):
     register_node_handler(_display_type, category="display")(
         lambda node, inputs, ctx: list(inputs)
     )
@@ -408,10 +689,17 @@ def node_type_catalog() -> list[dict[str, Any]]:
         {"type": "action.code", "category": "action", "label": "Code", "emoji": "⌨️"},
         {"type": "action.http", "category": "action", "label": "HTTP Request", "emoji": "🌍"},
         {"type": "action.wait", "category": "action", "label": "Wait", "emoji": "⏳"},
+        {"type": "io.file_source", "category": "io", "label": "File Source", "emoji": "📄"},
+        {"type": "io.write_file", "category": "io", "label": "Write File", "emoji": "💾"},
+        {"type": "io.read_table", "category": "io", "label": "Read Table", "emoji": "📊"},
+        {"type": "io.write_table", "category": "io", "label": "Write Table", "emoji": "🧾"},
         {"type": "agent", "category": "agent", "label": "Agent", "emoji": "🤖"},
+        {"type": "workflow.subworkflow", "category": "agent", "label": "Sub-workflow", "emoji": "🧩"},
+        {"type": "memory.context", "category": "agent", "label": "Context Memory", "emoji": "🧠"},
         {"type": "display.note", "category": "display", "label": "Note", "emoji": "🗒"},
         {"type": "display.iframe", "category": "display", "label": "Embed (iframe)", "emoji": "🌐"},
         {"type": "display.preview", "category": "display", "label": "Web Preview", "emoji": "🔗"},
+        {"type": "display.render", "category": "display", "label": "Render Output", "emoji": "🪟"},
         {"type": "display.media", "category": "display", "label": "Media", "emoji": "🖼"},
     ]
 

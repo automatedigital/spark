@@ -2,6 +2,7 @@
 import { createContext, useContext, memo } from "react";
 import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
 import { Loader2, Play, RefreshCw, ExternalLink, Settings2, CheckCircle2, XCircle } from "lucide-react";
+import { Markdown } from "@/components/Markdown";
 import { CATEGORY_ACCENT, type CanvasNodeData } from "./types";
 
 export interface CanvasNodeApi {
@@ -38,6 +39,21 @@ const targetHandle = (
 const sourceHandle = (
   <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-border !bg-primary" />
 );
+
+function domainAllowed(url: string, allowCsv: unknown, blockCsv: unknown): boolean {
+  if (!url) return true;
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  const allow = String(allowCsv || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const block = String(blockCsv || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const matches = (domain: string) => host === domain || host.endsWith(`.${domain}`);
+  if (block.some(matches)) return false;
+  return allow.length === 0 || allow.some(matches);
+}
 
 function StatusDot({ data }: { data: CanvasNodeData }) {
   const r = data.result;
@@ -116,6 +132,7 @@ const IframeNode = memo(({ id, data, selected }: NodeProps) => {
   const d = data as CanvasNodeData;
   const { setParams, inspect } = useApi(id);
   const url = String(d.params?.url || "");
+  const allowed = domainAllowed(url, d.params?.allowDomains, d.params?.blockDomains);
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-md border bg-card shadow-lg ${
@@ -143,7 +160,7 @@ const IframeNode = memo(({ id, data, selected }: NodeProps) => {
           <Settings2 className="h-3 w-3" />
         </button>
       </div>
-      {url ? (
+      {url && allowed ? (
         <iframe
           src={url}
           title={url}
@@ -151,6 +168,8 @@ const IframeNode = memo(({ id, data, selected }: NodeProps) => {
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           referrerPolicy="no-referrer"
         />
+      ) : url ? (
+        <div className="grid flex-1 place-items-center px-4 text-center text-xs text-destructive">Domain blocked by this embed node.</div>
       ) : (
         <div className="grid flex-1 place-items-center text-xs text-muted-foreground">Enter a URL</div>
       )}
@@ -171,6 +190,11 @@ const PreviewNode = memo(({ id, data, selected }: NodeProps) => {
   } catch {
     host = url;
   }
+  const meta = d.result?.items?.[0]?.json as Record<string, unknown> | undefined;
+  const title = String(meta?.title || host || "Web Preview");
+  const description = String(meta?.description || "");
+  const image = String(meta?.image || "");
+  const favicon = String(meta?.favicon || "");
   return (
     <div
       className={`w-64 overflow-hidden rounded-md border bg-card shadow-lg ${
@@ -190,9 +214,15 @@ const PreviewNode = memo(({ id, data, selected }: NodeProps) => {
           className="nodrag mb-2 w-full rounded-sm border border-border bg-background/60 px-2 py-1 text-[11px] outline-none focus:border-primary"
         />
         {host && (
-          <a href={url} target="_blank" rel="noreferrer" className="nodrag flex items-center gap-2 rounded-sm border border-border bg-background/40 p-2 transition hover:bg-secondary">
-            <img src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`} alt="" className="h-5 w-5 rounded" />
-            <span className="truncate text-xs text-foreground">{host}</span>
+          <a href={url} target="_blank" rel="noreferrer" className="nodrag block overflow-hidden rounded-sm border border-border bg-background/40 transition hover:bg-secondary">
+            {image && <img src={image} alt="" className="h-24 w-full object-cover" />}
+            <div className="flex items-start gap-2 p-2">
+              <img src={favicon || `https://www.google.com/s2/favicons?domain=${host}&sz=32`} alt="" className="mt-0.5 h-5 w-5 rounded" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium text-foreground">{title}</span>
+                {description && <span className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground">{description}</span>}
+              </span>
+            </div>
           </a>
         )}
       </div>
@@ -208,6 +238,7 @@ const MediaNode = memo(({ id, data, selected }: NodeProps) => {
   const { setParams } = useApi(id);
   const url = String(d.params?.url || "");
   const isVideo = /\.(mp4|webm|mov)$/i.test(url);
+  const isPdf = /\.pdf(?:$|\?)/i.test(url);
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-md border bg-card shadow-lg ${
@@ -231,6 +262,8 @@ const MediaNode = memo(({ id, data, selected }: NodeProps) => {
           <span className="text-xs text-muted-foreground">Enter a URL</span>
         ) : isVideo ? (
           <video src={url} controls className="nodrag max-h-full max-w-full" />
+        ) : isPdf ? (
+          <iframe src={url} title={url} className="nodrag h-full w-full bg-white" />
         ) : (
           <img src={url} alt="" className="nodrag max-h-full max-w-full object-contain" />
         )}
@@ -245,6 +278,7 @@ MediaNode.displayName = "MediaNode";
 const NoteNode = memo(({ id, data, selected }: NodeProps) => {
   const d = data as CanvasNodeData;
   const { setParams } = useApi(id);
+  const text = String(d.params?.text || "");
   return (
     <div
       className={`w-56 rounded-md border bg-amber-50/5 shadow-lg ${
@@ -253,17 +287,53 @@ const NoteNode = memo(({ id, data, selected }: NodeProps) => {
     >
       <NodeResizer minWidth={160} minHeight={100} isVisible={selected} />
       {targetHandle}
-      <textarea
-        value={String(d.params?.text || "")}
-        onChange={(e) => setParams({ text: e.target.value })}
-        placeholder="Write a note…"
-        className="nodrag h-full min-h-24 w-full resize-none rounded-md bg-transparent p-2.5 text-xs text-foreground outline-none"
-      />
+      {selected ? (
+        <textarea
+          value={text}
+          onChange={(e) => setParams({ text: e.target.value })}
+          placeholder="Write a note…"
+          className="nodrag h-full min-h-24 w-full resize-none rounded-md bg-transparent p-2.5 text-xs text-foreground outline-none"
+        />
+      ) : (
+        <div className="nodrag max-h-64 min-h-24 overflow-auto p-2.5 text-xs">
+          <Markdown content={text || " "} />
+        </div>
+      )}
       {sourceHandle}
     </div>
   );
 });
 NoteNode.displayName = "NoteNode";
+
+const RenderOutputNode = memo(({ id, data, selected }: NodeProps) => {
+  const d = data as CanvasNodeData;
+  const { inspect } = useApi(id);
+  const result = d.result?.items?.[0]?.json as Record<string, unknown> | undefined;
+  const content = result?.content ?? d.params?.content ?? "";
+  const format = String(result?.format || d.params?.format || "text");
+  const text = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+  return (
+    <div
+      className={`w-72 overflow-hidden rounded-md border bg-card shadow-lg ${
+        selected ? "border-primary ring-1 ring-primary/40" : "border-border"
+      }`}
+    >
+      {targetHandle}
+      <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
+        <span className="text-xs">🪟</span>
+        <span className="flex-1 truncate text-xs font-semibold text-muted-foreground">Render Output</span>
+        <button type="button" onClick={inspect} className="nodrag text-muted-foreground hover:text-foreground" title="Configure">
+          <Settings2 className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="nodrag max-h-64 overflow-auto p-2.5 text-xs">
+        {format === "markdown" ? <Markdown content={text} /> : <pre className="whitespace-pre-wrap font-mono text-[11px]">{text}</pre>}
+      </div>
+      {sourceHandle}
+    </div>
+  );
+});
+RenderOutputNode.displayName = "RenderOutputNode";
 
 export const renderNodeTypes = {
   workflow: WorkflowNodeView,
@@ -271,4 +341,5 @@ export const renderNodeTypes = {
   preview: PreviewNode,
   media: MediaNode,
   note: NoteNode,
+  render: RenderOutputNode,
 };

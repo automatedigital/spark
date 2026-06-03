@@ -12,16 +12,18 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeMouseHandler,
   type Node,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, FolderOpen, Trash2, Loader2, Check, Play, Search } from "lucide-react";
+import { Plus, Save, FolderOpen, Trash2, Loader2, Check, Play, Search, Square, History, Copy, Undo2, Redo2 } from "lucide-react";
 import {
   api,
   type CanvasDoc,
   type CanvasScope,
   type CanvasSummary,
+  type WorkflowExecutionSummary,
   type WorkflowNodeType,
   type WorkspaceProject,
 } from "@/lib/api";
@@ -46,6 +48,21 @@ interface OpenCanvas {
 let nodeSeq = 1;
 const newNodeId = () => `n${Date.now().toString(36)}_${nodeSeq++}`;
 
+function makeCanvasNode(t: WorkflowNodeType, position: { x: number; y: number }, params?: Record<string, unknown>): Node {
+  const data: CanvasNodeData = {
+    nodeType: t.type,
+    label: t.label,
+    emoji: t.emoji,
+    category: t.category,
+    tool: t.tool,
+    schema: t.schema,
+    description: t.description,
+    params: { ...defaultParams(t), ...(params ?? {}) },
+    result: null,
+  };
+  return { id: newNodeId(), type: renderTypeFor(t.type), position, data };
+}
+
 /** Build the engine doc from React Flow nodes/edges. */
 function toEngineDoc(base: OpenCanvas | null, name: string, scope: CanvasScope, slug: string | null, nodes: Node[], edges: Edge[]): CanvasDoc {
   const id = (base?.id ?? name).trim().replace(/[^a-zA-Z0-9_\- ]/g, "").slice(0, 80) || "Untitled";
@@ -64,7 +81,13 @@ function toEngineDoc(base: OpenCanvas | null, name: string, scope: CanvasScope, 
         data: { label: d.label, emoji: d.emoji, category: d.category, tool: d.tool, width: n.width, height: n.height },
       };
     }) as CanvasDoc["nodes"],
-    edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })) as CanvasDoc["edges"],
+    edges: edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle ?? null,
+      targetHandle: e.targetHandle ?? null,
+    })) as CanvasDoc["edges"],
     viewport: { x: 0, y: 0, zoom: 1 },
     version: 2,
   };
@@ -87,10 +110,19 @@ function CanvasInner() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [lastRunStatus, setLastRunStatus] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [executions, setExecutions] = useState<WorkflowExecutionSummary[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [edgePreview, setEdgePreview] = useState<{ x: number; y: number; edge: Edge; items: unknown[] } | null>(null);
   const [inspectorId, setInspectorId] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const loadedRef = useRef(false);
+  const clipboardRef = useRef<Node[]>([]);
+  const undoRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+  const redoRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
 
   // ── Node data helpers ─────────────────────────────────────────────────────
   const updateNodeData = useCallback(
@@ -134,6 +166,12 @@ function CanvasInner() {
     [current, name, scope, slug, rf],
   );
 
+  const remember = useCallback(() => {
+    undoRef.current.push({ nodes: rf.getNodes(), edges: rf.getEdges() });
+    if (undoRef.current.length > 50) undoRef.current.shift();
+    redoRef.current = [];
+  }, [rf]);
+
   const runNode = useCallback(
     async (id: string) => {
       setRunning(id, true);
@@ -149,17 +187,61 @@ function CanvasInner() {
     [buildDoc, applyResults, setRunning],
   );
 
+  const refreshExecutions = useCallback(async () => {
+    const doc = buildDoc();
+    try {
+      const res = await api.listWorkflowExecutions(doc.id, doc.scope, doc.slug);
+      setExecutions(res.executions);
+    } catch {
+      setExecutions([]);
+    }
+  }, [buildDoc]);
+
   const runAll = useCallback(async () => {
     setRunningAll(true);
+    setLastRunStatus("running");
+    const doc = buildDoc();
     try {
-      const res = await api.runWorkflow(buildDoc(), "manual");
-      applyResults(res.nodes);
-    } catch {
-      /* surfaced per-node */
-    } finally {
+      const started = await api.runWorkflowAsync(doc, "manual");
+      setActiveRunId(started.executionId);
+      const es = api.streamWorkflowRun(started.executionId);
+      es.addEventListener("node.started", (ev) => {
+        const data = JSON.parse((ev as MessageEvent).data) as { nodeId: string };
+        setRunning(data.nodeId, true);
+      });
+      es.addEventListener("node.succeeded", (ev) => {
+        const data = JSON.parse((ev as MessageEvent).data) as { nodeId: string; items: unknown[]; durationMs: number };
+        applyResults([{ nodeId: data.nodeId, status: "success", items: data.items, error: null, durationMs: data.durationMs }]);
+        setRunning(data.nodeId, false);
+      });
+      es.addEventListener("node.failed", (ev) => {
+        const data = JSON.parse((ev as MessageEvent).data) as { nodeId: string; error: string; durationMs: number };
+        applyResults([{ nodeId: data.nodeId, status: "error", items: [], error: data.error, durationMs: data.durationMs }]);
+        setRunning(data.nodeId, false);
+      });
+      es.addEventListener("execution.result", (ev) => {
+        const data = JSON.parse((ev as MessageEvent).data) as { status: string; nodes: Parameters<typeof applyResults>[0] };
+        applyResults(data.nodes);
+        setLastRunStatus(data.status);
+      });
+      es.addEventListener("execution.closed", () => {
+        es.close();
+        setRunningAll(false);
+        setActiveRunId(null);
+        void refreshExecutions();
+      });
+      es.onerror = () => {
+        es.close();
+        setRunningAll(false);
+        setActiveRunId(null);
+        setLastRunStatus("error");
+      };
+    } catch (e) {
+      setLastRunStatus("error");
       setRunningAll(false);
+    } finally {
     }
-  }, [buildDoc, applyResults]);
+  }, [buildDoc, applyResults, setRunning, refreshExecutions]);
 
   const nodeApi = useMemo(
     () => ({ updateNodeData, updateParams, runNode, openInspector: setInspectorId, runningIds }),
@@ -167,27 +249,20 @@ function CanvasInner() {
   );
 
   const onConnect = useCallback(
-    (c: Connection) => setEdges((eds) => addEdge({ ...c, animated: true }, eds)),
-    [setEdges],
+    (c: Connection) => {
+      remember();
+      setEdges((eds) => addEdge({ ...c, animated: true }, eds));
+    },
+    [setEdges, remember],
   );
 
   // ── Add a node from the catalog ───────────────────────────────────────────
   const addNode = useCallback(
     (t: WorkflowNodeType, position: { x: number; y: number }) => {
-      const data: CanvasNodeData = {
-        nodeType: t.type,
-        label: t.label,
-        emoji: t.emoji,
-        category: t.category,
-        tool: t.tool,
-        schema: t.schema,
-        description: t.description,
-        params: defaultParams(t),
-        result: null,
-      };
-      setNodes((nds) => [...nds, { id: newNodeId(), type: renderTypeFor(t.type), position, data }]);
+      remember();
+      setNodes((nds) => [...nds, makeCanvasNode(t, position)]);
     },
-    [setNodes],
+    [setNodes, remember],
   );
 
   // ── Drag & drop from the node browser ─────────────────────────────────────
@@ -196,14 +271,46 @@ function CanvasInner() {
     e.dataTransfer.dropEffect = "move";
   }, []);
   const onDrop = useCallback(
-    (e: React.DragEvent) => {
+    async (e: React.DragEvent) => {
       e.preventDefault();
+      if (e.dataTransfer.files.length) {
+        const files = Array.from(e.dataTransfer.files);
+        const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        if (scope === "project" && slug) {
+          await api.uploadWorkspaceFiles(slug, files);
+          const added = files.flatMap((file, i) => {
+            const isMedia = /\.(png|jpe?g|gif|webp|svg|mp4|webm|mov|pdf)$/i.test(file.name);
+            const t = nodeTypes.find((nt) => nt.type === (isMedia ? "display.media" : "io.file_source"));
+            if (!t) return [];
+            const params = isMedia
+              ? { url: `/api/workspace/projects/${encodeURIComponent(slug)}/raw-file?path=${encodeURIComponent(file.name)}` }
+              : { source: "project", slug, path: file.name, mode: "text" };
+            return [makeCanvasNode(t, { x: pos.x + i * 32, y: pos.y + i * 32 }, params)];
+          });
+          remember();
+          setNodes((nds) => nds.concat(added));
+        } else {
+          const uploaded = await api.uploadChatFiles(files);
+          const added = uploaded.saved.flatMap((saved, i) => {
+            const isMedia = /\.(png|jpe?g|gif|webp|svg|mp4|webm|mov|pdf)$/i.test(saved.filename);
+            const t = nodeTypes.find((nt) => nt.type === (isMedia ? "display.media" : "io.file_source"));
+            if (!t) return [];
+            const params = isMedia
+              ? { url: `/api/media?path=${encodeURIComponent(saved.absolute_path)}` }
+              : { source: "files", path: saved.filename, mode: "text" };
+            return [makeCanvasNode(t, { x: pos.x + i * 32, y: pos.y + i * 32 }, params)];
+          });
+          remember();
+          setNodes((nds) => nds.concat(added));
+        }
+        return;
+      }
       const raw = e.dataTransfer.getData(CANVAS_DND_MIME);
       if (!raw) return;
       const t = JSON.parse(raw) as WorkflowNodeType;
       addNode(t, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
     },
-    [rf, addNode],
+    [rf, scope, slug, nodeTypes, addNode, setNodes, remember],
   );
 
   // ── Lists & catalog ───────────────────────────────────────────────────────
@@ -220,6 +327,29 @@ function CanvasInner() {
   useEffect(() => {
     api.getWorkflowNodeTypes().then((r) => setNodeTypes(r.nodeTypes)).catch(() => {});
   }, []);
+
+  const stopRun = useCallback(async () => {
+    if (!activeRunId) return;
+    try {
+      await api.cancelWorkflowRun(activeRunId);
+    } catch {
+      /* ignore */
+    }
+    setLastRunStatus("cancelling");
+  }, [activeRunId]);
+
+  const loadExecution = useCallback(
+    async (id: string) => {
+      try {
+        const detail = await api.getWorkflowExecution(id);
+        applyResults(detail.nodes);
+        setLastRunStatus(detail.status);
+      } catch {
+        /* ignore */
+      }
+    },
+    [applyResults],
+  );
 
   const loadCanvas = useCallback(
     async (target: OpenCanvas) => {
@@ -299,6 +429,7 @@ function CanvasInner() {
     const doc = buildDoc();
     try {
       await api.saveCanvas(doc);
+      await api.registerWorkflowTriggers(doc).catch(() => null);
       const target: OpenCanvas = { id: doc.id, name: doc.name, scope, slug: doc.slug };
       setCurrent(target);
       localStorage.setItem(LAST_KEY, JSON.stringify(target));
@@ -337,6 +468,73 @@ function CanvasInner() {
     newCanvas();
     void refreshLists();
   }, [current, newCanvas, refreshLists]);
+
+  const copySelection = useCallback(() => {
+    const ids = new Set(selectedIds);
+    clipboardRef.current = rf.getNodes().filter((n) => ids.has(n.id));
+  }, [rf, selectedIds]);
+
+  const pasteSelection = useCallback(() => {
+    if (!clipboardRef.current.length) return;
+    remember();
+    const pasted = clipboardRef.current.map((n) => {
+      const id = newNodeId();
+      return {
+        ...n,
+        id,
+        selected: true,
+        position: { x: n.position.x + 32, y: n.position.y + 32 },
+        data: { ...n.data, result: null },
+      };
+    });
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: false })).concat(pasted));
+    setSelectedIds(pasted.map((n) => n.id));
+  }, [remember, setNodes]);
+
+  const duplicateSelection = useCallback(() => {
+    copySelection();
+    pasteSelection();
+  }, [copySelection, pasteSelection]);
+
+  const undo = useCallback(() => {
+    const prev = undoRef.current.pop();
+    if (!prev) return;
+    redoRef.current.push({ nodes: rf.getNodes(), edges: rf.getEdges() });
+    setNodes(prev.nodes);
+    setEdges(prev.edges);
+  }, [rf, setNodes, setEdges]);
+
+  const redo = useCallback(() => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    undoRef.current.push({ nodes: rf.getNodes(), edges: rf.getEdges() });
+    setNodes(next.nodes);
+    setEdges(next.edges);
+  }, [rf, setNodes, setEdges]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === "c") {
+        copySelection();
+      } else if (e.key === "v") {
+        e.preventDefault();
+        pasteSelection();
+      } else if (e.key === "d") {
+        e.preventDefault();
+        duplicateSelection();
+      } else if (e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        redo();
+      } else if (e.key === "z") {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [copySelection, pasteSelection, duplicateSelection, undo, redo]);
 
   // ── Node browser grouping ─────────────────────────────────────────────────
   const grouped = useMemo(() => {
@@ -397,6 +595,20 @@ function CanvasInner() {
             {runningAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
             Run
           </button>
+          {activeRunId && (
+            <button
+              type="button"
+              onClick={() => void stopRun()}
+              className="flex h-7 items-center gap-1.5 rounded-sm bg-destructive px-2.5 text-xs font-semibold text-destructive-foreground transition hover:bg-destructive/90"
+            >
+              <Square className="h-3 w-3" /> Stop
+            </button>
+          )}
+          {lastRunStatus && (
+            <span className="rounded-sm border border-border px-2 py-1 text-[11px] text-muted-foreground">
+              {lastRunStatus}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setBrowserOpen((o) => !o)}
@@ -414,6 +626,15 @@ function CanvasInner() {
             {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> : saveState === "saved" ? <Check className="h-3 w-3" /> : <Save className="h-3 w-3" />}
             Save
           </button>
+          <button type="button" onClick={undo} title="Undo" className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground">
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={redo} title="Redo" className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground">
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={duplicateSelection} title="Duplicate selection" className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground">
+            <Copy className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -423,6 +644,16 @@ function CanvasInner() {
             className="flex h-7 items-center gap-1.5 rounded-sm border border-border px-2.5 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
           >
             <FolderOpen className="h-3 w-3" /> Open
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void refreshExecutions();
+              setHistoryOpen((o) => !o);
+            }}
+            className="flex h-7 items-center gap-1.5 rounded-sm border border-border px-2.5 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+          >
+            <History className="h-3 w-3" /> History
           </button>
           <button
             type="button"
@@ -460,6 +691,28 @@ function CanvasInner() {
           </div>
         )}
 
+        {historyOpen && (
+          <div className="absolute right-3 top-12 z-20 max-h-96 w-80 overflow-y-auto rounded-md border border-border bg-popover p-1.5 shadow-2xl">
+            {executions.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">No executions yet.</p>}
+            {executions.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => void loadExecution(ex.id)}
+                className="flex w-full flex-col gap-1 rounded-sm px-2 py-1.5 text-left text-xs text-foreground transition hover:bg-secondary"
+              >
+                <span className="flex w-full items-center justify-between gap-2">
+                  <span className="truncate font-mono text-[11px]">{ex.id}</span>
+                  <span className={ex.status === "success" ? "text-emerald-400" : "text-destructive"}>{ex.status}</span>
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {ex.trigger} · {new Date(ex.started_at * 1000).toLocaleString()}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Flow */}
         <div ref={wrapperRef} className="min-h-0 flex-1" onDrop={onDrop} onDragOver={onDragOver}>
           <CanvasNodeContext.Provider value={nodeApi}>
@@ -470,6 +723,13 @@ function CanvasInner() {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onInit={(inst) => (instanceRef.current = inst)}
+              onSelectionChange={({ nodes: selected }) => setSelectedIds(selected.map((n) => n.id))}
+              onEdgeMouseEnter={((_event, edge) => {
+                const source = nodes.find((n) => n.id === edge.source);
+                const items = ((source?.data as CanvasNodeData | undefined)?.result?.items ?? []) as unknown[];
+                setEdgePreview({ x: _event.clientX, y: _event.clientY, edge, items });
+              }) as EdgeMouseHandler}
+              onEdgeMouseLeave={() => setEdgePreview(null)}
               nodeTypes={renderNodeTypes}
               fitView
               proOptions={{ hideAttribution: true }}
@@ -481,6 +741,19 @@ function CanvasInner() {
               <MiniMap pannable zoomable className="!bg-card" />
             </ReactFlow>
           </CanvasNodeContext.Provider>
+          {edgePreview && (
+            <div
+              className="pointer-events-none fixed z-50 max-w-xs rounded-md border border-border bg-popover p-2 text-[10px] text-foreground shadow-xl"
+              style={{ left: edgePreview.x + 12, top: edgePreview.y + 12 }}
+            >
+              <div className="mb-1 font-semibold text-muted-foreground">
+                {edgePreview.edge.source} → {edgePreview.edge.target} · {edgePreview.items.length} item(s)
+              </div>
+              <pre className="max-h-32 overflow-hidden whitespace-pre-wrap font-mono">
+                {JSON.stringify(edgePreview.items.slice(0, 2).map((i) => (i as { json?: unknown }).json ?? i), null, 2)}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
 

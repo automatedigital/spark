@@ -31,6 +31,14 @@ from pydantic import BaseModel, Field
 
 _log = logging.getLogger(__name__)
 
+
+def _noop_emit(event: str, data: dict[str, Any]) -> None:
+    return None
+
+
+def _never_cancelled() -> bool:
+    return False
+
 # ── Data envelope ───────────────────────────────────────────────────────────
 Item = dict[str, Any]
 
@@ -80,10 +88,11 @@ class ExecContext:
     execution_id: str
     # node_id -> output items produced this run (for field-mapping resolution).
     outputs: dict[str, list[Item]] = field(default_factory=dict)
-    emit: Callable[[str, dict[str, Any]], None] = lambda event, data: None
+    state: dict[str, Any] = field(default_factory=dict)
+    emit: Callable[[str, dict[str, Any]], None] = _noop_emit
     # Project slug for project-scoped canvases (working dir for agent/tool nodes).
     slug: str | None = None
-    cancelled: Callable[[], bool] = lambda: False
+    cancelled: Callable[[], bool] = _never_cancelled
     max_iterations: int = 1000
 
 
@@ -198,8 +207,17 @@ def _incoming_items(node_id: str, doc: WorkflowDoc, ctx: ExecContext) -> list[It
     items: list[Item] = []
     for e in doc.edges:
         if e.target == node_id:
-            items.extend(ctx.outputs.get(e.source, []))
+            edge_items = ctx.outputs.get(e.source, [])
+            if e.sourceHandle:
+                edge_items = [
+                    it for it in edge_items if str((it.get("json") or {}).get("__branch", "")) == str(e.sourceHandle)
+                ]
+            items.extend(edge_items)
     return items
+
+
+def _has_incoming_edge(node_id: str, doc: WorkflowDoc) -> bool:
+    return any(e.target == node_id for e in doc.edges)
 
 
 @dataclass
@@ -227,6 +245,7 @@ def execute_workflow(
     seed: list[Item] | None = None,
     start_node: str | None = None,
     cancelled: Callable[[], bool] | None = None,
+    max_iterations: int = 1000,
 ) -> ExecutionResult:
     """Run a workflow to completion in topological order.
 
@@ -239,6 +258,7 @@ def execute_workflow(
         emit=emit or (lambda event, data: None),
         slug=doc.slug,
         cancelled=cancelled or (lambda: False),
+        max_iterations=max_iterations,
     )
     result = ExecutionResult(execution_id=execution_id, status="success")
 
@@ -255,7 +275,12 @@ def execute_workflow(
             break
 
         spec = get_node_spec(node.type)
-        inputs = seed if (start_node and seed is not None) else _incoming_items(node_id, doc, ctx)
+        if start_node and seed is not None:
+            inputs = seed
+        elif seed is not None and not _has_incoming_edge(node_id, doc):
+            inputs = seed
+        else:
+            inputs = _incoming_items(node_id, doc, ctx)
         ctx.emit("node.started", {"nodeId": node_id, "type": node.type})
         started = time.monotonic()
 

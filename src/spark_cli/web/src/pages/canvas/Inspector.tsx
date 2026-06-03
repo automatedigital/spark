@@ -25,7 +25,22 @@ function fieldsFor(data: CanvasNodeData): Array<{ key: string; kind: "text" | "t
     case "agent":
       return [
         { key: "model", kind: "text" },
+        { key: "maxIterations", kind: "text" },
+        { key: "toolsets", kind: "text" },
+        { key: "skipMemory", kind: "text" },
         { key: "prompt", kind: "textarea" },
+      ];
+    case "workflow.subworkflow":
+      return [
+        { key: "scope", kind: "text" },
+        { key: "slug", kind: "text" },
+        { key: "canvasId", kind: "text" },
+      ];
+    case "memory.context":
+      return [
+        { key: "mode", kind: "text" },
+        { key: "key", kind: "text" },
+        { key: "value", kind: "textarea" },
       ];
     case "trigger.manual":
       return [{ key: "payload", kind: "json" }];
@@ -65,6 +80,44 @@ function fieldsFor(data: CanvasNodeData): Array<{ key: string; kind: "text" | "t
       ];
     case "action.wait":
       return [{ key: "seconds", kind: "text" }];
+    case "display.render":
+      return [
+        { key: "format", kind: "text" },
+        { key: "content", kind: "textarea" },
+      ];
+    case "display.iframe":
+      return [
+        { key: "url", kind: "text" },
+        { key: "allowDomains", kind: "text" },
+        { key: "blockDomains", kind: "text" },
+      ];
+    case "io.file_source":
+      return [
+        { key: "source", kind: "text" },
+        { key: "slug", kind: "text" },
+        { key: "path", kind: "text" },
+        { key: "mode", kind: "text" },
+      ];
+    case "io.write_file":
+      return [
+        { key: "source", kind: "text" },
+        { key: "slug", kind: "text" },
+        { key: "path", kind: "text" },
+        { key: "content", kind: "textarea" },
+      ];
+    case "io.read_table":
+      return [
+        { key: "source", kind: "text" },
+        { key: "slug", kind: "text" },
+        { key: "path", kind: "text" },
+      ];
+    case "io.write_table":
+      return [
+        { key: "source", kind: "text" },
+        { key: "slug", kind: "text" },
+        { key: "path", kind: "text" },
+        { key: "rows", kind: "json" },
+      ];
     case "tool": {
       const props = data.schema?.properties ?? {};
       return Object.keys(props).map((key) => ({ key, kind: "text" as const }));

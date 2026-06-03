@@ -80,6 +80,24 @@ def test_missing_execution_404(client):
     assert client.get("/api/workflows/executions/nope").status_code == 404
 
 
+def test_async_run_streams_node_events(client):
+    res = client.post("/api/workflows/run-async", json={"doc": _simple_doc(), "trigger": "manual"})
+    assert res.status_code == 200, res.text
+    exec_id = res.json()["executionId"]
+
+    with client.stream("GET", f"/api/workflows/runs/{exec_id}/events") as stream:
+        body = "".join(stream.iter_text())
+
+    assert "event: node.started" in body
+    assert "event: node.succeeded" in body
+    assert "event: execution.result" in body
+
+
+def test_cancel_missing_run_404(client):
+    res = client.post("/api/workflows/runs/nope/cancel")
+    assert res.status_code == 404
+
+
 def test_register_workflow_triggers(client):
     doc = _simple_doc()
     doc["nodes"][0] = {"id": "a", "type": "trigger.webhook", "params": {"secret": "hook-secret"}}

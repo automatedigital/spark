@@ -830,6 +830,22 @@ export const api = {
       body: JSON.stringify({ doc, trigger }),
     }),
 
+  runWorkflowAsync: (doc: CanvasDoc, trigger = "manual") =>
+    fetchJSON<{ executionId: string; status: string }>("/api/workflows/run-async", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc, trigger }),
+    }),
+
+  streamWorkflowRun: (executionId: string): EventSource =>
+    new EventSource(sseUrl(`/api/workflows/runs/${encodeURIComponent(executionId)}/events`)),
+
+  cancelWorkflowRun: (executionId: string) =>
+    fetchJSON<{ ok: boolean; executionId: string; status: string }>(
+      `/api/workflows/runs/${encodeURIComponent(executionId)}/cancel`,
+      { method: "POST" },
+    ),
+
   runWorkflowNode: (doc: CanvasDoc, nodeId: string, seed?: WorkflowItem[]) =>
     fetchJSON<WorkflowRunResult>("/api/workflows/run-node", {
       method: "POST",
@@ -846,6 +862,16 @@ export const api = {
       `/api/workflows/executions${qs.toString() ? `?${qs}` : ""}`,
     );
   },
+
+  getWorkflowExecution: (executionId: string) =>
+    fetchJSON<WorkflowExecutionDetail>(`/api/workflows/executions/${encodeURIComponent(executionId)}`),
+
+  registerWorkflowTriggers: (doc: CanvasDoc) =>
+    fetchJSON<{ ok: boolean; triggers: WorkflowTrigger[] }>("/api/workflows/triggers/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc }),
+    }),
 
   // ── Canvas ──
   listCanvases: () => fetchJSON<CanvasListResponse>("/api/canvases"),
@@ -1604,6 +1630,23 @@ export interface WorkflowExecutionSummary {
   started_at: number;
   finished_at: number;
   trigger: string;
+}
+
+export interface WorkflowExecutionDetail extends WorkflowExecutionSummary {
+  nodes: WorkflowNodeResult[];
+}
+
+export interface WorkflowTrigger {
+  id: string;
+  canvas_id: string;
+  node_id: string;
+  kind: string;
+  enabled: boolean;
+  secret?: string | null;
+  schedule?: string | null;
+  path?: string | null;
+  next_run_at?: number | null;
+  last_run_at?: number | null;
 }
 
 export interface FileListEntry {

@@ -9,8 +9,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import queue
 import threading
 import time
 import uuid
@@ -19,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from spark_cli import workflow_store
@@ -31,10 +34,28 @@ router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 # Guardrails
 _MAX_NODES = 200
+_DEFAULT_TIMEOUT_SECONDS = 300
+_MAX_TIMEOUT_SECONDS = 3600
+_MAX_ITERATIONS = 1000
 _TRIGGER_TICK_SECONDS = 30
 _ticker_started = False
 _ticker_stop = threading.Event()
 _ticker_lock = threading.Lock()
+_runs_lock = threading.Lock()
+_runs: dict[str, WorkflowRunState] = {}
+
+
+class WorkflowRunState:
+    def __init__(self, execution_id: str) -> None:
+        self.execution_id = execution_id
+        self.events: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()
+        self.cancelled = threading.Event()
+        self.finished = threading.Event()
+        self.result: dict[str, Any] | None = None
+        self.error: str | None = None
+
+    def emit(self, event: str, data: dict[str, Any]) -> None:
+        self.events.put((event, {"executionId": self.execution_id, **data}))
 
 
 @router.get("/node-types")
@@ -45,6 +66,8 @@ def get_node_types() -> dict[str, Any]:
 class RunBody(BaseModel):
     doc: WorkflowDoc
     trigger: str = "manual"
+    timeoutSeconds: int | None = None
+    maxIterations: int | None = None
 
 
 def _node_results_payload(result) -> list[dict[str, Any]]:
@@ -60,16 +83,34 @@ def _node_results_payload(result) -> list[dict[str, Any]]:
     ]
 
 
-def _run_and_record(doc: WorkflowDoc, *, trigger: str, seed: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _run_and_record(
+    doc: WorkflowDoc,
+    *,
+    trigger: str,
+    seed: list[dict[str, Any]] | None = None,
+    execution_id: str | None = None,
+    emit=None,
+    cancelled=None,
+    timeout_seconds: int | None = None,
+    max_iterations: int | None = None,
+) -> dict[str, Any]:
     if len(doc.nodes) > _MAX_NODES:
         raise HTTPException(status_code=400, detail=f"Too many nodes (>{_MAX_NODES})")
-    execution_id = "exec_" + uuid.uuid4().hex[:12]
+    execution_id = execution_id or "exec_" + uuid.uuid4().hex[:12]
     started = time.time()
+    deadline = started + _clamp_timeout(timeout_seconds)
+
+    def is_cancelled() -> bool:
+        return bool(cancelled and cancelled()) or time.time() > deadline
+
     try:
         result = execute_workflow(
             doc,
             execution_id=execution_id,
+            emit=emit,
             seed=[make_item(i.get("json"), i.get("binary")) for i in seed] if seed else None,
+            cancelled=is_cancelled,
+            max_iterations=_clamp_iterations(max_iterations),
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc))
@@ -100,7 +141,48 @@ def _run_and_record(doc: WorkflowDoc, *, trigger: str, seed: list[dict[str, Any]
 
 @router.post("/run")
 def run_workflow(body: RunBody) -> dict[str, Any]:
-    return _run_and_record(body.doc, trigger=body.trigger)
+    return _run_and_record(
+        body.doc,
+        trigger=body.trigger,
+        timeout_seconds=body.timeoutSeconds,
+        max_iterations=body.maxIterations,
+    )
+
+
+@router.post("/run-async")
+def run_workflow_async(body: RunBody) -> dict[str, Any]:
+    if len(body.doc.nodes) > _MAX_NODES:
+        raise HTTPException(status_code=400, detail=f"Too many nodes (>{_MAX_NODES})")
+    execution_id = "exec_" + uuid.uuid4().hex[:12]
+    state = WorkflowRunState(execution_id)
+    with _runs_lock:
+        _runs[execution_id] = state
+    thread = threading.Thread(
+        target=_run_workflow_background,
+        args=(state, body),
+        name=f"workflow-run-{execution_id}",
+        daemon=True,
+    )
+    thread.start()
+    return {"executionId": execution_id, "status": "running"}
+
+
+@router.post("/runs/{execution_id}/cancel")
+def cancel_workflow_run(execution_id: str) -> dict[str, Any]:
+    state = _runs.get(execution_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Run not found")
+    state.cancelled.set()
+    state.emit("execution.cancelled", {})
+    return {"ok": True, "executionId": execution_id, "status": "cancelling"}
+
+
+@router.get("/runs/{execution_id}/events")
+def stream_workflow_events(execution_id: str) -> StreamingResponse:
+    state = _runs.get(execution_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return StreamingResponse(_event_stream(state), media_type="text/event-stream")
 
 
 class RunNodeBody(BaseModel):
@@ -148,6 +230,53 @@ def get_execution(execution_id: str) -> dict[str, Any]:
     if not ex:
         raise HTTPException(status_code=404, detail="Execution not found")
     return ex
+
+
+def _run_workflow_background(state: WorkflowRunState, body: RunBody) -> None:
+    try:
+        state.result = _run_and_record(
+            body.doc,
+            trigger=body.trigger,
+            execution_id=state.execution_id,
+            emit=state.emit,
+            cancelled=state.cancelled.is_set,
+            timeout_seconds=body.timeoutSeconds,
+            max_iterations=body.maxIterations,
+        )
+        state.emit("execution.result", state.result)
+    except Exception as exc:  # noqa: BLE001
+        state.error = str(exc)
+        state.emit("execution.failed", {"error": state.error})
+    finally:
+        state.finished.set()
+        state.events.put(None)
+
+
+def _event_stream(state: WorkflowRunState):
+    yield _sse("execution.connected", {"executionId": state.execution_id})
+    while True:
+        event = state.events.get()
+        if event is None:
+            break
+        name, data = event
+        yield _sse(name, data)
+    yield _sse("execution.closed", {"executionId": state.execution_id})
+
+
+def _sse(event: str, data: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _clamp_timeout(value: int | None) -> int:
+    if value is None:
+        return _DEFAULT_TIMEOUT_SECONDS
+    return min(max(int(value), 1), _MAX_TIMEOUT_SECONDS)
+
+
+def _clamp_iterations(value: int | None) -> int:
+    if value is None:
+        return _MAX_ITERATIONS
+    return min(max(int(value), 1), _MAX_ITERATIONS)
 
 
 class RegisterTriggersBody(BaseModel):
