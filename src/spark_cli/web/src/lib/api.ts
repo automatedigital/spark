@@ -819,6 +819,60 @@ export const api = {
       { method: "DELETE" },
     ),
 
+  // ── Workflows (Canvas execution engine) ──
+  getWorkflowNodeTypes: () =>
+    fetchJSON<{ nodeTypes: WorkflowNodeType[] }>("/api/workflows/node-types"),
+
+  runWorkflow: (doc: CanvasDoc, trigger = "manual") =>
+    fetchJSON<WorkflowRunResult>("/api/workflows/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc, trigger }),
+    }),
+
+  runWorkflowAsync: (doc: CanvasDoc, trigger = "manual") =>
+    fetchJSON<{ executionId: string; status: string }>("/api/workflows/run-async", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc, trigger }),
+    }),
+
+  streamWorkflowRun: (executionId: string): EventSource =>
+    new EventSource(sseUrl(`/api/workflows/runs/${encodeURIComponent(executionId)}/events`)),
+
+  cancelWorkflowRun: (executionId: string) =>
+    fetchJSON<{ ok: boolean; executionId: string; status: string }>(
+      `/api/workflows/runs/${encodeURIComponent(executionId)}/cancel`,
+      { method: "POST" },
+    ),
+
+  runWorkflowNode: (doc: CanvasDoc, nodeId: string, seed?: WorkflowItem[]) =>
+    fetchJSON<WorkflowRunResult>("/api/workflows/run-node", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc, nodeId, seed }),
+    }),
+
+  listWorkflowExecutions: (canvas?: string, scope?: string, slug?: string | null) => {
+    const qs = new URLSearchParams();
+    if (canvas) qs.set("canvas", canvas);
+    if (scope) qs.set("scope", scope);
+    if (slug) qs.set("slug", slug);
+    return fetchJSON<{ executions: WorkflowExecutionSummary[] }>(
+      `/api/workflows/executions${qs.toString() ? `?${qs}` : ""}`,
+    );
+  },
+
+  getWorkflowExecution: (executionId: string) =>
+    fetchJSON<WorkflowExecutionDetail>(`/api/workflows/executions/${encodeURIComponent(executionId)}`),
+
+  registerWorkflowTriggers: (doc: CanvasDoc) =>
+    fetchJSON<{ ok: boolean; triggers: WorkflowTrigger[] }>("/api/workflows/triggers/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc }),
+    }),
+
   // ── Canvas ──
   listCanvases: () => fetchJSON<CanvasListResponse>("/api/canvases"),
 
@@ -1524,6 +1578,75 @@ export interface CanvasSummary {
 
 export interface CanvasListResponse {
   canvases: CanvasSummary[];
+}
+
+// ── Workflow engine types ─────────────────────────────────────────────────
+export interface WorkflowNodeType {
+  type: string;
+  category: "trigger" | "action" | "control" | "agent" | "io" | "display";
+  label: string;
+  emoji?: string;
+  tool?: string;
+  toolset?: string;
+  description?: string;
+  schema?: { properties?: Record<string, JsonSchemaProp>; required?: string[] };
+}
+
+export interface JsonSchemaProp {
+  type?: string;
+  description?: string;
+  enum?: unknown[];
+  default?: unknown;
+  [key: string]: unknown;
+}
+
+export interface WorkflowItem {
+  json: Record<string, unknown>;
+  binary?: Record<string, unknown>;
+}
+
+export interface WorkflowNodeResult {
+  nodeId: string;
+  status: "success" | "error" | "skipped";
+  items: WorkflowItem[];
+  error: string | null;
+  durationMs: number;
+}
+
+export interface WorkflowRunResult {
+  executionId: string;
+  status: "success" | "error";
+  error: string | null;
+  nodes: WorkflowNodeResult[];
+}
+
+export interface WorkflowExecutionSummary {
+  id: string;
+  canvas_id: string;
+  scope: string;
+  slug: string | null;
+  status: string;
+  error: string | null;
+  started_at: number;
+  finished_at: number;
+  trigger: string;
+}
+
+export interface WorkflowExecutionDetail extends WorkflowExecutionSummary {
+  nodes: WorkflowNodeResult[];
+}
+
+export interface WorkflowTrigger {
+  id: string;
+  canvas_id: string;
+  node_id: string;
+  kind: string;
+  enabled: boolean;
+  secret?: string | null;
+  schedule?: string | null;
+  path?: string | null;
+  next_run_at?: number | null;
+  last_run_at?: number | null;
 }
 
 export interface FileListEntry {
