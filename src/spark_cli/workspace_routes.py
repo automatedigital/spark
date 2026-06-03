@@ -872,6 +872,104 @@ def _is_loopback_url(url: str) -> bool:
     return urllib.parse.urlparse(url).hostname in {"127.0.0.1", "localhost", "::1"}
 
 
+def _probe_preview_url(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=0.8) as resp:
+            return 200 <= int(resp.status) < 500
+    except Exception:
+        return False
+
+
+def _process_cwd(pid: int) -> Path | None:
+    proc_cwd = Path("/proc") / str(pid) / "cwd"
+    try:
+        if proc_cwd.exists():
+            return proc_cwd.resolve()
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(
+            ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+    except Exception:
+        return None
+    for line in result.stdout.splitlines():
+        if line.startswith("n"):
+            try:
+                return Path(line[1:]).resolve()
+            except Exception:
+                return None
+    return None
+
+
+def _path_is_inside(path: Path | None, parent: Path) -> bool:
+    if path is None:
+        return False
+    try:
+        path.relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _list_loopback_listeners() -> list[tuple[int, int]]:
+    listeners: list[tuple[int, int]] = []
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-FnPi"],
+            capture_output=True,
+            text=True,
+            timeout=2.5,
+            check=False,
+        )
+    except Exception:
+        return listeners
+
+    pid: int | None = None
+    for line in result.stdout.splitlines():
+        if line.startswith("p"):
+            try:
+                pid = int(line[1:])
+            except ValueError:
+                pid = None
+        elif pid is not None and line.startswith("n"):
+            endpoint = line[1:]
+            if "->" in endpoint:
+                continue
+            match = re.search(r"(?:127\.0\.0\.1|localhost|\*)[:.](\d+)$", endpoint)
+            if match:
+                listeners.append((pid, int(match.group(1))))
+    return listeners
+
+
+def _find_running_project_preview(project_dir: Path) -> dict[str, Any] | None:
+    seen_ports: set[int] = set()
+    for pid, port in _list_loopback_listeners():
+        if port in seen_ports:
+            continue
+        cwd = _process_cwd(pid)
+        if not _path_is_inside(cwd, project_dir):
+            continue
+        url = f"http://127.0.0.1:{port}"
+        if not _probe_preview_url(url):
+            continue
+        seen_ports.add(port)
+        return {
+            "kind": "existing",
+            "command": None,
+            "url": url,
+            "port": port,
+            "process": None,
+            "auto_refresh": False,
+            "auto_verify": True,
+        }
+    return None
+
+
 def _detect_preview(project_dir: Path, requested_command: str | None = None, requested_url: str | None = None) -> dict[str, Any]:
     port = _find_free_loopback_port()
     config_path = project_dir / "spark.preview.json"
@@ -886,6 +984,20 @@ def _detect_preview(project_dir: Path, requested_command: str | None = None, req
     requested_command = requested_command or config.get("command")
     requested_url = requested_url or config.get("url")
     requested_url = _normalize_browser_url(requested_url) if requested_url else None
+    if requested_url and _is_loopback_url(requested_url) and _probe_preview_url(requested_url):
+        parsed = urllib.parse.urlparse(requested_url)
+        return {
+            "kind": "existing",
+            "command": None,
+            "url": requested_url,
+            "port": int(parsed.port or 80),
+            "process": None,
+            "auto_refresh": False,
+            "auto_verify": bool(config.get("autoVerify", True)),
+        }
+    existing = _find_running_project_preview(project_dir)
+    if existing and not requested_command:
+        return existing
     if requested_command:
         return {
             "kind": "custom",
@@ -1024,7 +1136,7 @@ def start_preview(slug: str, body: PreviewStart | None = None):
 
     detected = _detect_preview(project_dir, body.command if body else None, body.url if body else None)
     cwd = Path(detected.get("cwd") or project_dir)
-    command = str(detected["command"])
+    command = str(detected["command"]) if detected.get("command") else None
     env = {**os.environ, "HOST": "127.0.0.1", "PORT": str(detected["port"])}
     session = {
         "slug": slug,
@@ -1034,7 +1146,7 @@ def start_preview(slug: str, body: PreviewStart | None = None):
         "port": detected["port"],
         "kind": detected["kind"],
         "error": None,
-        "process": None,
+        "process": detected.get("process"),
         "logs": [],
         "project_dir": str(project_dir),
         "auto_refresh": detected.get("auto_refresh", True),
@@ -1044,6 +1156,20 @@ def start_preview(slug: str, body: PreviewStart | None = None):
     }
     _preview_sessions[slug] = session
     _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+
+    if command is None:
+        session["status"] = "running"
+        session["updated_at"] = time.time()
+        _append_preview_log(slug, session, f"Using existing app at {session['url']}\n", "server")
+        browser_result = _run_agent_browser(slug, ["open", str(session["url"])])
+        if browser_result and browser_result.get("success"):
+            _append_preview_log(slug, session, f"agent-browser opened {session['url']}", "browser")
+        elif browser_result:
+            _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
+        ready_payload = {"type": "state", **_preview_status_payload(slug, session)}
+        _preview_emit(slug, ready_payload)
+        _publish_workspace_event("workspace.preview.ready", ready_payload)
+        return _preview_status_payload(slug, session)
 
     try:
         proc = subprocess.Popen(

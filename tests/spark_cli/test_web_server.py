@@ -461,6 +461,36 @@ class TestWebServerEndpoints:
         finally:
             self.client.post(f"/api/workspace/projects/{slug}/preview/stop")
 
+    def test_workspace_preview_reuses_existing_project_server(self, monkeypatch):
+        from spark_cli import workspace_routes as routes
+
+        created = self.client.post("/api/workspace/projects", json={"name": "preview-existing"}).json()
+        slug = created["slug"]
+
+        monkeypatch.setattr(
+            routes,
+            "_find_running_project_preview",
+            lambda project_dir: {
+                "kind": "existing",
+                "command": None,
+                "url": "http://127.0.0.1:5949",
+                "port": 5949,
+                "process": None,
+                "auto_refresh": False,
+                "auto_verify": True,
+            },
+        )
+        monkeypatch.setattr(routes, "_run_agent_browser", lambda *args, **kwargs: {"success": True})
+
+        start = self.client.post(f"/api/workspace/projects/{slug}/preview/start", json={})
+
+        assert start.status_code == 200
+        body = start.json()
+        assert body["status"] == "running"
+        assert body["kind"] == "existing"
+        assert body["url"] == "http://127.0.0.1:5949"
+        assert body["command"] is None
+
     def test_workspace_preview_logs_are_bounded_and_redacted(self):
         from spark_cli import workspace_routes as routes
 

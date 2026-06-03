@@ -33,20 +33,30 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const [status, setStatus] = useState<WorkspacePreviewStatus | null>(null);
+  const [frameSrc, setFrameSrc] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [logs, setLogs] = useState<WorkspacePreviewLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [logFilter, setLogFilter] = useState<"all" | "server" | "console" | "network" | "error">("all");
   const [lastRefreshReason, setLastRefreshReason] = useState<string | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
 
   const activeUrl = status?.url ?? "";
-  const frameUrl = useMemo(() => {
-    if (!activeUrl) return "";
-    const sep = activeUrl.includes("?") ? "&" : "?";
-    return `${activeUrl}${sep}spark_preview_reload=${reloadNonce}`;
-  }, [activeUrl, reloadNonce]);
+
+  useEffect(() => {
+    setFrameSrc(activeUrl);
+  }, [activeUrl]);
+
+  const reloadFrame = useCallback(() => {
+    const frame = iframeRef.current;
+    if (!frame) return;
+    try {
+      frame.contentWindow?.location.reload();
+    } catch {
+      setFrameSrc("");
+      window.setTimeout(() => setFrameSrc(activeUrl), 0);
+    }
+  }, [activeUrl]);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -81,7 +91,7 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
         setLogs((prev) => [...prev.slice(-499), event]);
       } else if (event.type === "refresh") {
         setLastRefreshReason(event.reason ?? "manual");
-        setReloadNonce((n) => n + 1);
+        reloadFrame();
       }
     };
     source.onerror = () => {
@@ -92,7 +102,7 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
       source.close();
       if (eventSourceRef.current === source) eventSourceRef.current = null;
     };
-  }, [loadLogs, loadStatus, slug]);
+  }, [loadLogs, loadStatus, reloadFrame, slug]);
 
   const start = async () => {
     setLoading(true);
@@ -100,7 +110,6 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
       const next = await api.startWorkspacePreview(slug);
       setStatus(next);
       setUrlInput(next.url ?? "");
-      setReloadNonce((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -121,7 +130,6 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
       const next = await api.restartWorkspacePreview(slug);
       setStatus(next);
       setUrlInput(next.url ?? "");
-      setReloadNonce((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -134,7 +142,6 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
     try {
       const next = await api.navigateWorkspacePreview(slug, trimmed);
       setStatus(next);
-      setReloadNonce((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -142,7 +149,7 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
 
   const refresh = () => {
     setLastRefreshReason("manual");
-    setReloadNonce((n) => n + 1);
+    reloadFrame();
     void api.refreshWorkspacePreview(slug).catch(() => {});
   };
 
@@ -222,12 +229,11 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
       </div>
 
       <div className="relative min-h-0 flex-1 bg-black/20">
-        {frameUrl ? (
+        {frameSrc ? (
           <iframe
             ref={iframeRef}
-            key={frameUrl}
             title="Workspace browser"
-            src={frameUrl}
+            src={frameSrc}
             className="h-full w-full border-0 bg-white"
             sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
           />
