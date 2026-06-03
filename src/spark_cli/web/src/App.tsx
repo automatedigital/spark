@@ -8,12 +8,14 @@ import {
   LayoutGrid,
   MessageSquare,
   Package,
+  PenTool,
   Settings,
 } from "lucide-react";
 import ChatPage from "@/pages/ChatPage";
 import CronPage from "@/pages/CronPage";
 import FilesPage from "@/pages/FilesPage";
 import KanbanPage from "@/pages/KanbanPage";
+import CanvasPage from "@/pages/CanvasPage";
 import SkillsPage from "@/pages/SkillsPage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
@@ -24,12 +26,14 @@ import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { GLOBAL_NAV_EVENT, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
 
 
 const NAV_ITEMS = [
   { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
   { id: "files", labelKey: "files" as const, icon: FolderOpen },
+  { id: "canvas", labelKey: "canvas" as const, icon: PenTool },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
@@ -43,9 +47,10 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   cron: CronPage,
   skills: SkillsPage,
   files: FilesPage,
+  canvas: CanvasPage,
 };
 
-const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files"]);
+const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas"]);
 
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
@@ -122,6 +127,17 @@ export default function App() {
     setPage(id);
     localStorage.setItem("spark-active-page", id);
   };
+
+  // A canvas nav target (e.g. opening a *.canvas.json from Files) switches to the
+  // Canvas tab; CanvasPage itself consumes the target to open the right canvas.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<GlobalNavTarget>).detail;
+      if (target?.type === "canvas") navigateTo("canvas");
+    };
+    window.addEventListener(GLOBAL_NAV_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
+  }, []);
 
   const toggleNav = (value: boolean) => {
     setNavExpanded(value);

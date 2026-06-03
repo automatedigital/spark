@@ -3,7 +3,9 @@ export type GlobalNavTarget =
   | { type: "thread"; id: string }
   | { type: "task"; id: string }
   | { type: "scheduled-task"; id: string }
-  | { type: "skill"; id: string };
+  | { type: "skill"; id: string }
+  // Canvas: `id` is the canvas id; `scope`/`slug` locate it (global vs a project).
+  | { type: "canvas"; id: string; scope: "global" | "project"; slug?: string | null };
 
 export const GLOBAL_NAV_TARGET_KEY = "spark-global-nav-target";
 export const GLOBAL_NAV_EVENT = "spark-global-nav";

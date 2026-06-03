@@ -39,6 +39,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { api, mediaFileUrl } from "@/lib/api";
 import type { FileListEntry } from "@/lib/api";
+import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -576,6 +577,12 @@ export default function FilesPage() {
   }, []);
 
   const handleSelectFile = async (entry: FileListEntry) => {
+    // Canvas files open in the Canvas tab rather than the inline editor.
+    if (entry.name.endsWith(".canvas.json")) {
+      const id = entry.name.slice(0, -".canvas.json".length);
+      setGlobalNavTarget({ type: "canvas", id, scope: "global", slug: null });
+      return;
+    }
     const cat = fileCategory(entry.name);
     if (cat === "text") {
       setSelectedFile({ path: entry.path, name: entry.name, content: null, loading: true, dirty: false });
