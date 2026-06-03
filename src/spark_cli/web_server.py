@@ -61,6 +61,7 @@ from spark_cli.dashboard_auth import (
 )
 from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.kanban_routes import register_kanban_routes
+from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
 from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
 
@@ -6142,6 +6143,7 @@ register_kanban_routes(app)
 register_workspace_routes(app)
 register_connectors_routes(app)
 register_canvas_routes(app)
+register_workflow_routes(app)
 
 
 # ── Workspace conversation endpoints ─────────────────────────────────────────

@@ -1,72 +1,68 @@
-import {
-  MessageSquare,
-  StickyNote,
-  Bot,
-  Wrench,
-  LogIn,
-  LogOut,
-  type LucideIcon,
-} from "lucide-react";
+import type { WorkflowNodeType, WorkflowNodeResult } from "@/lib/api";
 
-export type CanvasNodeKind = "note" | "chat" | "agent" | "tool" | "input" | "output";
+/** dataTransfer MIME used when dragging a node type from the browser onto the canvas. */
+export const CANVAS_DND_MIME = "application/spark-canvas-node";
 
-export interface PaletteItem {
-  kind: CanvasNodeKind;
+/** What lives in a React Flow node's `data` for a Canvas node. */
+export interface CanvasNodeData {
+  nodeType: string; // engine type, e.g. "tool" | "agent" | "trigger.manual" | "display.iframe"
   label: string;
-  description: string;
-  icon: LucideIcon;
-  /** Default `data` payload for a freshly-dropped node of this kind. */
-  defaults: () => Record<string, unknown>;
+  emoji?: string;
+  category: WorkflowNodeType["category"];
+  tool?: string;
+  schema?: WorkflowNodeType["schema"];
+  description?: string;
+  params: Record<string, unknown>;
+  result?: WorkflowNodeResult | null;
+  [key: string]: unknown;
 }
 
-export const PALETTE: PaletteItem[] = [
-  {
-    kind: "note",
-    label: "Note",
-    description: "A sticky text note",
-    icon: StickyNote,
-    defaults: () => ({ text: "" }),
-  },
-  {
-    kind: "chat",
-    label: "Chat",
-    description: "Talk to the agent (canvas-local)",
-    icon: MessageSquare,
-    defaults: () => ({ messages: [] as Array<{ role: string; content: string }> }),
-  },
-  {
-    kind: "agent",
-    label: "Agent",
-    description: "Run a prompt through the agent",
-    icon: Bot,
-    defaults: () => ({ prompt: "", model: "", output: "" }),
-  },
-  {
-    kind: "tool",
-    label: "Tool",
-    description: "Wrap a Spark tool call",
-    icon: Wrench,
-    defaults: () => ({ tool: "", args: "{}", output: "" }),
-  },
-  {
-    kind: "input",
-    label: "Input",
-    description: "A value fed into the graph",
-    icon: LogIn,
-    defaults: () => ({ value: "" }),
-  },
-  {
-    kind: "output",
-    label: "Output",
-    description: "A terminal result",
-    icon: LogOut,
-    defaults: () => ({ value: "" }),
-  },
-];
+/** Map an engine node type to the React Flow render component key. */
+export function renderTypeFor(nodeType: string): string {
+  switch (nodeType) {
+    case "display.iframe":
+      return "iframe";
+    case "display.preview":
+      return "preview";
+    case "display.media":
+      return "media";
+    case "display.note":
+      return "note";
+    default:
+      return "workflow";
+  }
+}
 
-export const PALETTE_BY_KIND: Record<CanvasNodeKind, PaletteItem> = Object.fromEntries(
-  PALETTE.map((p) => [p.kind, p]),
-) as Record<CanvasNodeKind, PaletteItem>;
+export const CATEGORY_ACCENT: Record<string, string> = {
+  trigger: "text-emerald-400",
+  action: "text-sky-400",
+  control: "text-amber-400",
+  agent: "text-violet-400",
+  io: "text-rose-400",
+  display: "text-muted-foreground",
+};
 
-/** dataTransfer MIME used when dragging a palette item onto the canvas. */
-export const CANVAS_DND_MIME = "application/spark-canvas-node";
+/** Sensible default params when a node type is dropped. */
+export function defaultParams(t: WorkflowNodeType): Record<string, unknown> {
+  if (t.type === "display.iframe") return { url: "https://example.com" };
+  if (t.type === "display.preview") return { url: "https://example.com" };
+  if (t.type === "display.media") return { url: "" };
+  if (t.type === "display.note") return { text: "" };
+  if (t.type === "agent") return { prompt: "", model: "" };
+  if (t.type === "trigger.manual") return { payload: "" };
+  if (t.type === "data.set") return { fields: "{}" };
+  if (t.type === "control.if") return { field: "value", equals: "" };
+  if (t.type === "control.switch") return { field: "value", case: "", cases: "[]" };
+  if (t.type === "control.loop") return { count: 1, batchSize: 1 };
+  if (t.type === "action.code") return { code: "output = items" };
+  if (t.type === "action.http") return { method: "GET", url: "", headers: "{}", body: "", timeout: 20 };
+  if (t.type === "action.wait") return { seconds: 1 };
+  if (t.type === "tool") return { tool: t.tool, args: "{}" };
+  // Seed from JSON-schema defaults where available.
+  const out: Record<string, unknown> = {};
+  const props = t.schema?.properties ?? {};
+  for (const [k, p] of Object.entries(props)) {
+    if (p.default !== undefined) out[k] = p.default;
+  }
+  return out;
+}

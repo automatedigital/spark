@@ -1,126 +1,217 @@
-# Plan: "Canvas" Tab — Infinite Canvas with Draggable Tools
+# Plan: Canvas → Workflows + Infinite Embed Canvas
 
-Add a new top-level tab **Canvas**: an infinite, pannable/zoomable canvas (React Flow)
-where the user drags tools/nodes onto the page, wires them into an agentic node graph,
-**chats inside the canvas** via chat nodes, and **saves canvases either globally or into a
-project folder**.
+The **Canvas** tab (name kept) becomes **one infinite surface with two coexisting kinds of
+nodes**:
 
-## Locked decisions
-- **Engine:** `@xyflow/react` (React Flow).
-- **Chat:** a first-class **Chat node**, bound to the agent backend but **canvas-local** —
-  it does **not** create a session visible in the Chat tab.
-- **Persistence:** backend-saved canvases (JSON), with **two scopes**:
-  - **Global** → `get_spark_home()/canvases/<name>.canvas.json`
-  - **Project** → `get_spark_home()/workspace/<slug>/<name>.canvas.json` — stored as a
-    **visible file in the project tree** (not hidden), so it appears in the **Files tab**.
-  - **Many named canvases per project.**
-  A canvas is a JSON doc: `{ id, name, scope, nodes, edges, viewport, version, updatedAt }`.
-- **Open-from-Files:** clicking a `*.canvas.json` file in the Files tab switches to the
-  **Canvas tab** and opens that canvas (no inline editor), via the existing
-  `globalNavigation` bus.
+1. **Workflow nodes** — n8n-style: typed nodes pass data along connections, a **server-side
+   execution engine** runs the graph (manual / scheduled / webhook / file-watch triggered),
+   with an **agentic/iterative** layer for tool-calling agent loops.
+2. **Embed / media nodes** — free-form: live **iframe** embeds, **URL/web previews**, images,
+   video, PDFs, and rich notes — a moodboard/whiteboard that can sit next to (and feed) the
+   workflow graph on the same canvas.
 
-## Context (how the web UI + backend are wired)
+The two are not separate apps: an embed node can be a *data source* for a workflow (e.g. a
+URL-preview node feeds its page text into an agent), and a workflow's output can render into
+an embed/preview node. Connections are optional — drop a lone iframe to just pin a live site.
 
-**Frontend** — Vite + React + Tailwind at `src/spark_cli/web/`. Tabs are a hand-rolled
-page switch in [App.tsx](src/spark_cli/web/src/App.tsx), not a router:
-- `NAV_ITEMS` (line ~28) `{ id, labelKey, icon }`; `PageId` derived from it.
-- `PAGE_COMPONENTS` map → page component; `FULL_WIDTH_PAGES` set for edge-to-edge pages.
-- Active page persisted to `localStorage["spark-active-page"]`; icons from `lucide-react`.
-- Labels in [en.ts](src/spark_cli/web/src/i18n/en.ts) (nav block + per-page section).
-- API client: [api.ts](src/spark_cli/web/src/lib/api.ts). Model page to copy:
-  [KanbanPage.tsx](src/spark_cli/web/src/pages/KanbanPage.tsx).
+The current canvas (React Flow surface, palette, drag-drop, save/load global+project,
+canvas-local chat) is the foundation — see [PR #21](https://github.com/automatedigital/spark/pull/21).
+This plan reshapes node semantics around **data flow + execution + live embeds**, not just layout.
 
-**Backend** — FastAPI. Workspace/project routes in
-[workspace_routes.py](src/spark_cli/workspace_routes.py) (`router`, mounted by
-[web_server.py](src/spark_cli/web_server.py)):
-- Projects are real folders: `_workspace_root() = get_spark_home()/"workspace"`,
-  `_project_dir(slug)`, with `_safe_path()` for traversal safety — **reuse these**.
-- Per-project conversations API already exists (`/projects/{slug}/conversations`) — the
-  Chat node builds on the same agent backend.
+---
 
-## Tasks
+## What "works like n8n" means here
 
-### 1. Dependency + tab scaffold
-- [x] Add `@xyflow/react` to `src/spark_cli/web/package.json`; install.
-- [x] Create `src/spark_cli/web/src/pages/CanvasPage.tsx` (placeholder, full-screen).
-- [x] Register in [App.tsx](src/spark_cli/web/src/App.tsx): import; add to `NAV_ITEMS`
-      (icon e.g. `Workflow`); add to `PAGE_COMPONENTS`; add `"canvas"` to `FULL_WIDTH_PAGES`.
-- [x] Add `canvas` nav label + `canvas: { ... }` page section in
-      [en.ts](src/spark_cli/web/src/i18n/en.ts) (mirror other locales).
-- [x] Verify tab appears, switches, persists.
+1. **Nodes pass data.** Every node receives an input array of JSON *items* and emits an
+   output array. Connections carry data, not just visual lines.
+2. **Triggers start runs.** Manual ▶, Schedule (cron), Webhook, File-watch.
+3. **Actions do work.** Each registered Spark **tool becomes a node**, its JSON schema
+   auto-rendered as a parameter form. Plus Agent, HTTP, Code, File, Set/Edit nodes.
+4. **Control flow.** IF / Switch (branch), Loop / SplitInBatches (iterate), Merge, Wait.
+5. **Agentic engines.** Agent node runs a tool-calling loop until done; can feed its output
+   back into the graph or into another agent (iterative refinement).
+6. **Execution is observable.** Run the whole flow or a single node; per-node input/output
+   JSON, status, timing, and errors in an inspector; execution history.
+7. **Files are first-class.** Pull in existing workspace/project files or upload new ones as
+   inputs; pass binary/text data between nodes; write results back to files.
+8. **Live embeds are first-class too.** Iframe / URL-preview / image / video / PDF nodes
+   render live content directly on the canvas, resizable, and can connect into the graph.
 
-### 2. Backend: canvas persistence API
-- [x] New routes (extend [workspace_routes.py](src/spark_cli/workspace_routes.py) or a new
-      `canvas_routes.py` mounted in [web_server.py](src/spark_cli/web_server.py)):
-  - `GET  /api/canvases` — list global + per-project canvases (id, name, scope, slug, updatedAt).
-  - `GET  /api/canvases/{scope}/{id}` — load one (`scope` = `global` | `project:<slug>`).
-  - `PUT  /api/canvases/{scope}/{id}` — create/update (write JSON doc).
-  - `DELETE /api/canvases/{scope}/{id}` — delete.
-- [x] Global dir helper `get_spark_home()/"canvases"`; project canvases write directly into
-      `_project_dir(slug)` as `<name>.canvas.json` (visible in the file tree). Use
-      `_safe_path`-style guards. Create dirs lazily (do **not** mkdir SPARK_HOME root —
-      follow profile-safety rules in CLAUDE.md).
-- [x] Pydantic models for the canvas doc; validate `scope`/`slug`.
-- [x] Tests in `tests/` using the `_isolate_spark_home` fixture (no writes to real `~/.spark`).
+---
 
-### 3. Frontend API client + save/load UX + Files-tab integration
-- [x] Add canvas methods to [api.ts](src/spark_cli/web/src/lib/api.ts) (list/load/save/delete).
-- [x] Canvas toolbar: name field, **Save** with scope picker (Global vs a project from
-      `api.listProjects()`), **Open** (canvas browser), **New**, **Delete**.
-- [x] Debounced autosave once a canvas has a name+scope; restore last-open canvas via
-      `localStorage["spark-canvas-last"]`.
-- [x] Extend `GlobalNavTarget` in
-      [globalNavigation.ts](src/spark_cli/web/src/lib/globalNavigation.ts) with a
-      `{ type: "canvas"; scope; id }` variant.
-- [x] In [FilesPage.tsx](src/spark_cli/web/src/pages/FilesPage.tsx): detect `*.canvas.json`
-      on file select → instead of the inline editor, call `setGlobalNavTarget({type:"canvas",
-      scope:"project:<slug>", id})`. (Optional: distinct canvas icon for these files.)
-- [x] In [App.tsx](src/spark_cli/web/src/App.tsx): listen for the canvas nav target, switch
-      `page` to `"canvas"`, and pass the target into `CanvasPage` to auto-open it (mirror how
-      other `globalNavigation` targets are consumed via `takeGlobalNavTarget`).
+## Architecture (grounded in the codebase)
 
-### 4. Infinite canvas surface
-- [x] Render React Flow filling the page: pan, zoom, minimap, grid background, fit-view, controls.
-- [x] Typed `nodes`/`edges` state ↔ the persisted canvas doc.
+**Backend**
+- Tool registry already exposes what a node catalog needs
+  ([src/tools/registry.py](src/tools/registry.py)):
+  `get_all_tool_names()`, `get_definitions(names)` (OpenAI/JSON-schema for form rendering),
+  `get_tool_to_toolset_map()`, `get_emoji()`, and `dispatch(name, args, **kwargs)` to run one.
+- Agent runtime: `AIAgent` ([src/core/run_agent/__init__.py](src/core/run_agent/__init__.py))
+  for agent nodes (reuse the stateless pattern from `POST /api/canvas/chat`).
+- Scheduling: [src/cron/](src/cron/) (`parse_schedule`, `compute_next_run`, `trigger_job`)
+  for Schedule triggers.
+- Webhooks: existing gateway webhook adapter (`tests/gateway/test_webhook_adapter.py`) for
+  Webhook triggers.
+- Files: [src/spark_cli/workspace_routes.py](src/spark_cli/workspace_routes.py)
+  (`_project_dir`, `_safe_path`, upload + read endpoints) for the File node + uploads.
+- Canvas persistence: [src/spark_cli/canvas_routes.py](src/spark_cli/canvas_routes.py) —
+  extend the saved doc with `nodes[].params`, typed edges, and `triggers`.
 
-### 5. Tool palette + drag-to-place
-- [x] Left/floating palette of draggable node types; HTML5 dnd `onDrop` → create node at cursor.
-- [x] Node catalog (v1):
-  - **Note** (sticky/text, Excalidraw-style)
-  - **Chat node** — message thread bound to the agent API (model selector; streams replies)
-  - **Agent node** — prompt + model, input/output ports
-  - **Tool node** — wraps a Spark tool from the registry
-  - **Input / Output** nodes
-- [x] Drag-reposition, multi-select, delete, duplicate.
+**Frontend**
+- [CanvasPage.tsx](src/spark_cli/web/src/pages/CanvasPage.tsx) +
+  [canvas/](src/spark_cli/web/src/pages/canvas/) (React Flow). Reshape `nodes.tsx`/`types.ts`
+  into a node-type *registry* with a generic param-form renderer.
+- API client [api.ts](src/spark_cli/web/src/lib/api.ts).
 
-### 6. Node graph + chat + run
-- [x] Custom node components with typed handles; edge connect + validation.
-- [x] **Chat node**: talk to the agent backend but keep the thread **canvas-local** — persist
-      messages inside the canvas JSON doc; do **not** create a session that appears in the
-      Chat tab. For a **project-scoped** canvas, default the chat node's working context to
-      that project's folder (pass the project slug); global canvases use the default context.
-- [x] Right-drawer config panel per node (prompt, model, tool args).
-- [x] **Run** (v1-minimal): execute an Agent/Tool node via `api.ts`, surface output back into
-      the node; topological order for connected graphs. (Full graph orchestration can follow.)
+---
 
-### 7. Polish + theming
-- [x] Match Spark skin/theme tokens (dark/light); reuse `components/ui/*`.
-- [x] Delete-key removes nodes/edges; fit-view + zoom via React Flow Controls; empty-state palette hint.
-      (Duplicate shortcut and a numeric zoom-% readout deferred — Controls cover zoom for now.)
+## Progress (branch `canvas-workflows`)
 
-### 8. Verify + ship
-- [x] Build the web app in `src/spark_cli/web/`; verify in browser preview: tab loads,
-      drag-place works, edges connect, chat node responds, save→global & save→project both
-      round-trip after reload.
-- [x] Web lint/typecheck; backend `pytest` for the new canvas routes.
-- [x] Rebuild bundled `web_dist` if required by the build pipeline.
-- [x] Feature branch `canvas-tab`; commit + PR (per repo workflow).
+**Shipped & verified** (engine round-trips end-to-end in the browser):
+- Phase 0 complete: `workflow_engine.py` (WorkflowDoc, item envelope, node-handler
+  registry, field-mapping resolver, topological executor) + frontend node model.
+- Phase 1: `/api/workflows/run`, `/run-node`, SQLite execution history. *Still TODO: SSE
+  streaming, per-run timeout + cancel.*
+- Phase 2 complete: `/node-types` exposes every Spark tool; schema-driven param form;
+  literal⇄field-mapping picker; tool dispatch; searchable node browser.
+- Phase 3 (partial): Set / IF / Switch / Loop / Merge nodes, Code / HTTP / Wait nodes,
+  and the four trigger *node types* exist. *TODO: actually register
+  schedule/webhook/file-watch triggers; multi-output branch routing and true loop-back edges.*
+- Phase 4 (partial): Agent node runs a stateless turn. *TODO: configurable tool-loop with
+  toolset + iteration budget, sub-workflow, refinement loop.*
+- Phase 5b (partial): sandboxed resizable iframe ✓, media node ✓, free placement ✓, basic
+  web-preview card + note. *TODO: backend OG/text fetch for previews, PDF, upload-to-node,
+  Markdown render, domain allowlist.*
+- Phase 6 (partial): inspector (params + Input/Output JSON), run bar, node search/add,
+  notes. *TODO: SSE-driven live badges, Stop, history drawer, edge preview, undo/redo.*
 
-## Resolved
-- Storage: `~/.spark/canvases/` (global) and visible `*.canvas.json` files in each
-  `~/.spark/workspace/<slug>/` (project). Many named canvases per project.
-- Opening a `*.canvas.json` from the Files tab switches to the Canvas tab and opens it.
-- Chat nodes are canvas-local; they never appear in the Chat tab.
+Tests: `test_workflow_engine.py` (8) + `test_workflow_routes.py` (5) + `test_canvas_routes.py`
+(5) all green.
 
-- Project-scoped Chat nodes default their working context to the project's folder (slug);
-  global-canvas chat nodes use the default context.
+---
+
+## Phase 0 — Data model & node SDK (foundation)
+- [x] Define a **WorkflowDoc** schema (supersedes the loose CanvasDoc): `nodes[]` with
+      `{ id, type, params, position, credentials? }`, `edges[]` with `{ source, sourceOutput,
+      target, targetInput }`, `triggers[]`, `settings`. Version + migrate existing canvases.
+- [x] Define the **item/data envelope** passed along edges:
+      `{ json: object, binary?: { [key]: { fileRef, mimeType, name } } }[]`.
+- [x] Backend `workflow_engine.py`: a node-handler interface
+      `run(node, inputItems, ctx) -> outputItems` and a node-type registry.
+- [x] Frontend node-type registry (`canvas/nodeRegistry.ts`): each type declares
+      inputs/outputs, an icon, a param schema, and a React body renderer.
+- [x] Node **category** in the type definition: `trigger | action | control | agent | io |
+      display`. **`display` nodes** (iframe, preview, media, note) are non-executable by
+      default — they render on the canvas and may optionally expose output items — so the
+      embed/moodboard half and the workflow half share one model and one save file.
+
+## Phase 1 — Execution engine (server-side)
+- [x] `POST /api/workflows/{scope}/{id}/run` — execute a saved workflow; returns an
+      `executionId`. Topological scheduling from trigger node(s); pass items along edges.
+- [x] `POST /api/workflows/run-node` — run a single node with provided input items (for the
+      "execute node" button) without persisting.
+- [ ] Per-node execution state streamed over SSE (reuse the SSE pattern in
+      [web_server.py](src/spark_cli/web_server.py)): `node.started/succeeded/failed`,
+      output items, duration, error.
+- [x] **Execution history**: persist runs under `~/.spark/workflows/executions/` (or SQLite);
+      `GET /api/workflows/.../executions` + a single execution view.
+- [ ] Guardrails: max nodes, max iterations, per-run timeout, cancel endpoint.
+
+## Phase 2 — Tool nodes auto-generated from the registry
+- [x] `GET /api/workflows/node-types` — enumerate every registered tool as a node type
+      (name, toolset, emoji, JSON-schema params) via `registry.get_definitions()` +
+      `get_tool_to_toolset_map()`.
+- [x] Generic **param-form renderer**: turn a tool's JSON schema into form fields
+      (string/number/bool/enum/object/array). Each field can be set to a **literal** or
+      **mapped** to an upstream node's output field via a dropdown (`{node → field}`).
+- [x] **Mapping resolver** (backend): resolve each mapped param from the executing items
+      before dispatch. Design it as the single place expressions can later plug into.
+- [x] **Tool node** executes via `registry.dispatch(name, resolvedArgs)`; map the JSON-string
+      result back into output items.
+- [x] Palette becomes a **searchable node browser** grouped by toolset (40+ tools), not a
+      fixed list.
+
+## Phase 3 — Core control-flow & data nodes
+- [ ] **Trigger nodes (all four ship in v1)**: Manual ▶, Schedule (cron via
+      [src/cron/](src/cron/)), Webhook (registers a gateway webhook route + per-workflow
+      secret), File-watch (watch a project path/glob).
+- [x] **IF / Switch** (filter-style branching; multi-output edge routing still TODO).
+- [x] **Loop / SplitInBatches** (acyclic item expansion; loop-back edges still TODO) + **Merge**.
+- [x] **Set / Edit Fields** (build or transform the JSON item).
+- [x] **Code node** — run JS/Python over items in the existing sandbox (reuse `execute_code`).
+- [x] **HTTP Request** node.
+- [x] **Wait / Delay** node.
+
+## Phase 4 — Agentic / iterative engine
+- [x] **Agent node**: a tool-calling loop (`AIAgent`) with a selectable toolset, max-iteration
+      budget, and structured output; streams reasoning/tool-calls into the inspector.
+- [ ] **Sub-workflow node**: call another saved workflow as a step (composition).
+- [ ] **Agent-to-agent / refinement loop**: wire an agent's output back through IF/Loop for
+      iterative improvement until a condition is met.
+- [ ] Memory/context node so agent nodes can share state across iterations.
+
+## Phase 5 — Files & data I/O
+- [ ] **File source node**: pick an existing file from a workspace **project** or the chat
+      **files** area (reuse `/api/workspace/...` listing); load as a binary/text item.
+- [ ] **Upload**: drag a file onto the canvas (or a node) → upload via
+      [workspace_routes.py](src/spark_cli/workspace_routes.py) and create a File node.
+- [ ] **Write File node**: persist an item's content back to a project/file path.
+- [ ] Binary passthrough in the item envelope (reference by `fileRef`, not inlined bytes).
+- [ ] Read/Write **Spreadsheet/CSV/JSON** helper nodes (lean on existing `xlsx`/file tools).
+
+## Phase 5b — Live embeds & rich media (the "infinite canvas" half)
+- [x] **Iframe / Embed node**: render an arbitrary URL in a sandboxed `<iframe>`
+      (`sandbox`, `referrerpolicy`, allowlist) directly on the canvas; resizable; refresh +
+      open-in-new-tab controls. Stored as `{ url, width, height, sandbox }` in the node.
+- [ ] **URL / Web-preview node**: fetch a page's title/description/OG image/favicon (reuse
+      existing fetch/scrape tools) for a link-card preview; "expand to live iframe" toggle.
+      Exposes page text/metadata as **output items** so it can feed the workflow graph.
+- [ ] **Image / Video / PDF nodes**: render media from a URL or an uploaded/workspace file
+      (reuse `mediaFileUrl` + the upload routes); pannable/zoomable, resizable.
+- [ ] **Rich note / Markdown node** (upgrade the current Note): live-rendered Markdown.
+- [ ] **Embed ↔ graph bridge**: embed/preview nodes can connect into workflow inputs, and a
+      workflow can target a **Preview/Render node** to display its output (HTML/image/text).
+- [x] **Free-placement mode**: embeds work with **no connections** (pure moodboard); the
+      canvas mixes connected workflow subgraphs and loose pinned embeds on one surface.
+- [ ] **Security**: iframe sandboxing defaults, a domain allow/block setting, and respect for
+      desktop (Tauri) webview embed constraints; never auto-execute remote content beyond the
+      sandboxed iframe.
+
+## Phase 6 — Builder UX & inspector
+- [x] **Node inspector panel** (right drawer): params form, plus **Input** / **Output** JSON
+      tabs showing the items from the last run; per-node run/error badges on the canvas.
+- [ ] **Run bar**: ▶ Run, Run-from-node, Stop, last-execution status, execution-history drawer.
+- [ ] Edge data preview (hover an edge → see items count/sample).
+- [x] Node search/add (drag from browser **or** click an output `+` to add the next node).
+- [ ] Copy/paste, duplicate, multi-select, undo/redo, alignment helpers.
+- [x] Sticky notes / comments retained from the current Note node.
+
+## Phase 7 — Hardening, security, ship
+- [ ] Sandbox/timeout/iteration limits enforced for Code, HTTP, Agent, and Loop nodes.
+- [ ] Webhook auth + per-workflow secret; respect dashboard auth on all new routes.
+- [ ] Profile-safe paths (`get_spark_home()`), no writes to `~/.spark/` in tests.
+- [ ] Tests: engine (topo order, branching, loops, error propagation), tool-node dispatch,
+      file I/O, trigger registration; web build/typecheck/lint.
+- [ ] Docs + rebuild `web_dist`; feature branch + PR.
+
+---
+
+## Decisions (locked)
+
+- **Execution: server-side.** The engine runs in the Spark backend so schedules/webhooks
+  fire without the browser open, and nodes reuse the real tool registry + `AIAgent`.
+- **Data mapping: field-mapping dropdowns for v1.** Nodes reference upstream output fields
+  via dropdowns (pick `{node → field}`), not free-text expressions. n8n-style
+  `{{ $json.x }}` expressions are a **post-v1** enhancement layered on the same resolver.
+- **Triggers: all four in v1.** Manual ▶, Schedule (cron), Webhook, and File-watch all ship
+  in Phase 3.
+- **Execution history: SQLite.** Persist runs in a new table (better for history queries)
+  rather than flat JSON.
+
+- **Tab name: stays "Canvas".** It hosts both executable workflows and a free-form infinite
+  surface of live embeds/media — one canvas, two modes that mix freely.
+
+## Out of scope (for now)
+- Multi-user collaboration / real-time co-editing.
+- A marketplace of community workflow templates.
+- Visual debugging time-travel beyond per-node last-run I/O.
