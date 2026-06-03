@@ -21,6 +21,7 @@ import termios
 import threading
 import time
 import uuid
+import ipaddress
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -53,6 +54,7 @@ _PREVIEW_IGNORED_DIRS = {
 _SECRET_RE = re.compile(
     r"(?i)(api[_-]?key|authorization|bearer|password|secret|token)([\"'\s:=]+)([^\s\"']+)"
 )
+_PREVIEW_URL_RE = re.compile(r"https?://[^\s<>()\"']+")
 
 _terminal_runs: dict[str, dict[str, Any]] = {}
 _terminal_run_queues: dict[str, queue.Queue[dict[str, Any] | None]] = {}
@@ -872,9 +874,32 @@ def _is_loopback_url(url: str) -> bool:
     return urllib.parse.urlparse(url).hostname in {"127.0.0.1", "localhost", "::1"}
 
 
+def _is_local_preview_host(host: str | None) -> bool:
+    if not host:
+        return False
+    normalized = host.strip("[]").lower()
+    if normalized in {"localhost", "0.0.0.0"}:
+        return True
+    if "." not in normalized:
+        return True
+    try:
+        ip = ipaddress.ip_address(normalized)
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        return normalized.endswith(".local")
+
+
+def _canonical_probe_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.hostname == "0.0.0.0":
+        netloc = f"127.0.0.1:{parsed.port}" if parsed.port else "127.0.0.1"
+        return urllib.parse.urlunparse(parsed._replace(netloc=netloc))
+    return url
+
+
 def _probe_preview_url(url: str) -> bool:
     try:
-        with urllib.request.urlopen(url, timeout=0.8) as resp:
+        with urllib.request.urlopen(_canonical_probe_url(url), timeout=0.8) as resp:
             return 200 <= int(resp.status) < 500
     except Exception:
         return False
@@ -970,7 +995,77 @@ def _find_running_project_preview(project_dir: Path) -> dict[str, Any] | None:
     return None
 
 
-def _detect_preview(project_dir: Path, requested_command: str | None = None, requested_url: str | None = None) -> dict[str, Any]:
+def _extract_preview_urls(text: str | None) -> list[str]:
+    if not text:
+        return []
+    urls: list[str] = []
+    for raw in _PREVIEW_URL_RE.findall(text):
+        candidate = raw.rstrip(".,;:)]}'\"")
+        try:
+            url = _normalize_browser_url(candidate)
+        except HTTPException:
+            continue
+        parsed = urllib.parse.urlparse(url)
+        if parsed.port and _is_local_preview_host(parsed.hostname):
+            urls.append(url)
+    return urls
+
+
+def _message_text_parts(message: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    for key in ("content", "reasoning"):
+        value = message.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    tool_calls = message.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for call in tool_calls:
+            if isinstance(call, dict):
+                parts.append(json.dumps(call, default=str))
+    return parts
+
+
+def _find_remembered_preview(project_dir: Path, slug: str) -> dict[str, Any] | None:
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            sessions = db.list_sessions_rich(source=f"workspace:{slug}", limit=8, include_children=True)
+            seen: set[str] = set()
+            for session in sessions:
+                leaf_id = db.resolve_latest_descendant(session["id"])
+                for message in reversed(db.get_messages(leaf_id)):
+                    for part in _message_text_parts(message):
+                        for url in _extract_preview_urls(part):
+                            if url in seen:
+                                continue
+                            seen.add(url)
+                            if not _probe_preview_url(url):
+                                continue
+                            parsed = urllib.parse.urlparse(url)
+                            return {
+                                "kind": "remembered",
+                                "command": None,
+                                "url": url,
+                                "port": int(parsed.port or 80),
+                                "process": None,
+                                "auto_refresh": False,
+                                "auto_verify": True,
+                            }
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("workspace remembered preview lookup failed slug=%s", slug, exc_info=True)
+    return None
+
+
+def _detect_preview(
+    project_dir: Path,
+    requested_command: str | None = None,
+    requested_url: str | None = None,
+    slug: str | None = None,
+) -> dict[str, Any]:
     port = _find_free_loopback_port()
     config_path = project_dir / "spark.preview.json"
     config: dict[str, Any] = {}
@@ -984,7 +1079,7 @@ def _detect_preview(project_dir: Path, requested_command: str | None = None, req
     requested_command = requested_command or config.get("command")
     requested_url = requested_url or config.get("url")
     requested_url = _normalize_browser_url(requested_url) if requested_url else None
-    if requested_url and _is_loopback_url(requested_url) and _probe_preview_url(requested_url):
+    if requested_url and _is_local_preview_host(urllib.parse.urlparse(requested_url).hostname) and _probe_preview_url(requested_url):
         parsed = urllib.parse.urlparse(requested_url)
         return {
             "kind": "existing",
@@ -995,6 +1090,9 @@ def _detect_preview(project_dir: Path, requested_command: str | None = None, req
             "auto_refresh": False,
             "auto_verify": bool(config.get("autoVerify", True)),
         }
+    remembered = _find_remembered_preview(project_dir, slug) if slug and not requested_command and not requested_url else None
+    if remembered:
+        return remembered
     existing = _find_running_project_preview(project_dir)
     if existing and not requested_command:
         return existing
@@ -1134,7 +1232,7 @@ def start_preview(slug: str, body: PreviewStart | None = None):
     if existing and existing.get("status") == "running":
         return _preview_status_payload(slug, existing)
 
-    detected = _detect_preview(project_dir, body.command if body else None, body.url if body else None)
+    detected = _detect_preview(project_dir, body.command if body else None, body.url if body else None, slug)
     cwd = Path(detected.get("cwd") or project_dir)
     command = str(detected["command"]) if detected.get("command") else None
     env = {**os.environ, "HOST": "127.0.0.1", "PORT": str(detected["port"])}

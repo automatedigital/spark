@@ -491,6 +491,45 @@ class TestWebServerEndpoints:
         assert body["url"] == "http://127.0.0.1:5949"
         assert body["command"] is None
 
+    def test_workspace_preview_uses_recent_chat_url(self, monkeypatch):
+        from core.spark_state import SessionDB
+        from spark_cli import workspace_routes as routes
+
+        created = self.client.post("/api/workspace/projects", json={"name": "preview-remembered"}).json()
+        slug = created["slug"]
+        session_id = "preview_remembered_session"
+        db = SessionDB()
+        try:
+            db._conn.execute(
+                "INSERT OR REPLACE INTO sessions (id, source, model, started_at, title) VALUES (?, ?, ?, ?, ?)",
+                (session_id, f"workspace:{slug}", "test-model", time.time(), "remembered preview"),
+            )
+            db._conn.execute(
+                "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+                (
+                    session_id,
+                    "assistant",
+                    "I started the project and pointed the preview at: http://nova:5949",
+                    time.time(),
+                ),
+            )
+            db._conn.commit()
+        finally:
+            db.close()
+
+        monkeypatch.setattr(routes, "_probe_preview_url", lambda url: url == "http://nova:5949")
+        monkeypatch.setattr(routes, "_run_agent_browser", lambda *args, **kwargs: {"success": True})
+
+        start = self.client.post(f"/api/workspace/projects/{slug}/preview/start", json={})
+
+        assert start.status_code == 200
+        body = start.json()
+        assert body["status"] == "running"
+        assert body["kind"] == "remembered"
+        assert body["url"] == "http://nova:5949"
+        assert body["port"] == 5949
+        assert body["command"] is None
+
     def test_workspace_preview_logs_are_bounded_and_redacted(self):
         from spark_cli import workspace_routes as routes
 
