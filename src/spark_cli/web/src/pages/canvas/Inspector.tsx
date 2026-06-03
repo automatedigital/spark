@@ -42,6 +42,29 @@ function fieldsFor(data: CanvasNodeData): Array<{ key: string; kind: "text" | "t
         { key: "field", kind: "text" },
         { key: "equals", kind: "text" },
       ];
+    case "control.switch":
+      return [
+        { key: "field", kind: "text" },
+        { key: "case", kind: "text" },
+        { key: "cases", kind: "json" },
+      ];
+    case "control.loop":
+      return [
+        { key: "count", kind: "text" },
+        { key: "batchSize", kind: "text" },
+      ];
+    case "action.code":
+      return [{ key: "code", kind: "textarea" }];
+    case "action.http":
+      return [
+        { key: "method", kind: "text" },
+        { key: "url", kind: "text" },
+        { key: "headers", kind: "json" },
+        { key: "body", kind: "textarea" },
+        { key: "timeout", kind: "text" },
+      ];
+    case "action.wait":
+      return [{ key: "seconds", kind: "text" }];
     case "tool": {
       const props = data.schema?.properties ?? {};
       return Object.keys(props).map((key) => ({ key, kind: "text" as const }));

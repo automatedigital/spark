@@ -51,6 +51,12 @@ export function defaultParams(t: WorkflowNodeType): Record<string, unknown> {
   if (t.type === "agent") return { prompt: "", model: "" };
   if (t.type === "trigger.manual") return { payload: "" };
   if (t.type === "data.set") return { fields: "{}" };
+  if (t.type === "control.if") return { field: "value", equals: "" };
+  if (t.type === "control.switch") return { field: "value", case: "", cases: "[]" };
+  if (t.type === "control.loop") return { count: 1, batchSize: 1 };
+  if (t.type === "action.code") return { code: "output = items" };
+  if (t.type === "action.http") return { method: "GET", url: "", headers: "{}", body: "", timeout: 20 };
+  if (t.type === "action.wait") return { seconds: 1 };
   if (t.type === "tool") return { tool: t.tool, args: "{}" };
   // Seed from JSON-schema defaults where available.
   const out: Record<string, unknown> = {};

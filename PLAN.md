@@ -74,8 +74,9 @@ This plan reshapes node semantics around **data flow + execution + live embeds**
   streaming, per-run timeout + cancel.*
 - Phase 2 complete: `/node-types` exposes every Spark tool; schema-driven param form;
   literal⇄field-mapping picker; tool dispatch; searchable node browser.
-- Phase 3 (partial): Set / IF / Merge nodes + the four trigger *node types* exist. *TODO:
-  actually register schedule/webhook/file-watch triggers; Switch/Loop/Code/HTTP/Wait.*
+- Phase 3 (partial): Set / IF / Switch / Loop / Merge nodes, Code / HTTP / Wait nodes,
+  and the four trigger *node types* exist. *TODO: actually register
+  schedule/webhook/file-watch triggers; multi-output branch routing and true loop-back edges.*
 - Phase 4 (partial): Agent node runs a stateless turn. *TODO: configurable tool-loop with
   toolset + iteration budget, sub-workflow, refinement loop.*
 - Phase 5b (partial): sandboxed resizable iframe ✓, media node ✓, free placement ✓, basic
@@ -134,12 +135,12 @@ Tests: `test_workflow_engine.py` (8) + `test_workflow_routes.py` (5) + `test_can
 - [ ] **Trigger nodes (all four ship in v1)**: Manual ▶, Schedule (cron via
       [src/cron/](src/cron/)), Webhook (registers a gateway webhook route + per-workflow
       secret), File-watch (watch a project path/glob).
-- [ ] **IF / Switch** (conditional branching with multiple outputs).
-- [ ] **Loop / SplitInBatches** (iterate items, with a loop-back edge) + **Merge**.
+- [x] **IF / Switch** (filter-style branching; multi-output edge routing still TODO).
+- [x] **Loop / SplitInBatches** (acyclic item expansion; loop-back edges still TODO) + **Merge**.
 - [x] **Set / Edit Fields** (build or transform the JSON item).
-- [ ] **Code node** — run JS/Python over items in the existing sandbox (reuse `execute_code`).
-- [ ] **HTTP Request** node.
-- [ ] **Wait / Delay** node.
+- [x] **Code node** — run JS/Python over items in the existing sandbox (reuse `execute_code`).
+- [x] **HTTP Request** node.
+- [x] **Wait / Delay** node.
 
 ## Phase 4 — Agentic / iterative engine
 - [x] **Agent node**: a tool-calling loop (`AIAgent`) with a selectable toolset, max-iteration
