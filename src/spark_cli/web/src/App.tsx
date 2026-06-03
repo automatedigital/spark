@@ -8,8 +8,8 @@ import {
   LayoutGrid,
   MessageSquare,
   Package,
-  PenTool,
   Settings,
+  Square,
 } from "lucide-react";
 import ChatPage from "@/pages/ChatPage";
 import CronPage from "@/pages/CronPage";
@@ -33,7 +33,7 @@ import { isTauri } from "@/sidecar";
 const NAV_ITEMS = [
   { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
   { id: "files", labelKey: "files" as const, icon: FolderOpen },
-  { id: "canvas", labelKey: "canvas" as const, icon: PenTool },
+  { id: "canvas", labelKey: "canvas" as const, icon: Square },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
