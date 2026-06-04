@@ -4,6 +4,7 @@ These exercise the connector layer without requiring the real `gws` binary by
 injecting a fake runner into GoogleWorkspaceConnector.
 """
 
+import json
 import os
 
 from tools.connectors import (
@@ -15,6 +16,15 @@ from tools.connectors import (
     list_connectors,
 )
 from tools.connectors.google import GoogleWorkspaceConnector, RunResult
+
+# Realistic `gws auth status` payloads (gws exits 0 in BOTH cases).
+_STATUS_LOGGED_OUT = json.dumps({"auth_method": "none", "storage": "none",
+                                 "credential_source": "none"})
+
+
+def _status_authed(email="user@example.com"):
+    return json.dumps({"auth_method": "oauth", "storage": "file",
+                       "credential_source": "encrypted", "email": email})
 
 # --- registry --------------------------------------------------------------
 
@@ -100,7 +110,7 @@ def test_status_not_installed(monkeypatch):
 
 def test_status_connected_parses_email(monkeypatch):
     def runner(args, **kw):
-        return RunResult(0, stdout="Logged in as alice@example.com")
+        return RunResult(0, stdout=_status_authed("alice@example.com"))
     c = _connector_with(runner, monkeypatch=monkeypatch)
     st = c.status()
     assert st.state is ConnectorState.CONNECTED
@@ -109,8 +119,9 @@ def test_status_connected_parses_email(monkeypatch):
     assert "gmail.send" in " ".join(st.scopes)
 
 
-def test_status_disconnected_on_nonzero(monkeypatch):
-    c = _connector_with(lambda *a, **k: RunResult(1, stderr="not logged in"),
+def test_status_disconnected_when_logged_out_json(monkeypatch):
+    # The critical case: gws exits 0 but reports "none" — must NOT be connected.
+    c = _connector_with(lambda *a, **k: RunResult(0, stdout=_STATUS_LOGGED_OUT),
                         monkeypatch=monkeypatch)
     st = c.status()
     assert st.state is ConnectorState.DISCONNECTED
@@ -137,11 +148,11 @@ def test_connect_success_then_status(monkeypatch):
     calls = []
 
     def runner(args, **kw):
-        calls.append(tuple(args))
-        if tuple(args) == ("auth", "login"):
+        calls.append(tuple(args[:2]))
+        if args[:2] == ["auth", "login"]:
             return RunResult(0)
-        if tuple(args) == ("auth", "status"):
-            return RunResult(0, stdout="bob@example.com")
+        if args[:2] == ["auth", "status"]:
+            return RunResult(0, stdout=_status_authed("bob@example.com"))
         return RunResult(1)
 
     c = _connector_with(runner, monkeypatch=monkeypatch)
@@ -174,11 +185,49 @@ def test_disconnect_removes_secret(monkeypatch):
     assert not c.has_client_secret()
 
 
-def test_auth_env_points_at_secret(monkeypatch):
-    from tools.connectors.google import GWS_CLIENT_SECRET_ENV
+def test_auth_env_isolates_config_dir(monkeypatch):
+    from tools.connectors.google import GWS_CONFIG_DIR_ENV, GWS_KEYRING_BACKEND_ENV
     c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
-    assert c._auth_env() == {}
-    c.install_client_secret({"installed": {}})
+    # Even with no client secret, gws is pinned to a per-profile config dir.
     env = c._auth_env()
-    assert GWS_CLIENT_SECRET_ENV in env
-    assert env[GWS_CLIENT_SECRET_ENV].endswith("client_secret.json")
+    assert env[GWS_CONFIG_DIR_ENV].endswith("gws-config")
+    assert env[GWS_KEYRING_BACKEND_ENV] == "file"
+    assert env[GWS_CONFIG_DIR_ENV].startswith(os.environ["SPARK_HOME"])
+
+
+def test_auth_env_exposes_client_id_secret(monkeypatch):
+    from tools.connectors.google import GWS_CLIENT_ID_ENV, GWS_CLIENT_SECRET_ENV
+    c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
+    c.install_client_secret({"installed": {"client_id": "cid-123", "client_secret": "sec-xyz"}})
+    env = c._auth_env()
+    assert env[GWS_CLIENT_ID_ENV] == "cid-123"
+    assert env[GWS_CLIENT_SECRET_ENV] == "sec-xyz"
+
+
+def test_read_client_id_secret_shapes(monkeypatch):
+    c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
+    # web shape
+    c.install_client_secret({"web": {"client_id": "w", "client_secret": "ws"}})
+    assert c._read_client_id_secret() == ("w", "ws")
+    # flat shape
+    c.install_client_secret({"client_id": "f", "client_secret": "fs"})
+    assert c._read_client_id_secret() == ("f", "fs")
+
+
+def test_connect_passes_free_tier_scopes(monkeypatch):
+    seen = {}
+
+    def runner(args, **kw):
+        if args[:2] == ["auth", "login"]:
+            seen["login"] = args
+            return RunResult(0)
+        return RunResult(0, stdout="x@y.com")
+
+    c = _connector_with(runner, monkeypatch=monkeypatch)
+    c.connect(interactive=False)
+    assert "--scopes" in seen["login"]
+    scope_arg = seen["login"][seen["login"].index("--scopes") + 1]
+    assert "gmail.send" in scope_arg
+    # never request restricted scopes
+    assert "gmail.readonly" not in scope_arg
+    assert "auth/drive\"" not in scope_arg  # not the full-drive scope

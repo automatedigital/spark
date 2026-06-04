@@ -91,6 +91,14 @@ State lives at `~/.spark/connectors/<id>/` (token + metadata), via `get_spark_ho
       that have no CLI. `mcp_oauth.py` stays MCP-only.
 - [ ] `gws` CLI bootstrap: detect binary (done — `is_installed()`); **install** via npm/Homebrew/binary download
       still TODO. Wire into `spark doctor`.
+- [x] **Verified gws command surface against the real binary (gws 0.13.2):**
+      - Client identity via env: `GOOGLE_WORKSPACE_CLI_CLIENT_ID` + `_CLIENT_SECRET` (parsed from the stored
+        client_secret.json), NOT a single file env var.
+      - `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` + keyring backend `file` → **per-profile token isolation** (no shared
+        `~/.config/gws`). Big win for Spark profiles.
+      - `gws auth login --scopes <csv>` requests exactly our free-tier set.
+      - **Gotcha caught: `gws auth status` exits 0 even when logged OUT** — real state is in JSON
+        (`auth_method`/`storage` == `"none"`). Status parsing now reads the JSON, not the exit code.
 
 ### 1b. Auth — two modes
 - [x] **BYO-client mode (connector layer):** `install_client_secret()` stores the user's `client_secret.json`
@@ -99,8 +107,7 @@ State lives at `~/.spark/connectors/<id>/` (token + metadata), via `get_spark_ho
       consent screen says "Spark". Gate behind the Google verification milestone (below).
 - [x] **Token storage: delegated to `gws`** (decided). Spark stores only the client secret + meta under
       `SPARK_HOME/connectors/google/`; `gws` owns token refresh. Verify `gws` honors a per-profile config dir.
-- [ ] **Verify `gws` command surface** against the real binary: `auth login/status/logout` strings + the
-      client-secret env var name (marked `# verify:` in `google.py`).
+- [x] **Verified `gws` command surface** against the real binary (see 1a) — constants in `google.py` corrected.
 
 ### 1c. UI
 - [ ] New **Connectors** page (`ConnectorsPage.tsx`) + tab; reuse `OAuthProvidersCard`/`OAuthLoginModal` patterns.
