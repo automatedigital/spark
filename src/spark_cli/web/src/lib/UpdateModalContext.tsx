@@ -39,6 +39,8 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
   // macOS desktop app update (separate from the code/webapp update above)
   const [macUpdateAvailable, setMacUpdateAvailable] = useState(false);
   const [macLatestVersion, setMacLatestVersion] = useState<string | null>(null);
+  const [macReleaseNotes, setMacReleaseNotes] = useState<string | null>(null);
+  const [macReleaseUrl, setMacReleaseUrl] = useState<string | null>(null);
   const [macModalOpen, setMacModalOpen] = useState(false);
   const [macStatus, setMacStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
   const [macError, setMacError] = useState<string | null>(null);
@@ -73,6 +75,8 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
           if (!cancelled && mac.update_available) {
             setMacUpdateAvailable(true);
             setMacLatestVersion(mac.latest_version);
+            setMacReleaseNotes(mac.release_notes ?? null);
+            setMacReleaseUrl(mac.release_url ?? null);
           }
         } catch {}
       }
@@ -332,6 +336,26 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
                   A new version of the Spark desktop app is available. Spark will download the latest
                   installer and open it — drag Spark to your Applications folder to finish, then relaunch.
                 </p>
+              )}
+              {macStatus === "idle" && macReleaseNotes && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                    What's new{macLatestVersion ? ` in v${macLatestVersion}` : ""}
+                  </span>
+                  <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-sm border border-border bg-secondary/40 px-3 py-2 text-xs leading-relaxed text-foreground/80">
+                    {macReleaseNotes}
+                  </div>
+                  {macReleaseUrl && (
+                    <a
+                      href={macReleaseUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="self-start text-[11px] text-amber-400 underline-offset-2 hover:underline"
+                    >
+                      View full release notes →
+                    </a>
+                  )}
+                </div>
               )}
               {macStatus === "running" && (
                 <p className="text-sm text-amber-400 flex items-center gap-1.5">

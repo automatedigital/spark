@@ -28,6 +28,16 @@ class _StatusBarMixin:
             self._last_invalidate = now
             self._app.invalidate()
 
+    def _thinking_level_label(self) -> str:
+        """Short reasoning-effort label for the status bar (set via /think|/reasoning)."""
+        rc = getattr(self, "reasoning_config", None)
+        if not rc:
+            return "med"
+        if rc.get("enabled") is False:
+            return "off"
+        effort = str(rc.get("effort", "medium"))
+        return {"medium": "med", "minimal": "min"}.get(effort, effort)
+
     def _status_bar_context_style(self, percent_used: Optional[int]) -> str:
         if percent_used is None:
             return "class:status-bar-dim"
@@ -76,6 +86,7 @@ class _StatusBarMixin:
             "session_total_tokens": 0,
             "session_api_calls": 0,
             "compressions": 0,
+            "estimated_cost_usd": 0.0,
         }
 
         if not agent:
@@ -103,6 +114,9 @@ class _StatusBarMixin:
             getattr(agent, "session_total_tokens", 0) or 0
         )
         snapshot["session_api_calls"] = getattr(agent, "session_api_calls", 0) or 0
+        snapshot["estimated_cost_usd"] = (
+            getattr(agent, "session_estimated_cost_usd", 0.0) or 0.0
+        )
 
         compressor = getattr(agent, "context_compressor", None)
         if compressor:
@@ -308,8 +322,23 @@ class _StatusBarMixin:
                         (bar_style, percent_label),
                         ("class:status-bar-dim", " | "),
                         ("class:status-bar-dim", duration_label),
-                        ("class:status-bar", " "),
                     ]
+                    # Wider terminals also get thinking level + token/cost totals.
+                    if width >= 96:
+                        total_tokens = snapshot["session_total_tokens"]
+                        cost = snapshot["estimated_cost_usd"]
+                        frags += [
+                            ("class:status-bar-dim", " | "),
+                            ("class:status-bar-dim", f"⚲{self._thinking_level_label()}"),
+                            ("class:status-bar-dim", " | "),
+                            ("class:status-bar-dim", format_token_count_compact(total_tokens)),
+                        ]
+                        if cost and cost > 0:
+                            frags += [
+                                ("class:status-bar-dim", " "),
+                                ("class:status-bar-dim", f"${cost:.2f}"),
+                            ]
+                    frags.append(("class:status-bar", " "))
 
             total_width = sum(self._status_bar_display_width(text) for _, text in frags)
             if total_width > width:

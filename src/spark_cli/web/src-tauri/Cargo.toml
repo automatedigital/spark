@@ -14,9 +14,17 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `unstable` enables multi-webview (Window::add_child) for the native preview pane.
+# `tray-icon` enables the macOS menu-bar companion (§3.1).
+tauri = { version = "2", features = ["unstable", "tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Global hotkey to summon the quick-ask window from anywhere (§3.1).
+tauri-plugin-global-shortcut = "2"
+# Native OS notifications when a background turn / cron job completes (§3.2).
+tauri-plugin-notification = "2"
+# spark:// deep links to open a session or canvas (§3.2).
+tauri-plugin-deep-link = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

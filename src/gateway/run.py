@@ -862,10 +862,13 @@ class GatewayRunner:
             except Exception:
                 pass
         config = getattr(self, "config", None)
+        from gateway.session import resolve_agent_name
+
         return build_session_key(
             source,
             group_sessions_per_user=getattr(config, "group_sessions_per_user", True),
             thread_sessions_per_user=getattr(config, "thread_sessions_per_user", False),
+            agent_name=resolve_agent_name(source, getattr(config, "routing", None)),
         )
 
     def _resolve_session_agent_runtime(

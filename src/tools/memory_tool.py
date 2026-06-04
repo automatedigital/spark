@@ -356,6 +356,14 @@ class MemoryStore:
         }
         if message:
             resp["message"] = message
+        # Surface curation so the Web can toast "memory updated" (covers the
+        # background memory-review writes too).
+        try:
+            from spark_cli.web_server import _publish_event
+
+            _publish_event("memory.updated", {"target": target, "entry_count": len(entries)})
+        except Exception:
+            pass
         return resp
 
     def _render_block(self, target: str, entries: List[str]) -> str:

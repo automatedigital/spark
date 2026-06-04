@@ -393,10 +393,22 @@ class TestWebServerEndpoints:
         try:
             assert start.status_code == 200
             body = start.json()
-            assert body["status"] == "running"
+            # The preview starts as "starting" and is promoted to "running" only
+            # once an HTTP probe succeeds (readiness gate, _await_preview_ready).
+            assert body["status"] in {"starting", "running"}
             assert body["kind"] == "static"
             assert body["url"].startswith("http://127.0.0.1:")
             assert not body["url"].startswith("http://0.0.0.0")
+
+            # Poll the status endpoint until the readiness gate flips to running.
+            status = body
+            for _ in range(60):
+                status = self.client.get(f"/api/workspace/projects/{slug}/preview/status").json()
+                if status["status"] == "running":
+                    break
+                assert status["status"] in {"starting", "running"}, status
+                time.sleep(0.05)
+            assert status["status"] == "running"
 
             html = ""
             for _ in range(20):
@@ -453,6 +465,14 @@ class TestWebServerEndpoints:
         try:
             assert start.status_code == 200
             assert 4173 <= int(start.json()["port"]) <= 6173
+            # The page is opened (and its title becomes snapshot-able) only after
+            # the readiness gate promotes the session to "running".
+            for _ in range(60):
+                if self.client.get(
+                    f"/api/workspace/projects/{slug}/preview/status"
+                ).json()["status"] == "running":
+                    break
+                time.sleep(0.05)
             snapshot = self.client.get(f"/api/workspace/projects/{slug}/preview/snapshot")
             assert snapshot.status_code == 200
             body = snapshot.json()

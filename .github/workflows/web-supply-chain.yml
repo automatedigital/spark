@@ -1,0 +1,66 @@
+name: web-supply-chain
+
+# Supply-chain hardening for the web frontend (src/spark_cli/web):
+#  - enforce exact-pinned direct dependencies
+#  - detect package-lock.json drift
+#  - scheduled dependency audit
+
+on:
+  push:
+    paths:
+      - "src/spark_cli/web/package.json"
+      - "src/spark_cli/web/package-lock.json"
+      - ".github/workflows/web-supply-chain.yml"
+  pull_request:
+    paths:
+      - "src/spark_cli/web/package.json"
+      - "src/spark_cli/web/package-lock.json"
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC
+
+defaults:
+  run:
+    working-directory: src/spark_cli/web
+
+jobs:
+  pinned-and-lockfile:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enforce exact-pinned direct dependencies
+        run: |
+          node -e '
+            const p = require("./package.json");
+            const bad = [];
+            for (const sec of ["dependencies","devDependencies"]) {
+              for (const [name, ver] of Object.entries(p[sec] || {})) {
+                if (/^[\^~]|[\s|x*]|\s-\s/.test(ver) || ver.includes(" - ")) bad.push(`${name}@${ver}`);
+              }
+            }
+            if (bad.length) {
+              console.error("Non-exact (unpinned) deps:\n  " + bad.join("\n  "));
+              process.exit(1);
+            }
+            console.log("All direct deps are exact-pinned.");
+          '
+
+      - name: Install with frozen lockfile
+        run: npm ci
+
+      - name: Detect package-lock.json drift
+        run: git diff --exit-code package-lock.json
+
+  audit:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm audit --audit-level=high

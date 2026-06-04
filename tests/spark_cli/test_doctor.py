@@ -275,6 +275,12 @@ def test_run_doctor_termux_does_not_mark_browser_available_without_agent_browser
     monkeypatch.setitem(sys.modules, "model_tools", fake_model_tools)
     monkeypatch.setitem(sys.modules, "core.model_tools", fake_model_tools)
 
+    # Simulate the managed agent-browser runtime being absent (as on a fresh
+    # Termux install). Without this stub the test would pass/fail depending on
+    # whether the *host* machine happens to have agent-browser installed.
+    from spark_cli import browser_runtime as _browser_runtime
+    monkeypatch.setattr(_browser_runtime, "agent_browser_path", lambda: None)
+
     try:
         from spark_cli import auth as _auth_mod
         monkeypatch.setattr(_auth_mod, "get_nous_auth_status", lambda: {})

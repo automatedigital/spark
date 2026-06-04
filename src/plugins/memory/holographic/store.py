@@ -91,6 +91,17 @@ _RE_AKA          = re.compile(
 )
 
 
+def _normalize_for_dedup(text: str) -> str:
+    """Normalize a fact for near-duplicate comparison.
+
+    Lowercase, collapse internal whitespace, and strip surrounding whitespace
+    and trailing sentence punctuation so trivial wording/format variants of the
+    same fact don't accumulate as separate rows.
+    """
+    collapsed = re.sub(r"\s+", " ", text.strip().lower())
+    return collapsed.rstrip(".!?,;: ")
+
+
 def _clamp_trust(value: float) -> float:
     return max(_TRUST_MIN, min(_TRUST_MAX, value))
 
@@ -155,6 +166,14 @@ class MemoryStore:
             content = content.strip()
             if not content:
                 raise ValueError("content must not be empty")
+
+            # Near-duplicate guard: collapse case/whitespace/trailing punctuation
+            # so "Joe likes coffee." and "joe likes  coffee" don't both persist.
+            # Global scan (matches the existing UNIQUE(content) exact-dedup scope).
+            norm = _normalize_for_dedup(content)
+            for row in self._conn.execute("SELECT fact_id, content FROM facts"):
+                if _normalize_for_dedup(row["content"]) == norm:
+                    return int(row["fact_id"])
 
             try:
                 cur = self._conn.execute(

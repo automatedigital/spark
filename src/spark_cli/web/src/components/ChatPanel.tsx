@@ -33,6 +33,7 @@ import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
 import { MessageRowSkeleton } from "@/components/Skeleton";
+import { setTrayStatus } from "@/lib/desktop";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 
@@ -42,8 +43,8 @@ const nid = () => `m${++_msgId}`;
 const MAX_RESULT_CHARS = 12_000;
 
 type ChatMessage =
-  | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[] }
-  | { id: string; role: "assistant"; content: string; streaming?: boolean }
+  | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[]; redirect?: boolean }
+  | { id: string; role: "assistant"; content: string; streaming?: boolean; usage?: { totalTokens: number; costUsd?: number } }
   | {
       id: string;
       role: "tool";
@@ -265,6 +266,9 @@ const UserRow = memo(function UserRow({
         <User className="h-3.5 w-3.5" />
       </div>
       <div className="max-w-[85%] flex flex-col items-end gap-1">
+        {msg.redirect && (
+          <span className="text-[10px] text-muted-foreground/60">↩ redirect</span>
+        )}
         <div className="rounded-lg px-3 py-2 text-sm bg-primary/10 text-foreground relative">
           <p className="whitespace-pre-wrap leading-relaxed">{renderTokens(msg.content)}</p>
           {hasSession && msg.sessionIdx != null && (
@@ -357,6 +361,16 @@ const AssistantRow = memo(function AssistantRow({
             </Button>
           </div>
         )}
+        {!msg.streaming && msg.usage && msg.usage.totalTokens > 0 && (
+          <div className="mt-1 text-[10px] text-muted-foreground/40 tabular-nums">
+            {msg.usage.totalTokens >= 1000
+              ? `${(msg.usage.totalTokens / 1000).toFixed(1)}K tokens`
+              : `${msg.usage.totalTokens} tokens`}
+            {msg.usage.costUsd != null && msg.usage.costUsd > 0 && (
+              <> · ${msg.usage.costUsd < 0.01 ? msg.usage.costUsd.toFixed(4) : msg.usage.costUsd.toFixed(2)}</>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -443,7 +457,19 @@ export function ChatPanel({
   className,
 }: ChatPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => {
+    // First-run "try this" prompt seeded by onboarding — pre-fill once.
+    try {
+      const starter = localStorage.getItem("spark-starter-prompt");
+      if (starter) {
+        localStorage.removeItem("spark-starter-prompt");
+        return starter;
+      }
+    } catch {
+      /* ignore */
+    }
+    return "";
+  });
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
@@ -471,6 +497,11 @@ export function ChatPanel({
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
+
+  // Desktop (§3.1): reflect agent activity in the menu-bar tray indicator.
+  useEffect(() => {
+    void setTrayStatus(streaming, streaming ? "Spark — working…" : undefined);
+  }, [streaming]);
 
   useEffect(() => {
     if (sessionId && sessionId === activeSessionRef.current && streamingRef.current) {
@@ -731,6 +762,21 @@ export function ChatPanel({
             costUsd: (prev.costUsd ?? 0) + (cost ?? 0),
             turnCount: (prev.turnCount ?? 0) + 1,
           }));
+          // Attach this turn's usage to the just-finalized assistant message.
+          const turnTokens = (tokens?.input ?? 0) + (tokens?.output ?? 0);
+          if (turnTokens > 0 || cost != null) {
+            setChatMessages((prev) => {
+              for (let i = prev.length - 1; i >= 0; i--) {
+                const m = prev[i];
+                if (m.role === "assistant") {
+                  const next = [...prev];
+                  next[i] = { ...m, usage: { totalTokens: turnTokens, costUsd: cost } };
+                  return next;
+                }
+              }
+              return prev;
+            });
+          }
         }
         const cur = activeSessionRef.current;
         if (cur) {
@@ -774,7 +820,26 @@ export function ChatPanel({
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || streaming) return;
+    if (!text) return;
+
+    // While a turn is streaming, a submit becomes a redirect: interrupt the
+    // running turn and hand it the new message (read on the next loop iter).
+    if (streaming) {
+      const sid = activeSessionId;
+      if (!sid) return;
+      setInput("");
+      setChatMessages((prev) => [
+        ...prev,
+        { id: nid(), role: "user", content: text, redirect: true },
+      ]);
+      setStatusLabel("Redirecting…");
+      try {
+        await api.interruptConversation(sid, text);
+      } catch {
+        /* ignore — the running turn may have already finished */
+      }
+      return;
+    }
 
     setInput("");
     setError(null);

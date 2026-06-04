@@ -1420,6 +1420,67 @@ class _CommandHandlersMixin:
                 f"  {_ACCENT}OK: Reasoning effort set to '{arg}' (session only){_RST}"
             )
 
+    def _handle_backend_command(self, cmd: str):
+        """Handle /backend - show or set the command-execution backend."""
+        from spark_cli.config import load_config
+
+        valid = ("local", "docker", "ssh", "singularity", "modal", "daytona")
+        parts = cmd.strip().split(maxsplit=1)
+        current = (load_config().get("terminal", {}) or {}).get("backend", "local")
+        if len(parts) < 2:
+            _cprint(f"  {_ACCENT}Execution backend: {current}{_RST}")
+            _cprint(f"  {_DIM}Usage: /backend <{'|'.join(valid)}>{_RST}")
+            return
+        arg = parts[1].strip().lower()
+        if arg not in valid:
+            _cprint(f"  {_DIM}(._.) Unknown backend: {arg}. Choose: {', '.join(valid)}{_RST}")
+            return
+        if save_config_value("terminal.backend", arg):
+            _cprint(f"  {_ACCENT}OK: Execution backend set to '{arg}' (saved){_RST}")
+            if arg != "local":
+                _cprint(f"  {_DIM}Sandboxed backend — restart or new sessions use it.{_RST}")
+        else:
+            _cprint(f"  {_ACCENT}OK: Execution backend set to '{arg}' (session only){_RST}")
+
+    def _handle_think_command(self, cmd: str):
+        """Handle /think - quick reasoning-effort control.
+
+        Usage: /think <off|low|med|high>  (off disables reasoning entirely).
+        Maps to the same reasoning_config the agent reads; med→medium.
+        """
+        _LEVELS = {
+            "off": "none",
+            "none": "none",
+            "low": "low",
+            "med": "medium",
+            "medium": "medium",
+            "high": "high",
+        }
+        parts = cmd.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            rc = self.reasoning_config
+            current = "medium (default)" if not rc else (
+                "off" if rc.get("enabled") is False else rc.get("effort", "medium")
+            )
+            _cprint(f"  {_ACCENT}Thinking level: {current}{_RST}")
+            _cprint(f"  {_DIM}Usage: /think <off|low|med|high>{_RST}")
+            return
+
+        arg = parts[1].strip().lower()
+        level = _LEVELS.get(arg)
+        if level is None:
+            _cprint(f"  {_DIM}(._.) Unknown level: {arg}. Use off|low|med|high.{_RST}")
+            return
+
+        parsed = _parse_reasoning_config(level)
+        self.reasoning_config = parsed
+        self.agent = None  # Force agent re-init with new reasoning config
+        shown = "off" if level == "none" else level
+        if save_config_value("agent.reasoning_effort", level):
+            _cprint(f"  {_ACCENT}OK: Thinking set to '{shown}' (saved){_RST}")
+        else:
+            _cprint(f"  {_ACCENT}OK: Thinking set to '{shown}' (session only){_RST}")
+
     def _handle_fast_command(self, cmd: str):
         """Handle /fast - toggle fast mode (OpenAI Priority Processing / Anthropic Fast Mode)."""
         if not self._fast_command_available():

@@ -435,10 +435,36 @@ class SessionEntry:
         )
 
 
+def resolve_agent_name(source: SessionSource, routing: dict | None) -> str:
+    """Resolve which named agent/workspace an inbound message routes to.
+
+    ``routing`` is an optional config map of rules → agent name, most specific
+    first. A rule key matches when it equals one of (in order):
+      ``<platform>:<chat_type>:<chat_id>`` · ``<platform>:<chat_type>`` ·
+      ``<platform>``
+    Falls back to ``"main"`` (the default single-workspace behaviour).
+    """
+    if not routing:
+        return "main"
+    platform = source.platform.value
+    candidates = [
+        f"{platform}:{source.chat_type}:{source.chat_id}" if source.chat_id else None,
+        f"{platform}:{source.chat_type}",
+        platform,
+    ]
+    for key in candidates:
+        if key and key in routing:
+            name = str(routing[key]).strip()
+            if name:
+                return name
+    return str(routing.get("default", "main")).strip() or "main"
+
+
 def build_session_key(
     source: SessionSource,
     group_sessions_per_user: bool = True,
     thread_sessions_per_user: bool = False,
+    agent_name: str = "main",
 ) -> str:
     """Build a deterministic session key from a message source.
 
@@ -464,17 +490,18 @@ def build_session_key(
       - Without identifiers, messages fall back to one session per platform/chat_type.
     """
     platform = source.platform.value
+    prefix = f"agent:{agent_name or 'main'}"
     if source.chat_type == "dm":
         if source.chat_id:
             if source.thread_id:
-                return f"agent:main:{platform}:dm:{source.chat_id}:{source.thread_id}"
-            return f"agent:main:{platform}:dm:{source.chat_id}"
+                return f"{prefix}:{platform}:dm:{source.chat_id}:{source.thread_id}"
+            return f"{prefix}:{platform}:dm:{source.chat_id}"
         if source.thread_id:
-            return f"agent:main:{platform}:dm:{source.thread_id}"
-        return f"agent:main:{platform}:dm"
+            return f"{prefix}:{platform}:dm:{source.thread_id}"
+        return f"{prefix}:{platform}:dm"
 
     participant_id = source.user_id_alt or source.user_id
-    key_parts = ["agent:main", platform, source.chat_type]
+    key_parts = [prefix, platform, source.chat_type]
 
     if source.chat_id:
         key_parts.append(source.chat_id)
@@ -571,11 +598,12 @@ class SessionStore:
             raise
     
     def _generate_session_key(self, source: SessionSource) -> str:
-        """Generate a session key from a source."""
+        """Generate a session key from a source, honoring channel→workspace routing."""
         return build_session_key(
             source,
             group_sessions_per_user=getattr(self.config, "group_sessions_per_user", True),
             thread_sessions_per_user=getattr(self.config, "thread_sessions_per_user", False),
+            agent_name=resolve_agent_name(source, getattr(self.config, "routing", None)),
         )
     
     def _is_session_expired(self, entry: SessionEntry) -> bool:

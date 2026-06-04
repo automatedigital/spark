@@ -70,6 +70,7 @@ export interface Translations {
       chat: string;
       files: string;
       canvas: string;
+      memory: string;
       connectors: string;
     };
   };

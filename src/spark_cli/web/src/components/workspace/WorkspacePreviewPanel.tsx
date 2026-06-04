@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
+  Cookie,
+  EyeOff,
   ExternalLink,
   Globe,
+  Lock,
   Loader2,
   Play,
   RefreshCw,
   RotateCcw,
   Square,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
@@ -17,6 +23,37 @@ import type {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { isTauri } from "@/sidecar";
+import { StreamedBrowser } from "./StreamedBrowser";
+import { NativePreview } from "./NativePreview";
+import { nativePreview } from "@/lib/nativePreview";
+
+/** Loopback URLs render fine in an iframe; external origins are blocked by X-Frame-Options/CSP. */
+function isLoopbackUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
+  }
+}
+
+/** Favicon served from the site's own origin (no third-party request). */
+function faviconUrl(url: string): string {
+  try {
+    return `${new URL(url).origin}/favicon.ico`;
+  } catch {
+    return "";
+  }
+}
 
 function statusTone(status: WorkspacePreviewStatus["status"]): string {
   if (status === "running") return "text-emerald-300";
@@ -31,6 +68,8 @@ function shortTime(ts: number): string {
 
 export function WorkspacePreviewPanel({ slug }: { slug: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const [status, setStatus] = useState<WorkspacePreviewStatus | null>(null);
   const [frameSrc, setFrameSrc] = useState("");
@@ -40,14 +79,28 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
   const [showLogs, setShowLogs] = useState(false);
   const [logFilter, setLogFilter] = useState<"all" | "server" | "console" | "network" | "error">("all");
   const [lastRefreshReason, setLastRefreshReason] = useState<string | null>(null);
+  const [portOverride, setPortOverride] = useState("");
+  const [privateMode, setPrivateMode] = useState(false);
+  const [pageTitle, setPageTitle] = useState("");
 
   const activeUrl = status?.url ?? "";
+  // A launching dev server reports "starting" until the backend's HTTP probe
+  // succeeds (see _await_preview_ready). Don't load the pane against a URL that
+  // isn't answering yet — it would show a connection-refused error that never
+  // recovers. Manual browser navigation has no "starting" phase.
+  const previewPending = status?.status === "starting";
 
   useEffect(() => {
     setFrameSrc(activeUrl);
+    setPageTitle("");
   }, [activeUrl]);
 
   const reloadFrame = useCallback(() => {
+    if (isTauri()) {
+      // Native webview: re-navigate to the current URL to reload.
+      if (activeUrl) void nativePreview.navigate(activeUrl).catch(() => {});
+      return;
+    }
     const frame = iframeRef.current;
     if (!frame) return;
     try {
@@ -104,10 +157,15 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
     };
   }, [loadLogs, loadStatus, reloadFrame, slug]);
 
+  const parsedPort = () => {
+    const n = Number.parseInt(portOverride.trim(), 10);
+    return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : undefined;
+  };
+
   const start = async () => {
     setLoading(true);
     try {
-      const next = await api.startWorkspacePreview(slug);
+      const next = await api.startWorkspacePreview(slug, { port: parsedPort() });
       setStatus(next);
       setUrlInput(next.url ?? "");
     } finally {
@@ -127,7 +185,7 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
   const restart = async () => {
     setLoading(true);
     try {
-      const next = await api.restartWorkspacePreview(slug);
+      const next = await api.restartWorkspacePreview(slug, { port: parsedPort() });
       setStatus(next);
       setUrlInput(next.url ?? "");
     } finally {
@@ -135,9 +193,43 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
     }
   };
 
+  const goBack = () => {
+    if (isTauri()) return void nativePreview.back().catch(() => {});
+    if (frameSrc && !isLoopbackUrl(frameSrc)) return void api.streamBrowserInput(slug, { type: "back" }).catch(() => {});
+    try {
+      iframeRef.current?.contentWindow?.history.back();
+    } catch {
+      /* cross-origin */
+    }
+  };
+
+  const goForward = () => {
+    if (isTauri()) return void nativePreview.forward().catch(() => {});
+    if (frameSrc && !isLoopbackUrl(frameSrc)) return void api.streamBrowserInput(slug, { type: "forward" }).catch(() => {});
+    try {
+      iframeRef.current?.contentWindow?.history.forward();
+    } catch {
+      /* cross-origin */
+    }
+  };
+
   const navigate = async () => {
     const trimmed = urlInput.trim();
     if (!trimmed) return;
+    // Guard against silently driving the browser to an arbitrary external
+    // origin: confirm before navigating anywhere that isn't local loopback.
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    if (!isLoopbackUrl(withScheme)) {
+      let host = withScheme;
+      try {
+        host = new URL(withScheme).host;
+      } catch {
+        /* keep raw */
+      }
+      if (!window.confirm(`Navigate the preview browser to external site:\n\n${host}\n\nContinue?`)) {
+        return;
+      }
+    }
     setLoading(true);
     try {
       const next = await api.navigateWorkspacePreview(slug, trimmed);
@@ -153,13 +245,63 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
     void api.refreshWorkspacePreview(slug).catch(() => {});
   };
 
+  const clearBrowsingData = async () => {
+    if (!window.confirm("Clear all browsing data and sign out of all sites for this workspace?")) return;
+    try {
+      if (isTauri()) await nativePreview.clearData();
+      else await api.clearStreamBrowser(slug);
+    } catch (e) {
+      console.error("clear browsing data", e);
+    }
+  };
+
+  const showCookies = async () => {
+    try {
+      const cookies = isTauri()
+        ? await nativePreview.cookies()
+        : (await api.streamBrowserCookies(slug)).cookies;
+      const byDomain = new Map<string, number>();
+      for (const c of cookies) byDomain.set(c.domain, (byDomain.get(c.domain) ?? 0) + 1);
+      const summary = [...byDomain.entries()].map(([d, n]) => `${d}: ${n}`).join("\n");
+      window.alert(cookies.length ? `Cookies (${cookies.length}):\n\n${summary}` : "No cookies stored.");
+    } catch (e) {
+      window.alert(`Cookie read failed: ${String(e)}`);
+    }
+  };
+
   const filteredLogs = useMemo(() => {
     if (logFilter === "all") return logs;
     return logs.filter((log) => log.stream === logFilter || (logFilter === "error" && log.stream === "stderr"));
   }, [logFilter, logs]);
 
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === "l") {
+      e.preventDefault();
+      urlInputRef.current?.focus();
+      urlInputRef.current?.select();
+    } else if (mod && e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      refresh();
+    } else if (mod && e.key === "[") {
+      e.preventDefault();
+      goBack();
+    } else if (mod && e.key === "]") {
+      e.preventDefault();
+      goForward();
+    } else if (mod && e.altKey && e.key.toLowerCase() === "i") {
+      e.preventDefault();
+      if (isTauri()) void nativePreview.devtools().catch(() => {});
+    }
+  };
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70">
+    <div
+      ref={rootRef}
+      onKeyDown={onKeyDown}
+      tabIndex={-1}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70 outline-none"
+    >
       <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
         <Button
           size="sm"
@@ -180,23 +322,61 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
         <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Restart app preview" onClick={() => void restart()} disabled={loading}>
           <RotateCcw className="h-3.5 w-3.5" />
         </Button>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Back" onClick={goBack} disabled={!activeUrl}>
+          <ArrowLeft className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Forward" onClick={goForward} disabled={!activeUrl}>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
         <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Reload browser" onClick={refresh} disabled={!activeUrl}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
         <form
-          className="min-w-0 flex-1"
+          className="flex min-w-0 flex-1 items-center gap-1"
           onSubmit={(e) => {
             e.preventDefault();
             void navigate();
           }}
         >
+          {activeUrl &&
+            (loading ? (
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground/60" />
+            ) : activeUrl.startsWith("https://") ? (
+              <Lock className="h-3 w-3 shrink-0 text-emerald-400/70" />
+            ) : (
+              <Globe className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+            ))}
           <input
+            ref={urlInputRef}
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="Search or enter URL"
             className="h-6 w-full rounded-sm border border-input bg-muted/40 px-2 font-mono-ui text-[11px] text-foreground outline-none transition focus:border-primary/60"
           />
         </form>
+        <input
+          value={portOverride}
+          onChange={(e) => setPortOverride(e.target.value.replace(/[^0-9]/g, ""))}
+          placeholder="port"
+          title="Pin a port (overrides auto-detection on start/restart)"
+          inputMode="numeric"
+          className="h-6 w-12 shrink-0 rounded-sm border border-input bg-muted/40 px-1.5 text-center font-mono-ui text-[11px] text-foreground outline-none transition focus:border-primary/60"
+        />
+        <Button
+          size="sm"
+          variant="ghost"
+          className={cn("h-6 w-6 p-0", privateMode && "bg-secondary text-foreground")}
+          title={privateMode ? "Private session (nothing saved) — click for persistent" : "Persistent session — click for private"}
+          onClick={() => setPrivateMode((v) => !v)}
+        >
+          <EyeOff className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="View cookies" onClick={() => void showCookies()}>
+          <Cookie className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Clear browsing data" onClick={() => void clearBrowsingData()}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
         <Button
           size="sm"
           variant="ghost"
@@ -224,12 +404,38 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
         </span>
         {status?.kind && <span className="text-muted-foreground/60">{status.kind}</span>}
         {status?.port && <span className="text-muted-foreground/60">:{status.port}</span>}
+        {activeUrl && faviconUrl(activeUrl) && (
+          <img
+            src={faviconUrl(activeUrl)}
+            alt=""
+            className="h-3 w-3 shrink-0 rounded-[2px]"
+            onError={(e) => (e.currentTarget.style.display = "none")}
+          />
+        )}
+        {(pageTitle || hostOf(activeUrl)) && (
+          <span className="min-w-0 max-w-[40%] truncate text-foreground/70">{pageTitle || hostOf(activeUrl)}</span>
+        )}
         {lastRefreshReason && <span className="text-muted-foreground/50">refresh:{lastRefreshReason}</span>}
         {status?.error && <span className="min-w-0 flex-1 truncate text-red-300/80">{status.error}</span>}
       </div>
 
       <div className="relative min-h-0 flex-1 bg-black/20">
-        {frameSrc ? (
+        {previewPending ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-muted-foreground/70">
+            <Loader2 className="h-5 w-5 animate-spin text-amber-300" />
+            <div className="font-mono-ui text-[11px]">
+              Waiting for dev server{activeUrl ? ` at ${hostOf(activeUrl)}` : ""}…
+            </div>
+          </div>
+        ) : frameSrc && isTauri() ? (
+          // Desktop: a real native child webview overlays this region — handles
+          // local previews and external sites alike, with persistent logins.
+          <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} />
+        ) : frameSrc && !isLoopbackUrl(frameSrc) ? (
+          // Web: external sites can't be iframed (X-Frame-Options/CSP); stream a
+          // real server-side browser instead so they render with live input.
+          <StreamedBrowser slug={slug} url={frameSrc} persistent={!privateMode} onTitle={setPageTitle} />
+        ) : frameSrc ? (
           <iframe
             ref={iframeRef}
             title="Workspace browser"

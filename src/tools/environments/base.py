@@ -37,6 +37,21 @@ def _get_activity_callback() -> Callable[[str], None] | None:
     return getattr(_activity_callback_local, "callback", None)
 
 
+# Thread-local output callback. The agent sets this before a foreground tool
+# call so _wait_for_process can stream stdout lines incrementally to the TUI
+# instead of the caller only seeing the full buffer on completion.
+_output_callback_local = threading.local()
+
+
+def set_output_callback(cb: Callable[[str], None] | None) -> None:
+    """Register a callback fired with each stdout line as it's read."""
+    _output_callback_local.callback = cb
+
+
+def _get_output_callback() -> Callable[[str], None] | None:
+    return getattr(_output_callback_local, "callback", None)
+
+
 def get_sandbox_dir() -> Path:
     """Return the host-side root for all sandbox storage (Docker workspaces,
     Singularity overlays/SIF cache, etc.).
@@ -389,11 +404,17 @@ class BaseEnvironment(ABC):
         doesn't kill long-running commands.
         """
         output_chunks: list[str] = []
+        _output_cb = _get_output_callback()
 
         def _drain():
             try:
                 for line in proc.stdout:
                     output_chunks.append(line)
+                    if _output_cb is not None:
+                        try:
+                            _output_cb(line)
+                        except Exception:
+                            pass
             except UnicodeDecodeError:
                 output_chunks.clear()
                 output_chunks.append(

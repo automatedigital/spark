@@ -19,6 +19,40 @@ from spark_cli.callbacks import prompt_for_secret
 
 logger = logging.getLogger(__name__)
 
+# Tool outputs longer than this (lines) get a collapsed "▸ N lines" indicator
+# appended to the completed scrollback line instead of being summarised alone.
+_TOOL_OUTPUT_COLLAPSE_LINES = 5
+
+
+def _tool_status_glyph(is_error: bool) -> str:
+    """Status glyph for a completed tool call: ✓ ok / ✗ error."""
+    return "✗" if is_error else "✓"
+
+
+def _count_output_lines(result: str | None) -> int:
+    """Count non-empty lines in a tool result (0 when empty/None)."""
+    if not result:
+        return 0
+    return sum(1 for ln in str(result).splitlines() if ln.strip())
+
+
+def _format_completed_tool_line(line: str, *, is_error: bool, result_lines: int = 0) -> str:
+    """Compose the completed-tool scrollback line: glyph + message + collapse hint.
+
+    Long outputs aren't dumped to the TUI (they're summarised), so we surface
+    their size with a collapsed ``▸ N lines`` affordance rather than the raw text.
+    """
+    glyph = _tool_status_glyph(is_error)
+    suffix = (
+        f"  {_DIM}▸ {result_lines} lines{_RST}"
+        if result_lines > _TOOL_OUTPUT_COLLAPSE_LINES
+        else ""
+    )
+    # Explicit error marker in addition to the glyph: it survives copy-paste and
+    # log scraping where the ✗ glyph may not render or be greppable.
+    error_tag = f" {_DIM}[error]{_RST}" if is_error else ""
+    return f"{glyph} {line}{error_tag}{suffix}"
+
 
 class _CallbacksMixin:
     def _on_tool_gen_start(self, tool_name: str) -> None:
@@ -64,6 +98,15 @@ class _CallbacksMixin:
         stacked line to scrollback on tool.completed so users can see the
         full history of tool calls (not just the current one in the spinner).
         """
+        if event_type == "tool.output":
+            # Live stdout line from a running command. Only render in the
+            # verbose "all" mode so the default summarised feed stays clean.
+            if self.tool_progress_mode == "all" and preview:
+                line = preview.rstrip("\n")
+                if line:
+                    _cprint(f"  {_DIM}│ {line}{_RST}")
+            return
+
         if event_type == "tool.completed":
             import time as _time
 
@@ -89,8 +132,11 @@ class _CallbacksMixin:
                     from agent.display import get_cute_tool_message
 
                     line = get_cute_tool_message(function_name, stored_args, duration)
-                    if is_error:
-                        line = f"{line} [error]"
+                    line = _format_completed_tool_line(
+                        line,
+                        is_error=is_error,
+                        result_lines=kwargs.get("result_lines", 0),
+                    )
                     _cprint(f"  {line}")
                 except Exception:
                     pass

@@ -30,6 +30,8 @@ export function renderTypeFor(nodeType: string): string {
       return "note";
     case "display.render":
       return "render";
+    case "display.actions":
+      return "actions";
     default:
       return "workflow";
   }

@@ -311,3 +311,43 @@ grep -r "telegram\|discord\|whatsapp\|slack" gateway/ tools/ agent/ cron/ spark_
   --include="*.py" -l | sort -u
 # Check each file in the output — if it mentions other platforms but not yours, you missed it
 ```
+
+---
+
+## Session routing model (channel → workspace)
+
+Every inbound message is mapped to a **session key** by
+`gateway/session.py:build_session_key(source, …)`. The key's first segment is
+`agent:<agent_name>` — the named agent/workspace the conversation belongs to.
+
+### Isolation built into the key
+
+The rest of the key isolates conversations by `platform`, `chat_type`
+(`dm`/`group`/`channel`), `chat_id`, `thread_id`, and (when
+`group_sessions_per_user` is on) participant id. So DMs, groups, and threads
+already get separate sessions without any extra config.
+
+### Multi-agent / multi-workspace routing
+
+By default `agent_name` is `"main"` — one shared workspace for all channels. To
+route specific inbound channels to **isolated named workspaces**, set a
+`routing` map in gateway config; `resolve_agent_name(source, routing)` picks the
+agent name, most specific rule first:
+
+| rule key | matches |
+|----------|---------|
+| `<platform>:<chat_type>:<chat_id>` | one exact chat |
+| `<platform>:<chat_type>` | all DMs / all groups on a platform |
+| `<platform>` | everything on a platform |
+| `default` | fallback for unmatched messages |
+
+```yaml
+routing:
+  "telegram:dm:123456": "client-acme"   # this DM → its own workspace
+  "slack:channel": "team"               # all Slack channels → shared "team"
+  default: "main"
+```
+
+Each distinct `agent_name` yields a `agent:<name>:…` key prefix, so its sessions,
+memory, and runtime are isolated from other workspaces. Adding a platform needs
+no routing work — the mechanism is platform-agnostic.

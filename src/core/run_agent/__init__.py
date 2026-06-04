@@ -6737,6 +6737,9 @@ class AIAgent(_PromptCacheMixin):
                         self.tool_progress_callback(
                             "tool.completed", function_name, None, None,
                             duration=tool_duration, is_error=is_error,
+                            result_lines=sum(
+                                1 for ln in str(function_result or "").splitlines() if ln.strip()
+                            ),
                         )
                     except Exception as cb_err:
                         logging.debug(f"Tool progress callback error: {cb_err}")
@@ -6860,8 +6863,26 @@ class AIAgent(_PromptCacheMixin):
             # the agent while a command is running.
             if _block_msg is None:
                 try:
-                    from tools.environments.base import set_activity_callback
+                    from tools.environments.base import (
+                        set_activity_callback,
+                        set_output_callback,
+                    )
                     set_activity_callback(self._touch_activity)
+                    # Stream stdout lines incrementally to the progress callback
+                    # so the TUI can show live output instead of only the final
+                    # buffer. The TUI decides whether to render (tool_progress_mode).
+                    if self.tool_progress_callback:
+                        def _stream_output(line: str, _fn=function_name) -> None:
+                            # Skip internal CWD-tracking sentinel lines.
+                            if "__SPARK_CWD_" in line:
+                                return
+                            try:
+                                self.tool_progress_callback("tool.output", _fn, line)
+                            except Exception:
+                                pass
+                        set_output_callback(_stream_output)
+                    else:
+                        set_output_callback(None)
                 except Exception:
                     pass
 
@@ -7097,6 +7118,9 @@ class AIAgent(_PromptCacheMixin):
                     self.tool_progress_callback(
                         "tool.completed", function_name, None, None,
                         duration=tool_duration, is_error=_is_error_result,
+                        result_lines=sum(
+                            1 for ln in str(function_result or "").splitlines() if ln.strip()
+                        ),
                     )
                 except Exception as cb_err:
                     logging.debug(f"Tool progress callback error: {cb_err}")

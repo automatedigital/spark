@@ -49,6 +49,8 @@ _SPARK_CORE_TOOLS = [
     # Workspace preview verification for project-scoped webapps.
     "preview_open", "preview_snapshot", "preview_console", "preview_screenshot",
     "preview_click", "preview_type", "preview_evaluate",
+    # Agent-driven visual board (Canvas UI)
+    "canvas", "canvas_await",
     # Planning & memory
     "todo", "memory",
     # Session history search
@@ -130,6 +132,12 @@ TOOLSETS = {
             "preview_open", "preview_snapshot", "preview_console", "preview_screenshot",
             "preview_click", "preview_type", "preview_evaluate",
         ],
+        "includes": [],
+    },
+
+    "canvas": {
+        "description": "Render agent-driven visual boards in the Canvas UI",
+        "tools": ["canvas", "canvas_await"],
         "includes": [],
     },
     

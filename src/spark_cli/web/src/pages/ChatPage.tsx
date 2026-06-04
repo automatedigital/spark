@@ -963,10 +963,18 @@ export default function ChatPage() {
     catch { void loadSessions(); }
   };
 
-  const handleNewGlobalChat = () => {
+  const handleNewGlobalChat = useCallback(() => {
     setSelectedId(null);
     setComposingFor("global");
-  };
+  }, []);
+
+  // Desktop (§3.1/§3.2): the tray "New Chat" item and global hotkey dispatch a
+  // `spark-new-chat` window event; start a fresh global thread in response.
+  useEffect(() => {
+    const handler = () => handleNewGlobalChat();
+    window.addEventListener("spark-new-chat", handler);
+    return () => window.removeEventListener("spark-new-chat", handler);
+  }, [handleNewGlobalChat]);
 
   const handleNewProjectThread = (slug: string) => {
     setSelectedId(null);

@@ -41,6 +41,7 @@ dependencies = [
 [project.optional-dependencies]
 modal = ["modal>=1.0.0,<2"]
 daytona = ["daytona>=0.148.0,<1"]
+keychain = ["keyring>=24.0,<26"]
 dev = [
   "debugpy>=1.8.0,<2",
   "pytest>=9.0.2,<10",

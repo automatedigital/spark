@@ -3,9 +3,20 @@
   "identifier": "default",
   "description": "Capabilities granted to the Spark main window.",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:9119", "http://localhost:9119"]
+  },
   "permissions": [
     "core:default",
     "core:window:allow-close",
-    "core:webview:allow-create-webview-window"
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:webview:allow-create-webview-window",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered",
+    "notification:default",
+    "deep-link:default"
   ]
 }
