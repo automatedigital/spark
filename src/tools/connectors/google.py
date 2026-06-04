@@ -29,35 +29,36 @@ from tools.connectors.base import (
 
 logger = logging.getLogger(__name__)
 
-# Free-tier ("sensitive", no CASA) scopes — kept in sync with
-# spark_cli.google_connector.GOOGLE_SCOPES (the authoritative list used at auth).
-FREE_TIER_SCOPES: tuple[str, ...] = (
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/presentations",
+GWS_SKILLS: tuple[str, ...] = (
+    "gws-gmail", "gws-gmail-send", "gws-gmail-triage", "gws-calendar",
+    "gws-calendar-insert", "gws-drive", "gws-drive-upload", "gws-docs",
+    "gws-sheets", "gws-slides",
 )
 
-GWS_SKILLS: tuple[str, ...] = (
-    "gws-gmail-send", "gws-calendar", "gws-calendar-insert", "gws-drive",
-    "gws-drive-upload", "gws-docs", "gws-sheets", "gws-slides",
-)
+
+def _active_scopes() -> tuple[str, ...]:
+    """The scopes actually requested at auth (config-overridable)."""
+    try:
+        from spark_cli.google_connector import get_scopes
+        return tuple(get_scopes())
+    except Exception:
+        return ()
 
 
 class GoogleWorkspaceConnector(Connector):
     id = "google"
     name = "Google Workspace"
     description = (
-        "Send email, manage your calendar, and create Docs/Sheets/Slides and "
-        "Drive files via the gws CLI. Free-tier scopes only — Gmail is send-only "
-        "(reading email needs a paid restricted scope)."
+        "Read & send email, manage your calendar, and create/edit Docs, Sheets, "
+        "Slides, and Drive files via the gws CLI."
     )
     transport = Transport.CLI
-    scopes = FREE_TIER_SCOPES
     skills = GWS_SKILLS
     docs_url = "https://github.com/googleworkspace/cli"
+
+    @property
+    def scopes(self) -> tuple[str, ...]:  # type: ignore[override]
+        return _active_scopes()
 
     # --- status ----------------------------------------------------------
 

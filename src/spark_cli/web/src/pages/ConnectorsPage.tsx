@@ -19,12 +19,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-// What the agent can do once Google is connected on the free tier.
+// What the agent can do once Google is connected.
 const GOOGLE_CAPABILITIES = [
-  "Send email (Gmail — send only)",
+  "Read & send email (Gmail)",
   "Create & edit Google Docs, Sheets, Slides",
   "Manage Google Calendar events",
-  "Create Drive files & edit files you pick",
+  "Read, create & edit Google Drive files",
 ];
 
 export default function ConnectorsPage() {
@@ -153,18 +153,19 @@ export default function ConnectorsPage() {
           <CardDescription>
             {google?.connected && google.email
               ? `Signed in as ${google.email}`
-              : "Send email, manage your calendar, and create Docs/Sheets/Slides & Drive files."}
+              : "Read & send email, manage your calendar, and create/edit Docs, Sheets, Slides & Drive files."}
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Free-tier limitation note */}
+          {/* Unverified-app note */}
           <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              Free-tier connection: Gmail is <strong>send-only</strong>. Reading
-              your inbox needs a restricted scope (paid verification) and isn't
-              included.
+              During sign-in Google may show a{" "}
+              <strong>"Google hasn't verified this app"</strong> screen — click{" "}
+              <em>Advanced → Continue</em>. This is expected for self-hosted
+              setups and your data stays in your own Google account.
             </span>
           </div>
 

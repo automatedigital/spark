@@ -15,13 +15,24 @@ def _configure(monkeypatch, *, cid="cid", csecret="csec"):
     monkeypatch.setattr(gc, "get_client_secret", lambda: csecret)
 
 
-def test_free_tier_scopes_no_restricted():
-    joined = " ".join(gc.GOOGLE_SCOPES)
+def test_default_scopes_are_read_write():
+    joined = " ".join(gc.DEFAULT_GOOGLE_SCOPES)
+    # read/write Gmail + full Drive by default (free for self-host test users)
+    assert "gmail.modify" in joined
     assert "gmail.send" in joined
-    assert "drive.file" in joined
-    # restricted (CASA) scopes must be absent on the free tier
-    assert "gmail.readonly" not in joined
-    assert "auth/drive " not in joined + " "  # full-drive scope
+    assert "auth/calendar" in joined
+
+
+def test_get_scopes_default(monkeypatch):
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {})
+    assert gc.get_scopes() == gc.DEFAULT_GOOGLE_SCOPES
+
+
+def test_get_scopes_config_override(monkeypatch):
+    # A public/send-only build can dial scopes back via config.yaml.
+    custom = ["openid", "email", "https://www.googleapis.com/auth/gmail.send"]
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {"scopes": custom})
+    assert gc.get_scopes() == custom
 
 
 def test_build_gws_credentials_shape(monkeypatch):

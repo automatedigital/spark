@@ -41,21 +41,48 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
-# Free-tier ("sensitive", no CASA / no fees) scopes only. NOTE: reading email
-# requires the *restricted* gmail.readonly scope (paid CASA verification) — so the
-# free tier is send-only for Gmail. Calendar/Docs/Sheets/Slides get full access;
-# Drive is limited to files the app creates or the user explicitly opens.
-GOOGLE_SCOPES = [
+# Default scopes: full read/write Gmail + Calendar/Docs/Sheets/Slides + Drive.
+#
+# gmail.modify (read+organize+write) and gmail.send are *restricted* scopes, but
+# they are FREE to use without the CASA assessment while the OAuth app is in
+# "Testing" mode with the connecting accounts added as Test users (≤100) — the
+# normal self-hosted case (each install uses its own client; the operator is the
+# test user). CASA/paid verification is only required to ship ONE shared client
+# to the public (>100 users, no "unverified app" warning).
+#
+# Deployments that DO go public can override these via config.yaml:
+#   connectors:
+#     google:
+#       scopes: ["openid", "email", "profile",
+#                "https://www.googleapis.com/auth/gmail.send", ...]  # send-only, etc.
+DEFAULT_GOOGLE_SCOPES = [
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/gmail.modify",   # read + write + labels
+    "https://www.googleapis.com/auth/gmail.send",      # send/compose
+    "https://www.googleapis.com/auth/drive",           # full Drive read/write
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/presentations",
 ]
+
+
+def get_scopes() -> list[str]:
+    """Return the OAuth scopes to request, overridable via config.yaml.
+
+    ``connectors.google.scopes`` (a list of scope URLs) replaces the defaults
+    entirely, letting public/restricted-distribution builds dial scopes back.
+    """
+    override = _get_google_config().get("scopes")
+    if isinstance(override, list) and override:
+        return [str(s) for s in override]
+    return list(DEFAULT_GOOGLE_SCOPES)
+
+
+# Back-compat alias (some callers import GOOGLE_SCOPES directly).
+GOOGLE_SCOPES = DEFAULT_GOOGLE_SCOPES
 
 TOKEN_EXPIRY_SKEW_SECONDS = 120  # refresh 2 min before actual expiry
 
@@ -233,7 +260,7 @@ def build_auth_url(state: str, code_challenge: str, redirect_uri: str) -> str:
         "client_id": get_client_id(),
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": " ".join(GOOGLE_SCOPES),
+        "scope": " ".join(get_scopes()),
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",

@@ -155,9 +155,9 @@ registry.register(
     schema={
         "name": "gmail_search",
         "description": (
-            "Search Gmail messages (subject, sender, date, snippet). NOTE: "
-            "requires a restricted gmail.readonly connection; Spark's free-tier "
-            "Google connection is send-only and this will report insufficient_scope."
+            "Search Gmail messages (subject, sender, date, snippet). Requires a "
+            "Google connection with read access (gmail.modify/readonly); reports "
+            "insufficient_scope if the connection is configured send-only."
         ),
         "parameters": {
             "type": "object",
