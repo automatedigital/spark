@@ -45,6 +45,36 @@ def _not_connected() -> str:
     })
 
 
+def _insufficient_scope() -> str:
+    return json.dumps({
+        "error": "insufficient_scope",
+        "message": (
+            "Reading Gmail requires the restricted 'gmail.readonly' scope, which "
+            "is not part of Spark's free-tier Google connection (Gmail is "
+            "send-only on the free tier). To read mail, connect with a "
+            "bring-your-own OAuth client that requests gmail.readonly. You can "
+            "still send mail and use Calendar/Docs/Sheets/Slides/Drive via the "
+            "gws CLI skills."
+        ),
+    })
+
+
+def _is_scope_error(exc: Exception) -> bool:
+    """True if an httpx error looks like a 403 insufficient-permission/scope."""
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return False
+    if resp.status_code not in (401, 403):
+        return False
+    body = (getattr(resp, "text", "") or "").lower()
+    return (
+        "insufficient" in body
+        or "scope" in body
+        or "permission" in body
+        or resp.status_code == 403
+    )
+
+
 def _gmail_headers(access_token: str) -> dict:
     return {"Authorization": f"Bearer {access_token}"}
 
@@ -111,6 +141,8 @@ async def _gmail_search(args: dict[str, Any]) -> str:
         })
 
     except Exception as exc:
+        if _is_scope_error(exc):
+            return _insufficient_scope()
         logger.warning("gmail_search error: %s", exc)
         return json.dumps({"error": str(exc)})
 
@@ -122,7 +154,11 @@ registry.register(
     check_fn=_check_google_connected,
     schema={
         "name": "gmail_search",
-        "description": "Search Gmail messages. Returns subject, sender, date, and snippet for each result.",
+        "description": (
+            "Search Gmail messages (subject, sender, date, snippet). NOTE: "
+            "requires a restricted gmail.readonly connection; Spark's free-tier "
+            "Google connection is send-only and this will report insufficient_scope."
+        ),
         "parameters": {
             "type": "object",
             "properties": {

@@ -113,8 +113,12 @@ State lives at `~/.spark/connectors/<id>/` (token + metadata), via `get_spark_ho
 - [x] Backend HTTP endpoints **already exist**: `connectors_routes.py` (`/api/connectors`, `/connect`, `/status`,
       `/oauth/google/callback`, disconnect), mounted in `web_server.py`; `api.ts` already has the client methods.
       Now scope-corrected to free-tier + gws bridge on the backend.
-- [ ] New **Connectors** page (`ConnectorsPage.tsx`) + tab consuming those endpoints; show status, granted scopes,
-      and "what the agent can now do" (gws skills). Surface the free-tier "Gmail is send-only" note.
+- [x] New **Connectors** page (`ConnectorsPage.tsx`) + nav tab (plug icon) consuming those endpoints: status badge,
+      Connect (popup + status polling) / Disconnect, capabilities list, not-configured guidance, and the free-tier
+      "Gmail is send-only" note. Registered in `App.tsx` (NAV_ITEMS + PAGE_COMPONENTS); i18n label present.
+      tsc clean; verified rendering in the browser preview.
+- [x] **Free-tier guard on `gmail_search`** (`google_tools.py`): detects 401/403 insufficient-scope and returns a
+      clear "Gmail is send-only on the free tier" message instead of a raw error; schema description updated.
 - [x] `/connectors`, `/connect <id>`, `/disconnect <id>` slash commands (`commands.py` CommandDef +
       `_handle_connectors_command` in `commands_mixin.py` + dispatch in `cli/__init__.py`). Gateway/web handler TODO.
 - [x] **Agent tool `connectors`** (`tools/connectors_tool.py`): list/status/connect/disconnect, returns JSON.
