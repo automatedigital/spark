@@ -113,7 +113,11 @@ State lives at `~/.spark/connectors/<id>/` (token + metadata), via `get_spark_ho
 - [ ] New **Connectors** page (`ConnectorsPage.tsx`) + tab; reuse `OAuthProvidersCard`/`OAuthLoginModal` patterns.
 - [ ] Google card: Connect / Disconnect / status / granted scopes / "what the agent can now do" (lists gws skills).
 - [ ] Backend endpoints in `src/gateway/run.py`: list connectors, start-auth, status, disconnect.
-- [ ] `/connect`, `/connectors`, `/disconnect` slash commands (`commands.py` + cli mixin + gateway).
+- [x] `/connectors`, `/connect <id>`, `/disconnect <id>` slash commands (`commands.py` CommandDef +
+      `_handle_connectors_command` in `commands_mixin.py` + dispatch in `cli/__init__.py`). Gateway/web handler TODO.
+- [x] **Agent tool `connectors`** (`tools/connectors_tool.py`): list/status/connect/disconnect, returns JSON.
+      Registered in `_discover_tools()` + added to `_SPARK_CORE_TOOLS`. Connect is interactive-only (returns
+      guidance in headless/gateway instead of hanging on a browser). 9 tests in `tests/test_connectors_tool.py`.
 
 ### 1d. Agent integration
 - [ ] On connect, surface the gws-\* skills to the agent (they already exist) — verify no prompt-cache break

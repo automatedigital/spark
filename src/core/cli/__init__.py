@@ -953,6 +953,8 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             self._handle_tools_command(cmd_original)
         elif canonical == "toolsets":
             self.show_toolsets()
+        elif canonical == "connectors":
+            self._handle_connectors_command(cmd_original)
         elif canonical == "config":
             self.show_config()
         elif canonical == "clear":
