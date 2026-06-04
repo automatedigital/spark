@@ -142,6 +142,19 @@ def test_full_flow_session_callback_claim(client):
     assert client.post("/claim", json={"ticket": ticket}).status_code == 400
 
 
+def test_refresh_proxies_to_google(client, monkeypatch):
+    async def fake_refresh(_cfg, _rt):
+        return {"access_token": "NEW_AT", "expires_in": 3600}
+    monkeypatch.setattr("spark_relay.app._refresh_token", fake_refresh)
+    r = client.post("/refresh", json={"refresh_token": "RT"})
+    assert r.status_code == 200
+    assert r.json()["access_token"] == "NEW_AT"
+
+
+def test_refresh_requires_token(client):
+    assert client.post("/refresh", json={}).status_code == 400
+
+
 def test_callback_rejects_unknown_state(client):
     r = client.get("/callback", params={"code": "x", "state": "bogus"}, follow_redirects=False)
     assert r.status_code == 400

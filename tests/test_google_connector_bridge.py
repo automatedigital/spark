@@ -99,6 +99,58 @@ def test_clear_token_removes_bridge(monkeypatch):
     assert not gc._token_path().exists()
 
 
+def test_get_relay_url_and_is_configured(monkeypatch):
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {"relay_url": "https://relay.example/"})
+    monkeypatch.delenv("GOOGLE_OAUTH_RELAY_URL", raising=False)
+    assert gc.get_relay_url() == "https://relay.example"  # trailing slash stripped
+    # relay alone makes the connector "configured" (no local client needed)
+    monkeypatch.setattr(gc, "get_client_id", lambda: "")
+    monkeypatch.setattr(gc, "get_client_secret", lambda: "")
+    assert gc.is_configured() is True
+
+
+def test_refresh_uses_relay_when_no_secret(monkeypatch):
+    monkeypatch.setattr(gc, "get_relay_url", lambda: "https://relay.example")
+    monkeypatch.setattr(gc, "get_client_secret", lambda: "")
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {"access_token": "AT2", "expires_in": 3600}
+
+    def fake_post(url, **kw):
+        captured["url"] = url
+        captured["json"] = kw.get("json")
+        return FakeResp()
+
+    monkeypatch.setattr(gc.httpx, "post", fake_post)
+    out = gc.refresh_access_token({"refresh_token": "RT"})
+    assert captured["url"] == "https://relay.example/refresh"
+    assert captured["json"] == {"refresh_token": "RT"}
+    assert out["access_token"] == "AT2"
+    assert "expires_at" in out
+
+
+def test_claim_relay_tokens(monkeypatch):
+    monkeypatch.setattr(gc, "get_relay_url", lambda: "https://relay.example")
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {"access_token": "AT", "refresh_token": "RT", "expires_in": 3600}
+
+    monkeypatch.setattr(gc.httpx, "post", lambda url, **kw: FakeResp())
+    tok = gc.claim_relay_tokens("ticket-123")
+    assert tok["refresh_token"] == "RT"
+    assert "expires_at" in tok
+
+
+def test_gws_bridge_inactive_in_relay_mode(monkeypatch):
+    # No client_secret in relay mode → no authorized_user creds → bridge off.
+    monkeypatch.setattr(gc, "get_client_id", lambda: "")
+    monkeypatch.setattr(gc, "get_client_secret", lambda: "")
+    assert gc.build_gws_credentials({"refresh_token": "RT"}) is None
+
+
 def test_apply_process_env_sets_and_clears(monkeypatch):
     _configure(monkeypatch)
     monkeypatch.delenv(gc.GWS_CREDENTIALS_ENV, raising=False)

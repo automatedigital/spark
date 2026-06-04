@@ -29,9 +29,14 @@ Two viable models (chosen: **B primary, A fallback**):
         `client_secret` stays on the relay (it does the token exchange), PKCE verifier held relay-side keyed by
         signed state, tokens delivered to the instance via a one-time short-lived ticket (not via the browser).
         Configurable scopes (defaults send-only/sensitive — no CASA). **16 tests, ruff-clean.**
-  - [ ] **Instance-side relay mode** (TODO): when `connectors.google.relay_url` is set, the connect flow calls the
-        relay `/session`, opens the returned `auth_url`, and `/oauth/google/callback` handles a `?ticket=` by
-        calling `/claim` to fetch tokens (instead of exchanging a code locally).
+  - [x] **Instance-side relay mode DONE:** `connectors.google.relay_url` (or `GOOGLE_OAUTH_RELAY_URL`) switches the
+        connect flow to the relay — `/connect` calls relay `/session`; `/oauth/google/callback` handles `?ticket=`
+        via `claim_relay_tokens()`. Token refresh proxies through the relay `/refresh` (the instance has no secret).
+        `is_configured()` is true with a relay alone. Relay `/refresh` endpoint added. Tests cover all of it.
+  - [ ] **gws bridge in relay mode** (follow-up): the bridge needs the client_secret to write gws's authorized_user
+        creds, which relay mode keeps server-side — so the bridge is inactive there and the agent falls back to the
+        direct-API Google tools (which DO refresh via the relay). Options to restore gws under relay: a refresh-on-
+        demand `GOOGLE_WORKSPACE_CLI_TOKEN` wrapper, or have the relay vend short-lived gws creds.
   - [ ] **Infra (yours):** deploy the relay container behind TLS on a small VPS/droplet at a domain; register the
         shared Google client with `https://<domain>/callback`.
   - [ ] **CASA** for Gmail read on the shared client is deferred (decide later); relay defaults to send-only.

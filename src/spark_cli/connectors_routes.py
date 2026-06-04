@@ -163,9 +163,10 @@ async def google_status():
 @router.post("/api/connectors/google/connect")
 async def google_connect():
     from spark_cli.google_connector import (
-        is_configured,
-        generate_pkce_pair,
         build_auth_url,
+        generate_pkce_pair,
+        get_relay_url,
+        is_configured,
     )
 
     if not is_configured():
@@ -181,6 +182,25 @@ async def google_connect():
             },
             status_code=400,
         )
+
+    # Relay mode (one-click shared client): the relay owns the registered redirect
+    # and PKCE; we just ask it to start a session pointed at our own callback.
+    relay = get_relay_url()
+    if relay:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    f"{relay}/session",
+                    json={"instance_callback": _redirect_uri()},
+                )
+                resp.raise_for_status()
+                return JSONResponse({"auth_url": resp.json()["auth_url"]})
+        except Exception as exc:
+            logger.warning("relay /session failed: %s", exc)
+            return JSONResponse(
+                {"error": "relay_unavailable", "message": str(exc)}, status_code=502
+            )
 
     state = secrets.token_urlsafe(32)
     code_verifier, code_challenge = generate_pkce_pair()
@@ -253,10 +273,35 @@ async def google_oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
     error: Optional[str] = None,
+    ticket: Optional[str] = None,
 ):
     if error:
         logger.warning("Google OAuth error: %s", error)
         return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=error))
+
+    # Relay mode: the relay redirected here with a one-time ticket. Redeem it for
+    # tokens (the relay already exchanged the code) and save the connection.
+    if ticket:
+        try:
+            from spark_cli.google_connector import (
+                claim_relay_tokens,
+                get_user_info,
+                save_token,
+            )
+            token = claim_relay_tokens(ticket)
+            try:
+                info = get_user_info(token["access_token"])
+                token["email"] = info.get("email")
+                token["name"] = info.get("name")
+                token["picture"] = info.get("picture")
+            except Exception as exc:
+                logger.warning("Could not fetch user info after relay connect: %s", exc)
+            save_token(token)
+            logger.info("Google connected via relay: %s", token.get("email", "unknown"))
+            return HTMLResponse(_CALLBACK_SUCCESS_HTML)
+        except Exception as exc:
+            logger.exception("Relay ticket claim failed: %s", exc)
+            return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=f"Relay claim failed: {exc}"))
 
     if not code or not state:
         return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Missing code or state parameter"))

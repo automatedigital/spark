@@ -163,6 +163,27 @@ def create_app(config: RelayConfig | None = None, store: TTLStore | None = None)
             return JSONResponse({"error": "invalid_or_used_ticket"}, status_code=400)
         return JSONResponse(tokens)
 
+    @app.post("/refresh")
+    async def refresh(request: Request):
+        """Refresh an access token on the instance's behalf.
+
+        In relay mode the instance never holds the shared client_secret, so it
+        cannot refresh directly with Google. It posts its refresh_token here and
+        the relay (which holds the secret) returns a fresh access token.
+        """
+        if cfg.validate():
+            return JSONResponse({"error": "relay_not_configured"}, status_code=503)
+        body = await request.json()
+        refresh_token = (body or {}).get("refresh_token", "")
+        if not refresh_token:
+            return JSONResponse({"error": "missing_refresh_token"}, status_code=400)
+        try:
+            tokens = await _refresh_token(cfg, refresh_token)
+        except Exception as exc:
+            logger.warning("relay /refresh failed: %s", exc)
+            return JSONResponse({"error": "refresh_failed"}, status_code=502)
+        return JSONResponse(tokens)
+
     return app
 
 
@@ -182,6 +203,19 @@ async def _exchange_code(cfg: RelayConfig, code: str, verifier: str) -> dict:
         "code_verifier": verifier,
         "grant_type": "authorization_code",
         "redirect_uri": cfg.redirect_uri,
+    }
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(cfg.token_url, data=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _refresh_token(cfg: RelayConfig, refresh_token: str) -> dict:
+    payload = {
+        "client_id": cfg.client_id,
+        "client_secret": cfg.client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
     }
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(cfg.token_url, data=payload)

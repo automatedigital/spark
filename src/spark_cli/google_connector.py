@@ -115,9 +115,36 @@ def get_client_secret() -> str:
     )
 
 
+def get_relay_url() -> str:
+    """Base URL of the shared OAuth relay, if this instance uses one.
+
+    When set (``connectors.google.relay_url`` or ``GOOGLE_OAUTH_RELAY_URL``), the
+    connect flow is brokered through the relay (one-click, no per-instance OAuth
+    client) instead of a locally-configured client.
+    """
+    url = (
+        os.environ.get("GOOGLE_OAUTH_RELAY_URL")
+        or _get_google_config().get("relay_url", "")
+    )
+    return url.rstrip("/")
+
+
 def is_configured() -> bool:
-    """Return True if client credentials are available."""
-    return bool(get_client_id() and get_client_secret())
+    """True if we can start a connect flow — via a relay or a local client."""
+    return bool(get_relay_url()) or bool(get_client_id() and get_client_secret())
+
+
+def claim_relay_tokens(ticket: str) -> dict:
+    """Redeem a one-time relay ticket for tokens. Raises on failure."""
+    relay = get_relay_url()
+    if not relay:
+        raise ValueError("no relay_url configured")
+    resp = httpx.post(f"{relay}/claim", json={"ticket": ticket}, timeout=15)
+    resp.raise_for_status()
+    token = resp.json()
+    if "expires_in" in token and "expires_at" not in token:
+        token["expires_at"] = int(time.time()) + int(token["expires_in"])
+    return token
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +327,17 @@ def refresh_access_token(token: dict) -> dict:
     refresh_token = token.get("refresh_token")
     if not refresh_token:
         raise ValueError("No refresh_token available — user must re-authorize")
+
+    # Relay mode: we don't hold the shared client_secret, so the relay refreshes
+    # on our behalf (it does hold the secret).
+    relay = get_relay_url()
+    if relay and not get_client_secret():
+        resp = httpx.post(f"{relay}/refresh", json={"refresh_token": refresh_token}, timeout=15)
+        resp.raise_for_status()
+        new_data = resp.json()
+        token.update(new_data)
+        token["expires_at"] = int(time.time()) + int(new_data.get("expires_in", 3600))
+        return token
 
     payload: dict = {
         "client_id": get_client_id(),
