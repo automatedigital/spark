@@ -110,9 +110,11 @@ State lives at `~/.spark/connectors/<id>/` (token + metadata), via `get_spark_ho
 - [x] **Verified `gws` command surface** against the real binary (see 1a) — constants in `google.py` corrected.
 
 ### 1c. UI
-- [ ] New **Connectors** page (`ConnectorsPage.tsx`) + tab; reuse `OAuthProvidersCard`/`OAuthLoginModal` patterns.
-- [ ] Google card: Connect / Disconnect / status / granted scopes / "what the agent can now do" (lists gws skills).
-- [ ] Backend endpoints in `src/gateway/run.py`: list connectors, start-auth, status, disconnect.
+- [x] Backend HTTP endpoints **already exist**: `connectors_routes.py` (`/api/connectors`, `/connect`, `/status`,
+      `/oauth/google/callback`, disconnect), mounted in `web_server.py`; `api.ts` already has the client methods.
+      Now scope-corrected to free-tier + gws bridge on the backend.
+- [ ] New **Connectors** page (`ConnectorsPage.tsx`) + tab consuming those endpoints; show status, granted scopes,
+      and "what the agent can now do" (gws skills). Surface the free-tier "Gmail is send-only" note.
 - [x] `/connectors`, `/connect <id>`, `/disconnect <id>` slash commands (`commands.py` CommandDef +
       `_handle_connectors_command` in `commands_mixin.py` + dispatch in `cli/__init__.py`). Gateway/web handler TODO.
 - [x] **Agent tool `connectors`** (`tools/connectors_tool.py`): list/status/connect/disconnect, returns JSON.
@@ -162,15 +164,36 @@ Once Google proves the pattern, the registry makes the rest cheap. Prefer CLI tr
 
 ---
 
-## No relay/backend server needed — local loopback flow
+## Unified architecture (reconciled with the pre-existing connector stack)
 
-- Use a **Desktop / Installed-app** OAuth client (NOT a Web-app client). Auth runs entirely on the user's machine:
-  Spark opens an ephemeral `127.0.0.1` callback server + PKCE, the user approves in-browser, the auth code returns
-  to localhost, and Spark exchanges it directly with Google's token endpoint. **No server we host is involved.**
-- This is exactly how `gcloud` / `gh` / the `gws` CLI work, and exactly what `src/tools/mcp_oauth.py` already does.
-- For Desktop clients Google treats the shipped `client_secret` as **non-confidential by design** — security comes
-  from PKCE + the loopback redirect, not secret confidentiality. So we can embed it in the app.
-- A Web-app client (which *would* require a hosted https redirect / relay) is explicitly **rejected** for v1.
+There was already a Google connector in the repo (`spark_cli/google_connector.py` web-OAuth engine +
+`spark_cli/connectors_routes.py` HTTP routes + `tools/google_tools.py` direct-API tools). Rather than ship a
+second competing stack, **the two are now collapsed into one**:
+
+```
+CONNECT  →  web-OAuth + PKCE with a SERVER-SIDE callback (connectors_routes.py).
+            Works across ALL deployments the user needs:
+              - VPS install, web UI        → public callback (get_public_base_url)
+              - local install, web UI      → http://localhost:<port>/oauth/google/callback
+              - desktop app                → embedded web UI, same localhost callback
+            ↓ yields a refresh_token (google_connector.save_token)
+BRIDGE   →  write a gws "authorized_user" creds file + export
+            GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE into the process env
+            (google_connector.build_gws_credentials / write_gws_credentials_file / apply_process_env).
+EXECUTE  →  agent drives Google via the **gws CLI + gws-* skills**, which self-refresh from that file.
+```
+
+**On "no relay":** the *Spark web server itself* is the OAuth callback — there is still **no separate/3rd-party
+relay to host**. Pure `gws auth login` loopback was rejected because it can't work on a VPS (the loopback would hit
+the server's localhost, not the user's remote browser); the server-side callback is the portable choice.
+
+**Why the bridge (not direct API):** the user wants gws-cli for agent use (more capable + context-efficient than
+the two direct-API tools). The bridge gives a single connect that powers gws everywhere. Verified `gws` reads the
+`authorized_user` JSON shape via `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` (confirmed with `gws auth export`).
+
+**Free-tier scope reality:** reading email requires the *restricted* `gmail.readonly` scope (paid CASA) regardless
+of transport — so the free tier is **send-only for Gmail**. The old `gmail_search` (read) tool won't function on
+free-tier scopes; Calendar/Docs/Sheets/Slides/Drive-file all work.
 
 ## Cost model (why v1 is $0 to operate)
 

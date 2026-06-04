@@ -1,10 +1,10 @@
-"""Tests for the connectors foundation (registry, base, Google connector).
+"""Tests for the connectors foundation (registry, base, Google adapter).
 
-These exercise the connector layer without requiring the real `gws` binary by
-injecting a fake runner into GoogleWorkspaceConnector.
+The Google connector is now a thin adapter over spark_cli.google_connector (the
+web-OAuth engine) plus the gws CLI bridge. We exercise it by monkeypatching the
+google_connector module functions.
 """
 
-import json
 import os
 
 from tools.connectors import (
@@ -15,16 +15,7 @@ from tools.connectors import (
     get_connector,
     list_connectors,
 )
-from tools.connectors.google import GoogleWorkspaceConnector, RunResult
-
-# Realistic `gws auth status` payloads (gws exits 0 in BOTH cases).
-_STATUS_LOGGED_OUT = json.dumps({"auth_method": "none", "storage": "none",
-                                 "credential_source": "none"})
-
-
-def _status_authed(email="user@example.com"):
-    return json.dumps({"auth_method": "oauth", "storage": "file",
-                       "credential_source": "encrypted", "email": email})
+from tools.connectors.google import GoogleWorkspaceConnector
 
 # --- registry --------------------------------------------------------------
 
@@ -54,19 +45,19 @@ def test_describe_is_json_safe():
     assert desc["id"] == "google"
     assert desc["transport"] == Transport.CLI.value
     assert "gmail.send" in " ".join(desc["scopes"])
-    assert "gws-gmail" in desc["skills"]
+    # free tier must NOT advertise restricted read scopes
+    assert "gmail.readonly" not in " ".join(desc["scopes"])
+    assert "gws-drive" in desc["skills"]
 
 
 # --- state dir isolation ---------------------------------------------------
 
-def test_state_dir_under_spark_home(tmp_path, monkeypatch):
-    # _isolate_spark_home already points SPARK_HOME at a temp dir.
+def test_state_dir_under_spark_home():
     c = get_connector("google")
     d = c.state_dir()
     assert d.exists()
     assert d.name == "google"
     assert "connectors" in str(d)
-    # must live under SPARK_HOME, never real ~/.spark
     assert str(d).startswith(os.environ["SPARK_HOME"])
 
 
@@ -75,159 +66,87 @@ def test_meta_roundtrip():
     assert c.read_meta() == {}
     c.write_meta({"hello": "world"})
     assert c.read_meta()["hello"] == "world"
-    # meta file must be 0600
     mode = (c.state_dir() / "meta.json").stat().st_mode & 0o777
     assert mode == 0o600
 
 
-# --- client secret ---------------------------------------------------------
+# --- status (adapter over google_connector) --------------------------------
 
-def test_install_client_secret_dict_and_perms():
-    c = get_connector("google")
-    assert not c.has_client_secret()
-    c.install_client_secret({"installed": {"client_id": "abc"}})
-    assert c.has_client_secret()
-    p = c.state_dir() / "client_secret.json"
-    assert "abc" in p.read_text()
-    assert (p.stat().st_mode & 0o777) == 0o600
+def _patch_gc(monkeypatch, *, token=None, configured=True, gws_env=None):
+    import spark_cli.google_connector as gc
+    monkeypatch.setattr(gc, "load_token", lambda: token)
+    monkeypatch.setattr(gc, "is_configured", lambda: configured)
+    monkeypatch.setattr(gc, "gws_env", lambda: gws_env or {})
+    return gc
 
 
-# --- status state machine (fake runner) ------------------------------------
-
-def _connector_with(runner, *, installed=True, monkeypatch=None):
-    c = GoogleWorkspaceConnector(runner=runner)
-    if monkeypatch is not None:
-        monkeypatch.setattr(c, "is_installed", lambda: installed)
-    return c
+def test_status_disconnected_when_no_token(monkeypatch):
+    _patch_gc(monkeypatch, token=None, configured=True)
+    st = get_connector("google").status()
+    assert st.state is ConnectorState.DISCONNECTED
+    assert "Connectors tab" in st.detail
 
 
-def test_status_not_installed(monkeypatch):
-    c = _connector_with(lambda *a, **k: RunResult(0), installed=False, monkeypatch=monkeypatch)
-    st = c.status()
-    assert st.state is ConnectorState.NOT_INSTALLED
-    assert not st.connected
+def test_status_not_configured_message(monkeypatch):
+    _patch_gc(monkeypatch, token=None, configured=False)
+    st = get_connector("google").status()
+    assert st.state is ConnectorState.DISCONNECTED
+    assert "config" in st.detail.lower()
 
 
-def test_status_connected_parses_email(monkeypatch):
-    def runner(args, **kw):
-        return RunResult(0, stdout=_status_authed("alice@example.com"))
-    c = _connector_with(runner, monkeypatch=monkeypatch)
-    st = c.status()
+def test_status_connected_with_account(monkeypatch):
+    _patch_gc(
+        monkeypatch,
+        token={"email": "alice@example.com", "refresh_token": "r"},
+        gws_env={"GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE": "/x"},
+    )
+    st = get_connector("google").status()
     assert st.state is ConnectorState.CONNECTED
-    assert st.connected
     assert st.account == "alice@example.com"
+    assert st.extra["bridge"] is True
     assert "gmail.send" in " ".join(st.scopes)
 
 
-def test_status_disconnected_when_logged_out_json(monkeypatch):
-    # The critical case: gws exits 0 but reports "none" — must NOT be connected.
-    c = _connector_with(lambda *a, **k: RunResult(0, stdout=_STATUS_LOGGED_OUT),
-                        monkeypatch=monkeypatch)
-    st = c.status()
-    assert st.state is ConnectorState.DISCONNECTED
-
-
 def test_status_never_raises(monkeypatch):
-    def boom(*a, **k):
+    import spark_cli.google_connector as gc
+
+    def boom():
         raise RuntimeError("kaboom")
-    c = _connector_with(boom, monkeypatch=monkeypatch)
-    st = c.status()  # must swallow
+
+    monkeypatch.setattr(gc, "load_token", boom)
+    st = get_connector("google").status()
     assert st.state is ConnectorState.ERROR
     assert "kaboom" in st.detail
 
 
 # --- connect / disconnect --------------------------------------------------
 
-def test_connect_not_installed(monkeypatch):
-    c = _connector_with(lambda *a, **k: RunResult(0), installed=False, monkeypatch=monkeypatch)
-    st = c.connect(interactive=False)
-    assert st.state is ConnectorState.NOT_INSTALLED
-
-
-def test_connect_success_then_status(monkeypatch):
-    calls = []
-
-    def runner(args, **kw):
-        calls.append(tuple(args[:2]))
-        if args[:2] == ["auth", "login"]:
-            return RunResult(0)
-        if args[:2] == ["auth", "status"]:
-            return RunResult(0, stdout=_status_authed("bob@example.com"))
-        return RunResult(1)
-
-    c = _connector_with(runner, monkeypatch=monkeypatch)
-    st = c.connect(interactive=False)
+def test_connect_already_connected_returns_status(monkeypatch):
+    _patch_gc(monkeypatch, token={"email": "bob@example.com", "refresh_token": "r"})
+    st = get_connector("google").connect()
     assert st.connected
     assert st.account == "bob@example.com"
-    assert ("auth", "login") in calls
 
 
-def test_connect_installs_inline_secret(monkeypatch):
-    c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
-    c.connect(interactive=False, client_secret={"installed": {"client_id": "z"}})
-    assert c.has_client_secret()
-
-
-def test_connect_login_failure(monkeypatch):
-    c = _connector_with(lambda *a, **k: RunResult(2, stderr="denied"),
-                        monkeypatch=monkeypatch)
-    st = c.connect(interactive=False)
+def test_connect_when_disconnected_gives_guidance(monkeypatch):
+    _patch_gc(monkeypatch, token=None, configured=True)
+    st = get_connector("google").connect()
     assert st.state is ConnectorState.DISCONNECTED
-    assert "denied" in st.detail
+    assert "how_to_connect" in st.extra
 
 
-def test_disconnect_removes_secret(monkeypatch):
-    c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
-    c.install_client_secret({"installed": {}})
-    assert c.has_client_secret()
-    st = c.disconnect()
+def test_disconnect_clears_token(monkeypatch):
+    import spark_cli.google_connector as gc
+    cleared = {"v": False}
+    monkeypatch.setattr(gc, "load_token", lambda: None)
+    monkeypatch.setattr(gc, "clear_token", lambda: cleared.update(v=True))
+    st = get_connector("google").disconnect()
     assert st.state is ConnectorState.DISCONNECTED
-    assert not c.has_client_secret()
+    assert cleared["v"] is True
 
 
-def test_auth_env_isolates_config_dir(monkeypatch):
-    from tools.connectors.google import GWS_CONFIG_DIR_ENV, GWS_KEYRING_BACKEND_ENV
-    c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
-    # Even with no client secret, gws is pinned to a per-profile config dir.
-    env = c._auth_env()
-    assert env[GWS_CONFIG_DIR_ENV].endswith("gws-config")
-    assert env[GWS_KEYRING_BACKEND_ENV] == "file"
-    assert env[GWS_CONFIG_DIR_ENV].startswith(os.environ["SPARK_HOME"])
-
-
-def test_auth_env_exposes_client_id_secret(monkeypatch):
-    from tools.connectors.google import GWS_CLIENT_ID_ENV, GWS_CLIENT_SECRET_ENV
-    c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
-    c.install_client_secret({"installed": {"client_id": "cid-123", "client_secret": "sec-xyz"}})
-    env = c._auth_env()
-    assert env[GWS_CLIENT_ID_ENV] == "cid-123"
-    assert env[GWS_CLIENT_SECRET_ENV] == "sec-xyz"
-
-
-def test_read_client_id_secret_shapes(monkeypatch):
-    c = _connector_with(lambda *a, **k: RunResult(0), monkeypatch=monkeypatch)
-    # web shape
-    c.install_client_secret({"web": {"client_id": "w", "client_secret": "ws"}})
-    assert c._read_client_id_secret() == ("w", "ws")
-    # flat shape
-    c.install_client_secret({"client_id": "f", "client_secret": "fs"})
-    assert c._read_client_id_secret() == ("f", "fs")
-
-
-def test_connect_passes_free_tier_scopes(monkeypatch):
-    seen = {}
-
-    def runner(args, **kw):
-        if args[:2] == ["auth", "login"]:
-            seen["login"] = args
-            return RunResult(0)
-        return RunResult(0, stdout="x@y.com")
-
-    c = _connector_with(runner, monkeypatch=monkeypatch)
-    c.connect(interactive=False)
-    assert "--scopes" in seen["login"]
-    scope_arg = seen["login"][seen["login"].index("--scopes") + 1]
-    assert "gmail.send" in scope_arg
-    # never request restricted scopes
-    assert "gmail.readonly" not in scope_arg
-    assert "auth/drive\"" not in scope_arg  # not the full-drive scope
+def test_gws_env_delegates(monkeypatch):
+    _patch_gc(monkeypatch, token={"refresh_token": "r"},
+              gws_env={"GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE": "/tmp/creds.json"})
+    env = get_connector("google").gws_env()
+    assert env["GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"] == "/tmp/creds.json"

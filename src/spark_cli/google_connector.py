@@ -25,7 +25,6 @@ import os
 import secrets
 import time
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -42,12 +41,20 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
+# Free-tier ("sensitive", no CASA / no fees) scopes only. NOTE: reading email
+# requires the *restricted* gmail.readonly scope (paid CASA verification) — so the
+# free tier is send-only for Gmail. Calendar/Docs/Sheets/Slides get full access;
+# Drive is limited to files the app creates or the user explicitly opens.
 GOOGLE_SCOPES = [
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/presentations",
 ]
 
 TOKEN_EXPIRY_SKEW_SECONDS = 120  # refresh 2 min before actual expiry
@@ -96,7 +103,7 @@ def _token_path() -> Path:
     return path
 
 
-def load_token() -> Optional[dict]:
+def load_token() -> dict | None:
     """Load the stored Google token, or None if not connected."""
     p = _token_path()
     if not p.exists():
@@ -109,12 +116,97 @@ def load_token() -> Optional[dict]:
 
 def save_token(token: dict) -> None:
     _token_path().write_text(json.dumps(token, indent=2))
+    # Keep the gws bridge credentials file in sync so the agent's gws CLI (and
+    # gws-* skills) can authenticate and self-refresh from the same connection.
+    try:
+        write_gws_credentials_file(token)
+        apply_process_env()
+    except Exception as exc:  # never let the bridge break the core save
+        logger.warning("Could not write gws bridge credentials: %s", exc)
 
 
 def clear_token() -> None:
-    p = _token_path()
-    if p.exists():
-        p.unlink()
+    for p in (_token_path(), _gws_credentials_path()):
+        if p.exists():
+            p.unlink()
+    apply_process_env()
+
+
+# ---------------------------------------------------------------------------
+# gws CLI bridge — let the agent use the `gws` CLI from this same connection.
+#
+# The gws CLI reads an "authorized_user" credentials file pointed at by
+# GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE and refreshes access tokens itself. We
+# write that file from the refresh_token we already hold, so a single web-OAuth
+# connect (which works on VPS, local web, and desktop) also powers gws.
+# ---------------------------------------------------------------------------
+
+def _gws_credentials_path() -> Path:
+    path = get_spark_home() / "connectors" / "google" / "gws-credentials.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def build_gws_credentials(token: dict | None = None) -> dict | None:
+    """Build the gws "authorized_user" credentials dict, or None if unavailable."""
+    token = token if token is not None else load_token()
+    if not token:
+        return None
+    refresh_token = token.get("refresh_token")
+    client_id = get_client_id()
+    client_secret = get_client_secret()
+    if not (refresh_token and client_id and client_secret):
+        return None
+    return {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "type": "authorized_user",
+    }
+
+
+def write_gws_credentials_file(token: dict | None = None) -> Path | None:
+    """Write the gws bridge credentials file (0600). Returns the path or None."""
+    creds = build_gws_credentials(token)
+    if creds is None:
+        return None
+    path = _gws_credentials_path()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(creds, indent=2), encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+    return path
+
+
+GWS_CREDENTIALS_ENV = "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"
+
+
+def gws_env() -> dict[str, str]:
+    """Environment that points the gws CLI at the bridge credentials, if present.
+
+    Returns ``{}`` when not connected, so callers can unconditionally merge it.
+    """
+    path = _gws_credentials_path()
+    if not path.exists():
+        # Lazily materialize from a stored token if we have one.
+        if write_gws_credentials_file() is None:
+            return {}
+    return {GWS_CREDENTIALS_ENV: str(path)}
+
+
+def apply_process_env() -> None:
+    """Mirror the gws bridge into ``os.environ`` for this Spark process.
+
+    The agent runs ``gws`` (and ``gws-*`` skills) via the terminal tool, which
+    inherits ``os.environ``. Setting the credentials-file var here makes those
+    subprocesses authenticate from the active connection. Idempotent; clears the
+    var when disconnected. Call at startup and after connect/disconnect.
+    """
+    env = gws_env()
+    if env:
+        os.environ.update(env)
+    else:
+        os.environ.pop(GWS_CREDENTIALS_ENV, None)
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +292,7 @@ def refresh_access_token(token: dict) -> dict:
     return token
 
 
-def get_valid_access_token() -> Optional[str]:
+def get_valid_access_token() -> str | None:
     """Return a valid access token, refreshing if needed. None if not connected."""
     token = load_token()
     if not token:
