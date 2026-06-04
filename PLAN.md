@@ -23,10 +23,18 @@ Two viable models (chosen: **B primary, A fallback**):
         ConnectorsPage shows a collapsible setup helper (copy-the-redirect-URI + config.yaml snippet), auto-expanded
         when no client is configured. tsc clean.
 - **B. Shared client + hosted relay (one-click):** the Spark project hosts a small callback **relay** with ONE
-  registered redirect URI; the relay forwards the auth code back to the user's instance (redirect-chaining via a
-  signed `state` carrying the instance URL — instance does the PKCE token exchange so the relay never holds
-  tokens). True zero-setup for users. Requires: (1) infra the project hosts, (2) a domain, (3) the shared Google
-  client, (4) **CASA verification (paid/yr) for Gmail read at public scale**. → *Chosen as the primary path.*
+  registered redirect URI; the relay brokers the flow back to the user's instance. → *Chosen as the primary path.*
+  - [x] **Relay service BUILT** (`src/spark_relay/`): FastAPI app (`/session`, `/callback`, `/claim`, `/healthz`),
+        HMAC-signed `state` (`crypto.py`), TTL store (`store.py`), Dockerfile + README. Security: shared
+        `client_secret` stays on the relay (it does the token exchange), PKCE verifier held relay-side keyed by
+        signed state, tokens delivered to the instance via a one-time short-lived ticket (not via the browser).
+        Configurable scopes (defaults send-only/sensitive — no CASA). **16 tests, ruff-clean.**
+  - [ ] **Instance-side relay mode** (TODO): when `connectors.google.relay_url` is set, the connect flow calls the
+        relay `/session`, opens the returned `auth_url`, and `/oauth/google/callback` handles a `?ticket=` by
+        calling `/claim` to fetch tokens (instead of exchanging a code locally).
+  - [ ] **Infra (yours):** deploy the relay container behind TLS on a small VPS/droplet at a domain; register the
+        shared Google client with `https://<domain>/callback`.
+  - [ ] **CASA** for Gmail read on the shared client is deferred (decide later); relay defaults to send-only.
 
 **Reality to hold:** zero-setup one-click + arbitrary VPS + Gmail scopes **requires both a hosted relay and Google
 verification**. No trick removes both (device flow was the only loophole; Google blocks Gmail there).
