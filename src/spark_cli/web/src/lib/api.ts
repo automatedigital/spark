@@ -978,6 +978,9 @@ export const api = {
   getGoogleStatus: () =>
     fetchJSON<ConnectorStatus>("/api/connectors/google/status"),
 
+  getGoogleSetup: () =>
+    fetchJSON<GoogleSetupInfo>("/api/connectors/google/setup"),
+
   connectGoogle: () =>
     fetchJSON<{ auth_url?: string; error?: string; message?: string }>(
       "/api/connectors/google/connect",
@@ -1926,6 +1929,16 @@ export interface WorkspacePreviewSnapshot {
   title: string;
   text: string;
   html_length: number;
+}
+
+export interface GoogleSetupInfo {
+  redirect_uri: string;
+  scopes: string[];
+  configured: boolean;
+  config_keys: { client_id: string; client_secret: string };
+  console_url: string;
+  client_type: string;
+  error?: string;
 }
 
 export interface ConnectorStatus {

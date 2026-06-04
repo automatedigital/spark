@@ -112,6 +112,37 @@ async def list_connectors():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/connectors/google/setup — BYO-client setup helper info
+# ---------------------------------------------------------------------------
+
+@router.get("/api/connectors/google/setup")
+async def google_setup_info():
+    """Info for the in-app BYO-client setup helper.
+
+    Returns the exact redirect URI the user must register in their own Google
+    OAuth client, the scopes Spark requests, and whether a client is configured.
+    Lets the Connectors UI turn 'figure out your VPS redirect' into one copy-paste.
+    """
+    try:
+        from spark_cli.google_connector import get_scopes, is_configured
+        redirect_uri = _redirect_uri()
+        return JSONResponse({
+            "redirect_uri": redirect_uri,
+            "scopes": get_scopes(),
+            "configured": is_configured(),
+            "config_keys": {
+                "client_id": "connectors.google.client_id",
+                "client_secret": "connectors.google.client_secret",
+            },
+            "console_url": "https://console.cloud.google.com/apis/credentials",
+            "client_type": "Web application",
+        })
+    except Exception as exc:
+        logger.warning("google_setup_info error: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/connectors/google/status
 # ---------------------------------------------------------------------------
 

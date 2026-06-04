@@ -5,6 +5,32 @@ so the agent can act on them. First target: **Google Workspace**.
 
 ---
 
+## Distribution model: arbitrary self-hosted VPS hosts (the redirect-URI problem)
+
+Spark is distributed: end users self-host on VPS hosts whose IP/hostname is **unknowable in advance**. Google
+requires every OAuth `redirect_uri` to be **pre-registered exactly** (no wildcards), which breaks any single
+shared redirect for unknown hosts.
+
+- **Device flow (no redirect at all) is ruled out:** verified Google only allows it for a tiny scope list
+  (openid/email/profile, drive.file, YouTube). **Gmail and Calendar are not supported.** Dead end for us.
+
+Two viable models (chosen: **B primary, A fallback**):
+
+- **A. BYO client (no infra, $0):** each self-hoster creates their own Google OAuth client and registers their
+  OWN host's redirect URI (they know it). Spark auto-detects its public URL and **displays the exact redirect URI
+  to paste** (in-app setup helper). Full read/write free. ~5 min one-time setup per user. → *Ship as fallback now.*
+  - [x] **DONE:** `GET /api/connectors/google/setup` exposes the detected redirect URI + scopes + config status;
+        ConnectorsPage shows a collapsible setup helper (copy-the-redirect-URI + config.yaml snippet), auto-expanded
+        when no client is configured. tsc clean.
+- **B. Shared client + hosted relay (one-click):** the Spark project hosts a small callback **relay** with ONE
+  registered redirect URI; the relay forwards the auth code back to the user's instance (redirect-chaining via a
+  signed `state` carrying the instance URL — instance does the PKCE token exchange so the relay never holds
+  tokens). True zero-setup for users. Requires: (1) infra the project hosts, (2) a domain, (3) the shared Google
+  client, (4) **CASA verification (paid/yr) for Gmail read at public scale**. → *Chosen as the primary path.*
+
+**Reality to hold:** zero-setup one-click + arbitrary VPS + Gmail scopes **requires both a hosted relay and Google
+verification**. No trick removes both (device flow was the only loophole; Google blocks Gmail there).
+
 ## TL;DR answer to the design question
 
 **Q: Can the first connector work as a one-click "Connect to Google" button, with no Google Cloud account / no

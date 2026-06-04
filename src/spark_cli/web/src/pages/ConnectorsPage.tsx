@@ -7,8 +7,11 @@ import {
   ExternalLink,
   AlertTriangle,
   Loader2,
+  Copy,
+  Check,
+  Settings2,
 } from "lucide-react";
-import { api, type ConnectorStatus } from "@/lib/api";
+import { api, type ConnectorStatus, type GoogleSetupInfo } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -29,6 +32,9 @@ const GOOGLE_CAPABILITIES = [
 
 export default function ConnectorsPage() {
   const [google, setGoogle] = useState<ConnectorStatus | null>(null);
+  const [setup, setSetup] = useState<GoogleSetupInfo | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,14 +42,31 @@ export default function ConnectorsPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const status = await api.getGoogleStatus();
+      const [status, setupInfo] = await Promise.all([
+        api.getGoogleStatus(),
+        api.getGoogleSetup().catch(() => null),
+      ]);
       setGoogle(status);
+      setSetup(setupInfo);
+      // Auto-expand the setup helper when no client is configured yet.
+      if (setupInfo && !setupInfo.configured) setShowSetup(true);
     } catch (e) {
       setError(`Failed to load connector status: ${e}`);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const copyRedirect = async () => {
+    if (!setup?.redirect_uri) return;
+    try {
+      await navigator.clipboard.writeText(setup.redirect_uri);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     refresh();
@@ -184,14 +207,78 @@ export default function ConnectorsPage() {
             </ul>
           </div>
 
-          {/* Not-configured guidance */}
-          {google && !google.configured && (
-            <div className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-              Google OAuth isn't configured yet. Add a client to{" "}
-              <code className="rounded bg-muted px-1">config.yaml</code> under{" "}
-              <code className="rounded bg-muted px-1">connectors.google</code>, or
-              set <code className="rounded bg-muted px-1">GOOGLE_OAUTH_CLIENT_ID</code>{" "}
-              and <code className="rounded bg-muted px-1">GOOGLE_OAUTH_CLIENT_SECRET</code>.
+          {/* BYO-client setup helper */}
+          {setup && (
+            <div className="rounded-md border border-border bg-muted/30">
+              <button
+                className="flex w-full items-center gap-2 p-3 text-left text-xs font-medium text-foreground"
+                onClick={() => setShowSetup((s) => !s)}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                {setup.configured
+                  ? "Set up your own Google client (advanced)"
+                  : "Set up your Google client to connect"}
+                <span className="ml-auto text-muted-foreground">
+                  {showSetup ? "Hide" : "Show"}
+                </span>
+              </button>
+
+              {showSetup && (
+                <div className="space-y-3 border-t border-border p-3 text-xs text-muted-foreground">
+                  <ol className="list-decimal space-y-2 pl-4">
+                    <li>
+                      In the{" "}
+                      <a
+                        href={setup.console_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary underline"
+                      >
+                        Google Cloud Console
+                      </a>
+                      , create an OAuth client of type{" "}
+                      <strong>{setup.client_type}</strong>.
+                    </li>
+                    <li>
+                      Add this exact <strong>Authorized redirect URI</strong>:
+                      <div className="mt-1 flex items-center gap-2">
+                        <code className="flex-1 break-all rounded bg-muted px-2 py-1 text-[11px] text-foreground">
+                          {setup.redirect_uri}
+                        </code>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2"
+                          onClick={copyRedirect}
+                        >
+                          {copied ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                    </li>
+                    <li>
+                      Add yourself as a <strong>Test user</strong> on the OAuth
+                      consent screen (keeps it free — no verification needed).
+                    </li>
+                    <li>
+                      Put the client ID & secret in{" "}
+                      <code className="rounded bg-muted px-1">config.yaml</code>:
+                      <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-[11px] text-foreground">{`connectors:
+  google:
+    client_id: "…apps.googleusercontent.com"
+    client_secret: "…"`}</pre>
+                    </li>
+                  </ol>
+                  {setup.configured && (
+                    <p className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                      <Check className="h-3.5 w-3.5" /> A client is configured.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
