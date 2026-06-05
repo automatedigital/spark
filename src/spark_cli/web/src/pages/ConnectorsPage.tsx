@@ -10,6 +10,8 @@ import {
   Copy,
   Check,
   Settings2,
+  Mail,
+  KeyRound,
 } from "lucide-react";
 import { api, type ConnectorStatus, type GoogleSetupInfo } from "@/lib/api";
 import {
@@ -24,7 +26,8 @@ import { Badge } from "@/components/ui/badge";
 
 // What the agent can do once Google is connected (public free tier).
 const GOOGLE_CAPABILITIES = [
-  "Send email (Gmail — send only)",
+  "Send email (Gmail OAuth)",
+  "Read Gmail via App Password",
   "Create & edit Google Docs, Sheets, Slides",
   "Manage Google Calendar events",
   "Create Drive files & edit files you pick",
@@ -35,6 +38,8 @@ export default function ConnectorsPage() {
   const [setup, setSetup] = useState<GoogleSetupInfo | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [imapEmail, setImapEmail] = useState("");
+  const [imapPassword, setImapPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +135,33 @@ export default function ConnectorsPage() {
     }
   };
 
+  const handleConnectGmailRead = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.connectGoogleGmailImap(imapEmail, imapPassword);
+      setImapPassword("");
+      await refresh();
+    } catch (e) {
+      setError(`Gmail read connect failed: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDisconnectGmailRead = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.disconnectGoogleGmailImap();
+      await refresh();
+    } catch (e) {
+      setError(`Gmail read disconnect failed: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-2xl p-6 space-y-6">
       <div className="flex items-center gap-3">
@@ -176,7 +208,7 @@ export default function ConnectorsPage() {
           <CardDescription>
             {google?.connected && google.email
               ? `Signed in as ${google.email}`
-              : "Send email, manage your calendar, and create/edit Docs, Sheets, Slides & Drive files."}
+              : "Send email, read Gmail with an App Password, and manage Calendar, Docs, Sheets, Slides & Drive files."}
           </CardDescription>
         </CardHeader>
 
@@ -205,6 +237,75 @@ export default function ConnectorsPage() {
                 </li>
               ))}
             </ul>
+          </div>
+
+          <div className="rounded-md border border-border p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Gmail read access</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use a Google App Password for inbox search without CASA verification.
+                  </p>
+                </div>
+              </div>
+              {google?.gmail_read?.connected ? (
+                <Badge className="gap-1" variant="default">
+                  <ShieldCheck className="h-3 w-3" /> Connected
+                </Badge>
+              ) : (
+                <Badge variant="secondary">Optional</Badge>
+              )}
+            </div>
+
+            {google?.gmail_read?.connected ? (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Reading as {google.gmail_read.email}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto"
+                  onClick={handleDisconnectGmailRead}
+                  disabled={busy}
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Disconnect Gmail read
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <label className="relative">
+                  <Mail className="pointer-events-none absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    className="h-9 w-full rounded-md border border-input bg-background pl-8 pr-2 text-sm"
+                    placeholder="you@gmail.com"
+                    value={imapEmail}
+                    onChange={(e) => setImapEmail(e.target.value)}
+                  />
+                </label>
+                <label className="relative">
+                  <KeyRound className="pointer-events-none absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    className="h-9 w-full rounded-md border border-input bg-background pl-8 pr-2 text-sm"
+                    placeholder="16-character App Password"
+                    type="password"
+                    value={imapPassword}
+                    onChange={(e) => setImapPassword(e.target.value)}
+                  />
+                </label>
+                <Button
+                  size="sm"
+                  onClick={handleConnectGmailRead}
+                  disabled={busy || !imapEmail.trim() || !imapPassword.trim()}
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Connect
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* BYO-client setup helper */}

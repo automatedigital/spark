@@ -987,6 +987,22 @@ export const api = {
       { method: "POST" },
     ),
 
+  connectGoogleGmailImap: (email: string, app_password: string) =>
+    fetchJSON<{ connected?: boolean; email?: string; error?: string }>(
+      "/api/connectors/google/gmail-imap",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, app_password }),
+      },
+    ),
+
+  disconnectGoogleGmailImap: () =>
+    fetchJSON<{ disconnected?: boolean; error?: string }>(
+      "/api/connectors/google/gmail-imap",
+      { method: "DELETE" },
+    ),
+
   disconnectGoogle: () =>
     fetchJSON<{ disconnected?: boolean; error?: string }>(
       "/api/connectors/google",
@@ -1951,5 +1967,6 @@ export interface ConnectorStatus {
   email?: string | null;
   name_display?: string | null;
   picture?: string | null;
+  gmail_read?: { connected: boolean; email?: string | null };
   error?: string;
 }

@@ -14,12 +14,13 @@ shared redirect for unknown hosts.
 - **Device flow (no redirect at all) is ruled out:** verified Google only allows it for a tiny scope list
   (openid/email/profile, drive.file, YouTube). **Gmail and Calendar are not supported.** Dead end for us.
 
-### FINAL decision (2026-06-05): Public + Free (send-only); desktop bundled client + VPS BYO; relay shelved
+### FINAL decision (2026-06-05): Public + Free; OAuth send-only + IMAP Gmail read
 
 Product constraint: **must be public** (no 100-test-user invite cap). With Gmail, you can pick only two of
-{public, gmail-read, free}. Public is required and CASA cost is rejected → so **Gmail is send-only** (sensitive
-scopes only; no restricted scopes → free Google verification, no CASA). Calendar/Docs/Sheets/Slides full;
-Drive = drive.file.
+{public, OAuth gmail-read, free}. Public is required and CASA cost is rejected → so **OAuth Gmail is send-only**
+(sensitive scopes only; no restricted scopes → free Google verification, no CASA). Calendar/Docs/Sheets/Slides full;
+Drive = drive.file. Gmail read is provided separately via **IMAP + Google App Password**, which avoids OAuth
+restricted scopes entirely.
 
 - **Desktop app → one-click.** Ship one shared **Desktop-type** OAuth client bundled in the app
   (`spark_cli/bundled_oauth.py`; injected at build via `SPARK_DESKTOP_GOOGLE_CLIENT_ID/SECRET`). Used only on
@@ -34,6 +35,10 @@ Drive = drive.file.
 
 **Default scopes (sensitive/free):** openid, email, profile, gmail.send, drive.file, calendar, documents,
 spreadsheets, presentations. Overridable via `connectors.google.scopes`.
+
+**Gmail read path:** optional IMAP App Password. Stored profile-scoped under `SPARK_HOME/connectors/google/`; no
+OAuth restricted scopes, no CASA, no Google verification. `gmail_search` prefers IMAP when configured, otherwise
+falls back to OAuth read scopes for BYO/CASA deployments.
 
 **Maintainer actions to finish:**
 1. Create the shared **Desktop** OAuth client; add the scopes above; bake id/secret into the desktop build env.

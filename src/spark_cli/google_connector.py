@@ -206,6 +206,67 @@ def clear_token() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Gmail IMAP App Password storage
+# ---------------------------------------------------------------------------
+
+def _imap_credentials_path() -> Path:
+    path = get_spark_home() / "connectors" / "google" / "gmail-imap.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def load_imap_credentials() -> dict | None:
+    """Load Gmail IMAP credentials, or None if inbox read is not configured."""
+    p = _imap_credentials_path()
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def save_imap_credentials(email_address: str, app_password: str) -> None:
+    """Store Gmail IMAP App Password credentials (0600), profile-scoped."""
+    email_address = email_address.strip()
+    normalized_password = app_password.replace(" ", "").strip()
+    if not email_address or "@" not in email_address:
+        raise ValueError("A valid Gmail address is required")
+    if len(normalized_password) < 12:
+        raise ValueError("A Gmail App Password is required")
+
+    data = {
+        "email": email_address,
+        "app_password": normalized_password,
+        "imap_host": "imap.gmail.com",
+        "imap_port": 993,
+        "saved_at": int(time.time()),
+    }
+    path = _imap_credentials_path()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+
+
+def clear_imap_credentials() -> None:
+    p = _imap_credentials_path()
+    if p.exists():
+        p.unlink()
+
+
+def has_imap_credentials() -> bool:
+    return load_imap_credentials() is not None
+
+
+def imap_status() -> dict:
+    creds = load_imap_credentials()
+    if not creds:
+        return {"connected": False, "email": None}
+    return {"connected": True, "email": creds.get("email")}
+
+
+# ---------------------------------------------------------------------------
 # gws CLI bridge — let the agent use the `gws` CLI from this same connection.
 #
 # The gws CLI reads an "authorized_user" credentials file pointed at by
@@ -409,6 +470,7 @@ async def get_connection_status_async() -> dict:
     """Return a status dict for the frontend (async-safe)."""
     import asyncio
     token = load_token()
+    imap = imap_status()
     if not token:
         return {
             "connected": False,
@@ -416,6 +478,7 @@ async def get_connection_status_async() -> dict:
             "email": None,
             "name": None,
             "picture": None,
+            "gmail_read": imap,
         }
 
     # Run the potentially-blocking token refresh in a thread
@@ -428,6 +491,7 @@ async def get_connection_status_async() -> dict:
             "name": token.get("name"),
             "picture": token.get("picture"),
             "error": "token_expired",
+            "gmail_read": imap,
         }
 
     # If we have cached profile info, return it without a network call
@@ -438,6 +502,7 @@ async def get_connection_status_async() -> dict:
             "email": token.get("email"),
             "name": token.get("name"),
             "picture": token.get("picture"),
+            "gmail_read": imap,
         }
 
     # Fetch and cache profile (run in thread to avoid blocking event loop)
@@ -454,6 +519,7 @@ async def get_connection_status_async() -> dict:
             "email": token["email"],
             "name": token["name"],
             "picture": token["picture"],
+            "gmail_read": imap,
         }
     except Exception as exc:
         logger.warning("Could not fetch Google user info: %s", exc)
@@ -463,4 +529,5 @@ async def get_connection_status_async() -> dict:
             "email": None,
             "name": None,
             "picture": None,
+            "gmail_read": imap,
         }

@@ -9,7 +9,8 @@ Architecture (see PLAN.md):
     (which self-refresh from the bridge file). See ``google_connector.gws_env()``.
   * **Free-tier scopes only** (gmail.send, drive.file, calendar, docs, sheets,
     slides) — no restricted scopes, so no paid CASA. NOTE: reading email needs
-    the restricted gmail.readonly scope, so the free tier is *send-only* for Gmail.
+    either the restricted gmail.readonly scope or the optional IMAP App Password
+    path; the default OAuth connection remains send-only.
 
 This class is a thin façade: it does not own OAuth or tokens — it reports status,
 points users at the web connect flow, and tears the connection down.
@@ -50,7 +51,7 @@ class GoogleWorkspaceConnector(Connector):
     name = "Google Workspace"
     description = (
         "Send email, manage your calendar, and create/edit Docs, Sheets, Slides, "
-        "and Drive files via the gws CLI. Gmail is send-only (free public tier)."
+        "and Drive files via the gws CLI. Gmail read can be added via IMAP App Password."
     )
     transport = Transport.CLI
     skills = GWS_SKILLS
@@ -68,24 +69,37 @@ class GoogleWorkspaceConnector(Connector):
             token = gc.load_token()
             configured = gc.is_configured()
             bridge = bool(gc.gws_env()) if token else False
+            imap = gc.imap_status()
         except Exception as exc:  # never raise out of status()
             return ConnectorStatus(state=ConnectorState.ERROR, detail=str(exc))
 
         if not token:
+            if imap.get("connected"):
+                return ConnectorStatus(
+                    state=ConnectorState.CONNECTED,
+                    detail="Connected to Gmail read via IMAP App Password.",
+                    account=imap.get("email"),
+                    scopes=[],
+                    extra={"bridge": False, "gmail_read": imap},
+                )
             detail = (
                 "Not connected. Open the Connectors tab to sign in."
                 if configured
                 else "Not configured. Add a Google OAuth client to config.yaml "
                      "(connectors.google) or set GOOGLE_OAUTH_CLIENT_ID/SECRET."
             )
-            return ConnectorStatus(state=ConnectorState.DISCONNECTED, detail=detail)
+            return ConnectorStatus(
+                state=ConnectorState.DISCONNECTED,
+                detail=detail,
+                extra={"gmail_read": imap},
+            )
 
         return ConnectorStatus(
             state=ConnectorState.CONNECTED,
             detail="Connected to Google Workspace (gws CLI bridge active).",
             account=token.get("email"),
             scopes=list(self.scopes),
-            extra={"bridge": bridge},
+            extra={"bridge": bridge, "gmail_read": imap},
         )
 
     # --- connect ---------------------------------------------------------
@@ -119,6 +133,7 @@ class GoogleWorkspaceConnector(Connector):
                 except Exception:
                     pass
             gc.clear_token()  # also removes the gws bridge credentials file
+            gc.clear_imap_credentials()
         except Exception as exc:
             return ConnectorStatus(state=ConnectorState.ERROR, detail=str(exc))
         return ConnectorStatus(

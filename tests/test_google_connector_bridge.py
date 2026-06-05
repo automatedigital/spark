@@ -103,6 +103,21 @@ def test_clear_token_removes_bridge(monkeypatch):
     assert not gc._token_path().exists()
 
 
+def test_imap_credentials_roundtrip_and_perms():
+    gc.save_imap_credentials("alice@gmail.com", "abcd efgh ijkl mnop")
+    path = gc._imap_credentials_path()
+    assert path.exists()
+    assert (path.stat().st_mode & 0o777) == 0o600
+    data = gc.load_imap_credentials()
+    assert data is not None
+    assert data["email"] == "alice@gmail.com"
+    assert data["app_password"] == "abcdefghijklmnop"
+    assert str(path).startswith(os.environ["SPARK_HOME"])
+    assert gc.imap_status() == {"connected": True, "email": "alice@gmail.com"}
+    gc.clear_imap_credentials()
+    assert gc.load_imap_credentials() is None
+
+
 def test_bundled_client_used_on_desktop(monkeypatch):
     import core.spark_constants as sc
     import spark_cli.bundled_oauth as bo

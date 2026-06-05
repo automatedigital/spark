@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,11 @@ router = APIRouter()
 
 _server_port: int = 9119
 _pending_states: dict[str, str] = {}  # state → code_verifier
+
+
+class GmailImapConnectRequest(BaseModel):
+    email: str
+    app_password: str
 
 
 def set_server_port(port: int) -> None:
@@ -157,6 +162,34 @@ async def google_status():
 
 
 # ---------------------------------------------------------------------------
+# POST /api/connectors/google/gmail-imap — connect Gmail read via App Password
+# ---------------------------------------------------------------------------
+
+@router.post("/api/connectors/google/gmail-imap")
+async def google_gmail_imap_connect(payload: GmailImapConnectRequest):
+    try:
+        from spark_cli.google_connector import save_imap_credentials
+
+        save_imap_credentials(payload.email, payload.app_password)
+        return JSONResponse({"connected": True, "email": payload.email.strip()})
+    except Exception as exc:
+        logger.warning("Error saving Gmail IMAP credentials: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@router.delete("/api/connectors/google/gmail-imap")
+async def google_gmail_imap_disconnect():
+    try:
+        from spark_cli.google_connector import clear_imap_credentials
+
+        clear_imap_credentials()
+        return JSONResponse({"disconnected": True})
+    except Exception as exc:
+        logger.warning("Error clearing Gmail IMAP credentials: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # POST /api/connectors/google/connect — start OAuth flow
 # ---------------------------------------------------------------------------
 
@@ -270,10 +303,10 @@ _CALLBACK_ERROR_HTML = """<!DOCTYPE html>
 @router.get("/oauth/google/callback")
 async def google_oauth_callback(
     request: Request,
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    error: Optional[str] = None,
-    ticket: Optional[str] = None,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    ticket: str | None = None,
 ):
     if error:
         logger.warning("Google OAuth error: %s", error)
@@ -348,8 +381,9 @@ async def google_oauth_callback(
 @router.delete("/api/connectors/google")
 async def google_disconnect():
     try:
-        from spark_cli.google_connector import clear_token, load_token
         import httpx
+
+        from spark_cli.google_connector import clear_imap_credentials, clear_token, load_token
 
         # Best-effort token revocation
         token = load_token()
@@ -366,6 +400,7 @@ async def google_disconnect():
                 pass
 
         clear_token()
+        clear_imap_credentials()
         return JSONResponse({"disconnected": True})
     except Exception as exc:
         logger.warning("Error disconnecting Google: %s", exc)

@@ -77,6 +77,7 @@ def _patch_gc(monkeypatch, *, token=None, configured=True, gws_env=None):
     monkeypatch.setattr(gc, "load_token", lambda: token)
     monkeypatch.setattr(gc, "is_configured", lambda: configured)
     monkeypatch.setattr(gc, "gws_env", lambda: gws_env or {})
+    monkeypatch.setattr(gc, "imap_status", lambda: {"connected": False, "email": None})
     return gc
 
 
@@ -105,6 +106,15 @@ def test_status_connected_with_account(monkeypatch):
     assert st.account == "alice@example.com"
     assert st.extra["bridge"] is True
     assert "gmail.send" in " ".join(st.scopes)
+
+
+def test_status_connected_with_imap_only(monkeypatch):
+    gc = _patch_gc(monkeypatch, token=None, configured=True)
+    monkeypatch.setattr(gc, "imap_status", lambda: {"connected": True, "email": "a@gmail.com"})
+    st = get_connector("google").status()
+    assert st.state is ConnectorState.CONNECTED
+    assert st.account == "a@gmail.com"
+    assert st.extra["gmail_read"]["connected"] is True
 
 
 def test_status_never_raises(monkeypatch):
