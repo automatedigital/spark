@@ -366,6 +366,8 @@ class CuaDriverBackend:
         self._active_pid: Optional[int] = None
         self._active_window_id: Optional[int] = None
         self._active_app: Optional[str] = None
+        self._last_elements: list[dict] = []
+        self._last_capture_size: tuple[int, int] = (0, 0)
 
     # ------------------------------------------------------------------
     # Capture (window selection + screenshot)
@@ -438,10 +440,15 @@ class CuaDriverBackend:
             except (json.JSONDecodeError, AttributeError):
                 pass
 
+        width = structured.get("screenshot_width", structured.get("width", 0))
+        height = structured.get("screenshot_height", structured.get("height", 0))
+        self._last_elements = elements if isinstance(elements, list) else []
+        self._last_capture_size = (int(width or 0), int(height or 0))
+
         return CaptureResult(
             mode=mode,
-            width=structured.get("screenshot_width", structured.get("width", 0)),
-            height=structured.get("screenshot_height", structured.get("height", 0)),
+            width=width,
+            height=height,
             png_b64=result["images"][0] if result["images"] else None,
             elements=elements,
             app=self._active_app,
@@ -473,7 +480,9 @@ class CuaDriverBackend:
         }
         if button == "right" and element is not None:
             args["action"] = "show_menu"
-        return _bridge.run(self._action_async("click", args))
+        result = _bridge.run(self._action_async("click", args))
+        self._attach_pointer_metadata(result, x=x, y=y, element=element, kind="click")
+        return result
 
     # ------------------------------------------------------------------
     # Type text
@@ -516,13 +525,22 @@ class CuaDriverBackend:
         x: Optional[float] = None,
         y: Optional[float] = None,
     ) -> ActionResult:
-        return _bridge.run(self._action_async("scroll", {
+        result = _bridge.run(self._action_async("scroll", {
             "pid": self._active_pid,
             "window_id": self._active_window_id,
             "direction": direction,
             "amount": amount,
             "element_index": element,
         }))
+        self._attach_pointer_metadata(
+            result,
+            x=x,
+            y=y,
+            element=element,
+            kind="scroll",
+            extra={"direction": direction, "amount": amount},
+        )
+        return result
 
     # ------------------------------------------------------------------
     # Drag
@@ -535,7 +553,7 @@ class CuaDriverBackend:
         end_x: float,
         end_y: float,
     ) -> ActionResult:
-        return _bridge.run(self._action_async("drag", {
+        result = _bridge.run(self._action_async("drag", {
             "pid": self._active_pid,
             "window_id": self._active_window_id,
             "from_x": start_x,
@@ -543,18 +561,60 @@ class CuaDriverBackend:
             "to_x": end_x,
             "to_y": end_y,
         }))
+        self._attach_pointer_metadata(
+            result,
+            x=end_x,
+            y=end_y,
+            kind="drag",
+            extra={"start_x": start_x, "start_y": start_y, "end_x": end_x, "end_y": end_y},
+        )
+        return result
 
     # ------------------------------------------------------------------
     # Set value (dropdowns / AXPopUpButton)
     # ------------------------------------------------------------------
 
     def set_value(self, value: str, element: int) -> ActionResult:
-        return _bridge.run(self._action_async("set_value", {
+        result = _bridge.run(self._action_async("set_value", {
             "pid": self._active_pid,
             "window_id": self._active_window_id,
             "element_index": element,
             "value": value,
         }))
+        self._attach_pointer_metadata(result, element=element, kind="set_value")
+        return result
+
+    def _attach_pointer_metadata(
+        self,
+        result: ActionResult,
+        *,
+        x: float | None = None,
+        y: float | None = None,
+        element: int | None = None,
+        kind: str,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Add best-effort visual pointer metadata for desktop chat UI."""
+        if not result.success:
+            return
+        px, py = _resolve_pointer_xy(self._last_elements, element=element, x=x, y=y)
+        if px is None or py is None:
+            return
+        width, height = self._last_capture_size
+        data = dict(result.data or {})
+        pointer = {
+            "kind": kind,
+            "x": px,
+            "y": py,
+            "element": element,
+            "window_width": width,
+            "window_height": height,
+            "app": self._active_app,
+        }
+        if extra:
+            pointer.update(extra)
+        data["pointer"] = pointer
+        result.data = data
 
     # ------------------------------------------------------------------
     # Focus app  (context update only — no focus theft)
@@ -646,6 +706,54 @@ def _parse_windows(result: Dict) -> List[Dict]:
         except (json.JSONDecodeError, AttributeError):
             pass
     return []
+
+
+def _resolve_pointer_xy(
+    elements: list[dict],
+    *,
+    element: int | None,
+    x: float | None,
+    y: float | None,
+) -> tuple[float | None, float | None]:
+    if x is not None and y is not None:
+        return float(x), float(y)
+    if element is None or element < 0 or element >= len(elements):
+        return None, None
+
+    item = elements[element]
+    bounds = (
+        item.get("bounds")
+        or item.get("frame")
+        or item.get("rect")
+        or item.get("bbox")
+        or {}
+    )
+    if not isinstance(bounds, dict):
+        return None, None
+
+    left = _first_number(bounds, "x", "left", "min_x")
+    top = _first_number(bounds, "y", "top", "min_y")
+    width = _first_number(bounds, "width", "w")
+    height = _first_number(bounds, "height", "h")
+    right = _first_number(bounds, "right", "max_x")
+    bottom = _first_number(bounds, "bottom", "max_y")
+
+    if left is None or top is None:
+        return None, None
+    if width is None and right is not None:
+        width = right - left
+    if height is None and bottom is not None:
+        height = bottom - top
+
+    return left + (width or 0) / 2, top + (height or 0) / 2
+
+
+def _first_number(data: dict, *keys: str) -> float | None:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
 
 
 def _parse_launch_windows(result: Dict) -> List[Dict]:
