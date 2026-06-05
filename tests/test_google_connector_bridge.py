@@ -99,6 +99,42 @@ def test_clear_token_removes_bridge(monkeypatch):
     assert not gc._token_path().exists()
 
 
+def test_bundled_client_used_on_desktop(monkeypatch):
+    import core.spark_constants as sc
+    import spark_cli.bundled_oauth as bo
+    monkeypatch.setattr(sc, "is_server_environment", lambda: False)  # desktop/local
+    monkeypatch.setattr(bo, "get_bundled_client", lambda: ("desk-id", "desk-secret"))
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {})
+    assert gc.get_client_id() == "desk-id"
+    assert gc.get_client_secret() == "desk-secret"
+    assert gc.is_configured() is True
+
+
+def test_bundled_client_ignored_on_server(monkeypatch):
+    import core.spark_constants as sc
+    import spark_cli.bundled_oauth as bo
+    monkeypatch.setattr(sc, "is_server_environment", lambda: True)  # VPS
+    monkeypatch.setattr(bo, "get_bundled_client", lambda: ("desk-id", "desk-secret"))
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {})
+    # On a server the bundled localhost client is ignored → BYO required.
+    assert gc.get_client_id() == ""
+    assert gc.is_configured() is False
+
+
+def test_explicit_config_overrides_bundled(monkeypatch):
+    import core.spark_constants as sc
+    import spark_cli.bundled_oauth as bo
+    monkeypatch.setattr(sc, "is_server_environment", lambda: False)
+    monkeypatch.setattr(bo, "get_bundled_client", lambda: ("desk-id", "desk-secret"))
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {"client_id": "byo", "client_secret": "byos"})
+    assert gc.get_client_id() == "byo"  # BYO wins over bundled
+
+
 def test_get_relay_url_and_is_configured(monkeypatch):
     monkeypatch.setattr(gc, "_get_google_config", lambda: {"relay_url": "https://relay.example/"})
     monkeypatch.delenv("GOOGLE_OAUTH_RELAY_URL", raising=False)

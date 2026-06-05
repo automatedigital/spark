@@ -14,7 +14,25 @@ shared redirect for unknown hosts.
 - **Device flow (no redirect at all) is ruled out:** verified Google only allows it for a tiny scope list
   (openid/email/profile, drive.file, YouTube). **Gmail and Calendar are not supported.** Dead end for us.
 
-Two viable models (chosen: **B primary, A fallback**):
+### FINAL decision (2026-06-05): Desktop bundled client + VPS BYO; relay shelved
+
+Simplest shape that meets the goals, **no hosted infra**:
+
+- **Desktop app → one-click, read/write.** Ship one shared **Desktop-type** OAuth client bundled in the app
+  (`spark_cli/bundled_oauth.py`; injected at build via `SPARK_DESKTOP_GOOGLE_CLIENT_ID/SECRET` or the constants).
+  Used only on local/desktop (gated by `is_server_environment()`), as a fallback under any env/config client. The
+  Desktop secret is non-confidential by Google's design, so the **gws bridge works fully**. Default scopes are
+  read/write (`gmail.modify` + `gmail.send` + Drive/Calendar/Docs/Sheets/Slides). Free for ≤100 users while the
+  OAuth app stays in **Testing** mode; public launch with Gmail read later needs CASA.
+- **VPS → BYO client.** On a server `is_server_environment()` is true → the bundled client is ignored → the
+  in-app **setup helper** guides the operator to register their own host. Full read/write, free (own test user).
+- **Relay → SHELVED (built, tested, not deployed).** `src/spark_relay/` + instance-side relay mode remain in the
+  tree for a future "VPS one-click" option, but are not used in this shape. No infra to host.
+
+**Maintainer action to finish desktop one-click:** create the shared Desktop OAuth client in the Spark Google
+Cloud project, add scopes + test users, and bake its id/secret into the desktop build env.
+
+Two (now historical) models considered:
 
 - **A. BYO client (no infra, $0):** each self-hoster creates their own Google OAuth client and registers their
   OWN host's redirect URI (they know it). Spark auto-detects its public URL and **displays the exact redirect URI

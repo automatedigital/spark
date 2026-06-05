@@ -101,10 +101,28 @@ def _get_google_config() -> dict:
         return {}
 
 
+def _bundled_client() -> tuple[str, str]:
+    """Bundled desktop client, but only on local/desktop installs (never a VPS).
+
+    A bundled localhost client is useless on a server (the remote browser can't
+    reach the instance's localhost), so on a server environment we ignore it and
+    require BYO credentials.
+    """
+    try:
+        from core.spark_constants import is_server_environment
+        if is_server_environment():
+            return "", ""
+        from spark_cli.bundled_oauth import get_bundled_client
+        return get_bundled_client()
+    except Exception:
+        return "", ""
+
+
 def get_client_id() -> str:
     return (
         os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
         or _get_google_config().get("client_id", "")
+        or _bundled_client()[0]
     )
 
 
@@ -112,6 +130,7 @@ def get_client_secret() -> str:
     return (
         os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
         or _get_google_config().get("client_secret", "")
+        or _bundled_client()[1]
     )
 
 
