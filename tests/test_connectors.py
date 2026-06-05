@@ -160,3 +160,34 @@ def test_gws_env_delegates(monkeypatch):
               gws_env={"GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE": "/tmp/creds.json"})
     env = get_connector("google").gws_env()
     assert env["GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"] == "/tmp/creds.json"
+
+
+def test_github_oauth_save_syncs_gh_cli(monkeypatch, tmp_path):
+    import spark_cli.oauth_connectors as oc
+
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path / ".spark"))
+    monkeypatch.setattr(oc.shutil, "which", lambda name: "/usr/bin/gh" if name == "gh" else None)
+    calls = {}
+
+    def fake_run(cmd, *, input, text, capture_output, check, timeout):
+        calls["cmd"] = cmd
+        calls["input"] = input
+        calls["text"] = text
+        calls["capture_output"] = capture_output
+        calls["check"] = check
+        calls["timeout"] = timeout
+
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(oc.subprocess, "run", fake_run)
+    oc.save_token("github", {"access_token": "gho_test", "account": "alice"})
+
+    saved = oc.load_token("github")
+    assert saved["github_cli_sync"]["synced"] is True
+    assert calls["cmd"] == ["/usr/bin/gh", "auth", "login", "--hostname", "github.com", "--with-token"]
+    assert calls["input"] == "gho_test\n"

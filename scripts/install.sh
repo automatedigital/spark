@@ -485,8 +485,10 @@ install_system_packages() {
     # Detect what's missing
     HAS_RIPGREP=false
     HAS_FFMPEG=false
+    HAS_GH=false
     local need_ripgrep=false
     local need_ffmpeg=false
+    local need_gh=false
 
     log_info "Checking ripgrep (fast file search)..."
     if command -v rg &> /dev/null; then
@@ -505,6 +507,14 @@ install_system_packages() {
         need_ffmpeg=true
     fi
 
+    log_info "Checking GitHub CLI (GitHub connector actions)..."
+    if command -v gh &> /dev/null; then
+        log_success "$(gh --version | head -1) found"
+        HAS_GH=true
+    else
+        need_gh=true
+    fi
+
     # Termux always needs the Android build toolchain for the tested pip path,
     # even when ripgrep/ffmpeg are already present.
     if [ "$DISTRO" = "termux" ]; then
@@ -515,11 +525,15 @@ install_system_packages() {
         if [ "$need_ffmpeg" = true ]; then
             termux_pkgs+=("ffmpeg")
         fi
+        if [ "$need_gh" = true ]; then
+            termux_pkgs+=("gh")
+        fi
 
         log_info "Installing Termux packages: ${termux_pkgs[*]}"
         if pkg install -y "${termux_pkgs[@]}" >/dev/null; then
             [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
             [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
+            [ "$need_gh" = true ]      && HAS_GH=true      && log_success "GitHub CLI installed"
             log_success "Termux build dependencies installed"
             return 0
         fi
@@ -530,7 +544,7 @@ install_system_packages() {
     fi
 
     # Nothing to install - done
-    if [ "$need_ripgrep" = false ] && [ "$need_ffmpeg" = false ]; then
+    if [ "$need_ripgrep" = false ] && [ "$need_ffmpeg" = false ] && [ "$need_gh" = false ]; then
         return 0
     fi
 
@@ -545,6 +559,13 @@ install_system_packages() {
         desc_parts+=("ffmpeg for TTS voice messages")
         pkgs+=("ffmpeg")
     fi
+    if [ "$need_gh" = true ]; then
+        desc_parts+=("GitHub CLI for GitHub connector actions")
+        case "$DISTRO" in
+            arch) pkgs+=("github-cli") ;;
+            *)    pkgs+=("gh") ;;
+        esac
+    fi
     local description
     description=$(IFS=" and "; echo "${desc_parts[*]}")
 
@@ -555,6 +576,7 @@ install_system_packages() {
             if brew install "${pkgs[@]}"; then
                 [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
                 [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
+                [ "$need_gh" = true ]      && HAS_GH=true      && log_success "GitHub CLI installed"
                 return 0
             fi
         fi
@@ -585,6 +607,7 @@ install_system_packages() {
             if $install_cmd; then
                 [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
                 [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
+                [ "$need_gh" = true ]      && HAS_GH=true      && log_success "GitHub CLI installed"
                 return 0
             fi
         # Passwordless sudo - just install
@@ -607,6 +630,7 @@ install_system_packages() {
                     if sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $install_cmd; then
                         [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
                         [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
+                        [ "$need_gh" = true ]      && HAS_GH=true      && log_success "GitHub CLI installed"
                         return 0
                     fi
                 fi
@@ -622,6 +646,7 @@ install_system_packages() {
                     if sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $install_cmd < /dev/tty; then
                         [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
                         [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
+                        [ "$need_gh" = true ]      && HAS_GH=true      && log_success "GitHub CLI installed"
                         return 0
                     fi
                 fi
@@ -652,6 +677,10 @@ install_system_packages() {
         log_warn "ffmpeg not installed (TTS voice messages will be limited)"
         show_manual_install_hint "ffmpeg"
     fi
+    if [ "$HAS_GH" = false ] && [ "$need_gh" = true ]; then
+        log_warn "GitHub CLI not installed (GitHub connector CLI actions will be limited)"
+        show_manual_install_hint "gh"
+    fi
 }
 
 show_manual_install_hint() {
@@ -662,7 +691,13 @@ show_manual_install_hint() {
             case "$DISTRO" in
                 ubuntu|debian) log_info "  sudo apt install $pkg" ;;
                 fedora)        log_info "  sudo dnf install $pkg" ;;
-                arch)          log_info "  sudo pacman -S $pkg"   ;;
+                arch)
+                    if [ "$pkg" = "gh" ]; then
+                        log_info "  sudo pacman -S github-cli"
+                    else
+                        log_info "  sudo pacman -S $pkg"
+                    fi
+                    ;;
                 *)             log_info "  Use your package manager or visit the project homepage" ;;
             esac
             ;;

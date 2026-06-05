@@ -1,7 +1,7 @@
 """
 Connectors API routes — handles OAuth flows for third-party services.
 
-Currently supports: Google Workspace
+Currently supports: Google Workspace plus catalog-backed CLI/skill connectors.
 
 OAuth flow:
   1. POST /api/connectors/google/connect  → returns {auth_url}
@@ -29,7 +29,9 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 _server_port: int = 9119
-_pending_states: dict[str, str] = {}  # state → code_verifier
+_pending_states: dict[str, str] = {}  # state → code_verifier (Google)
+_pending_oauth_states: dict[str, tuple[str, str]] = {}  # state → (provider_id, code_verifier)
+_pending_device_states: dict[str, dict] = {}  # state → device flow metadata
 
 
 class GmailImapConnectRequest(BaseModel):
@@ -43,7 +45,7 @@ def set_server_port(port: int) -> None:
     _server_port = port
 
 
-def _redirect_uri() -> str:
+def _redirect_uri(provider: str = "google") -> str:
     """OAuth callback URL Google should redirect back to after consent.
 
     Resolution order:
@@ -60,7 +62,7 @@ def _redirect_uri() -> str:
     ``localhost`` as the default and only diverge when the deployment clearly
     isn't local.
     """
-    path = "/oauth/google/callback"
+    path = f"/oauth/{provider}/callback"
 
     # 1. Explicit override
     try:
@@ -98,6 +100,24 @@ def _redirect_uri() -> str:
 
 @router.get("/api/connectors")
 async def list_connectors():
+    from tools.connectors import list_connectors as list_registered_connectors
+
+    items = []
+    for connector in list_registered_connectors():
+        status = connector.status()
+        item = {
+            **connector.describe(),
+            "icon": connector.id,
+            "connected": status.connected,
+            "configured": status.state.value != "not_installed",
+            "state": status.state.value,
+            "detail": status.detail,
+            "account": status.account,
+            "status": status.to_dict(),
+        }
+        if connector.id != "google":
+            items.append(item)
+
     try:
         from spark_cli.google_connector import get_connection_status_async
         google_status = await get_connection_status_async()
@@ -105,15 +125,69 @@ async def list_connectors():
         logger.warning("Error getting Google connector status: %s", exc)
         google_status = {"connected": False, "configured": False, "error": str(exc)}
 
-    return JSONResponse([
-        {
-            "id": "google",
-            "name": "Google Workspace",
-            "description": "Gmail, Google Calendar",
-            "icon": "google",
-            **google_status,
-        }
-    ])
+    return JSONResponse(
+        [
+            {
+                "id": "google",
+                "name": "Google Workspace",
+                "description": "Gmail, Google Calendar",
+                "icon": "google",
+                "transport": "cli",
+                "state": "connected" if google_status.get("connected") else "disconnected",
+                "detail": (
+                    f"Connected as {google_status.get('email')}"
+                    if google_status.get("connected") and google_status.get("email")
+                    else "Use OAuth sign-in and optional Gmail IMAP app password."
+                ),
+                "skills": [
+                    "gws-calendar",
+                    "gws-drive",
+                    "gws-docs",
+                    "gws-gmail",
+                    "gws-sheets",
+                    "gws-slides",
+                ],
+                "docs_url": "https://developers.google.com/workspace",
+                "status": {
+                    "state": "connected" if google_status.get("connected") else "disconnected",
+                    "detail": "Google Workspace OAuth connector",
+                    "account": google_status.get("email"),
+                    "extra": {
+                        "auth_type": "oauth",
+                        "auth_url": "/api/connectors/google/connect",
+                    },
+                },
+                **google_status,
+            },
+            *items,
+        ]
+    )
+
+
+@router.get("/api/connectors/{connector_id}/status")
+async def connector_status(connector_id: str):
+    if connector_id == "google":
+        return await google_status()
+    try:
+        from tools.connectors import get_connector
+
+        connector = get_connector(connector_id)
+        if connector is None:
+            return JSONResponse({"error": "unknown_connector"}, status_code=404)
+        status = connector.status()
+        return JSONResponse({
+            **connector.describe(),
+            "icon": connector.id,
+            "connected": status.connected,
+            "configured": status.state.value != "not_installed",
+            "state": status.state.value,
+            "detail": status.detail,
+            "account": status.account,
+            "status": status.to_dict(),
+        })
+    except Exception as exc:
+        logger.warning("Error getting %s connector status: %s", connector_id, exc)
+        return JSONResponse({"connected": False, "configured": False, "error": str(exc)}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +322,117 @@ async def google_connect():
     return JSONResponse({"auth_url": auth_url})
 
 
+@router.post("/api/connectors/{connector_id}/connect")
+async def connector_connect(connector_id: str):
+    if connector_id == "google":
+        return await google_connect()
+    try:
+        from spark_cli.oauth_connectors import (
+            OAUTH_PROVIDERS,
+            build_auth_url,
+            generate_pkce_pair,
+            is_configured,
+        )
+        from tools.connectors import get_connector
+
+        connector = get_connector(connector_id)
+        if connector is None:
+            return JSONResponse({"error": "unknown_connector"}, status_code=404)
+        if connector_id not in OAUTH_PROVIDERS:
+            return JSONResponse(
+                {
+                    "error": "oauth_unavailable",
+                    "message": "This connector uses API-key or CLI setup.",
+                },
+                status_code=400,
+            )
+        if not is_configured(connector_id):
+            return JSONResponse(
+                {
+                    "error": "not_configured",
+                    "message": (
+                        f"{connector.name} OAuth is not configured for this Spark install. "
+                        "Use the API key setup now, or add OAuth client credentials under "
+                        f"connectors.{connector_id}.oauth in config.yaml."
+                    ),
+                },
+                status_code=400,
+            )
+        if connector_id == "github":
+            from spark_cli.oauth_connectors import request_device_code
+
+            device = request_device_code(connector_id)
+            state = secrets.token_urlsafe(24)
+            _pending_device_states[state] = {
+                "connector_id": connector_id,
+                "device_code": device["device_code"],
+                "expires_at": __import__("time").time() + int(device.get("expires_in", 900)),
+                "interval": int(device.get("interval", 5)),
+            }
+            return JSONResponse({
+                "flow": "device_code",
+                "device_state": state,
+                "user_code": device.get("user_code"),
+                "verification_uri": device.get("verification_uri"),
+                "expires_in": device.get("expires_in", 900),
+                "interval": device.get("interval", 5),
+                "auth_url": device.get("verification_uri"),
+            })
+        state = secrets.token_urlsafe(32)
+        code_verifier, code_challenge = generate_pkce_pair()
+        _pending_oauth_states[state] = (connector_id, code_verifier)
+        return JSONResponse({
+            "auth_url": build_auth_url(
+                connector_id,
+                state=state,
+                code_challenge=code_challenge,
+                redirect_uri=_redirect_uri(connector_id),
+            )
+        })
+    except Exception as exc:
+        logger.warning("connector_connect error for %s: %s", connector_id, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@router.post("/api/connectors/{connector_id}/device/poll")
+async def connector_device_poll(connector_id: str, request: Request):
+    try:
+        import time
+
+        from spark_cli.oauth_connectors import enrich_token, poll_device_code, save_token
+
+        body = await request.json()
+        state = str(body.get("device_state") or "")
+        pending = _pending_device_states.get(state)
+        if not pending or pending.get("connector_id") != connector_id:
+            return JSONResponse({"error": "invalid_device_state"}, status_code=400)
+        if time.time() > float(pending.get("expires_at", 0)):
+            _pending_device_states.pop(state, None)
+            return JSONResponse({"error": "expired_token"}, status_code=400)
+        token = poll_device_code(connector_id, str(pending["device_code"]))
+        error = token.get("error")
+        if error in {"authorization_pending", "slow_down"}:
+            return JSONResponse({
+                "connected": False,
+                "pending": True,
+                "error": error,
+                "interval": pending.get("interval", 5) + (5 if error == "slow_down" else 0),
+            })
+        if error:
+            _pending_device_states.pop(state, None)
+            return JSONResponse({"connected": False, "error": error}, status_code=400)
+        token = enrich_token(connector_id, token)
+        save_token(connector_id, token)
+        _pending_device_states.pop(state, None)
+        return JSONResponse({
+            "connected": True,
+            "account": token.get("account"),
+        })
+    except Exception as exc:
+        logger.warning("connector_device_poll error for %s: %s", connector_id, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 # ---------------------------------------------------------------------------
 # GET /oauth/google/callback — Google redirects here after consent
 # ---------------------------------------------------------------------------
@@ -371,6 +556,51 @@ async def google_oauth_callback(
 
     except Exception as exc:
         logger.exception("Google OAuth token exchange failed: %s", exc)
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=f"Token exchange failed: {exc}"))
+
+
+@router.get("/oauth/{connector_id}/callback")
+async def connector_oauth_callback(
+    connector_id: str,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
+    if connector_id == "google":
+        return await google_oauth_callback(code=code, state=state, error=error)
+    if error:
+        logger.warning("%s OAuth error: %s", connector_id, error)
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=error))
+    if not code or not state:
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Missing code or state parameter"))
+    pending = _pending_oauth_states.pop(state, None)
+    if not pending:
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Invalid or expired state. Please try connecting again."))
+    expected_connector, code_verifier = pending
+    if expected_connector != connector_id:
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="OAuth state does not match connector. Please try again."))
+    try:
+        from spark_cli.oauth_connectors import (
+            OAUTH_PROVIDERS,
+            enrich_token,
+            exchange_code,
+            save_token,
+        )
+
+        if connector_id not in OAUTH_PROVIDERS:
+            return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Unknown OAuth connector"))
+        token = exchange_code(
+            connector_id,
+            code=code,
+            code_verifier=code_verifier,
+            redirect_uri=_redirect_uri(connector_id),
+        )
+        token = enrich_token(connector_id, token)
+        save_token(connector_id, token)
+        provider_name = OAUTH_PROVIDERS[connector_id].name
+        return HTMLResponse(_CALLBACK_SUCCESS_HTML.replace("Google", provider_name))
+    except Exception as exc:
+        logger.exception("%s OAuth callback failed: %s", connector_id, exc)
         return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=f"Token exchange failed: {exc}"))
 
 

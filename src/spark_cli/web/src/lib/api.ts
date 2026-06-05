@@ -978,6 +978,9 @@ export const api = {
   getGoogleStatus: () =>
     fetchJSON<ConnectorStatus>("/api/connectors/google/status"),
 
+  getConnectorStatus: (connectorId: string) =>
+    fetchJSON<ConnectorStatus>(`/api/connectors/${encodeURIComponent(connectorId)}/status`),
+
   getGoogleSetup: () =>
     fetchJSON<GoogleSetupInfo>("/api/connectors/google/setup"),
 
@@ -986,6 +989,35 @@ export const api = {
       "/api/connectors/google/connect",
       { method: "POST" },
     ),
+
+  connectConnector: (connectorId: string) =>
+    fetchJSON<{
+      auth_url?: string;
+      flow?: "device_code" | "oauth";
+      device_state?: string;
+      user_code?: string;
+      verification_uri?: string;
+      expires_in?: number;
+      interval?: number;
+      error?: string;
+      message?: string;
+    }>(
+      `/api/connectors/${encodeURIComponent(connectorId)}/connect`,
+      { method: "POST" },
+    ),
+
+  pollConnectorDevice: (connectorId: string, device_state: string) =>
+    fetchJSON<{
+      connected?: boolean;
+      pending?: boolean;
+      account?: string | null;
+      interval?: number;
+      error?: string;
+    }>(`/api/connectors/${encodeURIComponent(connectorId)}/device/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device_state }),
+    }),
 
   connectGoogleGmailImap: (email: string, app_password: string) =>
     fetchJSON<{ connected?: boolean; email?: string; error?: string }>(
@@ -1962,8 +1994,41 @@ export interface ConnectorStatus {
   name: string;
   description?: string;
   icon?: string;
+  transport?: "cli" | "mcp" | "skill" | string;
+  scopes?: string[];
+  skills?: string[];
+  capabilities?: string[];
+  docs_url?: string;
   connected: boolean;
   configured: boolean;
+  state?: string;
+  detail?: string;
+  account?: string | null;
+  status?: {
+    state: string;
+    detail?: string;
+    account?: string | null;
+    scopes?: string[];
+    extra?: {
+      installed?: boolean;
+      env_vars?: string[];
+      cli?: string | null;
+      config_paths?: string[];
+      setup_steps?: string[];
+      auth_type?: "oauth" | "api_key" | "multi_env" | "cli" | string;
+      auth_url?: string;
+      api_key_url?: string;
+      primary_env_var?: string;
+      oauth_configured?: boolean;
+      cli_sync?: {
+        synced?: boolean;
+        reason?: string;
+        detail?: string;
+        host?: string;
+      };
+      [key: string]: unknown;
+    };
+  };
   email?: string | null;
   name_display?: string | null;
   picture?: string | null;

@@ -28,7 +28,8 @@ CONNECTORS_SCHEMA = {
         "name": "connectors",
         "description": (
             "List and manage connections to external platforms (e.g. Google "
-            "Workspace) so you can act on the user's behalf. Actions: 'list' "
+            "Workspace, GitHub, Notion, HubSpot, Asana, Airtable, Tinker, Slack, IMAP "
+            "mail) so you can act on the user's behalf. Actions: 'list' "
             "(all connectors + their status), 'status' (one connector), "
             "'connect' (start sign-in — interactive browser flow), 'disconnect' "
             "(revoke local credentials). Prefer 'list'/'status' to check before "
@@ -45,8 +46,9 @@ CONNECTORS_SCHEMA = {
                 "connector": {
                     "type": "string",
                     "description": (
-                        "Connector id (e.g. 'google'). Required for status/"
-                        "connect/disconnect; ignored for 'list'."
+                        "Connector id (e.g. 'google', 'github', 'notion', "
+                        "'hubspot', 'asana', 'airtable', 'tinker', 'slack', 'imap-mail'). "
+                        "Required for status/connect/disconnect; ignored for 'list'."
                     ),
                 },
             },

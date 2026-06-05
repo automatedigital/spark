@@ -231,7 +231,7 @@ else
 fi
 
 # ============================================================================
-# Optional: ripgrep (for faster file search)
+# Optional: ripgrep (for faster file search) + GitHub CLI
 # ============================================================================
 
 echo -e "${CYAN}->${NC} Checking ripgrep (optional, for faster search)..."
@@ -281,6 +281,52 @@ else
                 echo "    cargo install ripgrep        # With Rust (no sudo)"
             fi
             echo "    https://github.com/BurntSushi/ripgrep#installation"
+        fi
+    fi
+fi
+
+echo -e "${CYAN}->${NC} Checking GitHub CLI (for GitHub connector actions)..."
+
+if command -v gh &> /dev/null; then
+    echo -e "${GREEN}OK${NC} GitHub CLI found"
+else
+    echo -e "${YELLOW}WARN${NC} GitHub CLI not found (GitHub connector CLI actions will be limited)"
+    read -p "Install GitHub CLI? [Y/n] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+        INSTALLED=false
+
+        if is_termux; then
+            pkg install -y gh && INSTALLED=true
+        else
+            if command -v sudo &> /dev/null && sudo -n true 2>/dev/null; then
+                if command -v apt &> /dev/null; then
+                    sudo apt install -y gh && INSTALLED=true
+                elif command -v dnf &> /dev/null; then
+                    sudo dnf install -y gh && INSTALLED=true
+                elif command -v pacman &> /dev/null; then
+                    sudo pacman -S --noconfirm github-cli && INSTALLED=true
+                fi
+            fi
+
+            if [ "$INSTALLED" = false ] && command -v brew &> /dev/null; then
+                brew install gh && INSTALLED=true
+            fi
+        fi
+
+        if [ "$INSTALLED" = true ]; then
+            echo -e "${GREEN}OK${NC} GitHub CLI installed"
+        else
+            echo -e "${YELLOW}WARN${NC} Auto-install failed. Install options:"
+            if is_termux; then
+                echo "    pkg install gh               # Termux / Android"
+            else
+                echo "    sudo apt install gh          # Debian/Ubuntu"
+                echo "    sudo dnf install gh          # Fedora"
+                echo "    sudo pacman -S github-cli    # Arch"
+                echo "    brew install gh              # macOS"
+            fi
+            echo "    https://cli.github.com/"
         fi
     fi
 fi

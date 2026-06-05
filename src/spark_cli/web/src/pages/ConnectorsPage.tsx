@@ -12,6 +12,7 @@ import {
   Settings2,
   Mail,
   KeyRound,
+  X,
 } from "lucide-react";
 import { api, type ConnectorStatus, type GoogleSetupInfo } from "@/lib/api";
 import {
@@ -23,6 +24,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 // What the agent can do once Google is connected (public free tier).
 const GOOGLE_CAPABILITIES = [
@@ -33,8 +36,63 @@ const GOOGLE_CAPABILITIES = [
   "Create Drive files & edit files you pick",
 ];
 
+function connectorStatusLabel(connector: ConnectorStatus) {
+  if (connector.connected) return "Connected";
+  if (connector.state === "not_installed") return "Not installed";
+  return "Not connected";
+}
+
+function connectorBadgeVariant(connector: ConnectorStatus): "default" | "secondary" | "destructive" {
+  if (connector.connected) return "default";
+  if (connector.state === "error") return "destructive";
+  return "secondary";
+}
+
+function connectorExtra(connector: ConnectorStatus) {
+  return connector.status?.extra ?? {};
+}
+
+function connectorPrimaryEnv(connector: ConnectorStatus) {
+  const extra = connectorExtra(connector);
+  return extra.primary_env_var || extra.env_vars?.[0] || "";
+}
+
+type DeviceFlowState = {
+  connectorId: string;
+  connectorName: string;
+  deviceState: string;
+  userCode: string;
+  verificationUri: string;
+  interval: number;
+};
+
+const FIELD_META: Record<string, { label: string; placeholder: string }> = {
+  GITHUB_TOKEN: { label: "GitHub token", placeholder: "Paste a GitHub token" },
+  NOTION_API_KEY: { label: "Internal integration secret", placeholder: "secret_..." },
+  HUBSPOT_ACCESS_TOKEN: { label: "Private app access token", placeholder: "pat-..." },
+  HUBSPOT_API_KEY: { label: "Legacy API key", placeholder: "Paste HubSpot API key" },
+  ASANA_ACCESS_TOKEN: { label: "Personal access token", placeholder: "Paste Asana token" },
+  AIRTABLE_TOKEN: { label: "Personal access token", placeholder: "pat..." },
+  AIRTABLE_API_KEY: { label: "Legacy API key", placeholder: "Paste Airtable API key" },
+  SLACK_BOT_TOKEN: { label: "Bot token", placeholder: "xoxb-..." },
+  SLACK_APP_TOKEN: { label: "App-level token", placeholder: "xapp-..." },
+  TINKER_API_KEY: { label: "Tinker API key", placeholder: "Paste Tinker API key" },
+  EMAIL_ADDRESS: { label: "Email address", placeholder: "you@example.com" },
+  EMAIL_PASSWORD: { label: "Password or app password", placeholder: "Paste password" },
+  EMAIL_IMAP_HOST: { label: "IMAP host", placeholder: "imap.example.com" },
+  EMAIL_SMTP_HOST: { label: "SMTP host", placeholder: "smtp.example.com" },
+};
+
+function fieldMeta(key: string) {
+  return FIELD_META[key] ?? { label: key, placeholder: `Paste ${key}` };
+}
+
 export default function ConnectorsPage() {
   const [google, setGoogle] = useState<ConnectorStatus | null>(null);
+  const [connectors, setConnectors] = useState<ConnectorStatus[]>([]);
+  const [setupConnector, setSetupConnector] = useState<ConnectorStatus | null>(null);
+  const [connectorSecrets, setConnectorSecrets] = useState<Record<string, string>>({});
+  const [deviceFlow, setDeviceFlow] = useState<DeviceFlowState | null>(null);
   const [setup, setSetup] = useState<GoogleSetupInfo | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -42,16 +100,18 @@ export default function ConnectorsPage() {
   const [imapPassword, setImapPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [testingConnector, setTestingConnector] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [status, setupInfo] = await Promise.all([
-        api.getGoogleStatus(),
+      const [allConnectors, setupInfo] = await Promise.all([
+        api.listConnectors(),
         api.getGoogleSetup().catch(() => null),
       ]);
-      setGoogle(status);
+      setConnectors(allConnectors.filter((connector) => connector.id !== "google"));
+      setGoogle(allConnectors.find((connector) => connector.id === "google") ?? null);
       setSetup(setupInfo);
       // Auto-expand the setup helper when no client is configured yet.
       if (setupInfo && !setupInfo.configured) setShowSetup(true);
@@ -80,6 +140,37 @@ export default function ConnectorsPage() {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!deviceFlow) return;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const poll = async () => {
+      try {
+        const resp = await api.pollConnectorDevice(deviceFlow.connectorId, deviceFlow.deviceState);
+        if (cancelled) return;
+        if (resp.connected) {
+          setDeviceFlow(null);
+          setBusy(false);
+          await refresh();
+          return;
+        }
+        const nextInterval = Math.max(2, resp.interval ?? deviceFlow.interval);
+        timer = window.setTimeout(poll, nextInterval * 1000);
+      } catch (e) {
+        if (cancelled) return;
+        setError(`GitHub approval check failed: ${e}`);
+        setBusy(false);
+      }
+    };
+
+    timer = window.setTimeout(poll, deviceFlow.interval * 1000);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [deviceFlow, refresh]);
+
   // Poll status for up to ~2 min after opening the consent popup.
   const startPolling = useCallback(() => {
     if (pollRef.current) window.clearInterval(pollRef.current);
@@ -87,9 +178,11 @@ export default function ConnectorsPage() {
     pollRef.current = window.setInterval(async () => {
       elapsed += 2000;
       try {
-        const status = await api.getGoogleStatus();
+        const allConnectors = await api.listConnectors();
+        const status = allConnectors.find((connector) => connector.id === "google") ?? null;
         setGoogle(status);
-        if (status.connected || elapsed >= 120_000) {
+        setConnectors(allConnectors.filter((connector) => connector.id !== "google"));
+        if (status?.connected || elapsed >= 120_000) {
           if (pollRef.current) window.clearInterval(pollRef.current);
           pollRef.current = null;
           setBusy(false);
@@ -162,8 +255,124 @@ export default function ConnectorsPage() {
     }
   };
 
+  const handleSaveConnectorSecrets = async () => {
+    if (!setupConnector) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const entries = Object.entries(connectorSecrets)
+        .map(([key, value]) => [key, value.trim()] as const)
+        .filter(([key, value]) => key && value);
+      if (entries.length === 0) {
+        setError("Paste the key or credentials first.");
+        setBusy(false);
+        return;
+      }
+      for (const [key, value] of entries) {
+        await api.setEnvVar(key, value);
+      }
+      setSetupConnector(null);
+      setConnectorSecrets({});
+      await refresh();
+      const status = await api.getConnectorStatus(setupConnector.id);
+      if (!status.connected) {
+        setError(status.detail || status.status?.detail || `${setupConnector.name} credentials did not validate.`);
+      }
+    } catch (e) {
+      setError(`Could not save connector credentials: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openConnectorSetup = (connector: ConnectorStatus) => {
+    const extra = connectorExtra(connector);
+    const keys = extra.auth_type === "multi_env"
+      ? extra.env_vars ?? []
+      : [connectorPrimaryEnv(connector)].filter(Boolean);
+    setConnectorSecrets(Object.fromEntries(keys.map((key) => [key, ""])));
+    setSetupConnector(connector);
+  };
+
+  const startConnectorPolling = useCallback((connectorId: string) => {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+    let elapsed = 0;
+    pollRef.current = window.setInterval(async () => {
+      elapsed += 2000;
+      try {
+        const allConnectors = await api.listConnectors();
+        setGoogle(allConnectors.find((connector) => connector.id === "google") ?? null);
+        setConnectors(allConnectors.filter((connector) => connector.id !== "google"));
+        const status = allConnectors.find((connector) => connector.id === connectorId);
+        if (status?.connected || elapsed >= 120_000) {
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          pollRef.current = null;
+          setBusy(false);
+        }
+      } catch {
+        /* keep polling */
+      }
+    }, 2000);
+  }, []);
+
+  const handleConnectConnector = async (connector: ConnectorStatus) => {
+    const extra = connectorExtra(connector);
+    if ((extra.auth_type === "oauth" || extra.auth_type === "oauth_or_api_key") && extra.oauth_configured) {
+      setError(null);
+      setBusy(true);
+      try {
+        const resp = await api.connectConnector(connector.id);
+        if (resp.flow === "device_code" && resp.device_state && resp.user_code && resp.verification_uri) {
+          setDeviceFlow({
+            connectorId: connector.id,
+            connectorName: connector.name,
+            deviceState: resp.device_state,
+            userCode: resp.user_code,
+            verificationUri: resp.verification_uri,
+            interval: Math.max(2, resp.interval ?? 5),
+          });
+          window.open(resp.verification_uri, "_blank", "width=560,height=700");
+          return;
+        }
+        if (resp.auth_url) {
+          window.open(resp.auth_url, "_blank", "width=560,height=700");
+          startConnectorPolling(connector.id);
+          return;
+        }
+        if (resp.error && resp.error !== "not_configured") {
+          setError(resp.message || resp.error);
+        }
+      } catch (e) {
+        setError(`Connect failed: ${e}`);
+      } finally {
+        setBusy(false);
+      }
+    }
+    openConnectorSetup(connector);
+  };
+
+  const handleTestConnector = async (connector: ConnectorStatus) => {
+    setError(null);
+    setTestingConnector(connector.id);
+    try {
+      const status = await api.getConnectorStatus(connector.id);
+      if (connector.id === "google") {
+        setGoogle(status);
+      } else {
+        setConnectors((prev) => prev.map((item) => item.id === connector.id ? status : item));
+      }
+      if (!status.connected) {
+        setError(status.detail || status.status?.detail || `${connector.name} is not connected.`);
+      }
+    } catch (e) {
+      setError(`Test failed for ${connector.name}: ${e}`);
+    } finally {
+      setTestingConnector(null);
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-2xl p-6 space-y-6">
+    <div className="mx-auto max-w-3xl p-6 space-y-6">
       <div className="flex items-center gap-3">
         <Plug className="h-6 w-6 text-muted-foreground" />
         <div>
@@ -420,10 +629,248 @@ export default function ConnectorsPage() {
         </CardContent>
       </Card>
 
-      <p className="text-center text-xs text-muted-foreground">
-        More connectors coming soon. Connections work on desktop, local web, and
-        remote/VPS installs.
-      </p>
+      <div className="grid gap-3 md:grid-cols-2">
+        {connectors.map((connector) => (
+          <Card key={connector.id}>
+            <CardHeader className="space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">{connector.name}</CardTitle>
+                  <CardDescription className="mt-1">
+                    {connector.description}
+                  </CardDescription>
+                </div>
+                <Badge className="shrink-0" variant={connectorBadgeVariant(connector)}>
+                  {connectorStatusLabel(connector)}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex flex-wrap gap-2">
+                {connector.transport && (
+                  <Badge variant="outline">via {connector.transport}</Badge>
+                )}
+                {connector.status?.extra?.cli && (
+                  <Badge variant="outline">{connector.status.extra.cli}</Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {connector.connected && (connector.account || connector.email)
+                  ? `Ready: ${connector.account || connector.email}`
+                  : connector.detail || connector.status?.detail || "Configure credentials, then refresh."}
+              </p>
+              {connector.status?.extra?.cli && connector.connected && (
+                <p className="text-xs text-muted-foreground">
+                  {connector.status.extra.cli_sync?.synced
+                    ? `${connector.status.extra.cli} CLI is signed in.`
+                    : connector.status.extra.cli_sync?.reason === "gh_not_installed"
+                      ? `${connector.status.extra.cli} CLI is not installed.`
+                      : connector.status.extra.cli_sync?.reason
+                        ? `${connector.status.extra.cli} CLI sync: ${connector.status.extra.cli_sync.reason}.`
+                        : `${connector.status.extra.cli} CLI can use its existing auth.`}
+                </p>
+              )}
+              {connector.skills && connector.skills.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Skills
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {connector.skills.map((skill) => (
+                      <Badge key={skill} variant="secondary">{skill}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {connector.capabilities && connector.capabilities.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    What Spark can do
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {connector.capabilities.map((capability) => (
+                      <Badge key={capability} variant="outline">{capability}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {connector.status?.extra?.setup_steps && connector.status.extra.setup_steps.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Setup
+                  </p>
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    {connector.status.extra.setup_steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => handleConnectConnector(connector)}
+                  disabled={connector.connected || busy}
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  {connector.connected ? "Connected" : "Connect"}
+                </Button>
+                {connector.docs_url && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(connector.docs_url, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open docs
+                </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleTestConnector(connector)}
+                  disabled={testingConnector === connector.id}
+                >
+                  {testingConnector === connector.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
+                  Test
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {setupConnector && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-md border border-border bg-card shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border p-4">
+              <div>
+                <h2 className="text-base font-semibold">Connect {setupConnector.name}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Spark will save these credentials to your local Spark env file.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSetupConnector(null)}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-4 p-4">
+              {connectorExtra(setupConnector).api_key_url && (
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(connectorExtra(setupConnector).api_key_url, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open {setupConnector.name} key page
+                </Button>
+              )}
+
+              <div className="space-y-3">
+                {Object.keys(connectorSecrets).map((key) => (
+                  <div key={key} className="space-y-1.5">
+                    <Label htmlFor={`connector-secret-${key}`}>{fieldMeta(key).label}</Label>
+                    <Input
+                      id={`connector-secret-${key}`}
+                      type={key.includes("PASSWORD") || key.includes("TOKEN") || key.includes("KEY") ? "password" : "text"}
+                      value={connectorSecrets[key] ?? ""}
+                      placeholder={fieldMeta(key).placeholder}
+                      onChange={(event) => {
+                        setConnectorSecrets((prev) => ({
+                          ...prev,
+                          [key]: event.target.value,
+                        }));
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {setupConnector.status?.extra?.setup_steps && setupConnector.status.extra.setup_steps.length > 0 && (
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  {setupConnector.status.extra.setup_steps.map((step) => (
+                    <p key={step}>{step}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setSetupConnector(null)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveConnectorSecrets} disabled={busy}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Save connection
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deviceFlow && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-md border border-border bg-card shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border p-4">
+              <div>
+                <h2 className="text-base font-semibold">Connect {deviceFlow.connectorName}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Approve Spark in GitHub, then this window will update automatically.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setDeviceFlow(null);
+                  setBusy(false);
+                }}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-4 p-4">
+              <div className="rounded-md border border-border bg-muted/30 p-4 text-center">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">GitHub code</p>
+                <p className="mt-2 font-mono-ui text-3xl font-semibold tracking-[0.16em]">
+                  {deviceFlow.userCode}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => window.open(deviceFlow.verificationUri, "_blank", "width=560,height=700")}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open GitHub
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(deviceFlow.userCode);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1500);
+                  }}
+                >
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  Copy code
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Spark is checking for approval in the background.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -32,7 +32,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
-import { onDeepLink, onNewChat, deepLinkToNavTarget } from "@/lib/desktop";
+import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
 
@@ -49,14 +49,6 @@ const NAV_ITEMS = [
 ] as const;
 
 type PageId = (typeof NAV_ITEMS)[number]["id"];
-
-type AgentCursorState = {
-  visible: boolean;
-  active: boolean;
-  x: number;
-  y: number;
-  label: string;
-};
 
 const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   chat: ChatPage,
@@ -78,43 +70,54 @@ function formatVersionDate(date = new Date()) {
   return `${day}${month}${year}`;
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
 function numberFrom(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function pointerFromComputerUse(data: Record<string, unknown>): { x: number; y: number } | null {
+function pointerFromComputerUse(data: Record<string, unknown>): { screenX: number; screenY: number; label?: string } | null {
   const result = typeof data.result === "string" ? data.result : "";
-  if (result) {
-    try {
-      const parsed = JSON.parse(result) as { data?: { pointer?: Record<string, unknown> } };
-      const pointer = parsed.data?.pointer;
-      const x = pointer ? numberFrom(pointer.x) : null;
-      const y = pointer ? numberFrom(pointer.y) : null;
-      const width = pointer ? numberFrom(pointer.window_width) : null;
-      const height = pointer ? numberFrom(pointer.window_height) : null;
-      if (x !== null && y !== null && width && height) {
-        return {
-          x: clamp((x / width) * window.innerWidth, 20, window.innerWidth - 20),
-          y: clamp((y / height) * window.innerHeight, 20, window.innerHeight - 20),
-        };
-      }
-    } catch {
-      /* best effort only */
+  if (!result) return null;
+  try {
+    const parsed = JSON.parse(result) as { data?: { pointer?: Record<string, unknown> } };
+    const pointer = parsed.data?.pointer;
+    if (!pointer) return null;
+    const screenX = numberFrom(pointer.screen_x);
+    const screenY = numberFrom(pointer.screen_y);
+    if (screenX !== null && screenY !== null) {
+      return {
+        screenX,
+        screenY,
+        label: typeof pointer.kind === "string" ? pointer.kind : undefined,
+      };
     }
+    const windowX = numberFrom(pointer.window_x);
+    const windowY = numberFrom(pointer.window_y);
+    const x = numberFrom(pointer.x);
+    const y = numberFrom(pointer.y);
+    if (windowX !== null && windowY !== null && x !== null && y !== null) {
+      return {
+        screenX: windowX + x,
+        screenY: windowY + y,
+        label: typeof pointer.kind === "string" ? pointer.kind : undefined,
+      };
+    }
+  } catch {
+    /* best effort only */
   }
+  return null;
+}
 
+function actionLabelFromComputerUse(data: Record<string, unknown>, fallback = "Agent") {
   const args = (data.args && typeof data.args === "object" ? data.args : {}) as Record<string, unknown>;
-  const x = numberFrom(args.x ?? args.end_x);
-  const y = numberFrom(args.y ?? args.end_y);
-  if (x === null || y === null) return null;
-  return {
-    x: clamp(x, 20, window.innerWidth - 20),
-    y: clamp(y, 20, window.innerHeight - 20),
-  };
+  const action = args.action;
+  if (typeof action !== "string" || !action.trim()) return fallback;
+  return action.replace(/_/g, " ");
+}
+
+function scheduleAgentCursorHide(timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>) {
+  timerRef.current = setTimeout(() => {
+    void hideAgentCursor();
+  }, 1400);
 }
 
 function SparkLogo({ className = "" }: { className?: string }) {
@@ -151,14 +154,8 @@ export default function App() {
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [agentCursor, setAgentCursor] = useState<AgentCursorState>({
-    visible: false,
-    active: false,
-    x: 80,
-    y: 80,
-    label: "Agent",
-  });
   const agentCursorHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAgentCursorRef = useRef<{ screenX: number; screenY: number } | null>(null);
   const { updateAvailable, latestVersion, openUpdateModal, macUpdateAvailable, macLatestVersion, openMacUpdateModal } = useUpdateModal();
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
 
@@ -174,6 +171,7 @@ export default function App() {
   }, []);
 
   useEventBus((env) => {
+    if (!isTauri()) return;
     const data = env.data ?? {};
     if (data.name !== "computer_use") return;
 
@@ -183,34 +181,31 @@ export default function App() {
     }
 
     const nextPointer = pointerFromComputerUse(data);
+    const label = nextPointer?.label ?? actionLabelFromComputerUse(data);
     if (env.topic === "chat.tool_start") {
-      setAgentCursor((prev) => ({
-        visible: true,
-        active: true,
-        x: nextPointer?.x ?? prev.x,
-        y: nextPointer?.y ?? prev.y,
-        label: String(((data.args as Record<string, unknown> | undefined)?.action) ?? "Agent"),
-      }));
+      const lastPointer = lastAgentCursorRef.current;
+      if (lastPointer) {
+        void updateAgentCursor(lastPointer.screenX, lastPointer.screenY, label, true);
+      }
       return;
     }
 
     if (env.topic === "chat.tool_end") {
-      setAgentCursor((prev) => ({
-        ...prev,
-        visible: true,
-        active: false,
-        x: nextPointer?.x ?? prev.x,
-        y: nextPointer?.y ?? prev.y,
-      }));
-      agentCursorHideTimer.current = setTimeout(() => {
-        setAgentCursor((prev) => ({ ...prev, visible: false }));
-      }, 1400);
+      if (nextPointer) {
+        lastAgentCursorRef.current = {
+          screenX: nextPointer.screenX,
+          screenY: nextPointer.screenY,
+        };
+        void updateAgentCursor(nextPointer.screenX, nextPointer.screenY, label, false);
+      }
+      scheduleAgentCursorHide(agentCursorHideTimer);
     }
   });
 
   useEffect(() => {
     return () => {
       if (agentCursorHideTimer.current) clearTimeout(agentCursorHideTimer.current);
+      void hideAgentCursor();
     };
   }, []);
 
@@ -428,14 +423,6 @@ export default function App() {
         style={{ left: blobPos.x, top: blobPos.y }}
         aria-hidden="true"
       />
-      <div
-        className={`agent-cursor ${agentCursor.visible ? "agent-cursor-visible" : ""} ${agentCursor.active ? "agent-cursor-active" : ""}`}
-        style={{ left: agentCursor.x, top: agentCursor.y }}
-        aria-hidden="true"
-      >
-        <div className="agent-cursor-pointer" />
-        <div className="agent-cursor-label">{agentCursor.label}</div>
-      </div>
       {/* Global graphite texture + signal wash */}
       <div className="noise-overlay" />
       <div className="warm-glow" />

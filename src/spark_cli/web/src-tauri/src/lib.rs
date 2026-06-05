@@ -23,11 +23,13 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder, TrayIconId},
     webview::WebviewBuilder,
-    Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, WebviewUrl,
+    Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, RunEvent,
+    State, WebviewUrl, WebviewWindowBuilder,
 };
 
 /// Label of the embedded native preview webview (overlaid on the React panel).
 const PREVIEW_LABEL: &str = "spark-preview";
+const AGENT_CURSOR_LABEL: &str = "spark-agent-cursor";
 
 /// Derive a stable 16-byte WKWebView data-store id from the workspace slug, so
 /// each workspace gets its own partitioned persistent cookie/storage jar (no
@@ -236,6 +238,79 @@ fn preview_destroy(app: tauri::AppHandle) -> Result<(), String> {
         webview.close().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+fn agent_cursor_update(
+    app: tauri::AppHandle,
+    screen_x: f64,
+    screen_y: f64,
+    label: Option<String>,
+    active: bool,
+) -> Result<(), String> {
+    let window = ensure_agent_cursor_window(&app)?;
+    window
+        .set_position(PhysicalPosition::new(
+            (screen_x - 12.0).round() as i32,
+            (screen_y - 10.0).round() as i32,
+        ))
+        .map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({
+        "label": label.unwrap_or_else(|| "Agent".to_string()),
+        "active": active,
+    });
+    window
+        .eval(&format!(
+            "window.sparkAgentCursor && window.sparkAgentCursor.update({});",
+            payload
+        ))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn agent_cursor_hide(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(AGENT_CURSOR_LABEL) {
+        let _ = window.eval("window.sparkAgentCursor && window.sparkAgentCursor.hide();");
+        let _ = window.hide();
+    }
+    Ok(())
+}
+
+fn ensure_agent_cursor_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window(AGENT_CURSOR_LABEL) {
+        return Ok(window);
+    }
+
+    let window = WebviewWindowBuilder::new(
+        app,
+        AGENT_CURSOR_LABEL,
+        WebviewUrl::App("agent-cursor.html".into()),
+    )
+    .title("Spark Agent Cursor")
+    .inner_size(180.0, 72.0)
+    .position(-1000.0, -1000.0)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .resizable(false)
+    .skip_taskbar(true)
+    .always_on_top(true)
+    .visible(false)
+    .focused(false)
+    .build()
+    .map_err(|e| e.to_string())?;
+    let _ = window.set_ignore_cursor_events(true);
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.set_visible_on_all_workspaces(true);
+    }
+    window
+        .set_size(PhysicalSize::new(180, 72))
+        .map_err(|e| e.to_string())?;
+    Ok(window)
 }
 
 /// Holds the running backend process so we can kill it on exit.
@@ -455,6 +530,8 @@ pub fn run() {
             preview_clear_data,
             preview_devtools,
             preview_destroy,
+            agent_cursor_update,
+            agent_cursor_hide,
             set_tray_status,
             notify,
         ])

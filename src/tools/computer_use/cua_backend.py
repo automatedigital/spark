@@ -368,6 +368,7 @@ class CuaDriverBackend:
         self._active_app: Optional[str] = None
         self._last_elements: list[dict] = []
         self._last_capture_size: tuple[int, int] = (0, 0)
+        self._last_window_origin: tuple[float, float] | None = None
 
     # ------------------------------------------------------------------
     # Capture (window selection + screenshot)
@@ -411,6 +412,7 @@ class CuaDriverBackend:
             self._active_pid = target.get("pid")
             self._active_window_id = _window_id(target)
             self._active_app = _window_app(target)
+            self._last_window_origin = _window_origin(target)
         elif self._active_pid is None:
             raise RuntimeError(
                 "capture requires app=<name> before any active window has been selected. "
@@ -444,6 +446,10 @@ class CuaDriverBackend:
         height = structured.get("screenshot_height", structured.get("height", 0))
         self._last_elements = elements if isinstance(elements, list) else []
         self._last_capture_size = (int(width or 0), int(height or 0))
+        self._last_window_origin = _window_origin(
+            structured,
+            fallback=self._last_window_origin,
+        )
 
         return CaptureResult(
             mode=mode,
@@ -601,14 +607,23 @@ class CuaDriverBackend:
         if px is None or py is None:
             return
         width, height = self._last_capture_size
+        if self._last_window_origin is None:
+            return
+        origin_x, origin_y = self._last_window_origin
+        screen_x = origin_x + px
+        screen_y = origin_y + py
         data = dict(result.data or {})
         pointer = {
             "kind": kind,
             "x": px,
             "y": py,
+            "screen_x": screen_x,
+            "screen_y": screen_y,
             "element": element,
             "window_width": width,
             "window_height": height,
+            "window_x": origin_x,
+            "window_y": origin_y,
             "app": self._active_app,
         }
         if extra:
@@ -648,6 +663,7 @@ class CuaDriverBackend:
         self._active_pid = target.get("pid")
         self._active_window_id = _window_id(target)
         self._active_app = _window_app(target)
+        self._last_window_origin = _window_origin(target)
         return ActionResult(
             success=True,
             message=f"Context set to {self._active_app} (pid={self._active_pid})",
@@ -754,6 +770,28 @@ def _first_number(data: dict, *keys: str) -> float | None:
         if isinstance(value, (int, float)):
             return float(value)
     return None
+
+
+def _window_origin(
+    data: dict,
+    fallback: tuple[float, float] | None = None,
+) -> tuple[float, float] | None:
+    bounds = (
+        data.get("bounds")
+        or data.get("frame")
+        or data.get("rect")
+        or data.get("bbox")
+        or data.get("window_bounds")
+        or data.get("windowBounds")
+        or data
+    )
+    if not isinstance(bounds, dict):
+        return fallback
+    x = _first_number(bounds, "screen_x", "window_x", "x", "left", "min_x")
+    y = _first_number(bounds, "screen_y", "window_y", "y", "top", "min_y")
+    if x is None or y is None:
+        return fallback
+    return x, y
 
 
 def _parse_launch_windows(result: Dict) -> List[Dict]:

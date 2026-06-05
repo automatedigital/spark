@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spark Agent Cursor</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 180px;
+        height: 72px;
+        overflow: hidden;
+        background: transparent;
+        pointer-events: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      #cursor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        opacity: 0;
+        transform: scale(0.96);
+        transition: opacity 120ms ease, transform 120ms ease;
+      }
+
+      #cursor.visible {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .pointer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 0;
+        height: 0;
+        border-right: 14px solid transparent;
+        border-bottom: 22px solid #fda632;
+        filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.38));
+        transform: rotate(-28deg);
+        transform-origin: 3px 3px;
+      }
+
+      .ring {
+        position: absolute;
+        left: -11px;
+        top: 7px;
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(253, 166, 50, 0.72);
+        border-radius: 999px;
+        opacity: 0;
+      }
+
+      #cursor.active .ring {
+        animation: pulse 900ms ease-out infinite;
+      }
+
+      .label {
+        position: absolute;
+        left: 15px;
+        top: 25px;
+        width: max-content;
+        max-width: 118px;
+        border: 1px solid rgba(253, 166, 50, 0.52);
+        background: rgba(16, 16, 20, 0.86);
+        color: #f7f3ea;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+        padding: 4px 7px 3px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 10px;
+        line-height: 1;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        backdrop-filter: blur(8px);
+      }
+
+      @keyframes pulse {
+        from {
+          opacity: 0.72;
+          transform: scale(0.45);
+        }
+        to {
+          opacity: 0;
+          transform: scale(1.75);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="cursor">
+      <div class="ring"></div>
+      <div class="pointer"></div>
+      <div class="label" id="label">Agent</div>
+    </div>
+    <script>
+      const root = document.getElementById("cursor");
+      const label = document.getElementById("label");
+      window.sparkAgentCursor = {
+        update(payload) {
+          label.textContent = String(payload?.label || "Agent");
+          root.classList.toggle("active", Boolean(payload?.active));
+          root.classList.add("visible");
+        },
+        hide() {
+          root.classList.remove("active");
+          root.classList.remove("visible");
+        },
+      };
+    </script>
+  </body>
+</html>

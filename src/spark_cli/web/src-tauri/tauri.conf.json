@@ -1,13 +1,14 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Spark",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "identifier": "studio.fromtheroot.spark",
   "build": {
     "frontendDist": "loading"
   },
   "app": {
     "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",

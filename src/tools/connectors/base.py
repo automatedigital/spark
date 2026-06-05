@@ -79,6 +79,8 @@ class Connector(ABC):
     scopes: tuple[str, ...] = ()
     # Skills surfaced to the agent once connected.
     skills: tuple[str, ...] = ()
+    # User-facing capabilities unlocked by this connector.
+    capabilities: tuple[str, ...] = ()
     # Optional docs URL for the "learn more" link in the UI.
     docs_url: str = ""
 
@@ -143,5 +145,6 @@ class Connector(ABC):
             "transport": self.transport.value,
             "scopes": list(self.scopes),
             "skills": list(self.skills),
+            "capabilities": list(self.capabilities),
             "docs_url": self.docs_url,
         }

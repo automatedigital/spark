@@ -32,6 +32,38 @@ export async function nativeNotify(title: string, body: string): Promise<boolean
   }
 }
 
+/** Move the desktop-only agent cursor overlay to an absolute screen position. */
+export async function updateAgentCursor(
+  screenX: number,
+  screenY: number,
+  label?: string,
+  active = false,
+): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("agent_cursor_update", {
+      screenX,
+      screenY,
+      label: label ?? null,
+      active,
+    });
+  } catch {
+    /* desktop shell unavailable — ignore */
+  }
+}
+
+/** Hide the desktop-only agent cursor overlay. */
+export async function hideAgentCursor(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("agent_cursor_hide");
+  } catch {
+    /* desktop shell unavailable — ignore */
+  }
+}
+
 /** Subscribe to "start a new chat" requests from the tray / global hotkey. */
 export async function onNewChat(handler: () => void): Promise<() => void> {
   if (!isTauri()) return () => {};
