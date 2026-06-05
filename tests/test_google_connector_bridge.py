@@ -1,0 +1,218 @@
+"""Tests for the gws CLI bridge in spark_cli.google_connector.
+
+The bridge turns a stored web-OAuth token into a gws "authorized_user"
+credentials file so the agent can drive Google through the gws CLI.
+"""
+
+import json
+import os
+
+import spark_cli.google_connector as gc
+
+
+def _configure(monkeypatch, *, cid="cid", csecret="csec"):
+    monkeypatch.setattr(gc, "get_client_id", lambda: cid)
+    monkeypatch.setattr(gc, "get_client_secret", lambda: csecret)
+
+
+def test_default_scopes_are_public_free_send_only():
+    joined = " ".join(gc.DEFAULT_GOOGLE_SCOPES)
+    # Public + free tier: sensitive scopes only (no restricted = no CASA).
+    assert "gmail.send" in joined
+    assert "drive.file" in joined
+    assert "auth/calendar" in joined
+    # restricted scopes must NOT be in the default (would force paid CASA)
+    assert "gmail.modify" not in joined
+    assert "gmail.readonly" not in joined
+    assert "auth/drive\"" not in joined  # full-drive scope absent
+
+
+def test_get_scopes_default(monkeypatch):
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {})
+    assert gc.get_scopes() == gc.DEFAULT_GOOGLE_SCOPES
+
+
+def test_get_scopes_config_override(monkeypatch):
+    # A public/send-only build can dial scopes back via config.yaml.
+    custom = ["openid", "email", "https://www.googleapis.com/auth/gmail.send"]
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {"scopes": custom})
+    assert gc.get_scopes() == custom
+
+
+def test_build_gws_credentials_shape(monkeypatch):
+    _configure(monkeypatch)
+    creds = gc.build_gws_credentials({"refresh_token": "rt-123"})
+    assert creds == {
+        "client_id": "cid",
+        "client_secret": "csec",
+        "refresh_token": "rt-123",
+        "type": "authorized_user",
+    }
+
+
+def test_build_gws_credentials_none_without_refresh(monkeypatch):
+    _configure(monkeypatch)
+    assert gc.build_gws_credentials({"access_token": "x"}) is None
+
+
+def test_build_gws_credentials_none_without_client(monkeypatch):
+    monkeypatch.setattr(gc, "get_client_id", lambda: "")
+    monkeypatch.setattr(gc, "get_client_secret", lambda: "")
+    assert gc.build_gws_credentials({"refresh_token": "rt"}) is None
+
+
+def test_write_gws_credentials_file_perms(monkeypatch):
+    _configure(monkeypatch)
+    path = gc.write_gws_credentials_file({"refresh_token": "rt-123"})
+    assert path is not None and path.exists()
+    assert (path.stat().st_mode & 0o777) == 0o600
+    data = json.loads(path.read_text())
+    assert data["type"] == "authorized_user"
+    assert data["refresh_token"] == "rt-123"
+    assert str(path).startswith(os.environ["SPARK_HOME"])
+
+
+def test_gws_env_empty_when_disconnected(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(gc, "load_token", lambda: None)
+    assert gc.gws_env() == {}
+
+
+def test_gws_env_points_at_file_when_connected(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(gc, "load_token", lambda: {"refresh_token": "rt"})
+    env = gc.gws_env()
+    assert "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE" in env
+    assert env["GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"].endswith("gws-credentials.json")
+
+
+def test_save_token_writes_bridge(monkeypatch):
+    _configure(monkeypatch)
+    gc.save_token({"refresh_token": "rt-xyz", "email": "a@b.com"})
+    assert gc._gws_credentials_path().exists()
+    creds = json.loads(gc._gws_credentials_path().read_text())
+    assert creds["refresh_token"] == "rt-xyz"
+
+
+def test_clear_token_removes_bridge(monkeypatch):
+    _configure(monkeypatch)
+    gc.save_token({"refresh_token": "rt"})
+    assert gc._gws_credentials_path().exists()
+    gc.clear_token()
+    assert not gc._gws_credentials_path().exists()
+    assert not gc._token_path().exists()
+
+
+def test_imap_credentials_roundtrip_and_perms():
+    gc.save_imap_credentials("alice@gmail.com", "abcd efgh ijkl mnop")
+    path = gc._imap_credentials_path()
+    assert path.exists()
+    assert (path.stat().st_mode & 0o777) == 0o600
+    data = gc.load_imap_credentials()
+    assert data is not None
+    assert data["email"] == "alice@gmail.com"
+    assert data["app_password"] == "abcdefghijklmnop"
+    assert str(path).startswith(os.environ["SPARK_HOME"])
+    assert gc.imap_status() == {"connected": True, "email": "alice@gmail.com"}
+    gc.clear_imap_credentials()
+    assert gc.load_imap_credentials() is None
+
+
+def test_bundled_client_used_on_desktop(monkeypatch):
+    import core.spark_constants as sc
+    import spark_cli.bundled_oauth as bo
+    monkeypatch.setattr(sc, "is_server_environment", lambda: False)  # desktop/local
+    monkeypatch.setattr(bo, "get_bundled_client", lambda: ("desk-id", "desk-secret"))
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {})
+    assert gc.get_client_id() == "desk-id"
+    assert gc.get_client_secret() == "desk-secret"
+    assert gc.is_configured() is True
+
+
+def test_bundled_client_ignored_on_server(monkeypatch):
+    import core.spark_constants as sc
+    import spark_cli.bundled_oauth as bo
+    monkeypatch.setattr(sc, "is_server_environment", lambda: True)  # VPS
+    monkeypatch.setattr(bo, "get_bundled_client", lambda: ("desk-id", "desk-secret"))
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {})
+    # On a server the bundled localhost client is ignored → BYO required.
+    assert gc.get_client_id() == ""
+    assert gc.is_configured() is False
+
+
+def test_explicit_config_overrides_bundled(monkeypatch):
+    import core.spark_constants as sc
+    import spark_cli.bundled_oauth as bo
+    monkeypatch.setattr(sc, "is_server_environment", lambda: False)
+    monkeypatch.setattr(bo, "get_bundled_client", lambda: ("desk-id", "desk-secret"))
+    monkeypatch.delenv("GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {"client_id": "byo", "client_secret": "byos"})
+    assert gc.get_client_id() == "byo"  # BYO wins over bundled
+
+
+def test_get_relay_url_and_is_configured(monkeypatch):
+    monkeypatch.setattr(gc, "_get_google_config", lambda: {"relay_url": "https://relay.example/"})
+    monkeypatch.delenv("GOOGLE_OAUTH_RELAY_URL", raising=False)
+    assert gc.get_relay_url() == "https://relay.example"  # trailing slash stripped
+    # relay alone makes the connector "configured" (no local client needed)
+    monkeypatch.setattr(gc, "get_client_id", lambda: "")
+    monkeypatch.setattr(gc, "get_client_secret", lambda: "")
+    assert gc.is_configured() is True
+
+
+def test_refresh_uses_relay_when_no_secret(monkeypatch):
+    monkeypatch.setattr(gc, "get_relay_url", lambda: "https://relay.example")
+    monkeypatch.setattr(gc, "get_client_secret", lambda: "")
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {"access_token": "AT2", "expires_in": 3600}
+
+    def fake_post(url, **kw):
+        captured["url"] = url
+        captured["json"] = kw.get("json")
+        return FakeResp()
+
+    monkeypatch.setattr(gc.httpx, "post", fake_post)
+    out = gc.refresh_access_token({"refresh_token": "RT"})
+    assert captured["url"] == "https://relay.example/refresh"
+    assert captured["json"] == {"refresh_token": "RT"}
+    assert out["access_token"] == "AT2"
+    assert "expires_at" in out
+
+
+def test_claim_relay_tokens(monkeypatch):
+    monkeypatch.setattr(gc, "get_relay_url", lambda: "https://relay.example")
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {"access_token": "AT", "refresh_token": "RT", "expires_in": 3600}
+
+    monkeypatch.setattr(gc.httpx, "post", lambda url, **kw: FakeResp())
+    tok = gc.claim_relay_tokens("ticket-123")
+    assert tok["refresh_token"] == "RT"
+    assert "expires_at" in tok
+
+
+def test_gws_bridge_inactive_in_relay_mode(monkeypatch):
+    # No client_secret in relay mode → no authorized_user creds → bridge off.
+    monkeypatch.setattr(gc, "get_client_id", lambda: "")
+    monkeypatch.setattr(gc, "get_client_secret", lambda: "")
+    assert gc.build_gws_credentials({"refresh_token": "RT"}) is None
+
+
+def test_apply_process_env_sets_and_clears(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.delenv(gc.GWS_CREDENTIALS_ENV, raising=False)
+    # Connected → var present and points at the bridge file.
+    gc.save_token({"refresh_token": "rt"})  # save_token calls apply_process_env
+    assert gc.GWS_CREDENTIALS_ENV in os.environ
+    assert os.environ[gc.GWS_CREDENTIALS_ENV].endswith("gws-credentials.json")
+    # Disconnected → var removed.
+    gc.clear_token()
+    assert gc.GWS_CREDENTIALS_ENV not in os.environ

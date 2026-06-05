@@ -704,6 +704,80 @@ class _CommandHandlersMixin:
 
         handle_skills_slash(cmd, ChatConsole())
 
+    def _handle_connectors_command(self, cmd: str):
+        """Handle /connectors, /connect <id>, /disconnect <id>.
+
+        Lists external-platform connectors and their status, or starts/tears down
+        a connection. `connect` runs the platform CLI's interactive browser login
+        inline (the TUI has a real TTY).
+        """
+        from tools.connectors import get_connector, list_connectors
+
+        parts = cmd.strip().split()
+        word = parts[0].lstrip("/").lower() if parts else "connectors"
+        arg = parts[1].strip().lower() if len(parts) > 1 else ""
+
+        # /connect <id> and /disconnect <id> map to actions; /connectors lists.
+        if word in ("connect", "disconnect"):
+            action, target = word, arg
+        else:
+            # /connectors [connect|disconnect|status <id>] | [<id>]
+            if arg in ("connect", "disconnect", "status"):
+                action = arg
+                target = parts[2].strip().lower() if len(parts) > 2 else ""
+            elif arg:
+                action, target = "status", arg
+            else:
+                action, target = "list", ""
+
+        if action == "list":
+            cons = list_connectors()
+            if not cons:
+                _cprint("  No connectors available.")
+                return
+            _cprint(f"{_ACCENT}  Connectors{_RST}")
+            for c in cons:
+                st = c.status()
+                mark = "✓" if st.connected else "·"
+                acct = f" ({st.account})" if st.account else ""
+                _cprint(f"  {mark} {c.id:<10} {st.state.value}{acct}{_DIM} — {c.name}{_RST}")
+            _cprint(f"{_DIM}  /connect <id> to sign in · /disconnect <id> to revoke{_RST}")
+            return
+
+        if not target:
+            _cprint(f"  Usage: /{word} <connector-id>  (e.g. /connect google)")
+            return
+        c = get_connector(target)
+        if c is None:
+            known = ", ".join(x.id for x in list_connectors()) or "(none)"
+            _cprint(f"  Unknown connector '{target}'. Known: {known}")
+            return
+
+        if action == "status":
+            st = c.status()
+            acct = f" — {st.account}" if st.account else ""
+            _cprint(f"  {c.name}: {st.state.value}{acct}")
+            _cprint(f"{_DIM}  {st.detail}{_RST}")
+            return
+
+        if action == "disconnect":
+            st = c.disconnect()
+            _cprint(f"  {st.detail}")
+            return
+
+        # connect
+        st = c.status()
+        if st.connected:
+            _cprint(f"  Already connected to {c.name}" + (f" ({st.account})." if st.account else "."))
+            return
+        _cprint(f"  Opening browser to sign in to {c.name}…")
+        result = c.connect(interactive=True)
+        if result.connected:
+            acct = f" as {result.account}" if result.account else ""
+            _cprint(f"  ✓ Connected to {c.name}{acct}.")
+        else:
+            _cprint(f"  Did not complete: {result.detail}")
+
     def _handle_reset_skills_command(self):
         """Handle /reset-skills — remove hub-installed/custom skills, restore bundled."""
         _cprint(

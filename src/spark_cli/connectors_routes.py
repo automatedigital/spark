@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,11 @@ router = APIRouter()
 
 _server_port: int = 9119
 _pending_states: dict[str, str] = {}  # state → code_verifier
+
+
+class GmailImapConnectRequest(BaseModel):
+    email: str
+    app_password: str
 
 
 def set_server_port(port: int) -> None:
@@ -112,6 +117,37 @@ async def list_connectors():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/connectors/google/setup — BYO-client setup helper info
+# ---------------------------------------------------------------------------
+
+@router.get("/api/connectors/google/setup")
+async def google_setup_info():
+    """Info for the in-app BYO-client setup helper.
+
+    Returns the exact redirect URI the user must register in their own Google
+    OAuth client, the scopes Spark requests, and whether a client is configured.
+    Lets the Connectors UI turn 'figure out your VPS redirect' into one copy-paste.
+    """
+    try:
+        from spark_cli.google_connector import get_scopes, is_configured
+        redirect_uri = _redirect_uri()
+        return JSONResponse({
+            "redirect_uri": redirect_uri,
+            "scopes": get_scopes(),
+            "configured": is_configured(),
+            "config_keys": {
+                "client_id": "connectors.google.client_id",
+                "client_secret": "connectors.google.client_secret",
+            },
+            "console_url": "https://console.cloud.google.com/apis/credentials",
+            "client_type": "Web application",
+        })
+    except Exception as exc:
+        logger.warning("google_setup_info error: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/connectors/google/status
 # ---------------------------------------------------------------------------
 
@@ -126,15 +162,44 @@ async def google_status():
 
 
 # ---------------------------------------------------------------------------
+# POST /api/connectors/google/gmail-imap — connect Gmail read via App Password
+# ---------------------------------------------------------------------------
+
+@router.post("/api/connectors/google/gmail-imap")
+async def google_gmail_imap_connect(payload: GmailImapConnectRequest):
+    try:
+        from spark_cli.google_connector import save_imap_credentials
+
+        save_imap_credentials(payload.email, payload.app_password)
+        return JSONResponse({"connected": True, "email": payload.email.strip()})
+    except Exception as exc:
+        logger.warning("Error saving Gmail IMAP credentials: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@router.delete("/api/connectors/google/gmail-imap")
+async def google_gmail_imap_disconnect():
+    try:
+        from spark_cli.google_connector import clear_imap_credentials
+
+        clear_imap_credentials()
+        return JSONResponse({"disconnected": True})
+    except Exception as exc:
+        logger.warning("Error clearing Gmail IMAP credentials: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # POST /api/connectors/google/connect — start OAuth flow
 # ---------------------------------------------------------------------------
 
 @router.post("/api/connectors/google/connect")
 async def google_connect():
     from spark_cli.google_connector import (
-        is_configured,
-        generate_pkce_pair,
         build_auth_url,
+        generate_pkce_pair,
+        get_relay_url,
+        is_configured,
     )
 
     if not is_configured():
@@ -150,6 +215,25 @@ async def google_connect():
             },
             status_code=400,
         )
+
+    # Relay mode (one-click shared client): the relay owns the registered redirect
+    # and PKCE; we just ask it to start a session pointed at our own callback.
+    relay = get_relay_url()
+    if relay:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    f"{relay}/session",
+                    json={"instance_callback": _redirect_uri()},
+                )
+                resp.raise_for_status()
+                return JSONResponse({"auth_url": resp.json()["auth_url"]})
+        except Exception as exc:
+            logger.warning("relay /session failed: %s", exc)
+            return JSONResponse(
+                {"error": "relay_unavailable", "message": str(exc)}, status_code=502
+            )
 
     state = secrets.token_urlsafe(32)
     code_verifier, code_challenge = generate_pkce_pair()
@@ -219,13 +303,38 @@ _CALLBACK_ERROR_HTML = """<!DOCTYPE html>
 @router.get("/oauth/google/callback")
 async def google_oauth_callback(
     request: Request,
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    error: Optional[str] = None,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    ticket: str | None = None,
 ):
     if error:
         logger.warning("Google OAuth error: %s", error)
         return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=error))
+
+    # Relay mode: the relay redirected here with a one-time ticket. Redeem it for
+    # tokens (the relay already exchanged the code) and save the connection.
+    if ticket:
+        try:
+            from spark_cli.google_connector import (
+                claim_relay_tokens,
+                get_user_info,
+                save_token,
+            )
+            token = claim_relay_tokens(ticket)
+            try:
+                info = get_user_info(token["access_token"])
+                token["email"] = info.get("email")
+                token["name"] = info.get("name")
+                token["picture"] = info.get("picture")
+            except Exception as exc:
+                logger.warning("Could not fetch user info after relay connect: %s", exc)
+            save_token(token)
+            logger.info("Google connected via relay: %s", token.get("email", "unknown"))
+            return HTMLResponse(_CALLBACK_SUCCESS_HTML)
+        except Exception as exc:
+            logger.exception("Relay ticket claim failed: %s", exc)
+            return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=f"Relay claim failed: {exc}"))
 
     if not code or not state:
         return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Missing code or state parameter"))
@@ -272,8 +381,9 @@ async def google_oauth_callback(
 @router.delete("/api/connectors/google")
 async def google_disconnect():
     try:
-        from spark_cli.google_connector import clear_token, load_token
         import httpx
+
+        from spark_cli.google_connector import clear_imap_credentials, clear_token, load_token
 
         # Best-effort token revocation
         token = load_token()
@@ -290,6 +400,7 @@ async def google_disconnect():
                 pass
 
         clear_token()
+        clear_imap_credentials()
         return JSONResponse({"disconnected": True})
     except Exception as exc:
         logger.warning("Error disconnecting Google: %s", exc)

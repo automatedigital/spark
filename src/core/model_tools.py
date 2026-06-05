@@ -164,6 +164,7 @@ def _discover_tools():
         "tools.homeassistant_tool",
         "tools.computer_use.tool",
         "tools.google_tools",
+        "tools.connectors_tool",
     ]
     import importlib
     for mod_name in _modules:

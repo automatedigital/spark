@@ -978,10 +978,29 @@ export const api = {
   getGoogleStatus: () =>
     fetchJSON<ConnectorStatus>("/api/connectors/google/status"),
 
+  getGoogleSetup: () =>
+    fetchJSON<GoogleSetupInfo>("/api/connectors/google/setup"),
+
   connectGoogle: () =>
     fetchJSON<{ auth_url?: string; error?: string; message?: string }>(
       "/api/connectors/google/connect",
       { method: "POST" },
+    ),
+
+  connectGoogleGmailImap: (email: string, app_password: string) =>
+    fetchJSON<{ connected?: boolean; email?: string; error?: string }>(
+      "/api/connectors/google/gmail-imap",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, app_password }),
+      },
+    ),
+
+  disconnectGoogleGmailImap: () =>
+    fetchJSON<{ disconnected?: boolean; error?: string }>(
+      "/api/connectors/google/gmail-imap",
+      { method: "DELETE" },
     ),
 
   disconnectGoogle: () =>
@@ -1928,6 +1947,16 @@ export interface WorkspacePreviewSnapshot {
   html_length: number;
 }
 
+export interface GoogleSetupInfo {
+  redirect_uri: string;
+  scopes: string[];
+  configured: boolean;
+  config_keys: { client_id: string; client_secret: string };
+  console_url: string;
+  client_type: string;
+  error?: string;
+}
+
 export interface ConnectorStatus {
   id: string;
   name: string;
@@ -1938,5 +1967,6 @@ export interface ConnectorStatus {
   email?: string | null;
   name_display?: string | null;
   picture?: string | null;
+  gmail_read?: { connected: boolean; email?: string | null };
   error?: string;
 }

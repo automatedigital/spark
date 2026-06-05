@@ -65,6 +65,8 @@ _SPARK_CORE_TOOLS = [
     "ha_list_entities", "ha_get_state", "ha_list_services", "ha_call_service",
     # Google Workspace (gated on token existing via check_fn)
     "gmail_search", "calendar_list_events",
+    # External platform connectors (list/connect/status/disconnect)
+    "connectors",
 ]
 
 

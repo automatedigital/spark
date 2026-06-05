@@ -9,6 +9,7 @@ import {
   Brain,
   MessageSquare,
   Package,
+  Plug,
   Settings,
   Square,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import KanbanPage from "@/pages/KanbanPage";
 import CanvasPage from "@/pages/CanvasPage";
 import SkillsPage from "@/pages/SkillsPage";
 import MemoryPage from "@/pages/MemoryPage";
+import ConnectorsPage from "@/pages/ConnectorsPage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
@@ -42,6 +44,7 @@ const NAV_ITEMS = [
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
   { id: "memory", labelKey: "memory" as const, icon: Brain },
+  { id: "connectors", labelKey: "connectors" as const, icon: Plug },
 ] as const;
 
 type PageId = (typeof NAV_ITEMS)[number]["id"];
@@ -54,6 +57,7 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   files: FilesPage,
   canvas: CanvasPage,
   memory: MemoryPage,
+  connectors: ConnectorsPage,
 };
 
 const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas"]);

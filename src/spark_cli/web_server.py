@@ -6369,6 +6369,13 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
 
     ensure_dashboard_token_file()
     _set_connectors_port(port)
+    # Activate the Google→gws CLI bridge for this process if already connected,
+    # so the agent's gws-* skills authenticate from the stored connection.
+    try:
+        from spark_cli.google_connector import apply_process_env as _apply_gws_env
+        _apply_gws_env()
+    except Exception:
+        pass
     public_url = get_public_base_url(host, port)
 
     _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
