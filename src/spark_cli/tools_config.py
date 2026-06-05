@@ -625,6 +625,12 @@ def enable_computer_use_cli_toolset() -> None:
     _apply_toolset_change(config, "cli", ["computer_use"], "enable")
 
 
+def enable_computer_use_web_toolset() -> None:
+    """Add computer_use to web platform_toolsets and save config."""
+    config = load_config()
+    _apply_toolset_change(config, "web", ["computer_use"], "enable")
+
+
 def _toolset_has_keys(ts_key: str, config: dict = None) -> bool:
     """Check if a toolset's required API keys are configured."""
     if config is None:

@@ -1278,6 +1278,68 @@ class TestNewEndpoints:
             },
         ]
 
+    def test_computer_use_slash_enables_web_and_falls_through_for_task(self, monkeypatch):
+        import platform
+        import spark_cli.tools_config as tools_config
+        import spark_cli.web_server as web_server
+
+        calls = []
+
+        monkeypatch.setattr(platform, "system", lambda: "Darwin")
+        monkeypatch.setattr(
+            tools_config,
+            "enable_computer_use_web_toolset",
+            lambda: calls.append("enabled"),
+        )
+
+        result = web_server._execute_web_slash_command(
+            "session-123",
+            "/computer-use open Helium browser",
+        )
+
+        assert result is None
+        assert calls == ["enabled"]
+
+    def test_computer_use_slash_refreshes_stale_web_agent_tools(self, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        class Agent:
+            session_id = "session-123"
+            disabled_toolsets = None
+            enabled_toolsets = set()
+            tools = []
+            valid_tool_names = set()
+            invalidated = False
+
+            def _invalidate_system_prompt(self):
+                self.invalidated = True
+
+        agent = Agent()
+
+        monkeypatch.setattr(
+            "spark_cli.config.load_config",
+            lambda: {"platform_toolsets": {"web": ["computer_use"]}},
+        )
+        monkeypatch.setattr(
+            "spark_cli.tools_config._get_platform_tools",
+            lambda config, platform: {"computer_use", "terminal"},
+        )
+        monkeypatch.setattr(
+            "core.model_tools.get_tool_definitions",
+            lambda enabled_toolsets, disabled_toolsets, quiet_mode: [
+                {"function": {"name": "computer_use"}},
+            ],
+        )
+
+        web_server._refresh_web_agent_for_computer_use(
+            agent,
+            "[Project: demo]\n\n/computer-use open Helium browser",
+        )
+
+        assert agent.enabled_toolsets == {"computer_use", "terminal"}
+        assert agent.valid_tool_names == {"computer_use"}
+        assert agent.invalidated is True
+
     def test_config_raw_get(self):
         resp = self.client.get("/api/config/raw")
         assert resp.status_code == 200

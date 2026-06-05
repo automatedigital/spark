@@ -190,6 +190,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
         "Enable macOS computer_use (cua-driver) and prioritize native desktop UI",
         "Tools & Skills",
         cli_only=True,
+        web_available=True,
         aliases=("cu", "desktop-use"),
         args_hint="[task]",
     ),

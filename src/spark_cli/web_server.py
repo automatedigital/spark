@@ -4244,6 +4244,8 @@ def _execute_web_slash_command(session_id: str, message: str) -> "str | None":
         return _web_cmd_tools(args)
     if canonical == "toolsets":
         return _web_cmd_toolsets()
+    if canonical == "computer-use":
+        return _web_cmd_computer_use(args)
     if canonical == "skills":
         return _web_cmd_skills(args)
     if canonical == "cron":
@@ -4261,6 +4263,35 @@ def _execute_web_slash_command(session_id: str, message: str) -> "str | None":
         return ""  # frontend injects form directly; return "" to prevent agent fallthrough
 
     return None  # Other web-available commands fall through to the agent
+
+
+def _web_cmd_computer_use(args: str) -> "str | None":
+    import platform
+
+    if platform.system() != "Darwin":
+        return "computer_use is only available on macOS."
+
+    try:
+        from spark_cli.tools_config import enable_computer_use_web_toolset
+
+        enable_computer_use_web_toolset()
+    except Exception as e:
+        return f"Could not enable computer_use for the desktop app: {e}"
+
+    if args.strip():
+        return None
+
+    try:
+        from tools.computer_use.cua_backend import cua_driver_resolution_hint, is_available
+
+        if not is_available():
+            hint = cua_driver_resolution_hint()
+            suffix = f"\n\n{hint}" if hint else ""
+            return "computer_use is enabled for the desktop app, but cua-driver is not available yet." + suffix
+    except Exception:
+        pass
+
+    return "Computer-use is enabled for the desktop app. Describe the desktop task in your next message."
 
 
 def _web_cmd_help() -> str:
@@ -4775,6 +4806,42 @@ def _inject_brief_if_present(session_id: str, user_message: str) -> str:
     return user_message
 
 
+def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
+    if not isinstance(user_message, str):
+        return
+
+    import re
+
+    match = re.search(r"(?m)^/(computer-use|cu|desktop-use)(?:\s|$)", user_message)
+    cmd_name = match.group(1).lower() if match else ""
+    if cmd_name not in {"computer-use", "cu", "desktop-use"}:
+        return
+
+    try:
+        from core.model_tools import get_tool_definitions
+        from spark_cli.config import load_config
+        from spark_cli.tools_config import _get_platform_tools
+
+        enabled_toolsets = _get_platform_tools(load_config(), "web")
+        disabled_toolsets = getattr(agent, "disabled_toolsets", None)
+        tool_defs = get_tool_definitions(
+            enabled_toolsets=enabled_toolsets,
+            disabled_toolsets=disabled_toolsets,
+            quiet_mode=True,
+        )
+        agent.enabled_toolsets = enabled_toolsets
+        agent.tools = tool_defs
+        agent.valid_tool_names = (
+            {t["function"]["name"] for t in tool_defs}
+            if tool_defs
+            else set()
+        )
+        if hasattr(agent, "_invalidate_system_prompt"):
+            agent._invalidate_system_prompt()
+    except Exception:
+        _log.debug("computer_use web tool refresh failed", exc_info=True)
+
+
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
@@ -4785,6 +4852,8 @@ def _run_web_agent_turn(
 
     if context_items:
         user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
+
+    _refresh_web_agent_for_computer_use(agent, user_message)
 
     user_message = _inject_brief_if_present(agent.session_id, user_message)
 
