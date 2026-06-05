@@ -626,9 +626,14 @@ def enable_computer_use_cli_toolset() -> None:
 
 
 def enable_computer_use_web_toolset() -> None:
-    """Add computer_use to web platform_toolsets and save config."""
+    """Add computer_use to desktop/web chat toolsets and save config.
+
+    The desktop web UI uses the CLI toolset bucket for configurable tool state.
+    There is no separate ``platform_toolsets.web`` platform in the canonical
+    platform registry.
+    """
     config = load_config()
-    _apply_toolset_change(config, "web", ["computer_use"], "enable")
+    _apply_toolset_change(config, "cli", ["computer_use"], "enable")
 
 
 def _toolset_has_keys(ts_key: str, config: dict = None) -> bool:

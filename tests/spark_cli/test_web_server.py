@@ -1318,12 +1318,13 @@ class TestNewEndpoints:
 
         monkeypatch.setattr(
             "spark_cli.config.load_config",
-            lambda: {"platform_toolsets": {"web": ["computer_use"]}},
+            lambda: {"platform_toolsets": {"cli": ["computer_use"]}},
         )
-        monkeypatch.setattr(
-            "spark_cli.tools_config._get_platform_tools",
-            lambda config, platform: {"computer_use", "terminal"},
-        )
+        def fake_get_platform_tools(config, platform):
+            assert platform == "cli"
+            return {"computer_use", "terminal"}
+
+        monkeypatch.setattr("spark_cli.tools_config._get_platform_tools", fake_get_platform_tools)
         monkeypatch.setattr(
             "core.model_tools.get_tool_definitions",
             lambda enabled_toolsets, disabled_toolsets, quiet_mode: [

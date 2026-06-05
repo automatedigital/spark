@@ -4822,7 +4822,7 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
         from spark_cli.config import load_config
         from spark_cli.tools_config import _get_platform_tools
 
-        enabled_toolsets = _get_platform_tools(load_config(), "web")
+        enabled_toolsets = _get_platform_tools(load_config(), "cli")
         disabled_toolsets = getattr(agent, "disabled_toolsets", None)
         tool_defs = get_tool_definitions(
             enabled_toolsets=enabled_toolsets,
