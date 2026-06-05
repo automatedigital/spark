@@ -22,12 +22,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-// What the agent can do once Google is connected.
+// What the agent can do once Google is connected (public free tier).
 const GOOGLE_CAPABILITIES = [
-  "Read & send email (Gmail)",
+  "Send email (Gmail — send only)",
   "Create & edit Google Docs, Sheets, Slides",
   "Manage Google Calendar events",
-  "Read, create & edit Google Drive files",
+  "Create Drive files & edit files you pick",
 ];
 
 export default function ConnectorsPage() {
@@ -176,7 +176,7 @@ export default function ConnectorsPage() {
           <CardDescription>
             {google?.connected && google.email
               ? `Signed in as ${google.email}`
-              : "Read & send email, manage your calendar, and create/edit Docs, Sheets, Slides & Drive files."}
+              : "Send email, manage your calendar, and create/edit Docs, Sheets, Slides & Drive files."}
           </CardDescription>
         </CardHeader>
 

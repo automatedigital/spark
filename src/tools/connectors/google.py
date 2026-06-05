@@ -49,8 +49,8 @@ class GoogleWorkspaceConnector(Connector):
     id = "google"
     name = "Google Workspace"
     description = (
-        "Read & send email, manage your calendar, and create/edit Docs, Sheets, "
-        "Slides, and Drive files via the gws CLI."
+        "Send email, manage your calendar, and create/edit Docs, Sheets, Slides, "
+        "and Drive files via the gws CLI. Gmail is send-only (free public tier)."
     )
     transport = Transport.CLI
     skills = GWS_SKILLS

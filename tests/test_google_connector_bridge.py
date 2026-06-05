@@ -15,12 +15,16 @@ def _configure(monkeypatch, *, cid="cid", csecret="csec"):
     monkeypatch.setattr(gc, "get_client_secret", lambda: csecret)
 
 
-def test_default_scopes_are_read_write():
+def test_default_scopes_are_public_free_send_only():
     joined = " ".join(gc.DEFAULT_GOOGLE_SCOPES)
-    # read/write Gmail + full Drive by default (free for self-host test users)
-    assert "gmail.modify" in joined
+    # Public + free tier: sensitive scopes only (no restricted = no CASA).
     assert "gmail.send" in joined
+    assert "drive.file" in joined
     assert "auth/calendar" in joined
+    # restricted scopes must NOT be in the default (would force paid CASA)
+    assert "gmail.modify" not in joined
+    assert "gmail.readonly" not in joined
+    assert "auth/drive\"" not in joined  # full-drive scope absent
 
 
 def test_get_scopes_default(monkeypatch):

@@ -41,27 +41,27 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
-# Default scopes: full read/write Gmail + Calendar/Docs/Sheets/Slides + Drive.
+# Default scopes: PUBLIC + FREE set ("sensitive", not "restricted").
 #
-# gmail.modify (read+organize+write) and gmail.send are *restricted* scopes, but
-# they are FREE to use without the CASA assessment while the OAuth app is in
-# "Testing" mode with the connecting accounts added as Test users (≤100) — the
-# normal self-hosted case (each install uses its own client; the operator is the
-# test user). CASA/paid verification is only required to ship ONE shared client
-# to the public (>100 users, no "unverified app" warning).
+# Product decision: the app must be public (no 100-test-user cap), so it can only
+# use scopes that pass FREE Google verification — i.e. *sensitive* scopes, never
+# *restricted* ones. Restricted scopes (gmail.modify/readonly, full drive) would
+# force the paid annual CASA assessment to publish. Consequently:
+#   * Gmail is SEND-ONLY (gmail.send is sensitive; reading needs restricted scope).
+#   * Drive is limited to drive.file (files the app creates or the user opens).
+#   * Calendar / Docs / Sheets / Slides get full access (all sensitive).
 #
-# Deployments that DO go public can override these via config.yaml:
+# A deployment that DOES pursue CASA can opt into reading via config.yaml:
 #   connectors:
 #     google:
-#       scopes: ["openid", "email", "profile",
-#                "https://www.googleapis.com/auth/gmail.send", ...]  # send-only, etc.
+#       scopes: ["openid","email","profile",
+#                "https://www.googleapis.com/auth/gmail.modify", ...]
 DEFAULT_GOOGLE_SCOPES = [
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/gmail.modify",   # read + write + labels
-    "https://www.googleapis.com/auth/gmail.send",      # send/compose
-    "https://www.googleapis.com/auth/drive",           # full Drive read/write
+    "https://www.googleapis.com/auth/gmail.send",        # send/compose (sensitive)
+    "https://www.googleapis.com/auth/drive.file",         # app-created / user-picked files
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/spreadsheets",
