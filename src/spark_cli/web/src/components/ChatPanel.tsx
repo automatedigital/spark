@@ -262,14 +262,14 @@ const UserRow = memo(function UserRow({
 
   return (
     <div className="flex gap-2 flex-row-reverse group/msg">
-      <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs bg-primary/20 text-primary">
+      <div className="shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-xs bg-foreground/8 text-muted-foreground">
         <User className="h-3.5 w-3.5" />
       </div>
       <div className="max-w-[85%] flex flex-col items-end gap-1">
         {msg.redirect && (
           <span className="text-[10px] text-muted-foreground/60">↩ redirect</span>
         )}
-        <div className="rounded-lg px-3 py-2 text-sm bg-primary/10 text-foreground relative">
+        <div className="rounded-lg px-3 py-2 text-sm bg-foreground/8 text-foreground relative">
           <p className="whitespace-pre-wrap leading-relaxed">{renderTokens(msg.content)}</p>
           {hasSession && msg.sessionIdx != null && (
             <div className="absolute -top-2 right-0 opacity-0 group-hover/msg:opacity-100 flex gap-1 transition-opacity">
@@ -303,7 +303,7 @@ const UserRow = memo(function UserRow({
                   <button
                     type="button"
                     onClick={() => setExpandedChip(isExpanded ? null : item.id)}
-                    className="flex items-center gap-1 rounded border border-border/40 bg-secondary/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition"
+                    className="flex items-center gap-1 rounded-md bg-foreground/6 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-foreground/9 hover:text-foreground transition"
                     title={`${name} · ${modeLabel} mode`}
                   >
                     <span className="font-mono truncate max-w-[80px]">{name}</span>
@@ -311,7 +311,7 @@ const UserRow = memo(function UserRow({
                     <span>{modeLabel}</span>
                   </button>
                   {isExpanded && item.content && (
-                    <div className="absolute bottom-full mb-1 right-0 z-50 w-72 rounded-md border border-border bg-card shadow-lg p-2 text-[11px] font-mono text-foreground/80 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                    <div className="absolute bottom-full mb-1 right-0 z-50 w-72 rounded-md border border-border bg-popover/95 shadow-lg p-2 text-[11px] font-mono text-foreground/80 max-h-40 overflow-y-auto whitespace-pre-wrap backdrop-blur-xl">
                       {item.content}
                     </div>
                   )}
@@ -335,7 +335,7 @@ const AssistantRow = memo(function AssistantRow({
   return (
     <div className="flex gap-2 group/amsg">
       <SparkAgentAvatar />
-      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground min-w-0 relative">
+      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
           <Markdown content={msg.content} />
         ) : (
@@ -1211,7 +1211,7 @@ export function ChatPanel({
 
   return (
     <div
-      className={cn("flex min-h-0 w-full flex-1 flex-col bg-background relative", className)}
+      className={cn("flex min-h-0 w-full flex-1 flex-col bg-background/45 relative", className)}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -1225,7 +1225,7 @@ export function ChatPanel({
           <p className="text-sm font-medium text-primary">Drop files to attach</p>
         </div>
       )}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0 gap-2">
+      <div className="flex items-center justify-between border-b border-border bg-card/24 px-3 py-2 shrink-0 gap-2 backdrop-blur-xl">
         {onBack && (
           <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={onBack}>
             <ChevronLeft className="h-4 w-4" />
@@ -1235,13 +1235,13 @@ export function ChatPanel({
           <div className="flex items-center gap-2 flex-wrap">
             <StatusPill streaming={streaming} label={statusLabel} />
             {forkInfo?.parentSessionId && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5">
+              <span className="inline-flex items-center gap-1 rounded-md bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 <CornerUpLeft className="h-2.5 w-2.5" />
                 Forked from {forkInfo.parentTitle ?? forkInfo.parentSessionId}
               </span>
             )}
             {forkInfo && forkInfo.forkCount > 0 && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5">
+              <span className="inline-flex items-center gap-1 rounded-md bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 <GitFork className="h-2.5 w-2.5" />
                 {forkInfo.forkCount} {forkInfo.forkCount === 1 ? "branch" : "branches"}
               </span>
@@ -1284,7 +1284,7 @@ export function ChatPanel({
 
       {/* Message search bar */}
       {searchOpen && (
-        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 bg-muted/30 shrink-0">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 bg-card/20 shrink-0">
           <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <input
             ref={searchInputRef}
@@ -1316,7 +1316,7 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-4" ref={scrollContainerRef}>
+      <div className="flex-1 overflow-y-auto px-4 py-5" ref={scrollContainerRef}>
         {loadingHistory ? (
           <div className="flex flex-col gap-4 py-2">
             <MessageRowSkeleton />
@@ -1336,7 +1336,7 @@ export function ChatPanel({
                   type="button"
                   disabled={loadingEarlier}
                   onClick={() => void loadEarlierMessages()}
-                  className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground border border-border/40 rounded px-3 py-1 transition disabled:opacity-40"
+                  className="rounded-md bg-foreground/5 px-3 py-1 text-[11px] text-muted-foreground/60 transition hover:bg-foreground/8 hover:text-muted-foreground disabled:opacity-40"
                 >
                   {loadingEarlier ? "Loading…" : "Load earlier messages"}
                 </button>
@@ -1357,7 +1357,7 @@ export function ChatPanel({
                   >
                     <div className="flex gap-2">
                       <SparkAgentAvatar />
-                      <div className="rounded-lg px-3 py-2.5 text-sm bg-secondary">
+                      <div className="rounded-lg px-3 py-2.5 text-sm bg-foreground/6">
                         <span className="flex gap-[4px] items-center">
                           <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
                           <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
@@ -1426,10 +1426,10 @@ export function ChatPanel({
       </div>
 
       {editingUser && (
-        <div className="border-t border-border px-4 py-2 bg-secondary/20 shrink-0 space-y-2">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Edit & retry</p>
+        <div className="border-t border-border px-4 py-2 bg-card/24 shrink-0 space-y-2">
+          <p className="text-xs text-muted-foreground">Edit and retry</p>
           <textarea
-            className="w-full rounded border border-input bg-background px-2 py-1.5 text-xs min-h-[72px]"
+            className="w-full rounded-md border border-input bg-background/40 px-2 py-1.5 text-xs min-h-[72px] outline-none focus:ring-1 focus:ring-foreground/20"
             value={editingUser.text}
             onChange={(e) => setEditingUser({ ...editingUser, text: e.target.value })}
           />

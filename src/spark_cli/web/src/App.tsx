@@ -6,7 +6,6 @@ import {
   Download,
   FolderOpen,
   LayoutGrid,
-  Brain,
   MessageSquare,
   Package,
   Plug,
@@ -19,7 +18,6 @@ import FilesPage from "@/pages/FilesPage";
 import KanbanPage from "@/pages/KanbanPage";
 import CanvasPage from "@/pages/CanvasPage";
 import SkillsPage from "@/pages/SkillsPage";
-import MemoryPage from "@/pages/MemoryPage";
 import ConnectorsPage from "@/pages/ConnectorsPage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { useI18n } from "@/i18n";
@@ -44,7 +42,6 @@ const NAV_ITEMS = [
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
   { id: "skills", labelKey: "skills" as const, icon: Package },
-  { id: "memory", labelKey: "memory" as const, icon: Brain },
   { id: "connectors", labelKey: "connectors" as const, icon: Plug },
 ] as const;
 
@@ -57,7 +54,6 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   skills: SkillsPage,
   files: FilesPage,
   canvas: CanvasPage,
-  memory: MemoryPage,
   connectors: ConnectorsPage,
 };
 
@@ -427,38 +423,38 @@ export default function App() {
       <div className="noise-overlay" />
       <div className="warm-glow" />
 
-      <div className={`relative z-2 grid h-full grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:248px]" : "[--sidebar-width:84px]"}`}>
+      <div className={`relative z-2 grid h-full grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:224px]" : "[--sidebar-width:58px]"}`}>
         <aside
           onMouseEnter={() => !navExpanded && setNavHovered(true)}
           onMouseLeave={() => setNavHovered(false)}
-          className={`hidden min-w-0 border-r border-border bg-card/78 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
+          className={`hidden min-w-0 border-r border-border bg-card/58 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
             navHovered && !navExpanded
-              ? " absolute left-0 top-0 bottom-0 z-50 w-[248px] shadow-2xl shadow-black/50"
+              ? " absolute left-0 top-0 bottom-0 z-50 w-[224px] shadow-2xl shadow-black/35"
               : sidebarOpen
-              ? " w-[248px]"
-              : " w-[84px]"
+              ? " w-[224px]"
+              : " w-[58px]"
           }`}
         >
-          <div className={`flex h-20 items-center border-b border-border px-4 ${sidebarOpen ? "justify-between" : "justify-center"}`}>
+          <div className={`flex h-12 items-center border-b border-border px-2.5 ${sidebarOpen ? "justify-between" : "justify-center"}`}>
             <button
               type="button"
-              className={`flex shrink-0 items-center gap-0 rounded-sm transition hover:opacity-75 cursor-pointer ${sidebarOpen ? "h-10 w-auto" : "h-10 w-10 justify-center"}`}
+              className={`flex shrink-0 items-center gap-0 rounded-md transition hover:bg-foreground/6 cursor-pointer ${sidebarOpen ? "h-8 w-auto" : "h-8 w-8 justify-center"}`}
               title="Go to Chat"
               aria-label="Go to Chat"
               onClick={() => navigateTo("chat")}
             >
-              <div className="grid h-10 w-10 shrink-0 place-items-center">
-                <SparkLogo />
+              <div className="grid h-8 w-8 shrink-0 place-items-center">
+                <SparkLogo className="h-5 w-5" />
               </div>
               {sidebarOpen && (
-                <div className="min-w-0 flex-1 px-3 text-left">
-                  <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
+                <div className="min-w-0 flex-1 px-2 text-left">
+                  <div className="truncate text-sm font-semibold text-foreground">Spark</div>
                 </div>
               )}
             </button>
             <button
               type="button"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/7 hover:text-foreground"
               title={navExpanded ? "Collapse navigation" : "Expand navigation"}
               aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
               onClick={() => toggleNav(!navExpanded)}
@@ -466,7 +462,7 @@ export default function App() {
               {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
           </div>
-          <nav className={`flex flex-1 flex-col gap-2 px-3 py-4 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+          <nav className={`flex flex-1 flex-col gap-1 px-2 py-3 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
             {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
               <button
                 key={id}
@@ -474,14 +470,17 @@ export default function App() {
                 title={t.app.nav[labelKey]}
                 aria-label={t.app.nav[labelKey]}
                 onClick={() => navigateTo(id)}
-                className={`group relative flex h-12 items-center rounded-sm border transition ${
+                className={`group relative flex h-8 items-center rounded-md transition ${
                   page === id
-                    ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
-                    : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
-                } ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+                } ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
               >
+                {page === id && sidebarOpen && (
+                  <span className="absolute left-0 top-1.5 bottom-1.5 w-px rounded-full bg-foreground/70" />
+                )}
                 <div className="relative shrink-0">
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4 w-4" />
                   {id === "kanban" && runningTaskCount > 0 && (
                     <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
                       {runningTaskCount > 9 ? "9+" : runningTaskCount}
@@ -489,9 +488,9 @@ export default function App() {
                   )}
                 </div>
                 {sidebarOpen && (
-                  <span className="truncate text-sm font-medium">{t.app.nav[labelKey]}</span>
+                  <span className="truncate text-[13px] font-medium">{t.app.nav[labelKey]}</span>
                 )}
-                <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
+                <span className={`pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-xl backdrop-blur-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                   {t.app.nav[labelKey]}
                 </span>
               </button>
@@ -499,18 +498,18 @@ export default function App() {
           </nav>
 
           {/* Settings + Update buttons */}
-          <div className={`border-t border-border px-3 py-3 flex flex-col gap-2 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+          <div className={`border-t border-border px-2 py-2 flex flex-col gap-1 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
             {updateAvailable && (
               <button
                 type="button"
                 title="Update available"
                 aria-label="Update Spark"
                 onClick={openUpdateModal}
-                className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                className={`group relative flex h-8 items-center rounded-md transition bg-amber-500/10 text-amber-300 hover:bg-amber-500/16 ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
               >
-                <Download className="h-5 w-5 shrink-0" />
+                <Download className="h-4 w-4 shrink-0" />
                 {sidebarOpen && (
-                  <span className="truncate text-sm font-medium">Update available</span>
+                  <span className="truncate text-[13px] font-medium">Update available</span>
                 )}
                 <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                   Update available{latestVersion ? ` · ${latestVersion}` : ""}
@@ -523,11 +522,11 @@ export default function App() {
                 title="macOS app update available"
                 aria-label="Update macOS App"
                 onClick={openMacUpdateModal}
-                className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                className={`group relative flex h-8 items-center rounded-md transition bg-amber-500/10 text-amber-300 hover:bg-amber-500/16 ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
               >
-                <Download className="h-5 w-5 shrink-0" />
+                <Download className="h-4 w-4 shrink-0" />
                 {sidebarOpen && (
-                  <span className="truncate text-sm font-medium">App update available</span>
+                  <span className="truncate text-[13px] font-medium">App update available</span>
                 )}
                 <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                   macOS app update{macLatestVersion ? ` · v${macLatestVersion}` : ""}
@@ -539,15 +538,15 @@ export default function App() {
               title="Settings"
               aria-label="Settings"
               onClick={() => setSettingsOpen(true)}
-              className={`group relative flex h-12 items-center rounded-sm border transition ${
+              className={`group relative flex h-8 items-center rounded-md transition ${
                 settingsOpen
-                  ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
-                  : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
-              } ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                  ? "bg-foreground/10 text-foreground"
+                  : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+              } ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
             >
-              <Settings className="h-5 w-5 shrink-0" />
+              <Settings className="h-4 w-4 shrink-0" />
               {sidebarOpen && (
-                <span className="truncate text-sm font-medium">Settings</span>
+                <span className="truncate text-[13px] font-medium">Settings</span>
               )}
               <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                 Settings
@@ -560,26 +559,25 @@ export default function App() {
           {navHovered && !navExpanded && (
             <div className="pointer-events-none absolute inset-0 z-10 bg-background/40 backdrop-blur-sm transition-opacity duration-200" />
           )}
-          <header className="sticky top-0 z-40 border-b border-border bg-background/82 backdrop-blur-xl">
-            <div className="flex min-h-16 items-center gap-3 px-3 sm:px-6">
+          <header className="sticky top-0 z-40 border-b border-border bg-background/72 backdrop-blur-xl">
+            <div className="flex min-h-12 items-center gap-3 px-3 sm:px-4">
               <div className="flex items-center gap-3 md:hidden">
-                <SparkLogo className="h-6 w-6" />
-                <span className="font-collapse text-lg font-bold uppercase tracking-wide">Spark</span>
+                <SparkLogo className="h-5 w-5" />
+                <span className="text-sm font-semibold">Spark</span>
               </div>
               <div className="hidden md:block">
-                <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Spark</div>
-                <div className="text-sm font-semibold text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "workspace"]}</div>
+                <div className="text-[13px] font-medium text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "workspace"]}</div>
               </div>
               {/* Mobile nav */}
-              <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-sm border border-border bg-card/70 p-1 shadow-inner scrollbar-none md:hidden">
+              <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-md bg-card/45 p-1 scrollbar-none md:hidden">
                 {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
                   <button
                     key={id}
                     type="button"
                     title={t.app.nav[labelKey]}
                     onClick={() => navigateTo(id)}
-                    className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
-                      page === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
+                      page === id ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
                     }`}
                   >
                     <Icon className="h-4 w-4" />
@@ -595,8 +593,8 @@ export default function App() {
                   type="button"
                   title="Settings"
                   onClick={() => setSettingsOpen(true)}
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
-                    settingsOpen ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
+                    settingsOpen ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
                   }`}
                 >
                   <Settings className="h-4 w-4" />
@@ -605,14 +603,14 @@ export default function App() {
               <div className="ml-auto hidden items-center gap-2 md:flex">
                 <CodexUsageBadge />
                 <NotificationBell />
-                <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{versionLabel}</span>
+                <span className="text-xs text-muted-foreground">{versionLabel}</span>
               </div>
             </div>
           </header>
 
           <main
             key={animKey}
-            className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto min-h-0 w-full max-w-[1480px] flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-8"}
+            className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto min-h-0 w-full max-w-[1320px] flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-6"}
             style={{ animation: "fade-in 150ms ease-out" }}
           >
             {authChecking ? (

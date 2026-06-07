@@ -14,7 +14,7 @@ import {
   KeyRound,
   X,
 } from "lucide-react";
-import { api, type ConnectorStatus, type GoogleSetupInfo } from "@/lib/api";
+import { api, openExternal, type ConnectorStatus, type GoogleSetupInfo } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -204,7 +204,7 @@ export default function ConnectorsPage() {
         return;
       }
       if (resp.auth_url) {
-        window.open(resp.auth_url, "_blank", "width=520,height=640");
+        void openExternal(resp.auth_url);
         startPolling();
       } else {
         setBusy(false);
@@ -331,11 +331,11 @@ export default function ConnectorsPage() {
             verificationUri: resp.verification_uri,
             interval: Math.max(2, resp.interval ?? 5),
           });
-          window.open(resp.verification_uri, "_blank", "width=560,height=700");
+          void openExternal(resp.verification_uri);
           return;
         }
         if (resp.auth_url) {
-          window.open(resp.auth_url, "_blank", "width=560,height=700");
+          void openExternal(resp.auth_url);
           startConnectorPolling(connector.id);
           return;
         }
@@ -716,14 +716,16 @@ export default function ConnectorsPage() {
                   {connector.connected ? "Connected" : "Connect"}
                 </Button>
                 {connector.docs_url && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(connector.docs_url, "_blank", "noopener,noreferrer")}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Open docs
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (connector.docs_url) void openExternal(connector.docs_url);
+                    }}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open docs
+                  </Button>
                 )}
                 <Button
                   variant="ghost"
@@ -767,7 +769,10 @@ export default function ConnectorsPage() {
               {connectorExtra(setupConnector).api_key_url && (
                 <Button
                   variant="outline"
-                  onClick={() => window.open(connectorExtra(setupConnector).api_key_url, "_blank", "noopener,noreferrer")}
+                  onClick={() => {
+                    const url = connectorExtra(setupConnector).api_key_url;
+                    if (url) void openExternal(url);
+                  }}
                 >
                   <ExternalLink className="h-4 w-4" />
                   Open {setupConnector.name} key page
@@ -847,7 +852,7 @@ export default function ConnectorsPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  onClick={() => window.open(deviceFlow.verificationUri, "_blank", "width=560,height=700")}
+                  onClick={() => void openExternal(deviceFlow.verificationUri)}
                 >
                   <ExternalLink className="h-4 w-4" />
                   Open GitHub

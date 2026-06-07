@@ -115,8 +115,8 @@ export function Select({
         onClick={() => !disabled && setOpen((o) => !o)}
         onKeyDown={handleKeyDown}
         className={cn(
-          "flex h-9 w-full items-center justify-between border border-border bg-background/40 px-3 py-1 font-courier text-sm text-left transition-colors",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/30 focus-visible:border-foreground/25",
+          "flex h-8 w-full items-center justify-between rounded-md border border-input bg-background/35 px-2.5 py-1 font-display text-sm text-left transition-colors",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/20 focus-visible:border-foreground/18",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "cursor-pointer",
         )}
@@ -142,7 +142,7 @@ export function Select({
             width: menuRect.width,
           }}
           className={cn(
-            "fixed z-[1000] border border-border bg-popover text-popover-foreground shadow-lg",
+            "fixed z-[1000] rounded-md border border-border bg-popover/95 text-popover-foreground shadow-xl shadow-black/35 backdrop-blur-xl",
             "max-h-60 overflow-auto",
             "animate-[fade-in_100ms_ease-out]",
           )}
@@ -162,7 +162,7 @@ export function Select({
                 }}
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 text-sm font-courier cursor-pointer transition-colors",
-                  isHighlighted && "bg-foreground/10",
+                  isHighlighted && "bg-foreground/8",
                   isSelected && "text-foreground",
                   !isSelected && "text-muted-foreground",
                 )}
@@ -184,7 +184,8 @@ export function Select({
   );
 }
 
-export function SelectOption(_props: SelectOptionProps) {
+export function SelectOption(props: SelectOptionProps) {
+  void props;
   return null;
 }
 

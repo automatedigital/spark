@@ -707,7 +707,7 @@ export function PromptBar({
       )}
 
       {/* Unified card — no focus ring */}
-      <div className={`rounded-xl border border-input bg-card shadow-sm ${inputBlocked ? "opacity-60" : ""}`}>
+      <div className={`rounded-lg border border-input bg-card/58 shadow-lg shadow-black/10 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
         {/* Textarea */}
         <div className="relative min-h-[52px]">
           <div
@@ -748,7 +748,7 @@ export function PromptBar({
                 disabled={blocked}
                 onClick={() => fileInputRef.current?.click()}
                 title="Add file"
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground disabled:pointer-events-none"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/55 transition hover:bg-foreground/7 hover:text-foreground disabled:pointer-events-none"
               >
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               </button>
@@ -768,10 +768,10 @@ export function PromptBar({
               type="button"
               onClick={() => setShowSettings((v) => !v)}
               title="Quick model settings"
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition select-none ${
+              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition select-none ${
                 showSettings
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground/60 hover:bg-secondary hover:text-foreground"
+                  ? "bg-foreground/8 text-foreground"
+                  : "text-muted-foreground/60 hover:bg-foreground/7 hover:text-foreground"
               }`}
             >
               <span>{modelLabel}</span>
@@ -813,7 +813,7 @@ export function PromptBar({
                   type="button"
                   onClick={handleSend}
                   title="Redirect (interrupt with this message)"
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90"
+                  className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background transition hover:bg-foreground/90"
                 >
                   <ArrowUp className="h-4 w-4" />
                 </button>
@@ -822,7 +822,7 @@ export function PromptBar({
                 type="button"
                 onClick={onStop}
                 title="Stop"
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
+                className="flex h-7 w-7 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
               >
                 <Square className="h-3.5 w-3.5" />
               </button>
@@ -833,7 +833,7 @@ export function PromptBar({
               disabled={!canSend}
               onClick={handleSend}
               title="Send (Enter)"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:opacity-30 disabled:pointer-events-none"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background transition hover:bg-foreground/90 disabled:opacity-30 disabled:pointer-events-none"
             >
               <ArrowUp className="h-4 w-4" />
             </button>
