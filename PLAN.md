@@ -80,8 +80,8 @@ Current state (for reference):
 - [ ] Create `pages/MessagingPage.tsx`: left scrollable list of platforms with icon + name + connected dot; right detail pane.
 - [ ] Source the platform list from `src/gateway/platforms/` (telegram, discord, slack, mattermost, matrix, whatsapp, signal, bluebubbles, homeassistant, email, sms/twilio, dingtalk, feishu/lark, wecom, wechat, qqbot, api_server, webhooks, irc, line, etc.).
 - [ ] Detail pane sections: status chips (Disabled / Needs setup / gateway state), "Get your credentials" help + setup-guide link, **Required** fields, **Recommended** fields, collapsible **Advanced**, enable toggle, **Save changes**.
-- [ ] Add `/api/messaging` (or extend gateway config endpoints) to read/write per-platform credentials + enabled state; reuse existing gateway config plumbing (`gateway/config.py`, `display_config.py`).
-- [ ] Wire Save → restart/refresh the relevant gateway channel (`gateway/restart.py`).
+- [x] Add `/api/messaging` (or extend gateway config endpoints) to read/write per-platform credentials + enabled state; reuse existing gateway config plumbing (`gateway/config.py`, `display_config.py`).
+- [x] Wire Save → restart/refresh the relevant gateway channel (`gateway/restart.py`).
 - [ ] Add `Search messaging…` filter for the platform list.
 
 ## Phase 6 — Artifacts page
