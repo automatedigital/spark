@@ -87,7 +87,7 @@ Current state (for reference):
 ## Phase 6 — Artifacts page
 
 - [ ] Create `pages/ArtifactsPage.tsx` with tabs **All / Images / Files / Links** (each with a live count).
-- [ ] Aggregate artifacts produced by sessions (generated images, file outputs, links) — define/extend an `/api/artifacts` endpoint backed by workspace files + session outputs.
+- [x] Aggregate artifacts produced by sessions (generated images, file outputs, links) — define/extend an `/api/artifacts` endpoint backed by workspace files + session outputs.
 - [ ] Empty state: "No artifacts found — Generated images and file outputs will appear here as sessions produce them."
 - [ ] Grid/list rendering with type filtering; click opens the artifact (image preview, file download, link out).
 
@@ -124,4 +124,4 @@ Current state (for reference):
 - **Branding:** keep **Spark** identity (wordmark + name), but use the Hermes centered-serif + bottom-composer layout from the screenshots.
 
 ### Open questions (resolve while building)
-- [ ] Artifacts backing store: derive from workspace files only, or add a dedicated artifact index? — default: derive first, index later if needed.
+- [x] Artifacts backing store: derive from workspace files only, or add a dedicated artifact index? — default: derive first, index later if needed. → derived from workspace files
