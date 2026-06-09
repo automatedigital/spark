@@ -1,220 +1,121 @@
-# Plan: Improve the Canvas Tab
+# PLAN — Hermes-style Web/Desktop UI + Simplified Skills & Tools
 
-## Goal
+Goal: re-skin the Spark web UI and desktop app to match the **Hermes Agent Desktop**
+layout in `screenshots/`, and rebuild Skills & Tools so that connecting external
+apps (MCPs, CLIs, connectors, messaging) is effectively **1-click** for non-technical users.
 
-Make the Canvas tab easier to evolve, safer to persist, and more reliable for everyday workflow authoring.
+Reference screenshots live in `screenshots/` (note: lowercase). Target layout:
+- **Sidebar (top→bottom):** New session · Skills & Tools · Messaging · Artifacts · Search sessions… · Pinned · Sessions (grouped by project workspace) · **Settings pinned to bottom**.
+- New-session screen = centered "HERMES AGENT" wordmark + a single "Start with a goal" composer.
+- Skills & Tools = flat searchable list grouped by category, each row a one-line toggle.
+- Messaging = left list of ~25 platforms, right detail pane with Required/Recommended/Advanced fields + Save.
+- Artifacts = All / Images / Files / Links tabs with empty-state.
 
-## Current Shape
+Current state (for reference):
+- Global nav is an icon rail in `src/spark_cli/web/src/App.tsx` (`NAV_ITEMS`: chat, files, canvas, kanban, cron, skills, connectors). Settings is a **modal** (`SettingsPanel.tsx`), already bottom-anchored.
+- Session list / search / pinned currently live **inside** `pages/ChatPage.tsx`'s own left sidebar — needs to be hoisted to the global sidebar.
+- Skills: `pages/SkillsPage.tsx` (+ `/api/skills`). Connectors: `pages/ConnectorsPage.tsx` (+ `/api/connectors`, `gateway/connectors_routes.py`, `google_connector.py`, `oauth_connectors.py`).
+- Messaging platforms exist in `src/gateway/platforms/` (telegram, discord, slack, matrix, whatsapp, signal, bluebubbles, homeassistant, email, sms, dingtalk, feishu, wecom, weixin, qqbot, webhook, api_server) but have **no dedicated web page** yet (configured via gateway config).
 
-- Frontend entrypoint: `src/spark_cli/web/src/pages/CanvasPage.tsx`
-- Node renderers: `src/spark_cli/web/src/pages/canvas/render.tsx`
-- Node data/defaults: `src/spark_cli/web/src/pages/canvas/types.ts`
-- Inspector: `src/spark_cli/web/src/pages/canvas/Inspector.tsx`
-- Frontend API types/client: `src/spark_cli/web/src/lib/api.ts`
-- Backend storage routes: `src/spark_cli/canvas_routes.py`
-- Agent-facing canvas tool: `src/tools/canvas_tool.py`
-- Backend tests: `tests/spark_cli/test_canvas_routes.py`, `tests/tools/test_canvas_tool.py`
+---
 
-## Task List
+## Phase 0 — Reference & scaffolding
 
-### Phase 1: Extract State And Serialization
+- [ ] Clone Hermes Agent for reference into a scratch dir: `git clone https://github.com/nousresearch/hermes-agent /tmp/hermes-agent-ref` (read-only; do not vendor wholesale).
+- [ ] Document in this file which Hermes components/layouts/styles we mirror vs. reimplement (license check before copying any code).
+- [ ] Capture baseline screenshots of the current Spark web UI (chat, skills, connectors, settings) for before/after comparison.
+- [ ] Confirm `npm run dev` works in `src/spark_cli/web/` and the dev server renders against the local gateway.
 
-- [ ] Create `src/spark_cli/web/src/pages/canvas/model.ts`.
-- [ ] Move `newNodeId` into `model.ts`.
-- [ ] Move `makeCanvasNode` into `model.ts`.
-- [ ] Move canvas id sanitization from `toEngineDoc` into a named `sanitizeCanvasId` helper.
-- [ ] Add a `canvasIdentityKey(scope, slug, id)` helper.
-- [ ] Move save serialization from `toEngineDoc` into `toCanvasDoc`.
-- [ ] Move load deserialization from `loadCanvas` into `fromCanvasDoc`.
-- [ ] Preserve legacy reads of node dimensions from `data.width` and `data.height` in `fromCanvasDoc`.
-- [ ] Add unit tests for `sanitizeCanvasId`.
-- [ ] Add unit tests for `toCanvasDoc`.
-- [ ] Add unit tests for `fromCanvasDoc`.
-- [ ] Replace inline serialization/deserialization in `CanvasPage.tsx` with `model.ts` helpers.
-- [ ] Create `src/spark_cli/web/src/pages/canvas/useNodeCatalog.ts`.
-- [ ] Move node-type fetching into `useNodeCatalog`.
-- [ ] Move node search/grouping into `useNodeCatalog`.
-- [ ] Replace inline node catalog state in `CanvasPage.tsx` with `useNodeCatalog`.
-- [ ] Create `src/spark_cli/web/src/pages/canvas/useCanvasShortcuts.ts`.
-- [ ] Move copy selection logic into `useCanvasShortcuts`.
-- [ ] Move paste selection logic into `useCanvasShortcuts`.
-- [ ] Move duplicate selection logic into `useCanvasShortcuts`.
-- [ ] Move keyboard shortcut listener into `useCanvasShortcuts`.
-- [ ] Replace inline shortcut handling in `CanvasPage.tsx` with `useCanvasShortcuts`.
-- [ ] Confirm `CanvasPage.tsx` is meaningfully smaller after extraction.
+## Phase 1 — Global sidebar restructure (`App.tsx`)
 
-### Phase 2: Fix Persistence Semantics
+- [ ] Replace `NAV_ITEMS` icon rail with the Hermes section order: New session, Skills & Tools, Messaging, Artifacts.
+- [ ] Add **New session** action button at the top (resets chat to a fresh thread; reuse existing `spark-new-chat` CustomEvent path).
+- [ ] Add **Search sessions…** input directly into the global sidebar (hoist search logic out of `ChatPage`).
+- [ ] Add **Pinned** section header + pinned-session list to the global sidebar.
+- [ ] Add **Sessions** section grouped by **project workspace** (use existing `WorkspaceProject` / `SessionInfo` from `lib/api.ts`); show "No workspace" group for ungrouped sessions.
+- [ ] Keep **Settings** pinned to the bottom of the sidebar (retain modal trigger via `setSettingsOpen`).
+- [ ] Preserve collapse/expand + hover-expand behavior already in `App.tsx`.
+- [ ] Wire sidebar session click → navigate to chat + load that session (replace ChatPage-internal selection).
+- [ ] Remove the now-duplicated session list/search/pinned UI from `ChatPage.tsx` (ChatPage becomes the thread view only).
+- [ ] Move `chat`, `files`, `canvas`, `kanban`, `cron` out of the primary rail into a secondary location (command palette + a "More" menu or workspace tabs) so the primary sidebar matches Hermes exactly.
+- [ ] Update mobile nav in `App.tsx` header to mirror the new sections.
+- [ ] Update `i18n/en.ts` + `i18n/types.ts` nav labels (newSession, skillsAndTools, messaging, artifacts) and any other locales.
 
-- [ ] Save the actual React Flow viewport with `rf.getViewport()`.
-- [ ] Include viewport in `toCanvasDoc`.
-- [ ] Restore viewport after `fromCanvasDoc` load.
-- [ ] Store node `width` at top level in saved canvas nodes.
-- [ ] Store node `height` at top level in saved canvas nodes.
-- [ ] Stop writing node dimensions only inside `data`.
-- [ ] Keep backward compatibility for existing canvas files with dimensions in `data`.
-- [ ] Add backend support for a canvas `revision` field.
-- [ ] Include `revision` in `CanvasDoc` responses.
-- [ ] Include `revision` in canvas list summaries.
-- [ ] Add optional `expectedRevision` handling for save requests.
-- [ ] Return a conflict response when `expectedRevision` is stale.
-- [ ] Track last loaded revision in the frontend.
-- [ ] Send `expectedRevision` from frontend saves.
-- [ ] Block autosave when a revision conflict is detected.
-- [ ] Show a compact conflict state in the Canvas toolbar.
-- [ ] Add a reload-remote action for conflicts.
-- [ ] Add a save-over-remote action for conflicts.
-- [ ] Add tests for viewport round-trip.
-- [ ] Add tests for node dimension round-trip.
-- [ ] Add tests for stale revision rejection.
+## Phase 2 — New-session screen
 
-### Phase 3: Make Undo, Dirty State, And Autosave Predictable
+- [ ] Build centered hero: large serif "SPARK" (or "HERMES AGENT"-equivalent) wordmark + subtitle ("Type a task, question, or snippet…").
+- [ ] Bottom-centered composer "Start with a goal" with mic + send affordances (reuse `components/chat/PromptBar.tsx`).
+- [ ] Show this hero when no active session is selected; on first send, create a session and transition to the thread view.
+- [ ] Match dark background + subtle texture from screenshots (reuse existing `noise-overlay` / `warm-glow`).
 
-- [ ] Create `src/spark_cli/web/src/pages/canvas/useCanvasHistory.ts`.
-- [ ] Move undo stack state into `useCanvasHistory`.
-- [ ] Move redo stack state into `useCanvasHistory`.
-- [ ] Add `canUndo` from `useCanvasHistory`.
-- [ ] Add `canRedo` from `useCanvasHistory`.
-- [ ] Record history before node creation.
-- [ ] Record history before edge creation.
-- [ ] Record history before node deletion.
-- [ ] Record history before edge deletion.
-- [ ] Record history before paste.
-- [ ] Record history before duplicate.
-- [ ] Record history before inspector param edits.
-- [ ] Record node drag as one history entry per drag gesture.
-- [ ] Cap history length.
-- [ ] Clear redo history after new edits.
-- [ ] Disable Undo button when `canUndo` is false.
-- [ ] Disable Redo button when `canRedo` is false.
-- [ ] Add a document dirty state separate from save state.
-- [ ] Mark document dirty after graph edits.
-- [ ] Mark document clean after successful save.
-- [ ] Prevent autosave for unsaved new canvases.
-- [ ] Prevent autosave while a workflow run is active.
-- [ ] Prevent autosave during conflict state.
-- [ ] Add dirty confirm before New.
-- [ ] Add dirty confirm before Open.
-- [ ] Add dirty confirm before Delete.
-- [ ] Verify drag, delete, connect, param edit, paste, and duplicate can all be undone.
+## Phase 3 — Skills & Tools (merged page)
 
-### Phase 4: Improve Node Configuration
+- [ ] Create a unified **Skills & Tools** page with two top tabs: **Skills** and **Toolsets** (matches `skills-and-tools.png`).
+- [ ] Render skills as a flat, searchable, category-grouped list; each row = name + one-line description + a right-aligned toggle (`ui/switch.tsx`).
+- [ ] Top category filter chips with counts (Apple, Autonomous-AI-Agents, Creative, … Software-Development), like the screenshot.
+- [ ] Add `Search skills…` input + refresh control top-right.
+- [ ] Fold **Connectors** into this page reworded as **Tools** (plugins + connectors to external apps). Connectors are tools that "connect" to other apps.
+- [ ] Each connectable tool shows a **Connect** / **Connected** state; connecting auto-enables the related skills/toolset.
+- [ ] Keep existing `/api/skills` + `/api/connectors` data sources; add a combined view-model in `lib/api.ts` if needed.
 
-- [ ] Create a field model helper for inspector params.
-- [ ] Generate inspector fields from JSON schema when available.
-- [ ] Keep explicit field overrides for Canvas-specific node types.
-- [ ] Render string params with text inputs.
-- [ ] Render number params with number inputs.
-- [ ] Render integer params with number inputs.
-- [ ] Render boolean params with checkboxes or switches.
-- [ ] Render enum params with selects.
-- [ ] Render object params with JSON textareas.
-- [ ] Render array params with JSON textareas.
-- [ ] Parse number inputs back to numbers.
-- [ ] Parse boolean inputs back to booleans.
-- [ ] Parse object JSON back to objects.
-- [ ] Parse array JSON back to arrays.
-- [ ] Show inline validation for invalid JSON.
-- [ ] Prevent invalid JSON from silently overwriting the prior valid value.
-- [ ] Improve mapped-value display in the inspector.
-- [ ] Add a clear-mapping action.
-- [ ] Handle upstream output with no sample keys.
-- [ ] Add tests for typed param parsing.
-- [ ] Add tests for invalid JSON handling.
+## Phase 4 — 1-click connections (the core UX goal)
 
-### Phase 5: Separate Execution State From Document State
+- [ ] Audit existing connect flows in `gateway/connectors_routes.py`, `google_connector.py`, `oauth_connectors.py` (OAuth device-flow + token paste already exist).
+- [ ] Design a single **"Connect"** affordance per app: OAuth where available (Google, GitHub, Slack, Notion, etc.), device-flow fallback, token-paste last resort — all behind one button with progressive disclosure.
+- [ ] On successful connect, **auto-enable** the matching skill(s)/toolset and surface a toast ("Gmail connected — email skills enabled").
+- [ ] Add a connectors→skills mapping (which skills/toolsets light up per connector) and persist enablement.
+- [ ] Add MCP servers as connectable tools: surface MCP registry / one-click add (leverage existing MCP settings tab) inside Skills & Tools.
+- [ ] Add CLI-backed tools (claude-code, codex, opencode) as toggle rows with a "detected/not detected" state and an install hint.
+- [ ] Ensure disconnect/revoke is one click and disables dependent skills (with confirmation).
+- [ ] Add empty/needs-setup states with clear copy aimed at non-technical users.
 
-- [ ] Create `src/spark_cli/web/src/pages/canvas/useCanvasRun.ts`.
-- [ ] Move `runningIds` into `useCanvasRun`.
-- [ ] Move `runningAll` into `useCanvasRun`.
-- [ ] Move `activeRunId` into `useCanvasRun`.
-- [ ] Move `lastRunStatus` into `useCanvasRun`.
-- [ ] Move single-node run logic into `useCanvasRun`.
-- [ ] Move full workflow run logic into `useCanvasRun`.
-- [ ] Move run cancellation logic into `useCanvasRun`.
-- [ ] Guard stream event handling by current canvas identity.
-- [ ] Close any active EventSource when loading a different canvas.
-- [ ] Ensure run results do not mark the graph dirty.
-- [ ] Ensure loading execution history does not mark the graph dirty.
-- [ ] Clear stale running node ids after run completion.
-- [ ] Clear stale running node ids after run cancellation.
-- [ ] Improve execution history filtering by exact canvas identity.
-- [ ] Show execution duration in the history panel.
-- [ ] Show execution errors in the history panel.
+## Phase 5 — Messaging page
 
-### Phase 6: Refine Canvas UX
+- [ ] Create `pages/MessagingPage.tsx`: left scrollable list of platforms with icon + name + connected dot; right detail pane.
+- [ ] Source the platform list from `src/gateway/platforms/` (telegram, discord, slack, mattermost, matrix, whatsapp, signal, bluebubbles, homeassistant, email, sms/twilio, dingtalk, feishu/lark, wecom, wechat, qqbot, api_server, webhooks, irc, line, etc.).
+- [ ] Detail pane sections: status chips (Disabled / Needs setup / gateway state), "Get your credentials" help + setup-guide link, **Required** fields, **Recommended** fields, collapsible **Advanced**, enable toggle, **Save changes**.
+- [ ] Add `/api/messaging` (or extend gateway config endpoints) to read/write per-platform credentials + enabled state; reuse existing gateway config plumbing (`gateway/config.py`, `display_config.py`).
+- [ ] Wire Save → restart/refresh the relevant gateway channel (`gateway/restart.py`).
+- [ ] Add `Search messaging…` filter for the platform list.
 
-- [ ] Split toolbar markup into a `CanvasToolbar` component.
-- [ ] Group document controls together in the toolbar.
-- [ ] Group run controls together in the toolbar.
-- [ ] Group edit controls together in the toolbar.
-- [ ] Group panel controls together in the toolbar.
-- [ ] Keep destructive delete visually separated.
-- [ ] Disable Duplicate when nothing is selected.
-- [ ] Disable Delete when there is no current saved canvas.
-- [ ] Disable Run when the graph is empty.
-- [ ] Add a first-time empty canvas state.
-- [ ] Create an `OpenCanvasPanel` component.
-- [ ] Add search to the open canvas panel.
-- [ ] Sort saved canvases by updated time.
-- [ ] Show global/project badges in the open canvas panel.
-- [ ] Create a `NodeBrowserPanel` component.
-- [ ] Add category filters to the node browser.
-- [ ] Add recent node types to the node browser.
-- [ ] Add loading state for node types.
-- [ ] Add error state for node type loading failure.
-- [ ] Add canvas-level error banner for failed load.
-- [ ] Add canvas-level error banner for failed save.
-- [ ] Add canvas-level error banner for failed run.
+## Phase 6 — Artifacts page
 
-### Phase 7: Backend Hardening
+- [ ] Create `pages/ArtifactsPage.tsx` with tabs **All / Images / Files / Links** (each with a live count).
+- [ ] Aggregate artifacts produced by sessions (generated images, file outputs, links) — define/extend an `/api/artifacts` endpoint backed by workspace files + session outputs.
+- [ ] Empty state: "No artifacts found — Generated images and file outputs will appear here as sessions produce them."
+- [ ] Grid/list rendering with type filtering; click opens the artifact (image preview, file download, link out).
 
-- [ ] Validate node ids are unique in `canvas_routes.py`.
-- [ ] Validate edges reference existing source nodes.
-- [ ] Validate edges reference existing target nodes.
-- [ ] Validate request body scope matches URL scope.
-- [ ] Validate request body slug matches URL slug.
-- [ ] Add a maximum node count guard.
-- [ ] Add a maximum edge count guard.
-- [ ] Add a maximum serialized canvas size guard.
-- [ ] Return 400 with actionable messages for invalid docs.
-- [ ] Include corrupt canvas entries in list responses with an `error` field.
-- [ ] Add tests for duplicate node ids.
-- [ ] Add tests for invalid edge references.
-- [ ] Add tests for scope mismatch.
-- [ ] Add tests for slug mismatch.
-- [ ] Add tests for corrupt file listing.
-- [ ] Confirm all canvas storage paths use `get_spark_home()`.
+## Phase 7 — Settings panel parity
 
-### Phase 8: Verify
+- [ ] Verify the existing `SettingsPanel.tsx` sections match the reference (Model, Chat, Appearance, Workspace, Safety, Memory & Context, Voice, Advanced, Providers, Gateway, Tools & Keys, MCP, Archived Chats, About).
+- [ ] Adjust labels/grouping/ordering to match `settings-*.png` screenshots where they differ.
+- [ ] Keep Settings reachable from the sidebar bottom; confirm modal styling matches dark minimal aesthetic.
 
-- [ ] Run backend canvas route tests.
-- [ ] Run canvas tool tests.
-- [ ] Run frontend lint.
-- [ ] Run frontend build.
-- [ ] Manually create a global canvas.
-- [ ] Manually create a project canvas.
-- [ ] Manually drag a file into a global canvas.
-- [ ] Manually drag a file into a project canvas.
-- [ ] Manually resize a media node and verify it survives reload.
-- [ ] Manually resize an iframe node and verify it survives reload.
-- [ ] Manually pan/zoom and verify viewport survives reload.
-- [ ] Manually trigger an agent `canvas` tool update while local board is dirty.
-- [ ] Manually run a graph.
-- [ ] Manually cancel a graph run.
-- [ ] Manually load an execution result.
+## Phase 8 — Visual polish / theme
 
-Verification commands:
+- [ ] Tune spacing, type scale, and muted palette to match Hermes minimal/sleek look across all new pages.
+- [ ] Confirm status bar at bottom (Gateway ready · Agents · Cron · model · version) matches screenshots.
+- [ ] Verify dark mode + responsive (use `preview_resize`) for sidebar collapse, messaging split, artifacts grid.
 
-```bash
-source venv/bin/activate
-python -m pytest tests/spark_cli/test_canvas_routes.py tests/tools/test_canvas_tool.py -q
-cd src/spark_cli/web && npm run lint && npm run build
-```
+## Phase 9 — Desktop app parity
 
-## Open Questions
+- [ ] Verify Tauri shell (`isTauri()` paths in `App.tsx`) renders the new layout identically.
+- [ ] Confirm tray "new chat" + `spark://` deep links still route correctly after sidebar refactor.
+- [ ] Rebuild the macOS app via `/build-mac` and smoke-test the new UI in the packaged app.
 
-- [ ] Decide whether Canvas results should ever persist in the canvas document.
-- [ ] Decide whether agent `canvas` tool updates should support patch/append operations.
-- [ ] Decide whether project canvas JSON files should remain directly editable in the Files tab.
-- [ ] Decide whether unsaved canvases should be recoverable across reloads via local draft storage.
-- [ ] Decide whether scheduled/webhook triggers need explicit registration outside normal save.
+## Phase 10 — Verification & ship
+
+- [ ] Run the dev server and verify each page via preview tools (snapshot + screenshot): new-session, skills & tools, messaging, artifacts, settings.
+- [ ] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for any backend additions.
+- [ ] `python -m pytest tests/ -m "not slow" -q` green (add tests for new `/api/messaging` + `/api/artifacts` routes).
+- [ ] Build the web bundle and confirm `web_dist/` is regenerated.
+- [ ] Before/after screenshots attached; open a PR from a feature branch (never push to main).
+
+---
+
+### Decisions (locked)
+- **Demoted pages:** `chat/files/canvas/kanban/cron` stay reachable but move off the primary sidebar → command palette (Cmd+K) + a secondary "More" menu. Primary sidebar matches Hermes exactly.
+- **Branding:** keep **Spark** identity (wordmark + name), but use the Hermes centered-serif + bottom-composer layout from the screenshots.
+
+### Open questions (resolve while building)
+- [ ] Artifacts backing store: derive from workspace files only, or add a dedicated artifact index? — default: derive first, index later if needed.

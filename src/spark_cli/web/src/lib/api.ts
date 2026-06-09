@@ -1114,7 +1114,7 @@ export const api = {
     fetchJSON<CanvasDoc>(canvasUrl(scope, id, slug)),
 
   saveCanvas: (doc: CanvasDoc) =>
-    fetchJSON<{ ok: boolean; id: string; scope: CanvasScope; slug: string | null; updatedAt: string }>(
+    fetchJSON<{ ok: boolean; id: string; scope: CanvasScope; slug: string | null; updatedAt: string; revision: string }>(
       canvasUrl(doc.scope, doc.id, doc.slug),
       {
         method: "PUT",
@@ -1768,6 +1768,8 @@ export interface CanvasDoc {
   viewport: CanvasViewport;
   version: number;
   updatedAt?: string | null;
+  revision?: string | null;
+  expectedRevision?: string | null;
 }
 
 // React Flow node/edge shapes (loose — the canvas owns the concrete data types).
@@ -1796,6 +1798,8 @@ export interface CanvasSummary {
   scope: CanvasScope;
   slug: string | null;
   updatedAt: string;
+  revision?: string | null;
+  error?: string | null;
 }
 
 export interface CanvasListResponse {
