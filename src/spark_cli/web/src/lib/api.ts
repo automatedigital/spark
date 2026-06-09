@@ -971,6 +971,29 @@ export const api = {
     );
   },
 
+  // Artifacts
+  listArtifacts: (type: string = "all", limit = 200) =>
+    fetchJSON<ArtifactsResponse>(
+      `/api/artifacts?type=${encodeURIComponent(type)}&limit=${limit}`,
+    ),
+
+  // Messaging platforms
+  listMessagingPlatforms: () =>
+    fetchJSON<MessagingPlatformsResponse>("/api/messaging/platforms"),
+
+  updateMessagingPlatform: (
+    platformId: string,
+    body: { enabled?: boolean; values?: Record<string, string | boolean> },
+  ) =>
+    fetchJSON<MessagingPlatform>(
+      `/api/messaging/platforms/${encodeURIComponent(platformId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
+
   // Connectors
   listConnectors: () =>
     fetchJSON<ConnectorStatus[]>("/api/connectors"),
@@ -1991,6 +2014,58 @@ export interface GoogleSetupInfo {
   console_url: string;
   client_type: string;
   error?: string;
+}
+
+export interface ArtifactInfo {
+  id: string;
+  name: string;
+  type: "image" | "file" | "link";
+  project_slug: string;
+  project_name: string;
+  path: string;
+  url: string;
+  size: number;
+  mtime: number;
+  mime: string;
+}
+
+export interface ArtifactsResponse {
+  artifacts: ArtifactInfo[];
+  counts: { all: number; images: number; files: number; links: number };
+}
+
+export interface MessagingField {
+  key: string;
+  label: string;
+  description: string;
+  type: "text" | "secret" | "bool" | "number" | string;
+  placeholder: string;
+  set: boolean;
+  value: string;
+}
+
+export interface MessagingPlatform {
+  id: string;
+  name: string;
+  description: string;
+  help_text: string;
+  setup_guide_url: string;
+  enabled: boolean;
+  configured: boolean;
+  runtime: unknown;
+  fields: {
+    required: MessagingField[];
+    recommended: MessagingField[];
+    advanced: MessagingField[];
+  };
+  gateway_running?: boolean;
+  saved?: string[];
+  restart?: { ok: boolean; running: boolean; detail: string };
+}
+
+export interface MessagingPlatformsResponse {
+  platforms: MessagingPlatform[];
+  gateway_running: boolean;
 }
 
 export interface ConnectorStatus {

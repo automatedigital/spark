@@ -21,6 +21,8 @@ interface PromptBarProps {
   workspaceSlug?: string;
   contextItems?: ContextItem[];
   sessionId?: string | null;
+  /** Override the idle placeholder text. */
+  placeholder?: string;
 }
 
 function formatTokens(n: number): string {
@@ -485,6 +487,7 @@ export function PromptBar({
   workspaceSlug,
   contextItems = [],
   sessionId,
+  placeholder,
 }: PromptBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
@@ -730,7 +733,7 @@ export function PromptBar({
             onBlur={() => setIsFocused(false)}
             disabled={inputBlocked}
             placeholder={
-              isFocused ? "" : streaming ? "Type to redirect · Enter to send while responding" : uploading ? "Uploading…" : "Ask anything · / for commands · @ for context"
+              isFocused ? "" : streaming ? "Type to redirect · Enter to send while responding" : uploading ? "Uploading…" : placeholder ?? "Ask anything · / for commands · @ for context"
             }
             rows={1}
             className="relative z-10 w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:cursor-not-allowed min-h-[52px] max-h-[240px] overflow-y-auto"

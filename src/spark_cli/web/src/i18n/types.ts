@@ -72,6 +72,10 @@ export interface Translations {
       canvas: string;
       memory: string;
       connectors: string;
+      newSession: string;
+      skillsAndTools: string;
+      messaging: string;
+      artifacts: string;
     };
   };
 

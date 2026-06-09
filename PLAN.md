@@ -34,35 +34,35 @@ Current state (for reference):
 
 ## Phase 1 — Global sidebar restructure (`App.tsx`)
 
-- [ ] Replace `NAV_ITEMS` icon rail with the Hermes section order: New session, Skills & Tools, Messaging, Artifacts.
-- [ ] Add **New session** action button at the top (resets chat to a fresh thread; reuse existing `spark-new-chat` CustomEvent path).
-- [ ] Add **Search sessions…** input directly into the global sidebar (hoist search logic out of `ChatPage`).
-- [ ] Add **Pinned** section header + pinned-session list to the global sidebar.
-- [ ] Add **Sessions** section grouped by **project workspace** (use existing `WorkspaceProject` / `SessionInfo` from `lib/api.ts`); show "No workspace" group for ungrouped sessions.
-- [ ] Keep **Settings** pinned to the bottom of the sidebar (retain modal trigger via `setSettingsOpen`).
-- [ ] Preserve collapse/expand + hover-expand behavior already in `App.tsx`.
-- [ ] Wire sidebar session click → navigate to chat + load that session (replace ChatPage-internal selection).
-- [ ] Remove the now-duplicated session list/search/pinned UI from `ChatPage.tsx` (ChatPage becomes the thread view only).
-- [ ] Move `chat`, `files`, `canvas`, `kanban`, `cron` out of the primary rail into a secondary location (command palette + a "More" menu or workspace tabs) so the primary sidebar matches Hermes exactly.
-- [ ] Update mobile nav in `App.tsx` header to mirror the new sections.
-- [ ] Update `i18n/en.ts` + `i18n/types.ts` nav labels (newSession, skillsAndTools, messaging, artifacts) and any other locales.
+- [x] Replace `NAV_ITEMS` icon rail with the Hermes section order: New session, Skills & Tools, Messaging, Artifacts.
+- [x] Add **New session** action button at the top (resets chat to a fresh thread; reuse existing `spark-new-chat` CustomEvent path).
+- [x] Add **Search sessions…** input directly into the global sidebar (hoist search logic out of `ChatPage`).
+- [x] Add **Pinned** section header + pinned-session list to the global sidebar.
+- [x] Add **Sessions** section grouped by **project workspace** (use existing `WorkspaceProject` / `SessionInfo` from `lib/api.ts`); show "No workspace" group for ungrouped sessions.
+- [x] Keep **Settings** pinned to the bottom of the sidebar (retain modal trigger via `setSettingsOpen`).
+- [x] Preserve collapse/expand + hover-expand behavior already in `App.tsx`.
+- [x] Wire sidebar session click → navigate to chat + load that session (replace ChatPage-internal selection).
+- [x] Remove the now-duplicated session list/search/pinned UI from `ChatPage.tsx` (ChatPage becomes the thread view only).
+- [x] Move `chat`, `files`, `canvas`, `kanban`, `cron` out of the primary rail into a secondary location (command palette + a "More" menu or workspace tabs) so the primary sidebar matches Hermes exactly.
+- [x] Update mobile nav in `App.tsx` header to mirror the new sections.
+- [x] Update `i18n/en.ts` + `i18n/types.ts` nav labels (newSession, skillsAndTools, messaging, artifacts) and any other locales.
 
 ## Phase 2 — New-session screen
 
-- [ ] Build centered hero: large serif "SPARK" (or "HERMES AGENT"-equivalent) wordmark + subtitle ("Type a task, question, or snippet…").
-- [ ] Bottom-centered composer "Start with a goal" with mic + send affordances (reuse `components/chat/PromptBar.tsx`).
-- [ ] Show this hero when no active session is selected; on first send, create a session and transition to the thread view.
-- [ ] Match dark background + subtle texture from screenshots (reuse existing `noise-overlay` / `warm-glow`).
+- [x] Build centered hero: large serif "SPARK" (or "HERMES AGENT"-equivalent) wordmark + subtitle ("Type a task, question, or snippet…").
+- [x] Bottom-centered composer "Start with a goal" with mic + send affordances (reuse `components/chat/PromptBar.tsx`).
+- [x] Show this hero when no active session is selected; on first send, create a session and transition to the thread view.
+- [x] Match dark background + subtle texture from screenshots (reuse existing `noise-overlay` / `warm-glow`).
 
 ## Phase 3 — Skills & Tools (merged page)
 
-- [ ] Create a unified **Skills & Tools** page with two top tabs: **Skills** and **Toolsets** (matches `skills-and-tools.png`).
-- [ ] Render skills as a flat, searchable, category-grouped list; each row = name + one-line description + a right-aligned toggle (`ui/switch.tsx`).
-- [ ] Top category filter chips with counts (Apple, Autonomous-AI-Agents, Creative, … Software-Development), like the screenshot.
-- [ ] Add `Search skills…` input + refresh control top-right.
-- [ ] Fold **Connectors** into this page reworded as **Tools** (plugins + connectors to external apps). Connectors are tools that "connect" to other apps.
-- [ ] Each connectable tool shows a **Connect** / **Connected** state; connecting auto-enables the related skills/toolset.
-- [ ] Keep existing `/api/skills` + `/api/connectors` data sources; add a combined view-model in `lib/api.ts` if needed.
+- [x] Create a unified **Skills & Tools** page with two top tabs: **Skills** and **Toolsets** (matches `skills-and-tools.png`).
+- [x] Render skills as a flat, searchable, category-grouped list; each row = name + one-line description + a right-aligned toggle (`ui/switch.tsx`).
+- [x] Top category filter chips with counts (Apple, Autonomous-AI-Agents, Creative, … Software-Development), like the screenshot.
+- [x] Add `Search skills…` input + refresh control top-right.
+- [x] Fold **Connectors** into this page reworded as **Tools** (plugins + connectors to external apps). Connectors are tools that "connect" to other apps. (Third **Tools** tab embeds the connectors view.)
+- [ ] Each connectable tool shows a **Connect** / **Connected** state; connecting auto-enables the related skills/toolset. (Connect states shown; auto-enable lands in Phase 4.)
+- [x] Keep existing `/api/skills` + `/api/connectors` data sources; add a combined view-model in `lib/api.ts` if needed. (Not needed — page composes both APIs directly.)
 
 ## Phase 4 — 1-click connections (the core UX goal)
 
@@ -77,19 +77,19 @@ Current state (for reference):
 
 ## Phase 5 — Messaging page
 
-- [ ] Create `pages/MessagingPage.tsx`: left scrollable list of platforms with icon + name + connected dot; right detail pane.
-- [ ] Source the platform list from `src/gateway/platforms/` (telegram, discord, slack, mattermost, matrix, whatsapp, signal, bluebubbles, homeassistant, email, sms/twilio, dingtalk, feishu/lark, wecom, wechat, qqbot, api_server, webhooks, irc, line, etc.).
-- [ ] Detail pane sections: status chips (Disabled / Needs setup / gateway state), "Get your credentials" help + setup-guide link, **Required** fields, **Recommended** fields, collapsible **Advanced**, enable toggle, **Save changes**.
+- [x] Create `pages/MessagingPage.tsx`: left scrollable list of platforms with icon + name + connected dot; right detail pane.
+- [x] Source the platform list from `src/gateway/platforms/` (telegram, discord, slack, mattermost, matrix, whatsapp, signal, bluebubbles, homeassistant, email, sms/twilio, dingtalk, feishu/lark, wecom, wechat, qqbot, api_server, webhooks, irc, line, etc.).
+- [x] Detail pane sections: status chips (Disabled / Needs setup / gateway state), "Get your credentials" help + setup-guide link, **Required** fields, **Recommended** fields, collapsible **Advanced**, enable toggle, **Save changes**.
 - [x] Add `/api/messaging` (or extend gateway config endpoints) to read/write per-platform credentials + enabled state; reuse existing gateway config plumbing (`gateway/config.py`, `display_config.py`).
 - [x] Wire Save → restart/refresh the relevant gateway channel (`gateway/restart.py`).
-- [ ] Add `Search messaging…` filter for the platform list.
+- [x] Add `Search messaging…` filter for the platform list.
 
 ## Phase 6 — Artifacts page
 
-- [ ] Create `pages/ArtifactsPage.tsx` with tabs **All / Images / Files / Links** (each with a live count).
+- [x] Create `pages/ArtifactsPage.tsx` with tabs **All / Images / Files / Links** (each with a live count).
 - [x] Aggregate artifacts produced by sessions (generated images, file outputs, links) — define/extend an `/api/artifacts` endpoint backed by workspace files + session outputs.
-- [ ] Empty state: "No artifacts found — Generated images and file outputs will appear here as sessions produce them."
-- [ ] Grid/list rendering with type filtering; click opens the artifact (image preview, file download, link out).
+- [x] Empty state: "No artifacts found — Generated images and file outputs will appear here as sessions produce them."
+- [x] Grid/list rendering with type filtering; click opens the artifact (image preview, file download, link out).
 
 ## Phase 7 — Settings panel parity
 

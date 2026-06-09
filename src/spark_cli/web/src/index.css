@@ -326,6 +326,14 @@ code {
 .font-collapse { font-family: "Avenir Next", "Segoe UI", sans-serif; font-weight: 700; }
 .font-mono-ui { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace; }
 
+/* Hermes-style serif wordmark for the new-session hero */
+.spark-wordmark-serif {
+  font-family: "Didot", "Bodoni MT", "Playfair Display", Georgia, serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+}
+
 /* ---- Subtle grain overlay for badges ---- */
 .grain {
   position: relative;

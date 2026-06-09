@@ -22,6 +22,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useToast } from "@/hooks/useToast";
+import { Toast } from "@/components/Toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -103,6 +105,44 @@ export default function ConnectorsPage() {
   const [testingConnector, setTestingConnector] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+  const prevConnectedRef = useRef<Set<string> | null>(null);
+  const { toast, showToast } = useToast();
+
+  // 1-click UX: when a connector transitions to connected, auto-enable the
+  // skills it maps to (ConnectorStatus.skills); on disconnect, disable them.
+  // Watching state transitions covers every connect path (OAuth popup,
+  // device flow, token paste) without instrumenting each handler.
+  useEffect(() => {
+    if (loading) return;
+    const all = google ? [google, ...connectors] : connectors;
+    const connected = new Set(all.filter((c) => c.connected).map((c) => c.id));
+    const prev = prevConnectedRef.current;
+    prevConnectedRef.current = connected;
+    if (prev === null) return; // initial load — no transition to react to
+
+    const toggleMapped = async (connector: ConnectorStatus, enable: boolean) => {
+      const skills = connector.skills ?? [];
+      const results = await Promise.allSettled(
+        skills.map((name) => api.toggleSkill(name, enable)),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      if (enable) {
+        showToast(
+          ok > 0
+            ? `${connector.name} connected — ${ok} skill${ok === 1 ? "" : "s"} enabled`
+            : `${connector.name} connected`,
+          "success",
+        );
+      } else if (ok > 0) {
+        showToast(`${connector.name} disconnected — ${ok} skill${ok === 1 ? "" : "s"} disabled`, "success");
+      }
+    };
+
+    for (const c of all) {
+      if (c.connected && !prev.has(c.id)) void toggleMapped(c, true);
+      else if (!c.connected && prev.has(c.id)) void toggleMapped(c, false);
+    }
+  }, [connectors, google, loading, showToast]);
 
   const refresh = useCallback(async () => {
     try {

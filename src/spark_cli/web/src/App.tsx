@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import {
+  Archive,
+  Blocks,
   ChevronLeft,
   ChevronRight,
   Clock,
   Download,
   FolderOpen,
   LayoutGrid,
+  MessageCircle,
   MessageSquare,
-  Package,
-  Plug,
+  MoreHorizontal,
+  Plus,
   Settings,
   Square,
 } from "lucide-react";
@@ -19,7 +22,12 @@ import KanbanPage from "@/pages/KanbanPage";
 import CanvasPage from "@/pages/CanvasPage";
 import SkillsPage from "@/pages/SkillsPage";
 import ConnectorsPage from "@/pages/ConnectorsPage";
+import SkillsToolsPage from "@/pages/SkillsToolsPage";
+import MessagingPage from "@/pages/MessagingPage";
+import ArtifactsPage from "@/pages/ArtifactsPage";
 import SettingsPanel from "@/components/SettingsPanel";
+import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
+import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 import { useUpdateModal } from "@/lib/UpdateModalContext";
@@ -35,19 +43,23 @@ import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
 
 
-const NAV_ITEMS = [
+// Hermes-style primary sections (after the "New session" action).
+const PRIMARY_NAV = [
+  { id: "skillsTools", labelKey: "skillsAndTools" as const, icon: Blocks },
+  { id: "messaging", labelKey: "messaging" as const, icon: MessageCircle },
+  { id: "artifacts", labelKey: "artifacts" as const, icon: Archive },
+] as const;
+
+// Demoted pages — reachable via the "More" menu + command palette.
+const MORE_NAV = [
   { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
   { id: "files", labelKey: "files" as const, icon: FolderOpen },
   { id: "canvas", labelKey: "canvas" as const, icon: Square },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
-  { id: "skills", labelKey: "skills" as const, icon: Package },
-  { id: "connectors", labelKey: "connectors" as const, icon: Plug },
 ] as const;
 
-type PageId = (typeof NAV_ITEMS)[number]["id"];
-
-const PAGE_COMPONENTS: Record<PageId, React.FC> = {
+const PAGE_COMPONENTS = {
   chat: ChatPage,
   kanban: KanbanPage,
   cron: CronPage,
@@ -55,9 +67,34 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   files: FilesPage,
   canvas: CanvasPage,
   connectors: ConnectorsPage,
+  skillsTools: SkillsToolsPage,
+  messaging: MessagingPage,
+  artifacts: ArtifactsPage,
+} as const;
+
+type PageId = keyof typeof PAGE_COMPONENTS;
+
+type NavLabelKey =
+  | (typeof PRIMARY_NAV)[number]["labelKey"]
+  | (typeof MORE_NAV)[number]["labelKey"]
+  | "newSession"
+  | "skills"
+  | "connectors";
+
+const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
+  chat: "chat",
+  files: "files",
+  canvas: "canvas",
+  kanban: "kanban",
+  cron: "cron",
+  skills: "skills",
+  connectors: "connectors",
+  skillsTools: "skillsAndTools",
+  messaging: "messaging",
+  artifacts: "artifacts",
 };
 
-const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas"]);
+const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas", "messaging", "skillsTools", "artifacts"]);
 
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
@@ -128,10 +165,102 @@ function SparkLogo({ className = "" }: { className?: string }) {
   );
 }
 
+// ── More menu (demoted pages: Chat, Files, Canvas, Kanban, Cron) ──
+
+function MoreMenu({
+  page,
+  navigateTo,
+  runningTaskCount,
+  sidebarOpen,
+  direction,
+  navLabel,
+}: {
+  page: PageId;
+  navigateTo: (id: PageId) => void;
+  runningTaskCount: number;
+  sidebarOpen: boolean;
+  direction: "up" | "down";
+  navLabel: (key: NavLabelKey) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const moreActive = MORE_NAV.some((item) => item.id === page);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        title="More"
+        aria-label="More pages"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={`group relative flex h-8 items-center rounded-md transition ${
+          moreActive || open
+            ? "bg-foreground/10 text-foreground"
+            : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+        } ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
+      >
+        <div className="relative shrink-0">
+          <MoreHorizontal className="h-4 w-4" />
+          {runningTaskCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
+              {runningTaskCount > 9 ? "9+" : runningTaskCount}
+            </span>
+          )}
+        </div>
+        {sidebarOpen && <span className="truncate text-[13px] font-medium">More</span>}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            className={`z-50 w-44 rounded-md border border-border bg-popover/95 p-1 shadow-xl backdrop-blur-xl ${
+              direction === "up" ? "absolute bottom-full left-0 mb-1" : "fixed right-2 top-12"
+            }`}
+            role="menu"
+          >
+            {MORE_NAV.map(({ id, labelKey, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  navigateTo(id);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left text-[13px] transition ${
+                  page === id
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate">{navLabel(labelKey)}</span>
+                {id === "kanban" && runningTaskCount > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">
+                    {runningTaskCount > 9 ? "9+" : runningTaskCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
+  return (
+    <SessionStoreProvider>
+      <AppShell />
+    </SessionStoreProvider>
+  );
+}
+
+function AppShell() {
   const [page, setPage] = useState<PageId>(() => {
     const saved = localStorage.getItem("spark-active-page");
-    return (saved && NAV_ITEMS.some((item) => item.id === saved)) ? (saved as PageId) : "chat";
+    return saved && saved in PAGE_COMPONENTS ? (saved as PageId) : "chat";
   });
   const [navExpanded, setNavExpanded] = useState(() => {
     const saved = localStorage.getItem("spark-nav-expanded");
@@ -157,6 +286,9 @@ export default function App() {
 
   // ── Activity badge counts ──
   const [runningTaskCount, setRunningTaskCount] = useState(0);
+
+  // ── Shared session store (global sidebar + ChatPage) ──
+  const { selectSession, newProjectThread } = useSessionStore();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -226,6 +358,25 @@ export default function App() {
     localStorage.setItem("spark-active-page", id);
   };
 
+  const navLabel = (key: NavLabelKey) => t.app.nav[key];
+
+  // "New session" — clear selection so ChatPage shows the hero composer.
+  // Same path as the desktop tray "new chat" action.
+  const handleNewSession = () => {
+    navigateTo("chat");
+    window.dispatchEvent(new CustomEvent("spark-new-chat"));
+  };
+
+  const openSidebarSession = (id: string) => {
+    navigateTo("chat");
+    selectSession(id);
+  };
+
+  const openProjectCompose = (slug: string) => {
+    navigateTo("chat");
+    newProjectThread(slug);
+  };
+
   // ── Desktop shell: tray "new chat" + spark:// deep links (§3.2) ──
   useEffect(() => {
     if (!isTauri()) return;
@@ -257,6 +408,9 @@ export default function App() {
     const handler = (event: Event) => {
       const target = (event as CustomEvent<GlobalNavTarget>).detail;
       if (target?.type === "canvas") navigateTo("canvas");
+      // Thread/project targets are consumed by the session store; make sure
+      // the chat page is visible so the selection shows up.
+      if (target?.type === "thread" || target?.type === "project") navigateTo("chat");
     };
     window.addEventListener(GLOBAL_NAV_EVENT, handler);
     return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
@@ -462,13 +616,29 @@ export default function App() {
               {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
           </div>
-          <nav className={`flex flex-1 flex-col gap-1 px-2 py-3 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
-            {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
+          <nav className={`flex shrink-0 flex-col gap-1 px-2 pt-3 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+            {/* New session */}
+            <button
+              type="button"
+              title={navLabel("newSession")}
+              aria-label={navLabel("newSession")}
+              onClick={handleNewSession}
+              className={`group relative flex h-8 items-center rounded-md text-muted-foreground transition hover:bg-foreground/6 hover:text-foreground ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              {sidebarOpen && (
+                <span className="truncate text-[13px] font-medium">{navLabel("newSession")}</span>
+              )}
+              <span className={`pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-xl backdrop-blur-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
+                {navLabel("newSession")}
+              </span>
+            </button>
+            {PRIMARY_NAV.map(({ id, labelKey, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
-                title={t.app.nav[labelKey]}
-                aria-label={t.app.nav[labelKey]}
+                title={navLabel(labelKey)}
+                aria-label={navLabel(labelKey)}
                 onClick={() => navigateTo(id)}
                 className={`group relative flex h-8 items-center rounded-md transition ${
                   page === id
@@ -479,26 +649,37 @@ export default function App() {
                 {page === id && sidebarOpen && (
                   <span className="absolute left-0 top-1.5 bottom-1.5 w-px rounded-full bg-foreground/70" />
                 )}
-                <div className="relative shrink-0">
-                  <Icon className="h-4 w-4" />
-                  {id === "kanban" && runningTaskCount > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
-                      {runningTaskCount > 9 ? "9+" : runningTaskCount}
-                    </span>
-                  )}
-                </div>
+                <Icon className="h-4 w-4 shrink-0" />
                 {sidebarOpen && (
-                  <span className="truncate text-[13px] font-medium">{t.app.nav[labelKey]}</span>
+                  <span className="truncate text-[13px] font-medium">{navLabel(labelKey)}</span>
                 )}
                 <span className={`pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-xl backdrop-blur-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
-                  {t.app.nav[labelKey]}
+                  {navLabel(labelKey)}
                 </span>
               </button>
             ))}
           </nav>
 
-          {/* Settings + Update buttons */}
+          {/* Search + Pinned + Sessions (hidden when collapsed; hover-expand reveals) */}
+          {sidebarOpen ? (
+            <SidebarSessions
+              onOpenSession={openSidebarSession}
+              onNewProjectThread={openProjectCompose}
+            />
+          ) : (
+            <div className="flex-1" />
+          )}
+
+          {/* More + Settings + Update buttons */}
           <div className={`border-t border-border px-2 py-2 flex flex-col gap-1 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+            <MoreMenu
+              page={page}
+              navigateTo={navigateTo}
+              runningTaskCount={runningTaskCount}
+              sidebarOpen={sidebarOpen}
+              direction="up"
+              navLabel={navLabel}
+            />
             {updateAvailable && (
               <button
                 type="button"
@@ -566,28 +747,39 @@ export default function App() {
                 <span className="text-sm font-semibold">Spark</span>
               </div>
               <div className="hidden md:block">
-                <div className="text-[13px] font-medium text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "workspace"]}</div>
+                <div className="text-[13px] font-medium text-foreground">{navLabel(PAGE_LABEL_KEYS[page])}</div>
               </div>
               {/* Mobile nav */}
               <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-md bg-card/45 p-1 scrollbar-none md:hidden">
-                {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
+                <button
+                  type="button"
+                  title={navLabel("newSession")}
+                  onClick={handleNewSession}
+                  className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/7 hover:text-foreground"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                {PRIMARY_NAV.map(({ id, labelKey, icon: Icon }) => (
                   <button
                     key={id}
                     type="button"
-                    title={t.app.nav[labelKey]}
+                    title={navLabel(labelKey)}
                     onClick={() => navigateTo(id)}
                     className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
                       page === id ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
                     }`}
                   >
                     <Icon className="h-4 w-4" />
-                    {id === "kanban" && runningTaskCount > 0 && (
-                      <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-white">
-                        {runningTaskCount > 9 ? "9+" : runningTaskCount}
-                      </span>
-                    )}
                   </button>
                 ))}
+                <MoreMenu
+                  page={page}
+                  navigateTo={navigateTo}
+                  runningTaskCount={runningTaskCount}
+                  sidebarOpen={false}
+                  direction="down"
+                  navLabel={navLabel}
+                />
                 {/* Settings button for mobile */}
                 <button
                   type="button"
