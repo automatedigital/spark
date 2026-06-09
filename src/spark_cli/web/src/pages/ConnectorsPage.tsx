@@ -413,6 +413,7 @@ export default function ConnectorsPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6 space-y-6">
+      <Toast toast={toast} />
       <div className="flex items-center gap-3">
         <Plug className="h-6 w-6 text-muted-foreground" />
         <div>

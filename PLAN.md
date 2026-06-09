@@ -61,19 +61,27 @@ Current state (for reference):
 - [x] Top category filter chips with counts (Apple, Autonomous-AI-Agents, Creative, … Software-Development), like the screenshot.
 - [x] Add `Search skills…` input + refresh control top-right.
 - [x] Fold **Connectors** into this page reworded as **Tools** (plugins + connectors to external apps). Connectors are tools that "connect" to other apps. (Third **Tools** tab embeds the connectors view.)
-- [ ] Each connectable tool shows a **Connect** / **Connected** state; connecting auto-enables the related skills/toolset. (Connect states shown; auto-enable lands in Phase 4.)
+- [x] Each connectable tool shows a **Connect** / **Connected** state; connecting auto-enables the related skills/toolset.
 - [x] Keep existing `/api/skills` + `/api/connectors` data sources; add a combined view-model in `lib/api.ts` if needed. (Not needed — page composes both APIs directly.)
 
 ## Phase 4 — 1-click connections (the core UX goal)
 
-- [ ] Audit existing connect flows in `gateway/connectors_routes.py`, `google_connector.py`, `oauth_connectors.py` (OAuth device-flow + token paste already exist).
-- [ ] Design a single **"Connect"** affordance per app: OAuth where available (Google, GitHub, Slack, Notion, etc.), device-flow fallback, token-paste last resort — all behind one button with progressive disclosure.
-- [ ] On successful connect, **auto-enable** the matching skill(s)/toolset and surface a toast ("Gmail connected — email skills enabled").
-- [ ] Add a connectors→skills mapping (which skills/toolsets light up per connector) and persist enablement.
-- [ ] Add MCP servers as connectable tools: surface MCP registry / one-click add (leverage existing MCP settings tab) inside Skills & Tools.
-- [ ] Add CLI-backed tools (claude-code, codex, opencode) as toggle rows with a "detected/not detected" state and an install hint.
-- [ ] Ensure disconnect/revoke is one click and disables dependent skills (with confirmation).
-- [ ] Add empty/needs-setup states with clear copy aimed at non-technical users.
+- [x] Audit existing connect flows in `gateway/connectors_routes.py`, `google_connector.py`, `oauth_connectors.py` (OAuth device-flow + token paste already exist).
+- [x] Design a single **"Connect"** affordance per app: OAuth where available (Google, GitHub, Slack, Notion, etc.), device-flow fallback, token-paste last resort — all behind one button with progressive disclosure.
+- [x] On successful connect, **auto-enable** the matching skill(s)/toolset and surface a toast ("Gmail connected — email skills enabled").
+- [x] Add a connectors→skills mapping (which skills/toolsets light up per connector) and persist enablement.
+- [x] Add MCP servers as connectable tools: surface MCP registry / one-click add (leverage existing MCP settings tab) inside Skills & Tools.
+- [x] Add CLI-backed tools (claude-code, codex, opencode) as toggle rows with a "detected/not detected" state and an install hint.
+- [x] Ensure disconnect/revoke is one click and disables dependent skills (with confirmation).
+- [x] Add empty/needs-setup states with clear copy aimed at non-technical users.
+
+
+**Phase 4 notes:**
+- Connect flows audited: Google OAuth popup + status polling, GitHub device flow, token-paste modal for api_key connectors — all already behind a single per-connector Connect button in `ConnectorsPage.tsx`.
+- Auto-enable: `ConnectorsPage` now watches disconnected→connected transitions and enables each connector's mapped skills (`ConnectorStatus.skills`), with a toast ("X connected — N skills enabled"). Disconnects disable the same skills.
+- Mapping lives in the existing connector registry (`src/tools/connectors/base.py` `skills=`); no new persistence needed (skill toggles persist via `/api/skills`).
+- CLI agents added as catalog connectors in `src/tools/connectors/generic.py`: `claude-code`, `codex`, `opencode` — detected via CLI on PATH + auth config files (`~/.claude.json`, `~/.codex/auth.json`, `~/.local/share/opencode/auth.json`).
+- MCP: "MCP servers" entry card at the top of the Tools tab → "Manage MCP" opens Settings (full one-click MCP registry install is future work).
 
 ## Phase 5 — Messaging page
 

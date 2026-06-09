@@ -270,6 +270,13 @@ function AppShell() {
   const [animKey, setAnimKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initialRef = useRef(true);
+
+  // Pages (e.g. Skills & Tools → "Manage MCP servers") can open Settings.
+  useEffect(() => {
+    const handler = () => setSettingsOpen(true);
+    window.addEventListener("spark-open-settings", handler);
+    return () => window.removeEventListener("spark-open-settings", handler);
+  }, []);
   const { t } = useI18n();
   const [authWall, setAuthWall] = useState(false);
   const [tokenHint, setTokenHint] = useState<string | null>(null);
