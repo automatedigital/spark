@@ -21,10 +21,16 @@ Current state (for reference):
 
 ## Phase 0 — Reference & scaffolding
 
-- [ ] Clone Hermes Agent for reference into a scratch dir: `git clone https://github.com/nousresearch/hermes-agent /tmp/hermes-agent-ref` (read-only; do not vendor wholesale).
-- [ ] Document in this file which Hermes components/layouts/styles we mirror vs. reimplement (license check before copying any code).
-- [ ] Capture baseline screenshots of the current Spark web UI (chat, skills, connectors, settings) for before/after comparison.
-- [ ] Confirm `npm run dev` works in `src/spark_cli/web/` and the dev server renders against the local gateway.
+- [x] Clone Hermes Agent for reference into a scratch dir: `git clone https://github.com/nousresearch/hermes-agent /tmp/hermes-agent-ref` (read-only; do not vendor wholesale).
+- [x] Document in this file which Hermes components/layouts/styles we mirror vs. reimplement (license check before copying any code).
+- [x] Capture baseline screenshots of the current Spark web UI (chat, skills, connectors, settings) for before/after comparison.
+- [x] Confirm `npm run dev` works in `src/spark_cli/web/` and the dev server renders against the local gateway.
+
+**Phase 0 notes:**
+- Hermes Agent is MIT-licensed (Nous Research, 2025) — copying code is permitted with license attribution; we still reimplement rather than vendor.
+- Reference UI lives at `/tmp/hermes-agent-ref/apps/desktop/src` (pages, `components/pane-shell`, chat) and `/tmp/hermes-agent-ref/web/src`.
+- Decision: **mirror layout/IA only** (sidebar section order, new-session hero composer, skills toggle list, messaging master-detail, artifacts tabs); **reimplement** all components in Spark's existing stack (shadcn/Tailwind 4, `ui/*` primitives, lucide icons, Spark theme tokens). No Hermes code is vendored.
+- Baseline screenshots: `screenshots/baseline/{chat,skills,connectors,settings}.png` (dev server `npm run dev` on :5173 proxying gateway on :9119 — both verified working).
 
 ## Phase 1 — Global sidebar restructure (`App.tsx`)
 
