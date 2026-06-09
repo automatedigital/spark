@@ -6246,6 +6246,10 @@ register_canvas_routes(app)
 from spark_cli.memory_routes import register_memory_routes
 register_memory_routes(app)
 register_workflow_routes(app)
+from spark_cli.artifacts_routes import register_artifacts_routes
+from spark_cli.messaging_routes import register_messaging_routes
+register_messaging_routes(app)
+register_artifacts_routes(app)
 
 
 # ── Workspace conversation endpoints ─────────────────────────────────────────
