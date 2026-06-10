@@ -74,7 +74,7 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 
 ## Phase 5 — Test, lint, and PR
 
-- [ ] Run full relevant test suites: `python -m pytest tests/ -m "not slow" -q` (use `.venv`, not anaconda).
+- [x] Run full relevant test suites: `python -m pytest tests/ -m "not slow" -q` (use `.venv`, not anaconda).
 - [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for touched files.
 - [x] `cd src/spark_cli/web && npm run build` — production bundle builds clean.
 - [ ] Browser-preview smoke test: new session upload, project thread upload, sidebar scroll, simulated SSE drop mid-turn recovers without freeze.
