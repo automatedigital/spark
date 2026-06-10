@@ -55,14 +55,14 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 - [x] Fix the flex/overflow chain: ensure `<aside>` in `src/spark_cli/web/src/App.tsx` (~line 605) and every wrapper down to `SidebarSessions`' scroll container (`SidebarSessions.tsx:345`) has `min-h-0` + proper `overflow` so the sessions list scrolls within the viewport.
 - [x] Add an always-visible thin scrollbar style for the sidebar sessions list (custom `scrollbar-width: thin` / `::-webkit-scrollbar` styling in `src/spark_cli/web/src/index.css`, applied via a class on the scroll container).
 - [x] Check the collapsed→hover-expanded absolute-positioned sidebar variant (`navHovered && !navExpanded` branch) gets the same scroll behavior.
-- [ ] Verify with browser preview at a short viewport height (e.g. 700px) that all sessions are reachable by scroll and the scrollbar is visible.
+- [x] Verify with browser preview at a short viewport height (e.g. 700px) that all sessions are reachable by scroll and the scrollbar is visible.
 
 ## Phase 3 — Upload missing in new-chat composer
 
 - [x] Add an `onUploadFiles` handler to the new-session hero `<PromptBar>` in `src/spark_cli/web/src/pages/ChatPage.tsx` (~line 118), using `api.uploadChatFiles` and appending `@files/<filename>` refs to the draft message (mirror `NewThreadCompose.handleUpload` at line 161).
 - [x] Confirm `NewThreadCompose` upload works immediately after project creation: `POST /api/workspace/projects` (`workspace_routes.py:204`) must create the project directory on disk before `_project_dir()` (line 78) is hit by the upload route — fix ordering if the dir is created lazily.
 - [x] Add drag-and-drop + paste-to-upload support on the hero composer if PromptBar already wires it (it does via `onUploadFiles` — verify it activates once the prop is passed).
-- [ ] Manual verify in preview: create project → "new chat" → upload via + button, drag-drop, and paste; file lands in workspace and `@files/...` ref is inserted.
+- [x] Manual verify in preview: create project → "new chat" → upload via + button, drag-drop, and paste; file lands in workspace and `@files/...` ref is inserted.
 
 ## Phase 4 — Memory provider fixes
 
@@ -77,7 +77,7 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 - [x] Run full relevant test suites: `python -m pytest tests/ -m "not slow" -q` (use `.venv`, not anaconda).
 - [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for touched files.
 - [x] `cd src/spark_cli/web && npm run build` — production bundle builds clean.
-- [ ] Browser-preview smoke test: new session upload, project thread upload, sidebar scroll, simulated SSE drop mid-turn recovers without freeze.
+- [x] Browser-preview smoke test: new session upload, project thread upload, sidebar scroll, simulated SSE drop mid-turn recovers without freeze.
 - [ ] Open a PR from a feature branch (e.g. `fix/webui-pete-feedback`) — never push to main directly.
 
 ## Phase 6 — Rebuild + release macOS desktop app
