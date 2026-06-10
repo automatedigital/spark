@@ -1,6 +1,6 @@
 [package]
 name = "spark"
-version = "1.0.7"
+version = "1.0.8"
 description = "Spark desktop app"
 authors = ["From the Root"]
 edition = "2021"
