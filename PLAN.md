@@ -82,8 +82,8 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 
 ## Phase 6 — Rebuild + release macOS desktop app
 
-- [ ] After PR is merged to main: bump desktop version (next after 1.0.8) per the build skill's convention.
-- [ ] Run `/build-mac` skill to rebuild the .app + .dmg with the updated web UI + backend.
-- [ ] Smoke-test the built app: launch, new session upload, sidebar scroll.
+- [x] After PR is merged to main: bump desktop version (next after 1.0.8) per the build skill's convention.
+- [x] Run `/build-mac` skill to rebuild the .app + .dmg with the updated web UI + backend.
+- [x] Smoke-test the built app: launch, new session upload, sidebar scroll.
 - [ ] Run `/release-mac` skill to publish the DMG to GitHub Releases.
 - [ ] Notify Pete with the changelog (freeze fix, sidebar scroll, upload in new chat, memory store recovery) and ask him to `git pull` + restart on the VPS.
