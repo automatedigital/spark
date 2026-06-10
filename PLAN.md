@@ -123,7 +123,7 @@ Current state (for reference):
 - [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for any backend additions. (Changed backend files pass focused Ruff and mypy checks; repository-wide checks retain pre-existing baseline findings.)
 - [x] `python -m pytest tests/ -m "not slow" -q` green (add tests for new `/api/messaging` + `/api/artifacts` routes). (`11566 passed, 150 skipped`.)
 - [x] Build the web bundle and confirm `web_dist/` is regenerated.
-- [ ] Before/after screenshots attached; open a PR from a feature branch (never push to main). (Screenshots attached; PR still pending.)
+- [x] Before/after screenshots attached; open a PR from a feature branch (never push to main). (PR #25.)
 
 ---
 
