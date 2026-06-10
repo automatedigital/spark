@@ -342,7 +342,7 @@ export function SidebarSessions({
       </div>
 
       {/* Scrollable list */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+      <div className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1 pb-2">
         {/* PINNED */}
         <div className="pt-2">
           <div className="flex items-center gap-1.5 px-2 pb-1">

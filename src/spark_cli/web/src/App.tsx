@@ -605,7 +605,7 @@ function AppShell() {
         <aside
           onMouseEnter={() => !navExpanded && setNavHovered(true)}
           onMouseLeave={() => setNavHovered(false)}
-          className={`hidden min-w-0 border-r border-border bg-card/58 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
+          className={`hidden min-h-0 min-w-0 overflow-hidden border-r border-border bg-card/58 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
             navHovered && !navExpanded
               ? " absolute left-0 top-0 bottom-0 z-50 w-[224px] shadow-2xl shadow-black/35"
               : sidebarOpen

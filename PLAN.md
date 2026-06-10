@@ -51,10 +51,10 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 
 ## Phase 2 — Sidebar scrolling + visible scrollbar
 
-- [ ] Reproduce: load the WebUI with enough projects/sessions to overflow the sidebar (can seed via SessionDB or mock) and confirm the scroll failure mode in both pinned-expanded and hover-expanded sidebar states.
-- [ ] Fix the flex/overflow chain: ensure `<aside>` in `src/spark_cli/web/src/App.tsx` (~line 605) and every wrapper down to `SidebarSessions`' scroll container (`SidebarSessions.tsx:345`) has `min-h-0` + proper `overflow` so the sessions list scrolls within the viewport.
-- [ ] Add an always-visible thin scrollbar style for the sidebar sessions list (custom `scrollbar-width: thin` / `::-webkit-scrollbar` styling in `src/spark_cli/web/src/index.css`, applied via a class on the scroll container).
-- [ ] Check the collapsed→hover-expanded absolute-positioned sidebar variant (`navHovered && !navExpanded` branch) gets the same scroll behavior.
+- [x] Reproduce: load the WebUI with enough projects/sessions to overflow the sidebar (can seed via SessionDB or mock) and confirm the scroll failure mode in both pinned-expanded and hover-expanded sidebar states.
+- [x] Fix the flex/overflow chain: ensure `<aside>` in `src/spark_cli/web/src/App.tsx` (~line 605) and every wrapper down to `SidebarSessions`' scroll container (`SidebarSessions.tsx:345`) has `min-h-0` + proper `overflow` so the sessions list scrolls within the viewport.
+- [x] Add an always-visible thin scrollbar style for the sidebar sessions list (custom `scrollbar-width: thin` / `::-webkit-scrollbar` styling in `src/spark_cli/web/src/index.css`, applied via a class on the scroll container).
+- [x] Check the collapsed→hover-expanded absolute-positioned sidebar variant (`navHovered && !navExpanded` branch) gets the same scroll behavior.
 - [ ] Verify with browser preview at a short viewport height (e.g. 700px) that all sessions are reachable by scroll and the scrollbar is visible.
 
 ## Phase 3 — Upload missing in new-chat composer
