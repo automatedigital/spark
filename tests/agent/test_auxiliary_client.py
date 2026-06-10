@@ -55,6 +55,10 @@ def codex_auth_dir(tmp_path, monkeypatch):
 
 
 class TestReadCodexAccessToken:
+    @pytest.fixture(autouse=True)
+    def _isolate_codex_home(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("spark_cli.auth.Path.home", lambda: tmp_path)
+
     def test_valid_auth_store(self, tmp_path, monkeypatch):
         spark_home = tmp_path / "spark"
         spark_home.mkdir(parents=True, exist_ok=True)
@@ -266,6 +270,10 @@ class TestTryCodex:
 
 
 class TestExpiredCodexFallback:
+    @pytest.fixture(autouse=True)
+    def _isolate_codex_home(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("spark_cli.auth.Path.home", lambda: tmp_path)
+
     """Test that expired Codex tokens don't block the auto chain."""
 
     def test_expired_codex_falls_through_to_next(self, tmp_path, monkeypatch):

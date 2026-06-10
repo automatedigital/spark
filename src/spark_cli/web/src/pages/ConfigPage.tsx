@@ -22,7 +22,6 @@ import { getNestedValue, setNestedValue } from "@/lib/nested";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/Toast";
 import { AutoField } from "@/components/AutoField";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,25 +34,6 @@ import { useI18n } from "@/i18n";
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-const CATEGORY_ICONS: Record<string, string> = {
-  general: "⚙️",
-  models: "🧭",
-  agent: "🤖",
-  terminal: "💻",
-  display: "🎨",
-  delegation: "👥",
-  memory: "🧠",
-  compression: "📦",
-  security: "🔒",
-  browser: "🌐",
-  voice: "🎙️",
-  tts: "🔊",
-  stt: "👂",
-  logging: "📋",
-  discord: "💬",
-  auxiliary: "🔧",
-};
 
 const SECTION_LABELS: Record<string, string> = {
   smart_model_routing: "Multi-model routing",
@@ -674,10 +654,10 @@ export default function ConfigPage() {
     };
 
     return (
-      <div className="mb-3 border border-border bg-background/70">
-        <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
+      <div className="mb-5 rounded-lg bg-foreground/[0.025] px-4 py-3">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+            <h3 className="text-sm font-semibold text-foreground">
               Model
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -695,10 +675,10 @@ export default function ConfigPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 p-4">
-          <div className="grid gap-3 border border-border/80 bg-muted/10 p-3">
+        <div className="grid gap-4 pt-4">
+          <div className="grid gap-3 border-t border-border pt-4">
             <div>
-              <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <h4 className="text-[13px] font-medium text-foreground">
                 SMART model
               </h4>
               <p className="mt-1 text-xs text-muted-foreground/80">
@@ -769,10 +749,10 @@ export default function ConfigPage() {
                       type="button"
                       onClick={() => updateConfigValue("agent.reasoning_effort", value)}
                       className={[
-                        "px-3 py-1 text-xs border transition-colors",
+                        "rounded-md px-3 py-1 text-xs transition-colors",
                         reasoningEffort === value
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-transparent text-muted-foreground hover:border-foreground/50 hover:text-foreground",
+                          ? "bg-foreground text-background"
+                          : "bg-foreground/6 text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
                       ].join(" ")}
                     >
                       {label}
@@ -784,9 +764,9 @@ export default function ConfigPage() {
           </div>
 
           {multiModelEnabled && (
-            <div className="grid gap-3 border border-border/80 bg-muted/10 p-3">
+            <div className="grid gap-3 border-t border-border pt-4">
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <h4 className="text-[13px] font-medium text-foreground">
                   FAST model
                 </h4>
                 <p className="mt-1 text-xs text-muted-foreground/80">
@@ -870,12 +850,14 @@ export default function ConfigPage() {
     const protectLastN = numberValue(getNestedValue(config, "compression.protect_last_n"), 20);
     return (
       <div className="space-y-5 pb-2">
-        <div className="flex items-center justify-between gap-4">
+        <div className="settings-row">
           <div className="space-y-0.5">
             <Label className="text-sm font-medium">Auto-compress context</Label>
             <p className="text-[11px] text-muted-foreground">When enabled, the agent summarises earlier turns once the context fills up, keeping costs in check on long sessions.</p>
           </div>
-          <Switch checked={isEnabled} onCheckedChange={(v) => updateConfigValue("compression.enabled", v)} />
+          <div className="justify-self-start md:justify-self-end">
+            <Switch checked={isEnabled} onCheckedChange={(v) => updateConfigValue("compression.enabled", v)} />
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -940,22 +922,19 @@ export default function ConfigPage() {
         <div key={key}>
           {showCatBadge && (
             <div className="flex items-center gap-2 pt-4 pb-2 first:pt-0">
-              <span className="text-base">{CATEGORY_ICONS[cat] || "📄"}</span>
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="text-xs font-semibold text-muted-foreground">
                 {prettyCategoryName(cat)}
               </span>
-              <div className="flex-1 border-t border-border" />
             </div>
           )}
           {showSection && (
             <div className="flex items-center gap-2 pt-4 pb-2 first:pt-0">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="text-xs font-semibold text-muted-foreground">
                 {SECTION_LABELS[section] ?? section.replace(/_/g, " ")}
               </span>
-              <div className="flex-1 border-t border-border" />
             </div>
           )}
-          <div className="py-1">
+          <div className="border-t border-border/70 py-2 first:border-t-0">
             <AutoField
               schemaKey={key}
               schema={s}
@@ -969,18 +948,18 @@ export default function ConfigPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="settings-page flex flex-col gap-5">
       <Toast toast={toast} />
 
-      {/* ═══════════════ Header Bar ═══════════════ */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Settings2 className="h-4 w-4 text-muted-foreground" />
-          <code className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded">
-            {t.config.configPath}
-          </code>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-base font-semibold text-foreground">Config</h2>
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{t.config.configPath}</p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="sm" onClick={handleExport} title={t.config.exportConfig} aria-label={t.config.exportConfig}>
             <Download className="h-3.5 w-3.5" />
           </Button>
@@ -1029,34 +1008,34 @@ export default function ConfigPage() {
 
       {/* ═══════════════ YAML Mode ═══════════════ */}
       {yamlMode ? (
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm flex items-center gap-2">
+        <div className="overflow-hidden rounded-lg bg-foreground/[0.025]">
+          <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+            <div className="text-sm font-medium flex items-center gap-2">
               <FileText className="h-4 w-4" />
               {t.config.rawYaml}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+            </div>
+          </div>
+          <div className="p-0">
             {yamlLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               </div>
             ) : (
               <textarea
-                className="flex min-h-[600px] w-full bg-transparent px-4 py-3 text-sm font-mono leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none border-t border-border"
+                className="flex min-h-[600px] w-full bg-transparent px-4 py-3 text-sm font-mono leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none"
                 value={yamlText}
                 onChange={(e) => setYamlText(e.target.value)}
                 spellCheck={false}
               />
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ) : (
         /* ═══════════════ Form Mode ═══════════════ */
-        <div className="flex flex-col sm:flex-row gap-4" style={{ minHeight: "calc(100vh - 180px)" }}>
+        <div className="flex flex-col gap-5 sm:flex-row" style={{ minHeight: "calc(100vh - 180px)" }}>
           {/* ---- Sidebar — horizontal scroll on mobile, fixed column on sm+ ---- */}
-          <div className="sm:w-52 sm:shrink-0">
-            <div className="sm:sticky sm:top-[72px] flex flex-col gap-1">
+          <div className="sm:w-48 sm:shrink-0">
+            <div className="flex flex-col gap-1 sm:sticky sm:top-4">
               {/* Search */}
               <div className="relative mb-2 hidden sm:block">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -1089,19 +1068,18 @@ export default function ConfigPage() {
                       setSearchQuery("");
                       setActiveCategory(cat);
                     }}
-                    className={`group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors cursor-pointer ${
+                    className={`group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors cursor-pointer ${
                       isActive
-                        ? "bg-primary/10 text-primary font-medium"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        ? "bg-foreground/9 text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground hover:bg-foreground/6"
                     }`}
                   >
-                    <span className="text-sm leading-none">{CATEGORY_ICONS[cat] || "📄"}</span>
                     <span className="flex-1 truncate">{prettyCategoryName(cat)}</span>
-                    <span className={`text-[10px] tabular-nums ${isActive ? "text-primary/60" : "text-muted-foreground/50"}`}>
+                    <span className={`text-[10px] tabular-nums ${isActive ? "text-foreground/55" : "text-muted-foreground/50"}`}>
                       {categoryCounts[cat] || 0}
                     </span>
                     {isActive && (
-                      <ChevronRight className="h-3 w-3 text-primary/50 shrink-0" />
+                      <ChevronRight className="h-3 w-3 text-foreground/50 shrink-0" />
                     )}
                   </button>
                 );
@@ -1114,19 +1092,19 @@ export default function ConfigPage() {
           <div className="flex-1 min-w-0">
             {isSearching ? (
               /* Search results */
-              <Card>
-                <CardHeader className="py-3 px-4">
+              <div>
+                <div className="border-b border-border pb-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm flex items-center gap-2">
+                    <div className="text-sm font-semibold flex items-center gap-2">
                       <Search className="h-4 w-4" />
                       {t.config.searchResults}
-                    </CardTitle>
+                    </div>
                     <Badge variant="secondary" className="text-[10px]">
                       {searchMatchedFields.length} {t.config.fields.replace("{s}", searchMatchedFields.length !== 1 ? "s" : "")}
                     </Badge>
                   </div>
-                </CardHeader>
-                <CardContent className="grid gap-2 px-4 pb-4">
+                </div>
+                <div className="grid gap-0 pt-2">
                   {searchMatchedFields.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
                       {t.config.noFieldsMatch.replace("{query}", searchQuery)}
@@ -1134,23 +1112,22 @@ export default function ConfigPage() {
                   ) : (
                     renderFields(searchMatchedFields, true)
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ) : (
               /* Active category */
-              <Card>
-                <CardHeader className="py-3 px-4">
+              <div>
+                <div className="border-b border-border pb-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <span className="text-base">{CATEGORY_ICONS[activeCategory] || "📄"}</span>
+                    <div className="text-sm font-semibold flex items-center gap-2">
                       {prettyCategoryName(activeCategory)}
-                    </CardTitle>
+                    </div>
                     <Badge variant="secondary" className="text-[10px]">
                       {activeFields.length} {t.config.fields.replace("{s}", activeFields.length !== 1 ? "s" : "")}
                     </Badge>
                   </div>
-                </CardHeader>
-                <CardContent className="grid gap-2 px-4 pb-4">
+                </div>
+                <div className="grid gap-0 pt-3">
                   {activeCategory === "general" && renderModelEditor()}
                   {activeCategory === "compression" && renderContextManagementCard()}
                   {activeCategory !== "compression" && renderFields(activeFields)}
@@ -1160,8 +1137,8 @@ export default function ConfigPage() {
                       <div className="mt-2 grid gap-2">{renderFields(activeFields)}</div>
                     </details>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
           </div>
         </div>

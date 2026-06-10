@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { X, Link2, Pencil } from "lucide-react";
 import type { CanvasNodeData } from "./types";
+import { fieldsFor, type InspectorField } from "./inspectorFields";
 
 interface InspectorProps {
   node: Node;
@@ -19,121 +20,11 @@ function upstreamSources(nodeId: string, nodes: Node[], edges: Edge[]) {
   return nodes.filter((n) => ids.includes(n.id));
 }
 
-/** The param fields to render for a node, derived from its type/schema. */
-function fieldsFor(data: CanvasNodeData): Array<{ key: string; kind: "text" | "textarea" | "json" }> {
-  switch (data.nodeType) {
-    case "agent":
-      return [
-        { key: "model", kind: "text" },
-        { key: "maxIterations", kind: "text" },
-        { key: "toolsets", kind: "text" },
-        { key: "skipMemory", kind: "text" },
-        { key: "prompt", kind: "textarea" },
-      ];
-    case "workflow.subworkflow":
-      return [
-        { key: "scope", kind: "text" },
-        { key: "slug", kind: "text" },
-        { key: "canvasId", kind: "text" },
-      ];
-    case "memory.context":
-      return [
-        { key: "mode", kind: "text" },
-        { key: "key", kind: "text" },
-        { key: "value", kind: "textarea" },
-      ];
-    case "trigger.manual":
-      return [{ key: "payload", kind: "json" }];
-    case "trigger.webhook":
-      return [{ key: "secret", kind: "text" }];
-    case "trigger.schedule":
-      return [{ key: "schedule", kind: "text" }];
-    case "trigger.filewatch":
-      return [{ key: "path", kind: "text" }];
-    case "data.set":
-      return [{ key: "fields", kind: "json" }];
-    case "control.if":
-      return [
-        { key: "field", kind: "text" },
-        { key: "equals", kind: "text" },
-      ];
-    case "control.switch":
-      return [
-        { key: "field", kind: "text" },
-        { key: "case", kind: "text" },
-        { key: "cases", kind: "json" },
-      ];
-    case "control.loop":
-      return [
-        { key: "count", kind: "text" },
-        { key: "batchSize", kind: "text" },
-      ];
-    case "action.code":
-      return [{ key: "code", kind: "textarea" }];
-    case "action.http":
-      return [
-        { key: "method", kind: "text" },
-        { key: "url", kind: "text" },
-        { key: "headers", kind: "json" },
-        { key: "body", kind: "textarea" },
-        { key: "timeout", kind: "text" },
-      ];
-    case "action.wait":
-      return [{ key: "seconds", kind: "text" }];
-    case "display.render":
-      return [
-        { key: "format", kind: "text" },
-        { key: "content", kind: "textarea" },
-      ];
-    case "display.iframe":
-      return [
-        { key: "url", kind: "text" },
-        { key: "allowDomains", kind: "text" },
-        { key: "blockDomains", kind: "text" },
-      ];
-    case "io.file_source":
-      return [
-        { key: "source", kind: "text" },
-        { key: "slug", kind: "text" },
-        { key: "path", kind: "text" },
-        { key: "mode", kind: "text" },
-      ];
-    case "io.write_file":
-      return [
-        { key: "source", kind: "text" },
-        { key: "slug", kind: "text" },
-        { key: "path", kind: "text" },
-        { key: "content", kind: "textarea" },
-      ];
-    case "io.read_table":
-      return [
-        { key: "source", kind: "text" },
-        { key: "slug", kind: "text" },
-        { key: "path", kind: "text" },
-      ];
-    case "io.write_table":
-      return [
-        { key: "source", kind: "text" },
-        { key: "slug", kind: "text" },
-        { key: "path", kind: "text" },
-        { key: "rows", kind: "json" },
-      ];
-    case "tool": {
-      const props = data.schema?.properties ?? {};
-      return Object.keys(props).map((key) => ({ key, kind: "text" as const }));
-    }
-    default:
-      // Display nodes etc.: edit whatever params exist.
-      return Object.keys(data.params ?? {}).map((key) => ({
-        key,
-        kind: key === "text" ? ("textarea" as const) : ("text" as const),
-      }));
-  }
-}
-
 export default function Inspector({ node, nodes, edges, onClose, onParam, onRun, running }: InspectorProps) {
   const data = node.data as CanvasNodeData;
   const [tab, setTab] = useState<"params" | "input" | "output">("params");
+  const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
+  const [jsonErrors, setJsonErrors] = useState<Record<string, string>>({});
   const sources = upstreamSources(node.id, nodes, edges);
   const fields = fieldsFor(data);
   const executable = data.category !== "display";
@@ -150,6 +41,102 @@ export default function Inspector({ node, nodes, edges, onClose, onParam, onRun,
     }
     const [nodeId, ...rest] = ref.split("::");
     onParam(key, { __map: { node: nodeId, field: rest.join("::") } });
+  };
+
+  const clearMapping = (key: string) => onParam(key, "");
+
+  const jsonValue = (key: string, val: unknown) => {
+    const draft = jsonDrafts[`${node.id}:${key}`];
+    if (draft !== undefined) return draft;
+    return typeof val === "string" ? val : val == null ? "" : JSON.stringify(val, null, 2);
+  };
+
+  const setJsonValue = (key: string, raw: string) => {
+    const draftKey = `${node.id}:${key}`;
+    setJsonDrafts((prev) => ({ ...prev, [draftKey]: raw }));
+    if (!raw.trim()) {
+      setJsonErrors((prev) => ({ ...prev, [draftKey]: "" }));
+      onParam(key, null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      setJsonErrors((prev) => ({ ...prev, [draftKey]: "" }));
+      onParam(key, parsed);
+    } catch {
+      setJsonErrors((prev) => ({ ...prev, [draftKey]: "Invalid JSON; last valid value is still saved." }));
+    }
+  };
+
+  const renderEditor = (field: InspectorField, val: unknown) => {
+    if (field.kind === "textarea") {
+      return (
+        <textarea
+          value={typeof val === "string" ? val : val == null ? "" : JSON.stringify(val, null, 2)}
+          onChange={(e) => onParam(field.key, e.target.value)}
+          rows={3}
+          className="rounded-sm border border-border bg-background/60 p-2 font-mono text-[11px] outline-none focus:border-primary"
+        />
+      );
+    }
+    if (field.kind === "json") {
+      const draftKey = `${node.id}:${field.key}`;
+      return (
+        <>
+          <textarea
+            value={jsonValue(field.key, val)}
+            onChange={(e) => setJsonValue(field.key, e.target.value)}
+            rows={4}
+            className="rounded-sm border border-border bg-background/60 p-2 font-mono text-[11px] outline-none focus:border-primary"
+          />
+          {jsonErrors[draftKey] && <p className="text-[10px] text-destructive">{jsonErrors[draftKey]}</p>}
+        </>
+      );
+    }
+    if (field.kind === "number") {
+      return (
+        <input
+          type="number"
+          value={typeof val === "number" ? val : val == null ? "" : Number(val)}
+          onChange={(e) => onParam(field.key, e.target.value === "" ? null : Number(e.target.value))}
+          className="h-7 rounded-sm border border-border bg-background/60 px-2 text-[11px] outline-none focus:border-primary"
+        />
+      );
+    }
+    if (field.kind === "boolean") {
+      return (
+        <label className="flex h-7 items-center gap-2 text-[11px] text-foreground">
+          <input
+            type="checkbox"
+            checked={Boolean(val)}
+            onChange={(e) => onParam(field.key, e.target.checked)}
+          />
+          {val ? "true" : "false"}
+        </label>
+      );
+    }
+    if (field.kind === "select") {
+      return (
+        <select
+          value={typeof val === "string" ? val : val == null ? "" : String(val)}
+          onChange={(e) => onParam(field.key, e.target.value)}
+          className="h-7 rounded-sm border border-border bg-background/60 px-2 text-[11px] outline-none focus:border-primary"
+        >
+          {(field.options ?? []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    return (
+      <input
+        value={typeof val === "string" ? val : val == null ? "" : String(val)}
+        onChange={(e) => onParam(field.key, e.target.value)}
+        className="h-7 rounded-sm border border-border bg-background/60 px-2 text-[11px] outline-none focus:border-primary"
+      />
+    );
   };
 
   return (
@@ -183,7 +170,8 @@ export default function Inspector({ node, nodes, edges, onClose, onParam, onRun,
           <div className="flex flex-col gap-3">
             {data.description && <p className="text-[11px] text-muted-foreground">{data.description}</p>}
             {fields.length === 0 && <p className="text-xs text-muted-foreground">No parameters.</p>}
-            {fields.map(({ key, kind }) => {
+            {fields.map((field) => {
+              const { key } = field;
               const val = data.params?.[key];
               const mapped = isMapped(val);
               return (
@@ -194,6 +182,11 @@ export default function Inspector({ node, nodes, edges, onClose, onParam, onRun,
                       <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
                         {mapped ? <Link2 className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
                         {mapped ? "mapped" : "literal"}
+                        {mapped && (
+                          <button type="button" onClick={() => clearMapping(key)} className="ml-1 underline hover:text-foreground">
+                            clear
+                          </button>
+                        )}
                       </span>
                     )}
                   </div>
@@ -218,21 +211,7 @@ export default function Inspector({ node, nodes, edges, onClose, onParam, onRun,
                     </select>
                   )}
                   {/* Literal editor (hidden when mapped) */}
-                  {!mapped &&
-                    (kind === "textarea" || kind === "json" ? (
-                      <textarea
-                        value={typeof val === "string" ? val : val == null ? "" : JSON.stringify(val, null, 2)}
-                        onChange={(e) => onParam(key, e.target.value)}
-                        rows={kind === "json" ? 4 : 3}
-                        className="rounded-sm border border-border bg-background/60 p-2 font-mono text-[11px] outline-none focus:border-primary"
-                      />
-                    ) : (
-                      <input
-                        value={typeof val === "string" ? val : val == null ? "" : String(val)}
-                        onChange={(e) => onParam(key, e.target.value)}
-                        className="h-7 rounded-sm border border-border bg-background/60 px-2 text-[11px] outline-none focus:border-primary"
-                      />
-                    ))}
+                  {!mapped && renderEditor(field, val)}
                 </div>
               );
             })}

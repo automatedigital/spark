@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import {
+  Archive,
+  Blocks,
   ChevronLeft,
   ChevronRight,
   Clock,
   Download,
   FolderOpen,
   LayoutGrid,
-  Brain,
+  MessageCircle,
   MessageSquare,
-  Package,
-  Plug,
+  MoreHorizontal,
+  Plus,
   Settings,
   Square,
 } from "lucide-react";
@@ -19,9 +21,13 @@ import FilesPage from "@/pages/FilesPage";
 import KanbanPage from "@/pages/KanbanPage";
 import CanvasPage from "@/pages/CanvasPage";
 import SkillsPage from "@/pages/SkillsPage";
-import MemoryPage from "@/pages/MemoryPage";
 import ConnectorsPage from "@/pages/ConnectorsPage";
+import SkillsToolsPage from "@/pages/SkillsToolsPage";
+import MessagingPage from "@/pages/MessagingPage";
+import ArtifactsPage from "@/pages/ArtifactsPage";
 import SettingsPanel from "@/components/SettingsPanel";
+import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
+import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
 import { useUpdateModal } from "@/lib/UpdateModalContext";
@@ -37,31 +43,58 @@ import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
 
 
-const NAV_ITEMS = [
+// Primary sections shown after the "New session" action.
+const PRIMARY_NAV = [
+  { id: "skillsTools", labelKey: "skillsAndTools" as const, icon: Blocks },
+  { id: "messaging", labelKey: "messaging" as const, icon: MessageCircle },
+  { id: "artifacts", labelKey: "artifacts" as const, icon: Archive },
+] as const;
+
+// Demoted pages — reachable via the "More" menu + command palette.
+const MORE_NAV = [
   { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
   { id: "files", labelKey: "files" as const, icon: FolderOpen },
   { id: "canvas", labelKey: "canvas" as const, icon: Square },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
-  { id: "skills", labelKey: "skills" as const, icon: Package },
-  { id: "memory", labelKey: "memory" as const, icon: Brain },
-  { id: "connectors", labelKey: "connectors" as const, icon: Plug },
 ] as const;
 
-type PageId = (typeof NAV_ITEMS)[number]["id"];
-
-const PAGE_COMPONENTS: Record<PageId, React.FC> = {
+const PAGE_COMPONENTS = {
   chat: ChatPage,
   kanban: KanbanPage,
   cron: CronPage,
   skills: SkillsPage,
   files: FilesPage,
   canvas: CanvasPage,
-  memory: MemoryPage,
   connectors: ConnectorsPage,
+  skillsTools: SkillsToolsPage,
+  messaging: MessagingPage,
+  artifacts: ArtifactsPage,
+} as const;
+
+type PageId = keyof typeof PAGE_COMPONENTS;
+
+type NavLabelKey =
+  | (typeof PRIMARY_NAV)[number]["labelKey"]
+  | (typeof MORE_NAV)[number]["labelKey"]
+  | "newSession"
+  | "skills"
+  | "connectors";
+
+const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
+  chat: "chat",
+  files: "files",
+  canvas: "canvas",
+  kanban: "kanban",
+  cron: "cron",
+  skills: "skills",
+  connectors: "connectors",
+  skillsTools: "skillsAndTools",
+  messaging: "messaging",
+  artifacts: "artifacts",
 };
 
-const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas"]);
+const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas", "messaging", "skillsTools", "artifacts"]);
 
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
@@ -132,10 +165,102 @@ function SparkLogo({ className = "" }: { className?: string }) {
   );
 }
 
+// ── More menu (demoted pages: Chat, Files, Canvas, Kanban, Cron) ──
+
+function MoreMenu({
+  page,
+  navigateTo,
+  runningTaskCount,
+  sidebarOpen,
+  direction,
+  navLabel,
+}: {
+  page: PageId;
+  navigateTo: (id: PageId) => void;
+  runningTaskCount: number;
+  sidebarOpen: boolean;
+  direction: "up" | "down";
+  navLabel: (key: NavLabelKey) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const moreActive = MORE_NAV.some((item) => item.id === page);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        title="More"
+        aria-label="More pages"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={`group relative flex h-8 items-center rounded-md transition ${
+          moreActive || open
+            ? "bg-foreground/10 text-foreground"
+            : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+        } ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
+      >
+        <div className="relative shrink-0">
+          <MoreHorizontal className="h-4 w-4" />
+          {runningTaskCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
+              {runningTaskCount > 9 ? "9+" : runningTaskCount}
+            </span>
+          )}
+        </div>
+        {sidebarOpen && <span className="truncate text-[13px] font-medium">More</span>}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            className={`z-50 w-44 rounded-md border border-border bg-popover/95 p-1 shadow-xl backdrop-blur-xl ${
+              direction === "up" ? "absolute bottom-full left-0 mb-1" : "fixed right-2 top-12"
+            }`}
+            role="menu"
+          >
+            {MORE_NAV.map(({ id, labelKey, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  navigateTo(id);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left text-[13px] transition ${
+                  page === id
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate">{navLabel(labelKey)}</span>
+                {id === "kanban" && runningTaskCount > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">
+                    {runningTaskCount > 9 ? "9+" : runningTaskCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
+  return (
+    <SessionStoreProvider>
+      <AppShell />
+    </SessionStoreProvider>
+  );
+}
+
+function AppShell() {
   const [page, setPage] = useState<PageId>(() => {
     const saved = localStorage.getItem("spark-active-page");
-    return (saved && NAV_ITEMS.some((item) => item.id === saved)) ? (saved as PageId) : "chat";
+    return saved && saved in PAGE_COMPONENTS ? (saved as PageId) : "chat";
   });
   const [navExpanded, setNavExpanded] = useState(() => {
     const saved = localStorage.getItem("spark-nav-expanded");
@@ -145,6 +270,13 @@ export default function App() {
   const [animKey, setAnimKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initialRef = useRef(true);
+
+  // Pages (e.g. Skills & Tools → "Manage MCP servers") can open Settings.
+  useEffect(() => {
+    const handler = () => setSettingsOpen(true);
+    window.addEventListener("spark-open-settings", handler);
+    return () => window.removeEventListener("spark-open-settings", handler);
+  }, []);
   const { t } = useI18n();
   const [authWall, setAuthWall] = useState(false);
   const [tokenHint, setTokenHint] = useState<string | null>(null);
@@ -152,6 +284,9 @@ export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
+  const [gatewayReady, setGatewayReady] = useState(false);
+  const [scheduledJobCount, setScheduledJobCount] = useState(0);
+  const [activeModel, setActiveModel] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const agentCursorHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,6 +296,9 @@ export default function App() {
 
   // ── Activity badge counts ──
   const [runningTaskCount, setRunningTaskCount] = useState(0);
+
+  // ── Shared session store (global sidebar + ChatPage) ──
+  const { selectSession, newProjectThread } = useSessionStore();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -230,6 +368,25 @@ export default function App() {
     localStorage.setItem("spark-active-page", id);
   };
 
+  const navLabel = (key: NavLabelKey) => t.app.nav[key];
+
+  // "New session" — clear selection so ChatPage shows the hero composer.
+  // Same path as the desktop tray "new chat" action.
+  const handleNewSession = () => {
+    navigateTo("chat");
+    window.dispatchEvent(new CustomEvent("spark-new-chat"));
+  };
+
+  const openSidebarSession = (id: string) => {
+    navigateTo("chat");
+    selectSession(id);
+  };
+
+  const openProjectCompose = (slug: string) => {
+    navigateTo("chat");
+    newProjectThread(slug);
+  };
+
   // ── Desktop shell: tray "new chat" + spark:// deep links (§3.2) ──
   useEffect(() => {
     if (!isTauri()) return;
@@ -261,6 +418,9 @@ export default function App() {
     const handler = (event: Event) => {
       const target = (event as CustomEvent<GlobalNavTarget>).detail;
       if (target?.type === "canvas") navigateTo("canvas");
+      // Thread/project targets are consumed by the session store; make sure
+      // the chat page is visible so the selection shows up.
+      if (target?.type === "thread" || target?.type === "project") navigateTo("chat");
     };
     window.addEventListener(GLOBAL_NAV_EVENT, handler);
     return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
@@ -304,13 +464,27 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const status = await api.getStatus();
+        const [status, modelStatus, cronJobs] = await Promise.all([
+          api.getStatus(),
+          api.getModelStatus().catch(() => null),
+          api.getCronJobs().catch(() => []),
+        ]);
         if (!cancelled) {
           setVersionLabel(`v${status.version}_${formatVersionDate()}`);
+          setGatewayReady(status.gateway_running);
+          setScheduledJobCount(cronJobs.length);
+          setActiveModel(
+            modelStatus
+              ? (modelStatus.multi_model_enabled && modelStatus.fast_model) ||
+                  modelStatus.smart_model ||
+                  null
+              : null,
+          );
         }
       } catch {
         if (!cancelled) {
           setVersionLabel(`v${formatVersionDate()}`);
+          setGatewayReady(false);
         }
       }
     })();
@@ -427,38 +601,38 @@ export default function App() {
       <div className="noise-overlay" />
       <div className="warm-glow" />
 
-      <div className={`relative z-2 grid h-full grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:248px]" : "[--sidebar-width:84px]"}`}>
+      <div className={`relative z-2 grid h-full grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:224px]" : "[--sidebar-width:58px]"}`}>
         <aside
           onMouseEnter={() => !navExpanded && setNavHovered(true)}
           onMouseLeave={() => setNavHovered(false)}
-          className={`hidden min-w-0 border-r border-border bg-card/78 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
+          className={`hidden min-w-0 border-r border-border bg-card/58 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
             navHovered && !navExpanded
-              ? " absolute left-0 top-0 bottom-0 z-50 w-[248px] shadow-2xl shadow-black/50"
+              ? " absolute left-0 top-0 bottom-0 z-50 w-[224px] shadow-2xl shadow-black/35"
               : sidebarOpen
-              ? " w-[248px]"
-              : " w-[84px]"
+              ? " w-[224px]"
+              : " w-[58px]"
           }`}
         >
-          <div className={`flex h-20 items-center border-b border-border px-4 ${sidebarOpen ? "justify-between" : "justify-center"}`}>
+          <div className={`flex h-12 items-center border-b border-border px-2.5 ${sidebarOpen ? "justify-between" : "justify-center"}`}>
             <button
               type="button"
-              className={`flex shrink-0 items-center gap-0 rounded-sm transition hover:opacity-75 cursor-pointer ${sidebarOpen ? "h-10 w-auto" : "h-10 w-10 justify-center"}`}
+              className={`flex shrink-0 items-center gap-0 rounded-md transition hover:bg-foreground/6 cursor-pointer ${sidebarOpen ? "h-8 w-auto" : "h-8 w-8 justify-center"}`}
               title="Go to Chat"
               aria-label="Go to Chat"
               onClick={() => navigateTo("chat")}
             >
-              <div className="grid h-10 w-10 shrink-0 place-items-center">
-                <SparkLogo />
+              <div className="grid h-8 w-8 shrink-0 place-items-center">
+                <SparkLogo className="h-5 w-5" />
               </div>
               {sidebarOpen && (
-                <div className="min-w-0 flex-1 px-3 text-left">
-                  <div className="truncate text-sm font-bold uppercase tracking-[0.12em] text-foreground">Spark</div>
+                <div className="min-w-0 flex-1 px-2 text-left">
+                  <div className="truncate text-sm font-semibold text-foreground">Spark</div>
                 </div>
               )}
             </button>
             <button
               type="button"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/7 hover:text-foreground"
               title={navExpanded ? "Collapse navigation" : "Expand navigation"}
               aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
               onClick={() => toggleNav(!navExpanded)}
@@ -466,51 +640,81 @@ export default function App() {
               {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
           </div>
-          <nav className={`flex flex-1 flex-col gap-2 px-3 py-4 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
-            {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
+          <nav className={`flex shrink-0 flex-col gap-1 px-2 pt-3 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+            {/* New session */}
+            <button
+              type="button"
+              title={navLabel("newSession")}
+              aria-label={navLabel("newSession")}
+              onClick={handleNewSession}
+              className={`group relative flex h-8 items-center rounded-md text-muted-foreground transition hover:bg-foreground/6 hover:text-foreground ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              {sidebarOpen && (
+                <span className="truncate text-[13px] font-medium">{navLabel("newSession")}</span>
+              )}
+              <span className={`pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-xl backdrop-blur-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
+                {navLabel("newSession")}
+              </span>
+            </button>
+            {PRIMARY_NAV.map(({ id, labelKey, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
-                title={t.app.nav[labelKey]}
-                aria-label={t.app.nav[labelKey]}
+                title={navLabel(labelKey)}
+                aria-label={navLabel(labelKey)}
                 onClick={() => navigateTo(id)}
-                className={`group relative flex h-12 items-center rounded-sm border transition ${
+                className={`group relative flex h-8 items-center rounded-md transition ${
                   page === id
-                    ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
-                    : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
-                } ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+                } ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
               >
-                <div className="relative shrink-0">
-                  <Icon className="h-5 w-5" />
-                  {id === "kanban" && runningTaskCount > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
-                      {runningTaskCount > 9 ? "9+" : runningTaskCount}
-                    </span>
-                  )}
-                </div>
-                {sidebarOpen && (
-                  <span className="truncate text-sm font-medium">{t.app.nav[labelKey]}</span>
+                {page === id && sidebarOpen && (
+                  <span className="absolute left-0 top-1.5 bottom-1.5 w-px rounded-full bg-foreground/70" />
                 )}
-                <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
-                  {t.app.nav[labelKey]}
+                <Icon className="h-4 w-4 shrink-0" />
+                {sidebarOpen && (
+                  <span className="truncate text-[13px] font-medium">{navLabel(labelKey)}</span>
+                )}
+                <span className={`pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-xl backdrop-blur-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
+                  {navLabel(labelKey)}
                 </span>
               </button>
             ))}
           </nav>
 
-          {/* Settings + Update buttons */}
-          <div className={`border-t border-border px-3 py-3 flex flex-col gap-2 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+          {/* Search + Pinned + Sessions (hidden when collapsed; hover-expand reveals) */}
+          {sidebarOpen ? (
+            <SidebarSessions
+              onOpenSession={openSidebarSession}
+              onNewProjectThread={openProjectCompose}
+            />
+          ) : (
+            <div className="flex-1" />
+          )}
+
+          {/* More + Settings + Update buttons */}
+          <div className={`border-t border-border px-2 py-2 flex flex-col gap-1 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
+            <MoreMenu
+              page={page}
+              navigateTo={navigateTo}
+              runningTaskCount={runningTaskCount}
+              sidebarOpen={sidebarOpen}
+              direction="up"
+              navLabel={navLabel}
+            />
             {updateAvailable && (
               <button
                 type="button"
                 title="Update available"
                 aria-label="Update Spark"
                 onClick={openUpdateModal}
-                className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                className={`group relative flex h-8 items-center rounded-md transition bg-amber-500/10 text-amber-300 hover:bg-amber-500/16 ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
               >
-                <Download className="h-5 w-5 shrink-0" />
+                <Download className="h-4 w-4 shrink-0" />
                 {sidebarOpen && (
-                  <span className="truncate text-sm font-medium">Update available</span>
+                  <span className="truncate text-[13px] font-medium">Update available</span>
                 )}
                 <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                   Update available{latestVersion ? ` · ${latestVersion}` : ""}
@@ -523,11 +727,11 @@ export default function App() {
                 title="macOS app update available"
                 aria-label="Update macOS App"
                 onClick={openMacUpdateModal}
-                className={`group relative flex h-12 items-center rounded-sm border transition border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-400/70 ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                className={`group relative flex h-8 items-center rounded-md transition bg-amber-500/10 text-amber-300 hover:bg-amber-500/16 ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
               >
-                <Download className="h-5 w-5 shrink-0" />
+                <Download className="h-4 w-4 shrink-0" />
                 {sidebarOpen && (
-                  <span className="truncate text-sm font-medium">App update available</span>
+                  <span className="truncate text-[13px] font-medium">App update available</span>
                 )}
                 <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                   macOS app update{macLatestVersion ? ` · v${macLatestVersion}` : ""}
@@ -539,15 +743,15 @@ export default function App() {
               title="Settings"
               aria-label="Settings"
               onClick={() => setSettingsOpen(true)}
-              className={`group relative flex h-12 items-center rounded-sm border transition ${
+              className={`group relative flex h-8 items-center rounded-md transition ${
                 settingsOpen
-                  ? "border-primary/50 bg-primary text-primary-foreground shadow-lg shadow-primary/15"
-                  : "border-transparent text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground"
-              } ${sidebarOpen ? "w-full justify-start gap-3 px-3" : "w-12 justify-center"}`}
+                  ? "bg-foreground/10 text-foreground"
+                  : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+              } ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
             >
-              <Settings className="h-5 w-5 shrink-0" />
+              <Settings className="h-4 w-4 shrink-0" />
               {sidebarOpen && (
-                <span className="truncate text-sm font-medium">Settings</span>
+                <span className="truncate text-[13px] font-medium">Settings</span>
               )}
               <span className={`pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-sm border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-xl ${sidebarOpen ? "hidden" : "hidden group-hover:block"}`}>
                 Settings
@@ -560,43 +764,53 @@ export default function App() {
           {navHovered && !navExpanded && (
             <div className="pointer-events-none absolute inset-0 z-10 bg-background/40 backdrop-blur-sm transition-opacity duration-200" />
           )}
-          <header className="sticky top-0 z-40 border-b border-border bg-background/82 backdrop-blur-xl">
-            <div className="flex min-h-16 items-center gap-3 px-3 sm:px-6">
+          <header className="sticky top-0 z-40 border-b border-border bg-background/72 backdrop-blur-xl">
+            <div className="flex min-h-12 items-center gap-3 px-3 sm:px-4">
               <div className="flex items-center gap-3 md:hidden">
-                <SparkLogo className="h-6 w-6" />
-                <span className="font-collapse text-lg font-bold uppercase tracking-wide">Spark</span>
+                <SparkLogo className="h-5 w-5" />
+                <span className="text-sm font-semibold">Spark</span>
               </div>
               <div className="hidden md:block">
-                <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Spark</div>
-                <div className="text-sm font-semibold text-foreground">{t.app.nav[NAV_ITEMS.find((item) => item.id === page)?.labelKey ?? "workspace"]}</div>
+                <div className="text-[13px] font-medium text-foreground">{navLabel(PAGE_LABEL_KEYS[page])}</div>
               </div>
               {/* Mobile nav */}
-              <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-sm border border-border bg-card/70 p-1 shadow-inner scrollbar-none md:hidden">
-                {NAV_ITEMS.map(({ id, labelKey, icon: Icon }) => (
+              <nav className="ml-auto flex items-center gap-1 overflow-x-auto rounded-md bg-card/45 p-1 scrollbar-none md:hidden">
+                <button
+                  type="button"
+                  title={navLabel("newSession")}
+                  onClick={handleNewSession}
+                  className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/7 hover:text-foreground"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                {PRIMARY_NAV.map(({ id, labelKey, icon: Icon }) => (
                   <button
                     key={id}
                     type="button"
-                    title={t.app.nav[labelKey]}
+                    title={navLabel(labelKey)}
                     onClick={() => navigateTo(id)}
-                    className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
-                      page === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
+                      page === id ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
                     }`}
                   >
                     <Icon className="h-4 w-4" />
-                    {id === "kanban" && runningTaskCount > 0 && (
-                      <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-white">
-                        {runningTaskCount > 9 ? "9+" : runningTaskCount}
-                      </span>
-                    )}
                   </button>
                 ))}
+                <MoreMenu
+                  page={page}
+                  navigateTo={navigateTo}
+                  runningTaskCount={runningTaskCount}
+                  sidebarOpen={false}
+                  direction="down"
+                  navLabel={navLabel}
+                />
                 {/* Settings button for mobile */}
                 <button
                   type="button"
                   title="Settings"
                   onClick={() => setSettingsOpen(true)}
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-sm transition ${
-                    settingsOpen ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
+                    settingsOpen ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
                   }`}
                 >
                   <Settings className="h-4 w-4" />
@@ -605,14 +819,14 @@ export default function App() {
               <div className="ml-auto hidden items-center gap-2 md:flex">
                 <CodexUsageBadge />
                 <NotificationBell />
-                <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{versionLabel}</span>
+                <span className="text-xs text-muted-foreground">{versionLabel}</span>
               </div>
             </div>
           </header>
 
           <main
             key={animKey}
-            className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto min-h-0 w-full max-w-[1480px] flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-8"}
+            className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto min-h-0 w-full max-w-[1320px] flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-6"}
             style={{ animation: "fade-in 150ms ease-out" }}
           >
             {authChecking ? (
@@ -680,6 +894,29 @@ export default function App() {
               <PageComponent />
             )}
           </main>
+          {!authChecking && !authWall && (
+            <footer className="hidden h-7 shrink-0 items-center gap-3 border-t border-border/60 bg-card/35 px-3 text-[11px] text-muted-foreground backdrop-blur md:flex">
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    gatewayReady ? "bg-emerald-400" : "bg-muted-foreground/45"
+                  }`}
+                />
+                {gatewayReady ? "Gateway ready" : "Gateway offline"}
+              </span>
+              <span className="text-border">·</span>
+              <span>Agents {runningTaskCount}</span>
+              <span className="text-border">·</span>
+              <span>Cron {scheduledJobCount}</span>
+              {activeModel && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="max-w-48 truncate">{activeModel}</span>
+                </>
+              )}
+              <span className="ml-auto">{versionLabel}</span>
+            </footer>
+          )}
         </div>
       </div>
 

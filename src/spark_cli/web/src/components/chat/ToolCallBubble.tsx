@@ -150,7 +150,7 @@ export function ToolCallBubble({
   }
 
   return (
-    <div className={`rounded-md border text-xs ${colors.border} ${colors.bg}`}>
+    <div className="overflow-hidden rounded-md bg-foreground/[0.035] text-xs">
       <button
         type="button"
         className="flex w-full items-center gap-2 px-3 py-2 cursor-pointer hover:bg-foreground/5 transition-colors text-left"
@@ -172,23 +172,23 @@ export function ToolCallBubble({
             </span>
           )}
           {!done ? (
-            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-[var(--spark-accent)] animate-pulse">
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground animate-pulse">
               <Loader2 className="h-3 w-3 animate-spin" />
               running
             </span>
           ) : (
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">done</span>
+            <span className="text-[10px] text-muted-foreground">done</span>
           )}
         </div>
       </button>
       {open && (
-        <div className="border-t border-border/50 px-3 py-2 space-y-2">
+        <div className="border-t border-border/45 px-3 py-2 space-y-2">
           <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap font-mono text-muted-foreground max-h-40 overflow-y-auto">
             {argsStr}
           </pre>
           {result != null && result !== "" && (
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Result</div>
+              <div className="text-[10px] text-muted-foreground mb-1">Result</div>
               <ResultPreview result={result} />
               {resultTruncated && (
                 <p className="text-[10px] text-muted-foreground/50 mt-0.5">Output truncated for display — full result sent to agent.</p>
@@ -203,7 +203,7 @@ export function ToolCallBubble({
                         key={p}
                         type="button"
                         onClick={() => onAttachPath(p)}
-                        className="flex items-center gap-1 rounded border border-border/40 bg-secondary/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:border-border transition"
+                        className="flex items-center gap-1 rounded-md bg-foreground/6 px-1.5 py-0.5 text-[10px] text-muted-foreground transition hover:bg-foreground/9 hover:text-foreground"
                         title={`Attach ${p} to context tray`}
                       >
                         <Paperclip className="h-2.5 w-2.5" />

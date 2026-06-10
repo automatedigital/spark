@@ -971,6 +971,29 @@ export const api = {
     );
   },
 
+  // Artifacts
+  listArtifacts: (type: string = "all", limit = 200) =>
+    fetchJSON<ArtifactsResponse>(
+      `/api/artifacts?type=${encodeURIComponent(type)}&limit=${limit}`,
+    ),
+
+  // Messaging platforms
+  listMessagingPlatforms: () =>
+    fetchJSON<MessagingPlatformsResponse>("/api/messaging/platforms"),
+
+  updateMessagingPlatform: (
+    platformId: string,
+    body: { enabled?: boolean; values?: Record<string, string | boolean> },
+  ) =>
+    fetchJSON<MessagingPlatform>(
+      `/api/messaging/platforms/${encodeURIComponent(platformId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
+
   // Connectors
   listConnectors: () =>
     fetchJSON<ConnectorStatus[]>("/api/connectors"),
@@ -1036,10 +1059,30 @@ export const api = {
     ),
 
   disconnectGoogle: () =>
-    fetchJSON<{ disconnected?: boolean; error?: string }>(
+    fetchJSON<{ disconnected?: boolean; skills_disabled?: string[]; error?: string }>(
       "/api/connectors/google",
       { method: "DELETE" },
     ),
+
+  disconnectConnector: (connectorId: string, disableSkills = true) =>
+    fetchJSON<{
+      disconnected?: boolean;
+      env_cleared?: string[];
+      skills_disabled?: string[];
+      error?: string;
+    }>(
+      `/api/connectors/${encodeURIComponent(connectorId)}?disable_skills=${disableSkills}`,
+      { method: "DELETE" },
+    ),
+
+  enableConnectorSkills: (connectorId: string) =>
+    fetchJSON<{ ok?: boolean; skills?: string[]; toolsets?: string[]; error?: string }>(
+      `/api/connectors/${encodeURIComponent(connectorId)}/skills/enable`,
+      { method: "POST" },
+    ),
+
+  getConnectorCliTools: () =>
+    fetchJSON<CliToolInfo[]>("/api/connectors/cli-tools"),
 
   // ── Workflows (Canvas execution engine) ──
   getWorkflowNodeTypes: () =>
@@ -1114,7 +1157,7 @@ export const api = {
     fetchJSON<CanvasDoc>(canvasUrl(scope, id, slug)),
 
   saveCanvas: (doc: CanvasDoc) =>
-    fetchJSON<{ ok: boolean; id: string; scope: CanvasScope; slug: string | null; updatedAt: string }>(
+    fetchJSON<{ ok: boolean; id: string; scope: CanvasScope; slug: string | null; updatedAt: string; revision: string }>(
       canvasUrl(doc.scope, doc.id, doc.slug),
       {
         method: "PUT",
@@ -1768,6 +1811,8 @@ export interface CanvasDoc {
   viewport: CanvasViewport;
   version: number;
   updatedAt?: string | null;
+  revision?: string | null;
+  expectedRevision?: string | null;
 }
 
 // React Flow node/edge shapes (loose — the canvas owns the concrete data types).
@@ -1796,6 +1841,8 @@ export interface CanvasSummary {
   scope: CanvasScope;
   slug: string | null;
   updatedAt: string;
+  revision?: string | null;
+  error?: string | null;
 }
 
 export interface CanvasListResponse {
@@ -1989,6 +2036,58 @@ export interface GoogleSetupInfo {
   error?: string;
 }
 
+export interface ArtifactInfo {
+  id: string;
+  name: string;
+  type: "image" | "file" | "link";
+  project_slug: string;
+  project_name: string;
+  path: string;
+  url: string;
+  size: number;
+  mtime: number;
+  mime: string;
+}
+
+export interface ArtifactsResponse {
+  artifacts: ArtifactInfo[];
+  counts: { all: number; images: number; files: number; links: number };
+}
+
+export interface MessagingField {
+  key: string;
+  label: string;
+  description: string;
+  type: "text" | "secret" | "bool" | "number" | string;
+  placeholder: string;
+  set: boolean;
+  value: string;
+}
+
+export interface MessagingPlatform {
+  id: string;
+  name: string;
+  description: string;
+  help_text: string;
+  setup_guide_url: string;
+  enabled: boolean;
+  configured: boolean;
+  runtime: unknown;
+  fields: {
+    required: MessagingField[];
+    recommended: MessagingField[];
+    advanced: MessagingField[];
+  };
+  gateway_running?: boolean;
+  saved?: string[];
+  restart?: { ok: boolean; running: boolean; detail: string };
+}
+
+export interface MessagingPlatformsResponse {
+  platforms: MessagingPlatform[];
+  gateway_running: boolean;
+}
+
 export interface ConnectorStatus {
   id: string;
   name: string;
@@ -1997,6 +2096,7 @@ export interface ConnectorStatus {
   transport?: "cli" | "mcp" | "skill" | string;
   scopes?: string[];
   skills?: string[];
+  toolsets?: string[];
   capabilities?: string[];
   docs_url?: string;
   connected: boolean;
@@ -2034,4 +2134,13 @@ export interface ConnectorStatus {
   picture?: string | null;
   gmail_read?: { connected: boolean; email?: string | null };
   error?: string;
+}
+
+export interface CliToolInfo {
+  id: string;
+  name: string;
+  cli: string;
+  detected: boolean;
+  path: string | null;
+  install_hint: string;
 }

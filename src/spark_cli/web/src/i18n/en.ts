@@ -72,6 +72,10 @@ export const en: Translations = {
       canvas: "Canvas",
       memory: "Memory",
       connectors: "Connectors",
+      newSession: "New session",
+      skillsAndTools: "Skills & Tools",
+      messaging: "Messaging",
+      artifacts: "Artifacts",
     },
   },
 

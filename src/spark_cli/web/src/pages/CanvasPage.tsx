@@ -20,7 +20,6 @@ import "@xyflow/react/dist/style.css";
 import { Plus, Save, FolderOpen, Trash2, Loader2, Check, Play, Search, Square, History, Copy, Undo2, Redo2 } from "lucide-react";
 import {
   api,
-  type CanvasDoc,
   type CanvasScope,
   type CanvasSummary,
   type WorkflowExecutionSummary,
@@ -33,7 +32,11 @@ import {
   type GlobalNavTarget,
 } from "@/lib/globalNavigation";
 import { renderNodeTypes, CanvasNodeContext } from "./canvas/render";
-import { CANVAS_DND_MIME, renderTypeFor, defaultParams, type CanvasNodeData } from "./canvas/types";
+import { CANVAS_DND_MIME, type CanvasNodeData } from "./canvas/types";
+import { canvasIdentityKey, fromCanvasDoc, makeCanvasNode, toCanvasDoc } from "./canvas/model";
+import { useNodeCatalog } from "./canvas/useNodeCatalog";
+import { useCanvasShortcuts } from "./canvas/useCanvasShortcuts";
+import { useCanvasHistory } from "./canvas/useCanvasHistory";
 import Inspector from "./canvas/Inspector";
 import { useEventBus } from "@/hooks/useEventBus";
 
@@ -46,54 +49,6 @@ interface OpenCanvas {
   slug: string | null;
 }
 
-let nodeSeq = 1;
-const newNodeId = () => `n${Date.now().toString(36)}_${nodeSeq++}`;
-
-function makeCanvasNode(t: WorkflowNodeType, position: { x: number; y: number }, params?: Record<string, unknown>): Node {
-  const data: CanvasNodeData = {
-    nodeType: t.type,
-    label: t.label,
-    emoji: t.emoji,
-    category: t.category,
-    tool: t.tool,
-    schema: t.schema,
-    description: t.description,
-    params: { ...defaultParams(t), ...(params ?? {}) },
-    result: null,
-  };
-  return { id: newNodeId(), type: renderTypeFor(t.type), position, data };
-}
-
-/** Build the engine doc from React Flow nodes/edges. */
-function toEngineDoc(base: OpenCanvas | null, name: string, scope: CanvasScope, slug: string | null, nodes: Node[], edges: Edge[]): CanvasDoc {
-  const id = (base?.id ?? name).trim().replace(/[^a-zA-Z0-9_\- ]/g, "").slice(0, 80) || "Untitled";
-  return {
-    id,
-    name: name.trim() || id,
-    scope,
-    slug: scope === "project" ? slug : null,
-    nodes: nodes.map((n) => {
-      const d = n.data as CanvasNodeData;
-      return {
-        id: n.id,
-        type: d.nodeType,
-        position: n.position,
-        params: d.params ?? {},
-        data: { label: d.label, emoji: d.emoji, category: d.category, tool: d.tool, width: n.width, height: n.height },
-      };
-    }) as CanvasDoc["nodes"],
-    edges: edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle ?? null,
-      targetHandle: e.targetHandle ?? null,
-    })) as CanvasDoc["edges"],
-    viewport: { x: 0, y: 0, zoom: 1 },
-    version: 2,
-  };
-}
-
 function CanvasInner() {
   const rf = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -104,11 +59,12 @@ function CanvasInner() {
   const [slug, setSlug] = useState<string | null>(null);
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [saved, setSaved] = useState<CanvasSummary[]>([]);
-  const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>([]);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [openOpen, setOpenOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const { nodeTypes, grouped } = useNodeCatalog(search);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "conflict">("idle");
+  const [lastRevision, setLastRevision] = useState<string | null>(null);
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -121,9 +77,9 @@ function CanvasInner() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const loadedRef = useRef(false);
-  const clipboardRef = useRef<Node[]>([]);
-  const undoRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
-  const redoRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+  const runEventSourceRef = useRef<EventSource | null>(null);
+  const activeRunCanvasKeyRef = useRef<string | null>(null);
+  const { remember, undo, redo, canUndo, canRedo } = useCanvasHistory(setNodes, setEdges);
 
   // ── Node data helpers ─────────────────────────────────────────────────────
   const updateNodeData = useCallback(
@@ -163,15 +119,10 @@ function CanvasInner() {
   );
 
   const buildDoc = useCallback(
-    () => toEngineDoc(current, name, scope, slug, rf.getNodes(), rf.getEdges()),
-    [current, name, scope, slug, rf],
+    (expectedRevision: string | null = lastRevision) =>
+      toCanvasDoc(current, name, scope, slug, rf.getNodes(), rf.getEdges(), rf.getViewport(), expectedRevision),
+    [current, name, scope, slug, rf, lastRevision],
   );
-
-  const remember = useCallback(() => {
-    undoRef.current.push({ nodes: rf.getNodes(), edges: rf.getEdges() });
-    if (undoRef.current.length > 50) undoRef.current.shift();
-    redoRef.current = [];
-  }, [rf]);
 
   const runNode = useCallback(
     async (id: string) => {
@@ -202,45 +153,63 @@ function CanvasInner() {
     setRunningAll(true);
     setLastRunStatus("running");
     const doc = buildDoc();
+    const runCanvasKey = canvasIdentityKey(doc.scope, doc.slug, doc.id);
+    activeRunCanvasKeyRef.current = runCanvasKey;
     try {
       const started = await api.runWorkflowAsync(doc, "manual");
       setActiveRunId(started.executionId);
       const es = api.streamWorkflowRun(started.executionId);
+      runEventSourceRef.current?.close();
+      runEventSourceRef.current = es;
+      const isCurrentRun = () => activeRunCanvasKeyRef.current === runCanvasKey;
       es.addEventListener("node.started", (ev) => {
+        if (!isCurrentRun()) return;
         const data = JSON.parse((ev as MessageEvent).data) as { nodeId: string };
         setRunning(data.nodeId, true);
       });
       es.addEventListener("node.succeeded", (ev) => {
+        if (!isCurrentRun()) return;
         const data = JSON.parse((ev as MessageEvent).data) as { nodeId: string; items: unknown[]; durationMs: number };
         applyResults([{ nodeId: data.nodeId, status: "success", items: data.items, error: null, durationMs: data.durationMs }]);
         setRunning(data.nodeId, false);
       });
       es.addEventListener("node.failed", (ev) => {
+        if (!isCurrentRun()) return;
         const data = JSON.parse((ev as MessageEvent).data) as { nodeId: string; error: string; durationMs: number };
         applyResults([{ nodeId: data.nodeId, status: "error", items: [], error: data.error, durationMs: data.durationMs }]);
         setRunning(data.nodeId, false);
       });
       es.addEventListener("execution.result", (ev) => {
+        if (!isCurrentRun()) return;
         const data = JSON.parse((ev as MessageEvent).data) as { status: string; nodes: Parameters<typeof applyResults>[0] };
         applyResults(data.nodes);
         setLastRunStatus(data.status);
       });
       es.addEventListener("execution.closed", () => {
         es.close();
+        if (runEventSourceRef.current === es) runEventSourceRef.current = null;
+        if (!isCurrentRun()) return;
         setRunningAll(false);
         setActiveRunId(null);
+        setRunningIds(new Set());
+        activeRunCanvasKeyRef.current = null;
         void refreshExecutions();
       });
       es.onerror = () => {
         es.close();
+        if (runEventSourceRef.current === es) runEventSourceRef.current = null;
+        if (!isCurrentRun()) return;
         setRunningAll(false);
         setActiveRunId(null);
+        setRunningIds(new Set());
+        activeRunCanvasKeyRef.current = null;
         setLastRunStatus("error");
       };
-    } catch (e) {
+    } catch {
       setLastRunStatus("error");
       setRunningAll(false);
-    } finally {
+      setRunningIds(new Set());
+      activeRunCanvasKeyRef.current = null;
     }
   }, [buildDoc, applyResults, setRunning, refreshExecutions]);
 
@@ -334,10 +303,6 @@ function CanvasInner() {
     }
   }, []);
 
-  useEffect(() => {
-    api.getWorkflowNodeTypes().then((r) => setNodeTypes(r.nodeTypes)).catch(() => {});
-  }, []);
-
   const stopRun = useCallback(async () => {
     if (!activeRunId) return;
     try {
@@ -345,6 +310,11 @@ function CanvasInner() {
     } catch {
       /* ignore */
     }
+    runEventSourceRef.current?.close();
+    runEventSourceRef.current = null;
+    activeRunCanvasKeyRef.current = null;
+    setRunningIds(new Set());
+    setRunningAll(false);
     setLastRunStatus("cancelling");
   }, [activeRunId]);
 
@@ -364,34 +334,26 @@ function CanvasInner() {
   const loadCanvas = useCallback(
     async (target: OpenCanvas) => {
       try {
+        const targetKey = canvasIdentityKey(target.scope, target.slug, target.id);
+        if (activeRunCanvasKeyRef.current && activeRunCanvasKeyRef.current !== targetKey) {
+          runEventSourceRef.current?.close();
+          runEventSourceRef.current = null;
+          activeRunCanvasKeyRef.current = null;
+          setRunningIds(new Set());
+          setRunningAll(false);
+          setActiveRunId(null);
+        }
         const doc = await api.getCanvas(target.scope, target.id, target.slug);
-        const loadedNodes: Node[] = (doc.nodes ?? []).map((n) => {
-          const dn = n as unknown as { id: string; type: string; position: { x: number; y: number }; params?: Record<string, unknown>; data?: Record<string, unknown> };
-          const d = (dn.data ?? {}) as Record<string, unknown>;
-          const data: CanvasNodeData = {
-            nodeType: dn.type,
-            label: String(d.label ?? dn.type),
-            emoji: d.emoji as string | undefined,
-            category: (d.category as CanvasNodeData["category"]) ?? "action",
-            tool: d.tool as string | undefined,
-            params: dn.params ?? {},
-            result: null,
-          };
-          return {
-            id: dn.id,
-            type: renderTypeFor(dn.type),
-            position: dn.position ?? { x: 0, y: 0 },
-            data,
-            width: typeof d.width === "number" ? d.width : undefined,
-            height: typeof d.height === "number" ? d.height : undefined,
-          };
-        });
-        setNodes(loadedNodes);
-        setEdges((doc.edges as unknown as Edge[]) ?? []);
+        const loaded = fromCanvasDoc(doc);
+        setNodes(loaded.nodes);
+        setEdges(loaded.edges);
+        requestAnimationFrame(() => rf.setViewport(loaded.viewport));
         setCurrent(target);
         setName(doc.name || target.id);
         setScope(target.scope);
         setSlug(target.slug);
+        setLastRevision(doc.revision ?? null);
+        setSaveState("idle");
         localStorage.setItem(LAST_KEY, JSON.stringify(target));
         setOpenOpen(false);
         setInspectorId(null);
@@ -399,7 +361,7 @@ function CanvasInner() {
         /* ignore */
       }
     },
-    [setNodes, setEdges],
+    [rf, setNodes, setEdges],
   );
 
   // ── Mount: restore last / honor nav target ────────────────────────────────
@@ -436,32 +398,39 @@ function CanvasInner() {
   useEventBus((env) => {
     if (env.topic !== "canvas.updated") return;
     const cur = current;
+    if (saveState === "conflict") return;
     if (cur && env.data?.id === cur.id && (env.data?.scope ?? "global") === cur.scope) {
       void loadCanvas(cur);
     }
   });
 
   // ── Save / autosave ───────────────────────────────────────────────────────
-  const doSave = useCallback(async () => {
+  const doSave = useCallback(async (force = false) => {
     if (scope === "project" && !slug) return;
     setSaveState("saving");
-    const doc = buildDoc();
+    const doc = buildDoc(force ? null : lastRevision);
     try {
-      await api.saveCanvas(doc);
+      const saved = await api.saveCanvas(doc);
       await api.registerWorkflowTriggers(doc).catch(() => null);
       const target: OpenCanvas = { id: doc.id, name: doc.name, scope, slug: doc.slug };
       setCurrent(target);
+      setLastRevision(saved.revision);
       localStorage.setItem(LAST_KEY, JSON.stringify(target));
       void refreshLists();
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 1500);
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("409")) {
+        setSaveState("conflict");
+        return;
+      }
       setSaveState("idle");
     }
-  }, [scope, slug, buildDoc, refreshLists]);
+  }, [scope, slug, buildDoc, lastRevision, refreshLists]);
 
   useEffect(() => {
     if (!current) return;
+    if (saveState === "conflict") return;
     const t = setTimeout(() => void doSave(), 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -472,6 +441,8 @@ function CanvasInner() {
     setEdges([]);
     setCurrent(null);
     setName("Untitled");
+    setLastRevision(null);
+    setSaveState("idle");
     setInspectorId(null);
     localStorage.removeItem(LAST_KEY);
   }, [setNodes, setEdges]);
@@ -488,88 +459,13 @@ function CanvasInner() {
     void refreshLists();
   }, [current, newCanvas, refreshLists]);
 
-  const copySelection = useCallback(() => {
-    const ids = new Set(selectedIds);
-    clipboardRef.current = rf.getNodes().filter((n) => ids.has(n.id));
-  }, [rf, selectedIds]);
-
-  const pasteSelection = useCallback(() => {
-    if (!clipboardRef.current.length) return;
-    remember();
-    const pasted = clipboardRef.current.map((n) => {
-      const id = newNodeId();
-      return {
-        ...n,
-        id,
-        selected: true,
-        position: { x: n.position.x + 32, y: n.position.y + 32 },
-        data: { ...n.data, result: null },
-      };
-    });
-    setNodes((nds) => nds.map((n) => ({ ...n, selected: false })).concat(pasted));
-    setSelectedIds(pasted.map((n) => n.id));
-  }, [remember, setNodes]);
-
-  const duplicateSelection = useCallback(() => {
-    copySelection();
-    pasteSelection();
-  }, [copySelection, pasteSelection]);
-
-  const undo = useCallback(() => {
-    const prev = undoRef.current.pop();
-    if (!prev) return;
-    redoRef.current.push({ nodes: rf.getNodes(), edges: rf.getEdges() });
-    setNodes(prev.nodes);
-    setEdges(prev.edges);
-  }, [rf, setNodes, setEdges]);
-
-  const redo = useCallback(() => {
-    const next = redoRef.current.pop();
-    if (!next) return;
-    undoRef.current.push({ nodes: rf.getNodes(), edges: rf.getEdges() });
-    setNodes(next.nodes);
-    setEdges(next.edges);
-  }, [rf, setNodes, setEdges]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      if (e.key === "c") {
-        copySelection();
-      } else if (e.key === "v") {
-        e.preventDefault();
-        pasteSelection();
-      } else if (e.key === "d") {
-        e.preventDefault();
-        duplicateSelection();
-      } else if (e.key === "z" && e.shiftKey) {
-        e.preventDefault();
-        redo();
-      } else if (e.key === "z") {
-        e.preventDefault();
-        undo();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [copySelection, pasteSelection, duplicateSelection, undo, redo]);
-
-  // ── Node browser grouping ─────────────────────────────────────────────────
-  const grouped = useMemo(() => {
-    const q = search.toLowerCase();
-    const filtered = nodeTypes.filter(
-      (t) => !q || t.label.toLowerCase().includes(q) || (t.toolset ?? "").toLowerCase().includes(q),
-    );
-    const groups: Record<string, WorkflowNodeType[]> = {};
-    for (const t of filtered) {
-      const g = t.category === "action" ? `tools · ${t.toolset ?? "core"}` : t.category;
-      (groups[g] ??= []).push(t);
-    }
-    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [nodeTypes, search]);
+  const { duplicateSelection } = useCanvasShortcuts({ selectedIds, setNodes, setSelectedIds, remember, undo, redo });
 
   const inspectorNode = inspectorId ? nodes.find((n) => n.id === inspectorId) ?? null : null;
+  const sortedSaved = useMemo(
+    () => [...saved].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+    [saved],
+  );
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden border-t border-border">
@@ -608,7 +504,7 @@ function CanvasInner() {
           <button
             type="button"
             onClick={() => void runAll()}
-            disabled={runningAll}
+            disabled={runningAll || nodes.length === 0}
             className="flex h-7 items-center gap-1.5 rounded-sm bg-emerald-600 px-2.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
           >
             {runningAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
@@ -640,18 +536,58 @@ function CanvasInner() {
             type="button"
             onClick={() => void doSave()}
             disabled={saveState === "saving"}
-            className="flex h-7 items-center gap-1.5 rounded-sm border border-border px-2.5 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-50"
+            className={`flex h-7 items-center gap-1.5 rounded-sm border px-2.5 text-xs transition disabled:opacity-50 ${
+              saveState === "conflict"
+                ? "border-amber-500/60 bg-amber-500/10 text-amber-300"
+                : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+            }`}
           >
             {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> : saveState === "saved" ? <Check className="h-3 w-3" /> : <Save className="h-3 w-3" />}
-            Save
+            {saveState === "conflict" ? "Conflict" : "Save"}
           </button>
-          <button type="button" onClick={undo} title="Undo" className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground">
+          {saveState === "conflict" && current && (
+            <>
+              <button
+                type="button"
+                onClick={() => void loadCanvas(current)}
+                className="flex h-7 items-center gap-1.5 rounded-sm border border-amber-500/40 px-2.5 text-xs text-amber-300 transition hover:bg-amber-500/10"
+              >
+                Reload remote
+              </button>
+              <button
+                type="button"
+                onClick={() => void doSave(true)}
+                className="flex h-7 items-center gap-1.5 rounded-sm border border-amber-500/40 px-2.5 text-xs text-amber-300 transition hover:bg-amber-500/10"
+              >
+                Save over
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo"
+            className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+          >
             <Undo2 className="h-3.5 w-3.5" />
           </button>
-          <button type="button" onClick={redo} title="Redo" className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground">
+          <button
+            type="button"
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo"
+            className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+          >
             <Redo2 className="h-3.5 w-3.5" />
           </button>
-          <button type="button" onClick={duplicateSelection} title="Duplicate selection" className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground">
+          <button
+            type="button"
+            onClick={duplicateSelection}
+            disabled={selectedIds.length === 0}
+            title="Duplicate selection"
+            className="grid h-7 w-7 place-items-center rounded-sm border border-border text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+          >
             <Copy className="h-3.5 w-3.5" />
           </button>
           <button
@@ -684,7 +620,8 @@ function CanvasInner() {
           <button
             type="button"
             onClick={() => void deleteCurrent()}
-            className="ml-auto flex h-7 items-center gap-1.5 rounded-sm border border-border px-2.5 text-xs text-muted-foreground transition hover:bg-destructive/15 hover:text-destructive"
+            disabled={!current}
+            className="ml-auto flex h-7 items-center gap-1.5 rounded-sm border border-border px-2.5 text-xs text-muted-foreground transition hover:bg-destructive/15 hover:text-destructive disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
           >
             <Trash2 className="h-3 w-3" /> Delete
           </button>
@@ -693,8 +630,8 @@ function CanvasInner() {
         {/* Open browser */}
         {openOpen && (
           <div className="absolute right-3 top-12 z-20 max-h-80 w-72 overflow-y-auto rounded-md border border-border bg-popover p-1.5 shadow-2xl">
-            {saved.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">No saved canvases.</p>}
-            {saved.map((c) => (
+            {sortedSaved.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">No saved canvases.</p>}
+            {sortedSaved.map((c) => (
               <button
                 key={`${c.scope}:${c.slug ?? ""}:${c.id}`}
                 type="button"
@@ -714,10 +651,10 @@ function CanvasInner() {
           <div className="absolute right-3 top-12 z-20 max-h-96 w-80 overflow-y-auto rounded-md border border-border bg-popover p-1.5 shadow-2xl">
             {executions.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">No executions yet.</p>}
             {executions.map((ex) => (
-              <button
-                key={ex.id}
-                type="button"
-                onClick={() => void loadExecution(ex.id)}
+            <button
+              key={ex.id}
+              type="button"
+              onClick={() => void loadExecution(ex.id)}
                 className="flex w-full flex-col gap-1 rounded-sm px-2 py-1.5 text-left text-xs text-foreground transition hover:bg-secondary"
               >
                 <span className="flex w-full items-center justify-between gap-2">
@@ -726,7 +663,9 @@ function CanvasInner() {
                 </span>
                 <span className="text-[10px] text-muted-foreground">
                   {ex.trigger} · {new Date(ex.started_at * 1000).toLocaleString()}
+                  {ex.finished_at ? ` · ${Math.max(0, Math.round(ex.finished_at - ex.started_at))}s` : ""}
                 </span>
+                {ex.error && <span className="line-clamp-2 text-[10px] text-destructive">{ex.error}</span>}
               </button>
             ))}
           </div>
@@ -760,6 +699,16 @@ function CanvasInner() {
               <MiniMap pannable zoomable className="!bg-card" />
             </ReactFlow>
           </CanvasNodeContext.Provider>
+          {nodes.length === 0 && (
+            <button
+              type="button"
+              onClick={() => setBrowserOpen(true)}
+              className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-sm border border-border bg-card/90 px-3 py-2 text-xs text-muted-foreground shadow-xl transition hover:bg-secondary hover:text-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add your first node
+            </button>
+          )}
           {edgePreview && (
             <div
               className="pointer-events-none fixed z-50 max-w-xs rounded-md border border-border bg-popover p-2 text-[10px] text-foreground shadow-xl"

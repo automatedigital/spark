@@ -17,25 +17,25 @@
 @font-face { font-family: "Mondwest"; src: url("/fonts/Mondwest-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 
 @theme {
-  /* ---- Slate palette (default — neutral compact console) ---- */
-  --color-background: #101112;
-  --color-foreground: #e8edf2;
-  --color-card: #181a1d;
+  /* ---- Codex palette (default — quiet editor glass) ---- */
+  --color-background: #090a0b;
+  --color-foreground: #e6e8eb;
+  --color-card: #101113;
   --color-card-foreground: #e8edf2;
-  --color-primary: #d7dde5;
-  --color-primary-foreground: #111315;
-  --color-secondary: #202326;
+  --color-primary: #d8dde4;
+  --color-primary-foreground: #090a0b;
+  --color-secondary: #181a1d;
   --color-secondary-foreground: #e8edf2;
-  --color-muted: #151719;
-  --color-muted-foreground: #8d98a5;
-  --color-accent: #b9c4d0;
-  --color-accent-foreground: #111315;
+  --color-muted: #141518;
+  --color-muted-foreground: #858b93;
+  --color-accent: #d8dde4;
+  --color-accent-foreground: #090a0b;
   --color-destructive: #f97316;
   --color-destructive-foreground: #fff;
   --color-success: #7ee787;
   --color-warning: #f59e0b;
-  --color-border: color-mix(in srgb, #ffffff 11%, transparent);
-  --color-input: color-mix(in srgb, #ffffff 14%, transparent);
+  --color-border: color-mix(in srgb, #ffffff 7%, transparent);
+  --color-input: color-mix(in srgb, #ffffff 9%, transparent);
   --color-ring: #d7dde5;
   --color-popover: #171a1d;
   --color-popover-foreground: #e8edf2;
@@ -49,20 +49,20 @@
 }
 
 :root[data-webui-theme="codex"] {
-  --color-background: #101112;
-  --color-foreground: #e8edf2;
-  --color-card: #181a1d;
+  --color-background: #090a0b;
+  --color-foreground: #e6e8eb;
+  --color-card: #101113;
   --color-card-foreground: #e8edf2;
-  --color-primary: #d7dde5;
-  --color-primary-foreground: #111315;
-  --color-secondary: #202326;
+  --color-primary: #d8dde4;
+  --color-primary-foreground: #090a0b;
+  --color-secondary: #181a1d;
   --color-secondary-foreground: #e8edf2;
-  --color-muted: #151719;
-  --color-muted-foreground: #8d98a5;
-  --color-accent: #b9c4d0;
-  --color-accent-foreground: #111315;
-  --color-border: color-mix(in srgb, #ffffff 11%, transparent);
-  --color-input: color-mix(in srgb, #ffffff 14%, transparent);
+  --color-muted: #141518;
+  --color-muted-foreground: #858b93;
+  --color-accent: #d8dde4;
+  --color-accent-foreground: #090a0b;
+  --color-border: color-mix(in srgb, #ffffff 7%, transparent);
+  --color-input: color-mix(in srgb, #ffffff 9%, transparent);
   --color-ring: #d7dde5;
   --color-popover: #171a1d;
   --color-popover-foreground: #e8edf2;
@@ -326,6 +326,14 @@ code {
 .font-collapse { font-family: "Avenir Next", "Segoe UI", sans-serif; font-weight: 700; }
 .font-mono-ui { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace; }
 
+/* Hermes-style serif wordmark for the new-session hero */
+.spark-wordmark-serif {
+  font-family: "Didot", "Bodoni MT", "Playfair Display", Georgia, serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+}
+
 /* ---- Subtle grain overlay for badges ---- */
 .grain {
   position: relative;
@@ -345,16 +353,16 @@ code {
   position: fixed;
   z-index: 0;
   border-radius: 50%;
-  width: 1100px;
-  height: 1100px;
-  background: radial-gradient(circle, rgba(253, 166, 50, 0.13) 0%, rgba(253, 166, 50, 0.05) 45%, transparent 70%);
+  width: 900px;
+  height: 900px;
+  background: radial-gradient(circle, rgba(253, 166, 50, 0.045) 0%, rgba(253, 166, 50, 0.018) 44%, transparent 72%);
   transform: translate(-50%, -50%);
   transition: left 2.4s cubic-bezier(0.16, 1, 0.3, 1), top 2.4s cubic-bezier(0.16, 1, 0.3, 1);
-  filter: blur(60px);
+  filter: blur(74px);
 }
 
 :root[data-webui-theme="codex"] .cursor-blob {
-  background: radial-gradient(circle, rgba(215, 221, 229, 0.08) 0%, rgba(215, 221, 229, 0.03) 45%, transparent 70%);
+  background: radial-gradient(circle, rgba(216, 221, 228, 0.035) 0%, rgba(216, 221, 228, 0.014) 45%, transparent 72%);
 }
 
 :root[data-webui-theme="daylight"] .cursor-blob {
@@ -386,10 +394,10 @@ code {
   position: fixed;
   inset: 0;
   z-index: 101;
-  opacity: 0.2;
+  opacity: 0.055;
   background-image:
-    linear-gradient(color-mix(in srgb, var(--color-primary) 5%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--color-primary) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 3%, transparent) 1px, transparent 1px),
     url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23FDA632' filter='url(%23n)' opacity='0.11'/%3E%3C/svg%3E");
   background-size: 40px 40px, 40px 40px, 512px 512px;
   mask-image: linear-gradient(to bottom, black, transparent 70%);
@@ -400,7 +408,7 @@ code {
   position: fixed;
   inset: 0;
   z-index: 99;
-  opacity: 0.7;
+  opacity: 0.22;
   background:
     radial-gradient(ellipse at 12% 0%, rgba(253, 166, 50, 0.18) 0%, rgba(253, 166, 50, 0) 42%),
     radial-gradient(ellipse at 88% 6%, rgba(253, 200, 100, 0.08) 0%, rgba(253, 200, 100, 0) 38%),
@@ -408,7 +416,7 @@ code {
 }
 
 :root[data-webui-theme="codex"] .warm-glow {
-  opacity: 0.34;
+  opacity: 0.18;
   background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
 }
 
@@ -464,16 +472,16 @@ code {
 
 /* ---- Compact WebUI work surfaces ---- */
 .spark-glass-panel {
-  background: color-mix(in srgb, var(--color-card) 72%, transparent);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--color-card) 68%, transparent);
+  backdrop-filter: blur(20px);
 }
 
 .spark-panel-header {
-  background: color-mix(in srgb, var(--color-card) 68%, transparent);
+  background: color-mix(in srgb, var(--color-card) 58%, transparent);
 }
 
 .spark-tabbar {
-  background: color-mix(in srgb, var(--color-card) 66%, transparent);
+  background: color-mix(in srgb, var(--color-card) 52%, transparent);
 }
 
 .spark-list-row {
@@ -509,8 +517,37 @@ code {
 input,
 select,
 textarea {
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--color-foreground);
+}
+
+.settings-page {
+  margin: 0 auto;
+  width: min(100%, 760px);
+}
+
+.settings-section {
+  padding: 18px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-section:first-child {
+  border-top: 0;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+  gap: 20px;
+  align-items: center;
+  padding: 10px 0;
+}
+
+@media (max-width: 720px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 }
 
 input,

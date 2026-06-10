@@ -4,9 +4,13 @@
     {
       "name": "spark-web",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "source ~/.nvm/nvm.sh && nvm use 22 && npm run dev"],
-      "port": 5173,
-      "cwd": "src/spark_cli/web"
+      "runtimeArgs": [
+        "-c",
+        "source ~/.nvm/nvm.sh && nvm use 22 && npm run dev -- --port 5273 --strictPort"
+      ],
+      "port": 5273,
+      "cwd": "src/spark_cli/web",
+      "autoPort": false
     }
   ]
 }

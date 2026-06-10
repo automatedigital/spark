@@ -4,8 +4,16 @@
     {
       "name": "spark-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 5173
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5273",
+        "--strictPort"
+      ],
+      "port": 5273,
+      "autoPort": false
     }
   ]
 }

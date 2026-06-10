@@ -46,6 +46,9 @@ router = APIRouter(prefix="/api/canvases", tags=["canvases"])
 _CANVAS_EXT = ".canvas.json"
 # Canvas ids double as filenames; keep them filesystem-safe and human-friendly.
 _CANVAS_ID_RE = re.compile(r"^[a-zA-Z0-9_\- ]{1,80}$")
+_MAX_CANVAS_NODES = 1000
+_MAX_CANVAS_EDGES = 3000
+_MAX_CANVAS_BYTES = 5 * 1024 * 1024
 
 
 def _global_dir() -> Path:
@@ -77,22 +80,31 @@ def _canvas_path(scope: str, slug: str | None, canvas_id: str) -> Path:
     return _scope_dir(scope, slug) / f"{canvas_id}{_CANVAS_EXT}"
 
 
+def _revision(path: Path) -> str:
+    return str(path.stat().st_mtime_ns)
+
+
 def _summary(path: Path, scope: str, slug: str | None) -> dict[str, Any]:
     canvas_id = path.name[: -len(_CANVAS_EXT)]
     name = canvas_id
+    error: str | None = None
     try:
         with path.open(encoding="utf-8") as fh:
             doc = json.load(fh)
         name = doc.get("name") or canvas_id
     except Exception:  # noqa: BLE001 — a corrupt file shouldn't break the listing
-        pass
-    return {
+        error = "Failed to read canvas JSON"
+    summary = {
         "id": canvas_id,
         "name": name,
         "scope": scope,
         "slug": slug,
         "updatedAt": datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat(),
+        "revision": _revision(path),
     }
+    if error:
+        summary["error"] = error
+    return summary
 
 
 class CanvasDoc(BaseModel):
@@ -105,6 +117,37 @@ class CanvasDoc(BaseModel):
     viewport: dict[str, Any] = Field(default_factory=lambda: {"x": 0, "y": 0, "zoom": 1})
     version: int = 1
     updatedAt: str | None = None
+    revision: str | None = None
+    expectedRevision: str | None = None
+
+
+def _validate_canvas_doc(scope: str, slug: str | None, doc: CanvasDoc) -> None:
+    if doc.scope != scope:
+        raise HTTPException(status_code=400, detail="Canvas document scope does not match URL scope")
+    expected_slug = slug if scope == "project" else None
+    if doc.slug != expected_slug:
+        raise HTTPException(status_code=400, detail="Canvas document slug does not match URL slug")
+    if len(doc.nodes) > _MAX_CANVAS_NODES:
+        raise HTTPException(status_code=400, detail=f"Canvas has too many nodes (max {_MAX_CANVAS_NODES})")
+    if len(doc.edges) > _MAX_CANVAS_EDGES:
+        raise HTTPException(status_code=400, detail=f"Canvas has too many edges (max {_MAX_CANVAS_EDGES})")
+
+    node_ids: set[str] = set()
+    for node in doc.nodes:
+        node_id = node.get("id")
+        if not isinstance(node_id, str) or not node_id:
+            raise HTTPException(status_code=400, detail="Every canvas node must have a non-empty string id")
+        if node_id in node_ids:
+            raise HTTPException(status_code=400, detail=f"Duplicate canvas node id: {node_id!r}")
+        node_ids.add(node_id)
+
+    for edge in doc.edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        if source not in node_ids:
+            raise HTTPException(status_code=400, detail=f"Canvas edge references missing source node: {source!r}")
+        if target not in node_ids:
+            raise HTTPException(status_code=400, detail=f"Canvas edge references missing target node: {target!r}")
 
 
 @router.get("")
@@ -162,26 +205,50 @@ def _read_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, Any]
         raise HTTPException(status_code=404, detail=f"Canvas not found: {canvas_id!r}")
     try:
         with path.open(encoding="utf-8") as fh:
-            return json.load(fh)
+            doc = json.load(fh)
+        doc["revision"] = _revision(path)
+        return doc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}")
 
 
 def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) -> dict[str, Any]:
     path = _canvas_path(scope, slug, canvas_id)
+    _validate_canvas_doc(scope, slug, doc)
+    if doc.expectedRevision and path.exists() and doc.expectedRevision != _revision(path):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "revision_conflict",
+                "message": "Canvas was modified since it was loaded",
+                "currentRevision": _revision(path),
+            },
+        )
     payload = doc.model_dump()
     payload["id"] = canvas_id
     payload["scope"] = scope
     payload["slug"] = slug
     payload["updatedAt"] = datetime.now(tz=UTC).isoformat()
+    payload.pop("expectedRevision", None)
+    payload.pop("revision", None)
+    serialized = json.dumps(payload, indent=2)
+    if len(serialized.encode("utf-8")) > _MAX_CANVAS_BYTES:
+        raise HTTPException(status_code=400, detail=f"Canvas document is too large (max {_MAX_CANVAS_BYTES} bytes)")
     tmp = path.with_suffix(f".tmp-{int(time.time() * 1000)}")
     try:
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp.write_text(serialized, encoding="utf-8")
         tmp.replace(path)
     except Exception as exc:  # noqa: BLE001
         tmp.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Failed to write canvas: {exc}")
-    return {"ok": True, "id": canvas_id, "scope": scope, "slug": slug, "updatedAt": payload["updatedAt"]}
+    return {
+        "ok": True,
+        "id": canvas_id,
+        "scope": scope,
+        "slug": slug,
+        "updatedAt": payload["updatedAt"],
+        "revision": _revision(path),
+    }
 
 
 def _delete_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, Any]:
