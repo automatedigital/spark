@@ -114,7 +114,9 @@ def _init_memory_store() -> None:
     try:
         from plugins.memory.holographic import HolographicMemoryProvider
         provider = HolographicMemoryProvider()
-        provider.initialize()
+        # initialize() requires a session id; this boot-time call only validates
+        # and warms the on-disk store, so a sentinel id is fine.
+        provider.initialize(session_id="__boot__")
         _log.info("Holographic memory store initialized")
     except Exception as exc:
         _log.warning("Memory store init skipped: %s", exc)
@@ -6166,6 +6168,32 @@ async def conversation_feedback(session_id: str, body: FeedbackSubmitBody):
 
     _publish_event("chat.feedback_submitted", {}, session_id)
     return {"ok": True}
+
+
+@app.get("/api/conversations/{session_id}/turn-status")
+async def conversation_turn_status(session_id: str):
+    """Report whether an agent turn is currently active for this session.
+
+    Lightweight source of truth the UI can poll to recover from a lost
+    ``chat.turn_done`` event (e.g. the SSE bus dropped mid-turn). A turn is
+    active iff a token queue is registered in ``_web_queues`` for the session
+    or its resolved leaf descendant.
+    """
+    from core.spark_state import SessionDB
+
+    candidates = {session_id}
+    try:
+        db = SessionDB()
+        sid = db.resolve_session_id(session_id)
+        if sid:
+            candidates.add(sid)
+            candidates.add(db.resolve_latest_descendant(sid))
+    except Exception:
+        # Best-effort: fall back to the raw id if resolution fails.
+        pass
+
+    active = any(c in _web_queues for c in candidates if c)
+    return {"session_id": session_id, "turn_active": active}
 
 
 @app.get("/api/conversations/{session_id}/stream")

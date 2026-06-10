@@ -253,6 +253,24 @@ html, body {
   background: color-mix(in srgb, var(--color-foreground) 35%, transparent);
 }
 
+/* ---- Always-visible thin scrollbar utility ----
+   The global scrollbar is transparent until hover, which on tall lists (e.g.
+   the sidebar sessions list) hides the fact that content is scrollable. This
+   utility keeps a subtle thumb visible at all times. */
+.scrollbar-always {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-foreground) 22%, transparent) transparent;
+}
+.scrollbar-always::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollbar-always::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-always::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-foreground) 22%, transparent);
+  border-radius: 4px;
+}
+.scrollbar-always::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-foreground) 40%, transparent);
+}
+
 /* ---- Hide scrollbar utility ---- */
 .scrollbar-none {
   -ms-overflow-style: none;

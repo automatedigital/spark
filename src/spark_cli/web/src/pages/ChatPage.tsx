@@ -94,8 +94,44 @@ function NewSessionHero({
     }
   };
 
+  // Upload into the shared chat workspace (no project yet on the hero) and
+  // insert @files/<name> references into the draft so the new turn can read
+  // them. Mirrors NewThreadCompose.handleUpload.
+  const handleUpload = async (files: File[]) => {
+    const res = await api.uploadChatFiles(files);
+    const refs = res.saved.map((f) => `@${f.path}`).join(" ");
+    setMsg((prev) => {
+      const prefix = prev.trimEnd();
+      return prefix ? `${prefix}\n${refs} ` : `${refs} `;
+    });
+  };
+
+  const [isDragOver, setIsDragOver] = useState(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) void handleUpload(files);
+  };
+
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes("Files")) setIsDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+      }}
+      onDrop={handleDrop}
+    >
+      {isDragOver && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/50 bg-background/70 text-sm font-medium text-foreground">
+          Drop files to attach
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
         <div className="flex items-center gap-4">
           <picture>
@@ -121,6 +157,7 @@ function NewSessionHero({
           streaming={false}
           onSend={() => void handleSend()}
           onStop={() => {}}
+          onUploadFiles={handleUpload}
           disabled={starting}
           placeholder="Start with a goal"
         />

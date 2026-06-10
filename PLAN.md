@@ -1,135 +1,89 @@
-# PLAN — Hermes-style Web/Desktop UI + Simplified Skills & Tools
+# PLAN — Pete's VPS WebUI Bug Fixes (2026-06-10)
 
-Goal: re-skin the Spark web UI and desktop app to match the **Hermes Agent Desktop**
-layout in `screenshots/`, and rebuild Skills & Tools so that connecting external
-apps (MCPs, CLIs, connectors, messaging) is effectively **1-click** for non-technical users.
+Feedback from Pete (Spark WebUI on a VPS) + his logs (`references/logs/petes-logs.md`) and
+screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 
-Reference screenshots live in `screenshots/` (note: lowercase). Target layout:
-- **Sidebar (top→bottom):** New session · Skills & Tools · Messaging · Artifacts · Search sessions… · Pinned · Sessions (grouped by project workspace) · **Settings pinned to bottom**.
-- New-session screen = centered "HERMES AGENT" wordmark + a single "Start with a goal" composer.
-- Skills & Tools = flat searchable list grouped by category, each row a one-line toggle.
-- Messaging = left list of ~25 platforms, right detail pane with Required/Recommended/Advanced fields + Save.
-- Artifacts = All / Images / Files / Links tabs with empty-state.
+## Root-cause research summary
 
-Current state (for reference):
-- Global nav is an icon rail in `src/spark_cli/web/src/App.tsx` (`NAV_ITEMS`: chat, files, canvas, kanban, cron, skills, connectors). Settings is a **modal** (`SettingsPanel.tsx`), already bottom-anchored.
-- Session list / search / pinned currently live **inside** `pages/ChatPage.tsx`'s own left sidebar — needs to be hoisted to the global sidebar.
-- Skills: `pages/SkillsPage.tsx` (+ `/api/skills`). Connectors: `pages/ConnectorsPage.tsx` (+ `/api/connectors`, `gateway/connectors_routes.py`, `google_connector.py`, `oauth_connectors.py`).
-- Messaging platforms exist in `src/gateway/platforms/` (telegram, discord, slack, matrix, whatsapp, signal, bluebubbles, homeassistant, email, sms, dingtalk, feishu, wecom, weixin, qqbot, webhook, api_server) but have **no dedicated web page** yet (configured via gateway config).
+1. **Chat freeze while waiting for an answer** — Web chat tokens and `chat.turn_done` arrive
+   over the global `/api/events` SSE bus (`src/spark_cli/web/src/hooks/useEventBus.ts`).
+   If the SSE connection drops mid-turn (common behind VPS reverse proxies / flaky networks —
+   Pete's logs show repeated `httpx.ReadTimeout`/`ReadError`), the bus reconnects with backoff
+   but **events emitted during the gap are lost**. A missed `chat.turn_done` leaves
+   `ChatPanel.tsx` stuck with `streaming=true` → perpetual typing indicator = "freeze".
+   There is no re-sync on reconnect and no stall watchdog.
 
----
+2. **Sidebar can't scroll / no scrollbar** — `SidebarSessions.tsx:345` has
+   `overflow-y-auto`, but with many expanded project groups the screenshot shows content
+   clipped with no scrollbar. Likely a flex `min-h-0` chain break in the `<aside>` in
+   `App.tsx` (~line 605) — the aside has no explicit `overflow-hidden`/height constraint in
+   the hover-expanded absolute mode — plus the scrollbar is styled invisible. Needs repro +
+   always-visible thin scrollbar.
 
-## Phase 0 — Reference & scaffolding
+3. **New project → new chat → can't upload** — Confirmed in code. The new-session hero
+   composer in `ChatPage.tsx` (~line 118) renders `<PromptBar>` **without `onUploadFiles`**,
+   and `PromptBar.tsx:747` only renders the upload (+) button when `onUploadFiles` is set.
+   So any "new chat" started from the hero has no upload affordance at all. (Project
+   `NewThreadCompose` at line 188 does pass it — but the global "New session" path doesn't.)
+   Pete's workaround (upload via sidebar file pane, reference filename) matches this.
 
-- [x] Clone Hermes Agent for reference into a scratch dir: `git clone https://github.com/nousresearch/hermes-agent /tmp/hermes-agent-ref` (read-only; do not vendor wholesale).
-- [x] Document in this file which Hermes components/layouts/styles we mirror vs. reimplement (license check before copying any code).
-- [x] Capture baseline screenshots of the current Spark web UI (chat, skills, connectors, settings) for before/after comparison.
-- [x] Confirm `npm run dev` works in `src/spark_cli/web/` and the dev server renders against the local gateway.
+4. **Memory provider errors in logs** — Two distinct bugs:
+   - `web_server.py:117` calls `HolographicMemoryProvider().initialize()` but the provider
+     signature is `initialize(self, session_id, **kwargs)` → "missing 1 required positional
+     argument" warning on every boot.
+   - `agent.memory_manager: Memory provider 'holographic' initialize failed: file is not a
+     database` → Pete's `memory_store.db` is corrupted; there is no recovery path, so memory
+     fails on every turn.
 
-**Phase 0 notes:**
-- Hermes Agent is MIT-licensed (Nous Research, 2025) — copying code is permitted with license attribution; we still reimplement rather than vendor.
-- Reference UI lives at `/tmp/hermes-agent-ref/apps/desktop/src` (pages, `components/pane-shell`, chat) and `/tmp/hermes-agent-ref/web/src`.
-- Decision: **mirror layout/IA only** (sidebar section order, new-session hero composer, skills toggle list, messaging master-detail, artifacts tabs); **reimplement** all components in Spark's existing stack (shadcn/Tailwind 4, `ui/*` primitives, lucide icons, Spark theme tokens). No Hermes code is vendored.
-- Baseline screenshots: `screenshots/baseline/{chat,skills,connectors,settings}.png` (dev server `npm run dev` on :5173 proxying gateway on :9119 — both verified working).
-
-## Phase 1 — Global sidebar restructure (`App.tsx`)
-
-- [x] Replace `NAV_ITEMS` icon rail with the Hermes section order: New session, Skills & Tools, Messaging, Artifacts.
-- [x] Add **New session** action button at the top (resets chat to a fresh thread; reuse existing `spark-new-chat` CustomEvent path).
-- [x] Add **Search sessions…** input directly into the global sidebar (hoist search logic out of `ChatPage`).
-- [x] Add **Pinned** section header + pinned-session list to the global sidebar.
-- [x] Add **Sessions** section grouped by **project workspace** (use existing `WorkspaceProject` / `SessionInfo` from `lib/api.ts`); show "No workspace" group for ungrouped sessions.
-- [x] Keep **Settings** pinned to the bottom of the sidebar (retain modal trigger via `setSettingsOpen`).
-- [x] Preserve collapse/expand + hover-expand behavior already in `App.tsx`.
-- [x] Wire sidebar session click → navigate to chat + load that session (replace ChatPage-internal selection).
-- [x] Remove the now-duplicated session list/search/pinned UI from `ChatPage.tsx` (ChatPage becomes the thread view only).
-- [x] Move `chat`, `files`, `canvas`, `kanban`, `cron` out of the primary rail into a secondary location (command palette + a "More" menu or workspace tabs) so the primary sidebar matches Hermes exactly.
-- [x] Update mobile nav in `App.tsx` header to mirror the new sections.
-- [x] Update `i18n/en.ts` + `i18n/types.ts` nav labels (newSession, skillsAndTools, messaging, artifacts) and any other locales.
-
-## Phase 2 — New-session screen
-
-- [x] Build centered hero: large serif "SPARK" (or "HERMES AGENT"-equivalent) wordmark + subtitle ("Type a task, question, or snippet…").
-- [x] Bottom-centered composer "Start with a goal" with mic + send affordances (reuse `components/chat/PromptBar.tsx`).
-- [x] Show this hero when no active session is selected; on first send, create a session and transition to the thread view.
-- [x] Match dark background + subtle texture from screenshots (reuse existing `noise-overlay` / `warm-glow`).
-
-## Phase 3 — Skills & Tools (merged page)
-
-- [x] Create a unified **Skills & Tools** page with two top tabs: **Skills** and **Toolsets** (matches `skills-and-tools.png`).
-- [x] Render skills as a flat, searchable, category-grouped list; each row = name + one-line description + a right-aligned toggle (`ui/switch.tsx`).
-- [x] Top category filter chips with counts (Apple, Autonomous-AI-Agents, Creative, … Software-Development), like the screenshot.
-- [x] Add `Search skills…` input + refresh control top-right.
-- [x] Fold **Connectors** into this page reworded as **Tools** (plugins + connectors to external apps). Connectors are tools that "connect" to other apps. (Third **Tools** tab embeds the connectors view.)
-- [x] Each connectable tool shows a **Connect** / **Connected** state; connecting auto-enables the related skills/toolset.
-- [x] Keep existing `/api/skills` + `/api/connectors` data sources; add a combined view-model in `lib/api.ts` if needed. (Not needed — page composes both APIs directly.)
-
-## Phase 4 — 1-click connections (the core UX goal)
-
-- [x] Audit existing connect flows in `gateway/connectors_routes.py`, `google_connector.py`, `oauth_connectors.py` (OAuth device-flow + token paste already exist).
-- [x] Design a single **"Connect"** affordance per app: OAuth where available (Google, GitHub, Slack, Notion, etc.), device-flow fallback, token-paste last resort — all behind one button with progressive disclosure.
-- [x] On successful connect, **auto-enable** the matching skill(s)/toolset and surface a toast ("Gmail connected — email skills enabled").
-- [x] Add a connectors→skills mapping (which skills/toolsets light up per connector) and persist enablement.
-- [x] Add MCP servers as connectable tools: surface MCP registry / one-click add (leverage existing MCP settings tab) inside Skills & Tools.
-- [x] Add CLI-backed tools (claude-code, codex, opencode) as toggle rows with a "detected/not detected" state and an install hint.
-- [x] Ensure disconnect/revoke is one click and disables dependent skills (with confirmation).
-- [x] Add empty/needs-setup states with clear copy aimed at non-technical users.
-
-
-**Phase 4 notes:**
-- Connect flows audited: Google OAuth popup + status polling, GitHub device flow, token-paste modal for api_key connectors — all already behind a single per-connector Connect button in `ConnectorsPage.tsx`.
-- Auto-enable: `ConnectorsPage` now watches disconnected→connected transitions and enables each connector's mapped skills (`ConnectorStatus.skills`), with a toast ("X connected — N skills enabled"). Disconnects disable the same skills.
-- Mapping lives in the existing connector registry (`src/tools/connectors/base.py` `skills=`); no new persistence needed (skill toggles persist via `/api/skills`).
-- CLI agents added as catalog connectors in `src/tools/connectors/generic.py`: `claude-code`, `codex`, `opencode` — detected via CLI on PATH + auth config files (`~/.claude.json`, `~/.codex/auth.json`, `~/.local/share/opencode/auth.json`).
-- MCP: "MCP servers" entry card at the top of the Tools tab → "Manage MCP" opens Settings (full one-click MCP registry install is future work).
-
-## Phase 5 — Messaging page
-
-- [x] Create `pages/MessagingPage.tsx`: left scrollable list of platforms with icon + name + connected dot; right detail pane.
-- [x] Source the platform list from `src/gateway/platforms/` (telegram, discord, slack, mattermost, matrix, whatsapp, signal, bluebubbles, homeassistant, email, sms/twilio, dingtalk, feishu/lark, wecom, wechat, qqbot, api_server, webhooks, irc, line, etc.).
-- [x] Detail pane sections: status chips (Disabled / Needs setup / gateway state), "Get your credentials" help + setup-guide link, **Required** fields, **Recommended** fields, collapsible **Advanced**, enable toggle, **Save changes**.
-- [x] Add `/api/messaging` (or extend gateway config endpoints) to read/write per-platform credentials + enabled state; reuse existing gateway config plumbing (`gateway/config.py`, `display_config.py`).
-- [x] Wire Save → restart/refresh the relevant gateway channel (`gateway/restart.py`).
-- [x] Add `Search messaging…` filter for the platform list.
-
-## Phase 6 — Artifacts page
-
-- [x] Create `pages/ArtifactsPage.tsx` with tabs **All / Images / Files / Links** (each with a live count).
-- [x] Aggregate artifacts produced by sessions (generated images, file outputs, links) — define/extend an `/api/artifacts` endpoint backed by workspace files + session outputs.
-- [x] Empty state: "No artifacts found — Generated images and file outputs will appear here as sessions produce them."
-- [x] Grid/list rendering with type filtering; click opens the artifact (image preview, file download, link out).
-
-## Phase 7 — Settings panel parity
-
-- [x] Verify the existing `SettingsPanel.tsx` sections match the reference (Model, Chat, Appearance, Workspace, Safety, Memory & Context, Voice, Advanced, Providers, Gateway, Tools & Keys, MCP, Archived Chats, About).
-- [x] Adjust labels/grouping/ordering to match `settings-*.png` screenshots where they differ.
-- [x] Keep Settings reachable from the sidebar bottom; confirm modal styling matches dark minimal aesthetic.
-
-## Phase 8 — Visual polish / theme
-
-- [x] Tune spacing, type scale, and muted palette to match Hermes minimal/sleek look across all new pages.
-- [x] Confirm status bar at bottom (Gateway ready · Agents · Cron · model · version) matches screenshots.
-- [x] Verify dark mode + responsive (use `preview_resize`) for sidebar collapse, messaging split, artifacts grid.
-
-## Phase 9 — Desktop app parity
-
-- [x] Verify Tauri shell (`isTauri()` paths in `App.tsx`) compiles and bundles the new layout successfully.
-- [x] Confirm tray "new chat" + `spark://` deep links still route correctly after sidebar refactor.
-- [x] Rebuild the macOS app via `/build-mac` and smoke-test the new UI in the packaged app. (`Spark.app` launches with its bundled server; code signature and DMG checksum verified.)
-
-## Phase 10 — Verification & ship
-
-- [x] Run the dev server and verify each page via preview tools (snapshot + screenshot): new-session, skills & tools, messaging, artifacts, settings.
-- [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for any backend additions. (Changed backend files pass focused Ruff and mypy checks; repository-wide checks retain pre-existing baseline findings.)
-- [x] `python -m pytest tests/ -m "not slow" -q` green (add tests for new `/api/messaging` + `/api/artifacts` routes). (`11566 passed, 150 skipped`.)
-- [x] Build the web bundle and confirm `web_dist/` is regenerated.
-- [x] Before/after screenshots attached; open a PR from a feature branch (never push to main). (PR #25.)
+   (Telegram `TimedOut` entries in the logs are the gateway's existing retry loop working as
+   designed — network blips on the VPS, not a bug. No action beyond log-noise review.)
 
 ---
 
-### Decisions (locked)
-- **Demoted pages:** `chat/files/canvas/kanban/cron` stay reachable but move off the primary sidebar → command palette (Cmd+K) + a secondary "More" menu. Primary sidebar matches Hermes exactly.
-- **Branding:** keep **Spark** identity (wordmark + name), but use the Hermes centered-serif + bottom-composer layout from the screenshots.
+## Phase 1 — Chat freeze: SSE resilience + turn re-sync
 
-### Open questions (resolve while building)
-- [x] Artifacts backing store: derive from workspace files only, or add a dedicated artifact index? — default: derive first, index later if needed. → derived from workspace files
+- [x] In `src/spark_cli/web/src/hooks/useEventBus.ts`, emit a synthetic local event (e.g. `bus.reconnected`) to listeners whenever the EventSource reopens after an error.
+- [x] In `src/spark_cli/web/src/components/ChatPanel.tsx`, handle `bus.reconnected` while `streaming=true`: re-fetch session messages (`api.getSessionMessages`) and clear `streaming`/`statusLabel` if the turn already finished (reuse the existing mount-time logic at ~line 555).
+- [x] Add a stall watchdog in `ChatPanel.tsx`: if `streaming=true` and no token/event has arrived for N seconds (e.g. 45s), poll session state once; if turn finished, finalize; if not, keep waiting but show a "still working…" status instead of freezing silently.
+- [x] Backend: add a lightweight turn-status source of truth the UI can poll — either include `turn_active` in the existing session-messages response or add `GET /api/conversations/{session_id}/turn-status` in `src/spark_cli/web_server.py` (web chat section, ~line 5395).
+- [x] Verify `/api/events` SSE generator in `web_server.py` (~line 323) sends periodic heartbeats so proxies don't kill idle connections; add one if missing (the per-conversation stream at line 6184 already pings every 30s).
+- [x] Frontend tests/build: `cd src/spark_cli/web && npm run build` passes with no type errors.
+
+## Phase 2 — Sidebar scrolling + visible scrollbar
+
+- [x] Reproduce: load the WebUI with enough projects/sessions to overflow the sidebar (can seed via SessionDB or mock) and confirm the scroll failure mode in both pinned-expanded and hover-expanded sidebar states.
+- [x] Fix the flex/overflow chain: ensure `<aside>` in `src/spark_cli/web/src/App.tsx` (~line 605) and every wrapper down to `SidebarSessions`' scroll container (`SidebarSessions.tsx:345`) has `min-h-0` + proper `overflow` so the sessions list scrolls within the viewport.
+- [x] Add an always-visible thin scrollbar style for the sidebar sessions list (custom `scrollbar-width: thin` / `::-webkit-scrollbar` styling in `src/spark_cli/web/src/index.css`, applied via a class on the scroll container).
+- [x] Check the collapsed→hover-expanded absolute-positioned sidebar variant (`navHovered && !navExpanded` branch) gets the same scroll behavior.
+- [x] Verify with browser preview at a short viewport height (e.g. 700px) that all sessions are reachable by scroll and the scrollbar is visible.
+
+## Phase 3 — Upload missing in new-chat composer
+
+- [x] Add an `onUploadFiles` handler to the new-session hero `<PromptBar>` in `src/spark_cli/web/src/pages/ChatPage.tsx` (~line 118), using `api.uploadChatFiles` and appending `@files/<filename>` refs to the draft message (mirror `NewThreadCompose.handleUpload` at line 161).
+- [x] Confirm `NewThreadCompose` upload works immediately after project creation: `POST /api/workspace/projects` (`workspace_routes.py:204`) must create the project directory on disk before `_project_dir()` (line 78) is hit by the upload route — fix ordering if the dir is created lazily.
+- [x] Add drag-and-drop + paste-to-upload support on the hero composer if PromptBar already wires it (it does via `onUploadFiles` — verify it activates once the prop is passed).
+- [x] Manual verify in preview: create project → "new chat" → upload via + button, drag-drop, and paste; file lands in workspace and `@files/...` ref is inserted.
+
+## Phase 4 — Memory provider fixes
+
+- [x] Fix `_init_memory_store()` in `src/spark_cli/web_server.py` (~line 115): pass a session id (e.g. a boot/warmup session id) to `provider.initialize(...)`, or change the call to match the provider API; eliminate the "missing 1 required positional argument" warning.
+- [x] Add corrupted-DB recovery in `src/plugins/memory/holographic/__init__.py` `initialize()`: catch `sqlite3.DatabaseError` ("file is not a database"), rename the bad file to `memory_store.db.corrupt-<timestamp>`, recreate a fresh store, and log a clear one-time warning.
+- [x] Audit `src/agent/memory_manager.py` (~line 385) so a failing memory provider degrades gracefully (no repeated per-turn warnings — warn once per process).
+- [x] Add unit tests: corrupted-db recovery path and web_server memory-init call signature (tests must use the `_isolate_spark_home` fixture; never touch `~/.spark`).
+- [x] Run `python -m pytest tests/ -k "memory or holographic" -q` and `ruff check src/`.
+
+## Phase 5 — Test, lint, and PR
+
+- [x] Run full relevant test suites: `python -m pytest tests/ -m "not slow" -q` (use `.venv`, not anaconda).
+- [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for touched files.
+- [x] `cd src/spark_cli/web && npm run build` — production bundle builds clean.
+- [x] Browser-preview smoke test: new session upload, project thread upload, sidebar scroll, simulated SSE drop mid-turn recovers without freeze.
+- [x] Open a PR from a feature branch (e.g. `fix/webui-pete-feedback`) — never push to main directly.
+
+## Phase 6 — Rebuild + release macOS desktop app
+
+- [ ] After PR is merged to main: bump desktop version (next after 1.0.8) per the build skill's convention.
+- [ ] Run `/build-mac` skill to rebuild the .app + .dmg with the updated web UI + backend.
+- [ ] Smoke-test the built app: launch, new session upload, sidebar scroll.
+- [ ] Run `/release-mac` skill to publish the DMG to GitHub Releases.
+- [ ] Notify Pete with the changelog (freeze fix, sidebar scroll, upload in new chat, memory store recovery) and ask him to `git pull` + restart on the VPS.

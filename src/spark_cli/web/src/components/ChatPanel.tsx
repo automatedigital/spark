@@ -21,7 +21,7 @@ import type { SessionMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { Button } from "@/components/ui/button";
-import { useEventBus } from "@/hooks/useEventBus";
+import { useEventBus, BUS_RECONNECTED_TOPIC } from "@/hooks/useEventBus";
 import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
 import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
@@ -494,6 +494,11 @@ export function ChatPanel({
   // Token batching: accumulate tokens and flush once per animation frame
   const tokenBufferRef = useRef("");
   const rafPendingRef = useRef<number | null>(null);
+  // Timestamp of the last chat event received for the active turn. Drives the
+  // stall watchdog that recovers from a silently-dropped turn (lost SSE).
+  const lastEventAtRef = useRef<number>(0);
+  // Guards against overlapping turn-status re-sync polls.
+  const resyncInFlightRef = useRef(false);
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
@@ -612,9 +617,61 @@ export function ChatPanel({
     }
   }, [flushTokenBuffer]);
 
+  // Re-sync turn state after a suspected lost event (SSE reconnect or stall).
+  // Polls the backend's authoritative turn-status; if the turn already finished
+  // we flush + finalize the assistant bubble and reload history so nothing is
+  // lost. If it's still running we surface a gentle "still working" status
+  // instead of leaving the UI frozen on a stale typing indicator.
+  const resyncTurnState = useCallback(async () => {
+    const sid = activeSessionRef.current;
+    if (!sid || !streamingRef.current || resyncInFlightRef.current) return;
+    resyncInFlightRef.current = true;
+    try {
+      const status = await api.getTurnStatus(sid);
+      if (status.session_id && sid !== activeSessionRef.current) return; // session switched mid-poll
+      if (!status.turn_active) {
+        // Turn finished while we weren't listening — finalize from history.
+        if (rafPendingRef.current !== null) {
+          cancelAnimationFrame(rafPendingRef.current);
+          flushTokenBuffer();
+        }
+        finalizeAssistant();
+        setStreaming(false);
+        setStatusLabel(null);
+        try {
+          const resp = await api.getSessionMessages(sid, HISTORY_PAGE);
+          const mapped = sessionMessagesToChat(
+            resp.messages.filter(
+              (m) => m.role === "user" || m.role === "assistant" || m.role === "tool",
+            ),
+          );
+          setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? sid));
+        } catch {
+          /* keep whatever we have locally */
+        }
+      } else {
+        // Still running — reset the stall clock and reassure the user.
+        lastEventAtRef.current = Date.now();
+        setStatusLabel((prev) => prev ?? "Still working…");
+      }
+    } catch {
+      /* network blip — leave state untouched, watchdog will retry */
+    } finally {
+      resyncInFlightRef.current = false;
+    }
+  }, [flushTokenBuffer, finalizeAssistant]);
+
   useEventBus((env) => {
+    // Synthetic local event from the SSE bus reopening after a drop. Events
+    // emitted during the gap (possibly a whole turn_done) may have been missed,
+    // so reconcile against the backend's turn-status.
+    if (env.topic === BUS_RECONNECTED_TOPIC) {
+      if (streamingRef.current) void resyncTurnState();
+      return;
+    }
     const sid = env.session_id ?? undefined;
     if (!sid || sid !== activeSessionRef.current) return;
+    lastEventAtRef.current = Date.now();
     const data = env.data as Record<string, unknown>;
 
     switch (env.topic) {
@@ -817,6 +874,23 @@ export function ChatPanel({
         break;
     }
   });
+
+  // Stall watchdog: while a turn is streaming, if no chat event has arrived for
+  // a while the turn may have finished without us seeing its `turn_done` (lost
+  // SSE on a flaky VPS link). Poll the authoritative turn-status to recover
+  // instead of leaving the typing indicator spinning forever.
+  useEffect(() => {
+    if (!streaming) return;
+    lastEventAtRef.current = Date.now();
+    const STALL_MS = 45_000;
+    const interval = setInterval(() => {
+      if (!streamingRef.current) return;
+      if (Date.now() - lastEventAtRef.current >= STALL_MS) {
+        void resyncTurnState();
+      }
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [streaming, resyncTurnState]);
 
   const sendMessage = async () => {
     const text = input.trim();
