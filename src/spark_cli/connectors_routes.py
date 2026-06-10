@@ -66,7 +66,7 @@ def _redirect_uri(provider: str = "google") -> str:
 
     # 1. Explicit override
     try:
-        import yaml  # type: ignore[import]
+        import yaml  # type: ignore[import-untyped]
 
         from spark_cli.config import get_spark_home
 
@@ -100,11 +100,13 @@ def _redirect_uri(provider: str = "google") -> str:
 
 @router.get("/api/connectors")
 async def list_connectors():
+    from spark_cli.connector_skills import grant_for
     from tools.connectors import list_connectors as list_registered_connectors
 
     items = []
     for connector in list_registered_connectors():
         status = connector.status()
+        mapping = grant_for(connector.id, connector.skills)
         item = {
             **connector.describe(),
             "icon": connector.id,
@@ -113,6 +115,8 @@ async def list_connectors():
             "state": status.state.value,
             "detail": status.detail,
             "account": status.account,
+            "skills": mapping["skills"],
+            "toolsets": mapping["toolsets"],
             "status": status.to_dict(),
         }
         if connector.id != "google":
@@ -139,14 +143,8 @@ async def list_connectors():
                     if google_status.get("connected") and google_status.get("email")
                     else "Use OAuth sign-in and optional Gmail IMAP app password."
                 ),
-                "skills": [
-                    "gws-calendar",
-                    "gws-drive",
-                    "gws-docs",
-                    "gws-gmail",
-                    "gws-sheets",
-                    "gws-slides",
-                ],
+                "skills": grant_for("google")["skills"],
+                "toolsets": grant_for("google")["toolsets"],
                 "docs_url": "https://developers.google.com/workspace",
                 "status": {
                     "state": "connected" if google_status.get("connected") else "disconnected",
@@ -162,6 +160,60 @@ async def list_connectors():
             *items,
         ]
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/connectors/cli-tools — detect CLI-backed coding agents on PATH
+# ---------------------------------------------------------------------------
+
+# (connector id, display name, binary, install hint)
+_CLI_TOOLS: tuple[tuple[str, str, str, str], ...] = (
+    ("claude-code", "Claude Code", "claude", "npm install -g @anthropic-ai/claude-code"),
+    ("codex", "OpenAI Codex", "codex", "npm install -g @openai/codex"),
+    ("opencode", "OpenCode", "opencode", "npm install -g opencode-ai"),
+)
+
+
+@router.get("/api/connectors/cli-tools")
+async def connector_cli_tools():
+    """Detected/not-detected state for CLI coding agents (binary on PATH)."""
+    from tools.connectors.generic import _command_path
+
+    items = []
+    for connector_id, name, binary, install_hint in _CLI_TOOLS:
+        path = _command_path(binary)
+        items.append(
+            {
+                "id": connector_id,
+                "name": name,
+                "cli": binary,
+                "detected": bool(path),
+                "path": path,
+                "install_hint": install_hint,
+            }
+        )
+    return JSONResponse(items)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/connectors/{id}/skills/enable — auto-enable mapped skills/toolsets
+# ---------------------------------------------------------------------------
+
+@router.post("/api/connectors/{connector_id}/skills/enable")
+async def connector_enable_skills(connector_id: str):
+    """Enable the skills/toolsets mapped to this connector (used after connect)."""
+    try:
+        from spark_cli.connector_skills import enable_connector_skills
+        from tools.connectors import get_connector
+
+        connector = get_connector(connector_id)
+        if connector is None:
+            return JSONResponse({"error": "unknown_connector"}, status_code=404)
+        result = enable_connector_skills(connector_id, connector.skills)
+        return JSONResponse({"ok": True, **result})
+    except Exception as exc:
+        logger.warning("connector_enable_skills error for %s: %s", connector_id, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @router.get("/api/connectors/{connector_id}/status")
@@ -487,7 +539,6 @@ _CALLBACK_ERROR_HTML = """<!DOCTYPE html>
 
 @router.get("/oauth/google/callback")
 async def google_oauth_callback(
-    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -609,7 +660,7 @@ async def connector_oauth_callback(
 # ---------------------------------------------------------------------------
 
 @router.delete("/api/connectors/google")
-async def google_disconnect():
+async def google_disconnect(disable_skills: bool = True):
     try:
         import httpx
 
@@ -631,9 +682,84 @@ async def google_disconnect():
 
         clear_token()
         clear_imap_credentials()
-        return JSONResponse({"disconnected": True})
+        skills_disabled: list[str] = []
+        if disable_skills:
+            try:
+                from spark_cli.connector_skills import disable_connector_skills
+
+                skills_disabled = disable_connector_skills("google")["skills"]
+            except Exception as exc:
+                logger.warning("Could not disable Google skills: %s", exc)
+        return JSONResponse({"disconnected": True, "skills_disabled": skills_disabled})
     except Exception as exc:
         logger.warning("Error disconnecting Google: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/connectors/{id} — one-click disconnect/revoke (any connector)
+# ---------------------------------------------------------------------------
+
+# Connectors authenticated through a CLI sign-in (claude, codex, …) may share
+# env keys with the model providers (ANTHROPIC_API_KEY, OPENAI_API_KEY), so we
+# never remove env credentials for those on disconnect.
+_ENV_CLEAR_AUTH_TYPES = {"api_key", "multi_env", "oauth_or_api_key", "oauth"}
+
+
+@router.delete("/api/connectors/{connector_id}")
+async def connector_disconnect(connector_id: str, disable_skills: bool = True):
+    if connector_id == "google":
+        return await google_disconnect(disable_skills=disable_skills)
+    try:
+        from tools.connectors import get_connector
+
+        connector = get_connector(connector_id)
+        if connector is None:
+            return JSONResponse({"error": "unknown_connector"}, status_code=404)
+
+        # 1. Forget any stored OAuth token.
+        try:
+            from spark_cli.oauth_connectors import clear_token as clear_oauth_token
+
+            clear_oauth_token(connector_id)
+        except Exception as exc:
+            logger.warning("Could not clear OAuth token for %s: %s", connector_id, exc)
+
+        # 2. Remove pasted credentials from the Spark env file (token-paste
+        #    connectors only — never CLI-shared provider keys).
+        env_cleared: list[str] = []
+        spec = getattr(connector, "spec", None)
+        if spec is not None and spec.auth_type in _ENV_CLEAR_AUTH_TYPES:
+            try:
+                from spark_cli.config import remove_env_value
+
+                for env_name in spec.env_vars:
+                    if remove_env_value(env_name):
+                        env_cleared.append(env_name)
+            except Exception as exc:
+                logger.warning("Could not clear env credentials for %s: %s", connector_id, exc)
+
+        # 3. Disable dependent skills.
+        skills_disabled: list[str] = []
+        if disable_skills:
+            try:
+                from spark_cli.connector_skills import disable_connector_skills
+
+                skills_disabled = disable_connector_skills(connector_id, connector.skills)[
+                    "skills"
+                ]
+            except Exception as exc:
+                logger.warning("Could not disable skills for %s: %s", connector_id, exc)
+
+        return JSONResponse(
+            {
+                "disconnected": True,
+                "env_cleared": env_cleared,
+                "skills_disabled": skills_disabled,
+            }
+        )
+    except Exception as exc:
+        logger.warning("Error disconnecting %s: %s", connector_id, exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 

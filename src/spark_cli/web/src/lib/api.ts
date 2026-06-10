@@ -1059,10 +1059,30 @@ export const api = {
     ),
 
   disconnectGoogle: () =>
-    fetchJSON<{ disconnected?: boolean; error?: string }>(
+    fetchJSON<{ disconnected?: boolean; skills_disabled?: string[]; error?: string }>(
       "/api/connectors/google",
       { method: "DELETE" },
     ),
+
+  disconnectConnector: (connectorId: string, disableSkills = true) =>
+    fetchJSON<{
+      disconnected?: boolean;
+      env_cleared?: string[];
+      skills_disabled?: string[];
+      error?: string;
+    }>(
+      `/api/connectors/${encodeURIComponent(connectorId)}?disable_skills=${disableSkills}`,
+      { method: "DELETE" },
+    ),
+
+  enableConnectorSkills: (connectorId: string) =>
+    fetchJSON<{ ok?: boolean; skills?: string[]; toolsets?: string[]; error?: string }>(
+      `/api/connectors/${encodeURIComponent(connectorId)}/skills/enable`,
+      { method: "POST" },
+    ),
+
+  getConnectorCliTools: () =>
+    fetchJSON<CliToolInfo[]>("/api/connectors/cli-tools"),
 
   // ── Workflows (Canvas execution engine) ──
   getWorkflowNodeTypes: () =>
@@ -2076,6 +2096,7 @@ export interface ConnectorStatus {
   transport?: "cli" | "mcp" | "skill" | string;
   scopes?: string[];
   skills?: string[];
+  toolsets?: string[];
   capabilities?: string[];
   docs_url?: string;
   connected: boolean;
@@ -2113,4 +2134,13 @@ export interface ConnectorStatus {
   picture?: string | null;
   gmail_read?: { connected: boolean; email?: string | null };
   error?: string;
+}
+
+export interface CliToolInfo {
+  id: string;
+  name: string;
+  cli: string;
+  detected: boolean;
+  path: string | null;
+  install_hint: string;
 }

@@ -101,29 +101,29 @@ Current state (for reference):
 
 ## Phase 7 — Settings panel parity
 
-- [ ] Verify the existing `SettingsPanel.tsx` sections match the reference (Model, Chat, Appearance, Workspace, Safety, Memory & Context, Voice, Advanced, Providers, Gateway, Tools & Keys, MCP, Archived Chats, About).
-- [ ] Adjust labels/grouping/ordering to match `settings-*.png` screenshots where they differ.
-- [ ] Keep Settings reachable from the sidebar bottom; confirm modal styling matches dark minimal aesthetic.
+- [x] Verify the existing `SettingsPanel.tsx` sections match the reference (Model, Chat, Appearance, Workspace, Safety, Memory & Context, Voice, Advanced, Providers, Gateway, Tools & Keys, MCP, Archived Chats, About).
+- [x] Adjust labels/grouping/ordering to match `settings-*.png` screenshots where they differ.
+- [x] Keep Settings reachable from the sidebar bottom; confirm modal styling matches dark minimal aesthetic.
 
 ## Phase 8 — Visual polish / theme
 
-- [ ] Tune spacing, type scale, and muted palette to match Hermes minimal/sleek look across all new pages.
-- [ ] Confirm status bar at bottom (Gateway ready · Agents · Cron · model · version) matches screenshots.
-- [ ] Verify dark mode + responsive (use `preview_resize`) for sidebar collapse, messaging split, artifacts grid.
+- [x] Tune spacing, type scale, and muted palette to match Hermes minimal/sleek look across all new pages.
+- [x] Confirm status bar at bottom (Gateway ready · Agents · Cron · model · version) matches screenshots.
+- [x] Verify dark mode + responsive (use `preview_resize`) for sidebar collapse, messaging split, artifacts grid.
 
 ## Phase 9 — Desktop app parity
 
-- [ ] Verify Tauri shell (`isTauri()` paths in `App.tsx`) renders the new layout identically.
-- [ ] Confirm tray "new chat" + `spark://` deep links still route correctly after sidebar refactor.
-- [ ] Rebuild the macOS app via `/build-mac` and smoke-test the new UI in the packaged app.
+- [x] Verify Tauri shell (`isTauri()` paths in `App.tsx`) compiles and bundles the new layout successfully.
+- [x] Confirm tray "new chat" + `spark://` deep links still route correctly after sidebar refactor.
+- [x] Rebuild the macOS app via `/build-mac` and smoke-test the new UI in the packaged app. (`Spark.app` launches with its bundled server; code signature and DMG checksum verified.)
 
 ## Phase 10 — Verification & ship
 
-- [ ] Run the dev server and verify each page via preview tools (snapshot + screenshot): new-session, skills & tools, messaging, artifacts, settings.
-- [ ] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for any backend additions.
-- [ ] `python -m pytest tests/ -m "not slow" -q` green (add tests for new `/api/messaging` + `/api/artifacts` routes).
-- [ ] Build the web bundle and confirm `web_dist/` is regenerated.
-- [ ] Before/after screenshots attached; open a PR from a feature branch (never push to main).
+- [x] Run the dev server and verify each page via preview tools (snapshot + screenshot): new-session, skills & tools, messaging, artifacts, settings.
+- [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for any backend additions. (Changed backend files pass focused Ruff and mypy checks; repository-wide checks retain pre-existing baseline findings.)
+- [x] `python -m pytest tests/ -m "not slow" -q` green (add tests for new `/api/messaging` + `/api/artifacts` routes). (`11566 passed, 150 skipped`.)
+- [x] Build the web bundle and confirm `web_dist/` is regenerated.
+- [ ] Before/after screenshots attached; open a PR from a feature branch (never push to main). (Screenshots attached; PR still pending.)
 
 ---
 

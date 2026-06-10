@@ -194,4 +194,11 @@ no_implicit_optional = true
 ignore_missing_imports = true
 # Incremental adoption: agent/ (strict), spark_cli/ (next wave), expand gradually
 files = ["src/agent/", "src/spark_cli/"]
-exclude = ["tests/", "src/tools/", "src/gateway/", "src/core/"]
+exclude = [
+    "tests/",
+    "src/tools/",
+    "src/gateway/",
+    "src/core/",
+    "src/spark_cli/web/src-tauri/resources/",
+    "src/spark_cli/web/src-tauri/target/",
+]

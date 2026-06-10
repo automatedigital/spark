@@ -43,7 +43,7 @@ import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
 
 
-// Hermes-style primary sections (after the "New session" action).
+// Primary sections shown after the "New session" action.
 const PRIMARY_NAV = [
   { id: "skillsTools", labelKey: "skillsAndTools" as const, icon: Blocks },
   { id: "messaging", labelKey: "messaging" as const, icon: MessageCircle },
@@ -284,6 +284,9 @@ function AppShell() {
   const [authChecking, setAuthChecking] = useState(true);
   const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
+  const [gatewayReady, setGatewayReady] = useState(false);
+  const [scheduledJobCount, setScheduledJobCount] = useState(0);
+  const [activeModel, setActiveModel] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const agentCursorHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -461,13 +464,27 @@ function AppShell() {
     let cancelled = false;
     (async () => {
       try {
-        const status = await api.getStatus();
+        const [status, modelStatus, cronJobs] = await Promise.all([
+          api.getStatus(),
+          api.getModelStatus().catch(() => null),
+          api.getCronJobs().catch(() => []),
+        ]);
         if (!cancelled) {
           setVersionLabel(`v${status.version}_${formatVersionDate()}`);
+          setGatewayReady(status.gateway_running);
+          setScheduledJobCount(cronJobs.length);
+          setActiveModel(
+            modelStatus
+              ? (modelStatus.multi_model_enabled && modelStatus.fast_model) ||
+                  modelStatus.smart_model ||
+                  null
+              : null,
+          );
         }
       } catch {
         if (!cancelled) {
           setVersionLabel(`v${formatVersionDate()}`);
+          setGatewayReady(false);
         }
       }
     })();
@@ -877,6 +894,29 @@ function AppShell() {
               <PageComponent />
             )}
           </main>
+          {!authChecking && !authWall && (
+            <footer className="hidden h-7 shrink-0 items-center gap-3 border-t border-border/60 bg-card/35 px-3 text-[11px] text-muted-foreground backdrop-blur md:flex">
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    gatewayReady ? "bg-emerald-400" : "bg-muted-foreground/45"
+                  }`}
+                />
+                {gatewayReady ? "Gateway ready" : "Gateway offline"}
+              </span>
+              <span className="text-border">·</span>
+              <span>Agents {runningTaskCount}</span>
+              <span className="text-border">·</span>
+              <span>Cron {scheduledJobCount}</span>
+              {activeModel && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="max-w-48 truncate">{activeModel}</span>
+                </>
+              )}
+              <span className="ml-auto">{versionLabel}</span>
+            </footer>
+          )}
         </div>
       </div>
 
