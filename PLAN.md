@@ -78,7 +78,7 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 - [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for touched files.
 - [x] `cd src/spark_cli/web && npm run build` — production bundle builds clean.
 - [x] Browser-preview smoke test: new session upload, project thread upload, sidebar scroll, simulated SSE drop mid-turn recovers without freeze.
-- [ ] Open a PR from a feature branch (e.g. `fix/webui-pete-feedback`) — never push to main directly.
+- [x] Open a PR from a feature branch (e.g. `fix/webui-pete-feedback`) — never push to main directly.
 
 ## Phase 6 — Rebuild + release macOS desktop app
 
