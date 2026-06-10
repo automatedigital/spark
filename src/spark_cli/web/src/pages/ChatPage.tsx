@@ -97,9 +97,19 @@ function NewSessionHero({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
-        <h1 className="spark-wordmark-serif text-5xl text-foreground/90 sm:text-6xl md:text-7xl">
-          Spark
-        </h1>
+        <div className="flex items-center gap-4">
+          <picture>
+            <source srcSet="/icon_small-light.png" media="(prefers-color-scheme: dark)" />
+            <img
+              src="/icon_small-dark.png"
+              alt=""
+              className="size-14 object-contain sm:size-16 md:size-20"
+            />
+          </picture>
+          <h1 className="text-5xl font-semibold text-foreground/90 sm:text-6xl md:text-7xl">
+            Spark
+          </h1>
+        </div>
         <p className="mt-5 max-w-md text-sm leading-relaxed text-muted-foreground/70">
           Type a task, question, or snippet…
         </p>
