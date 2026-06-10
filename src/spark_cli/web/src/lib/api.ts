@@ -136,6 +136,10 @@ export const api = {
     fetchJSON<{ ok: boolean; warm: boolean }>(`/api/sessions/${encodeURIComponent(id)}/warm`, {
       method: "POST",
     }),
+  getTurnStatus: (id: string) =>
+    fetchJSON<{ session_id: string; turn_active: boolean }>(
+      `/api/conversations/${encodeURIComponent(id)}/turn-status`,
+    ),
   deleteSession: (id: string) =>
     fetchJSON<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",

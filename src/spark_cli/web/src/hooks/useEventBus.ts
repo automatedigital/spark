@@ -15,7 +15,18 @@ const listeners = new Set<Listener>();
 let source: EventSource | null = null;
 let reconnectAttempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// True once a connection has dropped, so the next successful open can notify
+// listeners that they may have missed events during the gap.
+let wasDisconnected = false;
 const topicsParam = "sessions,chat,workspace,canvas,skills,memory,notifications";
+
+/**
+ * Synthetic topic emitted (not from the server) when the SSE connection
+ * re-opens after an error. Listeners use it to re-sync state that may have
+ * changed while the bus was disconnected (e.g. a chat turn that finished
+ * during the gap, whose `chat.turn_done` event was lost).
+ */
+export const BUS_RECONNECTED_TOPIC = "bus.reconnected";
 
 function notifyListeners(env: SparkEventEnvelope) {
   listeners.forEach((fn) => {
@@ -46,6 +57,19 @@ function connectEventSource() {
   const es = new EventSource(url);
   source = es;
 
+  es.onopen = () => {
+    reconnectAttempt = 0;
+    if (wasDisconnected) {
+      wasDisconnected = false;
+      notifyListeners({
+        topic: BUS_RECONNECTED_TOPIC,
+        session_id: null,
+        ts: Date.now(),
+        data: {},
+      });
+    }
+  };
+
   es.onmessage = (ev) => {
     try {
       const parsed = JSON.parse(ev.data) as SparkEventEnvelope;
@@ -61,6 +85,7 @@ function connectEventSource() {
   es.onerror = () => {
     es.close();
     source = null;
+    wasDisconnected = true;
     scheduleReconnect();
   };
 }
