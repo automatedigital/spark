@@ -66,11 +66,11 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 
 ## Phase 4 — Memory provider fixes
 
-- [ ] Fix `_init_memory_store()` in `src/spark_cli/web_server.py` (~line 115): pass a session id (e.g. a boot/warmup session id) to `provider.initialize(...)`, or change the call to match the provider API; eliminate the "missing 1 required positional argument" warning.
-- [ ] Add corrupted-DB recovery in `src/plugins/memory/holographic/__init__.py` `initialize()`: catch `sqlite3.DatabaseError` ("file is not a database"), rename the bad file to `memory_store.db.corrupt-<timestamp>`, recreate a fresh store, and log a clear one-time warning.
-- [ ] Audit `src/agent/memory_manager.py` (~line 385) so a failing memory provider degrades gracefully (no repeated per-turn warnings — warn once per process).
-- [ ] Add unit tests: corrupted-db recovery path and web_server memory-init call signature (tests must use the `_isolate_spark_home` fixture; never touch `~/.spark`).
-- [ ] Run `python -m pytest tests/ -k "memory or holographic" -q` and `ruff check src/`.
+- [x] Fix `_init_memory_store()` in `src/spark_cli/web_server.py` (~line 115): pass a session id (e.g. a boot/warmup session id) to `provider.initialize(...)`, or change the call to match the provider API; eliminate the "missing 1 required positional argument" warning.
+- [x] Add corrupted-DB recovery in `src/plugins/memory/holographic/__init__.py` `initialize()`: catch `sqlite3.DatabaseError` ("file is not a database"), rename the bad file to `memory_store.db.corrupt-<timestamp>`, recreate a fresh store, and log a clear one-time warning.
+- [x] Audit `src/agent/memory_manager.py` (~line 385) so a failing memory provider degrades gracefully (no repeated per-turn warnings — warn once per process).
+- [x] Add unit tests: corrupted-db recovery path and web_server memory-init call signature (tests must use the `_isolate_spark_home` fixture; never touch `~/.spark`).
+- [x] Run `python -m pytest tests/ -k "memory or holographic" -q` and `ruff check src/`.
 
 ## Phase 5 — Test, lint, and PR
 

@@ -114,7 +114,9 @@ def _init_memory_store() -> None:
     try:
         from plugins.memory.holographic import HolographicMemoryProvider
         provider = HolographicMemoryProvider()
-        provider.initialize()
+        # initialize() requires a session id; this boot-time call only validates
+        # and warms the on-disk store, so a sentinel id is fine.
+        provider.initialize(session_id="__boot__")
         _log.info("Holographic memory store initialized")
     except Exception as exc:
         _log.warning("Memory store init skipped: %s", exc)

@@ -40,6 +40,10 @@ from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
 
+# Tracks (provider_name, error) pairs already warned about so a persistently
+# failing provider doesn't spam the log on every turn. Process-global.
+_warned_init_failures: set[tuple[str, str]] = set()
+
 
 # ---------------------------------------------------------------------------
 # Context fencing helpers
@@ -381,7 +385,13 @@ class MemoryManager:
             try:
                 provider.initialize(session_id=session_id, **kwargs)
             except Exception as e:
-                logger.warning(
-                    "Memory provider '%s' initialize failed: %s",
-                    provider.name, e,
-                )
+                # Warn at most once per (provider, error) per process — a
+                # persistently failing provider (e.g. a corrupt store) would
+                # otherwise spam the log on every turn.
+                key = (provider.name, str(e))
+                if key not in _warned_init_failures:
+                    _warned_init_failures.add(key)
+                    logger.warning(
+                        "Memory provider '%s' initialize failed: %s",
+                        provider.name, e,
+                    )

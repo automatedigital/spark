@@ -130,6 +130,52 @@ class MemoryStore:
         )
         self._lock = threading.RLock()
         self._conn.row_factory = sqlite3.Row
+        try:
+            self._init_db()
+        except sqlite3.DatabaseError as exc:
+            # The on-disk file exists but is not a valid SQLite database (e.g.
+            # truncated/corrupted by an unclean shutdown — "file is not a
+            # database"). Quarantine it and rebuild from scratch so memory
+            # degrades to "empty" rather than failing on every turn.
+            self._recover_corrupt_db(exc)
+
+    def _recover_corrupt_db(self, exc: Exception) -> None:
+        """Quarantine a corrupted DB file and rebuild an empty store."""
+        import logging
+        import time
+
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        quarantined = False
+        # Move the main DB plus any WAL/SHM sidecars out of the way.
+        for suffix in ("", "-wal", "-shm"):
+            sidecar = Path(str(self.db_path) + suffix)
+            if sidecar.exists():
+                try:
+                    sidecar.rename(Path(str(sidecar) + f".corrupt-{ts}"))
+                    quarantined = True
+                except OSError:
+                    # Last resort: remove it so we can recreate cleanly.
+                    try:
+                        sidecar.unlink()
+                    except OSError:
+                        pass
+        logging.getLogger("plugins.memory.holographic").warning(
+            "memory_store.db was corrupted (%s); quarantined to "
+            "%s.corrupt-%s and rebuilt an empty store.",
+            exc,
+            self.db_path.name if quarantined else self.db_path,
+            ts,
+        )
+        self._conn = sqlite3.connect(
+            str(self.db_path),
+            check_same_thread=False,
+            timeout=10.0,
+        )
+        self._conn.row_factory = sqlite3.Row
         self._init_db()
 
     # ------------------------------------------------------------------
