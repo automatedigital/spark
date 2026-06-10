@@ -59,9 +59,9 @@ screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
 
 ## Phase 3 — Upload missing in new-chat composer
 
-- [ ] Add an `onUploadFiles` handler to the new-session hero `<PromptBar>` in `src/spark_cli/web/src/pages/ChatPage.tsx` (~line 118), using `api.uploadChatFiles` and appending `@files/<filename>` refs to the draft message (mirror `NewThreadCompose.handleUpload` at line 161).
-- [ ] Confirm `NewThreadCompose` upload works immediately after project creation: `POST /api/workspace/projects` (`workspace_routes.py:204`) must create the project directory on disk before `_project_dir()` (line 78) is hit by the upload route — fix ordering if the dir is created lazily.
-- [ ] Add drag-and-drop + paste-to-upload support on the hero composer if PromptBar already wires it (it does via `onUploadFiles` — verify it activates once the prop is passed).
+- [x] Add an `onUploadFiles` handler to the new-session hero `<PromptBar>` in `src/spark_cli/web/src/pages/ChatPage.tsx` (~line 118), using `api.uploadChatFiles` and appending `@files/<filename>` refs to the draft message (mirror `NewThreadCompose.handleUpload` at line 161).
+- [x] Confirm `NewThreadCompose` upload works immediately after project creation: `POST /api/workspace/projects` (`workspace_routes.py:204`) must create the project directory on disk before `_project_dir()` (line 78) is hit by the upload route — fix ordering if the dir is created lazily.
+- [x] Add drag-and-drop + paste-to-upload support on the hero composer if PromptBar already wires it (it does via `onUploadFiles` — verify it activates once the prop is passed).
 - [ ] Manual verify in preview: create project → "new chat" → upload via + button, drag-drop, and paste; file lands in workspace and `@files/...` ref is inserted.
 
 ## Phase 4 — Memory provider fixes
