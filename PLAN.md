@@ -94,7 +94,7 @@ Reference: codex REVIEW-CHANGES_01 — this is the standout feature in both refe
 - [x] Python tests for new git endpoints (`tests/`, follow existing workspace route test patterns; respect `_isolate_spark_home`). _(19 new tests: 9 file-ops + 10 git, all green; artifacts route tests still pass.)_
 - [ ] Rebuild desktop app (`/build-mac`) and smoke-test: native preview webview, terminal, logo. _(Deferred to the user — heavy native Tauri/Rust + DMG build via the dedicated `/build-mac` skill; can't be meaningfully smoke-tested autonomously here. Builds from the verified web bundle.)_
 - [~] Screenshots into `screenshots/100626/after/` for before/after comparison. _(Landing-page logo verified via preview screenshots in-session; full right-panel/Changes "after" shots need the live desktop app + a workspace.)_
-- [ ] Feature branch + PR (never direct to main). _(Branch `feature/workspace-panel-refresh` committed; PR next.)_
+- [x] Feature branch + PR (never direct to main). _(Branch `feature/workspace-panel-refresh` → PR #27.)_
 
 ---
 
