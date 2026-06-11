@@ -1,19 +1,7 @@
-import { createContext, useContext, type ReactNode } from "react";
-import type { Translations } from "./types";
+import { type ReactNode } from "react";
 import { en } from "./en";
-
-interface I18nContextValue {
-  t: Translations;
-}
-
-const I18nContext = createContext<I18nContextValue>({
-  t: en,
-});
+import { I18nContext } from "./i18nContext";
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   return <I18nContext.Provider value={{ t: en }}>{children}</I18nContext.Provider>;
-}
-
-export function useI18n() {
-  return useContext(I18nContext);
 }

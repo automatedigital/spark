@@ -30,7 +30,7 @@ import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
-import { useUpdateModal } from "@/lib/UpdateModalContext";
+import { useUpdateModal } from "@/lib/updateModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { GlobalToasts } from "@/components/GlobalToasts";
