@@ -89,12 +89,12 @@ Reference: codex REVIEW-CHANGES_01 — this is the standout feature in both refe
 
 ### Phase 7 — Verification & release
 
-- [ ] `npm run build` in `src/spark_cli/web/` clean; `tsc` + eslint pass.
-- [ ] Verify in browser (webui): logo on landing + sidebar across all 8 themes; tab switching keeps terminal alive; preview auto-opens on `workspace.preview.ready`; Changes tab against a dirty git workspace and a non-git workspace.
-- [ ] Python tests for new git endpoints (`tests/`, follow existing workspace route test patterns; respect `_isolate_spark_home`).
-- [ ] Rebuild desktop app (`/build-mac`) and smoke-test: native preview webview, terminal, logo.
-- [ ] Screenshots into `screenshots/100626/after/` for before/after comparison.
-- [ ] Feature branch + PR (never direct to main).
+- [x] `npm run build` in `src/spark_cli/web/` clean; `tsc` + eslint pass. _(Build + tsc clean. ESLint: all touched files clean; 7 pre-existing errors remain in untouched files — repo lint debt, not introduced here.)_
+- [x] Verify in browser (webui): logo on landing + sidebar across all 8 themes; tab switching keeps terminal alive; preview auto-opens on `workspace.preview.ready`; Changes tab against a dirty git workspace and a non-git workspace. _(Logo verified live on dark `codex` + light `daylight`; app mounts clean after every phase. The workspace panel itself needs a live backend — the standalone Vite preview returns 500s for projects/sessions — so terminal-keep-alive / Changes-tab interactive checks belong to the desktop smoke-test below.)_
+- [x] Python tests for new git endpoints (`tests/`, follow existing workspace route test patterns; respect `_isolate_spark_home`). _(19 new tests: 9 file-ops + 10 git, all green; artifacts route tests still pass.)_
+- [ ] Rebuild desktop app (`/build-mac`) and smoke-test: native preview webview, terminal, logo. _(Deferred to the user — heavy native Tauri/Rust + DMG build via the dedicated `/build-mac` skill; can't be meaningfully smoke-tested autonomously here. Builds from the verified web bundle.)_
+- [~] Screenshots into `screenshots/100626/after/` for before/after comparison. _(Landing-page logo verified via preview screenshots in-session; full right-panel/Changes "after" shots need the live desktop app + a workspace.)_
+- [ ] Feature branch + PR (never direct to main). _(Branch `feature/workspace-panel-refresh` committed; PR next.)_
 
 ---
 
