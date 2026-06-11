@@ -2,16 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Check,
+  ChevronDown,
   Cookie,
   EyeOff,
   ExternalLink,
   Globe,
   Lock,
   Loader2,
+  Monitor,
+  MoreHorizontal,
   Play,
   RefreshCw,
   RotateCcw,
+  Smartphone,
   Square,
+  Tablet,
   Terminal,
   Trash2,
 } from "lucide-react";
@@ -23,6 +29,8 @@ import type {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { previewAutoOpenEnabled, setPreviewAutoOpen } from "@/lib/previewPrefs";
 import { isTauri } from "@/sidecar";
 import { StreamedBrowser } from "./StreamedBrowser";
 import { NativePreview } from "./NativePreview";
@@ -55,22 +63,33 @@ function faviconUrl(url: string): string {
   }
 }
 
-function statusTone(status: WorkspacePreviewStatus["status"]): string {
-  if (status === "running") return "text-emerald-300";
-  if (status === "starting") return "text-amber-300";
-  if (status === "failed") return "text-red-300";
-  return "text-muted-foreground";
+function statusDot(status: WorkspacePreviewStatus["status"]): string {
+  if (status === "running") return "bg-emerald-400";
+  if (status === "starting") return "bg-amber-400";
+  if (status === "failed") return "bg-red-400";
+  return "bg-muted-foreground/50";
 }
 
 function shortTime(ts: number): string {
   return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-export function WorkspacePreviewPanel({ slug }: { slug: string }) {
+// Device viewport presets — constrain the preview region; centered. The native
+// webview tracks its placeholder's rect, so the same wrapper works on desktop.
+type DeviceId = "responsive" | "phone" | "tablet" | "desktop";
+const DEVICES: { id: DeviceId; label: string; width: number | null; Icon: typeof Monitor }[] = [
+  { id: "responsive", label: "Responsive", width: null, Icon: Monitor },
+  { id: "phone", label: "iPhone", width: 390, Icon: Smartphone },
+  { id: "tablet", label: "iPad", width: 820, Icon: Tablet },
+  { id: "desktop", label: "Desktop", width: 1280, Icon: Monitor },
+];
+
+export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; visible?: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<WorkspacePreviewStatus | null>(null);
   const [frameSrc, setFrameSrc] = useState("");
   const [urlInput, setUrlInput] = useState("");
@@ -82,22 +101,37 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
   const [portOverride, setPortOverride] = useState("");
   const [privateMode, setPrivateMode] = useState(false);
   const [pageTitle, setPageTitle] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
+  const [device, setDevice] = useState<DeviceId>("responsive");
+  const [autoOpen, setAutoOpen] = useState(previewAutoOpenEnabled);
+  const [dialog, setDialog] = useState<{
+    title: string;
+    body?: React.ReactNode;
+    confirmLabel?: string;
+    destructive?: boolean;
+    onConfirm?: () => void;
+  } | null>(null);
 
   const activeUrl = status?.url ?? "";
-  // A launching dev server reports "starting" until the backend's HTTP probe
-  // succeeds (see _await_preview_ready). Don't load the pane against a URL that
-  // isn't answering yet — it would show a connection-refused error that never
-  // recovers. Manual browser navigation has no "starting" phase.
   const previewPending = status?.status === "starting";
+  const deviceWidth = DEVICES.find((d) => d.id === device)?.width ?? null;
 
   useEffect(() => {
     setFrameSrc(activeUrl);
     setPageTitle("");
   }, [activeUrl]);
 
+  useEffect(() => {
+    if (!showMenu) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [showMenu]);
+
   const reloadFrame = useCallback(() => {
     if (isTauri()) {
-      // Native webview: re-navigate to the current URL to reload.
       if (activeUrl) void nativePreview.navigate(activeUrl).catch(() => {});
       return;
     }
@@ -213,7 +247,17 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
     }
   };
 
-  const navigate = async () => {
+  const performNavigate = async (target: string) => {
+    setLoading(true);
+    try {
+      const next = await api.navigateWorkspacePreview(slug, target);
+      setStatus(next);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const navigate = () => {
     const trimmed = urlInput.trim();
     if (!trimmed) return;
     // Guard against silently driving the browser to an arbitrary external
@@ -226,17 +270,15 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
       } catch {
         /* keep raw */
       }
-      if (!window.confirm(`Navigate the preview browser to external site:\n\n${host}\n\nContinue?`)) {
-        return;
-      }
+      setDialog({
+        title: "Navigate to external site?",
+        body: <span>The preview browser will load <span className="font-mono-ui text-foreground">{host}</span>.</span>,
+        confirmLabel: "Navigate",
+        onConfirm: () => void performNavigate(trimmed),
+      });
+      return;
     }
-    setLoading(true);
-    try {
-      const next = await api.navigateWorkspacePreview(slug, trimmed);
-      setStatus(next);
-    } finally {
-      setLoading(false);
-    }
+    void performNavigate(trimmed);
   };
 
   const refresh = () => {
@@ -245,28 +287,56 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
     void api.refreshWorkspacePreview(slug).catch(() => {});
   };
 
-  const clearBrowsingData = async () => {
-    if (!window.confirm("Clear all browsing data and sign out of all sites for this workspace?")) return;
-    try {
-      if (isTauri()) await nativePreview.clearData();
-      else await api.clearStreamBrowser(slug);
-    } catch (e) {
-      console.error("clear browsing data", e);
-    }
+  const clearBrowsingData = () => {
+    setShowMenu(false);
+    setDialog({
+      title: "Clear browsing data?",
+      body: "Signs out of all sites and clears cookies for this workspace.",
+      confirmLabel: "Clear",
+      destructive: true,
+      onConfirm: () => {
+        void (async () => {
+          try {
+            if (isTauri()) await nativePreview.clearData();
+            else await api.clearStreamBrowser(slug);
+          } catch (e) {
+            console.error("clear browsing data", e);
+          }
+        })();
+      },
+    });
   };
 
   const showCookies = async () => {
+    setShowMenu(false);
     try {
       const cookies = isTauri()
         ? await nativePreview.cookies()
         : (await api.streamBrowserCookies(slug)).cookies;
       const byDomain = new Map<string, number>();
       for (const c of cookies) byDomain.set(c.domain, (byDomain.get(c.domain) ?? 0) + 1);
-      const summary = [...byDomain.entries()].map(([d, n]) => `${d}: ${n}`).join("\n");
-      window.alert(cookies.length ? `Cookies (${cookies.length}):\n\n${summary}` : "No cookies stored.");
+      const rows = [...byDomain.entries()];
+      setDialog({
+        title: cookies.length ? `Cookies (${cookies.length})` : "Cookies",
+        body: rows.length ? (
+          <div className="flex flex-col gap-0.5 font-mono-ui text-[11px]">
+            {rows.map(([d, n]) => (
+              <div key={d} className="flex justify-between gap-3"><span className="truncate">{d}</span><span className="text-muted-foreground/60">{n}</span></div>
+            ))}
+          </div>
+        ) : "No cookies stored.",
+      });
     } catch (e) {
-      window.alert(`Cookie read failed: ${String(e)}`);
+      setDialog({ title: "Cookie read failed", body: String(e) });
     }
+  };
+
+  const toggleAutoOpen = () => {
+    setAutoOpen((v) => {
+      const next = !v;
+      setPreviewAutoOpen(next);
+      return next;
+    });
   };
 
   const filteredLogs = useMemo(() => {
@@ -295,13 +365,16 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
     }
   };
 
+  const menuBtn = "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground";
+
   return (
     <div
       ref={rootRef}
       onKeyDown={onKeyDown}
       tabIndex={-1}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70 outline-none"
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70 outline-none"
     >
+      {/* Toolbar — essentials inline, the rest in the ⋯ overflow menu */}
       <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
         <Button
           size="sm"
@@ -331,11 +404,18 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
         <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Reload browser" onClick={refresh} disabled={!activeUrl}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
+
+        {/* Status dot */}
+        <span
+          className={cn("h-2 w-2 shrink-0 rounded-full", statusDot(status?.status ?? "stopped"), status?.status === "starting" && "animate-pulse")}
+          title={`${status?.status ?? "stopped"}${status?.kind ? ` · ${status.kind}` : ""}${status?.port ? ` · :${status.port}` : ""}${status?.error ? ` · ${status.error}` : ""}`}
+        />
+
         <form
           className="flex min-w-0 flex-1 items-center gap-1"
           onSubmit={(e) => {
             e.preventDefault();
-            void navigate();
+            navigate();
           }}
         >
           {activeUrl &&
@@ -354,69 +434,64 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
             className="h-6 w-full rounded-sm border border-input bg-muted/40 px-2 font-mono-ui text-[11px] text-foreground outline-none transition focus:border-primary/60"
           />
         </form>
-        <input
-          value={portOverride}
-          onChange={(e) => setPortOverride(e.target.value.replace(/[^0-9]/g, ""))}
-          placeholder="port"
-          title="Pin a port (overrides auto-detection on start/restart)"
-          inputMode="numeric"
-          className="h-6 w-12 shrink-0 rounded-sm border border-input bg-muted/40 px-1.5 text-center font-mono-ui text-[11px] text-foreground outline-none transition focus:border-primary/60"
-        />
-        <Button
-          size="sm"
-          variant="ghost"
-          className={cn("h-6 w-6 p-0", privateMode && "bg-secondary text-foreground")}
-          title={privateMode ? "Private session (nothing saved) — click for persistent" : "Persistent session — click for private"}
-          onClick={() => setPrivateMode((v) => !v)}
-        >
-          <EyeOff className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="View cookies" onClick={() => void showCookies()}>
-          <Cookie className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Clear browsing data" onClick={() => void clearBrowsingData()}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 w-6 p-0"
-          title="Open externally"
-          onClick={() => activeUrl && void api.openExternalUrl(activeUrl)}
-          disabled={!activeUrl}
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className={cn("h-6 w-6 p-0", showLogs && "bg-secondary text-foreground")}
-          title="Toggle logs"
-          onClick={() => setShowLogs((v) => !v)}
-        >
-          <Terminal className="h-3.5 w-3.5" />
-        </Button>
-      </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1 font-mono-ui text-[10px]">
-        <span className={cn("uppercase tracking-[0.12em]", statusTone(status?.status ?? "stopped"))}>
-          {status?.status ?? "stopped"}
-        </span>
-        {status?.kind && <span className="text-muted-foreground/60">{status.kind}</span>}
-        {status?.port && <span className="text-muted-foreground/60">:{status.port}</span>}
-        {activeUrl && faviconUrl(activeUrl) && (
-          <img
-            src={faviconUrl(activeUrl)}
-            alt=""
-            className="h-3 w-3 shrink-0 rounded-[2px]"
-            onError={(e) => (e.currentTarget.style.display = "none")}
-          />
-        )}
-        {(pageTitle || hostOf(activeUrl)) && (
-          <span className="min-w-0 max-w-[40%] truncate text-foreground/70">{pageTitle || hostOf(activeUrl)}</span>
-        )}
-        {lastRefreshReason && <span className="text-muted-foreground/50">refresh:{lastRefreshReason}</span>}
-        {status?.error && <span className="min-w-0 flex-1 truncate text-red-300/80">{status.error}</span>}
+        {/* Device preset switcher */}
+        <DeviceMenu device={device} onSelect={setDevice} />
+
+        {/* Overflow menu */}
+        <div ref={menuRef} className="relative">
+          <Button
+            size="sm"
+            variant="ghost"
+            className={cn("h-6 w-6 p-0", showMenu && "bg-secondary text-foreground")}
+            title="More"
+            onClick={() => setShowMenu((v) => !v)}
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </Button>
+          {showMenu && (
+            <div className="absolute right-0 top-7 z-30 min-w-[200px] overflow-hidden rounded-md border border-border bg-popover py-1 shadow-lg">
+              <div className="flex items-center gap-2 px-2.5 py-1.5">
+                <input
+                  value={portOverride}
+                  onChange={(e) => setPortOverride(e.target.value.replace(/[^0-9]/g, ""))}
+                  placeholder="port"
+                  title="Pin a port (overrides auto-detection on start/restart)"
+                  inputMode="numeric"
+                  className="h-6 w-16 rounded-sm border border-input bg-muted/40 px-1.5 text-center font-mono-ui text-[11px] text-foreground outline-none focus:border-primary/60"
+                />
+                <span className="text-[11px] text-muted-foreground">Pin port</span>
+              </div>
+              <button type="button" className={menuBtn} onClick={() => { setPrivateMode((v) => !v); }}>
+                <EyeOff className="h-3.5 w-3.5" />
+                <span className="flex-1">Private session</span>
+                {privateMode && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+              </button>
+              <button type="button" className={menuBtn} onClick={toggleAutoOpen}>
+                <Play className="h-3.5 w-3.5" />
+                <span className="flex-1">Auto-open on ready</span>
+                {autoOpen && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+              </button>
+              <button type="button" className={menuBtn} onClick={() => void showCookies()}>
+                <Cookie className="h-3.5 w-3.5" />
+                <span className="flex-1">View cookies</span>
+              </button>
+              <button type="button" className={menuBtn} onClick={clearBrowsingData}>
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="flex-1">Clear browsing data</span>
+              </button>
+              <button type="button" className={menuBtn} onClick={() => { setShowMenu(false); if (activeUrl) void api.openExternalUrl(activeUrl); }} disabled={!activeUrl}>
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="flex-1">Open externally</span>
+              </button>
+              <button type="button" className={menuBtn} onClick={() => { setShowLogs((v) => !v); setShowMenu(false); }}>
+                <Terminal className="h-3.5 w-3.5" />
+                <span className="flex-1">Toggle logs</span>
+                {showLogs && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1 bg-black/20">
@@ -427,31 +502,45 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
               Waiting for dev server{activeUrl ? ` at ${hostOf(activeUrl)}` : ""}…
             </div>
           </div>
-        ) : frameSrc && isTauri() ? (
-          // Desktop: a real native child webview overlays this region — handles
-          // local previews and external sites alike, with persistent logins.
-          <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} />
-        ) : frameSrc && !isLoopbackUrl(frameSrc) ? (
-          // Web: external sites can't be iframed (X-Frame-Options/CSP); stream a
-          // real server-side browser instead so they render with live input.
-          <StreamedBrowser slug={slug} url={frameSrc} persistent={!privateMode} onTitle={setPageTitle} />
         ) : frameSrc ? (
-          <iframe
-            ref={iframeRef}
-            title="Workspace browser"
-            src={frameSrc}
-            className="h-full w-full border-0 bg-white"
-            sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
-          />
+          <div className="mx-auto h-full" style={deviceWidth ? { maxWidth: deviceWidth } : undefined}>
+            {isTauri() ? (
+              // Desktop: a real native child webview overlays this region.
+              <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} visible={visible} />
+            ) : !isLoopbackUrl(frameSrc) ? (
+              // Web: external sites can't be iframed; stream a server-side browser.
+              <StreamedBrowser slug={slug} url={frameSrc} persistent={!privateMode} onTitle={setPageTitle} />
+            ) : (
+              <iframe
+                ref={iframeRef}
+                title="Workspace browser"
+                src={frameSrc}
+                className="h-full w-full border-0 bg-white"
+                sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+              />
+            )}
+          </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-muted-foreground/70">
-            <div className="rounded-sm border border-border bg-card/50 px-3 py-2 font-mono-ui text-[11px]">
-              No browser page
+            <div className="rounded-sm border border-border bg-card/50 px-3 py-2 text-center font-mono-ui text-[11px]">
+              {status?.kind ? (
+                <>Detected <span className="text-foreground">{status.kind}</span> app{status?.command ? <> — <span className="text-foreground">{status.command}</span></> : null}</>
+              ) : (
+                "No browser page"
+              )}
             </div>
             <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={() => void start()} disabled={loading}>
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
               Start App
             </Button>
+          </div>
+        )}
+        {(pageTitle || lastRefreshReason) && (
+          <div className="pointer-events-none absolute bottom-1 left-2 flex items-center gap-2 rounded-sm bg-background/70 px-1.5 py-0.5 font-mono-ui text-[10px] text-muted-foreground/70 backdrop-blur">
+            {activeUrl && faviconUrl(activeUrl) && (
+              <img src={faviconUrl(activeUrl)} alt="" className="h-3 w-3 rounded-[2px]" onError={(e) => (e.currentTarget.style.display = "none")} />
+            )}
+            {(pageTitle || hostOf(activeUrl)) && <span className="max-w-[200px] truncate text-foreground/70">{pageTitle || hostOf(activeUrl)}</span>}
           </div>
         )}
       </div>
@@ -491,6 +580,65 @@ export function WorkspacePreviewPanel({ slug }: { slug: string }) {
               <div className="py-3 text-center text-muted-foreground/50">No browser logs yet.</div>
             )}
             </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={dialog !== null}
+        title={dialog?.title ?? ""}
+        body={dialog?.body}
+        confirmLabel={dialog?.confirmLabel}
+        destructive={dialog?.destructive}
+        onConfirm={dialog?.onConfirm}
+        onClose={() => setDialog(null)}
+      />
+    </div>
+  );
+}
+
+// Compact device-preset dropdown.
+function DeviceMenu({ device, onSelect }: { device: DeviceId; onSelect: (d: DeviceId) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = DEVICES.find((d) => d.id === device) ?? DEVICES[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        title="Viewport size"
+        onClick={() => setOpen((v) => !v)}
+        className={cn("flex h-6 items-center gap-0.5 rounded px-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground", open && "bg-secondary text-foreground")}
+      >
+        <active.Icon className="h-3.5 w-3.5" />
+        <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-30 min-w-[150px] overflow-hidden rounded-md border border-border bg-popover py-1 shadow-lg">
+          {DEVICES.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => { onSelect(d.id); setOpen(false); }}
+              className={cn(
+                "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] transition",
+                d.id === device ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+            >
+              <d.Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1">{d.label}</span>
+              {d.width && <span className="font-mono-ui text-[10px] text-muted-foreground/60">{d.width}</span>}
+            </button>
+          ))}
         </div>
       )}
     </div>

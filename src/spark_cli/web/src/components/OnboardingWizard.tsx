@@ -16,6 +16,7 @@ import {
 import { api, openExternal, type OAuthStartResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BrandLogo } from "@/components/BrandLogo";
 
 interface Props {
   onComplete: () => void;
@@ -611,13 +612,7 @@ export function OnboardingWizard({ onComplete }: Props) {
           {/* ── Step 1 — Welcome ── */}
           {step === 1 && (
             <div className="flex flex-col items-center gap-5 text-center">
-              <img
-                src="/icon_small-dark.png"
-                alt=""
-                aria-hidden="true"
-                className="h-16 w-16 object-contain"
-                draggable={false}
-              />
+              <BrandLogo className="h-16 w-16" />
               <h1 className="text-2xl font-semibold tracking-tight">
                 Let's get Spark set up
               </h1>

@@ -1,89 +1,104 @@
-# PLAN — Pete's VPS WebUI Bug Fixes (2026-06-10)
+# PLAN - 100626
 
-Feedback from Pete (Spark WebUI on a VPS) + his logs (`references/logs/petes-logs.md`) and
-screenshot (`screenshots/bugs-issues/Screenshot 2026-06-10 at 09.47.16.png`).
-
-## Root-cause research summary
-
-1. **Chat freeze while waiting for an answer** — Web chat tokens and `chat.turn_done` arrive
-   over the global `/api/events` SSE bus (`src/spark_cli/web/src/hooks/useEventBus.ts`).
-   If the SSE connection drops mid-turn (common behind VPS reverse proxies / flaky networks —
-   Pete's logs show repeated `httpx.ReadTimeout`/`ReadError`), the bus reconnects with backoff
-   but **events emitted during the gap are lost**. A missed `chat.turn_done` leaves
-   `ChatPanel.tsx` stuck with `streaming=true` → perpetual typing indicator = "freeze".
-   There is no re-sync on reconnect and no stall watchdog.
-
-2. **Sidebar can't scroll / no scrollbar** — `SidebarSessions.tsx:345` has
-   `overflow-y-auto`, but with many expanded project groups the screenshot shows content
-   clipped with no scrollbar. Likely a flex `min-h-0` chain break in the `<aside>` in
-   `App.tsx` (~line 605) — the aside has no explicit `overflow-hidden`/height constraint in
-   the hover-expanded absolute mode — plus the scrollbar is styled invisible. Needs repro +
-   always-visible thin scrollbar.
-
-3. **New project → new chat → can't upload** — Confirmed in code. The new-session hero
-   composer in `ChatPage.tsx` (~line 118) renders `<PromptBar>` **without `onUploadFiles`**,
-   and `PromptBar.tsx:747` only renders the upload (+) button when `onUploadFiles` is set.
-   So any "new chat" started from the hero has no upload affordance at all. (Project
-   `NewThreadCompose` at line 188 does pass it — but the global "New session" path doesn't.)
-   Pete's workaround (upload via sidebar file pane, reference filename) matches this.
-
-4. **Memory provider errors in logs** — Two distinct bugs:
-   - `web_server.py:117` calls `HolographicMemoryProvider().initialize()` but the provider
-     signature is `initialize(self, session_id, **kwargs)` → "missing 1 required positional
-     argument" warning on every boot.
-   - `agent.memory_manager: Memory provider 'holographic' initialize failed: file is not a
-     database` → Pete's `memory_store.db` is corrupted; there is no recovery path, so memory
-     fails on every turn.
-
-   (Telegram `TimedOut` entries in the logs are the gateway's existing retry loop working as
-   designed — network blips on the VPS, not a bug. No action beyond log-noise review.)
+## UI Updates
+This applies to both webui and desktop app (same React codebase in `src/spark_cli/web/`; desktop is the Tauri wrapper, so one fix covers both — verify in both at the end).
 
 ---
 
-## Phase 1 — Chat freeze: SSE resilience + turn re-sync
+### Phase 1 — Logo Swap
 
-- [x] In `src/spark_cli/web/src/hooks/useEventBus.ts`, emit a synthetic local event (e.g. `bus.reconnected`) to listeners whenever the EventSource reopens after an error.
-- [x] In `src/spark_cli/web/src/components/ChatPanel.tsx`, handle `bus.reconnected` while `streaming=true`: re-fetch session messages (`api.getSessionMessages`) and clear `streaming`/`statusLabel` if the turn already finished (reuse the existing mount-time logic at ~line 555).
-- [x] Add a stall watchdog in `ChatPanel.tsx`: if `streaming=true` and no token/event has arrived for N seconds (e.g. 45s), poll session state once; if turn finished, finalize; if not, keep waiting but show a "still working…" status instead of freezing silently.
-- [x] Backend: add a lightweight turn-status source of truth the UI can poll — either include `turn_active` in the existing session-messages response or add `GET /api/conversations/{session_id}/turn-status` in `src/spark_cli/web_server.py` (web chat section, ~line 5395).
-- [x] Verify `/api/events` SSE generator in `web_server.py` (~line 323) sends periodic heartbeats so proxies don't kill idle connections; add one if missing (the per-conversation stream at line 6184 already pings every 30s).
-- [x] Frontend tests/build: `cd src/spark_cli/web && npm run build` passes with no type errors.
+- Reference: screenshots/100626/feature-requests_pm/spark_landing-page.png — the logo is nearly invisible against the dark background.
 
-## Phase 2 — Sidebar scrolling + visible scrollbar
+**Root cause (researched):** Theming is driven by `data-webui-theme` on `<html>` (`src/lib/theme.tsx`), but the landing hero (`pages/ChatPage.tsx:137-144`) picks the logo via a `prefers-color-scheme` media query — which tracks the **OS** setting, not the app theme. The other three usages (`App.tsx:159`, `components/ChatPanel.tsx:207`, `components/OnboardingWizard.tsx:615`) hardcode `icon_small-dark.png` (the dark glyph). Note the asset names are inverted vs. intuition: `icon_small-light.png` is the **white** glyph for dark backgrounds.
 
-- [x] Reproduce: load the WebUI with enough projects/sessions to overflow the sidebar (can seed via SessionDB or mock) and confirm the scroll failure mode in both pinned-expanded and hover-expanded sidebar states.
-- [x] Fix the flex/overflow chain: ensure `<aside>` in `src/spark_cli/web/src/App.tsx` (~line 605) and every wrapper down to `SidebarSessions`' scroll container (`SidebarSessions.tsx:345`) has `min-h-0` + proper `overflow` so the sessions list scrolls within the viewport.
-- [x] Add an always-visible thin scrollbar style for the sidebar sessions list (custom `scrollbar-width: thin` / `::-webkit-scrollbar` styling in `src/spark_cli/web/src/index.css`, applied via a class on the scroll container).
-- [x] Check the collapsed→hover-expanded absolute-positioned sidebar variant (`navHovered && !navExpanded` branch) gets the same scroll behavior.
-- [x] Verify with browser preview at a short viewport height (e.g. 700px) that all sessions are reachable by scroll and the scrollbar is visible.
+**Tasks:**
+- [x] Create a shared `BrandLogo` component (`src/components/BrandLogo.tsx`) that reads the active theme via `useWebUITheme()` and renders the white glyph (`icon_small-light.png`) on dark themes and the dark glyph on light themes (currently only `daylight` is light). Accept `className` for sizing.
+- [x] Replace all four hardcoded usages: `App.tsx:159` (sidebar), `pages/ChatPage.tsx:137` (landing hero), `components/ChatPanel.tsx:207`, `components/OnboardingWizard.tsx:615`.
+- [x] Landing hero specifically: bump logo contrast/size so it reads clearly (per screenshot, white glyph + slightly larger).
+- [x] Optional polish: swap favicon (`index.html:5`) dynamically via JS to match OS scheme (favicons CAN legitimately use `prefers-color-scheme` since they render on browser chrome, not app background).
 
-## Phase 3 — Upload missing in new-chat composer
+---
 
-- [x] Add an `onUploadFiles` handler to the new-session hero `<PromptBar>` in `src/spark_cli/web/src/pages/ChatPage.tsx` (~line 118), using `api.uploadChatFiles` and appending `@files/<filename>` refs to the draft message (mirror `NewThreadCompose.handleUpload` at line 161).
-- [x] Confirm `NewThreadCompose` upload works immediately after project creation: `POST /api/workspace/projects` (`workspace_routes.py:204`) must create the project directory on disk before `_project_dir()` (line 78) is hit by the upload route — fix ordering if the dir is created lazily.
-- [x] Add drag-and-drop + paste-to-upload support on the hero composer if PromptBar already wires it (it does via `onUploadFiles` — verify it activates once the prop is passed).
-- [x] Manual verify in preview: create project → "new chat" → upload via + button, drag-drop, and paste; file lands in workspace and `@files/...` ref is inserted.
+### Phase 2 — Right-hand sidebar: structural cleanup
 
-## Phase 4 — Memory provider fixes
+The panel lives in `pages/ChatPage.tsx` (`RIGHT_TABS = ["files", "terminal", "preview"]`, ~line 319) with panes in `src/components/workspace/`. References:
+- screenshots/100626/feature-requests_pm/claude-desktop_right-hand-sidebar-FILES_02.png
+- screenshots/100626/feature-requests_pm/claude-desktop_right-hand-sidebar-OPTIONS_01.png
+- screenshots/100626/feature-requests_pm/claude-desktop_right-hand-sidebar-PREVIEW_03.png
+- screenshots/100626/feature-requests_pm/codex-desktop_right-hand-sidebar_BROWSER-TAB_01.png
+- screenshots/100626/feature-requests_pm/codex-desktop_right-hand-sidebar_OPTIONS_01.png
+- screenshots/100626/feature-requests_pm/codex-desktop_right-hand-sidebar_REVIEW-CHANGES_01.png
 
-- [x] Fix `_init_memory_store()` in `src/spark_cli/web_server.py` (~line 115): pass a session id (e.g. a boot/warmup session id) to `provider.initialize(...)`, or change the call to match the provider API; eliminate the "missing 1 required positional argument" warning.
-- [x] Add corrupted-DB recovery in `src/plugins/memory/holographic/__init__.py` `initialize()`: catch `sqlite3.DatabaseError` ("file is not a database"), rename the bad file to `memory_store.db.corrupt-<timestamp>`, recreate a fresh store, and log a clear one-time warning.
-- [x] Audit `src/agent/memory_manager.py` (~line 385) so a failing memory provider degrades gracefully (no repeated per-turn warnings — warn once per process).
-- [x] Add unit tests: corrupted-db recovery path and web_server memory-init call signature (tests must use the `_isolate_spark_home` fixture; never touch `~/.spark`).
-- [x] Run `python -m pytest tests/ -k "memory or holographic" -q` and `ruff check src/`.
+**Tasks:**
+- [x] **Tab persistence**: persist active tab per workspace slug in localStorage (currently resets); already persists width + open state — extend the same pattern.
+- [x] **Panel switcher dropdown** (Claude desktop OPTIONS_01 style): replace the cramped 3-button tab strip with a compact header — current tab name + chevron dropdown listing Preview / Terminal / Files / Changes, each with its keyboard shortcut shown (⇧⌘P, ⌃` , ⇧⌘F, ⇧⌘D). Keep the collapse button. _(Changes entry added in Phase 6 once the panel exists.)_
+- [x] **Keyboard shortcuts**: global bindings to open/switch panel tabs (mirror Claude desktop: ⇧⌘P preview, ⇧⌘F files, ⇧⌘D changes, ⌃` terminal). Register in ChatPage, surface in `KeyboardShortcutsModal.tsx`. _(⇧⌘D added in Phase 6.)_
+- [x] **Keep panes alive across tab switches**: render all panes and toggle with CSS `hidden` instead of conditional mount. Today switching tabs unmounts `WorkspaceTerminalPanel`, which **kills the shell** (cleanup calls `stopWorkspaceTerminalRun`) and drops preview iframe state. This is the single biggest "feels rough" bug.
+  - **Tauri caveat**: `NativePreview` is a real native child webview overlaying the panel region — CSS `hidden` does NOT hide it on desktop. When the active tab isn't Preview (or the panel is collapsed), explicitly hide/show the native webview via the `nativePreview` bridge. _(Done: `visible` prop threads ChatPage → WorkspacePreviewPanel → NativePreview → `nativePreview.setVisible`.)_
+  - Define behavior on panel **collapse** and **workspace switch** too: collapse keeps the shell alive (just hidden); switching to a different workspace slug still tears it down (intentional). _(Collapse: panel content stays mounted behind the rail, shell alive, preview `visible=false`. Workspace switch: `slug` prop change remounts panes — intentional teardown.)_
 
-## Phase 5 — Test, lint, and PR
+---
 
-- [x] Run full relevant test suites: `python -m pytest tests/ -m "not slow" -q` (use `.venv`, not anaconda).
-- [x] `ruff check src/` and `mypy src/agent/ src/spark_cli/` clean for touched files.
-- [x] `cd src/spark_cli/web && npm run build` — production bundle builds clean.
-- [x] Browser-preview smoke test: new session upload, project thread upload, sidebar scroll, simulated SSE drop mid-turn recovers without freeze.
-- [x] Open a PR from a feature branch (e.g. `fix/webui-pete-feedback`) — never push to main directly.
+### Phase 3 — Files pane polish (`FileTreePane.tsx`)
 
-## Phase 6 — Rebuild + release macOS desktop app
+Reference: claude-desktop FILES_02 screenshot (clean indented tree, filter box at top).
 
-- [x] After PR is merged to main: bump desktop version (next after 1.0.8) per the build skill's convention.
-- [x] Run `/build-mac` skill to rebuild the .app + .dmg with the updated web UI + backend.
-- [x] Smoke-test the built app: launch, new session upload, sidebar scroll.
-- [x] Run `/release-mac` skill to publish the DMG to GitHub Releases.
-- [ ] Notify Pete with the changelog (freeze fix, sidebar scroll, upload in new chat, memory store recovery) and ask him to `git pull` + restart on the VPS.
+- [x] **Filter/search box** at the top of the tree ("Filter files…" like Claude desktop) — client-side fuzzy filter on path, auto-expand matching dirs.
+- [x] **Persist expanded-dir state** per workspace (currently every refresh collapses everything). _(localStorage `spark-files-expanded:<slug>`; expansion lifted from per-row state into FileTreePane.)_
+- [x] **Auto-refresh on agent activity**: subscribe to the event bus (workspace file-change topic; add one server-side if missing in `workspace_routes.py`) so the tree updates as the agent writes files, instead of requiring manual refresh. Debounce. _(Listens for `chat.turn_done` — the agent-activity signal — plus a new `workspace.files.changed` event emitted by write/mkdir/rename/delete/upload endpoints. 400ms debounce.)_
+- [x] **Better file viewer**: the current `SimpleFileViewer` is bare. Add syntax highlighting (highlight.js already ships for Markdown), line numbers, image/video preview using existing `getFileCategory`, and a copy-path button. _(Highlighting + image/video already existed; added a line-number gutter and a copy-path button.)_
+- [x] **Inline file ops**: new file / new folder / rename (server endpoints exist for write+delete in `workspace_routes.py`; add rename). Replace `window.confirm` delete with a small inline confirm. _(Added project-scoped `PUT /file`, `POST /mkdir`, `POST /rename` endpoints + 9 pytest cases; inline create inputs, per-row rename, inline delete confirm.)_
+- [x] **Distinct refresh icon** — currently a `Loader2` spinner doubles as the refresh button, which reads as "stuck loading". Use `RefreshCw`.
+
+---
+
+### Phase 4 — Terminal pane polish (`WorkspaceTerminalPanel.tsx`)
+
+- [x] **Session survives tab switches** (covered by Phase 2 keep-alive) and **reconnects** after SSE drop: on `onerror`, attempt re-attach to the existing run before declaring failed, with a "Reconnect" button on the status pill. _(Connect logic extracted into a re-callable `connect()`; on drop the status goes `failed` and a Reconnect button starts a fresh shell.)_
+- [x] **xterm addons**: `@xterm/addon-web-links` (clickable URLs — agent often prints localhost links) and `@xterm/addon-search` with a small find bar (⌘F when focused). _(Installed both; links open via `openExternalUrl`; ⌘F toggles a find bar with next/prev.)_
+- [x] **Theme-aware terminal colors**: palette is hardcoded amber (`#FDA632`) — derive background/cursor/selection from the active webui theme CSS variables so Slate/Daylight/etc. don't clash. _(`buildTerminalTheme()` reads `--color-card`/`--color-foreground`/`--color-primary`; re-applied on theme change via `useWebUITheme`.)_
+- [x] **Toolbar row**: clear scrollback, copy selection, kill & restart shell. Keep it to one slim row matching the Files/Preview headers.
+
+---
+
+### Phase 5 — Preview pane polish (`WorkspacePreviewPanel.tsx`)
+
+Reference: codex BROWSER-TAB_01 (clean URL bar, minimal chrome) and claude-desktop PREVIEW_03.
+
+- [x] **Declutter the toolbar**: currently ~12 icon buttons in one row. Keep nav (back/forward/reload) + URL bar + start/stop visible; move port-pin, private mode, cookies, clear-data, open-external, logs-toggle into a "⋯" overflow dropdown (codex OPTIONS_01 style). _(Plus auto-open toggle in the same menu.)_
+- [x] **Auto-open on preview ready**: ChatPage already listens for `workspace.preview.ready` — make it switch the panel to the Preview tab and expand the panel if collapsed, so when the agent spins up a dev server the user sees it immediately. Add a setting/toggle to disable. _(Done in Phase 2; now gated on `previewAutoOpenEnabled()` from `lib/previewPrefs`, toggled in the overflow menu.)_
+- [x] **Status pill instead of status strip**: fold the status/kind/port/refresh-reason line into a compact pill in the toolbar (running = green dot, starting = amber spinner, failed = red with error tooltip) to reclaim vertical space. _(Status dot in the toolbar with a full tooltip; page title/favicon moved to a floating overlay on the viewport.)_
+- [x] **Device viewport presets**: dropdown for Responsive / iPhone / iPad / Desktop widths — constrain the iframe/native view to the preset, centered, with dimensions label. Cheap to do in the web iframe path; for Tauri native webview, resize the child webview bounds via `nativePreview`. _(Wrapper `max-width` centers the region; NativePreview already tracks its placeholder rect, so the native webview follows automatically.)_
+- [x] **Replace `window.confirm`/`window.alert`** (external-nav confirm, cookies list, clear-data) with the app's own dialog components — alerts feel broken inside the desktop app. _(New reusable `ConfirmDialog`; external-nav, clear-data, and cookies all route through it.)_
+- [x] **Empty state upgrade**: instead of just "Start App", show detected app kind/command (backend already detects `kind`) — "Detected Vite app — Start `npm run dev`".
+
+---
+
+### Phase 6 — NEW: Changes (diff review) tab
+
+Reference: codex REVIEW-CHANGES_01 — this is the standout feature in both reference apps, and Spark has nothing like it. Workspaces are often git repos; the agent edits files and the user has no way to see what changed without leaving the app.
+
+- [x] **Backend** (`workspace_routes.py`): add endpoints
+  - `GET /projects/{slug}/git/status` → branch, dirty file list with per-file `+adds/-dels`, total `+N -M` (shell out to `git status --porcelain` + `git diff --numstat`; handle non-git workspaces gracefully → tab hidden/disabled). _(Untracked files counted as additions; `is_repo:false` for non-git.)_
+  - `GET /projects/{slug}/git/diff?path=` → unified diff for one file (staged+unstaged vs HEAD), and full-workspace diff when no path. _(Untracked files synthesize an add-diff via `--no-index`.)_ Plus `POST /git/revert`. 10 pytest cases, all green.
+- [x] **Frontend**: new `WorkspaceChangesPanel.tsx` — file list grouped Edited/Added/Deleted with `+N -M` badges (green/red, codex-style), click to expand inline unified diff with syntax-coloured add/remove lines. "Changes +16 -89" summary in the panel switcher dropdown (codex OPTIONS_01). _(Summary fetched lazily when the switcher opens.)_
+- [x] **Actions**: per-file "Revert" (git checkout — with confirm), and a "Commit or push" affordance that pre-fills a prompt to the agent ("commit these changes") rather than reimplementing git UI — keeps the agent in the loop. _(Commit button dispatches a `spark:compose` event that ChatPanel fills into the composer.)_
+- [x] **Live updates**: refresh status on the same file-change event-bus topic as the Files pane. _(`chat.turn_done` + `workspace.files.changed`, debounced.)_
+
+---
+
+### Phase 7 — Verification & release
+
+- [ ] `npm run build` in `src/spark_cli/web/` clean; `tsc` + eslint pass.
+- [ ] Verify in browser (webui): logo on landing + sidebar across all 8 themes; tab switching keeps terminal alive; preview auto-opens on `workspace.preview.ready`; Changes tab against a dirty git workspace and a non-git workspace.
+- [ ] Python tests for new git endpoints (`tests/`, follow existing workspace route test patterns; respect `_isolate_spark_home`).
+- [ ] Rebuild desktop app (`/build-mac`) and smoke-test: native preview webview, terminal, logo.
+- [ ] Screenshots into `screenshots/100626/after/` for before/after comparison.
+- [ ] Feature branch + PR (never direct to main).
+
+---
+
+## Notes / explicitly out of scope (this round)
+- Background-tasks and Plan tabs from Claude desktop's switcher — worth considering later once Changes ships.
+- Multi-tab terminal sessions — single persistent shell first; tabs are a follow-up.
+- Right panel for non-project (no-slug) chat sessions — panel remains workspace-only.

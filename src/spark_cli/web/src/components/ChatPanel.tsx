@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import type { SessionMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
+import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
 import { useEventBus, BUS_RECONNECTED_TOPIC } from "@/hooks/useEventBus";
 import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
@@ -202,15 +203,7 @@ function mergeSyncedMessages(
 const BUBBLE_TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
 
 function SparkAgentIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <img
-      src="/icon_small-dark.png"
-      alt=""
-      aria-hidden="true"
-      className={cn("block object-contain", className)}
-      draggable={false}
-    />
-  );
+  return <BrandLogo className={className} />;
 }
 
 function SparkAgentAvatar() {
@@ -1160,6 +1153,17 @@ export function ChatPanel({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [searchOpen]);
+
+  // Let other panels (e.g. the Changes tab's "Commit or push") drop a prompt
+  // into the composer for the user to review and send — keeps the agent in the loop.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail;
+      if (typeof text === "string" && text) setInput(text);
+    };
+    window.addEventListener("spark:compose", handler as EventListener);
+    return () => window.removeEventListener("spark:compose", handler as EventListener);
+  }, []);
 
   // Build match positions from messages — debounced so a streaming update at
   // 60fps doesn't trigger a full scan every frame when search is open.
