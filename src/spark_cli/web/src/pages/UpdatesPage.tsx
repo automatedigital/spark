@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, RefreshCw } from "lucide-react";
 import { api, sseUrl, type AdminActionMeta } from "@/lib/api";
-import { useUpdateModal } from "@/lib/UpdateModalContext";
+import { useUpdateModal } from "@/lib/updateModal";
 
 export default function UpdatesPage() {
   const { openUpdateModal, macUpdateAvailable, macLatestVersion, openMacUpdateModal } = useUpdateModal();

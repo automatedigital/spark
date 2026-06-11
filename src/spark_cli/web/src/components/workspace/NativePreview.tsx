@@ -6,7 +6,7 @@ import { nativePreview, rectFromElement } from "@/lib/nativePreview";
  * renders nothing visible; its bounding rect drives where the real WKWebview is
  * positioned, and we keep them in sync on resize/scroll/layout changes.
  */
-export function NativePreview({ slug, url, persistent = true }: { slug: string; url: string; persistent?: boolean }) {
+export function NativePreview({ slug, url, persistent = true, visible = true }: { slug: string; url: string; persistent?: boolean; visible?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Create (or re-navigate) the native webview for the current URL. Toggling
@@ -19,6 +19,13 @@ export function NativePreview({ slug, url, persistent = true }: { slug: string; 
       .create(slug, url, rectFromElement(el), persistent)
       .catch((e) => console.error("preview_create", e));
   }, [slug, url, persistent]);
+
+  // The native webview overlays the panel rect, so CSS `hidden` on the React
+  // pane can't conceal it — explicitly toggle visibility when the tab/panel
+  // hides or shows.
+  useEffect(() => {
+    nativePreview.setVisible(visible).catch(() => {});
+  }, [visible]);
 
   // Keep the native webview glued to the placeholder's rect.
   useEffect(() => {

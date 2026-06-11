@@ -561,7 +561,6 @@ export default function EnvPage() {
 
               {unsetEntries.length > 0 && (
                 <CollapsibleUnset
-                  category={category}
                   unsetEntries={unsetEntries}
                   edits={edits} setEdits={setEdits} revealed={revealed} saving={saving}
                   onSave={handleSave} onClear={handleClear} onReveal={handleReveal} onCancelEdit={cancelEdit}
@@ -580,7 +579,6 @@ export default function EnvPage() {
 /* ------------------------------------------------------------------ */
 
 function CollapsibleUnset({
-  category: _category,
   unsetEntries,
   edits,
   setEdits,
@@ -591,7 +589,6 @@ function CollapsibleUnset({
   onReveal,
   onCancelEdit,
 }: {
-  category: string;
   unsetEntries: [string, EnvVarInfo][];
   edits: Record<string, string>;
   setEdits: React.Dispatch<React.SetStateAction<Record<string, string>>>;

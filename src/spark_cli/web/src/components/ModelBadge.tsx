@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Brain, Zap } from "lucide-react";
 import { api } from "@/lib/api";
-import { shortModelName } from "@/components/chat/PromptBar";
+import { shortModelName } from "@/lib/modelName";
 
 export function ModelBadge() {
   const [smartModel, setSmartModel] = useState<string | null>(null);

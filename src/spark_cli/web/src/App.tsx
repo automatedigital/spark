@@ -30,13 +30,14 @@ import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
-import { useUpdateModal } from "@/lib/UpdateModalContext";
+import { useUpdateModal } from "@/lib/updateModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { GlobalToasts } from "@/components/GlobalToasts";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { BrandLogo } from "@/components/BrandLogo";
 import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
@@ -154,15 +155,7 @@ function scheduleAgentCursorHide(timerRef: React.MutableRefObject<ReturnType<typ
 }
 
 function SparkLogo({ className = "" }: { className?: string }) {
-  return (
-    <img
-      src="/icon_small-dark.png"
-      alt=""
-      aria-hidden="true"
-      className={`block h-7 w-7 object-contain ${className}`}
-      draggable={false}
-    />
-  );
+  return <BrandLogo className={`h-7 w-7 ${className}`} />;
 }
 
 // ── More menu (demoted pages: Chat, Files, Canvas, Kanban, Cron) ──

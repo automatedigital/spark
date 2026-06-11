@@ -292,6 +292,7 @@ async def upload_files(
         except Exception as exc:
             _log.warning("Upload failed for %s: %s", filename, exc)
             raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}")
+    _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "saved": saved}
 
 
@@ -374,6 +375,11 @@ class WriteFileBody(BaseModel):
     content: str
 
 
+class RenameBody(BaseModel):
+    src: str
+    dst: str
+
+
 @router.put("/files")
 def write_chat_file(path: str = Query(...), body: WriteFileBody = ...):
     """Write text content to a file in the workspace files directory."""
@@ -441,7 +447,203 @@ def delete_file(slug: str, path: str = Query(...)):
             target.unlink()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+    _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "deleted": path}
+
+
+@router.put("/projects/{slug}/file")
+def write_project_file(slug: str, path: str = Query(...), body: WriteFileBody = ...):
+    """Create or overwrite a text file inside a project workspace."""
+    project_dir = _project_dir(slug)
+    target = _safe_path(project_dir, path)
+    if target.is_dir():
+        raise HTTPException(status_code=400, detail="Path is a directory")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        target.write_text(body.content, encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    _publish_workspace_event("workspace.files.changed", {"slug": slug})
+    return {"ok": True, "path": path}
+
+
+@router.post("/projects/{slug}/mkdir")
+def make_project_dir(slug: str, path: str = Query(...)):
+    """Create a directory (and parents) inside a project workspace."""
+    project_dir = _project_dir(slug)
+    target = _safe_path(project_dir, path)
+    if target.exists():
+        raise HTTPException(status_code=409, detail=f"Already exists: {path!r}")
+    try:
+        target.mkdir(parents=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    _publish_workspace_event("workspace.files.changed", {"slug": slug})
+    return {"ok": True, "path": path}
+
+
+@router.post("/projects/{slug}/rename")
+def rename_project_path(slug: str, body: RenameBody):
+    """Rename or move a file/directory inside a project workspace."""
+    project_dir = _project_dir(slug)
+    src = _safe_path(project_dir, body.src)
+    dst = _safe_path(project_dir, body.dst)
+    if not src.exists():
+        raise HTTPException(status_code=404, detail=f"Not found: {body.src!r}")
+    if dst.exists():
+        raise HTTPException(status_code=409, detail=f"Already exists: {body.dst!r}")
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    _publish_workspace_event("workspace.files.changed", {"slug": slug})
+    return {"ok": True, "src": body.src, "dst": body.dst}
+
+
+# ── Project git (Changes tab) ──────────────────────────────────────────────────
+
+
+class RevertBody(BaseModel):
+    path: str
+
+
+def _run_git(project_dir: Path, args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _is_git_repo(project_dir: Path) -> bool:
+    try:
+        res = _run_git(project_dir, ["rev-parse", "--is-inside-work-tree"])
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return False
+    return res.returncode == 0 and res.stdout.strip() == "true"
+
+
+def _git_category(index: str, work: str) -> str:
+    """Map a porcelain XY status pair to added/deleted/modified."""
+    if index == "?" or work == "?":
+        return "added"
+    if index == "A":
+        return "added"
+    if index == "D" or work == "D":
+        return "deleted"
+    return "modified"
+
+
+@router.get("/projects/{slug}/git/status")
+def git_status(slug: str):
+    """Return branch + per-file change summary for a project that is a git repo.
+
+    Non-git workspaces report `is_repo: false` so the UI can hide the tab.
+    """
+    project_dir = _project_dir(slug)
+    if not _is_git_repo(project_dir):
+        return {"is_repo": False, "branch": None, "files": [], "total_adds": 0, "total_dels": 0}
+
+    branch_res = _run_git(project_dir, ["rev-parse", "--abbrev-ref", "HEAD"])
+    branch = branch_res.stdout.strip() or None
+
+    # Per-file +adds/-dels for tracked changes vs HEAD.
+    numstat: dict[str, tuple[int | None, int | None]] = {}
+    num_res = _run_git(project_dir, ["diff", "--numstat", "HEAD"])
+    if num_res.returncode == 0:
+        for line in num_res.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            adds_s, dels_s, path = parts
+            adds = None if adds_s == "-" else int(adds_s)
+            dels = None if dels_s == "-" else int(dels_s)
+            numstat[path] = (adds, dels)
+
+    files: list[dict[str, Any]] = []
+    total_adds = 0
+    total_dels = 0
+    status_res = _run_git(project_dir, ["status", "--porcelain"])
+    for line in status_res.stdout.splitlines():
+        if len(line) < 3:
+            continue
+        index, work, path = line[0], line[1], line[3:]
+        # Renames look like "old -> new"; report the new path.
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        path = path.strip().strip('"')
+        category = _git_category(index, work)
+        adds, dels = numstat.get(path, (None, None))
+        # Untracked files have no numstat entry: count their lines as additions.
+        if adds is None and dels is None and (index == "?" or work == "?"):
+            target = project_dir / path
+            try:
+                if target.is_file():
+                    adds = sum(1 for _ in target.open("rb"))
+                    dels = 0
+            except OSError:
+                pass
+        total_adds += adds or 0
+        total_dels += dels or 0
+        files.append({"path": path, "status": category, "adds": adds, "dels": dels})
+
+    files.sort(key=lambda f: f["path"])
+    return {
+        "is_repo": True,
+        "branch": branch,
+        "files": files,
+        "total_adds": total_adds,
+        "total_dels": total_dels,
+    }
+
+
+@router.get("/projects/{slug}/git/diff")
+def git_diff(slug: str, path: str = Query(default="")):
+    """Unified diff vs HEAD — for one file, or the whole worktree when path is empty."""
+    project_dir = _project_dir(slug)
+    if not _is_git_repo(project_dir):
+        raise HTTPException(status_code=400, detail="Not a git repository")
+
+    if path:
+        _safe_path(project_dir, path)  # reject traversal
+        # Tracked changes vs HEAD.
+        res = _run_git(project_dir, ["diff", "HEAD", "--", path])
+        diff = res.stdout
+        # Untracked files have no HEAD entry; synthesize an add-diff.
+        if not diff.strip():
+            untracked = _run_git(project_dir, ["ls-files", "--others", "--exclude-standard", "--", path])
+            if untracked.stdout.strip():
+                nores = _run_git(project_dir, ["diff", "--no-index", "--", os.devnull, path])
+                diff = nores.stdout
+        return {"path": path, "diff": diff}
+
+    res = _run_git(project_dir, ["diff", "HEAD"])
+    return {"path": None, "diff": res.stdout}
+
+
+@router.post("/projects/{slug}/git/revert")
+def git_revert(slug: str, body: RevertBody):
+    """Discard uncommitted changes to one file (checkout for tracked, delete for untracked)."""
+    project_dir = _project_dir(slug)
+    if not _is_git_repo(project_dir):
+        raise HTTPException(status_code=400, detail="Not a git repository")
+    target = _safe_path(project_dir, body.path)
+
+    tracked = _run_git(project_dir, ["ls-files", "--error-unmatch", "--", body.path])
+    if tracked.returncode == 0:
+        res = _run_git(project_dir, ["checkout", "HEAD", "--", body.path])
+        if res.returncode != 0:
+            raise HTTPException(status_code=500, detail=res.stderr.strip() or "git checkout failed")
+    elif target.exists():
+        try:
+            target.unlink()
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+    _publish_workspace_event("workspace.files.changed", {"slug": slug})
+    return {"ok": True, "reverted": body.path}
 
 
 # ── Project terminal ──────────────────────────────────────────────────────────

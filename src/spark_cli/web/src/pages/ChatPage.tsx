@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Check,
+  ChevronDown,
   ChevronLeft,
+  Copy,
   File,
   FileText,
+  GitBranch,
   Globe,
   GripVertical,
   Loader2,
@@ -18,14 +22,18 @@ import type { WorkspaceFileNode } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/ChatPanel";
+import { BrandLogo } from "@/components/BrandLogo";
 import { PromptBar } from "@/components/chat/PromptBar";
 import { useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
 import { threadTitle } from "@/components/chat/ThreadRow";
 import { TypeOnTitle } from "@/components/chat/TypeOnTitle";
-import { FileTreePane, getFileCategory } from "@/components/workspace/FileTreePane";
+import { FileTreePane } from "@/components/workspace/FileTreePane";
+import { getFileCategory } from "@/lib/fileCategory";
 import { WorkspaceTerminalPanel } from "@/components/workspace/WorkspaceTerminalPanel";
+import { WorkspaceChangesPanel } from "@/components/workspace/WorkspaceChangesPanel";
 import { WorkspacePreviewPanel } from "@/components/workspace/WorkspacePreviewPanel";
+import { previewAutoOpenEnabled } from "@/lib/previewPrefs";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -134,14 +142,7 @@ function NewSessionHero({
       )}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
         <div className="flex items-center gap-4">
-          <picture>
-            <source srcSet="/icon_small-light.png" media="(prefers-color-scheme: dark)" />
-            <img
-              src="/icon_small-dark.png"
-              alt=""
-              className="size-14 object-contain sm:size-16 md:size-20"
-            />
-          </picture>
+          <BrandLogo className="size-16 sm:size-20 md:size-24" />
           <h1 className="text-5xl font-semibold text-foreground/90 sm:text-6xl md:text-7xl">
             Spark
           </h1>
@@ -298,15 +299,28 @@ function SimpleFileViewer({ slug, node }: { slug: string; node: WorkspaceFileNod
         : hljs.highlightAuto(content).value;
     } catch { /* use raw content */ }
 
+    const lineCount = content.split("\n").length;
+
     return (
       <div className="spark-code-pane h-full overflow-auto">
-        <div className="sticky top-0 z-10 flex h-6 items-center justify-between border-b border-border bg-background/85 px-3 text-[10px] text-muted-foreground backdrop-blur">
+        <div className="sticky top-0 z-10 flex h-6 items-center justify-between gap-2 border-b border-border bg-background/85 px-3 text-[10px] text-muted-foreground backdrop-blur">
           <span className="truncate font-mono-ui">{node.path}</span>
-          {lang && <span className="shrink-0 uppercase tracking-[0.12em]">{lang}</span>}
+          <div className="flex shrink-0 items-center gap-2">
+            {lang && <span className="uppercase tracking-[0.12em]">{lang}</span>}
+            <CopyPathButton path={node.path} />
+          </div>
         </div>
-        <pre className="hljs min-h-full overflow-visible px-4 py-3 font-mono-ui text-[0.72rem] leading-5">
-          <code dangerouslySetInnerHTML={{ __html: html }} />
-        </pre>
+        <div className="flex min-h-full font-mono-ui text-[0.72rem] leading-5">
+          <pre
+            aria-hidden
+            className="shrink-0 select-none border-r border-border/60 px-2 py-3 text-right text-muted-foreground/35"
+          >
+            {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
+          </pre>
+          <pre className="hljs min-h-full flex-1 overflow-visible px-4 py-3">
+            <code dangerouslySetInnerHTML={{ __html: html }} />
+          </pre>
+        </div>
       </div>
     );
   }
@@ -314,22 +328,140 @@ function SimpleFileViewer({ slug, node }: { slug: string; node: WorkspaceFileNod
   return null;
 }
 
-// ── WorkspaceRightPanel ───────────────────────────────────────────────────────
-
-type RightTab = "files" | "terminal" | "preview";
-
-const RIGHT_TABS: RightTab[] = ["files", "terminal", "preview"];
-
-function rightTabLabel(tab: RightTab): string {
-  if (tab === "files") return "Files";
-  if (tab === "terminal") return "Terminal";
-  return "Browser";
+function CopyPathButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Copy path"
+      className="flex items-center gap-1 rounded px-1 py-0.5 transition hover:bg-secondary hover:text-foreground"
+      onClick={() => {
+        void navigator.clipboard.writeText(path).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+    >
+      {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
 }
 
-function RightTabIcon({ tab }: { tab: RightTab }) {
-  if (tab === "files") return <FileText className="h-3.5 w-3.5" />;
-  if (tab === "terminal") return <SquareTerminal className="h-3.5 w-3.5" />;
-  return <Globe className="h-3.5 w-3.5" />;
+// ── WorkspaceRightPanel ───────────────────────────────────────────────────────
+
+type RightTab = "preview" | "terminal" | "files" | "changes";
+
+type RightTabMeta = {
+  id: RightTab;
+  label: string;
+  shortcut: string;
+  Icon: typeof FileText;
+};
+
+// Dropdown order mirrors Claude desktop's panel switcher (Preview first).
+const RIGHT_TAB_META: RightTabMeta[] = [
+  { id: "preview", label: "Preview", shortcut: "⇧⌘P", Icon: Globe },
+  { id: "terminal", label: "Terminal", shortcut: "⌃`", Icon: SquareTerminal },
+  { id: "files", label: "Files", shortcut: "⇧⌘F", Icon: FileText },
+  { id: "changes", label: "Changes", shortcut: "⇧⌘D", Icon: GitBranch },
+];
+
+function rightTabMeta(tab: RightTab): RightTabMeta {
+  return RIGHT_TAB_META.find((m) => m.id === tab) ?? RIGHT_TAB_META[0];
+}
+
+const RIGHT_TAB_KEY_PREFIX = "spark-chat-right-tab:";
+
+function loadRightTab(slug: string): RightTab {
+  const saved = localStorage.getItem(RIGHT_TAB_KEY_PREFIX + slug);
+  return RIGHT_TAB_META.some((m) => m.id === saved) ? (saved as RightTab) : "files";
+}
+
+function saveRightTab(slug: string, tab: RightTab) {
+  localStorage.setItem(RIGHT_TAB_KEY_PREFIX + slug, tab);
+}
+
+// Compact tab switcher: current tab + chevron, dropdown lists every pane with
+// its keyboard shortcut (Claude desktop OPTIONS style).
+function RightPanelSwitcher({
+  slug,
+  activeTab,
+  onSelect,
+}: {
+  slug: string;
+  activeTab: RightTab;
+  onSelect: (tab: RightTab) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [gitTotals, setGitTotals] = useState<{ adds: number; dels: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = rightTabMeta(activeTab);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  // Fetch the change summary lazily when the menu opens (codex OPTIONS style).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void api.getWorkspaceGitStatus(slug)
+      .then((s) => { if (!cancelled) setGitTotals(s.is_repo ? { adds: s.total_adds, dels: s.total_dels } : null); })
+      .catch(() => { if (!cancelled) setGitTotals(null); });
+    return () => { cancelled = true; };
+  }, [open, slug]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 items-center gap-1.5 rounded px-2 text-[11px] font-medium text-foreground transition hover:bg-secondary"
+      >
+        <active.Icon className="h-3.5 w-3.5" />
+        {active.label}
+        <ChevronDown className={cn("h-3 w-3 text-muted-foreground transition", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 top-8 z-30 min-w-[180px] overflow-hidden rounded-md border border-border bg-popover py-1 shadow-lg"
+        >
+          {RIGHT_TAB_META.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="menuitem"
+              onClick={() => { onSelect(tab.id); setOpen(false); }}
+              className={cn(
+                "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] transition",
+                tab.id === activeTab
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+            >
+              <tab.Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1">{tab.label}</span>
+              {tab.id === "changes" && gitTotals && (gitTotals.adds > 0 || gitTotals.dels > 0) && (
+                <span className="font-mono-ui text-[10px]">
+                  <span className="text-emerald-400/80">+{gitTotals.adds}</span>{" "}
+                  <span className="text-red-400/80">-{gitTotals.dels}</span>
+                </span>
+              )}
+              <span className="font-mono-ui text-[10px] text-muted-foreground/60">{tab.shortcut}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function WorkspaceRightPanel({
@@ -337,107 +469,76 @@ function WorkspaceRightPanel({
   open,
   onToggle,
   width,
-  forceTab,
+  activeTab,
+  onSelectTab,
 }: {
   slug: string;
   open: boolean;
   onToggle: () => void;
   width: number;
-  forceTab?: RightTab | null;
+  activeTab: RightTab;
+  onSelectTab: (tab: RightTab) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<RightTab>("files");
   const [selectedFile, setSelectedFile] = useState<WorkspaceFileNode | null>(null);
 
   // Reset selected file when project changes
   useEffect(() => { setSelectedFile(null); }, [slug]);
-  useEffect(() => {
-    if (forceTab) setActiveTab(forceTab);
-  }, [forceTab]);
 
-  if (!open) {
-    return (
-      <div className="spark-glass-panel flex w-9 shrink-0 flex-col items-center gap-2 border-l border-border py-2">
-        <button
-          type="button"
-          title="Show files"
-          onClick={onToggle}
-          className="rounded p-1.5 text-muted-foreground/40 transition hover:text-muted-foreground"
-        >
-          <PanelRightOpen className="h-4 w-4" />
-        </button>
-        <div className="h-px w-4 bg-border" />
-        <button
-          type="button"
-          title="Files"
-          onClick={() => { setActiveTab("files"); onToggle(); }}
-          className={cn("rounded p-1.5 transition", activeTab === "files" ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
-        >
-          <FileText className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title="Terminal"
-          onClick={() => { setActiveTab("terminal"); onToggle(); }}
-          className={cn("rounded p-1.5 transition", activeTab === "terminal" ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
-        >
-          <SquareTerminal className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title="Browser"
-          onClick={() => { setActiveTab("preview"); onToggle(); }}
-          className={cn("rounded p-1.5 transition", activeTab === "preview" ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
-        >
-          <Globe className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
-
+  // The panel keeps all panes mounted whether open or collapsed, so the terminal
+  // shell and preview survive both tab switches AND collapse. When collapsed we
+  // render a narrow rail and hide the pane stack via CSS.
   return (
     <div
-      className="spark-glass-panel flex shrink-0 flex-col overflow-hidden border-l border-border"
-      style={{ width }}
+      className={cn(
+        "spark-glass-panel flex shrink-0 flex-col overflow-hidden border-l border-border",
+        !open && "items-center",
+      )}
+      style={{ width: open ? width : 36 }}
     >
-      {/* Tab bar */}
-      <div
-        className="flex h-8 shrink-0 items-center border-b border-border"
-        role="tablist"
-        aria-label="Project tools"
-      >
-        {RIGHT_TABS.map((tab) => (
+      {open ? (
+        /* Header: tab switcher + collapse */
+        <div className="flex h-8 w-full shrink-0 items-center gap-1 border-b border-border px-1.5">
+          <RightPanelSwitcher slug={slug} activeTab={activeTab} onSelect={onSelectTab} />
           <button
-            key={tab}
             type="button"
-            role="tab"
-            aria-selected={activeTab === tab}
-            aria-label={rightTabLabel(tab)}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "flex h-8 items-center gap-1.5 border-r border-border px-3 text-[11px] capitalize transition",
-              activeTab === tab
-                ? "bg-background text-foreground"
-                : "bg-card/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
-            )}
+            title="Collapse panel"
+            onClick={onToggle}
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition hover:bg-secondary hover:text-foreground"
           >
-            <RightTabIcon tab={tab} />
-            {tab}
+            <PanelRightClose className="h-4 w-4" />
           </button>
-        ))}
-        <button
-          type="button"
-          title="Collapse file panel"
-          onClick={onToggle}
-          className="ml-auto flex h-8 w-8 items-center justify-center text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-        >
-          <PanelRightClose className="h-4 w-4" />
-        </button>
-      </div>
+        </div>
+      ) : (
+        /* Collapsed rail */
+        <div className="flex flex-col items-center gap-2 py-2">
+          <button
+            type="button"
+            title="Show panel"
+            onClick={onToggle}
+            className="rounded p-1.5 text-muted-foreground/40 transition hover:text-muted-foreground"
+          >
+            <PanelRightOpen className="h-4 w-4" />
+          </button>
+          <div className="h-px w-4 bg-border" />
+          {RIGHT_TAB_META.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              title={label}
+              onClick={() => { onSelectTab(id); onToggle(); }}
+              className={cn("rounded p-1.5 transition", activeTab === id ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Tab content */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {activeTab === "files" ? (
-          selectedFile ? (
+      {/* Tab content — all panes stay mounted so the terminal shell and preview
+          state survive tab switches and collapse; hidden panes are CSS-hidden. */}
+      <div className={cn("relative flex w-full min-h-0 flex-1 flex-col overflow-hidden", !open && "hidden")}>
+        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "files" && "hidden")}>
+          {selectedFile ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {/* Back to tree button */}
               <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1">
@@ -461,12 +562,17 @@ function WorkspaceRightPanel({
               activePath={null}
               onOpenFile={setSelectedFile}
             />
-          )
-        ) : activeTab === "terminal" ? (
+          )}
+        </div>
+        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "terminal" && "hidden")}>
           <WorkspaceTerminalPanel slug={slug} />
-        ) : (
-          <WorkspacePreviewPanel slug={slug} />
-        )}
+        </div>
+        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "preview" && "hidden")}>
+          <WorkspacePreviewPanel slug={slug} visible={open && activeTab === "preview"} />
+        </div>
+        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "changes" && "hidden")}>
+          <WorkspaceChangesPanel slug={slug} />
+        </div>
       </div>
     </div>
   );
@@ -496,7 +602,7 @@ export default function ChatPage() {
   const [rightPanelOpen, setRightPanelOpen] = useState(() =>
     localStorage.getItem("spark-chat-right-panel") !== "false"
   );
-  const [rightPanelForceTab, setRightPanelForceTab] = useState<RightTab | null>(null);
+  const [rightTab, setRightTab] = useState<RightTab>("files");
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
     const saved = localStorage.getItem("spark-chat-right-panel-width");
     return saved ? Math.max(240, parseInt(saved, 10)) : 320;
@@ -514,14 +620,24 @@ export default function ChatPage() {
     return projects.find((p) => p.slug === composingFor)?.name ?? composingFor;
   }, [composingFor, projects]);
 
+  // Load the per-workspace saved tab when the active workspace changes.
+  useEffect(() => {
+    if (activeWorkspaceSlug) setRightTab(loadRightTab(activeWorkspaceSlug));
+  }, [activeWorkspaceSlug]);
+
+  const selectRightTab = useCallback((tab: RightTab) => {
+    setRightTab(tab);
+    if (activeWorkspaceSlug) saveRightTab(activeWorkspaceSlug, tab);
+  }, [activeWorkspaceSlug]);
+
   // ── Real-time updates ──
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic !== "workspace.preview.ready") return;
     const data = env.data as { slug?: string; url?: string | null };
-    if (data.slug && data.slug === activeWorkspaceSlug && data.url) {
+    if (data.slug && data.slug === activeWorkspaceSlug && data.url && previewAutoOpenEnabled()) {
       setRightPanelOpen(true);
       localStorage.setItem("spark-chat-right-panel", "true");
-      setRightPanelForceTab("preview");
+      selectRightTab("preview");
     }
   });
 
@@ -532,6 +648,26 @@ export default function ChatPage() {
       return next;
     });
   };
+
+  // Keyboard shortcuts to open/switch panel tabs (mirrors Claude desktop).
+  useEffect(() => {
+    if (!activeWorkspaceSlug) return;
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      let tab: RightTab | null = null;
+      if (mod && e.shiftKey && e.key.toLowerCase() === "p") tab = "preview";
+      else if (mod && e.shiftKey && e.key.toLowerCase() === "f") tab = "files";
+      else if (mod && e.shiftKey && e.key.toLowerCase() === "d") tab = "changes";
+      else if (e.ctrlKey && e.key === "`") tab = "terminal";
+      if (!tab) return;
+      e.preventDefault();
+      setRightPanelOpen(true);
+      localStorage.setItem("spark-chat-right-panel", "true");
+      selectRightTab(tab);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeWorkspaceSlug, selectRightTab]);
 
   const handleRightPanelDrag = useCallback((delta: number) => {
     setRightPanelWidth((width) => {
@@ -593,7 +729,8 @@ export default function ChatPage() {
               open={rightPanelOpen}
               onToggle={toggleRightPanel}
               width={rightPanelWidth}
-              forceTab={rightPanelForceTab}
+              activeTab={rightTab}
+              onSelectTab={selectRightTab}
             />
           </div>
         )}

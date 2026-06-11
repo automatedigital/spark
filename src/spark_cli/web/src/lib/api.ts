@@ -747,6 +747,58 @@ export const api = {
     );
   },
 
+  writeWorkspaceFile: (slug: string, path: string, content: string) => {
+    const qs = new URLSearchParams({ path });
+    return fetchJSON<{ ok: boolean; path: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/file?${qs}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      },
+    );
+  },
+
+  makeWorkspaceDir: (slug: string, path: string) => {
+    const qs = new URLSearchParams({ path });
+    return fetchJSON<{ ok: boolean; path: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/mkdir?${qs}`,
+      { method: "POST" },
+    );
+  },
+
+  renameWorkspacePath: (slug: string, src: string, dst: string) =>
+    fetchJSON<{ ok: boolean; src: string; dst: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/rename`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ src, dst }),
+      },
+    ),
+
+  getWorkspaceGitStatus: (slug: string) =>
+    fetchJSON<WorkspaceGitStatus>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/git/status`,
+    ),
+
+  getWorkspaceGitDiff: (slug: string, path = "") => {
+    const qs = path ? `?${new URLSearchParams({ path })}` : "";
+    return fetchJSON<{ path: string | null; diff: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/git/diff${qs}`,
+    );
+  },
+
+  revertWorkspaceGitFile: (slug: string, path: string) =>
+    fetchJSON<{ ok: boolean; reverted: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/git/revert`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      },
+    ),
+
   runWorkspaceTerminalCommand: (slug: string, command?: string) =>
     fetchJSON<WorkspaceTerminalRunStart>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/terminal/runs`,
@@ -1992,6 +2044,21 @@ export interface WorkspacePreviewLog {
   type: "log";
   stream: string;
   text: string;
+}
+
+export interface WorkspaceGitFile {
+  path: string;
+  status: "added" | "deleted" | "modified";
+  adds: number | null;
+  dels: number | null;
+}
+
+export interface WorkspaceGitStatus {
+  is_repo: boolean;
+  branch: string | null;
+  files: WorkspaceGitFile[];
+  total_adds: number;
+  total_dels: number;
 }
 
 export type WorkspacePreviewEvent =

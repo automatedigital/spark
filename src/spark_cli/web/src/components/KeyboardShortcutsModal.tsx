@@ -30,6 +30,15 @@ const SHORTCUTS = [
       { keys: ["⌘", "K"], description: "Navigate pages via command palette" },
     ],
   },
+  {
+    context: "Workspace panel",
+    items: [
+      { keys: ["⇧", "⌘", "P"], description: "Open Preview" },
+      { keys: ["⌃", "`"], description: "Open Terminal" },
+      { keys: ["⇧", "⌘", "F"], description: "Open Files" },
+      { keys: ["⇧", "⌘", "D"], description: "Open Changes" },
+    ],
+  },
 ];
 
 function Kbd({ children }: { children: string }) {

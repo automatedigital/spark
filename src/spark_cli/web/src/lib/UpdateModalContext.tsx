@@ -1,30 +1,9 @@
-import { createContext, useContext, useRef, useState, useEffect, type ReactNode } from "react";
+import { useRef, useState, useEffect, type ReactNode } from "react";
 import { Download, Loader2, RefreshCw, X } from "lucide-react";
 import { api, sseUrl } from "@/lib/api";
+import { UpdateModalContext } from "@/lib/updateModal";
 
 type UpdateStatus = "idle" | "running" | "restarting" | "done" | "failed";
-
-interface UpdateModalContextValue {
-  updateAvailable: boolean;
-  latestVersion: string | null;
-  openUpdateModal: () => void;
-  macUpdateAvailable: boolean;
-  macLatestVersion: string | null;
-  openMacUpdateModal: () => void;
-}
-
-const UpdateModalContext = createContext<UpdateModalContextValue>({
-  updateAvailable: false,
-  latestVersion: null,
-  openUpdateModal: () => {},
-  macUpdateAvailable: false,
-  macLatestVersion: null,
-  openMacUpdateModal: () => {},
-});
-
-export function useUpdateModal() {
-  return useContext(UpdateModalContext);
-}
 
 export function UpdateModalProvider({ children }: { children: ReactNode }) {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -65,9 +44,9 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
               if (result.commits_behind != null)
                 setLatestVersion(`${result.commits_behind} new commit${result.commits_behind === 1 ? "" : "s"}`);
             }
-          } catch {}
+          } catch { /* ignore */ }
         }
-      } catch {}
+      } catch { /* ignore */ }
       // Only the bundled macOS app can update its own .app shell.
       if (isDesktop) {
         try {
@@ -78,7 +57,7 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
             setMacReleaseNotes(mac.release_notes ?? null);
             setMacReleaseUrl(mac.release_url ?? null);
           }
-        } catch {}
+        } catch { /* ignore */ }
       }
     })();
     return () => { cancelled = true; };
