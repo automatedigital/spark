@@ -22,6 +22,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  ScrollText,
   Smartphone,
   Square,
   Tablet,
@@ -120,6 +121,8 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   const [takeover, setTakeover] = useState(false);
   const [picking, setPicking] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [showActionLog, setShowActionLog] = useState(false);
+  const [actions, setActions] = useState<import("@/lib/api").BrowserActionLogEntry[]>([]);
   // Follow-agent overlay: most recent agent action (from the audit log).
   const [agentAction, setAgentAction] = useState<{ action: string; ref?: string; ts: number } | null>(null);
   const agentActionTsRef = useRef(0);
@@ -280,6 +283,23 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
       window.clearInterval(id);
     };
   }, [streamedMode, slug, frameSrc]);
+
+  // Action-log pane: poll the auditable agent action transcript while open.
+  useEffect(() => {
+    if (!showActionLog) return;
+    let alive = true;
+    const tick = () =>
+      void api
+        .getWorkspacePreviewActionLog(slug)
+        .then((r) => alive && setActions(r.actions))
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [showActionLog, slug]);
 
   // Dev-loop: auto-detect running local dev servers to offer in the URL bar.
   const [devServers, setDevServers] = useState<{ url: string; port: number }[]>([]);
@@ -791,6 +811,11 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
                 <span className="flex-1">Toggle logs</span>
                 {showLogs && <Check className="h-3.5 w-3.5 text-emerald-400" />}
               </button>
+              <button type="button" className={menuBtn} onClick={() => { setShowActionLog((v) => !v); setShowMenu(false); }}>
+                <ScrollText className="h-3.5 w-3.5" />
+                <span className="flex-1">Agent action log</span>
+                {showActionLog && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+              </button>
             </div>
           )}
         </div>
@@ -962,6 +987,55 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
               <div className="py-3 text-center text-muted-foreground/50">No browser logs yet.</div>
             )}
             </div>
+        </div>
+      )}
+
+      {showActionLog && (
+        <div className="flex max-h-44 shrink-0 flex-col overflow-hidden border-t border-border bg-black/30">
+          <div className="flex shrink-0 items-center gap-1.5 border-b border-border/60 px-2 py-1">
+            <ScrollText className="h-3 w-3 text-muted-foreground/60" />
+            <span className="font-mono-ui text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+              Agent action log
+            </span>
+            <button
+              type="button"
+              className="ml-auto rounded-sm px-1.5 py-0.5 font-mono-ui text-[10px] uppercase tracking-[0.08em] text-muted-foreground/60 hover:text-foreground"
+              onClick={() => setShowActionLog(false)}
+            >
+              close
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 font-mono text-[10px] leading-4 text-muted-foreground">
+            {actions.length ? (
+              actions.map((a, idx) => (
+                <div key={`${a.ts}-${idx}`} className="flex gap-2">
+                  <span className="shrink-0 text-muted-foreground/40">{shortTime(a.ts)}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 uppercase",
+                      a.status === "error"
+                        ? "text-red-300/80"
+                        : a.status === "blocked" || a.status === "paused"
+                          ? "text-amber-300/80"
+                          : a.status === "needs_confirmation"
+                            ? "text-sky-300/80"
+                            : "text-emerald-300/70",
+                    )}
+                  >
+                    {a.action}
+                  </span>
+                  <span className="min-w-0 whitespace-pre-wrap break-words text-foreground/70">
+                    {(a.detail?.url as string) ||
+                      (a.detail?.ref as string) ||
+                      (a.detail?.reason as string) ||
+                      a.status}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="py-3 text-center text-muted-foreground/50">No agent actions recorded yet.</div>
+            )}
+          </div>
         </div>
       )}
 
