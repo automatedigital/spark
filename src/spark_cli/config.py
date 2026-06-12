@@ -760,6 +760,11 @@ DEFAULT_CONFIG = {
     # Pre-exec security scanning via tirith
     "security": {
         "redact_secrets": True,
+        # When True, the agent browser pauses before sensitive actions
+        # (submitting payments, sending messages, logging into a NEW domain)
+        # and returns a needs_confirmation result the user must approve before
+        # the action runs. See src/tools/browser_permission_gate.py.
+        "browser_confirm_sensitive": True,
         "tirith_enabled": True,
         "tirith_path": "tirith",
         "tirith_timeout": 5,
@@ -827,7 +832,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 23,
+    "_config_version": 24,
 }
 
 # =============================================================================

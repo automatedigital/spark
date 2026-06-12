@@ -62,9 +62,9 @@ Goal: one browser instance that (a) renders/streams into the WebUI Preview tab a
 - [ ] Auto-detect running dev servers (common ports / process scan) and offer them in the URL bar; auto-reload on HMR where possible.
 
 **Agent efficiency & safety**
-- [ ] Give the agent an accessibility-tree / DOM snapshot tool, not just screenshots — far cheaper in tokens and more reliable for clicking (agent-browser supports this natively via refs).
-- [ ] Action log: every agent browser action recorded and visible in the pane (auditable transcript).
-- [ ] Permission gates for sensitive actions: submitting payments, sending messages, logging into new domains — pause and ask the user.
+- [x] Give the agent an accessibility-tree / DOM snapshot tool, not just screenshots — far cheaper in tokens and more reliable for clicking (agent-browser supports this natively via refs).
+- [x] Action log: every agent browser action recorded and visible in the pane (auditable transcript).
+- [x] Permission gates for sensitive actions: submitting payments, sending messages, logging into new domains — pause and ask the user.
 
 ## 3. UI: collapsible Sessions + "No Workspace" chat sections in sidebar
 

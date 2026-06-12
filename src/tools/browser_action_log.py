@@ -24,7 +24,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +51,14 @@ def _session_slug() -> str:
     return "default"
 
 
-def _log_dir(slug: Optional[str] = None) -> Path:
+def _log_dir(slug: str | None = None) -> Path:
     from core.spark_constants import get_spark_home
 
     bucket = _safe_slug(slug) if slug else _session_slug()
     return get_spark_home() / "browser" / bucket
 
 
-def log_path(slug: Optional[str] = None) -> Path:
+def log_path(slug: str | None = None) -> Path:
     """Absolute path to the action-log JSONL for the given (or current) session."""
     return _log_dir(slug) / "action_log.jsonl"
 
@@ -67,9 +67,9 @@ def record_action(
     action: str,
     *,
     status: str = "ok",
-    detail: Optional[dict[str, Any]] = None,
-    task_id: Optional[str] = None,
-    slug: Optional[str] = None,
+    detail: dict[str, Any] | None = None,
+    task_id: str | None = None,
+    slug: str | None = None,
 ) -> None:
     """Append one action record to the session's audit log.
 
@@ -103,10 +103,10 @@ def record_action(
 
 
 def read_actions(
-    slug: Optional[str] = None,
+    slug: str | None = None,
     *,
     limit: int = MAX_LOG_LINES,
-    since_ts: Optional[float] = None,
+    since_ts: float | None = None,
 ) -> list[dict[str, Any]]:
     """Return recorded actions for a session, newest-last, oldest dropped.
 
@@ -121,7 +121,7 @@ def read_actions(
     out: list[dict[str, Any]] = []
     try:
         with _lock:
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 lines = fh.readlines()
         for raw in lines[-max(limit, 1) * 2 :]:
             raw = raw.strip()

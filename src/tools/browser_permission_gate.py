@@ -10,7 +10,7 @@ text near the action, and the click/submit semantics — and returns a
 The browser tool turns a sensitive classification into a ``needs_confirmation``
 tool result the user must approve.
 
-Policy is configurable via ``safety.browser_confirm_sensitive`` in config.yaml
+Policy is configurable via ``security.browser_confirm_sensitive`` in config.yaml
 (default ``True``).  Approvals are remembered per (session, category, domain)
 for the lifetime of the process so the agent isn't re-prompted for the same
 action after the user grants it.
@@ -25,7 +25,6 @@ import os
 import re
 import threading
 from dataclasses import dataclass, field
-from typing import Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -60,9 +59,9 @@ class Classification:
     """Result of classifying a pending browser action."""
 
     sensitive: bool
-    category: Optional[str] = None
+    category: str | None = None
     reason: str = ""
-    domain: Optional[str] = None
+    domain: str | None = None
     details: dict = field(default_factory=dict)
 
 
@@ -85,7 +84,7 @@ def _session_slug() -> str:
     return name.removeprefix("spark-preview-") if name else "default"
 
 
-def _domain(url: Optional[str]) -> Optional[str]:
+def _domain(url: str | None) -> str | None:
     if not url:
         return None
     try:
@@ -104,22 +103,22 @@ def _domain(url: Optional[str]) -> Optional[str]:
 def gate_enabled() -> bool:
     """Return whether sensitive-action confirmation is enabled (config flag).
 
-    Reads ``safety.browser_confirm_sensitive`` (default True).  Fails safe to
+    Reads ``security.browser_confirm_sensitive`` (default True).  Fails safe to
     True when config is unreadable.
     """
     try:
         from spark_cli.config import read_raw_config
 
         cfg = read_raw_config()
-        safety = cfg.get("safety", {})
-        if isinstance(safety, dict) and "browser_confirm_sensitive" in safety:
-            return bool(safety["browser_confirm_sensitive"])
+        security = cfg.get("security", {})
+        if isinstance(security, dict) and "browser_confirm_sensitive" in security:
+            return bool(security["browser_confirm_sensitive"])
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Could not read safety.browser_confirm_sensitive: %s", exc)
+        logger.debug("Could not read security.browser_confirm_sensitive: %s", exc)
     return True
 
 
-def note_login_domain(url: Optional[str]) -> None:
+def note_login_domain(url: str | None) -> None:
     """Record a domain as already-known (the agent has navigated/logged in)."""
     dom = _domain(url)
     if dom:
@@ -127,7 +126,7 @@ def note_login_domain(url: Optional[str]) -> None:
             _known_login_domains.add(dom)
 
 
-def is_known_login_domain(url: Optional[str]) -> bool:
+def is_known_login_domain(url: str | None) -> bool:
     dom = _domain(url)
     if not dom:
         return True  # can't classify → don't treat as new
@@ -138,9 +137,9 @@ def is_known_login_domain(url: Optional[str]) -> bool:
 def classify_action(
     action: str,
     *,
-    url: Optional[str] = None,
+    url: str | None = None,
     context_text: str = "",
-    is_new_domain: Optional[bool] = None,
+    is_new_domain: bool | None = None,
 ) -> Classification:
     """Classify a pending browser action as sensitive or not.
 
