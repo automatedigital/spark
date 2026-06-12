@@ -7714,7 +7714,10 @@ class AIAgent(_PromptCacheMixin):
         # Sliding window for repeated-tool-call loop detection.
         # Tracks (tool_name, args_json) for the last N single-tool iterations.
         _tool_call_history: list[tuple[str, str]] = []
-        _TOOL_LOOP_THRESHOLD = 3  # identical consecutive single-tool calls → break
+        _TOOL_LOOP_THRESHOLD = 3  # identical consecutive single-tool calls → nudge/break
+        # Once a loop is detected and the model is nudged, a SECOND identical
+        # streak in the same turn means the nudge didn't help — hard-stop.
+        _tool_loop_nudged = False
 
         while (api_call_count < self.max_iterations and self.iteration_budget.remaining > 0) or self._budget_grace_call:
             # Reset per-turn checkpoint dedup so each iteration can take one snapshot
@@ -9757,17 +9760,47 @@ class AIAgent(_PromptCacheMixin):
                                 and len(set(_tool_call_history)) == 1
                             ):
                                 _loop_tool = _tc_list[0].function.name
-                                _warn = (
-                                    f"Detected {_TOOL_LOOP_THRESHOLD} consecutive identical "
-                                    f"'{_loop_tool}' calls — stopping to avoid an infinite loop."
-                                )
-                                logger.warning("tool_loop_detected: %s", _warn)
-                                if not self.quiet_mode:
-                                    self._safe_print(f"\n⚠️  {_warn}")
-                                self._fire_stream_delta(f"\n\n> ⚠️ {_warn}\n")
-                                _turn_exit_reason = "tool_loop_detected"
-                                _tool_call_history.clear()
-                                break
+                                if not _tool_loop_nudged:
+                                    # First trip: inject a recovery note as a
+                                    # tool result and let the conversation
+                                    # continue. Does NOT alter prior context
+                                    # or rebuild the system prompt — safe for
+                                    # prompt caching (appends a new message).
+                                    _nudge = (
+                                        f"Your last {_TOOL_LOOP_THRESHOLD} tool calls were all "
+                                        f"identical ('{_loop_tool}' with the same arguments). "
+                                        "This is not making progress. Stop repeating this "
+                                        "exact call — try a different approach, adjust the "
+                                        "arguments, or explain to the user why you're stuck."
+                                    )
+                                    logger.warning("tool_loop_detected (nudge): %s", _nudge)
+                                    if not self.quiet_mode:
+                                        self._safe_print(f"\n⚠️  {_nudge}")
+                                    self._fire_stream_delta(f"\n\n> ⚠️ {_nudge}\n")
+                                    messages.append({
+                                        "role": "tool",
+                                        "content": f"[loop guard] {_nudge}",
+                                        "tool_call_id": _tc_list[0].id,
+                                    })
+                                    _tool_loop_nudged = True
+                                    _tool_call_history.clear()
+                                    # Don't break — give the model a chance to recover.
+                                else:
+                                    # Second trip in the same turn: the nudge
+                                    # didn't help. Hard-stop and surface this
+                                    # clearly as an incomplete task.
+                                    _warn = (
+                                        f"Detected {_TOOL_LOOP_THRESHOLD} consecutive identical "
+                                        f"'{_loop_tool}' calls again after a recovery nudge — "
+                                        "stopping to avoid an infinite loop. Task incomplete."
+                                    )
+                                    logger.warning("tool_loop_detected (hard-stop): %s", _warn)
+                                    if not self.quiet_mode:
+                                        self._safe_print(f"\n⚠️  {_warn}")
+                                    self._fire_stream_delta(f"\n\n> ⚠️ **Task incomplete:** {_warn}\n")
+                                    _turn_exit_reason = "tool_loop_detected_unrecovered"
+                                    _tool_call_history.clear()
+                                    break
                         else:
                             _tool_call_history.clear()
                     else:
@@ -10178,7 +10211,11 @@ class AIAgent(_PromptCacheMixin):
             final_response = self._handle_max_iterations(messages, api_call_count)
         
         # Determine if conversation completed successfully
-        completed = final_response is not None and api_call_count < self.max_iterations
+        completed = (
+            final_response is not None
+            and api_call_count < self.max_iterations
+            and _turn_exit_reason != "tool_loop_detected_unrecovered"
+        )
 
         # Save trajectory if enabled
         self._save_trajectory(messages, user_message, completed)
@@ -10268,6 +10305,7 @@ class AIAgent(_PromptCacheMixin):
             "completed": completed,
             "partial": False,  # True only when stopped due to invalid tool calls
             "interrupted": interrupted,
+            "turn_exit_reason": _turn_exit_reason,
             "response_previewed": getattr(self, "_response_was_previewed", False),
             "model": self.model,
             "provider": self.provider,
