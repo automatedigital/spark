@@ -2655,6 +2655,52 @@ async def stream_browser_record(slug: str, body: StreamRecord):
     return {"slug": slug, "name": _Path(path).name}
 
 
+@router.get("/projects/{slug}/preview/stream/console")
+async def stream_browser_console(slug: str, since_seq: int = Query(default=0, ge=0)):
+    """Captured console/network/exception entries from the previewed page.
+
+    Powers the pane's console drawer (and is available to the agent via the
+    existing browser console tool). Empty list when the backend can't capture
+    (Playwright fallback, no CDP, or no ``websockets`` lib) — never a crash.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    getter = getattr(session, "console_entries", None)
+    if not callable(getter):
+        return {"slug": slug, "entries": []}
+    try:
+        entries = await asyncio.to_thread(lambda: getter(since_seq=since_seq))
+    except browser_unavailable:
+        entries = []
+    except Exception:
+        entries = []
+    return {"slug": slug, "entries": entries}
+
+
+@router.get("/projects/{slug}/preview/detect-servers")
+def detect_dev_servers(slug: str):
+    """Auto-detect running local dev servers owned by this workspace.
+
+    Scans loopback listeners, keeps the ones whose process cwd is inside the
+    project dir and that respond to an HTTP probe, and returns candidate URLs to
+    offer in the pane's URL bar.
+    """
+    project_dir = _project_dir(slug)
+    seen: set[int] = set()
+    servers: list[dict[str, Any]] = []
+    for pid, port in _list_loopback_listeners():
+        if port in seen:
+            continue
+        cwd = _process_cwd(pid)
+        if not _path_is_inside(cwd, project_dir):
+            continue
+        url = f"http://127.0.0.1:{port}"
+        if not _probe_preview_url(url):
+            continue
+        seen.add(port)
+        servers.append({"url": url, "port": port})
+    return {"slug": slug, "servers": servers}
+
+
 @router.post("/projects/{slug}/preview/stream/stop")
 def stream_browser_stop(slug: str):
     _project_dir(slug)

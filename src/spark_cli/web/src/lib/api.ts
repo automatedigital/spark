@@ -1045,6 +1045,18 @@ export const api = {
       },
     ),
 
+  /** Captured console/network/exception entries from the previewed page. */
+  streamBrowserConsole: (slug: string, sinceSeq = 0) =>
+    fetchJSON<{ slug: string; entries: StreamBrowserConsoleEntry[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/console?since_seq=${sinceSeq}`,
+    ),
+
+  /** Auto-detected local dev servers owned by this workspace. */
+  detectDevServers: (slug: string) =>
+    fetchJSON<{ slug: string; servers: { url: string; port: number }[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/detect-servers`,
+    ),
+
   installStreamBrowser: (slug: string) =>
     fetchJSON<{ slug: string; ok: boolean; error?: string | null; version?: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/install`,
@@ -2236,6 +2248,15 @@ export interface BrowserActionLogEntry {
   action: string;
   status: string;
   task_id?: string | null;
+  detail?: Record<string, unknown>;
+}
+
+export interface StreamBrowserConsoleEntry {
+  seq: number;
+  ts: number;
+  kind: "console" | "network" | "exception";
+  level: string;
+  text: string;
   detail?: Record<string, unknown>;
 }
 

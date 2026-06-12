@@ -249,6 +249,55 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
     return () => window.clearTimeout(id);
   }, [agentAction]);
 
+  // Dev-loop: poll captured console/network errors from the previewed page and
+  // surface them in the console drawer (closes the edit→reload→check loop).
+  const consoleSeqRef = useRef(0);
+  useEffect(() => {
+    if (!streamedMode) return;
+    consoleSeqRef.current = 0;
+    let alive = true;
+    const tick = () =>
+      void api
+        .streamBrowserConsole(slug, consoleSeqRef.current)
+        .then((r) => {
+          if (!alive || !r.entries.length) return;
+          consoleSeqRef.current = r.entries[r.entries.length - 1].seq;
+          setLogs((prev) => [
+            ...prev.slice(-499),
+            ...r.entries.map((e) => ({
+              ts: e.ts,
+              type: "log" as const,
+              stream: e.kind === "network" ? "network" : e.level === "error" || e.kind === "exception" ? "error" : "console",
+              text: e.text,
+            })),
+          ]);
+        })
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [streamedMode, slug, frameSrc]);
+
+  // Dev-loop: auto-detect running local dev servers to offer in the URL bar.
+  const [devServers, setDevServers] = useState<{ url: string; port: number }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const tick = () =>
+      void api
+        .detectDevServers(slug)
+        .then((r) => alive && setDevServers(r.servers ?? []))
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 8000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [slug]);
+
   const screenshotToChat = useCallback(() => {
     setShowMenu(false);
     void api
@@ -619,8 +668,18 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="Search or enter URL"
+            list={devServers.length ? `dev-servers-${slug}` : undefined}
             className="h-6 w-full rounded-sm border border-input bg-muted/40 px-2 font-mono-ui text-[11px] text-foreground outline-none transition focus:border-primary/60"
           />
+          {devServers.length > 0 && (
+            <datalist id={`dev-servers-${slug}`}>
+              {devServers.map((s) => (
+                <option key={s.port} value={s.url}>
+                  dev server :{s.port}
+                </option>
+              ))}
+            </datalist>
+          )}
         </form>
 
         {/* Device preset switcher */}

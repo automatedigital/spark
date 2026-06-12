@@ -180,6 +180,155 @@ class ScreencastHandle:
             self._started.set()
 
 
+# Cap on retained console/network entries per session (ring buffer).
+_CONSOLE_BUFFER_MAX = 500
+
+
+class ConsoleCapture:
+    """Background CDP listener capturing console + network events for the page.
+
+    Enables ``Runtime`` / ``Log`` / ``Network`` domains over the session's CDP
+    WebSocket and records ``Runtime.consoleAPICalled``, ``Log.entryAdded``,
+    ``Runtime.exceptionThrown`` and ``Network.responseReceived`` /
+    ``Network.loadingFailed`` into a bounded ring buffer. This closes the
+    edit→reload→check loop: the agent can read the previewed page's errors via a
+    tool/endpoint, and the pane shows them in a console drawer.
+
+    Optional ``websockets`` dep is imported lazily; any failure surfaces as
+    :class:`ScreencastUnavailable` so callers degrade gracefully.
+    """
+
+    def __init__(self, ws_url: str) -> None:
+        self._ws_url = ws_url
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._started = threading.Event()
+        self._lock = threading.Lock()
+        self._entries: list[dict[str, Any]] = []
+        self._seq = 0
+
+    def start(self) -> None:
+        try:
+            import websockets  # noqa: F401 — probe optional dep
+        except ImportError as exc:  # pragma: no cover - dep guard
+            raise ScreencastUnavailable(
+                "Console capture requires the 'websockets' package"
+            ) from exc
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+        self._started.wait(timeout=3.0)
+
+    def stop(self) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
+
+    def entries(self, *, since_seq: int = 0, limit: int = _CONSOLE_BUFFER_MAX) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = [e for e in self._entries if e["seq"] > since_seq]
+        return rows[-max(limit, 1):]
+
+    def _record(self, kind: str, level: str, text: str, detail: dict[str, Any] | None = None) -> None:
+        import time as _time
+
+        with self._lock:
+            self._seq += 1
+            self._entries.append(
+                {
+                    "seq": self._seq,
+                    "ts": _time.time(),
+                    "kind": kind,  # console | network | exception
+                    "level": level,  # log | warn | error | info
+                    "text": text[:2000],
+                    "detail": detail or {},
+                }
+            )
+            if len(self._entries) > _CONSOLE_BUFFER_MAX:
+                self._entries = self._entries[-_CONSOLE_BUFFER_MAX:]
+
+    def _run_loop(self) -> None:
+        import asyncio
+
+        try:
+            asyncio.run(self._pump())
+        except Exception:  # noqa: BLE001 — background thread must not crash
+            pass
+
+    async def _pump(self) -> None:
+        import asyncio
+
+        import websockets
+
+        next_id = 0
+
+        def _cmd(method: str, params: dict[str, Any] | None = None) -> str:
+            nonlocal next_id
+            next_id += 1
+            return json.dumps({"id": next_id, "method": method, "params": params or {}})
+
+        try:
+            async with websockets.connect(self._ws_url, max_size=None, open_timeout=3) as ws:
+                for domain in ("Runtime.enable", "Log.enable", "Network.enable"):
+                    await ws.send(_cmd(domain))
+                self._started.set()
+                while not self._stop.is_set():
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                    except TimeoutError:
+                        continue
+                    try:
+                        msg = json.loads(raw)
+                    except Exception:
+                        continue
+                    self._handle(msg)
+        finally:
+            self._started.set()
+
+    def _handle(self, msg: dict[str, Any]) -> None:
+        method = msg.get("method")
+        params = msg.get("params") or {}
+        if method == "Runtime.consoleAPICalled":
+            level = str(params.get("type") or "log")
+            args = params.get("args") or []
+            text = " ".join(
+                str(a.get("value", a.get("description", ""))) for a in args if isinstance(a, dict)
+            )
+            self._record("console", level, text or "(console)")
+        elif method == "Runtime.exceptionThrown":
+            details = params.get("exceptionDetails") or {}
+            text = str(details.get("text") or "Uncaught exception")
+            exc = details.get("exception") or {}
+            if isinstance(exc, dict) and exc.get("description"):
+                text = str(exc["description"])
+            self._record("exception", "error", text)
+        elif method == "Log.entryAdded":
+            entry = params.get("entry") or {}
+            self._record(
+                "console",
+                str(entry.get("level") or "log"),
+                str(entry.get("text") or ""),
+                {"source": entry.get("source"), "url": entry.get("url")},
+            )
+        elif method == "Network.responseReceived":
+            resp = params.get("response") or {}
+            status = resp.get("status")
+            if isinstance(status, int) and status >= 400:
+                self._record(
+                    "network",
+                    "error",
+                    f"{status} {resp.get('url', '')}",
+                    {"status": status, "url": resp.get("url")},
+                )
+        elif method == "Network.loadingFailed":
+            self._record(
+                "network",
+                "error",
+                f"Request failed: {params.get('errorText', '')}",
+                {"url": params.get("type")},
+            )
+
+
 def _safe_slug(slug: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]", "-", slug)
 
@@ -262,6 +411,7 @@ class AgentBrowserSession:
         self.title: str = ""
         self._lock = threading.RLock()
         self._closed = False
+        self._console: ConsoleCapture | None = None
         # Deterministic per-session CDP remote-debugging port. agent-browser
         # launches its own Chromium; we expose CDP via ``--remote-debugging-port``
         # so the screencast path (Item 2b) can connect. The port is derived from
@@ -681,6 +831,38 @@ class AgentBrowserSession:
             return None
         return out
 
+    # ── Dev-loop: console + network capture (Item 2b) ────────────────────────
+    def _ensure_console_capture(self) -> ConsoleCapture | None:
+        """Start (once) the CDP console/network listener; None if unavailable."""
+        if self._closed:
+            return None
+        if self._console is not None:
+            return self._console
+        ws_url = self.cdp_url()
+        if not ws_url:
+            return None
+        try:
+            cap = ConsoleCapture(ws_url)
+            cap.start()
+        except ScreencastUnavailable:
+            return None
+        except Exception:  # noqa: BLE001 — any failure → no capture
+            return None
+        self._console = cap
+        return cap
+
+    def console_entries(self, *, since_seq: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+        """Return captured console/network/exception entries (newest-last).
+
+        Lazily starts the CDP listener on first call. Returns an empty list when
+        capture can't be established (Playwright fallback, no CDP, no websockets)
+        so the pane/agent degrade gracefully.
+        """
+        cap = self._ensure_console_capture()
+        if cap is None:
+            return []
+        return cap.entries(since_seq=since_seq, limit=limit)
+
     # ── CDP screencast (push frames) ─────────────────────────────────────────
     def cdp_url(self) -> str | None:
         """Resolve the *page* CDP WebSocket URL (None when unavailable).
@@ -762,6 +944,12 @@ class AgentBrowserSession:
     def close(self) -> None:
         if self._closed:
             return
+        if self._console is not None:
+            try:
+                self._console.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._console = None
         self._closed = False  # allow the close command itself to run
         try:
             self._run(["close"])
