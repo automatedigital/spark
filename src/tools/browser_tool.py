@@ -67,6 +67,8 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 from agent.auxiliary_client import call_llm
 from core.spark_constants import get_spark_home
+from tools import browser_action_log
+from tools import browser_permission_gate
 
 try:
     from tools.website_policy import check_website_access
@@ -667,6 +669,21 @@ BROWSER_TOOL_SCHEMAS = [
         }
     },
     {
+        "name": "browser_a11y",
+        "description": "Get the page's accessibility tree as structured element references — far cheaper in tokens than a screenshot and more reliable for clicking. Returns a list of interactive/semantic elements, each with its ref ID (e.g. '@e5'), role, name/label, and value. The returned refs are directly usable by browser_click and browser_type. Operates on the same shared session as the rest of the browser toolset. Use this instead of browser_vision when you only need to understand and interact with page structure (forms, buttons, links) rather than its visual appearance. Requires browser_navigate first.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "interactive_only": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "If true (default), return only interactive/actionable elements (buttons, links, inputs). If false, include the full structured tree."
+                }
+            },
+            "required": []
+        }
+    },
+    {
         "name": "browser_click",
         "description": "Click on an element identified by its ref ID from the snapshot (e.g., '@e5'). The ref IDs are shown in square brackets in the snapshot output. Requires browser_navigate and browser_snapshot to be called first.",
         "parameters": {
@@ -675,6 +692,11 @@ BROWSER_TOOL_SCHEMAS = [
                 "ref": {
                     "type": "string",
                     "description": "The element reference from the snapshot (e.g., '@e5', '@e12')"
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true ONLY after the user has explicitly approved a sensitive action (payment, sending a message, logging into a new domain) that this tool previously flagged with needs_confirmation. Do not set this preemptively."
                 }
             },
             "required": ["ref"]
@@ -693,6 +715,11 @@ BROWSER_TOOL_SCHEMAS = [
                 "text": {
                     "type": "string",
                     "description": "The text to type into the field"
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true ONLY after the user has explicitly approved a sensitive action that this tool previously flagged with needs_confirmation."
                 }
             },
             "required": ["ref", "text"]
@@ -1412,7 +1439,15 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
             "url": final_url,
             "title": title
         }
-        
+
+        # Audit log only.  We deliberately do NOT mark the domain "known" here:
+        # navigation always precedes a login, so a new-domain sign-in must still
+        # trip the gate.  Domains become known only after an approved login.
+        browser_action_log.record_action(
+            "navigate", status="ok", task_id=effective_task_id,
+            detail={"url": final_url, "title": title},
+        )
+
         # Detect common "blocked" page patterns from title/url
         blocked_patterns = [
             "access denied", "access to this page has been denied",
@@ -1519,7 +1554,169 @@ def browser_snapshot(
         }, ensure_ascii=False)
 
 
-def browser_click(ref: str, task_id: Optional[str] = None) -> str:
+def _current_page_url(task_id: str) -> Optional[str]:
+    """Best-effort lookup of the current page URL for gate/domain reasoning."""
+    try:
+        result = _run_browser_command(task_id, "console", ["--eval", "location.href"], timeout=10)
+        if result.get("success"):
+            data = result.get("data", {})
+            val = data.get("result") or data.get("value") or data.get("eval")
+            if isinstance(val, str) and val:
+                return val
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("current-url lookup failed: %s", exc)
+    return None
+
+
+def _resolve_ref_label(task_id: str, ref: str) -> str:
+    """Best-effort human-readable label for a ref, for gate classification.
+
+    Reads the current compact snapshot's refs map and returns the element's
+    name/role text.  Falls back to empty string (treated as non-sensitive).
+    """
+    try:
+        result = _run_browser_command(task_id, "snapshot", ["-c"], timeout=10)
+        if not result.get("success"):
+            return ""
+        refs = result.get("data", {}).get("refs", {}) or {}
+        key = ref.lstrip("@")
+        meta = None
+        if isinstance(refs, dict):
+            meta = refs.get(key) or refs.get(ref)
+        if isinstance(meta, dict):
+            return " ".join(
+                str(meta.get(k) or "")
+                for k in ("role", "name", "label", "text", "value")
+            ).strip()
+        if isinstance(meta, str):
+            return meta
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("ref label lookup failed: %s", exc)
+    return ""
+
+
+def _gate_check(
+    action: str,
+    *,
+    task_id: str,
+    context_text: str,
+    url: Optional[str] = None,
+) -> Optional[str]:
+    """Apply the permission gate to a pending sensitive action.
+
+    Returns a JSON ``needs_confirmation`` string when the action is sensitive
+    and not yet approved, else ``None`` (proceed).  Records the decision to the
+    action log.
+    """
+    if not browser_permission_gate.gate_enabled():
+        return None
+    if url is None:
+        url = _current_page_url(task_id)
+    classification = browser_permission_gate.classify_action(
+        action, url=url, context_text=context_text
+    )
+    if not classification.sensitive or browser_permission_gate.is_granted(classification):
+        return None
+    browser_action_log.record_action(
+        "permission_required",
+        status="needs_confirmation",
+        detail={
+            "action": action,
+            "category": classification.category,
+            "reason": classification.reason,
+            "domain": classification.domain,
+        },
+        task_id=task_id,
+    )
+    return json.dumps({
+        "success": False,
+        "needs_confirmation": True,
+        "category": classification.category,
+        "reason": classification.reason,
+        "domain": classification.domain,
+        "message": (
+            f"Sensitive action requires user confirmation: {classification.reason} "
+            "Ask the user to confirm before proceeding. Once they approve, call this "
+            "tool again with confirm=true to execute it."
+        ),
+    }, ensure_ascii=False)
+
+
+def browser_a11y(interactive_only: bool = True, task_id: Optional[str] = None) -> str:
+    """Return the page accessibility tree as structured element refs.
+
+    Uses agent-browser's native snapshot (ariaSnapshot + refs map).  The refs
+    returned here (``@e5`` etc.) are the same ones browser_click / browser_type
+    accept.  Far cheaper than a screenshot and reliable for clicking.
+    """
+    if _is_camofox_mode():
+        # Camofox exposes the same accessibility snapshot via its snapshot path.
+        from tools.browser_camofox import camofox_snapshot
+        return camofox_snapshot(not interactive_only, task_id, None)
+
+    effective_task_id = task_id or "default"
+    args = ["-c"] if interactive_only else []
+    result = _run_browser_command(effective_task_id, "snapshot", args)
+
+    if not result.get("success"):
+        browser_action_log.record_action(
+            "a11y", status="error", task_id=effective_task_id,
+            detail={"error": result.get("error")},
+        )
+        return json.dumps({
+            "success": False,
+            "error": result.get("error", "Failed to get accessibility tree"),
+        }, ensure_ascii=False)
+
+    data = result.get("data", {})
+    refs = data.get("refs", {}) or {}
+    snapshot_text = data.get("snapshot", "")
+
+    # Normalise refs into a structured element list.  agent-browser returns a
+    # mapping of ref-id -> element metadata; tolerate both dict and list shapes.
+    elements: list[dict[str, Any]] = []
+    if isinstance(refs, dict):
+        for ref_id, meta in refs.items():
+            ref = ref_id if str(ref_id).startswith("@") else f"@{ref_id}"
+            if isinstance(meta, dict):
+                elements.append({
+                    "ref": ref,
+                    "role": meta.get("role") or meta.get("type"),
+                    "name": meta.get("name") or meta.get("label") or meta.get("text"),
+                    "value": meta.get("value"),
+                })
+            else:
+                elements.append({"ref": ref, "name": str(meta)})
+    elif isinstance(refs, list):
+        for meta in refs:
+            if isinstance(meta, dict):
+                ref_id = meta.get("ref") or meta.get("id") or ""
+                ref = ref_id if str(ref_id).startswith("@") else f"@{ref_id}"
+                elements.append({
+                    "ref": ref,
+                    "role": meta.get("role") or meta.get("type"),
+                    "name": meta.get("name") or meta.get("label") or meta.get("text"),
+                    "value": meta.get("value"),
+                })
+
+    browser_action_log.record_action(
+        "a11y", status="ok", task_id=effective_task_id,
+        detail={"element_count": len(elements), "interactive_only": interactive_only},
+    )
+
+    response: dict[str, Any] = {
+        "success": True,
+        "element_count": len(elements),
+        "elements": elements,
+    }
+    # When refs weren't structured, fall back to the textual a11y tree so the
+    # agent still gets usable refs.
+    if not elements and snapshot_text:
+        response["tree"] = _truncate_snapshot(snapshot_text)
+    return json.dumps(response, ensure_ascii=False)
+
+
+def browser_click(ref: str, task_id: Optional[str] = None, confirm: bool = False) -> str:
     """
     Click on an element.
     
@@ -1535,26 +1732,50 @@ def browser_click(ref: str, task_id: Optional[str] = None) -> str:
         return camofox_click(ref, task_id)
 
     effective_task_id = task_id or "default"
-    
+
     # Ensure ref starts with @
     if not ref.startswith("@"):
         ref = f"@{ref}"
-    
+
+    # Permission gate — clicking a "Pay"/"Send"/"Sign in" control is the
+    # canonical sensitive action.  Classify using the element label.
+    if not confirm:
+        label = _resolve_ref_label(effective_task_id, ref)
+        gated = _gate_check("click", task_id=effective_task_id, context_text=label)
+        if gated is not None:
+            return gated
+
     result = _run_browser_command(effective_task_id, "click", [ref])
-    
+
     if result.get("success"):
+        if confirm:
+            url = _current_page_url(effective_task_id)
+            classification = browser_permission_gate.classify_action(
+                "click", url=url,
+                context_text=_resolve_ref_label(effective_task_id, ref),
+            )
+            browser_permission_gate.grant(classification)
+            if classification.category == browser_permission_gate.CATEGORY_LOGIN_NEW_DOMAIN:
+                browser_permission_gate.note_login_domain(url)
+        browser_action_log.record_action(
+            "click", status="ok", task_id=effective_task_id, detail={"ref": ref},
+        )
         return json.dumps({
             "success": True,
             "clicked": ref
         }, ensure_ascii=False)
     else:
+        browser_action_log.record_action(
+            "click", status="error", task_id=effective_task_id,
+            detail={"ref": ref, "error": result.get("error")},
+        )
         return json.dumps({
             "success": False,
             "error": result.get("error", f"Failed to click {ref}")
         }, ensure_ascii=False)
 
 
-def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
+def browser_type(ref: str, text: str, task_id: Optional[str] = None, confirm: bool = False) -> str:
     """
     Type text into an input field.
     
@@ -1571,21 +1792,37 @@ def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
         return camofox_type(ref, text, task_id)
 
     effective_task_id = task_id or "default"
-    
+
     # Ensure ref starts with @
     if not ref.startswith("@"):
         ref = f"@{ref}"
-    
+
+    # Permission gate — typing into card/login fields on a new domain.
+    if not confirm:
+        label = _resolve_ref_label(effective_task_id, ref)
+        gated = _gate_check("type", task_id=effective_task_id, context_text=label)
+        if gated is not None:
+            return gated
+
     # Use fill command (clears then types)
     result = _run_browser_command(effective_task_id, "fill", [ref, text])
-    
+
     if result.get("success"):
+        # Never log the typed value (may be a password/PII); log only the ref.
+        browser_action_log.record_action(
+            "type", status="ok", task_id=effective_task_id,
+            detail={"ref": ref, "length": len(text)},
+        )
         return json.dumps({
             "success": True,
             "typed": text,
             "element": ref
         }, ensure_ascii=False)
     else:
+        browser_action_log.record_action(
+            "type", status="error", task_id=effective_task_id,
+            detail={"ref": ref, "error": result.get("error")},
+        )
         return json.dumps({
             "success": False,
             "error": result.get("error", f"Failed to type into {ref}")
@@ -2420,10 +2657,20 @@ registry.register(
     emoji="📸",
 )
 registry.register(
+    name="browser_a11y",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_a11y"],
+    handler=lambda args, **kw: browser_a11y(
+        interactive_only=args.get("interactive_only", True), task_id=kw.get("task_id")),
+    check_fn=check_browser_active,
+    emoji="🌳",
+)
+registry.register(
     name="browser_click",
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_click"],
-    handler=lambda args, **kw: browser_click(ref=args.get("ref", ""), task_id=kw.get("task_id")),
+    handler=lambda args, **kw: browser_click(
+        ref=args.get("ref", ""), task_id=kw.get("task_id"), confirm=args.get("confirm", False)),
     check_fn=check_browser_active,
     emoji="👆",
 )
@@ -2431,7 +2678,9 @@ registry.register(
     name="browser_type",
     toolset="browser",
     schema=_BROWSER_SCHEMA_MAP["browser_type"],
-    handler=lambda args, **kw: browser_type(ref=args.get("ref", ""), text=args.get("text", ""), task_id=kw.get("task_id")),
+    handler=lambda args, **kw: browser_type(
+        ref=args.get("ref", ""), text=args.get("text", ""),
+        task_id=kw.get("task_id"), confirm=args.get("confirm", False)),
     check_fn=check_browser_active,
     emoji="⌨️",
 )

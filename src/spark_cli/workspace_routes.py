@@ -1950,6 +1950,26 @@ def get_preview_logs(slug: str):
     return {"slug": slug, "logs": list(session.get("logs", [])) if session else []}
 
 
+@router.get("/projects/{slug}/preview/action-log")
+def get_preview_action_log(
+    slug: str,
+    limit: int = Query(default=500, ge=1, le=2000),
+    since_ts: float | None = Query(default=None),
+):
+    """Return the agent's auditable browser action log for this workspace.
+
+    The log is the append-only JSONL written by ``browser_action_log`` for the
+    shared ``spark-preview-<slug>`` session, so the preview pane can show an
+    auditable transcript of every agent browser action (navigate/click/type/
+    a11y plus permission decisions).
+    """
+    _project_dir(slug)
+    from tools import browser_action_log
+
+    actions = browser_action_log.read_actions(slug=slug, limit=limit, since_ts=since_ts)
+    return {"slug": slug, "actions": actions, "count": len(actions)}
+
+
 def _get_preview_session_or_404(slug: str) -> dict[str, Any]:
     _project_dir(slug)
     session = _preview_sessions.get(slug)
