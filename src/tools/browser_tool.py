@@ -790,8 +790,43 @@ BROWSER_TOOL_SCHEMAS = [
 # Utility Functions
 # ============================================================================
 
+def _preview_session_binding() -> Optional[Dict[str, str]]:
+    """Resolve a shared WebUI-preview session binding from the environment.
+
+    When Spark runs the agent on behalf of a WebUI workspace, it exports
+    ``SPARK_BROWSER_PREVIEW_SESSION`` (the ``spark-preview-<slug>`` name) and
+    ``SPARK_BROWSER_PREVIEW_PROFILE`` (the workspace's persistent profile dir).
+    Binding the agent's local browser to that exact session + profile means the
+    agent drives the SAME Chromium the preview pane is streaming, so the agent's
+    navigation/clicks/typing show up live in the pane and vice-versa.
+
+    Returns the session name + profile dir, or ``None`` when no binding is set.
+    """
+    name = (os.environ.get("SPARK_BROWSER_PREVIEW_SESSION") or "").strip()
+    if not name:
+        return None
+    return {
+        "session_name": name,
+        "profile_dir": (os.environ.get("SPARK_BROWSER_PREVIEW_PROFILE") or "").strip(),
+    }
+
+
 def _create_local_session(task_id: str) -> Dict[str, str]:
     import uuid
+
+    binding = _preview_session_binding()
+    if binding is not None:
+        logger.info(
+            "Bound local browser session %s to WebUI preview for task %s",
+            binding["session_name"], task_id,
+        )
+        return {
+            "session_name": binding["session_name"],
+            "bb_session_id": None,
+            "cdp_url": None,
+            "profile_dir": binding.get("profile_dir") or None,
+            "features": {"local": True, "preview_shared": True},
+        }
     session_name = f"h_{uuid.uuid4().hex[:10]}"
     logger.info("Created local browser session %s for task %s",
                 session_name, task_id)
@@ -1036,6 +1071,11 @@ def _run_browser_command(
     else:
         # Local mode — launch a headless Chromium instance
         backend_args = ["--session", session_info["session_name"]]
+        # When bound to a WebUI workspace preview, use that workspace's
+        # persistent profile so the agent shares cookies/logins with the pane.
+        profile_dir = session_info.get("profile_dir")
+        if profile_dir:
+            backend_args += ["--profile", str(profile_dir)]
 
     # Keep concrete executable paths intact, even when they contain spaces.
     # Only the synthetic npx fallback needs to expand into multiple argv items.

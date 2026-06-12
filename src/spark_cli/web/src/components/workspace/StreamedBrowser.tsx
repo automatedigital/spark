@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import type { StreamBrowserInput } from "@/lib/api";
 import { mapToViewport } from "@/lib/browserCoords";
@@ -21,16 +21,23 @@ export function StreamedBrowser({
   const [frameSrc, setFrameSrc] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // When the backend (agent-browser/Chromium or Playwright) isn't installed,
+  // we surface a friendly install state instead of a broken <img>.
+  const [unavailable, setUnavailable] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
 
   const refetchFrame = useCallback(() => {
+    if (unavailable) return;
     setFrameSrc(api.streamBrowserFrameUrl(slug, Date.now()));
-  }, [slug]);
+  }, [slug, unavailable]);
 
   // Start the session at the target URL, then begin polling frames.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setUnavailable(null);
+    setFrameSrc("");
     api
       .streamBrowserNavigate(slug, url, persistent)
       .then((res) => {
@@ -38,49 +45,100 @@ export function StreamedBrowser({
         if (res?.title) onTitle?.(res.title);
         refetchFrame();
       })
-      .catch((e) => !cancelled && setError(String(e?.message ?? e)))
+      .catch((e) => {
+        if (cancelled) return;
+        // 501 => backend missing: show the install/error state, hide the frame.
+        const status = (e as { status?: number })?.status;
+        const message = String((e as { message?: string })?.message ?? e);
+        if (status === 501) {
+          setUnavailable(message);
+        } else {
+          setError(message);
+        }
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
   }, [slug, url, persistent, onTitle, refetchFrame]);
 
-  // Poll for fresh frames.
+  // Poll for fresh frames (paused while the backend is unavailable).
   useEffect(() => {
+    if (unavailable) return;
     const id = window.setInterval(refetchFrame, FRAME_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [refetchFrame]);
+  }, [refetchFrame, unavailable]);
 
   const sendInput = useCallback(
     (input: StreamBrowserInput) => {
       void api
         .streamBrowserInput(slug, input)
         .then(() => refetchFrame())
-        .catch((e) => setError(String(e?.message ?? e)));
+        .catch((e) => {
+          const status = (e as { status?: number })?.status;
+          const message = String((e as { message?: string })?.message ?? e);
+          if (status === 501) setUnavailable(message);
+          else setError(message);
+        });
     },
     [slug, refetchFrame],
   );
 
-  const onClick = (e: React.MouseEvent<HTMLImageElement>) => {
-    const img = imgRef.current;
-    if (!img) return;
-    const point = mapToViewport(e.clientX, e.clientY, img.getBoundingClientRect());
-    if (point) sendInput({ type: "click", x: point.x, y: point.y });
-  };
+  const onInstall = useCallback(() => {
+    setInstalling(true);
+    setError(null);
+    api
+      .installStreamBrowser(slug)
+      .then((res) => {
+        if (res?.ok) {
+          // Re-trigger the navigate effect by clearing the unavailable state.
+          setUnavailable(null);
+          setLoading(true);
+          api
+            .streamBrowserNavigate(slug, url, persistent)
+            .then((r) => {
+              if (r?.title) onTitle?.(r.title);
+              refetchFrame();
+            })
+            .catch((e) => setUnavailable(String((e as { message?: string })?.message ?? e)))
+            .finally(() => setLoading(false));
+        } else {
+          setUnavailable(res?.error || "Install failed");
+        }
+      })
+      .catch((e) => setUnavailable(String((e as { message?: string })?.message ?? e)))
+      .finally(() => setInstalling(false));
+  }, [slug, url, persistent, onTitle, refetchFrame]);
 
-  const onWheel = (e: React.WheelEvent<HTMLImageElement>) => {
-    sendInput({ type: "scroll", dx: e.deltaX, dy: e.deltaY });
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLImageElement>) => {
-    // Single printable chars go through type; named keys through press.
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      sendInput({ type: "type", text: e.key });
-    } else {
-      sendInput({ type: "key", key: e.key });
-    }
-    e.preventDefault();
-  };
+  // ── Install / unavailable state ──
+  if (unavailable) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black/40 px-6 text-center">
+        <div className="max-w-sm text-sm text-muted-foreground">
+          The preview browser isn’t set up yet.
+        </div>
+        <div className="max-w-sm font-mono-ui text-[11px] text-muted-foreground/70">
+          {unavailable}
+        </div>
+        <button
+          type="button"
+          onClick={onInstall}
+          disabled={installing}
+          className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-60"
+        >
+          {installing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Download className="h-3.5 w-3.5" />
+          )}
+          {installing ? "Installing…" : "Install browser runtime"}
+        </button>
+        <div className="max-w-sm text-[10px] text-muted-foreground/60">
+          You can also run <code>spark doctor</code> in a terminal to set this up.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-full w-full items-center justify-center bg-black/40">
@@ -90,9 +148,21 @@ export function StreamedBrowser({
           src={frameSrc}
           alt="Streamed browser"
           tabIndex={0}
-          onClick={onClick}
-          onWheel={onWheel}
-          onKeyDown={onKeyDown}
+          onClick={(e) => {
+            const img = imgRef.current;
+            if (!img) return;
+            const point = mapToViewport(e.clientX, e.clientY, img.getBoundingClientRect());
+            if (point) sendInput({ type: "click", x: point.x, y: point.y });
+          }}
+          onWheel={(e) => sendInput({ type: "scroll", dx: e.deltaX, dy: e.deltaY })}
+          onKeyDown={(e) => {
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              sendInput({ type: "type", text: e.key });
+            } else {
+              sendInput({ type: "key", key: e.key });
+            }
+            e.preventDefault();
+          }}
           className="h-full w-full object-contain outline-none"
           draggable={false}
         />
