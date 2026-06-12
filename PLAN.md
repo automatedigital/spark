@@ -98,6 +98,14 @@ Reference: codex REVIEW-CHANGES_01 — this is the standout feature in both refe
 
 ---
 
+## 3. UI: collapsible Sessions
+- [x] Rename "NO WORKSPACE" / "No workspace" section label to "CHATS".
+- [x] Make the SESSIONS section header collapsible (chevron + click-to-toggle).
+- [x] Make the CHATS section header collapsible (chevron + click-to-toggle).
+- [x] Persist collapsed state (localStorage) and keep per-folder expand/collapse intact.
+
+---
+
 ## Notes / explicitly out of scope (this round)
 - Background-tasks and Plan tabs from Claude desktop's switcher — worth considering later once Changes ships.
 - Multi-tab terminal sessions — single persistent shell first; tabs are a follow-up.
