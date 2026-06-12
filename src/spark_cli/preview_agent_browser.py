@@ -212,6 +212,15 @@ def browser_profile_dir(slug: str) -> Path:
     return get_spark_home() / "browser" / _safe_slug(slug) / "persistent"
 
 
+def workspace_downloads_dir(slug: str) -> Path:
+    """Where the pane's browser drops downloads, inside the workspace dir.
+
+    Lands under ``SPARK_HOME/workspace/<slug>/downloads`` so files surface in the
+    Files tab. Never hardcode ``~/.spark`` — derived from ``get_spark_home()``.
+    """
+    return get_spark_home() / "workspace" / _safe_slug(slug) / "downloads"
+
+
 def _agent_browser_bin() -> str | None:
     try:
         from spark_cli.browser_runtime import agent_browser_path
@@ -240,12 +249,15 @@ class AgentBrowserSession:
         slug: str,
         *,
         viewport: tuple[int, int] = _VIEWPORT,
+        downloads_dir: Path | None = None,
     ) -> None:
         self.slug = slug
         self.viewport = viewport
         self.persistent = True  # parity with StreamedBrowserSession attribute
         self.session = session_name(slug)
         self.profile_dir = browser_profile_dir(slug)
+        # Downloads land in the workspace dir so they surface in the Files tab.
+        self.downloads_dir = downloads_dir or workspace_downloads_dir(slug)
         self.current_url: str = "about:blank"
         self.title: str = ""
         self._lock = threading.RLock()
@@ -261,10 +273,27 @@ class AgentBrowserSession:
                 "`python -m spark_cli.browser_runtime install`"
             )
         self.profile_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         self._harden_profile()
         # Ensure viewport matches the pane's render size so click coords line up.
         try:
             self._run(["set", "viewport", str(viewport[0]), str(viewport[1])])
+        except AgentBrowserUnavailable:
+            pass
+        # Best-effort: point Chromium downloads at the workspace dir.
+        try:
+            self._run(
+                [
+                    "cdp",
+                    "Browser.setDownloadBehavior",
+                    json.dumps(
+                        {"behavior": "allow", "downloadPath": str(self.downloads_dir)}
+                    ),
+                ]
+            )
         except AgentBrowserUnavailable:
             pass
 
@@ -448,6 +477,117 @@ class AgentBrowserSession:
     def clipboard_paste(self) -> None:
         """Paste clipboard contents into the page (simulates Ctrl/Cmd+V)."""
         self.press_key("Control+v")
+
+    # ── Browser chrome: viewport / emulation / tabs (Item 2b) ────────────────
+    def set_viewport(self, width: int, height: int) -> None:
+        """Resize the page viewport (responsive presets: mobile/tablet/desktop).
+
+        Updates ``self.viewport`` so click-coordinate mapping and screencast
+        sizing stay in sync with what the pane renders.
+        """
+        w, h = max(int(width), 1), max(int(height), 1)
+        self._run(["set", "viewport", str(w), str(h)])
+        self.viewport = (w, h)
+
+    def set_emulated_media(self, *, dark: bool | None = None) -> None:
+        """Emulate ``prefers-color-scheme`` via CDP ``Emulation.setEmulatedMedia``.
+
+        ``dark=True`` forces dark mode, ``dark=False`` forces light, ``dark=None``
+        clears the override. Routed through agent-browser's ``cdp`` passthrough
+        verb; raises :class:`AgentBrowserUnavailable` if the backend lacks it
+        (the route maps that to a graceful 501/400, never a crash).
+        """
+        if dark is None:
+            features: list[dict[str, str]] = []
+        else:
+            features = [{"name": "prefers-color-scheme", "value": "dark" if dark else "light"}]
+        params = json.dumps({"media": "", "features": features})
+        self._run(["cdp", "Emulation.setEmulatedMedia", params])
+
+    # ── Browser chrome: tabs (CDP target multiplexing) ───────────────────────
+    def list_tabs(self) -> list[dict[str, Any]]:
+        """List open page targets (tabs) via the CDP discovery endpoint.
+
+        Returns ``[{id, title, url, active}]``. Empty list when CDP discovery is
+        unavailable (the pane then degrades to a single-tab view).
+        """
+        out: list[dict[str, Any]] = []
+        for t in self._cdp_targets():
+            out.append(
+                {
+                    "id": str(t.get("id", "")),
+                    "title": str(t.get("title", "")),
+                    "url": str(t.get("url", "")),
+                    "active": bool(t.get("_active")),
+                }
+            )
+        return out
+
+    def new_tab(self, url: str = "about:blank") -> dict[str, Any]:
+        """Open a new tab/target and switch the session to it."""
+        try:
+            self._run(["tab", "new", url])
+        except AgentBrowserUnavailable:
+            # Fallback: open a new target via CDP passthrough.
+            self._run(["cdp", "Target.createTarget", json.dumps({"url": url})])
+        self._refresh_state()
+        return {"url": self.current_url, "title": self.title}
+
+    def switch_tab(self, target_id: str) -> dict[str, Any]:
+        """Activate an existing tab/target by id."""
+        self._run(["tab", "select", target_id])
+        self._refresh_state()
+        return {"url": self.current_url, "title": self.title}
+
+    def close_tab(self, target_id: str) -> None:
+        """Close a tab/target by id."""
+        self._run(["tab", "close", target_id])
+        self._refresh_state()
+
+    def _cdp_targets(self) -> list[dict[str, Any]]:
+        if self._closed:
+            return []
+        import urllib.request
+
+        url = f"http://127.0.0.1:{self._cdp_port}/json/list"
+        try:
+            with urllib.request.urlopen(url, timeout=2.0) as resp:  # noqa: S310
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 — discovery best-effort → single tab
+            return []
+        if not isinstance(payload, list):
+            return []
+        pages = [t for t in payload if isinstance(t, dict) and t.get("type") == "page"]
+        if pages:
+            pages[0]["_active"] = True
+        return pages
+
+    # ── Browser chrome: downloads ────────────────────────────────────────────
+    def list_downloads(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        """List files in the workspace downloads dir, newest first.
+
+        Returns ``[{name, size, mtime}]`` (relative names, so they can be opened
+        from the Files tab). Skips Chromium's ``*.crdownload`` partials.
+        """
+        out: list[dict[str, Any]] = []
+        try:
+            if not self.downloads_dir.exists():
+                return out
+            entries = [
+                p
+                for p in self.downloads_dir.iterdir()
+                if p.is_file() and not p.name.endswith(".crdownload")
+            ]
+        except OSError:
+            return out
+        entries.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for p in entries[: max(limit, 1)]:
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            out.append({"name": p.name, "size": st.st_size, "mtime": st.st_mtime})
+        return out
 
     # ── CDP screencast (push frames) ─────────────────────────────────────────
     def cdp_url(self) -> str | None:

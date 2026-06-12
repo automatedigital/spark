@@ -10,9 +10,13 @@ import {
   Globe,
   Lock,
   Loader2,
+  Maximize2,
+  Minimize2,
   Monitor,
+  Moon,
   MoreHorizontal,
   Play,
+  Plus,
   RefreshCw,
   RotateCcw,
   Smartphone,
@@ -20,9 +24,11 @@ import {
   Tablet,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
+  StreamBrowserTab,
   WorkspacePreviewEvent,
   WorkspacePreviewLog,
   WorkspacePreviewStatus,
@@ -104,6 +110,9 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   const [showMenu, setShowMenu] = useState(false);
   const [device, setDevice] = useState<DeviceId>("responsive");
   const [autoOpen, setAutoOpen] = useState(previewAutoOpenEnabled);
+  const [darkEmulation, setDarkEmulation] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [tabs, setTabs] = useState<StreamBrowserTab[]>([]);
   const [dialog, setDialog] = useState<{
     title: string;
     body?: React.ReactNode;
@@ -115,6 +124,66 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   const activeUrl = status?.url ?? "";
   const previewPending = status?.status === "starting";
   const deviceWidth = DEVICES.find((d) => d.id === device)?.width ?? null;
+  // Streamed (server-side browser) mode: external origin, not native/iframe.
+  const streamedMode = !isTauri() && !!frameSrc && !isLoopbackUrl(frameSrc);
+
+  // Push the selected device preset to the streamed backend so the server-side
+  // viewport (and click-coordinate mapping) matches what the pane renders.
+  useEffect(() => {
+    if (!streamedMode) return;
+    const w = deviceWidth ?? 1280;
+    const h = device === "phone" ? 844 : device === "tablet" ? 1180 : 800;
+    void api.streamBrowserViewport(slug, w, h).catch(() => {});
+  }, [streamedMode, deviceWidth, device, slug]);
+
+  const toggleDarkEmulation = useCallback(() => {
+    const next = !darkEmulation;
+    setDarkEmulation(next);
+    setShowMenu(false);
+    void api.streamBrowserEmulate(slug, next ? true : null).catch(() => {});
+  }, [darkEmulation, slug]);
+
+  const refreshTabs = useCallback(() => {
+    if (!streamedMode) {
+      setTabs([]);
+      return;
+    }
+    void api
+      .streamBrowserTabs(slug)
+      .then((r) => setTabs(r.tabs ?? []))
+      .catch(() => setTabs([]));
+  }, [streamedMode, slug]);
+
+  useEffect(() => {
+    refreshTabs();
+  }, [refreshTabs, frameSrc]);
+
+  const openTab = useCallback(() => {
+    void api
+      .streamBrowserTabAction(slug, "new", { url: "about:blank" })
+      .then(() => refreshTabs())
+      .catch(() => {});
+  }, [slug, refreshTabs]);
+
+  const switchTab = useCallback(
+    (id: string) => {
+      void api
+        .streamBrowserTabAction(slug, "switch", { target_id: id })
+        .then(() => refreshTabs())
+        .catch(() => {});
+    },
+    [slug, refreshTabs],
+  );
+
+  const closeTab = useCallback(
+    (id: string) => {
+      void api
+        .streamBrowserTabAction(slug, "close", { target_id: id })
+        .then(() => refreshTabs())
+        .catch(() => {});
+    },
+    [slug, refreshTabs],
+  );
 
   useEffect(() => {
     setFrameSrc(activeUrl);
@@ -372,7 +441,10 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
       ref={rootRef}
       onKeyDown={onKeyDown}
       tabIndex={-1}
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70 outline-none"
+      className={cn(
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70 outline-none",
+        fullscreen && "fixed inset-0 z-50 flex-1 bg-background",
+      )}
     >
       {/* Toolbar — essentials inline, the rest in the ⋯ overflow menu */}
       <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
@@ -438,6 +510,17 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
         {/* Device preset switcher */}
         <DeviceMenu device={device} onSelect={setDevice} />
 
+        {/* Pop-out / fullscreen the preview region */}
+        <Button
+          size="sm"
+          variant="ghost"
+          className={cn("h-6 w-6 p-0", fullscreen && "bg-secondary text-foreground")}
+          title={fullscreen ? "Exit fullscreen" : "Pop out / fullscreen"}
+          onClick={() => setFullscreen((v) => !v)}
+        >
+          {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+        </Button>
+
         {/* Overflow menu */}
         <div ref={menuRef} className="relative">
           <Button
@@ -472,6 +555,13 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
                 <span className="flex-1">Auto-open on ready</span>
                 {autoOpen && <Check className="h-3.5 w-3.5 text-emerald-400" />}
               </button>
+              {streamedMode && (
+                <button type="button" className={menuBtn} onClick={toggleDarkEmulation}>
+                  <Moon className="h-3.5 w-3.5" />
+                  <span className="flex-1">Emulate dark mode</span>
+                  {darkEmulation && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+                </button>
+              )}
               <button type="button" className={menuBtn} onClick={() => void showCookies()}>
                 <Cookie className="h-3.5 w-3.5" />
                 <span className="flex-1">View cookies</span>
@@ -493,6 +583,50 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
           )}
         </div>
       </div>
+
+      {/* Tab strip (streamed backend only; degrades to single-tab silently) */}
+      {streamedMode && tabs.length > 0 && (
+        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background/60 px-2 py-1">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={cn(
+                "group flex max-w-[180px] shrink-0 items-center gap-1 rounded-sm border px-2 py-0.5 text-[11px]",
+                tab.active
+                  ? "border-primary/50 bg-secondary text-foreground"
+                  : "border-border bg-muted/30 text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <button
+                type="button"
+                className="min-w-0 flex-1 truncate text-left"
+                title={tab.url}
+                onClick={() => !tab.active && switchTab(tab.id)}
+              >
+                {tab.title || hostOf(tab.url) || "New tab"}
+              </button>
+              {tabs.length > 1 && (
+                <button
+                  type="button"
+                  className="shrink-0 opacity-50 hover:opacity-100"
+                  title="Close tab"
+                  onClick={() => closeTab(tab.id)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+            title="New tab"
+            onClick={openTab}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       <div className="relative min-h-0 flex-1 bg-black/20">
         {previewPending ? (

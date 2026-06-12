@@ -182,6 +182,21 @@ class StreamLog(BaseModel):
     stream: str = "console"  # console | network | error
 
 
+class StreamViewport(BaseModel):
+    width: int
+    height: int
+
+
+class StreamEmulate(BaseModel):
+    dark: bool | None = None  # True=force dark, False=force light, None=clear
+
+
+class StreamTab(BaseModel):
+    action: str  # new | switch | close
+    url: str | None = None
+    target_id: str | None = None
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -2422,6 +2437,109 @@ async def stream_browser_input(slug: str, body: StreamInput):
         "title": session.title,
         **extra,
     }
+
+
+@router.post("/projects/{slug}/preview/stream/viewport")
+async def stream_browser_viewport(slug: str, body: StreamViewport):
+    """Resize the streamed viewport (responsive presets). 501 if unsupported."""
+    session, browser_unavailable = _streamed_session(slug)
+    setter = getattr(session, "set_viewport", None)
+    if not callable(setter):
+        raise HTTPException(status_code=501, detail="Viewport resize not supported by backend")
+    try:
+        await asyncio.to_thread(setter, body.width, body.height)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Viewport resize failed: {exc}")
+    w, h = session.viewport
+    return {"slug": slug, "width": w, "height": h}
+
+
+@router.post("/projects/{slug}/preview/stream/emulate")
+async def stream_browser_emulate(slug: str, body: StreamEmulate):
+    """Toggle dark-mode (prefers-color-scheme) emulation. 501 if unsupported."""
+    session, browser_unavailable = _streamed_session(slug)
+    setter = getattr(session, "set_emulated_media", None)
+    if not callable(setter):
+        raise HTTPException(status_code=501, detail="Media emulation not supported by backend")
+    try:
+        await asyncio.to_thread(lambda: setter(dark=body.dark))
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Emulation failed: {exc}")
+    return {"slug": slug, "dark": body.dark}
+
+
+@router.get("/projects/{slug}/preview/stream/tabs")
+async def stream_browser_tabs(slug: str):
+    """List open tabs/targets. Empty list when the backend can't enumerate them."""
+    session, browser_unavailable = _streamed_session(slug)
+    lister = getattr(session, "list_tabs", None)
+    if not callable(lister):
+        return {"slug": slug, "tabs": []}
+    try:
+        tabs = await asyncio.to_thread(lister)
+    except browser_unavailable:
+        tabs = []
+    except Exception:
+        tabs = []
+    return {"slug": slug, "tabs": tabs}
+
+
+@router.post("/projects/{slug}/preview/stream/tabs")
+async def stream_browser_tab_action(slug: str, body: StreamTab):
+    """Open/switch/close a tab. 501 when the backend has no multi-tab support."""
+    session, browser_unavailable = _streamed_session(slug)
+    action = body.action
+
+    def _apply() -> dict[str, Any]:
+        if action == "new":
+            fn = getattr(session, "new_tab", None)
+            if not callable(fn):
+                raise HTTPException(status_code=501, detail="Tabs not supported by backend")
+            result: dict[str, Any] = fn(body.url or "about:blank")
+            return result
+        if action == "switch":
+            fn = getattr(session, "switch_tab", None)
+            if not callable(fn) or not body.target_id:
+                raise HTTPException(status_code=400, detail="switch requires target_id")
+            result = fn(body.target_id)
+            return result
+        if action == "close":
+            fn = getattr(session, "close_tab", None)
+            if not callable(fn) or not body.target_id:
+                raise HTTPException(status_code=400, detail="close requires target_id")
+            fn(body.target_id)
+            return {}
+        raise HTTPException(status_code=400, detail=f"Unknown tab action: {action}")
+
+    try:
+        result = await asyncio.to_thread(_apply)
+    except HTTPException:
+        raise
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Tab action failed: {exc}")
+    return {"slug": slug, "ok": True, **result}
+
+
+@router.get("/projects/{slug}/preview/stream/downloads")
+async def stream_browser_downloads(slug: str):
+    """List files the previewed browser downloaded into the workspace."""
+    session, browser_unavailable = _streamed_session(slug)
+    lister = getattr(session, "list_downloads", None)
+    if not callable(lister):
+        return {"slug": slug, "downloads": []}
+    try:
+        downloads = await asyncio.to_thread(lister)
+    except browser_unavailable:
+        downloads = []
+    except Exception:
+        downloads = []
+    return {"slug": slug, "downloads": downloads}
 
 
 @router.post("/projects/{slug}/preview/stream/stop")

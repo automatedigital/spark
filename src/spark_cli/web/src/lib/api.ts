@@ -954,6 +954,52 @@ export const api = {
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/backend`,
     ),
 
+  /** Resize the streamed viewport (responsive presets). */
+  streamBrowserViewport: (slug: string, width: number, height: number) =>
+    fetchJSON<{ slug: string; width: number; height: number }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/viewport`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ width, height }),
+      },
+    ),
+
+  /** Toggle dark-mode (prefers-color-scheme) emulation; dark=null clears. */
+  streamBrowserEmulate: (slug: string, dark: boolean | null) =>
+    fetchJSON<{ slug: string; dark: boolean | null }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/emulate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dark }),
+      },
+    ),
+
+  streamBrowserTabs: (slug: string) =>
+    fetchJSON<{ slug: string; tabs: StreamBrowserTab[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/tabs`,
+    ),
+
+  streamBrowserTabAction: (
+    slug: string,
+    action: "new" | "switch" | "close",
+    opts?: { url?: string; target_id?: string },
+  ) =>
+    fetchJSON<{ slug: string; ok: boolean; url?: string; title?: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/tabs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...opts }),
+      },
+    ),
+
+  streamBrowserDownloads: (slug: string) =>
+    fetchJSON<{ slug: string; downloads: StreamBrowserDownload[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/downloads`,
+    ),
+
   installStreamBrowser: (slug: string) =>
     fetchJSON<{ slug: string; ok: boolean; error?: string | null; version?: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/install`,
@@ -2118,6 +2164,19 @@ export interface StreamBrowserInput {
   key?: string;
   button?: "left" | "right" | "middle";
   files?: string[];
+}
+
+export interface StreamBrowserTab {
+  id: string;
+  title: string;
+  url: string;
+  active: boolean;
+}
+
+export interface StreamBrowserDownload {
+  name: string;
+  size: number;
+  mtime: number;
 }
 
 export interface WorkspacePreviewSnapshot {
