@@ -2,18 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link id="favicon" rel="icon" type="image/png" href="/icon_small-dark.png" />
+    <link id="favicon" rel="icon" type="image/png" href="/icon_small-light.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       // Favicon renders on browser chrome (the tab strip), which follows the OS
       // colour scheme — so tracking prefers-color-scheme is correct here, unlike
       // the in-app logo which follows the app theme. Asset names are inverted:
-      // icon_small-light.png is the WHITE glyph (for dark chrome).
+      // icon_small-dark.png is the WHITE glyph (for dark chrome).
       (function () {
         var mq = window.matchMedia("(prefers-color-scheme: dark)");
         function apply() {
           var el = document.getElementById("favicon");
-          if (el) el.href = mq.matches ? "/icon_small-light.png" : "/icon_small-dark.png";
+          if (el) el.href = mq.matches ? "/icon_small-dark.png" : "/icon_small-light.png";
         }
         apply();
         mq.addEventListener("change", apply);
@@ -23,7 +23,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-    <script type="module" crossorigin src="/assets/index-BrkFqjMA.js"></script>
+    <script type="module" crossorigin src="/assets/index-DnT0LBaP.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-DEMfzXl0.css">
   </head>
   <body>

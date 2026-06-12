@@ -1,104 +1,90 @@
-# PLAN - 100626
+# PLAN - 120626
 
-## UI Updates
-This applies to both webui and desktop app (same React codebase in `src/spark_cli/web/`; desktop is the Tauri wrapper, so one fix covers both — verify in both at the end).
+Source: `screenshots/120626/` — four screenshots covering 2 bugs and 2 UI changes in the web UI / agent core.
 
----
+## Execution notes (for agents working this plan)
 
-### Phase 1 — Logo Swap
+- One feature branch + PR per numbered item — never push to main. Check off boxes in this file as you complete them.
+- **Parallel-safe:** items 1, 3, 4 are independent of each other and of item 2.
+- **Sequencing:** item 2 must complete (through "agent tools" + "graceful error state") before any 2b work starts — 2b builds on the agent-browser backend, not the Playwright one. Within 2b, "Streaming quality" and "Agent efficiency" come first; collaboration/chrome polish after.
+- Item 2's first checkbox is a **spike with a decision**: write up the chosen integration approach (see below) at the top of the item before implementing the rest.
+- Env: use `.venv` (not anaconda) for pytest/ruff. Frontend lives in `src/spark_cli/web/` (Vite/React); rebuild `web_dist` to verify built-app behavior.
 
-- Reference: screenshots/100626/feature-requests_pm/spark_landing-page.png — the logo is nearly invisible against the dark background.
+## 1. Loop guard: recover instead of abandoning the task
 
-**Root cause (researched):** Theming is driven by `data-webui-theme` on `<html>` (`src/lib/theme.tsx`), but the landing hero (`pages/ChatPage.tsx:137-144`) picks the logo via a `prefers-color-scheme` media query — which tracks the **OS** setting, not the app theme. The other three usages (`App.tsx:159`, `components/ChatPanel.tsx:207`, `components/OnboardingWizard.tsx:615`) hardcode `icon_small-dark.png` (the dark glyph). Note the asset names are inverted vs. intuition: `icon_small-light.png` is the **white** glyph for dark backgrounds.
+**Screenshot:** `bug_Detected 3 consecutive identical 'process' calls...png`
 
-**Tasks:**
-- [x] Create a shared `BrandLogo` component (`src/components/BrandLogo.tsx`) that reads the active theme via `useWebUITheme()` and renders the white glyph (`icon_small-light.png`) on dark themes and the dark glyph on light themes (currently only `daylight` is light). Accept `className` for sizing.
-- [x] Replace all four hardcoded usages: `App.tsx:159` (sidebar), `pages/ChatPage.tsx:137` (landing hero), `components/ChatPanel.tsx:207`, `components/OnboardingWizard.tsx:615`.
-- [x] Landing hero specifically: bump logo contrast/size so it reads clearly (per screenshot, white glyph + slightly larger).
-- [x] Optional polish: swap favicon (`index.html:5`) dynamically via JS to match OS scheme (favicons CAN legitimately use `prefers-color-scheme` since they render on browser chrome, not app background).
+Investigated: the guard (`src/core/run_agent/__init__.py:~9750`) already compares tool name **and** JSON-serialized arguments, so it only fires on three truly identical calls — the detection itself is fine. The real problem is the recovery: when it trips, the turn hard-breaks (`_turn_exit_reason = "tool_loop_detected"`) and the task is silently left incomplete.
 
----
+- [ ] Change the guard's behavior from "stop the turn" to "intervene": on detection, inject a tool-result/system note telling the model its last N calls were identical and to change approach, and let the conversation continue. Only hard-stop if it trips a second time in the same turn.
+- [ ] Make sure the stop (if it still happens) is clearly surfaced as an incomplete task in the UI, not just an inline warning line.
+- [ ] Tests: identical-call loop gets one recovery nudge then continues; double-trip still terminates.
 
-### Phase 2 — Right-hand sidebar: structural cleanup
+## 2. Browser backend: migrate preview tab to agent-browser (shared with the agent)
 
-The panel lives in `pages/ChatPage.tsx` (`RIGHT_TABS = ["files", "terminal", "preview"]`, ~line 319) with panes in `src/components/workspace/`. References:
-- screenshots/100626/feature-requests_pm/claude-desktop_right-hand-sidebar-FILES_02.png
-- screenshots/100626/feature-requests_pm/claude-desktop_right-hand-sidebar-OPTIONS_01.png
-- screenshots/100626/feature-requests_pm/claude-desktop_right-hand-sidebar-PREVIEW_03.png
-- screenshots/100626/feature-requests_pm/codex-desktop_right-hand-sidebar_BROWSER-TAB_01.png
-- screenshots/100626/feature-requests_pm/codex-desktop_right-hand-sidebar_OPTIONS_01.png
-- screenshots/100626/feature-requests_pm/codex-desktop_right-hand-sidebar_REVIEW-CHANGES_01.png
+**Screenshot:** `preview_error_501...png` (current Playwright backend errors with 501 "Playwright is not installed" + broken-image placeholder)
 
-**Tasks:**
-- [x] **Tab persistence**: persist active tab per workspace slug in localStorage (currently resets); already persists width + open state — extend the same pattern.
-- [x] **Panel switcher dropdown** (Claude desktop OPTIONS_01 style): replace the cramped 3-button tab strip with a compact header — current tab name + chevron dropdown listing Preview / Terminal / Files / Changes, each with its keyboard shortcut shown (⇧⌘P, ⌃` , ⇧⌘F, ⇧⌘D). Keep the collapse button. _(Changes entry added in Phase 6 once the panel exists.)_
-- [x] **Keyboard shortcuts**: global bindings to open/switch panel tabs (mirror Claude desktop: ⇧⌘P preview, ⇧⌘F files, ⇧⌘D changes, ⌃` terminal). Register in ChatPage, surface in `KeyboardShortcutsModal.tsx`. _(⇧⌘D added in Phase 6.)_
-- [x] **Keep panes alive across tab switches**: render all panes and toggle with CSS `hidden` instead of conditional mount. Today switching tabs unmounts `WorkspaceTerminalPanel`, which **kills the shell** (cleanup calls `stopWorkspaceTerminalRun`) and drops preview iframe state. This is the single biggest "feels rough" bug.
-  - **Tauri caveat**: `NativePreview` is a real native child webview overlaying the panel region — CSS `hidden` does NOT hide it on desktop. When the active tab isn't Preview (or the panel is collapsed), explicitly hide/show the native webview via the `nativePreview` bridge. _(Done: `visible` prop threads ChatPage → WorkspacePreviewPanel → NativePreview → `nativePreview.setVisible`.)_
-  - Define behavior on panel **collapse** and **workspace switch** too: collapse keeps the shell alive (just hidden); switching to a different workspace slug still tears it down (intentional). _(Collapse: panel content stays mounted behind the rail, shell alive, preview `visible=false`. Workspace switch: `slug` prop change remounts panes — intentional teardown.)_
+Goal: one browser instance that (a) renders/streams into the WebUI Preview tab and (b) the agent can drive directly (navigate, click, fill, read) so it can browse the web and operate web apps. Replace the current Playwright sync-API streamer in `src/spark_cli/preview_browser.py` with [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser).
 
----
+- [ ] **Spike (decide before implementing):** agent-browser is a Node-based CLI/daemon driving Chromium over CDP, while Spark's backend is Python. Choose the integration mechanism — (a) Python shells out to the `agent-browser` CLI per command, (b) Python talks to the agent-browser daemon directly, or (c) Python attaches to the same Chromium over CDP for streaming while agent tools use the CLI. Must support: screenshot streaming + input forwarding for the preview pane (`workspace_routes.py` endpoints), and agent tool calls against the same session. Document the decision + rationale here before proceeding.
+- [ ] Keep per-workspace persistent profiles (`SPARK_HOME/browser/<slug>`) so logins survive restarts — map onto agent-browser sessions/profiles.
+- [ ] Add agent tools (`src/tools/`, registered per CLAUDE.md 3-file pattern) that drive the *same* browser session: navigate, click, type, snapshot/read page, screenshot — so what the agent does is visible live in the Preview tab.
+- [ ] Installation/bootstrap: detect missing agent-browser/Chromium and offer install (one-click in UI + `spark doctor` check) instead of a raw 501 JSON blob and broken `<img>`.
+- [ ] Graceful error state in the preview pane when the backend is unavailable (hide the `<img>`, show message + install action).
+- [ ] Remove/deprecate the Playwright dependency path once parity is confirmed (or keep as fallback behind a config flag).
 
-### Phase 3 — Files pane polish (`FileTreePane.tsx`)
+### 2b. Preview tab "top-tier" upgrades
 
-Reference: claude-desktop FILES_02 screenshot (clean indented tree, filter box at top).
+**Depends on item 2 being merged** — all of this targets the agent-browser backend. Do not build against the Playwright streamer.
 
-- [x] **Filter/search box** at the top of the tree ("Filter files…" like Claude desktop) — client-side fuzzy filter on path, auto-expand matching dirs.
-- [x] **Persist expanded-dir state** per workspace (currently every refresh collapses everything). _(localStorage `spark-files-expanded:<slug>`; expansion lifted from per-row state into FileTreePane.)_
-- [x] **Auto-refresh on agent activity**: subscribe to the event bus (workspace file-change topic; add one server-side if missing in `workspace_routes.py`) so the tree updates as the agent writes files, instead of requiring manual refresh. Debounce. _(Listens for `chat.turn_done` — the agent-activity signal — plus a new `workspace.files.changed` event emitted by write/mkdir/rename/delete/upload endpoints. 400ms debounce.)_
-- [x] **Better file viewer**: the current `SimpleFileViewer` is bare. Add syntax highlighting (highlight.js already ships for Markdown), line numbers, image/video preview using existing `getFileCategory`, and a copy-path button. _(Highlighting + image/video already existed; added a line-number gutter and a copy-path button.)_
-- [x] **Inline file ops**: new file / new folder / rename (server endpoints exist for write+delete in `workspace_routes.py`; add rename). Replace `window.confirm` delete with a small inline confirm. _(Added project-scoped `PUT /file`, `POST /mkdir`, `POST /rename` endpoints + 9 pytest cases; inline create inputs, per-row rename, inline delete confirm.)_
-- [x] **Distinct refresh icon** — currently a `Loader2` spinner doubles as the refresh button, which reads as "stuck loading". Use `RefreshCw`.
+**Streaming quality**
+- [ ] Replace polled screenshot frames with CDP screencast (push frames) — lower latency, smoother scrolling; consider WebRTC later if needed.
+- [ ] Proper input parity: keyboard shortcuts, scroll momentum, right-click, file upload dialogs, clipboard in/out.
 
----
+**Browser chrome**
+- [ ] URL bar with back/forward/reload, multiple tabs, pop-out to a larger window/fullscreen.
+- [ ] Responsive presets (mobile/tablet/desktop) + dark-mode emulation toggle for testing.
+- [ ] Download handling (files land in the workspace, surfaced in Files tab).
 
-### Phase 4 — Terminal pane polish (`WorkspaceTerminalPanel.tsx`)
+**Agent ⇄ user collaboration**
+- [ ] "Follow agent" mode: when the agent drives, show a visible cursor + highlight on elements it clicks/types into, so the user can watch.
+- [ ] Take-over/pause: user can grab control mid-task (e.g. to solve a login/CAPTCHA), then hand back to the agent.
+- [ ] Element picker: user clicks an element in the preview → a structured reference (selector + screenshot crop) is inserted into chat ("fix this button").
+- [ ] One-click "send screenshot to chat" and short GIF/flow recording for bug reports.
 
-- [x] **Session survives tab switches** (covered by Phase 2 keep-alive) and **reconnects** after SSE drop: on `onerror`, attempt re-attach to the existing run before declaring failed, with a "Reconnect" button on the status pill. _(Connect logic extracted into a re-callable `connect()`; on drop the status goes `failed` and a Reconnect button starts a fresh shell.)_
-- [x] **xterm addons**: `@xterm/addon-web-links` (clickable URLs — agent often prints localhost links) and `@xterm/addon-search` with a small find bar (⌘F when focused). _(Installed both; links open via `openExternalUrl`; ⌘F toggles a find bar with next/prev.)_
-- [x] **Theme-aware terminal colors**: palette is hardcoded amber (`#FDA632`) — derive background/cursor/selection from the active webui theme CSS variables so Slate/Daylight/etc. don't clash. _(`buildTerminalTheme()` reads `--color-card`/`--color-foreground`/`--color-primary`; re-applied on theme change via `useWebUITheme`.)_
-- [x] **Toolbar row**: clear scrollback, copy selection, kill & restart shell. Keep it to one slim row matching the Files/Preview headers.
+**Dev-loop integration**
+- [ ] Console + network errors from the previewed page auto-available to the agent (and a visible console drawer for the user) — closes the edit→reload→check loop.
+- [ ] Auto-detect running dev servers (common ports / process scan) and offer them in the URL bar; auto-reload on HMR where possible.
 
----
+**Agent efficiency & safety**
+- [ ] Give the agent an accessibility-tree / DOM snapshot tool, not just screenshots — far cheaper in tokens and more reliable for clicking (agent-browser supports this natively via refs).
+- [ ] Action log: every agent browser action recorded and visible in the pane (auditable transcript).
+- [ ] Permission gates for sensitive actions: submitting payments, sending messages, logging into new domains — pause and ask the user.
 
-### Phase 5 — Preview pane polish (`WorkspacePreviewPanel.tsx`)
+## 3. UI: collapsible Sessions + "No Workspace" chat sections in sidebar
 
-Reference: codex BROWSER-TAB_01 (clean URL bar, minimal chrome) and claude-desktop PREVIEW_03.
+**Screenshot:** `add collapseable option on sessions + old workspace chats...png`
 
-- [x] **Declutter the toolbar**: currently ~12 icon buttons in one row. Keep nav (back/forward/reload) + URL bar + start/stop visible; move port-pin, private mode, cookies, clear-data, open-external, logs-toggle into a "⋯" overflow dropdown (codex OPTIONS_01 style). _(Plus auto-open toggle in the same menu.)_
-- [x] **Auto-open on preview ready**: ChatPage already listens for `workspace.preview.ready` — make it switch the panel to the Preview tab and expand the panel if collapsed, so when the agent spins up a dev server the user sees it immediately. Add a setting/toggle to disable. _(Done in Phase 2; now gated on `previewAutoOpenEnabled()` from `lib/previewPrefs`, toggled in the overflow menu.)_
-- [x] **Status pill instead of status strip**: fold the status/kind/port/refresh-reason line into a compact pill in the toolbar (running = green dot, starting = amber spinner, failed = red with error tooltip) to reclaim vertical space. _(Status dot in the toolbar with a full tooltip; page title/favicon moved to a floating overlay on the viewport.)_
-- [x] **Device viewport presets**: dropdown for Responsive / iPhone / iPad / Desktop widths — constrain the iframe/native view to the preset, centered, with dimensions label. Cheap to do in the web iframe path; for Tauri native webview, resize the child webview bounds via `nativePreview`. _(Wrapper `max-width` centers the region; NativePreview already tracks its placeholder rect, so the native webview follows automatically.)_
-- [x] **Replace `window.confirm`/`window.alert`** (external-nav confirm, cookies list, clear-data) with the app's own dialog components — alerts feel broken inside the desktop app. _(New reusable `ConfirmDialog`; external-nav, clear-data, and cookies all route through it.)_
-- [x] **Empty state upgrade**: instead of just "Start App", show detected app kind/command (backend already detects `kind`) — "Detected Vite app — Start `npm run dev`".
+The sidebar's SESSIONS list (workspace folders) and the "NO WORKSPACE" list of old chats are both always fully expanded, making the sidebar very long.
 
----
+- [ ] Component: `src/spark_cli/web/src/components/sidebar/SidebarSessions.tsx` (the "No workspace" section is at ~line 458).
+- [ ] Rename the "NO WORKSPACE" section label to "CHATS".
+- [ ] Make the SESSIONS section header and the CHATS section header collapsible (chevron + click-to-toggle), persisting collapsed state (localStorage or existing UI-state store).
+- [ ] Keep individual workspace folders' existing expand/collapse behavior; this adds collapse at the *section* level.
 
-### Phase 6 — NEW: Changes (diff review) tab
+## 4. UI: empty-state hero logo too dark on dark theme
 
-Reference: codex REVIEW-CHANGES_01 — this is the standout feature in both reference apps, and Spark has nothing like it. Workspaces are often git repos; the agent edits files and the user has no way to see what changed without leaving the app.
+**Screenshot:** `logo-too-dark_USE-icon_small-dark-png...png`
 
-- [x] **Backend** (`workspace_routes.py`): add endpoints
-  - `GET /projects/{slug}/git/status` → branch, dirty file list with per-file `+adds/-dels`, total `+N -M` (shell out to `git status --porcelain` + `git diff --numstat`; handle non-git workspaces gracefully → tab hidden/disabled). _(Untracked files counted as additions; `is_repo:false` for non-git.)_
-  - `GET /projects/{slug}/git/diff?path=` → unified diff for one file (staged+unstaged vs HEAD), and full-workspace diff when no path. _(Untracked files synthesize an add-diff via `--no-index`.)_ Plus `POST /git/revert`. 10 pytest cases, all green.
-- [x] **Frontend**: new `WorkspaceChangesPanel.tsx` — file list grouped Edited/Added/Deleted with `+N -M` badges (green/red, codex-style), click to expand inline unified diff with syntax-coloured add/remove lines. "Changes +16 -89" summary in the panel switcher dropdown (codex OPTIONS_01). _(Summary fetched lazily when the switcher opens.)_
-- [x] **Actions**: per-file "Revert" (git checkout — with confirm), and a "Commit or push" affordance that pre-fills a prompt to the agent ("commit these changes") rather than reimplementing git UI — keeps the agent in the loop. _(Commit button dispatches a `spark:compose` event that ChatPanel fills into the composer.)_
-- [x] **Live updates**: refresh status on the same file-change event-bus topic as the Files pane. _(`chat.turn_done` + `workspace.files.changed`, debounced.)_
+On the dark theme, the big Spark logo on the empty chat screen is nearly invisible (too dark against the dark background). Confirmed fix: dark themes should use `icon_small-dark.png`.
 
----
+- [x] Hero logo renders via `BrandLogo` in `src/spark_cli/web/src/pages/ChatPage.tsx:145`; asset selection logic is in `src/spark_cli/web/src/components/BrandLogo.tsx:12`.
+- [x] Update `BrandLogo.tsx` so dark themes use `/icon_small-dark.png` (and light themes the other asset). The code comment claims names are inverted — visually verify both PNGs in `src/spark_cli/web/public/` and correct the comment + `LIGHT_THEMES` mapping to match reality.
+- [x] Verify in the built app (`web_dist` / desktop build) on dark theme, not just dev.
+- [x] Check other BrandLogo / icon usages (`index.html` loading screen, favicon) for the same issue.
 
-### Phase 7 — Verification & release
+## Verification
 
-- [x] `npm run build` in `src/spark_cli/web/` clean; `tsc` + eslint pass. _(Build + tsc clean. ESLint: all touched files clean; 7 pre-existing errors remain in untouched files — repo lint debt, not introduced here.)_
-- [x] Verify in browser (webui): logo on landing + sidebar across all 8 themes; tab switching keeps terminal alive; preview auto-opens on `workspace.preview.ready`; Changes tab against a dirty git workspace and a non-git workspace. _(Logo verified live on dark `codex` + light `daylight`; app mounts clean after every phase. The workspace panel itself needs a live backend — the standalone Vite preview returns 500s for projects/sessions — so terminal-keep-alive / Changes-tab interactive checks belong to the desktop smoke-test below.)_
-- [x] Python tests for new git endpoints (`tests/`, follow existing workspace route test patterns; respect `_isolate_spark_home`). _(19 new tests: 9 file-ops + 10 git, all green; artifacts route tests still pass.)_
-- [ ] Rebuild desktop app (`/build-mac`) and smoke-test: native preview webview, terminal, logo. _(Deferred to the user — heavy native Tauri/Rust + DMG build via the dedicated `/build-mac` skill; can't be meaningfully smoke-tested autonomously here. Builds from the verified web bundle.)_
-- [~] Screenshots into `screenshots/100626/after/` for before/after comparison. _(Landing-page logo verified via preview screenshots in-session; full right-panel/Changes "after" shots need the live desktop app + a workspace.)_
-- [x] Feature branch + PR (never direct to main). _(Branch `feature/workspace-panel-refresh` → PR #27.)_
-
----
-
-## Notes / explicitly out of scope (this round)
-- Background-tasks and Plan tabs from Claude desktop's switcher — worth considering later once Changes ships.
-- Multi-tab terminal sessions — single persistent shell first; tabs are a follow-up.
-- Right panel for non-project (no-slug) chat sessions — panel remains workspace-only.
+- [ ] `python -m pytest tests/ -q` (use `.venv`, not anaconda)
+- [ ] `ruff check src/` on touched files
+- [ ] Visual check of sidebar collapse + logo in dark theme via preview
