@@ -14,7 +14,6 @@ import pytest
 from spark_cli import preview_agent_browser as pab
 from tools import browser_takeover
 
-
 # ── Take-over / pause control ─────────────────────────────────────────────────
 
 
@@ -114,7 +113,7 @@ def test_record_gif_writes_file(monkeypatch, session):
     # Provide a tiny valid PNG for each captured frame.
     import io
 
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image", reason="Pillow not installed")
 
     buf = io.BytesIO()
     Image.new("RGB", (8, 8), "red").save(buf, format="PNG")
