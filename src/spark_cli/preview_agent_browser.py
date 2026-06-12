@@ -16,20 +16,31 @@ Persistent profiles: each workspace's session is launched with
 ``--profile SPARK_HOME/browser/<slug>/persistent`` so logins survive restarts —
 the same on-disk layout the Playwright backend uses.
 
-STATUS (v1): the frame source uses ``agent-browser screenshot`` (polled, correct
-parity with the current Playwright preview UX). A low-latency CDP screencast path
-is a follow-up (Item 2b). Coordinate input is forwarded through the CLI's
-``mouse``/``keyboard`` primitives, which dispatch real CDP input events against
-the shared session.
+FRAME SOURCE (Item 2b — Streaming quality): the preferred path is a CDP
+*screencast* (``Page.startScreencast``/``Page.screencastFrame``) opened over the
+session's CDP WebSocket. Chromium pushes JPEG frames as they paint, which the
+backend acks (``Page.screencastFrameAck``) and forwards to the pane over an SSE
+channel — lower latency and smoother scrolling than polling. The v1 polled
+``agent-browser screenshot`` source is kept as a graceful fallback whenever the
+CDP screencast can't be established (no ``websockets`` lib, no CDP url, etc.).
+WebRTC transport is explicitly out of scope (future work).
+
+INPUT PARITY (Item 2b): coordinate input is forwarded through the CLI's
+``mouse``/``keyboard``/``press`` primitives, which dispatch real CDP input events
+against the shared session. Beyond plain clicks/typing this covers modifier key
+combos, right-click (contextmenu), scroll, file-upload dialogs, and clipboard
+read/write (copy/paste).
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import subprocess
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -38,10 +49,134 @@ from spark_cli.config import get_spark_home
 _VIEWPORT = (1280, 800)
 _COMMAND_TIMEOUT = 20.0
 _MAX_OUTPUT = 12000
+# JPEG quality / max frame-rate hints for the CDP screencast (Item 2b).
+_SCREENCAST_QUALITY = 70
+_SCREENCAST_MAX_WIDTH = 1280
+_SCREENCAST_MAX_HEIGHT = 800
 
 
 class AgentBrowserUnavailable(RuntimeError):
     """Raised when the agent-browser CLI/runtime is not available."""
+
+
+class ScreencastUnavailable(RuntimeError):
+    """Raised when a CDP screencast can't be established (→ polled fallback)."""
+
+
+class ScreencastHandle:
+    """Drives a CDP ``Page.startScreencast`` over a background WebSocket thread.
+
+    Connects to the session's CDP WebSocket, enables the ``Page`` domain, starts
+    a JPEG screencast, and invokes ``on_frame`` for each ``Page.screencastFrame``
+    event (acking every frame so Chromium keeps pushing). All heavy deps
+    (``websockets``) are imported lazily; failure surfaces as
+    :class:`ScreencastUnavailable` so the caller falls back to polling.
+    """
+
+    def __init__(
+        self,
+        ws_url: str,
+        on_frame: Callable[[bytes], None],
+        viewport: tuple[int, int],
+    ) -> None:
+        self._ws_url = ws_url
+        self._on_frame = on_frame
+        self._viewport = viewport
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._started = threading.Event()
+
+    def start(self) -> None:
+        try:
+            import asyncio  # noqa: F401 — probe stdlib availability early
+            import websockets  # noqa: F401
+        except ImportError as exc:  # pragma: no cover - dep guard
+            raise ScreencastUnavailable(
+                "CDP screencast requires the 'websockets' package; "
+                "falling back to polled screenshots"
+            ) from exc
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+        # Give the loop a brief moment to connect; if it dies immediately the
+        # caller's first frame poll will fall back gracefully.
+        self._started.wait(timeout=3.0)
+
+    def stop(self) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
+
+    def _run_loop(self) -> None:
+        import asyncio
+
+        try:
+            asyncio.run(self._pump())
+        except Exception:  # noqa: BLE001 — background thread must not crash
+            pass
+
+    async def _pump(self) -> None:
+        import websockets
+
+        next_id = 0
+
+        def _cmd(method: str, params: dict[str, Any] | None = None) -> str:
+            nonlocal next_id
+            next_id += 1
+            return json.dumps({"id": next_id, "method": method, "params": params or {}})
+
+        try:
+            async with websockets.connect(
+                self._ws_url, max_size=None, open_timeout=3
+            ) as ws:
+                await ws.send(_cmd("Page.enable"))
+                await ws.send(
+                    _cmd(
+                        "Page.startScreencast",
+                        {
+                            "format": "jpeg",
+                            "quality": _SCREENCAST_QUALITY,
+                            "maxWidth": min(self._viewport[0], _SCREENCAST_MAX_WIDTH),
+                            "maxHeight": min(self._viewport[1], _SCREENCAST_MAX_HEIGHT),
+                            "everyNthFrame": 1,
+                        },
+                    )
+                )
+                self._started.set()
+                while not self._stop.is_set():
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        continue
+                    try:
+                        msg = json.loads(raw)
+                    except Exception:
+                        continue
+                    if msg.get("method") != "Page.screencastFrame":
+                        continue
+                    params = msg.get("params") or {}
+                    session_id = params.get("sessionId")
+                    data = params.get("data")
+                    # Ack first so Chromium keeps the pipeline flowing.
+                    if session_id is not None:
+                        await ws.send(
+                            _cmd("Page.screencastFrameAck", {"sessionId": session_id})
+                        )
+                    if isinstance(data, str) and data:
+                        try:
+                            frame = base64.b64decode(data)
+                        except Exception:
+                            continue
+                        try:
+                            self._on_frame(frame)
+                        except Exception:  # noqa: BLE001 — consumer errors isolated
+                            pass
+                try:
+                    await ws.send(_cmd("Page.stopScreencast"))
+                except Exception:
+                    pass
+        finally:
+            self._started.set()
 
 
 def _safe_slug(slug: str) -> str:
@@ -193,24 +328,115 @@ class AgentBrowserSession:
         finally:
             Path(path).unlink(missing_ok=True)
 
-    def click(self, x: float, y: float) -> None:
-        """Coordinate click via real CDP input (move → down → up)."""
+    def click(
+        self,
+        x: float,
+        y: float,
+        *,
+        button: str = "left",
+    ) -> None:
+        """Coordinate click via real CDP input (move → down → up).
+
+        ``button`` may be ``left``/``right``/``middle``; a ``right`` click raises
+        the page's contextmenu (right-click input parity).
+        """
         ix, iy = int(x), int(y)
+        btn = button if button in {"left", "right", "middle"} else "left"
         self._run(["mouse", "move", str(ix), str(iy)])
-        self._run(["mouse", "down"])
-        self._run(["mouse", "up"])
+        self._run(["mouse", "down", btn])
+        self._run(["mouse", "up", btn])
         self._refresh_state()
+
+    def right_click(self, x: float, y: float) -> None:
+        """Dispatch a right-click (contextmenu) at the given coordinates."""
+        self.click(x, y, button="right")
 
     def scroll(self, dx: float, dy: float) -> None:
         # agent-browser's `mouse wheel <dy> [dx]` dispatches a CDP wheel event,
-        # matching Playwright's mouse.wheel(dx, dy) semantics.
+        # matching Playwright's mouse.wheel(dx, dy) semantics. Scroll *momentum*
+        # is reproduced on the client by streaming successive wheel deltas; the
+        # backend just forwards each delta faithfully.
         self._run(["mouse", "wheel", str(int(dy)), str(int(dx))])
 
     def type_text(self, text: str) -> None:
         self._run(["keyboard", "type", text])
 
     def press_key(self, key: str) -> None:
+        # agent-browser's `press` accepts combos like "Control+a" / "Meta+c",
+        # giving keyboard-shortcut parity with Playwright's keyboard.press.
         self._run(["press", key])
+
+    def upload_files(self, paths: list[str]) -> None:
+        """Set files on the page's active <input type=file> (upload dialog).
+
+        Mirrors a user picking files in a native file-chooser. ``paths`` are
+        absolute paths the agent-browser runtime can read.
+        """
+        clean = [p for p in paths if isinstance(p, str) and p]
+        if not clean:
+            return
+        # `upload <sel> <files...>` — target the focused/last file input.
+        self._run(["upload", "input[type=file]", *clean])
+
+    def clipboard_read(self) -> str:
+        """Read the page clipboard text (paste source)."""
+        try:
+            data = self._run(["clipboard", "read"])
+        except AgentBrowserUnavailable:
+            return ""
+        if isinstance(data, dict):
+            for key in ("text", "data", "value"):
+                value = data.get(key)
+                if isinstance(value, str):
+                    return value
+        return ""
+
+    def clipboard_write(self, text: str) -> None:
+        """Write text into the page clipboard (so the page can paste it)."""
+        self._run(["clipboard", "write", text])
+
+    def clipboard_copy(self) -> None:
+        """Copy the page's current selection (simulates Ctrl/Cmd+C)."""
+        self._run(["clipboard", "copy"])
+
+    def clipboard_paste(self) -> None:
+        """Paste clipboard contents into the page (simulates Ctrl/Cmd+V)."""
+        self._run(["clipboard", "paste"])
+
+    # ── CDP screencast (push frames) ─────────────────────────────────────────
+    def cdp_url(self) -> str | None:
+        """Resolve the session's CDP WebSocket URL (None when unavailable)."""
+        try:
+            data = self._run(["get", "cdp-url"])
+        except AgentBrowserUnavailable:
+            return None
+        if isinstance(data, dict):
+            for key in ("cdp-url", "cdpUrl", "url", "data"):
+                value = data.get(key)
+                if isinstance(value, str) and value.startswith("ws"):
+                    return value
+        return None
+
+    def start_screencast(self, on_frame: Callable[[bytes], None]) -> ScreencastHandle | None:
+        """Start a CDP screencast, invoking ``on_frame`` with each JPEG frame.
+
+        Returns a :class:`ScreencastHandle` (call ``.stop()`` to tear down) or
+        ``None`` when a screencast can't be established — callers MUST fall back
+        to the polled ``screenshot()`` source in that case.
+        """
+        if self._closed:
+            return None
+        ws_url = self.cdp_url()
+        if not ws_url:
+            return None
+        try:
+            handle = ScreencastHandle(ws_url, on_frame, self.viewport)
+            handle.start()
+        except ScreencastUnavailable:
+            return None
+        except Exception:  # noqa: BLE001 — any failure → polled fallback
+            return None
+        return handle
 
     def go_back(self) -> dict[str, Any]:
         self._run(["back"])

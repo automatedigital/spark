@@ -935,8 +935,12 @@ export const api = {
   streamBrowserFrameUrl: (slug: string, bust: number) =>
     `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/frame?t=${bust}`,
 
+  /** SSE endpoint that pushes CDP-screencast JPEG frames (base64). 501 → poll. */
+  streamBrowserScreencastUrl: (slug: string) =>
+    `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/screencast`,
+
   streamBrowserInput: (slug: string, input: StreamBrowserInput) =>
-    fetchJSON<{ slug: string; ok: boolean; url: string; title: string }>(
+    fetchJSON<{ slug: string; ok: boolean; url: string; title: string; clipboard?: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/input`,
       {
         method: "POST",
@@ -2093,13 +2097,27 @@ export interface MemoryListResponse {
 }
 
 export interface StreamBrowserInput {
-  type: "click" | "scroll" | "type" | "key" | "back" | "forward";
+  type:
+    | "click"
+    | "rightclick"
+    | "scroll"
+    | "type"
+    | "key"
+    | "back"
+    | "forward"
+    | "upload"
+    | "clipboard-write"
+    | "clipboard-read"
+    | "copy"
+    | "paste";
   x?: number;
   y?: number;
   dx?: number;
   dy?: number;
   text?: string;
   key?: string;
+  button?: "left" | "right" | "middle";
+  files?: string[];
 }
 
 export interface WorkspacePreviewSnapshot {
