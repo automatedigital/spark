@@ -589,6 +589,98 @@ class AgentBrowserSession:
             out.append({"name": p.name, "size": st.st_size, "mtime": st.st_mtime})
         return out
 
+    # ── Agent ⇄ user collaboration (Item 2b) ─────────────────────────────────
+    def pick_element(self, x: float, y: float) -> dict[str, Any]:
+        """Describe the element at ``(x, y)`` for the element picker.
+
+        Returns ``{selector, tag, role, name, text, rect}`` resolved in-page via
+        ``document.elementFromPoint`` + a best-effort CSS selector, so the user
+        can click an element in the pane and drop a structured reference into
+        chat ("fix this button"). Empty dict when the page denies eval.
+        """
+        ix, iy = int(x), int(y)
+        expr = (
+            "(() => {"
+            f"  const el = document.elementFromPoint({ix}, {iy});"
+            "  if (!el) return null;"
+            "  const sel = (e) => {"
+            "    if (e.id) return '#' + CSS.escape(e.id);"
+            "    const parts = [];"
+            "    let n = e;"
+            "    while (n && n.nodeType === 1 && parts.length < 5) {"
+            "      let p = n.tagName.toLowerCase();"
+            "      if (n.classList && n.classList.length) p += '.' + [...n.classList].slice(0,2).map(c=>CSS.escape(c)).join('.');"
+            "      const par = n.parentElement;"
+            "      if (par) { const sibs = [...par.children].filter(c=>c.tagName===n.tagName); if (sibs.length>1) p += ':nth-of-type(' + (sibs.indexOf(n)+1) + ')'; }"
+            "      parts.unshift(p); n = n.parentElement;"
+            "    }"
+            "    return parts.join(' > ');"
+            "  };"
+            "  const r = el.getBoundingClientRect();"
+            "  return {"
+            "    selector: sel(el),"
+            "    tag: el.tagName.toLowerCase(),"
+            "    role: el.getAttribute('role') || '',"
+            "    name: el.getAttribute('aria-label') || el.getAttribute('name') || el.getAttribute('placeholder') || '',"
+            "    text: (el.innerText || el.value || '').trim().slice(0, 120),"
+            "    rect: {x: r.x, y: r.y, width: r.width, height: r.height},"
+            "  };"
+            "})()"
+        )
+        try:
+            data = self._eval(expr)
+        except AgentBrowserUnavailable:
+            return {}
+        if isinstance(data, dict):
+            data["url"] = self.current_url
+            return data
+        return {}
+
+    def record_gif(self, *, frames: int = 12, interval: float = 0.4) -> Path | None:
+        """Capture a short sequence of frames and encode an animated GIF.
+
+        Returns the on-disk path (under the workspace downloads dir) or ``None``
+        when the GIF encoder (Pillow) isn't installed — callers degrade
+        gracefully. Used for the "record a short flow for a bug report" action.
+        """
+        try:
+            from PIL import Image  # lazily imported optional dep
+        except ImportError:
+            return None
+        import io
+        import time as _time
+
+        images = []
+        for _ in range(max(int(frames), 1)):
+            try:
+                png = self.screenshot()
+            except AgentBrowserUnavailable:
+                break
+            try:
+                images.append(Image.open(io.BytesIO(png)).convert("RGB"))
+            except Exception:  # noqa: BLE001 — skip a bad frame
+                pass
+            _time.sleep(max(interval, 0.05))
+        if not images:
+            return None
+        try:
+            self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        out = self.downloads_dir / f"recording-{int(_time.time())}.gif"
+        try:
+            images[0].save(
+                out,
+                save_all=True,
+                append_images=images[1:],
+                duration=int(interval * 1000),
+                loop=0,
+                optimize=True,
+            )
+        except Exception:  # noqa: BLE001
+            return None
+        return out
+
     # ── CDP screencast (push frames) ─────────────────────────────────────────
     def cdp_url(self) -> str | None:
         """Resolve the *page* CDP WebSocket URL (None when unavailable).

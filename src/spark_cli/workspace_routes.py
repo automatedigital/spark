@@ -197,6 +197,20 @@ class StreamTab(BaseModel):
     target_id: str | None = None
 
 
+class StreamTakeover(BaseModel):
+    paused: bool
+
+
+class StreamPick(BaseModel):
+    x: float
+    y: float
+
+
+class StreamRecord(BaseModel):
+    frames: int = 12
+    interval: float = 0.4
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -2540,6 +2554,105 @@ async def stream_browser_downloads(slug: str):
     except Exception:
         downloads = []
     return {"slug": slug, "downloads": downloads}
+
+
+@router.get("/projects/{slug}/preview/stream/takeover")
+def stream_browser_takeover_state(slug: str):
+    """Report whether the user currently holds control of the shared session."""
+    _project_dir(slug)
+    from tools import browser_takeover
+
+    return {"slug": slug, **browser_takeover.get_state(slug)}
+
+
+@router.post("/projects/{slug}/preview/stream/takeover")
+def stream_browser_takeover(slug: str, body: StreamTakeover):
+    """Grab (paused=True) or release (paused=False) control of the session.
+
+    While paused, the agent's mutating browser actions defer instead of firing,
+    so the user can solve a login/CAPTCHA and hand control back cleanly.
+    """
+    _project_dir(slug)
+    from tools import browser_takeover
+
+    browser_takeover.set_paused(body.paused, slug=slug)
+    return {"slug": slug, "paused": body.paused}
+
+
+@router.post("/projects/{slug}/preview/stream/pick")
+async def stream_browser_pick(slug: str, body: StreamPick):
+    """Element picker: describe the element at a pane coordinate for chat insert.
+
+    Returns ``{selector, tag, role, name, text, rect, url}`` plus a screenshot of
+    the current frame so the user can drop a structured reference into chat.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    picker = getattr(session, "pick_element", None)
+    if not callable(picker):
+        raise HTTPException(status_code=501, detail="Element picker not supported by backend")
+    try:
+        info = await asyncio.to_thread(picker, body.x, body.y)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Element pick failed: {exc}")
+    return {"slug": slug, "element": info or {}}
+
+
+@router.get("/projects/{slug}/preview/stream/screenshot")
+async def stream_browser_screenshot_to_chat(slug: str):
+    """Capture the current frame as PNG (saved to workspace) for send-to-chat.
+
+    Saves the PNG under the workspace downloads dir (so it surfaces in the Files
+    tab and can be referenced from chat) and also returns it base64-encoded.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    try:
+        png = await asyncio.to_thread(session.screenshot)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Screenshot failed: {exc}")
+    name = ""
+    downloads_dir = getattr(session, "downloads_dir", None)
+    if downloads_dir is not None:
+        try:
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+            name = f"screenshot-{int(time.time())}.png"
+            (downloads_dir / name).write_bytes(png)
+        except OSError:
+            name = ""
+    b64 = base64.b64encode(png).decode("ascii")
+    return {"slug": slug, "url": session.current_url, "png_base64": b64, "name": name}
+
+
+@router.post("/projects/{slug}/preview/stream/record")
+async def stream_browser_record(slug: str, body: StreamRecord):
+    """Record a short flow as an animated GIF in the workspace (bug reports).
+
+    Degrades gracefully (501) when the GIF encoder (Pillow) is unavailable or the
+    backend can't record, rather than crashing.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    recorder = getattr(session, "record_gif", None)
+    if not callable(recorder):
+        raise HTTPException(status_code=501, detail="Recording not supported by backend")
+    try:
+        path = await asyncio.to_thread(
+            lambda: recorder(frames=body.frames, interval=body.interval)
+        )
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Recording failed: {exc}")
+    if path is None:
+        raise HTTPException(
+            status_code=501,
+            detail="GIF recording unavailable (install Pillow to enable)",
+        )
+    from pathlib import Path as _Path
+
+    return {"slug": slug, "name": _Path(path).name}
 
 
 @router.post("/projects/{slug}/preview/stream/stop")

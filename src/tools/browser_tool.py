@@ -69,6 +69,7 @@ from agent.auxiliary_client import call_llm
 from core.spark_constants import get_spark_home
 from tools import browser_action_log
 from tools import browser_permission_gate
+from tools import browser_takeover
 
 try:
     from tools.website_policy import check_website_access
@@ -1404,7 +1405,12 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
         return camofox_navigate(url, task_id)
 
     effective_task_id = task_id or "default"
-    
+
+    # Take-over: defer navigation when the user holds control of the session.
+    paused = _takeover_check("navigate", task_id=effective_task_id)
+    if paused is not None:
+        return paused
+
     # Get session info to check if this is a new session
     # (will create one with features logged if not exists)
     session_info = _get_session_info(effective_task_id)
@@ -1595,6 +1601,30 @@ def _resolve_ref_label(task_id: str, ref: str) -> str:
     return ""
 
 
+def _takeover_check(action: str, *, task_id: str) -> Optional[str]:
+    """Return a JSON ``paused`` string when the user holds control, else None.
+
+    When the user has grabbed control of the shared preview session (take-over),
+    the agent's mutating actions must not fire — they'd fight the user for the
+    page. We return a structured message telling the agent to wait and retry once
+    the user hands control back, and record the deferral to the audit log.
+    """
+    if not browser_takeover.is_paused():
+        return None
+    browser_action_log.record_action(
+        action, status="paused", task_id=task_id, detail={"reason": "user_takeover"},
+    )
+    return json.dumps({
+        "success": False,
+        "paused": True,
+        "message": (
+            "The user has taken control of the shared browser (e.g. to solve a "
+            "login or CAPTCHA). Do not retry this action yet — wait for the user "
+            "to hand control back, then continue."
+        ),
+    }, ensure_ascii=False)
+
+
 def _gate_check(
     action: str,
     *,
@@ -1733,6 +1763,11 @@ def browser_click(ref: str, task_id: Optional[str] = None, confirm: bool = False
 
     effective_task_id = task_id or "default"
 
+    # Take-over: if the user holds control of the shared session, defer.
+    paused = _takeover_check("click", task_id=effective_task_id)
+    if paused is not None:
+        return paused
+
     # Ensure ref starts with @
     if not ref.startswith("@"):
         ref = f"@{ref}"
@@ -1792,6 +1827,11 @@ def browser_type(ref: str, text: str, task_id: Optional[str] = None, confirm: bo
         return camofox_type(ref, text, task_id)
 
     effective_task_id = task_id or "default"
+
+    # Take-over: defer to the user when they hold control of the session.
+    paused = _takeover_check("type", task_id=effective_task_id)
+    if paused is not None:
+        return paused
 
     # Ensure ref starts with @
     if not ref.startswith("@"):
