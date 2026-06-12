@@ -67,10 +67,10 @@ Goal: one browser instance that (a) renders/streams into the WebUI Preview tab a
 
 The sidebar's SESSIONS list (workspace folders) and the "NO WORKSPACE" list of old chats are both always fully expanded, making the sidebar very long.
 
-- [ ] Component: `src/spark_cli/web/src/components/sidebar/SidebarSessions.tsx` (the "No workspace" section is at ~line 458).
-- [ ] Rename the "NO WORKSPACE" section label to "CHATS".
-- [ ] Make the SESSIONS section header and the CHATS section header collapsible (chevron + click-to-toggle), persisting collapsed state (localStorage or existing UI-state store).
-- [ ] Keep individual workspace folders' existing expand/collapse behavior; this adds collapse at the *section* level.
+- [x] Component: `src/spark_cli/web/src/components/sidebar/SidebarSessions.tsx` (the "No workspace" section is at ~line 458).
+- [x] Rename the "NO WORKSPACE" section label to "CHATS".
+- [x] Make the SESSIONS section header and the CHATS section header collapsible (chevron + click-to-toggle), persisting collapsed state (localStorage or existing UI-state store).
+- [x] Keep individual workspace folders' existing expand/collapse behavior; this adds collapse at the *section* level.
 
 ## 4. UI: empty-state hero logo too dark on dark theme
 
