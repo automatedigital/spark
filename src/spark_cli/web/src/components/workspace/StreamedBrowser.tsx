@@ -6,6 +6,18 @@ import { mapToViewport } from "@/lib/browserCoords";
 
 const FRAME_INTERVAL_MS = 500;
 
+// Map a DOM KeyboardEvent into agent-browser's `press` combo syntax
+// (e.g. "Control+c", "Meta+a", "Shift+Tab") for keyboard-shortcut parity.
+function toComboKey(e: React.KeyboardEvent): string {
+  const mods: string[] = [];
+  if (e.ctrlKey) mods.push("Control");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey) mods.push("Meta");
+  const key = e.key === " " ? "Space" : e.key;
+  return [...mods, key].join("+");
+}
+
 export function StreamedBrowser({
   slug,
   url,
@@ -25,11 +37,15 @@ export function StreamedBrowser({
   // we surface a friendly install state instead of a broken <img>.
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
+  // True once the CDP screencast SSE is pushing frames; while active we stop
+  // polling /frame entirely. On 501/error we fall back to the polled source.
+  const [screencast, setScreencast] = useState(false);
+  const objectUrlRef = useRef<string | null>(null);
 
   const refetchFrame = useCallback(() => {
-    if (unavailable) return;
+    if (unavailable || screencast) return;
     setFrameSrc(api.streamBrowserFrameUrl(slug, Date.now()));
-  }, [slug, unavailable]);
+  }, [slug, unavailable, screencast]);
 
   // Start the session at the target URL, then begin polling frames.
   useEffect(() => {
@@ -37,6 +53,7 @@ export function StreamedBrowser({
     setLoading(true);
     setError(null);
     setUnavailable(null);
+    setScreencast(false);
     setFrameSrc("");
     api
       .streamBrowserNavigate(slug, url, persistent)
@@ -62,27 +79,75 @@ export function StreamedBrowser({
     };
   }, [slug, url, persistent, onTitle, refetchFrame]);
 
-  // Poll for fresh frames (paused while the backend is unavailable).
+  // Preferred frame source: CDP screencast over SSE (push). Each base64 JPEG
+  // frame is turned into a blob URL and shown in the <img>. If the stream
+  // fails to open (501/network) we silently leave `screencast` false and the
+  // polling effect below takes over — the v1 graceful fallback.
   useEffect(() => {
     if (unavailable) return;
+    let closed = false;
+    const es = new EventSource(api.streamBrowserScreencastUrl(slug));
+    es.onmessage = (ev) => {
+      if (closed) return;
+      try {
+        const data = JSON.parse(ev.data) as { frame?: string };
+        if (!data.frame) return;
+        const bytes = Uint8Array.from(atob(data.frame), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: "image/jpeg" });
+        const next = URL.createObjectURL(blob);
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = next;
+        setScreencast(true);
+        setFrameSrc(next);
+        setLoading(false);
+      } catch {
+        /* ignore malformed frame */
+      }
+    };
+    es.onerror = () => {
+      // 501 (unsupported) or a dropped connection → fall back to polling.
+      es.close();
+      if (!closed) setScreencast(false);
+    };
+    return () => {
+      closed = true;
+      es.close();
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, [slug, url, unavailable]);
+
+  // Poll for fresh frames — only while the screencast isn't active (fallback).
+  useEffect(() => {
+    if (unavailable || screencast) return;
     const id = window.setInterval(refetchFrame, FRAME_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [refetchFrame, unavailable]);
+  }, [refetchFrame, unavailable, screencast]);
 
   const sendInput = useCallback(
     (input: StreamBrowserInput) => {
       void api
         .streamBrowserInput(slug, input)
+        // Only nudge a polled refetch; the screencast pushes its own frames.
         .then(() => refetchFrame())
         .catch((e) => {
           const status = (e as { status?: number })?.status;
           const message = String((e as { message?: string })?.message ?? e);
           if (status === 501) setUnavailable(message);
-          else setError(message);
+          // 400 = input unsupported by the active backend; ignore quietly.
+          else if (status !== 400) setError(message);
         });
     },
     [slug, refetchFrame],
   );
+
+  const pointFromEvent = useCallback((clientX: number, clientY: number) => {
+    const img = imgRef.current;
+    if (!img) return null;
+    return mapToViewport(clientX, clientY, img.getBoundingClientRect());
+  }, []);
 
   const onInstall = useCallback(() => {
     setInstalling(true);
@@ -149,17 +214,22 @@ export function StreamedBrowser({
           alt="Streamed browser"
           tabIndex={0}
           onClick={(e) => {
-            const img = imgRef.current;
-            if (!img) return;
-            const point = mapToViewport(e.clientX, e.clientY, img.getBoundingClientRect());
+            const point = pointFromEvent(e.clientX, e.clientY);
             if (point) sendInput({ type: "click", x: point.x, y: point.y });
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            const point = pointFromEvent(e.clientX, e.clientY);
+            if (point) sendInput({ type: "rightclick", x: point.x, y: point.y });
           }}
           onWheel={(e) => sendInput({ type: "scroll", dx: e.deltaX, dy: e.deltaY })}
           onKeyDown={(e) => {
+            // Plain printable char → type it; everything else (incl. modifier
+            // combos like Ctrl/Cmd+C) → forward as a `press` combo for parity.
             if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
               sendInput({ type: "type", text: e.key });
             } else {
-              sendInput({ type: "key", key: e.key });
+              sendInput({ type: "key", key: toComboKey(e) });
             }
             e.preventDefault();
           }}

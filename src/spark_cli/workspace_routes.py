@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import base64
 import fcntl
+import ipaddress
 import json
 import logging
 import mimetypes
@@ -20,10 +22,9 @@ import subprocess
 import termios
 import threading
 import time
-import uuid
-import ipaddress
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -163,13 +164,17 @@ class StreamNavigate(BaseModel):
 
 
 class StreamInput(BaseModel):
-    type: str  # click | scroll | type | key | back | forward
+    # click | rightclick | scroll | type | key | back | forward
+    # | upload | clipboard-write | clipboard-read | copy | paste
+    type: str
     x: float | None = None
     y: float | None = None
     dx: float | None = None
     dy: float | None = None
     text: str | None = None
     key: str | None = None
+    button: str | None = None  # left | right | middle (for click)
+    files: list[str] | None = None  # absolute paths for upload dialogs
 
 
 class StreamLog(BaseModel):
@@ -2274,14 +2279,111 @@ async def stream_browser_frame(slug: str):
     )
 
 
+@router.get("/projects/{slug}/preview/stream/screencast")
+async def stream_browser_screencast(request: Request, slug: str):
+    """Push CDP-screencast JPEG frames to the pane as a base64 SSE stream.
+
+    Lower-latency than polling ``/frame``: Chromium pushes frames as they paint
+    (``Page.startScreencast``) and the backend acks + forwards them here. When
+    the active backend can't start a screencast (Playwright fallback, no CDP, or
+    no ``websockets`` lib) this returns **501** so the pane gracefully falls back
+    to the polled ``/frame`` source — we never ship a half-working stream.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    start_screencast = getattr(session, "start_screencast", None)
+    if not callable(start_screencast):
+        raise HTTPException(status_code=501, detail="Screencast not supported by backend")
+
+    frames: queue.Queue[bytes | None] = queue.Queue(maxsize=4)
+
+    def _on_frame(frame: bytes) -> None:
+        # Drop the oldest frame under back-pressure so we always show the latest.
+        try:
+            frames.put_nowait(frame)
+        except queue.Full:
+            try:
+                frames.get_nowait()
+                frames.put_nowait(frame)
+            except queue.Empty:
+                pass
+
+    try:
+        handle = await asyncio.to_thread(start_screencast, _on_frame)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Screencast failed: {exc}")
+    if handle is None:
+        # Couldn't establish a screencast → tell the client to keep polling.
+        raise HTTPException(status_code=501, detail="Screencast unavailable")
+
+    width, height = session.viewport
+
+    async def event_generator():
+        try:
+            yield (
+                "event: meta\n"
+                f"data: {json.dumps({'viewport': f'{width}x{height}'})}\n\n"
+            )
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    frame = await asyncio.to_thread(frames.get, True, 20)
+                except queue.Empty:
+                    yield "event: ping\ndata: {}\n\n"
+                    continue
+                if frame is None:
+                    break
+                b64 = base64.b64encode(frame).decode("ascii")
+                yield f"data: {json.dumps({'frame': b64})}\n\n"
+        finally:
+            try:
+                handle.stop()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @router.post("/projects/{slug}/preview/stream/input")
 async def stream_browser_input(slug: str, body: StreamInput):
     session, browser_unavailable = _streamed_session(slug)
+    extra: dict[str, Any] = {}
+
+    def _require(name: str):
+        """Resolve an optional session method, 400ing if the backend lacks it.
+
+        The Playwright fallback only implements the v1 surface; the extended
+        input-parity verbs (right-click, upload, clipboard) live on the
+        agent-browser session, so we degrade gracefully rather than crash.
+        """
+        fn = getattr(session, name, None)
+        if not callable(fn):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Input '{body.type}' not supported by the active preview backend",
+            )
+        return fn
 
     def _apply() -> None:
         kind = body.type
         if kind == "click":
-            session.click(body.x or 0, body.y or 0)
+            button = body.button if body.button in {"left", "right", "middle"} else "left"
+            if button == "left":
+                session.click(body.x or 0, body.y or 0)
+            else:
+                _require("click")(body.x or 0, body.y or 0, button=button)
+        elif kind == "rightclick":
+            _require("right_click")(body.x or 0, body.y or 0)
         elif kind == "scroll":
             session.scroll(body.dx or 0, body.dy or 0)
         elif kind == "type":
@@ -2292,6 +2394,16 @@ async def stream_browser_input(slug: str, body: StreamInput):
             session.go_back()
         elif kind == "forward":
             session.go_forward()
+        elif kind == "upload":
+            _require("upload_files")(body.files or [])
+        elif kind == "clipboard-write":
+            _require("clipboard_write")(body.text or "")
+        elif kind == "clipboard-read":
+            extra["clipboard"] = _require("clipboard_read")()
+        elif kind == "copy":
+            _require("clipboard_copy")()
+        elif kind == "paste":
+            _require("clipboard_paste")()
         else:
             raise HTTPException(status_code=400, detail=f"Unknown input type: {kind}")
 
@@ -2303,7 +2415,13 @@ async def stream_browser_input(slug: str, body: StreamInput):
         raise HTTPException(status_code=501, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Input failed: {exc}")
-    return {"slug": slug, "ok": True, "url": session.current_url, "title": session.title}
+    return {
+        "slug": slug,
+        "ok": True,
+        "url": session.current_url,
+        "title": session.title,
+        **extra,
+    }
 
 
 @router.post("/projects/{slug}/preview/stream/stop")

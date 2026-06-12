@@ -117,6 +117,54 @@ class TestWebServerEndpoints:
         assert "triage" in data["columns"]
         assert "user_review" in data["columns"]
 
+    def test_stream_screencast_501_when_backend_unsupported(self):
+        """A backend without start_screencast → 501 so the pane keeps polling
+        the /frame source (Item 2b graceful fallback)."""
+        import spark_cli.workspace_routes as wr
+
+        class _NoScreencast:
+            viewport = (1280, 800)
+
+        with patch.object(wr, "_streamed_session", return_value=(_NoScreencast(), RuntimeError)):
+            resp = self.client.get("/api/workspace/projects/demo/preview/stream/screencast")
+        assert resp.status_code == 501
+
+    def test_stream_input_unsupported_verb_returns_400(self):
+        """Extended input verbs (clipboard/upload) 400 on a backend that lacks
+        them rather than crashing — the Playwright fallback degrades cleanly."""
+        import spark_cli.workspace_routes as wr
+
+        class _MinimalSession:
+            current_url = "https://ex.com"
+            title = "Ex"
+            # No clipboard_write method → _require() must 400.
+
+        with patch.object(wr, "_streamed_session", return_value=(_MinimalSession(), RuntimeError)):
+            resp = self.client.post(
+                "/api/workspace/projects/demo/preview/stream/input",
+                json={"type": "clipboard-write", "text": "hi"},
+            )
+        assert resp.status_code == 400
+
+    def test_stream_input_clipboard_read_returns_value(self):
+        """clipboard-read surfaces the page clipboard text in the JSON body."""
+        import spark_cli.workspace_routes as wr
+
+        class _ClipSession:
+            current_url = "https://ex.com"
+            title = "Ex"
+
+            def clipboard_read(self):
+                return "copied-text"
+
+        with patch.object(wr, "_streamed_session", return_value=(_ClipSession(), RuntimeError)):
+            resp = self.client.post(
+                "/api/workspace/projects/demo/preview/stream/input",
+                json={"type": "clipboard-read"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["clipboard"] == "copied-text"
+
     def test_available_models_codex_is_strict(self):
         """Managed OAuth catalogs (openai-codex) return a fixed list + strict=True
         so the Config editor renders a dropdown."""
