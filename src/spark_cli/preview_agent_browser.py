@@ -88,8 +88,7 @@ class ScreencastHandle:
 
     def start(self) -> None:
         try:
-            import asyncio  # noqa: F401 — probe stdlib availability early
-            import websockets  # noqa: F401
+            import websockets  # noqa: F401 — probe optional dep availability
         except ImportError as exc:  # pragma: no cover - dep guard
             raise ScreencastUnavailable(
                 "CDP screencast requires the 'websockets' package; "
@@ -116,6 +115,8 @@ class ScreencastHandle:
             pass
 
     async def _pump(self) -> None:
+        import asyncio
+
         import websockets
 
         next_id = 0
@@ -146,7 +147,7 @@ class ScreencastHandle:
                 while not self._stop.is_set():
                     try:
                         raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         continue
                     try:
                         msg = json.loads(raw)
@@ -181,6 +182,24 @@ class ScreencastHandle:
 
 def _safe_slug(slug: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]", "-", slug)
+
+
+# Range for per-session CDP remote-debugging ports (avoids well-known ports).
+_CDP_PORT_BASE = 41000
+_CDP_PORT_SPAN = 2000
+
+
+def _cdp_port_for(session: str) -> int:
+    """Deterministic CDP port in a high range, derived from the session name.
+
+    Stable across CLI invocations so the same browser/port is reused for a
+    given workspace; collisions across workspaces are tolerated because each
+    session launches at most one browser bound to its own port.
+    """
+    import hashlib
+
+    digest = hashlib.sha1(session.encode("utf-8")).hexdigest()
+    return _CDP_PORT_BASE + (int(digest[:8], 16) % _CDP_PORT_SPAN)
 
 
 def session_name(slug: str) -> str:
@@ -231,6 +250,11 @@ class AgentBrowserSession:
         self.title: str = ""
         self._lock = threading.RLock()
         self._closed = False
+        # Deterministic per-session CDP remote-debugging port. agent-browser
+        # launches its own Chromium; we expose CDP via ``--remote-debugging-port``
+        # so the screencast path (Item 2b) can connect. The port is derived from
+        # the session name so repeated CLI invocations reuse the same browser.
+        self._cdp_port: int = _cdp_port_for(self.session)
         if _agent_browser_bin() is None:
             raise AgentBrowserUnavailable(
                 "agent-browser is not installed — run `spark doctor` or "
@@ -264,6 +288,10 @@ class AgentBrowserSession:
             self.session,
             "--profile",
             str(self.profile_dir),
+            # Expose CDP on a deterministic port so the screencast can connect.
+            # Only honoured at browser launch; harmless on reuse.
+            "--args",
+            f"--remote-debugging-port={self._cdp_port}",
             "--json",
             "--max-output",
             str(_MAX_OUTPUT),
@@ -378,43 +406,79 @@ class AgentBrowserSession:
         # `upload <sel> <files...>` — target the focused/last file input.
         self._run(["upload", "input[type=file]", *clean])
 
+    def _eval(self, expression: str) -> Any:
+        """Evaluate a JS expression in the page, returning the ``result`` value.
+
+        agent-browser's ``eval`` envelope is ``{origin, result}``; we surface
+        ``result``. Failures raise :class:`AgentBrowserUnavailable`.
+        """
+        data = self._run(["eval", expression])
+        if isinstance(data, dict):
+            if "result" in data:
+                return data["result"]
+            return data.get("data")
+        return None
+
     def clipboard_read(self) -> str:
-        """Read the page clipboard text (paste source)."""
+        """Read clipboard text (paste source).
+
+        agent-browser has no clipboard verb, so we read through the page's
+        ``navigator.clipboard`` API via ``eval``. Returns ``""`` when the page
+        denies clipboard access (headless permissions, insecure origin, etc.).
+        """
         try:
-            data = self._run(["clipboard", "read"])
+            value = self._eval("navigator.clipboard.readText()")
         except AgentBrowserUnavailable:
             return ""
-        if isinstance(data, dict):
-            for key in ("text", "data", "value"):
-                value = data.get(key)
-                if isinstance(value, str):
-                    return value
-        return ""
+        return value if isinstance(value, str) else ""
 
     def clipboard_write(self, text: str) -> None:
         """Write text into the page clipboard (so the page can paste it)."""
-        self._run(["clipboard", "write", text])
+        payload = json.dumps(text)
+        self._eval(f"navigator.clipboard.writeText({payload})")
 
     def clipboard_copy(self) -> None:
-        """Copy the page's current selection (simulates Ctrl/Cmd+C)."""
-        self._run(["clipboard", "copy"])
+        """Copy the page's current selection (simulates Ctrl/Cmd+C).
+
+        Uses ``Control+c`` (cross-platform Chromium maps it to the copy
+        command); the page's own copy handlers fire as with a real shortcut.
+        """
+        self.press_key("Control+c")
 
     def clipboard_paste(self) -> None:
         """Paste clipboard contents into the page (simulates Ctrl/Cmd+V)."""
-        self._run(["clipboard", "paste"])
+        self.press_key("Control+v")
 
     # ── CDP screencast (push frames) ─────────────────────────────────────────
     def cdp_url(self) -> str | None:
-        """Resolve the session's CDP WebSocket URL (None when unavailable)."""
-        try:
-            data = self._run(["get", "cdp-url"])
-        except AgentBrowserUnavailable:
+        """Resolve the *page* CDP WebSocket URL (None when unavailable).
+
+        agent-browser launches Chromium with ``--remote-debugging-port`` (see
+        :meth:`_run`); we query the DevTools HTTP discovery endpoint to find the
+        first ``page`` target's ``webSocketDebuggerUrl`` — the target that
+        ``Page.startScreencast`` must be driven against. Any failure (port not
+        bound yet, no page target) returns ``None`` → polled fallback.
+        """
+        if self._closed:
             return None
-        if isinstance(data, dict):
-            for key in ("cdp-url", "cdpUrl", "url", "data"):
-                value = data.get(key)
-                if isinstance(value, str) and value.startswith("ws"):
-                    return value
+        import urllib.request
+
+        url = f"http://127.0.0.1:{self._cdp_port}/json/list"
+        try:
+            with urllib.request.urlopen(url, timeout=2.0) as resp:  # noqa: S310
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 — discovery best-effort → fallback
+            return None
+        if not isinstance(payload, list):
+            return None
+        for target in payload:
+            if not isinstance(target, dict):
+                continue
+            if target.get("type") != "page":
+                continue
+            ws = target.get("webSocketDebuggerUrl")
+            if isinstance(ws, str) and ws.startswith("ws"):
+                return ws
         return None
 
     def start_screencast(self, on_frame: Callable[[bytes], None]) -> ScreencastHandle | None:

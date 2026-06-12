@@ -43,8 +43,8 @@ Goal: one browser instance that (a) renders/streams into the WebUI Preview tab a
 **Depends on item 2 being merged** — all of this targets the agent-browser backend. Do not build against the Playwright streamer.
 
 **Streaming quality**
-- [ ] Replace polled screenshot frames with CDP screencast (push frames) — lower latency, smoother scrolling; consider WebRTC later if needed.
-- [ ] Proper input parity: keyboard shortcuts, scroll momentum, right-click, file upload dialogs, clipboard in/out.
+- [x] Replace polled screenshot frames with CDP screencast (push frames) — lower latency, smoother scrolling; consider WebRTC later if needed.
+- [x] Proper input parity: keyboard shortcuts, scroll momentum, right-click, file upload dialogs, clipboard in/out.
 
 **Browser chrome**
 - [ ] URL bar with back/forward/reload, multiple tabs, pop-out to a larger window/fullscreen.

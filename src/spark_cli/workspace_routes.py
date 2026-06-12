@@ -6,6 +6,7 @@ import asyncio
 import atexit
 import base64
 import fcntl
+import ipaddress
 import json
 import logging
 import mimetypes
@@ -21,10 +22,9 @@ import subprocess
 import termios
 import threading
 import time
-import uuid
-import ipaddress
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
