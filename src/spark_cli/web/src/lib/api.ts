@@ -64,7 +64,9 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`${res.status}: ${text}`);
+    const err = new Error(`${res.status}: ${text}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -941,6 +943,17 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       },
+    ),
+
+  streamBrowserBackend: (slug: string) =>
+    fetchJSON<{ slug: string; backend: string; available: boolean; detail: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/backend`,
+    ),
+
+  installStreamBrowser: (slug: string) =>
+    fetchJSON<{ slug: string; ok: boolean; error?: string | null; version?: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/install`,
+      { method: "POST" },
     ),
 
   stopStreamBrowser: (slug: string) =>

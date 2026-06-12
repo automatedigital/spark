@@ -1056,6 +1056,8 @@ def _run_agent_browser(slug: str, args: list[str], timeout: float = 12.0) -> dic
         binary,
         "--session",
         _agent_browser_session_name(slug),
+        "--profile",
+        str(get_spark_home() / "browser" / re.sub(r"[^a-zA-Z0-9_.-]", "-", slug) / "persistent"),
         "--json",
         "--max-output",
         str(_AGENT_BROWSER_MAX_OUTPUT),
@@ -2144,9 +2146,65 @@ def _emit_stream_log(slug: str, text: str, stream: str = "console") -> None:
     _preview_emit(slug, entry)
 
 
+def _resolve_preview_backend() -> str:
+    """Resolve the configured WebUI preview browser backend.
+
+    Returns one of ``"agent-browser"`` or ``"playwright"`` after applying the
+    ``display.preview_browser_backend`` flag and availability fallback:
+
+      auto          -> agent-browser when available, else playwright
+      agent-browser -> agent-browser (no fallback)
+      playwright    -> playwright
+    """
+    try:
+        from spark_cli.config import load_config
+
+        flag = str(
+            (load_config().get("display") or {}).get("preview_browser_backend", "auto")
+        ).strip().lower()
+    except Exception:
+        flag = "auto"
+    if flag == "playwright":
+        return "playwright"
+    if flag == "agent-browser":
+        return "agent-browser"
+    # auto (or any unknown value): prefer agent-browser when present.
+    try:
+        from spark_cli.preview_agent_browser import is_available
+
+        if is_available():
+            return "agent-browser"
+    except Exception:
+        pass
+    return "playwright"
+
+
 def _streamed_session(slug: str, *, persistent: bool = True):
-    """Resolve the per-workspace streamed browser session, mapping errors to HTTP."""
+    """Resolve the per-workspace streamed browser session, mapping errors to HTTP.
+
+    Selects the agent-browser-backed session (shared with the agent's browser
+    tools) or the Playwright ``StreamedBrowserSession`` based on
+    ``display.preview_browser_backend`` + availability. Both satisfy the same
+    session interface the streamed endpoints call.
+    """
     _project_dir(slug)
+    backend = _resolve_preview_backend()
+    session: Any
+    if backend == "agent-browser":
+        try:
+            from spark_cli.preview_agent_browser import (
+                AgentBrowserUnavailable,
+                get_agent_browser_session,
+            )
+
+            session = get_agent_browser_session(slug)
+            return session, AgentBrowserUnavailable
+        except HTTPException:
+            raise
+        except Exception as exc:
+            # Missing agent-browser/Chromium -> surface the friendly install/error
+            # state (501) to the pane rather than a hard 502.
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
     try:
         from spark_cli.preview_browser import BrowserUnavailable, get_streamed_session
     except Exception as exc:  # pragma: no cover - import guard
@@ -2231,9 +2289,13 @@ async def stream_browser_input(slug: str, body: StreamInput):
 @router.post("/projects/{slug}/preview/stream/stop")
 def stream_browser_stop(slug: str):
     _project_dir(slug)
+    from spark_cli.preview_agent_browser import close_agent_browser_session
     from spark_cli.preview_browser import close_streamed_session
 
-    return {"slug": slug, "stopped": close_streamed_session(slug)}
+    # Stop whichever backend(s) hold a live session for this workspace.
+    stopped = close_streamed_session(slug)
+    stopped = close_agent_browser_session(slug) or stopped
+    return {"slug": slug, "stopped": stopped}
 
 
 @router.get("/projects/{slug}/preview/stream/cookies")
@@ -2251,9 +2313,62 @@ async def stream_browser_cookies(slug: str):
 @router.post("/projects/{slug}/preview/stream/clear")
 def stream_browser_clear(slug: str):
     _project_dir(slug)
+    from spark_cli.preview_agent_browser import (
+        clear_browsing_data as clear_agent_browser_data,
+    )
     from spark_cli.preview_browser import clear_browsing_data
 
-    return {"slug": slug, "cleared": clear_browsing_data(slug)}
+    # Both backends share the SPARK_HOME/browser/<slug> layout; clear both so a
+    # backend switch can't leave a stale profile behind.
+    cleared = clear_browsing_data(slug)
+    cleared = clear_agent_browser_data(slug) or cleared
+    return {"slug": slug, "cleared": cleared}
+
+
+@router.get("/projects/{slug}/preview/stream/backend")
+def stream_browser_backend(slug: str):
+    """Report the resolved streamed-browser backend + its availability.
+
+    The frontend uses this to render a friendly install/error state instead of a
+    broken ``<img>`` when agent-browser/Chromium (or Playwright) is missing.
+    """
+    _project_dir(slug)
+    backend = _resolve_preview_backend()
+    available = True
+    detail = "ready"
+    if backend == "agent-browser":
+        try:
+            from spark_cli.browser_runtime import agent_browser_ready
+
+            available, detail = agent_browser_ready()
+        except Exception as exc:  # pragma: no cover - import guard
+            available, detail = False, str(exc)
+    else:
+        try:
+            import importlib.util
+
+            if importlib.util.find_spec("playwright") is None:
+                available, detail = False, "Playwright is not installed"
+        except Exception as exc:  # pragma: no cover
+            available, detail = False, str(exc)
+    return {"slug": slug, "backend": backend, "available": available, "detail": detail}
+
+
+@router.post("/projects/{slug}/preview/stream/install")
+async def stream_browser_install(slug: str):
+    """Install the agent-browser runtime + Chromium for the preview pane."""
+    _project_dir(slug)
+
+    def _install() -> dict[str, Any]:
+        from spark_cli.browser_runtime import install_agent_browser
+
+        return install_agent_browser(quiet=True)
+
+    try:
+        result = await asyncio.to_thread(_install)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Install failed: {exc}")
+    return {"slug": slug, **result}
 
 
 @router.post("/projects/{slug}/preview/stream/log")

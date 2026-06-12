@@ -591,6 +591,11 @@ DEFAULT_CONFIG = {
         "tool_progress_overrides": {},  # DEPRECATED — use display.platforms instead
         "tool_preview_length": 0,  # Max chars for tool call previews (0 = no limit, show full paths/commands)
         "platforms": {},  # Per-platform display overrides: {"telegram": {"tool_progress": "all"}, "slack": {"tool_progress": "off"}}
+        # WebUI Preview-tab streamed browser backend:
+        #   "auto"          -> use agent-browser when available, else fall back to Playwright
+        #   "agent-browser" -> always agent-browser (shares the agent's browser session)
+        #   "playwright"    -> always the Playwright StreamedBrowserSession
+        "preview_browser_backend": "auto",
     },
     # Privacy settings
     "privacy": {
@@ -822,7 +827,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 22,
+    "_config_version": 23,
 }
 
 # =============================================================================
@@ -2489,6 +2494,20 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             save_config(config)
             if not quiet:
                 print("  ✓ Backfilled 'clarify' toolset into existing platform config")
+
+    # ── Version 22 → 23: add display.preview_browser_backend (WebUI browser pane) ──
+    if current_ver < 23:
+        config = read_raw_config()
+        display = config.get("display", {})
+        if not isinstance(display, dict):
+            display = {}
+        if "preview_browser_backend" not in display:
+            display["preview_browser_backend"] = "auto"
+            config["display"] = display
+            save_config(config)
+            results["config_added"].append("display.preview_browser_backend=auto (default)")
+            if not quiet:
+                print("  ✓ Added display.preview_browser_backend=auto")
 
     if current_ver < latest_ver and not quiet:
         print(f"Config version: {current_ver} → {latest_ver}")
