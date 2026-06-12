@@ -182,6 +182,35 @@ class StreamLog(BaseModel):
     stream: str = "console"  # console | network | error
 
 
+class StreamViewport(BaseModel):
+    width: int
+    height: int
+
+
+class StreamEmulate(BaseModel):
+    dark: bool | None = None  # True=force dark, False=force light, None=clear
+
+
+class StreamTab(BaseModel):
+    action: str  # new | switch | close
+    url: str | None = None
+    target_id: str | None = None
+
+
+class StreamTakeover(BaseModel):
+    paused: bool
+
+
+class StreamPick(BaseModel):
+    x: float
+    y: float
+
+
+class StreamRecord(BaseModel):
+    frames: int = 12
+    interval: float = 0.4
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -2422,6 +2451,254 @@ async def stream_browser_input(slug: str, body: StreamInput):
         "title": session.title,
         **extra,
     }
+
+
+@router.post("/projects/{slug}/preview/stream/viewport")
+async def stream_browser_viewport(slug: str, body: StreamViewport):
+    """Resize the streamed viewport (responsive presets). 501 if unsupported."""
+    session, browser_unavailable = _streamed_session(slug)
+    setter = getattr(session, "set_viewport", None)
+    if not callable(setter):
+        raise HTTPException(status_code=501, detail="Viewport resize not supported by backend")
+    try:
+        await asyncio.to_thread(setter, body.width, body.height)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Viewport resize failed: {exc}")
+    w, h = session.viewport
+    return {"slug": slug, "width": w, "height": h}
+
+
+@router.post("/projects/{slug}/preview/stream/emulate")
+async def stream_browser_emulate(slug: str, body: StreamEmulate):
+    """Toggle dark-mode (prefers-color-scheme) emulation. 501 if unsupported."""
+    session, browser_unavailable = _streamed_session(slug)
+    setter = getattr(session, "set_emulated_media", None)
+    if not callable(setter):
+        raise HTTPException(status_code=501, detail="Media emulation not supported by backend")
+    try:
+        await asyncio.to_thread(lambda: setter(dark=body.dark))
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Emulation failed: {exc}")
+    return {"slug": slug, "dark": body.dark}
+
+
+@router.get("/projects/{slug}/preview/stream/tabs")
+async def stream_browser_tabs(slug: str):
+    """List open tabs/targets. Empty list when the backend can't enumerate them."""
+    session, browser_unavailable = _streamed_session(slug)
+    lister = getattr(session, "list_tabs", None)
+    if not callable(lister):
+        return {"slug": slug, "tabs": []}
+    try:
+        tabs = await asyncio.to_thread(lister)
+    except browser_unavailable:
+        tabs = []
+    except Exception:
+        tabs = []
+    return {"slug": slug, "tabs": tabs}
+
+
+@router.post("/projects/{slug}/preview/stream/tabs")
+async def stream_browser_tab_action(slug: str, body: StreamTab):
+    """Open/switch/close a tab. 501 when the backend has no multi-tab support."""
+    session, browser_unavailable = _streamed_session(slug)
+    action = body.action
+
+    def _apply() -> dict[str, Any]:
+        if action == "new":
+            fn = getattr(session, "new_tab", None)
+            if not callable(fn):
+                raise HTTPException(status_code=501, detail="Tabs not supported by backend")
+            result: dict[str, Any] = fn(body.url or "about:blank")
+            return result
+        if action == "switch":
+            fn = getattr(session, "switch_tab", None)
+            if not callable(fn) or not body.target_id:
+                raise HTTPException(status_code=400, detail="switch requires target_id")
+            result = fn(body.target_id)
+            return result
+        if action == "close":
+            fn = getattr(session, "close_tab", None)
+            if not callable(fn) or not body.target_id:
+                raise HTTPException(status_code=400, detail="close requires target_id")
+            fn(body.target_id)
+            return {}
+        raise HTTPException(status_code=400, detail=f"Unknown tab action: {action}")
+
+    try:
+        result = await asyncio.to_thread(_apply)
+    except HTTPException:
+        raise
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Tab action failed: {exc}")
+    return {"slug": slug, "ok": True, **result}
+
+
+@router.get("/projects/{slug}/preview/stream/downloads")
+async def stream_browser_downloads(slug: str):
+    """List files the previewed browser downloaded into the workspace."""
+    session, browser_unavailable = _streamed_session(slug)
+    lister = getattr(session, "list_downloads", None)
+    if not callable(lister):
+        return {"slug": slug, "downloads": []}
+    try:
+        downloads = await asyncio.to_thread(lister)
+    except browser_unavailable:
+        downloads = []
+    except Exception:
+        downloads = []
+    return {"slug": slug, "downloads": downloads}
+
+
+@router.get("/projects/{slug}/preview/stream/takeover")
+def stream_browser_takeover_state(slug: str):
+    """Report whether the user currently holds control of the shared session."""
+    _project_dir(slug)
+    from tools import browser_takeover
+
+    return {"slug": slug, **browser_takeover.get_state(slug)}
+
+
+@router.post("/projects/{slug}/preview/stream/takeover")
+def stream_browser_takeover(slug: str, body: StreamTakeover):
+    """Grab (paused=True) or release (paused=False) control of the session.
+
+    While paused, the agent's mutating browser actions defer instead of firing,
+    so the user can solve a login/CAPTCHA and hand control back cleanly.
+    """
+    _project_dir(slug)
+    from tools import browser_takeover
+
+    browser_takeover.set_paused(body.paused, slug=slug)
+    return {"slug": slug, "paused": body.paused}
+
+
+@router.post("/projects/{slug}/preview/stream/pick")
+async def stream_browser_pick(slug: str, body: StreamPick):
+    """Element picker: describe the element at a pane coordinate for chat insert.
+
+    Returns ``{selector, tag, role, name, text, rect, url}`` plus a screenshot of
+    the current frame so the user can drop a structured reference into chat.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    picker = getattr(session, "pick_element", None)
+    if not callable(picker):
+        raise HTTPException(status_code=501, detail="Element picker not supported by backend")
+    try:
+        info = await asyncio.to_thread(picker, body.x, body.y)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Element pick failed: {exc}")
+    return {"slug": slug, "element": info or {}}
+
+
+@router.get("/projects/{slug}/preview/stream/screenshot")
+async def stream_browser_screenshot_to_chat(slug: str):
+    """Capture the current frame as PNG (saved to workspace) for send-to-chat.
+
+    Saves the PNG under the workspace downloads dir (so it surfaces in the Files
+    tab and can be referenced from chat) and also returns it base64-encoded.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    try:
+        png = await asyncio.to_thread(session.screenshot)
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Screenshot failed: {exc}")
+    name = ""
+    downloads_dir = getattr(session, "downloads_dir", None)
+    if downloads_dir is not None:
+        try:
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+            name = f"screenshot-{int(time.time())}.png"
+            (downloads_dir / name).write_bytes(png)
+        except OSError:
+            name = ""
+    b64 = base64.b64encode(png).decode("ascii")
+    return {"slug": slug, "url": session.current_url, "png_base64": b64, "name": name}
+
+
+@router.post("/projects/{slug}/preview/stream/record")
+async def stream_browser_record(slug: str, body: StreamRecord):
+    """Record a short flow as an animated GIF in the workspace (bug reports).
+
+    Degrades gracefully (501) when the GIF encoder (Pillow) is unavailable or the
+    backend can't record, rather than crashing.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    recorder = getattr(session, "record_gif", None)
+    if not callable(recorder):
+        raise HTTPException(status_code=501, detail="Recording not supported by backend")
+    try:
+        path = await asyncio.to_thread(
+            lambda: recorder(frames=body.frames, interval=body.interval)
+        )
+    except browser_unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Recording failed: {exc}")
+    if path is None:
+        raise HTTPException(
+            status_code=501,
+            detail="GIF recording unavailable (install Pillow to enable)",
+        )
+    from pathlib import Path as _Path
+
+    return {"slug": slug, "name": _Path(path).name}
+
+
+@router.get("/projects/{slug}/preview/stream/console")
+async def stream_browser_console(slug: str, since_seq: int = Query(default=0, ge=0)):
+    """Captured console/network/exception entries from the previewed page.
+
+    Powers the pane's console drawer (and is available to the agent via the
+    existing browser console tool). Empty list when the backend can't capture
+    (Playwright fallback, no CDP, or no ``websockets`` lib) — never a crash.
+    """
+    session, browser_unavailable = _streamed_session(slug)
+    getter = getattr(session, "console_entries", None)
+    if not callable(getter):
+        return {"slug": slug, "entries": []}
+    try:
+        entries = await asyncio.to_thread(lambda: getter(since_seq=since_seq))
+    except browser_unavailable:
+        entries = []
+    except Exception:
+        entries = []
+    return {"slug": slug, "entries": entries}
+
+
+@router.get("/projects/{slug}/preview/detect-servers")
+def detect_dev_servers(slug: str):
+    """Auto-detect running local dev servers owned by this workspace.
+
+    Scans loopback listeners, keeps the ones whose process cwd is inside the
+    project dir and that respond to an HTTP probe, and returns candidate URLs to
+    offer in the pane's URL bar.
+    """
+    project_dir = _project_dir(slug)
+    seen: set[int] = set()
+    servers: list[dict[str, Any]] = []
+    for pid, port in _list_loopback_listeners():
+        if port in seen:
+            continue
+        cwd = _process_cwd(pid)
+        if not _path_is_inside(cwd, project_dir):
+            continue
+        url = f"http://127.0.0.1:{port}"
+        if not _probe_preview_url(url):
+            continue
+        seen.add(port)
+        servers.append({"url": url, "port": port})
+    return {"slug": slug, "servers": servers}
 
 
 @router.post("/projects/{slug}/preview/stream/stop")

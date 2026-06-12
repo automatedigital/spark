@@ -954,6 +954,109 @@ export const api = {
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/backend`,
     ),
 
+  /** Resize the streamed viewport (responsive presets). */
+  streamBrowserViewport: (slug: string, width: number, height: number) =>
+    fetchJSON<{ slug: string; width: number; height: number }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/viewport`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ width, height }),
+      },
+    ),
+
+  /** Toggle dark-mode (prefers-color-scheme) emulation; dark=null clears. */
+  streamBrowserEmulate: (slug: string, dark: boolean | null) =>
+    fetchJSON<{ slug: string; dark: boolean | null }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/emulate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dark }),
+      },
+    ),
+
+  streamBrowserTabs: (slug: string) =>
+    fetchJSON<{ slug: string; tabs: StreamBrowserTab[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/tabs`,
+    ),
+
+  streamBrowserTabAction: (
+    slug: string,
+    action: "new" | "switch" | "close",
+    opts?: { url?: string; target_id?: string },
+  ) =>
+    fetchJSON<{ slug: string; ok: boolean; url?: string; title?: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/tabs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...opts }),
+      },
+    ),
+
+  streamBrowserDownloads: (slug: string) =>
+    fetchJSON<{ slug: string; downloads: StreamBrowserDownload[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/downloads`,
+    ),
+
+  /** Whether the user currently holds control (take-over) of the session. */
+  streamBrowserTakeoverState: (slug: string) =>
+    fetchJSON<{ slug: string; paused: boolean; ts: number }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/takeover`,
+    ),
+
+  /** Grab (true) or release (false) control of the shared session. */
+  streamBrowserTakeover: (slug: string, paused: boolean) =>
+    fetchJSON<{ slug: string; paused: boolean }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/takeover`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused }),
+      },
+    ),
+
+  /** Element picker: describe the element at a pane coordinate. */
+  streamBrowserPick: (slug: string, x: number, y: number) =>
+    fetchJSON<{ slug: string; element: StreamBrowserPickedElement }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/pick`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ x, y }),
+      },
+    ),
+
+  /** Capture the current frame as PNG (saved to workspace) for send-to-chat. */
+  streamBrowserScreenshot: (slug: string) =>
+    fetchJSON<{ slug: string; url: string; png_base64: string; name: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/screenshot`,
+    ),
+
+  /** Record a short flow as an animated GIF saved to the workspace. */
+  streamBrowserRecord: (slug: string, frames = 12, interval = 0.4) =>
+    fetchJSON<{ slug: string; name: string }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/record`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frames, interval }),
+      },
+    ),
+
+  /** Captured console/network/exception entries from the previewed page. */
+  streamBrowserConsole: (slug: string, sinceSeq = 0) =>
+    fetchJSON<{ slug: string; entries: StreamBrowserConsoleEntry[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/console?since_seq=${sinceSeq}`,
+    ),
+
+  /** Auto-detected local dev servers owned by this workspace. */
+  detectDevServers: (slug: string) =>
+    fetchJSON<{ slug: string; servers: { url: string; port: number }[] }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/detect-servers`,
+    ),
+
   installStreamBrowser: (slug: string) =>
     fetchJSON<{ slug: string; ok: boolean; error?: string | null; version?: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/install`,
@@ -980,6 +1083,13 @@ export const api = {
   getWorkspacePreviewLogs: (slug: string) =>
     fetchJSON<{ slug: string; logs: WorkspacePreviewLog[] }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/logs`,
+    ),
+
+  /** Auditable agent browser action transcript (navigate/click/type/a11y…). */
+  getWorkspacePreviewActionLog: (slug: string, sinceTs?: number, limit = 500) =>
+    fetchJSON<{ slug: string; actions: BrowserActionLogEntry[]; count: number }>(
+      `/api/workspace/projects/${encodeURIComponent(slug)}/preview/action-log?limit=${limit}` +
+        (sinceTs ? `&since_ts=${sinceTs}` : ""),
     ),
 
   getWorkspacePreviewSnapshot: (slug: string) =>
@@ -2118,6 +2228,46 @@ export interface StreamBrowserInput {
   key?: string;
   button?: "left" | "right" | "middle";
   files?: string[];
+}
+
+export interface StreamBrowserTab {
+  id: string;
+  title: string;
+  url: string;
+  active: boolean;
+}
+
+export interface StreamBrowserDownload {
+  name: string;
+  size: number;
+  mtime: number;
+}
+
+export interface BrowserActionLogEntry {
+  ts: number;
+  action: string;
+  status: string;
+  task_id?: string | null;
+  detail?: Record<string, unknown>;
+}
+
+export interface StreamBrowserConsoleEntry {
+  seq: number;
+  ts: number;
+  kind: "console" | "network" | "exception";
+  level: string;
+  text: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface StreamBrowserPickedElement {
+  selector?: string;
+  tag?: string;
+  role?: string;
+  name?: string;
+  text?: string;
+  rect?: { x: number; y: number; width: number; height: number };
+  url?: string;
 }
 
 export interface WorkspacePreviewSnapshot {

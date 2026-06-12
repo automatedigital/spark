@@ -180,6 +180,155 @@ class ScreencastHandle:
             self._started.set()
 
 
+# Cap on retained console/network entries per session (ring buffer).
+_CONSOLE_BUFFER_MAX = 500
+
+
+class ConsoleCapture:
+    """Background CDP listener capturing console + network events for the page.
+
+    Enables ``Runtime`` / ``Log`` / ``Network`` domains over the session's CDP
+    WebSocket and records ``Runtime.consoleAPICalled``, ``Log.entryAdded``,
+    ``Runtime.exceptionThrown`` and ``Network.responseReceived`` /
+    ``Network.loadingFailed`` into a bounded ring buffer. This closes the
+    edit→reload→check loop: the agent can read the previewed page's errors via a
+    tool/endpoint, and the pane shows them in a console drawer.
+
+    Optional ``websockets`` dep is imported lazily; any failure surfaces as
+    :class:`ScreencastUnavailable` so callers degrade gracefully.
+    """
+
+    def __init__(self, ws_url: str) -> None:
+        self._ws_url = ws_url
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._started = threading.Event()
+        self._lock = threading.Lock()
+        self._entries: list[dict[str, Any]] = []
+        self._seq = 0
+
+    def start(self) -> None:
+        try:
+            import websockets  # noqa: F401 — probe optional dep
+        except ImportError as exc:  # pragma: no cover - dep guard
+            raise ScreencastUnavailable(
+                "Console capture requires the 'websockets' package"
+            ) from exc
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+        self._started.wait(timeout=3.0)
+
+    def stop(self) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
+
+    def entries(self, *, since_seq: int = 0, limit: int = _CONSOLE_BUFFER_MAX) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = [e for e in self._entries if e["seq"] > since_seq]
+        return rows[-max(limit, 1):]
+
+    def _record(self, kind: str, level: str, text: str, detail: dict[str, Any] | None = None) -> None:
+        import time as _time
+
+        with self._lock:
+            self._seq += 1
+            self._entries.append(
+                {
+                    "seq": self._seq,
+                    "ts": _time.time(),
+                    "kind": kind,  # console | network | exception
+                    "level": level,  # log | warn | error | info
+                    "text": text[:2000],
+                    "detail": detail or {},
+                }
+            )
+            if len(self._entries) > _CONSOLE_BUFFER_MAX:
+                self._entries = self._entries[-_CONSOLE_BUFFER_MAX:]
+
+    def _run_loop(self) -> None:
+        import asyncio
+
+        try:
+            asyncio.run(self._pump())
+        except Exception:  # noqa: BLE001 — background thread must not crash
+            pass
+
+    async def _pump(self) -> None:
+        import asyncio
+
+        import websockets
+
+        next_id = 0
+
+        def _cmd(method: str, params: dict[str, Any] | None = None) -> str:
+            nonlocal next_id
+            next_id += 1
+            return json.dumps({"id": next_id, "method": method, "params": params or {}})
+
+        try:
+            async with websockets.connect(self._ws_url, max_size=None, open_timeout=3) as ws:
+                for domain in ("Runtime.enable", "Log.enable", "Network.enable"):
+                    await ws.send(_cmd(domain))
+                self._started.set()
+                while not self._stop.is_set():
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                    except TimeoutError:
+                        continue
+                    try:
+                        msg = json.loads(raw)
+                    except Exception:
+                        continue
+                    self._handle(msg)
+        finally:
+            self._started.set()
+
+    def _handle(self, msg: dict[str, Any]) -> None:
+        method = msg.get("method")
+        params = msg.get("params") or {}
+        if method == "Runtime.consoleAPICalled":
+            level = str(params.get("type") or "log")
+            args = params.get("args") or []
+            text = " ".join(
+                str(a.get("value", a.get("description", ""))) for a in args if isinstance(a, dict)
+            )
+            self._record("console", level, text or "(console)")
+        elif method == "Runtime.exceptionThrown":
+            details = params.get("exceptionDetails") or {}
+            text = str(details.get("text") or "Uncaught exception")
+            exc = details.get("exception") or {}
+            if isinstance(exc, dict) and exc.get("description"):
+                text = str(exc["description"])
+            self._record("exception", "error", text)
+        elif method == "Log.entryAdded":
+            entry = params.get("entry") or {}
+            self._record(
+                "console",
+                str(entry.get("level") or "log"),
+                str(entry.get("text") or ""),
+                {"source": entry.get("source"), "url": entry.get("url")},
+            )
+        elif method == "Network.responseReceived":
+            resp = params.get("response") or {}
+            status = resp.get("status")
+            if isinstance(status, int) and status >= 400:
+                self._record(
+                    "network",
+                    "error",
+                    f"{status} {resp.get('url', '')}",
+                    {"status": status, "url": resp.get("url")},
+                )
+        elif method == "Network.loadingFailed":
+            self._record(
+                "network",
+                "error",
+                f"Request failed: {params.get('errorText', '')}",
+                {"url": params.get("type")},
+            )
+
+
 def _safe_slug(slug: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]", "-", slug)
 
@@ -212,6 +361,15 @@ def browser_profile_dir(slug: str) -> Path:
     return get_spark_home() / "browser" / _safe_slug(slug) / "persistent"
 
 
+def workspace_downloads_dir(slug: str) -> Path:
+    """Where the pane's browser drops downloads, inside the workspace dir.
+
+    Lands under ``SPARK_HOME/workspace/<slug>/downloads`` so files surface in the
+    Files tab. Never hardcode ``~/.spark`` — derived from ``get_spark_home()``.
+    """
+    return get_spark_home() / "workspace" / _safe_slug(slug) / "downloads"
+
+
 def _agent_browser_bin() -> str | None:
     try:
         from spark_cli.browser_runtime import agent_browser_path
@@ -240,16 +398,20 @@ class AgentBrowserSession:
         slug: str,
         *,
         viewport: tuple[int, int] = _VIEWPORT,
+        downloads_dir: Path | None = None,
     ) -> None:
         self.slug = slug
         self.viewport = viewport
         self.persistent = True  # parity with StreamedBrowserSession attribute
         self.session = session_name(slug)
         self.profile_dir = browser_profile_dir(slug)
+        # Downloads land in the workspace dir so they surface in the Files tab.
+        self.downloads_dir = downloads_dir or workspace_downloads_dir(slug)
         self.current_url: str = "about:blank"
         self.title: str = ""
         self._lock = threading.RLock()
         self._closed = False
+        self._console: ConsoleCapture | None = None
         # Deterministic per-session CDP remote-debugging port. agent-browser
         # launches its own Chromium; we expose CDP via ``--remote-debugging-port``
         # so the screencast path (Item 2b) can connect. The port is derived from
@@ -261,10 +423,27 @@ class AgentBrowserSession:
                 "`python -m spark_cli.browser_runtime install`"
             )
         self.profile_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         self._harden_profile()
         # Ensure viewport matches the pane's render size so click coords line up.
         try:
             self._run(["set", "viewport", str(viewport[0]), str(viewport[1])])
+        except AgentBrowserUnavailable:
+            pass
+        # Best-effort: point Chromium downloads at the workspace dir.
+        try:
+            self._run(
+                [
+                    "cdp",
+                    "Browser.setDownloadBehavior",
+                    json.dumps(
+                        {"behavior": "allow", "downloadPath": str(self.downloads_dir)}
+                    ),
+                ]
+            )
         except AgentBrowserUnavailable:
             pass
 
@@ -449,6 +628,241 @@ class AgentBrowserSession:
         """Paste clipboard contents into the page (simulates Ctrl/Cmd+V)."""
         self.press_key("Control+v")
 
+    # ── Browser chrome: viewport / emulation / tabs (Item 2b) ────────────────
+    def set_viewport(self, width: int, height: int) -> None:
+        """Resize the page viewport (responsive presets: mobile/tablet/desktop).
+
+        Updates ``self.viewport`` so click-coordinate mapping and screencast
+        sizing stay in sync with what the pane renders.
+        """
+        w, h = max(int(width), 1), max(int(height), 1)
+        self._run(["set", "viewport", str(w), str(h)])
+        self.viewport = (w, h)
+
+    def set_emulated_media(self, *, dark: bool | None = None) -> None:
+        """Emulate ``prefers-color-scheme`` via CDP ``Emulation.setEmulatedMedia``.
+
+        ``dark=True`` forces dark mode, ``dark=False`` forces light, ``dark=None``
+        clears the override. Routed through agent-browser's ``cdp`` passthrough
+        verb; raises :class:`AgentBrowserUnavailable` if the backend lacks it
+        (the route maps that to a graceful 501/400, never a crash).
+        """
+        if dark is None:
+            features: list[dict[str, str]] = []
+        else:
+            features = [{"name": "prefers-color-scheme", "value": "dark" if dark else "light"}]
+        params = json.dumps({"media": "", "features": features})
+        self._run(["cdp", "Emulation.setEmulatedMedia", params])
+
+    # ── Browser chrome: tabs (CDP target multiplexing) ───────────────────────
+    def list_tabs(self) -> list[dict[str, Any]]:
+        """List open page targets (tabs) via the CDP discovery endpoint.
+
+        Returns ``[{id, title, url, active}]``. Empty list when CDP discovery is
+        unavailable (the pane then degrades to a single-tab view).
+        """
+        out: list[dict[str, Any]] = []
+        for t in self._cdp_targets():
+            out.append(
+                {
+                    "id": str(t.get("id", "")),
+                    "title": str(t.get("title", "")),
+                    "url": str(t.get("url", "")),
+                    "active": bool(t.get("_active")),
+                }
+            )
+        return out
+
+    def new_tab(self, url: str = "about:blank") -> dict[str, Any]:
+        """Open a new tab/target and switch the session to it."""
+        try:
+            self._run(["tab", "new", url])
+        except AgentBrowserUnavailable:
+            # Fallback: open a new target via CDP passthrough.
+            self._run(["cdp", "Target.createTarget", json.dumps({"url": url})])
+        self._refresh_state()
+        return {"url": self.current_url, "title": self.title}
+
+    def switch_tab(self, target_id: str) -> dict[str, Any]:
+        """Activate an existing tab/target by id."""
+        self._run(["tab", "select", target_id])
+        self._refresh_state()
+        return {"url": self.current_url, "title": self.title}
+
+    def close_tab(self, target_id: str) -> None:
+        """Close a tab/target by id."""
+        self._run(["tab", "close", target_id])
+        self._refresh_state()
+
+    def _cdp_targets(self) -> list[dict[str, Any]]:
+        if self._closed:
+            return []
+        import urllib.request
+
+        url = f"http://127.0.0.1:{self._cdp_port}/json/list"
+        try:
+            with urllib.request.urlopen(url, timeout=2.0) as resp:  # noqa: S310
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 — discovery best-effort → single tab
+            return []
+        if not isinstance(payload, list):
+            return []
+        pages = [t for t in payload if isinstance(t, dict) and t.get("type") == "page"]
+        if pages:
+            pages[0]["_active"] = True
+        return pages
+
+    # ── Browser chrome: downloads ────────────────────────────────────────────
+    def list_downloads(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        """List files in the workspace downloads dir, newest first.
+
+        Returns ``[{name, size, mtime}]`` (relative names, so they can be opened
+        from the Files tab). Skips Chromium's ``*.crdownload`` partials.
+        """
+        out: list[dict[str, Any]] = []
+        try:
+            if not self.downloads_dir.exists():
+                return out
+            entries = [
+                p
+                for p in self.downloads_dir.iterdir()
+                if p.is_file() and not p.name.endswith(".crdownload")
+            ]
+        except OSError:
+            return out
+        entries.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for p in entries[: max(limit, 1)]:
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            out.append({"name": p.name, "size": st.st_size, "mtime": st.st_mtime})
+        return out
+
+    # ── Agent ⇄ user collaboration (Item 2b) ─────────────────────────────────
+    def pick_element(self, x: float, y: float) -> dict[str, Any]:
+        """Describe the element at ``(x, y)`` for the element picker.
+
+        Returns ``{selector, tag, role, name, text, rect}`` resolved in-page via
+        ``document.elementFromPoint`` + a best-effort CSS selector, so the user
+        can click an element in the pane and drop a structured reference into
+        chat ("fix this button"). Empty dict when the page denies eval.
+        """
+        ix, iy = int(x), int(y)
+        expr = (
+            "(() => {"
+            f"  const el = document.elementFromPoint({ix}, {iy});"
+            "  if (!el) return null;"
+            "  const sel = (e) => {"
+            "    if (e.id) return '#' + CSS.escape(e.id);"
+            "    const parts = [];"
+            "    let n = e;"
+            "    while (n && n.nodeType === 1 && parts.length < 5) {"
+            "      let p = n.tagName.toLowerCase();"
+            "      if (n.classList && n.classList.length) p += '.' + [...n.classList].slice(0,2).map(c=>CSS.escape(c)).join('.');"
+            "      const par = n.parentElement;"
+            "      if (par) { const sibs = [...par.children].filter(c=>c.tagName===n.tagName); if (sibs.length>1) p += ':nth-of-type(' + (sibs.indexOf(n)+1) + ')'; }"
+            "      parts.unshift(p); n = n.parentElement;"
+            "    }"
+            "    return parts.join(' > ');"
+            "  };"
+            "  const r = el.getBoundingClientRect();"
+            "  return {"
+            "    selector: sel(el),"
+            "    tag: el.tagName.toLowerCase(),"
+            "    role: el.getAttribute('role') || '',"
+            "    name: el.getAttribute('aria-label') || el.getAttribute('name') || el.getAttribute('placeholder') || '',"
+            "    text: (el.innerText || el.value || '').trim().slice(0, 120),"
+            "    rect: {x: r.x, y: r.y, width: r.width, height: r.height},"
+            "  };"
+            "})()"
+        )
+        try:
+            data = self._eval(expr)
+        except AgentBrowserUnavailable:
+            return {}
+        if isinstance(data, dict):
+            data["url"] = self.current_url
+            return data
+        return {}
+
+    def record_gif(self, *, frames: int = 12, interval: float = 0.4) -> Path | None:
+        """Capture a short sequence of frames and encode an animated GIF.
+
+        Returns the on-disk path (under the workspace downloads dir) or ``None``
+        when the GIF encoder (Pillow) isn't installed — callers degrade
+        gracefully. Used for the "record a short flow for a bug report" action.
+        """
+        try:
+            from PIL import Image  # lazily imported optional dep
+        except ImportError:
+            return None
+        import io
+        import time as _time
+
+        images = []
+        for _ in range(max(int(frames), 1)):
+            try:
+                png = self.screenshot()
+            except AgentBrowserUnavailable:
+                break
+            try:
+                images.append(Image.open(io.BytesIO(png)).convert("RGB"))
+            except Exception:  # noqa: BLE001 — skip a bad frame
+                pass
+            _time.sleep(max(interval, 0.05))
+        if not images:
+            return None
+        try:
+            self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        out = self.downloads_dir / f"recording-{int(_time.time())}.gif"
+        try:
+            images[0].save(
+                out,
+                save_all=True,
+                append_images=images[1:],
+                duration=int(interval * 1000),
+                loop=0,
+                optimize=True,
+            )
+        except Exception:  # noqa: BLE001
+            return None
+        return out
+
+    # ── Dev-loop: console + network capture (Item 2b) ────────────────────────
+    def _ensure_console_capture(self) -> ConsoleCapture | None:
+        """Start (once) the CDP console/network listener; None if unavailable."""
+        if self._closed:
+            return None
+        if self._console is not None:
+            return self._console
+        ws_url = self.cdp_url()
+        if not ws_url:
+            return None
+        try:
+            cap = ConsoleCapture(ws_url)
+            cap.start()
+        except ScreencastUnavailable:
+            return None
+        except Exception:  # noqa: BLE001 — any failure → no capture
+            return None
+        self._console = cap
+        return cap
+
+    def console_entries(self, *, since_seq: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+        """Return captured console/network/exception entries (newest-last).
+
+        Lazily starts the CDP listener on first call. Returns an empty list when
+        capture can't be established (Playwright fallback, no CDP, no websockets)
+        so the pane/agent degrade gracefully.
+        """
+        cap = self._ensure_console_capture()
+        if cap is None:
+            return []
+        return cap.entries(since_seq=since_seq, limit=limit)
+
     # ── CDP screencast (push frames) ─────────────────────────────────────────
     def cdp_url(self) -> str | None:
         """Resolve the *page* CDP WebSocket URL (None when unavailable).
@@ -530,6 +944,12 @@ class AgentBrowserSession:
     def close(self) -> None:
         if self._closed:
             return
+        if self._console is not None:
+            try:
+                self._console.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._console = None
         self._closed = False  # allow the close command itself to run
         try:
             self._run(["close"])

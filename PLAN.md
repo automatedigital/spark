@@ -47,19 +47,19 @@ Goal: one browser instance that (a) renders/streams into the WebUI Preview tab a
 - [x] Proper input parity: keyboard shortcuts, scroll momentum, right-click, file upload dialogs, clipboard in/out.
 
 **Browser chrome**
-- [ ] URL bar with back/forward/reload, multiple tabs, pop-out to a larger window/fullscreen.
-- [ ] Responsive presets (mobile/tablet/desktop) + dark-mode emulation toggle for testing.
-- [ ] Download handling (files land in the workspace, surfaced in Files tab).
+- [x] URL bar with back/forward/reload, multiple tabs, pop-out to a larger window/fullscreen.
+- [x] Responsive presets (mobile/tablet/desktop) + dark-mode emulation toggle for testing.
+- [x] Download handling (files land in the workspace, surfaced in Files tab).
 
 **Agent ⇄ user collaboration**
-- [ ] "Follow agent" mode: when the agent drives, show a visible cursor + highlight on elements it clicks/types into, so the user can watch.
-- [ ] Take-over/pause: user can grab control mid-task (e.g. to solve a login/CAPTCHA), then hand back to the agent.
-- [ ] Element picker: user clicks an element in the preview → a structured reference (selector + screenshot crop) is inserted into chat ("fix this button").
-- [ ] One-click "send screenshot to chat" and short GIF/flow recording for bug reports.
+- [x] "Follow agent" mode: when the agent drives, show a visible cursor + highlight on elements it clicks/types into, so the user can watch.
+- [x] Take-over/pause: user can grab control mid-task (e.g. to solve a login/CAPTCHA), then hand back to the agent.
+- [x] Element picker: user clicks an element in the preview → a structured reference (selector + screenshot crop) is inserted into chat ("fix this button").
+- [x] One-click "send screenshot to chat" and short GIF/flow recording for bug reports.
 
 **Dev-loop integration**
-- [ ] Console + network errors from the previewed page auto-available to the agent (and a visible console drawer for the user) — closes the edit→reload→check loop.
-- [ ] Auto-detect running dev servers (common ports / process scan) and offer them in the URL bar; auto-reload on HMR where possible.
+- [x] Console + network errors from the previewed page auto-available to the agent (and a visible console drawer for the user) — closes the edit→reload→check loop.
+- [x] Auto-detect running dev servers (common ports / process scan) and offer them in the URL bar; auto-reload on HMR where possible.
 
 **Agent efficiency & safety**
 - [x] Give the agent an accessibility-tree / DOM snapshot tool, not just screenshots — far cheaper in tokens and more reliable for clicking (agent-browser supports this natively via refs).

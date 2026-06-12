@@ -9,20 +9,31 @@ import {
   ExternalLink,
   Globe,
   Lock,
+  Camera,
+  Hand,
   Loader2,
+  Maximize2,
+  Minimize2,
   Monitor,
+  Moon,
   MoreHorizontal,
+  MousePointerClick,
   Play,
+  Plus,
   RefreshCw,
   RotateCcw,
+  ScrollText,
   Smartphone,
   Square,
   Tablet,
   Terminal,
   Trash2,
+  Video,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
+  StreamBrowserTab,
   WorkspacePreviewEvent,
   WorkspacePreviewLog,
   WorkspacePreviewStatus,
@@ -104,6 +115,17 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   const [showMenu, setShowMenu] = useState(false);
   const [device, setDevice] = useState<DeviceId>("responsive");
   const [autoOpen, setAutoOpen] = useState(previewAutoOpenEnabled);
+  const [darkEmulation, setDarkEmulation] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [tabs, setTabs] = useState<StreamBrowserTab[]>([]);
+  const [takeover, setTakeover] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [showActionLog, setShowActionLog] = useState(false);
+  const [actions, setActions] = useState<import("@/lib/api").BrowserActionLogEntry[]>([]);
+  // Follow-agent overlay: most recent agent action (from the audit log).
+  const [agentAction, setAgentAction] = useState<{ action: string; ref?: string; ts: number } | null>(null);
+  const agentActionTsRef = useRef(0);
   const [dialog, setDialog] = useState<{
     title: string;
     body?: React.ReactNode;
@@ -115,6 +137,238 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   const activeUrl = status?.url ?? "";
   const previewPending = status?.status === "starting";
   const deviceWidth = DEVICES.find((d) => d.id === device)?.width ?? null;
+  // Streamed (server-side browser) mode: external origin, not native/iframe.
+  const streamedMode = !isTauri() && !!frameSrc && !isLoopbackUrl(frameSrc);
+
+  // Push the selected device preset to the streamed backend so the server-side
+  // viewport (and click-coordinate mapping) matches what the pane renders.
+  useEffect(() => {
+    if (!streamedMode) return;
+    const w = deviceWidth ?? 1280;
+    const h = device === "phone" ? 844 : device === "tablet" ? 1180 : 800;
+    void api.streamBrowserViewport(slug, w, h).catch(() => {});
+  }, [streamedMode, deviceWidth, device, slug]);
+
+  const toggleDarkEmulation = useCallback(() => {
+    const next = !darkEmulation;
+    setDarkEmulation(next);
+    setShowMenu(false);
+    void api.streamBrowserEmulate(slug, next ? true : null).catch(() => {});
+  }, [darkEmulation, slug]);
+
+  const refreshTabs = useCallback(() => {
+    if (!streamedMode) {
+      setTabs([]);
+      return;
+    }
+    void api
+      .streamBrowserTabs(slug)
+      .then((r) => setTabs(r.tabs ?? []))
+      .catch(() => setTabs([]));
+  }, [streamedMode, slug]);
+
+  useEffect(() => {
+    refreshTabs();
+  }, [refreshTabs, frameSrc]);
+
+  const openTab = useCallback(() => {
+    void api
+      .streamBrowserTabAction(slug, "new", { url: "about:blank" })
+      .then(() => refreshTabs())
+      .catch(() => {});
+  }, [slug, refreshTabs]);
+
+  const switchTab = useCallback(
+    (id: string) => {
+      void api
+        .streamBrowserTabAction(slug, "switch", { target_id: id })
+        .then(() => refreshTabs())
+        .catch(() => {});
+    },
+    [slug, refreshTabs],
+  );
+
+  const closeTab = useCallback(
+    (id: string) => {
+      void api
+        .streamBrowserTabAction(slug, "close", { target_id: id })
+        .then(() => refreshTabs())
+        .catch(() => {});
+    },
+    [slug, refreshTabs],
+  );
+
+  // ── Agent ⇄ user collaboration ──
+  const toggleTakeover = useCallback(() => {
+    const next = !takeover;
+    setTakeover(next);
+    void api.streamBrowserTakeover(slug, next).catch(() => setTakeover(!next));
+  }, [takeover, slug]);
+
+  // Poll take-over state so the badge reflects external toggles.
+  useEffect(() => {
+    if (!streamedMode) return;
+    let alive = true;
+    const tick = () =>
+      void api
+        .streamBrowserTakeoverState(slug)
+        .then((r) => alive && setTakeover(r.paused))
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [streamedMode, slug]);
+
+  // Follow-agent overlay: surface the agent's most recent browser action.
+  useEffect(() => {
+    if (!streamedMode) return;
+    let alive = true;
+    const tick = () =>
+      void api
+        .getWorkspacePreviewActionLog(slug, agentActionTsRef.current, 20)
+        .then((r) => {
+          if (!alive || !r.actions.length) return;
+          const last = r.actions[r.actions.length - 1];
+          agentActionTsRef.current = last.ts;
+          const ref = (last.detail?.ref as string | undefined) ?? undefined;
+          setAgentAction({ action: last.action, ref, ts: Date.now() });
+        })
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [streamedMode, slug]);
+
+  // Auto-fade the follow-agent toast a few seconds after the last action.
+  useEffect(() => {
+    if (!agentAction) return;
+    const id = window.setTimeout(() => setAgentAction(null), 4000);
+    return () => window.clearTimeout(id);
+  }, [agentAction]);
+
+  // Dev-loop: poll captured console/network errors from the previewed page and
+  // surface them in the console drawer (closes the edit→reload→check loop).
+  const consoleSeqRef = useRef(0);
+  useEffect(() => {
+    if (!streamedMode) return;
+    consoleSeqRef.current = 0;
+    let alive = true;
+    const tick = () =>
+      void api
+        .streamBrowserConsole(slug, consoleSeqRef.current)
+        .then((r) => {
+          if (!alive || !r.entries.length) return;
+          consoleSeqRef.current = r.entries[r.entries.length - 1].seq;
+          setLogs((prev) => [
+            ...prev.slice(-499),
+            ...r.entries.map((e) => ({
+              ts: e.ts,
+              type: "log" as const,
+              stream: e.kind === "network" ? "network" : e.level === "error" || e.kind === "exception" ? "error" : "console",
+              text: e.text,
+            })),
+          ]);
+        })
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [streamedMode, slug, frameSrc]);
+
+  // Action-log pane: poll the auditable agent action transcript while open.
+  useEffect(() => {
+    if (!showActionLog) return;
+    let alive = true;
+    const tick = () =>
+      void api
+        .getWorkspacePreviewActionLog(slug)
+        .then((r) => alive && setActions(r.actions))
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [showActionLog, slug]);
+
+  // Dev-loop: auto-detect running local dev servers to offer in the URL bar.
+  const [devServers, setDevServers] = useState<{ url: string; port: number }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const tick = () =>
+      void api
+        .detectDevServers(slug)
+        .then((r) => alive && setDevServers(r.servers ?? []))
+        .catch(() => {});
+    tick();
+    const id = window.setInterval(tick, 8000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [slug]);
+
+  const screenshotToChat = useCallback(() => {
+    setShowMenu(false);
+    void api
+      .streamBrowserScreenshot(slug)
+      .then((r) => {
+        const ref = r.name ? `downloads/${r.name}` : "the current preview screenshot";
+        window.dispatchEvent(
+          new CustomEvent("spark:compose", {
+            detail: `Here's a screenshot of the preview (${r.url}). See \`${ref}\`. `,
+          }),
+        );
+      })
+      .catch(() => {});
+  }, [slug]);
+
+  const recordFlow = useCallback(() => {
+    setShowMenu(false);
+    setRecording(true);
+    void api
+      .streamBrowserRecord(slug)
+      .then((r) => {
+        window.dispatchEvent(
+          new CustomEvent("spark:compose", {
+            detail: `Recorded a short flow of the preview for a bug report: \`downloads/${r.name}\`. `,
+          }),
+        );
+        refreshTabs();
+      })
+      .catch(() => {})
+      .finally(() => setRecording(false));
+  }, [slug, refreshTabs]);
+
+  const onPickElement = useCallback(
+    (x: number, y: number) => {
+      void api
+        .streamBrowserPick(slug, x, y)
+        .then((r) => {
+          const el = r.element ?? {};
+          const label = el.text || el.name || el.selector || el.tag || "element";
+          const detail =
+            `Fix this element in the preview: **${label}**` +
+            (el.selector ? `\n- selector: \`${el.selector}\`` : "") +
+            (el.role ? `\n- role: ${el.role}` : "") +
+            (el.url ? `\n- page: ${el.url}` : "");
+          window.dispatchEvent(new CustomEvent("spark:compose", { detail }));
+        })
+        .catch(() => {})
+        .finally(() => setPicking(false));
+    },
+    [slug],
+  );
 
   useEffect(() => {
     setFrameSrc(activeUrl);
@@ -372,7 +626,10 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
       ref={rootRef}
       onKeyDown={onKeyDown}
       tabIndex={-1}
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70 outline-none"
+      className={cn(
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background/70 outline-none",
+        fullscreen && "fixed inset-0 z-50 flex-1 bg-background",
+      )}
     >
       {/* Toolbar — essentials inline, the rest in the ⋯ overflow menu */}
       <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
@@ -431,12 +688,58 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="Search or enter URL"
+            list={devServers.length ? `dev-servers-${slug}` : undefined}
             className="h-6 w-full rounded-sm border border-input bg-muted/40 px-2 font-mono-ui text-[11px] text-foreground outline-none transition focus:border-primary/60"
           />
+          {devServers.length > 0 && (
+            <datalist id={`dev-servers-${slug}`}>
+              {devServers.map((s) => (
+                <option key={s.port} value={s.url}>
+                  dev server :{s.port}
+                </option>
+              ))}
+            </datalist>
+          )}
         </form>
 
         {/* Device preset switcher */}
         <DeviceMenu device={device} onSelect={setDevice} />
+
+        {streamedMode && (
+          <>
+            {/* Element picker: click an element to insert a reference into chat */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className={cn("h-6 w-6 p-0", picking && "bg-primary/20 text-primary")}
+              title={picking ? "Picking… click an element" : "Pick an element → chat"}
+              onClick={() => setPicking((v) => !v)}
+            >
+              <MousePointerClick className="h-3.5 w-3.5" />
+            </Button>
+            {/* Take-over / pause: grab control of the shared session */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className={cn("h-6 w-6 p-0", takeover && "bg-amber-500/20 text-amber-400")}
+              title={takeover ? "You have control — hand back to agent" : "Take control (pause agent)"}
+              onClick={toggleTakeover}
+            >
+              <Hand className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        )}
+
+        {/* Pop-out / fullscreen the preview region */}
+        <Button
+          size="sm"
+          variant="ghost"
+          className={cn("h-6 w-6 p-0", fullscreen && "bg-secondary text-foreground")}
+          title={fullscreen ? "Exit fullscreen" : "Pop out / fullscreen"}
+          onClick={() => setFullscreen((v) => !v)}
+        >
+          {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+        </Button>
 
         {/* Overflow menu */}
         <div ref={menuRef} className="relative">
@@ -472,6 +775,25 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
                 <span className="flex-1">Auto-open on ready</span>
                 {autoOpen && <Check className="h-3.5 w-3.5 text-emerald-400" />}
               </button>
+              {streamedMode && (
+                <button type="button" className={menuBtn} onClick={toggleDarkEmulation}>
+                  <Moon className="h-3.5 w-3.5" />
+                  <span className="flex-1">Emulate dark mode</span>
+                  {darkEmulation && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+                </button>
+              )}
+              {streamedMode && (
+                <button type="button" className={menuBtn} onClick={screenshotToChat}>
+                  <Camera className="h-3.5 w-3.5" />
+                  <span className="flex-1">Send screenshot to chat</span>
+                </button>
+              )}
+              {streamedMode && (
+                <button type="button" className={menuBtn} onClick={recordFlow} disabled={recording}>
+                  {recording ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                  <span className="flex-1">{recording ? "Recording…" : "Record flow (GIF)"}</span>
+                </button>
+              )}
               <button type="button" className={menuBtn} onClick={() => void showCookies()}>
                 <Cookie className="h-3.5 w-3.5" />
                 <span className="flex-1">View cookies</span>
@@ -489,10 +811,59 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
                 <span className="flex-1">Toggle logs</span>
                 {showLogs && <Check className="h-3.5 w-3.5 text-emerald-400" />}
               </button>
+              <button type="button" className={menuBtn} onClick={() => { setShowActionLog((v) => !v); setShowMenu(false); }}>
+                <ScrollText className="h-3.5 w-3.5" />
+                <span className="flex-1">Agent action log</span>
+                {showActionLog && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* Tab strip (streamed backend only; degrades to single-tab silently) */}
+      {streamedMode && tabs.length > 0 && (
+        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background/60 px-2 py-1">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={cn(
+                "group flex max-w-[180px] shrink-0 items-center gap-1 rounded-sm border px-2 py-0.5 text-[11px]",
+                tab.active
+                  ? "border-primary/50 bg-secondary text-foreground"
+                  : "border-border bg-muted/30 text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <button
+                type="button"
+                className="min-w-0 flex-1 truncate text-left"
+                title={tab.url}
+                onClick={() => !tab.active && switchTab(tab.id)}
+              >
+                {tab.title || hostOf(tab.url) || "New tab"}
+              </button>
+              {tabs.length > 1 && (
+                <button
+                  type="button"
+                  className="shrink-0 opacity-50 hover:opacity-100"
+                  title="Close tab"
+                  onClick={() => closeTab(tab.id)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+            title="New tab"
+            onClick={openTab}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       <div className="relative min-h-0 flex-1 bg-black/20">
         {previewPending ? (
@@ -535,6 +906,42 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             </Button>
           </div>
         )}
+        {/* Element-picker capture overlay: maps a click to viewport coords. */}
+        {streamedMode && picking && (
+          <div
+            className="absolute inset-0 z-20 cursor-crosshair bg-primary/5"
+            title="Click an element to insert a reference into chat"
+            onClick={(e) => {
+              const target = e.currentTarget;
+              const rect = target.getBoundingClientRect();
+              // Map to the 1280×800 streamed viewport (object-contain letterbox).
+              const vw = deviceWidth ?? 1280;
+              const point = { x: ((e.clientX - rect.left) / rect.width) * vw, y: ((e.clientY - rect.top) / rect.height) * 800 };
+              onPickElement(Math.round(point.x), Math.round(point.y));
+            }}
+          >
+            <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-sm bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
+              Click an element to send it to chat
+            </div>
+          </div>
+        )}
+
+        {/* Take-over banner: the user holds control of the shared session. */}
+        {streamedMode && takeover && (
+          <div className="pointer-events-none absolute right-2 top-2 z-20 flex items-center gap-1.5 rounded-sm bg-amber-500/90 px-2 py-0.5 text-[10px] font-medium text-black">
+            <Hand className="h-3 w-3" /> You have control — agent paused
+          </div>
+        )}
+
+        {/* Follow-agent toast: the agent's most recent browser action. */}
+        {streamedMode && agentAction && !takeover && (
+          <div className="pointer-events-none absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-primary/90 px-2.5 py-0.5 text-[10px] font-medium text-primary-foreground shadow">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+            Agent {agentAction.action}
+            {agentAction.ref ? ` ${agentAction.ref}` : ""}
+          </div>
+        )}
+
         {(pageTitle || lastRefreshReason) && (
           <div className="pointer-events-none absolute bottom-1 left-2 flex items-center gap-2 rounded-sm bg-background/70 px-1.5 py-0.5 font-mono-ui text-[10px] text-muted-foreground/70 backdrop-blur">
             {activeUrl && faviconUrl(activeUrl) && (
@@ -580,6 +987,55 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
               <div className="py-3 text-center text-muted-foreground/50">No browser logs yet.</div>
             )}
             </div>
+        </div>
+      )}
+
+      {showActionLog && (
+        <div className="flex max-h-44 shrink-0 flex-col overflow-hidden border-t border-border bg-black/30">
+          <div className="flex shrink-0 items-center gap-1.5 border-b border-border/60 px-2 py-1">
+            <ScrollText className="h-3 w-3 text-muted-foreground/60" />
+            <span className="font-mono-ui text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+              Agent action log
+            </span>
+            <button
+              type="button"
+              className="ml-auto rounded-sm px-1.5 py-0.5 font-mono-ui text-[10px] uppercase tracking-[0.08em] text-muted-foreground/60 hover:text-foreground"
+              onClick={() => setShowActionLog(false)}
+            >
+              close
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 font-mono text-[10px] leading-4 text-muted-foreground">
+            {actions.length ? (
+              actions.map((a, idx) => (
+                <div key={`${a.ts}-${idx}`} className="flex gap-2">
+                  <span className="shrink-0 text-muted-foreground/40">{shortTime(a.ts)}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 uppercase",
+                      a.status === "error"
+                        ? "text-red-300/80"
+                        : a.status === "blocked" || a.status === "paused"
+                          ? "text-amber-300/80"
+                          : a.status === "needs_confirmation"
+                            ? "text-sky-300/80"
+                            : "text-emerald-300/70",
+                    )}
+                  >
+                    {a.action}
+                  </span>
+                  <span className="min-w-0 whitespace-pre-wrap break-words text-foreground/70">
+                    {(a.detail?.url as string) ||
+                      (a.detail?.ref as string) ||
+                      (a.detail?.reason as string) ||
+                      a.status}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="py-3 text-center text-muted-foreground/50">No agent actions recorded yet.</div>
+            )}
+          </div>
         </div>
       )}
 
