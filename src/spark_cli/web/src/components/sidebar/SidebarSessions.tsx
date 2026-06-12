@@ -226,6 +226,53 @@ function ProjectGroup({
   );
 }
 
+// ── Collapsible section header ──────────────────────────────────────────────────
+
+const SECTION_COLLAPSE_KEY = "spark.sidebar.collapsedSections";
+
+function loadCollapsedSections(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SECTION_COLLAPSE_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedSections(collapsed: Set<string>) {
+  try {
+    localStorage.setItem(SECTION_COLLAPSE_KEY, JSON.stringify([...collapsed]));
+  } catch {
+    // ignore (e.g. private browsing)
+  }
+}
+
+function SectionHeader({
+  label,
+  collapsed,
+  onToggle,
+  actions,
+}: {
+  label: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between px-2 pb-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 hover:text-foreground"
+      >
+        {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        <span>{label}</span>
+      </button>
+      {actions && <div className="flex items-center gap-0.5">{actions}</div>}
+    </div>
+  );
+}
+
 // ── SidebarSessions ───────────────────────────────────────────────────────────
 
 export function SidebarSessions({
@@ -262,6 +309,20 @@ export function SidebarSessions({
   const [creatingProject, setCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [savingProject, setSavingProject] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      saveCollapsedSections(next);
+      return next;
+    });
+  };
 
   // Cmd+F focuses the session search; Cmd+K stays reserved for the palette.
   useEffect(() => {
@@ -373,26 +434,28 @@ export function SidebarSessions({
 
         {/* SESSIONS */}
         <div className="pt-3">
-          <div className="flex items-center justify-between px-2 pb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
-              Sessions
-            </span>
-            <div className="flex items-center gap-0.5">
-              {(loadingSessions || loadingProjects) && !sessions.length && (
-                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40" />
-              )}
-              <button
-                type="button"
-                title="New project workspace"
-                className="rounded p-0.5 text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground"
-                onClick={() => setCreatingProject(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
+          <SectionHeader
+            label="Sessions"
+            collapsed={collapsedSections.has("sessions")}
+            onToggle={() => toggleSection("sessions")}
+            actions={
+              <>
+                {(loadingSessions || loadingProjects) && !sessions.length && (
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40" />
+                )}
+                <button
+                  type="button"
+                  title="New project workspace"
+                  className="rounded p-0.5 text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground"
+                  onClick={() => setCreatingProject(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </>
+            }
+          />
 
-          {creatingProject && (
+          {!collapsedSections.has("sessions") && creatingProject && (
             <div className="mx-1.5 mb-2 flex flex-col gap-1.5 rounded-sm border border-border bg-background/60 p-2">
               <Input
                 autoFocus
@@ -432,32 +495,49 @@ export function SidebarSessions({
             </div>
           )}
 
-          {/* Project workspace groups */}
-          {projects.map((project) => (
-            <ProjectGroup
-              key={project.slug}
-              project={project}
-              threads={bySlug.get(project.slug) ?? []}
-              isExpanded={expandedProjects.has(project.slug) || Boolean(searchResults)}
-              selectedId={selectedId}
-              unreadSessionIds={unreadSessionIds}
-              pinnedIds={pinnedIds}
-              onToggle={() => toggleProjectExpanded(project.slug)}
-              onOpen={onOpenSession}
-              onTogglePin={togglePin}
-              onDelete={(id) => void deleteSession(id)}
-              onNewThread={onNewProjectThread}
-              onDeleteProject={(slug) => void deleteProject(slug)}
-            />
-          ))}
+          {!collapsedSections.has("sessions") && (
+            <>
+              {/* Project workspace groups */}
+              {projects.map((project) => (
+                <ProjectGroup
+                  key={project.slug}
+                  project={project}
+                  threads={bySlug.get(project.slug) ?? []}
+                  isExpanded={expandedProjects.has(project.slug) || Boolean(searchResults)}
+                  selectedId={selectedId}
+                  unreadSessionIds={unreadSessionIds}
+                  pinnedIds={pinnedIds}
+                  onToggle={() => toggleProjectExpanded(project.slug)}
+                  onOpen={onOpenSession}
+                  onTogglePin={togglePin}
+                  onDelete={(id) => void deleteSession(id)}
+                  onNewThread={onNewProjectThread}
+                  onDeleteProject={(slug) => void deleteProject(slug)}
+                />
+              ))}
 
-          {/* Ungrouped sessions */}
-          {ungrouped.length > 0 && (
-            <div className="pt-1">
-              <div className="px-2 pb-0.5 text-[10px] uppercase tracking-widest text-muted-foreground/40">
-                No workspace
-              </div>
-              {ungrouped.map((s) => (
+              {searchResults !== null && displayedSessions.length === 0 && (
+                <p className="px-2.5 py-2 text-[11px] text-muted-foreground/50">
+                  No results for "{searchQ}"
+                </p>
+              )}
+              {searchResults === null && !loadingSessions && ungrouped.length === 0 && projects.length === 0 && (
+                <p className="px-2.5 py-2 text-[11px] text-muted-foreground/40">No sessions yet</p>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* CHATS (ungrouped sessions) */}
+        {ungrouped.length > 0 && (
+          <div className="pt-3">
+            <SectionHeader
+              label="Chats"
+              collapsed={collapsedSections.has("chats")}
+              onToggle={() => toggleSection("chats")}
+            />
+            {!collapsedSections.has("chats") &&
+              ungrouped.map((s) => (
                 <SessionRow
                   key={s.id}
                   session={s}
@@ -469,18 +549,8 @@ export function SidebarSessions({
                   onDelete={() => void deleteSession(s.id)}
                 />
               ))}
-            </div>
-          )}
-
-          {searchResults !== null && displayedSessions.length === 0 && (
-            <p className="px-2.5 py-2 text-[11px] text-muted-foreground/50">
-              No results for "{searchQ}"
-            </p>
-          )}
-          {searchResults === null && !loadingSessions && ungrouped.length === 0 && projects.length === 0 && (
-            <p className="px-2.5 py-2 text-[11px] text-muted-foreground/40">No sessions yet</p>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

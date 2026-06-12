@@ -72,10 +72,10 @@ Goal: one browser instance that (a) renders/streams into the WebUI Preview tab a
 
 The sidebar's SESSIONS list (workspace folders) and the "NO WORKSPACE" list of old chats are both always fully expanded, making the sidebar very long.
 
-- [ ] Component: `src/spark_cli/web/src/components/sidebar/SidebarSessions.tsx` (the "No workspace" section is at ~line 458).
-- [ ] Rename the "NO WORKSPACE" section label to "CHATS".
-- [ ] Make the SESSIONS section header and the CHATS section header collapsible (chevron + click-to-toggle), persisting collapsed state (localStorage or existing UI-state store).
-- [ ] Keep individual workspace folders' existing expand/collapse behavior; this adds collapse at the *section* level.
+- [x] Component: `src/spark_cli/web/src/components/sidebar/SidebarSessions.tsx` (the "No workspace" section is at ~line 458).
+- [x] Rename the "NO WORKSPACE" section label to "CHATS".
+- [x] Make the SESSIONS section header and the CHATS section header collapsible (chevron + click-to-toggle), persisting collapsed state (localStorage or existing UI-state store).
+- [x] Keep individual workspace folders' existing expand/collapse behavior; this adds collapse at the *section* level.
 
 ## 4. UI: empty-state hero logo too dark on dark theme
 
@@ -83,10 +83,10 @@ The sidebar's SESSIONS list (workspace folders) and the "NO WORKSPACE" list of o
 
 On the dark theme, the big Spark logo on the empty chat screen is nearly invisible (too dark against the dark background). Confirmed fix: dark themes should use `icon_small-dark.png`.
 
-- [ ] Hero logo renders via `BrandLogo` in `src/spark_cli/web/src/pages/ChatPage.tsx:145`; asset selection logic is in `src/spark_cli/web/src/components/BrandLogo.tsx:12`.
-- [ ] Update `BrandLogo.tsx` so dark themes use `/icon_small-dark.png` (and light themes the other asset). The code comment claims names are inverted — visually verify both PNGs in `src/spark_cli/web/public/` and correct the comment + `LIGHT_THEMES` mapping to match reality.
-- [ ] Verify in the built app (`web_dist` / desktop build) on dark theme, not just dev.
-- [ ] Check other BrandLogo / icon usages (`index.html` loading screen, favicon) for the same issue.
+- [x] Hero logo renders via `BrandLogo` in `src/spark_cli/web/src/pages/ChatPage.tsx:145`; asset selection logic is in `src/spark_cli/web/src/components/BrandLogo.tsx:12`.
+- [x] Update `BrandLogo.tsx` so dark themes use `/icon_small-dark.png` (and light themes the other asset). The code comment claims names are inverted — visually verify both PNGs in `src/spark_cli/web/public/` and correct the comment + `LIGHT_THEMES` mapping to match reality.
+- [x] Verify in the built app (`web_dist` / desktop build) on dark theme, not just dev.
+- [x] Check other BrandLogo / icon usages (`index.html` loading screen, favicon) for the same issue.
 
 ## Verification
 
