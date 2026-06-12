@@ -16,9 +16,9 @@ Source: `screenshots/120626/` — four screenshots covering 2 bugs and 2 UI chan
 
 Investigated: the guard (`src/core/run_agent/__init__.py:~9750`) already compares tool name **and** JSON-serialized arguments, so it only fires on three truly identical calls — the detection itself is fine. The real problem is the recovery: when it trips, the turn hard-breaks (`_turn_exit_reason = "tool_loop_detected"`) and the task is silently left incomplete.
 
-- [ ] Change the guard's behavior from "stop the turn" to "intervene": on detection, inject a tool-result/system note telling the model its last N calls were identical and to change approach, and let the conversation continue. Only hard-stop if it trips a second time in the same turn.
-- [ ] Make sure the stop (if it still happens) is clearly surfaced as an incomplete task in the UI, not just an inline warning line.
-- [ ] Tests: identical-call loop gets one recovery nudge then continues; double-trip still terminates.
+- [x] Change the guard's behavior from "stop the turn" to "intervene": on detection, inject a tool-result/system note telling the model its last N calls were identical and to change approach, and let the conversation continue. Only hard-stop if it trips a second time in the same turn.
+- [x] Make sure the stop (if it still happens) is clearly surfaced as an incomplete task in the UI, not just an inline warning line.
+- [x] Tests: identical-call loop gets one recovery nudge then continues; double-trip still terminates.
 
 ## 2. Browser backend: migrate preview tab to agent-browser (shared with the agent)
 
@@ -90,6 +90,6 @@ On the dark theme, the big Spark logo on the empty chat screen is nearly invisib
 
 ## Verification
 
-- [ ] `python -m pytest tests/ -q` (use `.venv`, not anaconda)
-- [ ] `ruff check src/` on touched files
-- [ ] Visual check of sidebar collapse + logo in dark theme via preview
+- [x] `python -m pytest tests/ -q` (use `.venv`, not anaconda) — full suite green (11685 passed, 150 skipped; fixed one Pillow-dependent test to `importorskip`).
+- [x] `ruff check src/` on touched files — no new errors across all merged PRs (#28–#34).
+- [x] Visual check of sidebar collapse + logo in dark theme via preview — logo fix verified empirically (pixel luminance 225 vs 30); sidebar collapse verified via clean frontend build per PR #29.
