@@ -2329,6 +2329,63 @@ class TestRunConversation:
         assert "truncated due to output length limit" in result["error"]
         mock_handle_function_call.assert_not_called()
 
+    def test_tool_loop_single_trip_recovers(self, agent):
+        """3 identical tool calls trigger a recovery nudge, not a hard stop.
+
+        The model then changes approach and finishes normally.
+        """
+        self._setup_agent(agent)
+        same_args = '{"query": "x"}'
+        tc1 = _mock_tool_call(name="web_search", arguments=same_args, call_id="c1")
+        tc2 = _mock_tool_call(name="web_search", arguments=same_args, call_id="c2")
+        tc3 = _mock_tool_call(name="web_search", arguments=same_args, call_id="c3")
+        resp1 = _mock_response(content="", finish_reason="tool_calls", tool_calls=[tc1])
+        resp2 = _mock_response(content="", finish_reason="tool_calls", tool_calls=[tc2])
+        resp3 = _mock_response(content="", finish_reason="tool_calls", tool_calls=[tc3])
+        resp4 = _mock_response(content="Done after nudge", finish_reason="stop")
+        agent.client.chat.completions.create.side_effect = [resp1, resp2, resp3, resp4]
+        with (
+            patch("core.run_agent.handle_function_call", return_value="search result"),
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            result = agent.run_conversation("search something")
+
+        assert result["completed"] is True
+        assert result["final_response"] == "Done after nudge"
+        assert result["turn_exit_reason"] != "tool_loop_detected_unrecovered"
+        # A recovery tool-result message was injected into the conversation.
+        loop_guard_msgs = [
+            m for m in result["messages"]
+            if isinstance(m, dict) and m.get("role") == "tool"
+            and "[loop guard]" in str(m.get("content", ""))
+        ]
+        assert len(loop_guard_msgs) == 1
+
+    def test_tool_loop_double_trip_hard_stops_incomplete(self, agent):
+        """Two identical 3-call streaks in one turn hard-stop as incomplete."""
+        self._setup_agent(agent)
+        same_args = '{"query": "x"}'
+        responses = []
+        for i in range(6):
+            tc = _mock_tool_call(name="web_search", arguments=same_args, call_id=f"c{i}")
+            responses.append(
+                _mock_response(content="", finish_reason="tool_calls", tool_calls=[tc])
+            )
+        agent.client.chat.completions.create.side_effect = responses
+        with (
+            patch("core.run_agent.handle_function_call", return_value="search result"),
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            result = agent.run_conversation("search something")
+
+        assert result["completed"] is False
+        assert result["turn_exit_reason"] == "tool_loop_detected_unrecovered"
+        assert result["api_calls"] == 6
+
 
 class TestRetryExhaustion:
     """Regression: retry_count > max_retries was dead code (off-by-one).
