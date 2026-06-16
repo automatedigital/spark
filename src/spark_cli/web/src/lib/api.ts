@@ -640,12 +640,18 @@ export const api = {
   listWorkspaceProjects: () =>
     fetchJSON<WorkspaceProjectsResponse>("/api/workspace/projects"),
 
-  createWorkspaceProject: (name: string) =>
-    fetchJSON<{ ok: boolean; slug: string; name: string; path: string }>("/api/workspace/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    }),
+  listProjectTemplates: () =>
+    fetchJSON<{ templates: ProjectTemplate[] }>("/api/workspace/project-templates"),
+
+  createWorkspaceProject: (name: string, template = "scratch") =>
+    fetchJSON<{ ok: boolean; slug: string; name: string; path: string; template: string }>(
+      "/api/workspace/projects",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, template }),
+      },
+    ),
 
   deleteWorkspaceProject: (slug: string) =>
     fetchJSON<{ ok: boolean; deleted: string }>(`/api/workspace/projects/${encodeURIComponent(slug)}`, {
@@ -1973,6 +1979,12 @@ export interface WorkspaceProject {
 
 export interface WorkspaceProjectsResponse {
   projects: WorkspaceProject[];
+}
+
+export interface ProjectTemplate {
+  id: string;
+  label: string;
+  description: string;
 }
 
 // ── Canvas types ──────────────────────────────────────────────────────────
