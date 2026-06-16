@@ -1,6 +1,52 @@
-const BASE = "";
+import {
+  CONNECTION_MODE_KEY,
+  REMOTE_BASE_URL_KEY,
+  parseConnectionMode,
+  resolveApiBase,
+  type ConnectionMode,
+} from "./connection";
 
 const DASHBOARD_TOKEN_KEY = "spark_dashboard_token";
+
+// ── Connection mode / API base URL ──────────────────────────────────────────
+// In "local" mode the UI talks to the same origin it was served from (base "").
+// In "remote" mode every request is prefixed with the stored remote base URL so
+// the desktop app can drive an existing Spark instance (e.g. a VPS dashboard).
+// getApiBase() is the SINGLE SOURCE OF TRUTH for the base URL — fetchJSON, the
+// URL builders, and sseUrl all funnel through it.
+
+export function getConnectionMode(): ConnectionMode {
+  if (typeof localStorage === "undefined") return "local";
+  return parseConnectionMode(localStorage.getItem(CONNECTION_MODE_KEY));
+}
+
+export function getRemoteBaseUrl(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(REMOTE_BASE_URL_KEY);
+}
+
+/** Effective base URL prepended to every API/SSE/raw-file path ("" = same-origin). */
+export function getApiBase(): string {
+  return resolveApiBase(getConnectionMode(), getRemoteBaseUrl());
+}
+
+/**
+ * Switch to a remote instance. Persists mode + normalized base URL and the
+ * dashboard token together so they stay in sync. Caller is expected to have
+ * already validated the connection (validateRemoteConnection in connection.ts).
+ */
+export function setRemoteConnection(baseUrl: string, token: string): void {
+  localStorage.setItem(CONNECTION_MODE_KEY, "remote");
+  localStorage.setItem(REMOTE_BASE_URL_KEY, baseUrl.replace(/\/+$/, ""));
+  setDashboardToken(token);
+}
+
+/** Switch back to the local sidecar: clears remote base + token. */
+export function setLocalConnection(): void {
+  localStorage.setItem(CONNECTION_MODE_KEY, "local");
+  localStorage.removeItem(REMOTE_BASE_URL_KEY);
+  clearDashboardToken();
+}
 
 // Ephemeral session token for protected endpoints (reveal).
 // Fetched once on first reveal request and cached in memory.
@@ -25,7 +71,7 @@ export function workspaceRawFileUrl(slug: string, path: string): string {
   const qs = new URLSearchParams({ path });
   const tok = getDashboardToken();
   if (tok) qs.set("dashboard_token", tok);
-  return `/api/workspace/projects/${encodeURIComponent(slug)}/raw-file?${qs}`;
+  return `${getApiBase()}/api/workspace/projects/${encodeURIComponent(slug)}/raw-file?${qs}`;
 }
 
 /** Build a protected URL for MEDIA:/absolute/path attachments in chat output. */
@@ -33,15 +79,16 @@ export function mediaFileUrl(path: string): string {
   const qs = new URLSearchParams({ path });
   const tok = getDashboardToken();
   if (tok) qs.set("dashboard_token", tok);
-  return `/api/media?${qs}`;
+  return `${getApiBase()}/api/media?${qs}`;
 }
 
 /** Append dashboard auth for EventSource (no custom headers support). */
 export function sseUrl(path: string): string {
+  const full = `${getApiBase()}${path}`;
   const t = getDashboardToken();
-  if (!t) return path;
-  const sep = path.includes("?") ? "&" : "?";
-  return `${path}${sep}dashboard_token=${encodeURIComponent(t)}`;
+  if (!t) return full;
+  const sep = full.includes("?") ? "&" : "?";
+  return `${full}${sep}dashboard_token=${encodeURIComponent(t)}`;
 }
 
 function authHeaders(base?: HeadersInit): Headers {
@@ -58,7 +105,7 @@ function authHeaders(base?: HeadersInit): Headers {
 }
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
+  const res = await fetch(`${getApiBase()}${url}`, {
     ...init,
     headers: authHeaders(init?.headers),
   });
