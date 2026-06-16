@@ -293,6 +293,40 @@ class TestSyncSkills:
             / "ADR-FORMAT.md"
         ).exists()
 
+    def test_taste_is_in_creative_base_skill_set(self, tmp_path):
+        """The Taste skill (Leonxlnx/taste-skill) ships as a Creative base skill.
+
+        It lives under skills/creative/ so it is seeded into ~/.spark/skills/ by
+        default. Sync is a pure file copy from the bundled repo dir, so this also
+        confirms it works without any network access (offline-safe).
+        """
+        from spark_cli.skills_config import get_disabled_skills
+
+        bundled = Path(__file__).resolve().parents[2] / "skills"
+
+        # Present in the Creative category of the bundled repo skills.
+        taste_dir = bundled / "creative" / "taste"
+        assert (taste_dir / "SKILL.md").exists(), "taste-skill not vendored under skills/creative/"
+
+        # Discovery resolves it to the frontmatter name "taste".
+        discovered = dict(
+            (name, path) for name, path in _discover_bundled_skills(bundled)
+        )
+        assert "taste" in discovered
+        assert discovered["taste"] == taste_dir
+
+        # A fresh sync copies it into the user skills dir under creative/.
+        skills_dir = tmp_path / "user_skills"
+        manifest_file = skills_dir / ".bundled_manifest"
+        with self._patches(bundled, skills_dir, manifest_file):
+            result = sync_skills(quiet=True)
+
+        assert "taste" in result["copied"]
+        assert (skills_dir / "creative" / "taste" / "SKILL.md").exists()
+
+        # Enabled by default (not in the disabled set).
+        assert "taste" not in get_disabled_skills({"skills": {}})
+
     def test_user_deleted_skill_not_re_added(self, tmp_path):
         """Skill in manifest but not on disk = user deleted it. Don't re-add."""
         bundled = self._setup_bundled(tmp_path)
