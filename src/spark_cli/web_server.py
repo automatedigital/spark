@@ -156,9 +156,22 @@ async def _lifespan(_app: FastAPI):
     loop.run_in_executor(None, _prefetch_mac_update_check)
     loop.run_in_executor(None, _init_memory_store)
     loop.run_in_executor(None, _prewarm_agent_stack)
+    # Desktop app: keep the messaging gateway running in the background so
+    # platforms stay reachable while the app is open. No-ops outside the
+    # desktop sidecar or when disabled via config. Only stops a gateway we own.
+    try:
+        from spark_cli.desktop_gateway import start_desktop_gateway
+        start_desktop_gateway()
+    except Exception:
+        _log.debug("desktop gateway autostart skipped", exc_info=True)
     try:
         yield
     finally:
+        try:
+            from spark_cli.desktop_gateway import stop_desktop_gateway
+            await loop.run_in_executor(None, stop_desktop_gateway)
+        except Exception:
+            _log.debug("desktop gateway shutdown skipped", exc_info=True)
         _web_event_loop = None
         _event_subscribers.clear()
         _web_streaming.clear()
