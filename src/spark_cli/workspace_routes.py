@@ -33,6 +33,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from spark_cli.config import get_spark_home
+from spark_cli.project_templates import (
+    is_valid_template,
+    list_templates,
+    materialize_template,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -127,6 +132,7 @@ def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = Fa
 
 class ProjectCreate(BaseModel):
     name: str
+    template: str = "scratch"
 
 
 class TerminalRunCreate(BaseModel):
@@ -242,12 +248,31 @@ def create_project(body: ProjectCreate):
     slug = re.sub(r"-{2,}", "-", slug)
     if not _SLUG_RE.match(slug):
         raise HTTPException(status_code=400, detail=f"Invalid project name: {name!r}")
+    if not is_valid_template(body.template):
+        raise HTTPException(status_code=400, detail=f"Unknown template: {body.template!r}")
     root = _workspace_root()
     project_path = root / slug
     if project_path.exists():
         raise HTTPException(status_code=409, detail=f"Project already exists: {slug!r}")
     project_path.mkdir(parents=True)
-    return {"ok": True, "slug": slug, "name": slug, "path": str(project_path)}
+    materialize_template(body.template, project_path)
+    return {
+        "ok": True,
+        "slug": slug,
+        "name": slug,
+        "path": str(project_path),
+        "template": body.template,
+    }
+
+
+@router.get("/project-templates")
+def list_project_templates():
+    return {
+        "templates": [
+            {"id": t.id, "label": t.label, "description": t.description}
+            for t in list_templates()
+        ]
+    }
 
 
 @router.get("/projects/{slug}/tree")

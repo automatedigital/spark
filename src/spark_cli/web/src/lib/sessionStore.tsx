@@ -95,7 +95,7 @@ export interface SessionStoreValue {
   // Actions
   deleteSession: (id: string) => Promise<void>;
   deleteProject: (slug: string) => Promise<void>;
-  createProject: (name: string) => Promise<string>;
+  createProject: (name: string, template?: string) => Promise<string>;
   reloadSessions: () => Promise<void>;
   reloadProjects: () => Promise<void>;
 }
@@ -398,8 +398,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     }
   }, [reloadProjects]);
 
-  const createProject = useCallback(async (name: string): Promise<string> => {
-    const res = await api.createWorkspaceProject(name);
+  const createProject = useCallback(async (name: string, template = "scratch"): Promise<string> => {
+    const res = await api.createWorkspaceProject(name, template);
     await reloadProjects();
     setExpandedProjects((prev) => {
       const next = new Set(prev);
