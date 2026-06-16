@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import hljs from "highlight.js";
 import { api, workspaceRawFileUrl } from "@/lib/api";
-import type { WorkspaceFileNode } from "@/lib/api";
+import type { WorkspaceFileNode, WorkspaceProject } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -81,20 +81,56 @@ function ResizeDivider({ onDrag }: { onDrag: (delta: number) => void }) {
 
 // ── NewSessionHero (Phase 2) ──────────────────────────────────────────────────
 
+const HERO_PROJECT_KEY = "spark-hero-last-project";
+
 function NewSessionHero({
   onCreated,
+  projects,
 }: {
   onCreated: (sessionId: string, initialMessage: string) => void;
+  projects: WorkspaceProject[];
 }) {
   const [msg, setMsg] = useState("");
   const [starting, setStarting] = useState(false);
+  // Selected project slug, or "" for a plain chat thread (no project).
+  // Restore the last-used selection so "new chat in the same project" is a
+  // single click — but only if that project still exists.
+  const [projectSlug, setProjectSlug] = useState<string>(() => {
+    try {
+      return localStorage.getItem(HERO_PROJECT_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+
+  // Drop a stale selection if the remembered project was deleted since.
+  useEffect(() => {
+    if (projectSlug && !projects.some((p) => p.slug === projectSlug)) {
+      setProjectSlug("");
+    }
+  }, [projects, projectSlug]);
+
+  const persistProject = (slug: string) => {
+    setProjectSlug(slug);
+    try {
+      if (slug) localStorage.setItem(HERO_PROJECT_KEY, slug);
+      else localStorage.removeItem(HERO_PROJECT_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const handleSend = async () => {
     const text = msg.trim();
     if (!text || starting) return;
     setStarting(true);
     try {
-      const res = await api.postConversation(text);
+      // A selected project routes the new thread through the workspace endpoint
+      // (reuses the same plumbing as NewThreadCompose) so it lands in that
+      // project's sidebar group. Blank selection = plain chat thread.
+      const res = projectSlug
+        ? await api.startWorkspaceConversation(projectSlug, text)
+        : await api.postConversation(text);
       onCreated(res.session_id, text);
     } catch (e) {
       console.error("Failed to start conversation", e);
@@ -106,6 +142,15 @@ function NewSessionHero({
   // insert @files/<name> references into the draft so the new turn can read
   // them. Mirrors NewThreadCompose.handleUpload.
   const handleUpload = async (files: File[]) => {
+    if (projectSlug) {
+      const res = await api.uploadWorkspaceFiles(projectSlug, files, "files");
+      const refs = res.saved.map((f) => `@files/${f.filename}`).join(" ");
+      setMsg((prev) => {
+        const prefix = prev.trimEnd();
+        return prefix ? `${prefix}\n${refs} ` : `${refs} `;
+      });
+      return;
+    }
     const res = await api.uploadChatFiles(files);
     const refs = res.saved.map((f) => `@${f.path}`).join(" ");
     setMsg((prev) => {
@@ -152,6 +197,28 @@ function NewSessionHero({
         </p>
       </div>
       <div className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-6 sm:pb-8">
+        <div className="mb-2 flex items-center gap-2">
+          <label htmlFor="hero-project-picker" className="text-xs text-muted-foreground/70">
+            Project
+          </label>
+          <div className="relative">
+            <select
+              id="hero-project-picker"
+              value={projectSlug}
+              onChange={(e) => persistProject(e.target.value)}
+              disabled={starting}
+              className="appearance-none rounded-md border border-input bg-background/40 py-1 pl-2 pr-7 text-xs text-foreground outline-none focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
+            >
+              <option value="">No project (just chat)</option>
+              {projects.map((p) => (
+                <option key={p.slug} value={p.slug}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+          </div>
+        </div>
         <PromptBar
           input={msg}
           setInput={setMsg}
@@ -161,6 +228,7 @@ function NewSessionHero({
           onUploadFiles={handleUpload}
           disabled={starting}
           placeholder="Start with a goal"
+          workspaceSlug={projectSlug || undefined}
         />
       </div>
     </div>
@@ -716,7 +784,7 @@ export default function ChatPage() {
               />
             </div>
           ) : (
-            <NewSessionHero onCreated={threadCreated} />
+            <NewSessionHero onCreated={threadCreated} projects={projects} />
           )}
         </div>
 

@@ -133,7 +133,22 @@ _last_screenshot_cleanup_by_dir: dict[str, float] = {}
 # Configuration
 # ============================================================================
 
-# Default timeout for browser commands (seconds)
+# Default timeout for browser commands (seconds).
+#
+# This is the wall-clock ceiling for a SINGLE agent-browser CLI invocation
+# (open/snapshot/click/…).  It is NOT a page-load timeout — agent-browser has
+# its own internal navigation waits.  ``browser_navigate`` deliberately raises
+# the floor to ``max(command_timeout, 60)`` because a cold first navigation
+# (daemon spin-up + Chromium launch + initial page load) routinely needs more
+# than 30s, whereas follow-up commands on a warm daemon are fast.
+#
+# On a healthy machine 30s is plenty.  On a misconfigured headless VPS (missing
+# Chromium system libs, no sandbox) every command would otherwise hang for the
+# full timeout and the agent would burn its whole iteration budget retrying.
+# The preflight health check (``_browser_backend_healthy``) and the circuit
+# breaker (``_record_browser_timeout``) exist to fail fast in that case instead
+# of waiting out repeated 30s/60s timeouts.  Tune via
+# ``config["browser"]["command_timeout"]`` (floored at 5s).
 DEFAULT_COMMAND_TIMEOUT = 30
 
 # Max tokens for snapshot content before summarization
@@ -145,6 +160,163 @@ _EMPTY_OK_COMMANDS: frozenset = frozenset({"close", "record"})
 _cached_command_timeout: Optional[int] = None
 _command_timeout_resolved = False
 
+# ============================================================================
+# Backend health preflight + circuit breaker
+# ============================================================================
+#
+# On a headless VPS where agent-browser/Chromium cannot launch (missing system
+# libraries, no sandbox), every browser command hangs until the full timeout.
+# A single agent turn can then exhaust its iteration budget just retrying
+# timed-out navigations.  Two guards prevent that:
+#
+#   1. Preflight health check — before the first navigation we run a cheap
+#      ``agent-browser --version`` probe with a short timeout.  If it fails we
+#      return a fast, actionable error instead of attempting a navigation that
+#      will hang.  Cached per process; reset by ``cleanup_all_browsers()``.
+#
+#   2. Circuit breaker — after N consecutive command timeouts within the
+#      process we short-circuit further browser calls with a clear message so
+#      the agent stops retrying.  The counter resets on any successful command
+#      and on ``cleanup_all_browsers()``.
+
+# Short timeout for the preflight probe — must be fast so an unhealthy backend
+# fails quickly rather than waiting out the full command timeout.
+_HEALTH_PROBE_TIMEOUT = 8
+
+# Number of consecutive timeouts that trips the circuit breaker.
+_TIMEOUT_BREAKER_THRESHOLD = 3
+
+# Cached preflight result: None = not yet checked; (healthy, error_message).
+_backend_health: Optional[tuple] = None
+_backend_health_lock = threading.Lock()
+
+# Consecutive-timeout counter for the circuit breaker.
+_consecutive_timeouts = 0
+_breaker_tripped = False
+
+
+def _headless_linux_hint() -> str:
+    """Extra guidance for headless Linux servers (no $DISPLAY)."""
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        return (
+            " On a headless Linux server you must install Chromium's system "
+            "libraries: run `agent-browser install --with-deps` (Debian/Ubuntu) "
+            "and ensure the process can launch Chromium without a sandbox."
+        )
+    return ""
+
+
+def _backend_unhealthy_error(detail: str) -> str:
+    """Build the fast, actionable error returned when the backend is unhealthy."""
+    return (
+        f"Browser backend is not available: {detail}. "
+        f"Install/repair it with: {_browser_install_hint()}."
+        f"{_headless_linux_hint()}"
+    )
+
+
+def _check_backend_health() -> tuple:
+    """Probe that agent-browser can launch.
+
+    Returns ``(healthy: bool, error: str)``.  Runs a cheap ``--version`` probe
+    with a short timeout so an unhealthy backend fails fast instead of hanging.
+    """
+    # Camofox routes through a REST API, not the agent-browser CLI.
+    if _is_camofox_mode():
+        return (True, "")
+
+    try:
+        browser_cmd = _find_agent_browser()
+    except FileNotFoundError as e:
+        return (False, str(e))
+
+    if _requires_real_termux_browser_install(browser_cmd):
+        return (False, _termux_browser_install_error())
+
+    cmd_prefix = ["npx", "agent-browser"] if browser_cmd == "npx agent-browser" else [browser_cmd]
+    try:
+        proc = subprocess.run(
+            cmd_prefix + ["--version"],
+            capture_output=True,
+            text=True,
+            timeout=_HEALTH_PROBE_TIMEOUT,
+            stdin=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired:
+        return (False, f"agent-browser did not respond within {_HEALTH_PROBE_TIMEOUT}s (probe timed out)")
+    except Exception as e:
+        return (False, f"agent-browser could not be launched: {e}")
+
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()[:300] or f"exit code {proc.returncode}"
+        return (False, f"agent-browser --version failed: {err}")
+
+    return (True, "")
+
+
+def _browser_backend_healthy() -> tuple:
+    """Return cached ``(healthy, error)`` for the browser backend.
+
+    The probe runs once per process; the result is cached until
+    ``cleanup_all_browsers()`` resets it.  Cloud providers are assumed healthy
+    here (their own ``create_session`` surfaces credential/connectivity errors).
+    """
+    global _backend_health
+    # Cloud backends are validated by the provider, not the local CLI probe.
+    if _get_cloud_provider() is not None and not _is_camofox_mode():
+        return (True, "")
+    with _backend_health_lock:
+        if _backend_health is None:
+            _backend_health = _check_backend_health()
+        return _backend_health
+
+
+def _breaker_is_open() -> bool:
+    """True when the consecutive-timeout circuit breaker has tripped."""
+    return _breaker_tripped
+
+
+def _breaker_error() -> str:
+    return (
+        f"Browser circuit breaker open: {_TIMEOUT_BREAKER_THRESHOLD} consecutive "
+        "browser commands timed out, so further browser calls are being "
+        "short-circuited to avoid exhausting the iteration budget. The backend "
+        "is likely unable to launch Chromium."
+        f"{_headless_linux_hint()} "
+        "Stop using the browser for this task, or fix the backend and retry."
+    )
+
+
+def _record_browser_timeout() -> None:
+    """Increment the consecutive-timeout counter and trip the breaker at N."""
+    global _consecutive_timeouts, _breaker_tripped
+    with _backend_health_lock:
+        _consecutive_timeouts += 1
+        if _consecutive_timeouts >= _TIMEOUT_BREAKER_THRESHOLD:
+            _breaker_tripped = True
+            logger.warning(
+                "Browser circuit breaker tripped after %d consecutive timeouts",
+                _consecutive_timeouts,
+            )
+
+
+def _record_browser_success() -> None:
+    """Reset the circuit breaker after a successful browser command."""
+    global _consecutive_timeouts, _breaker_tripped
+    if _consecutive_timeouts or _breaker_tripped:
+        with _backend_health_lock:
+            _consecutive_timeouts = 0
+            _breaker_tripped = False
+
+
+def _reset_backend_health_state() -> None:
+    """Clear cached health + circuit-breaker state (cleanup / tests)."""
+    global _backend_health, _consecutive_timeouts, _breaker_tripped
+    with _backend_health_lock:
+        _backend_health = None
+        _consecutive_timeouts = 0
+        _breaker_tripped = False
+
 
 def _get_command_timeout() -> int:
     """Return the configured browser command timeout from config.yaml.
@@ -152,6 +324,8 @@ def _get_command_timeout() -> int:
     Reads ``config["browser"]["command_timeout"]`` and falls back to
     ``DEFAULT_COMMAND_TIMEOUT`` (30s) if unset or unreadable.  Result is
     cached after the first call and cleared by ``cleanup_all_browsers()``.
+
+    See ``DEFAULT_COMMAND_TIMEOUT`` for the meaning/semantics of this value.
     """
     global _cached_command_timeout, _command_timeout_resolved
     if _command_timeout_resolved:
@@ -1063,7 +1237,12 @@ def _run_browser_command(
     if timeout is None:
         timeout = _get_command_timeout()
     args = args or []
-    
+
+    # Circuit breaker — once tripped, short-circuit every browser command with
+    # a clear message so the agent stops retrying and burning its budget.
+    if _breaker_is_open():
+        return {"success": False, "error": _breaker_error(), "error_type": "circuit_open"}
+
     # Build the command
     try:
         browser_cmd = _find_agent_browser()
@@ -1180,7 +1359,12 @@ def _run_browser_command(
             proc.wait()
             logger.warning("browser '%s' timed out after %ds (task=%s, socket_dir=%s)",
                            command, timeout, task_id, task_socket_dir)
-            return {"success": False, "error": f"Command timed out after {timeout} seconds"}
+            _record_browser_timeout()
+            return {
+                "success": False,
+                "error": f"Command timed out after {timeout} seconds",
+                "error_type": "timeout",
+            }
 
         with open(stdout_path, "r") as f:
             stdout = f.read()
@@ -1219,6 +1403,10 @@ def _run_browser_command(
                         logger.warning("snapshot returned empty content. "
                                        "Possible stale daemon or CDP connection issue. "
                                        "returncode=%s", returncode)
+                # A well-formed response (success or a structured failure)
+                # resets the circuit breaker — the daemon is responsive.
+                if isinstance(parsed, dict) and parsed.get("success"):
+                    _record_browser_success()
                 return parsed
             except json.JSONDecodeError:
                 raw = stdout_text[:2000]
@@ -1245,9 +1433,26 @@ def _run_browser_command(
                             },
                         }
 
+                # Malformed / non-JSON daemon output is a DISTINCT failure
+                # mode from a clean error or a timeout: it usually means
+                # agent-browser/Chromium crashed mid-command or isn't fully
+                # installed (e.g. it emitted an about:blank dump plus garbage).
+                # Classify it explicitly so callers/tests can distinguish it
+                # instead of leaking a truncated raw blob as a generic error.
+                logger.warning(
+                    "browser '%s' produced a malformed (non-JSON) daemon response; "
+                    "the backend may have crashed or be partially installed", command,
+                )
                 return {
                     "success": False,
-                    "error": f"Non-JSON output from agent-browser for '{command}': {raw}"
+                    "error": (
+                        f"Malformed (non-JSON) response from agent-browser for "
+                        f"'{command}'. The browser backend likely crashed or is not "
+                        f"fully installed. Repair it with: {_browser_install_hint()}."
+                        f"{_headless_linux_hint()}"
+                    ),
+                    "error_type": "malformed_response",
+                    "raw_output": raw,
                 }
         
         # Check for errors
@@ -1405,6 +1610,21 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
         return camofox_navigate(url, task_id)
 
     effective_task_id = task_id or "default"
+
+    # Circuit breaker — if prior navigations already timed out repeatedly this
+    # process, fail fast instead of attempting another hanging navigation.
+    if _breaker_is_open():
+        return json.dumps({"success": False, "error": _breaker_error()}, ensure_ascii=False)
+
+    # Preflight health check — verify the backend can actually launch before
+    # the (expensive, slow) first navigation. On a misconfigured headless VPS
+    # this returns a fast, actionable error instead of hanging for 60s.
+    healthy, health_err = _browser_backend_healthy()
+    if not healthy:
+        return json.dumps(
+            {"success": False, "error": _backend_unhealthy_error(health_err)},
+            ensure_ascii=False,
+        )
 
     # Take-over: defer navigation when the user holds control of the session.
     paused = _takeover_check("navigate", task_id=effective_task_id)
@@ -2545,6 +2765,10 @@ def cleanup_all_browsers() -> None:
     _discover_homebrew_node_dirs.cache_clear()
     _cached_command_timeout = None
     _command_timeout_resolved = False
+
+    # Reset preflight health cache + circuit-breaker state so a fresh process
+    # phase (or test) re-probes the backend instead of trusting a stale result.
+    _reset_backend_health_state()
 
 
 # ============================================================================

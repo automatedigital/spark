@@ -226,6 +226,17 @@ function ProjectGroup({
   );
 }
 
+// ── Project templates ───────────────────────────────────────────────────────────
+
+type TemplateOption = { id: string; label: string; description: string };
+
+const PROJECT_TEMPLATES: TemplateOption[] = [
+  { id: "scratch", label: "Scratch", description: "Empty project" },
+  { id: "static", label: "Static site", description: "HTML + CSS + JS (Tailwind CDN)" },
+  { id: "webapp", label: "Web app", description: "Vite + React + TS + Tailwind" },
+  { id: "productivity", label: "Productivity", description: "Notes + helpful skills guide" },
+];
+
 // ── Collapsible section header ──────────────────────────────────────────────────
 
 const SECTION_COLLAPSE_KEY = "spark.sidebar.collapsedSections";
@@ -308,6 +319,7 @@ export function SidebarSessions({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectTemplate, setNewProjectTemplate] = useState("scratch");
   const [savingProject, setSavingProject] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
 
@@ -364,8 +376,9 @@ export function SidebarSessions({
     if (!name || savingProject) return;
     setSavingProject(true);
     try {
-      await createProject(name);
+      await createProject(name, newProjectTemplate);
       setNewProjectName("");
+      setNewProjectTemplate("scratch");
       setCreatingProject(false);
     } catch (e) {
       console.error("Create project failed", e);
@@ -468,9 +481,31 @@ export function SidebarSessions({
                   if (e.key === "Escape") {
                     setCreatingProject(false);
                     setNewProjectName("");
+                    setNewProjectTemplate("scratch");
                   }
                 }}
               />
+              <div className="grid grid-cols-2 gap-1">
+                {PROJECT_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => setNewProjectTemplate(tpl.id)}
+                    title={tpl.description}
+                    className={cn(
+                      "flex flex-col gap-0.5 rounded-sm border px-1.5 py-1 text-left transition",
+                      newProjectTemplate === tpl.id
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+                    )}
+                  >
+                    <span className="text-[11px] font-medium leading-tight">{tpl.label}</span>
+                    <span className="truncate text-[9px] leading-tight text-muted-foreground/60">
+                      {tpl.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-1">
                 <Button
                   size="sm"
@@ -487,6 +522,7 @@ export function SidebarSessions({
                   onClick={() => {
                     setCreatingProject(false);
                     setNewProjectName("");
+                    setNewProjectTemplate("scratch");
                   }}
                 >
                   <X className="h-3 w-3" />

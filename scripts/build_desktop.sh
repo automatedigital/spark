@@ -43,8 +43,10 @@ rm -rf "$APP/Contents/Resources/spark-server"
 cp -R "$REPO_ROOT/dist/spark-server" "$APP/Contents/Resources/spark-server"
 chmod +x "$APP/Contents/Resources/spark-server/spark-server"
 
-# 4b. Re-sign after sidecar injection (DMG staging will sign again after cp -R)
-echo "==> Ad-hoc signing app bundle"
+# 4b. Re-sign after sidecar injection (DMG staging will sign again after cp -R).
+#     sign_mac_app.sh uses Developer ID + hardened runtime when
+#     APPLE_SIGNING_IDENTITY is set, otherwise falls back to ad-hoc `--sign -`.
+echo "==> Signing app bundle"
 "$REPO_ROOT/scripts/sign_mac_app.sh" "$APP"
 
 # 5. Package a styled drag-to-install .dmg ---------------------------------
@@ -52,6 +54,12 @@ echo "==> Packaging DMG"
 mkdir -p "$DMG_DIR"
 DMG="$DMG_DIR/Spark.dmg"
 "$REPO_ROOT/scripts/make_dmg.sh" "$APP" "$DMG"
+
+# 6. Notarize + staple the DMG ---------------------------------------------
+#    No-op (logs + exits 0) unless notarization credentials are in the env:
+#    APPLE_KEYCHAIN_PROFILE, or APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID.
+echo "==> Notarizing DMG"
+"$REPO_ROOT/scripts/notarize_mac.sh" "$DMG"
 
 echo ""
 echo "App: $APP"
