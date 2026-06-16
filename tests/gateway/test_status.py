@@ -19,6 +19,44 @@ class TestGatewayPidState:
         assert isinstance(payload["argv"], list)
         assert payload["argv"]
 
+    def test_write_pid_file_marks_embedded_under_desktop(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+        monkeypatch.setenv("SPARK_DESKTOP", "1")
+
+        status.write_pid_file()
+
+        payload = json.loads((tmp_path / "gateway.pid").read_text())
+        assert payload["embedded"] is True
+
+    def test_write_pid_file_not_embedded_without_desktop(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+        monkeypatch.delenv("SPARK_DESKTOP", raising=False)
+
+        status.write_pid_file()
+
+        payload = json.loads((tmp_path / "gateway.pid").read_text())
+        assert payload["embedded"] is False
+
+    def test_get_running_pid_accepts_embedded_gateway_with_sidecar_cmdline(self, tmp_path, monkeypatch):
+        """Desktop sidecar runs the gateway in-process; cmdline/argv look like
+        spark-server, so detection must rely on the embedded marker."""
+        monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+        pid_path = tmp_path / "gateway.pid"
+        pid_path.write_text(json.dumps({
+            "pid": os.getpid(),
+            "kind": "spark-gateway",
+            "argv": ["/Applications/Spark.app/Contents/Resources/spark-server/spark-server"],
+            "start_time": 123,
+            "embedded": True,
+        }))
+
+        monkeypatch.setattr(status.os, "kill", lambda pid, sig: None)
+        monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123)
+        # Sidecar cmdline carries no "spark gateway" pattern.
+        monkeypatch.setattr(status, "_read_process_cmdline", lambda pid: "spark-server")
+
+        assert status.get_running_pid() == os.getpid()
+
     def test_get_running_pid_rejects_live_non_gateway_pid(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SPARK_HOME", str(tmp_path))
         pid_path = tmp_path / "gateway.pid"
