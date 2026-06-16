@@ -1,72 +1,51 @@
 #!/usr/bin/env bash
-# notarize_mac.sh — Sign and notarize Spark.app + DMG for Gatekeeper-approved installs.
+# notarize_mac.sh — Submit a .dmg (or .app) to Apple notarization and staple it.
 #
-# Requires Apple Developer Program membership and these env vars:
-#   SPARK_CODESIGN_IDENTITY   e.g. "Developer ID Application: Your Name (TEAMID)"
-#   SPARK_NOTARY_APPLE_ID      Apple ID email for notarytool
-#   SPARK_NOTARY_TEAM_ID       10-character Team ID
-#   SPARK_NOTARY_PASSWORD      App-specific password (or keychain profile via --keychain-profile)
+# Usage: notarize_mac.sh <path/to/output.dmg>
 #
-# Optional:
-#   SPARK_NOTARY_KEYCHAIN_PROFILE  if set, passed to notarytool instead of --password
+# Notarization is GATED on credentials being present in the environment. If they
+# are not set, this script skips notarization with a clear log message and exits
+# 0 so local/ad-hoc dev builds keep working.
 #
-# Usage (after build_desktop.sh):
-#   export SPARK_CODESIGN_IDENTITY="Developer ID Application: ..."
-#   export SPARK_NOTARY_APPLE_ID=...
-#   export SPARK_NOTARY_TEAM_ID=...
-#   export SPARK_NOTARY_PASSWORD=...
-#   bash scripts/notarize_mac.sh
+# Two credential modes (checked in this order):
 #
+#   1. Keychain profile — set APPLE_KEYCHAIN_PROFILE to the name of a profile
+#      previously stored with:
+#        xcrun notarytool store-credentials "<profile>" \
+#          --apple-id "<you@example.com>" \
+#          --team-id "<TEAMID>" \
+#          --password "<app-specific-password>"
+#
+#   2. Inline credentials — set ALL of:
+#        APPLE_ID        — Apple Developer account email
+#        APPLE_PASSWORD  — app-specific password (NOT your Apple ID password)
+#        APPLE_TEAM_ID   — 10-char Team ID
+#
+# NEVER hardcode credentials here — all values come from env.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP="${1:-$REPO_ROOT/src/spark_cli/web/src-tauri/target/release/bundle/macos/Spark.app}"
-DMG="${2:-$REPO_ROOT/src/spark_cli/web/src-tauri/target/release/bundle/dmg/Spark.dmg}"
-IDENTITY="${SPARK_CODESIGN_IDENTITY:?Set SPARK_CODESIGN_IDENTITY (Developer ID Application)}"
+TARGET="${1:?usage: notarize_mac.sh <output.dmg>}"
+[ -e "$TARGET" ] || { echo "error: not found: $TARGET" >&2; exit 1; }
 
-sign_app() {
-  local target="$1"
-  echo "==> Signing $target with $IDENTITY"
-  find "$target" -type f | while read -r f; do
-    if file -b "$f" 2>/dev/null | grep -q 'Mach-O'; then
-      codesign --force --options runtime --timestamp --sign "$IDENTITY" "$f" 2>/dev/null || true
-    fi
-  done
-  codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$target"
-  codesign --verify --deep --strict --verbose=2 "$target"
-}
-
-notarize() {
-  local path="$1"
-  local name
-  name="$(basename "$path")"
-  echo "==> Notarizing $name"
-  local -a args=(submit "$path" --apple-id "$SPARK_NOTARY_APPLE_ID" --team-id "$SPARK_NOTARY_TEAM_ID" --wait)
-  if [[ -n "${SPARK_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
-    args+=(--keychain-profile "$SPARK_NOTARY_KEYCHAIN_PROFILE")
-  else
-    args+=(--password "$SPARK_NOTARY_PASSWORD")
-  fi
-  xcrun notarytool "${args[@]}"
-  xcrun stapler staple "$path"
-  echo "==> Stapled $name"
-}
-
-[[ -d "$APP" ]] || { echo "error: app not found: $APP (run build_desktop.sh first)" >&2; exit 1; }
-[[ -f "$DMG" ]] || { echo "error: dmg not found: $DMG" >&2; exit 1; }
-
-: "${SPARK_NOTARY_APPLE_ID:?Set SPARK_NOTARY_APPLE_ID}"
-: "${SPARK_NOTARY_TEAM_ID:?Set SPARK_NOTARY_TEAM_ID}"
-if [[ -z "${SPARK_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
-  : "${SPARK_NOTARY_PASSWORD:?Set SPARK_NOTARY_PASSWORD or SPARK_NOTARY_KEYCHAIN_PROFILE}"
+NOTARY_ARGS=()
+if [ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]; then
+  echo "==> Notarizing via keychain profile: $APPLE_KEYCHAIN_PROFILE"
+  NOTARY_ARGS=(--keychain-profile "$APPLE_KEYCHAIN_PROFILE")
+elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+  echo "==> Notarizing via Apple ID: $APPLE_ID (team $APPLE_TEAM_ID)"
+  NOTARY_ARGS=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
+else
+  echo "==> Notarization skipped — no credentials in environment."
+  echo "    Set APPLE_KEYCHAIN_PROFILE, or APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID,"
+  echo "    to enable notarization. (Local/ad-hoc builds do not need this.)"
+  exit 0
 fi
 
-sign_app "$APP"
-# Rebuild DMG from signed app if needed
-"$REPO_ROOT/scripts/make_dmg.sh" "$APP" "$DMG"
-sign_app "$APP"  # staged copy inside DMG pipeline re-signs; for notarized DMG, notarize the dmg
-notarize "$DMG"
+echo "==> Submitting $TARGET to Apple notary service (this can take minutes)"
+xcrun notarytool submit "$TARGET" "${NOTARY_ARGS[@]}" --wait
 
-echo ""
-echo "Notarized DMG: $DMG"
-echo "Upload with: gh release upload desktop-vX.Y.Z $DMG --clobber"
+echo "==> Stapling notarization ticket to $TARGET"
+xcrun stapler staple "$TARGET"
+xcrun stapler validate "$TARGET"
+
+echo "  Notarized + stapled: $TARGET"
