@@ -26,6 +26,16 @@ APP="$BUNDLE_DIR/macos/Spark.app"
 DMG_DIR="$BUNDLE_DIR/dmg"
 
 # 1. Build web assets ------------------------------------------------------
+# Install deps first so the build never fails on a newly-added/changed
+# dependency (e.g. a stale node_modules missing a devDependency). Use `npm ci`
+# when a lockfile is present for a clean, reproducible install; fall back to
+# `npm install` otherwise.
+echo "==> Installing web frontend dependencies"
+if [ -f "$WEB_DIR/package-lock.json" ]; then
+  (cd "$WEB_DIR" && npm ci)
+else
+  (cd "$WEB_DIR" && npm install)
+fi
 echo "==> Building web frontend"
 (cd "$WEB_DIR" && npm run build)
 
