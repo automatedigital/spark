@@ -254,8 +254,10 @@ in `sign_mac_app.sh`); `tauri.conf.json` has no signing identity.
       wired into `build_desktop.sh`; skips cleanly without creds. (PR #42)
 - [x] All values sourced from env (`APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`,
       `APPLE_ID`+`APPLE_PASSWORD` or `APPLE_KEYCHAIN_PROFILE`); documented. (PR #42)
-- [ ] Verify `spctl -a -vvv` / Gatekeeper on a clean machine. _(Pending real
-      Apple certs — set the env vars above, build, then validate.)_
+- [x] Verified end-to-end with real Developer ID certs: signed (hardened
+      runtime) → Apple notary **Accepted** → stapled DMG. `spctl -a -vvv` on the
+      in-DMG app → "accepted, source=Notarized Developer ID". (Also fixed an
+      entitlements-plist XML-comment parse bug, PR #49.)
 - [x] Updated `build-mac/SKILL.md` with the signing/notarization flow + verification. (PR #42)
 
 > Note: PR #42 replaced a pre-existing `notarize_mac.sh` that used `SPARK_*` env vars
