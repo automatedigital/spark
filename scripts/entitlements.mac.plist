@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  entitlements.mac.plist — Hardened-runtime entitlements for the Spark .app.
+
+  Used by scripts/sign_mac_app.sh ONLY when signing with a real Developer ID
+  (APPLE_SIGNING_IDENTITY set). Hardened runtime (`codesign --options runtime`)
+  is required for Apple notarization.
+
+  Kept intentionally minimal. The two JIT-related entitlements below are needed
+  by Tauri's WKWebView/JavaScriptCore (WebKit JITs JavaScript). If a future
+  build fails to launch under the hardened runtime with a code-signing/JIT
+  crash, these are the usual culprits — do not add more without a concrete
+  reason, as each one weakens the runtime's protections and can draw extra
+  notarization scrutiny.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Allow the WebKit JavaScript JIT compiler to run. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!-- WebKit maps writable+executable memory for the JIT. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>
