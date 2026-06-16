@@ -26,7 +26,7 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 
 # ---------------------------------------------------------------------------
 # SSL certificate auto-detection for NixOS and other non-standard systems.
@@ -9508,7 +9508,12 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     logger.info("Cron ticker stopped")
 
 
-async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = False, verbosity: Optional[int] = 0) -> bool:
+async def start_gateway(
+    config: Optional[GatewayConfig] = None,
+    replace: bool = False,
+    verbosity: Optional[int] = 0,
+    on_runner: Optional[Callable[["GatewayRunner"], None]] = None,
+) -> bool:
     """
     Start the gateway and run until interrupted.
     
@@ -9621,7 +9626,15 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             logging.getLogger().setLevel(_stderr_level)
 
     runner = GatewayRunner(config)
-    
+
+    # Expose the runner to an external caller (e.g. the desktop sidecar) so it
+    # can request a graceful stop from another thread via ``runner.stop()``.
+    if on_runner is not None:
+        try:
+            on_runner(runner)
+        except Exception:
+            logger.debug("on_runner callback failed", exc_info=True)
+
     # Set up signal handlers
     def shutdown_signal_handler():
         asyncio.create_task(runner.stop())
