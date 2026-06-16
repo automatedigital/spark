@@ -39,8 +39,35 @@ _DOH_PROVIDERS: list[dict] = [
 ]
 
 # Last-resort IPs when DoH is also blocked.  These are stable Telegram Bot API
-# endpoints in the 149.154.160.0/20 block (same seed used by OpenClaw).
-_SEED_FALLBACK_IPS: list[str] = ["149.154.167.220"]
+# endpoints in the 149.154.160.0/20 block (Telegram DC range).  Seeding several
+# spreads the retry across multiple data-centre front-ends so a single dead
+# endpoint doesn't take down the fallback path.
+_SEED_FALLBACK_IPS: list[str] = [
+    "149.154.167.220",
+    "149.154.167.221",
+    "149.154.175.50",
+    "149.154.171.5",
+]
+
+# Bounded retry/backoff applied to each fallback IP before moving on, so a
+# transient connect failure doesn't immediately exhaust the IP list.
+_FALLBACK_CONNECT_ATTEMPTS = 2  # total connect tries per IP
+_FALLBACK_RETRY_BACKOFF = 0.25  # seconds, base sleep between retries
+
+
+def get_seed_fallback_ips() -> list[str]:
+    """Return the seeded fallback IP list, overridable via env var.
+
+    ``TELEGRAM_FALLBACK_IPS`` (comma-separated) takes precedence over the
+    built-in multi-IP seed. Invalid entries are filtered out; if the env var
+    yields nothing usable, the built-in multi-IP seed is returned.
+    """
+    import os
+
+    override = parse_fallback_ip_env(os.getenv("TELEGRAM_FALLBACK_IPS"))
+    if override:
+        return override
+    return list(_SEED_FALLBACK_IPS)
 
 
 def _resolve_proxy_url() -> str | None:
@@ -85,7 +112,7 @@ class TelegramFallbackTransport(httpx.AsyncBaseTransport):
             candidate = request if ip is None else _rewrite_request_for_ip(request, ip)
             transport = self._primary if ip is None else self._fallbacks[ip]
             try:
-                response = await transport.handle_async_request(candidate)
+                response = await self._attempt_with_retries(transport, candidate, ip)
                 if ip is not None and self._sticky_ip != ip:
                     async with self._sticky_lock:
                         if self._sticky_ip != ip:
@@ -101,16 +128,56 @@ class TelegramFallbackTransport(httpx.AsyncBaseTransport):
                     raise
                 if ip is None:
                     logger.warning(
-                        "[Telegram] Primary api.telegram.org connection failed (%s); trying fallback IPs %s",
-                        exc,
+                        "[Telegram] Primary api.telegram.org connection failed (%s); "
+                        "trying fallback IPs %s",
+                        _describe_exc(exc),
                         ", ".join(self._fallback_ips),
                     )
                     continue
-                logger.warning("[Telegram] Fallback IP %s failed: %s", ip, exc)
+                logger.warning(
+                    "[Telegram] Fallback IP %s failed: %s", ip, _describe_exc(exc)
+                )
                 continue
 
         if last_error is None:
             raise RuntimeError("All Telegram fallback IPs exhausted but no error was recorded")
+        logger.warning(
+            "[Telegram] All fallback IPs exhausted (%s); last error: %s",
+            ", ".join(self._fallback_ips),
+            _describe_exc(last_error),
+        )
+        raise last_error
+
+    async def _attempt_with_retries(
+        self,
+        transport: httpx.AsyncBaseTransport,
+        request: httpx.Request,
+        ip: str | None,
+    ) -> httpx.Response:
+        """Try a single transport with a small bounded retry/backoff.
+
+        Only retryable connect errors trigger a retry; anything else propagates
+        immediately so the caller's non-connect handling still applies.
+        """
+        last_error: Exception | None = None
+        for attempt in range(_FALLBACK_CONNECT_ATTEMPTS):
+            try:
+                return await transport.handle_async_request(request)
+            except Exception as exc:
+                last_error = exc
+                if not _is_retryable_connect_error(exc):
+                    raise
+                if attempt + 1 < _FALLBACK_CONNECT_ATTEMPTS:
+                    target = "primary" if ip is None else f"IP {ip}"
+                    logger.debug(
+                        "[Telegram] Connect to %s failed (%s); retry %d/%d",
+                        target,
+                        _describe_exc(exc),
+                        attempt + 1,
+                        _FALLBACK_CONNECT_ATTEMPTS - 1,
+                    )
+                    await asyncio.sleep(_FALLBACK_RETRY_BACKOFF * (attempt + 1))
+        assert last_error is not None  # loop always sets it before exhausting
         raise last_error
 
     async def aclose(self) -> None:
@@ -218,12 +285,13 @@ async def discover_fallback_ips() -> list[str]:
         logger.debug("Discovered Telegram fallback IPs via DoH: %s", ", ".join(validated))
         return validated
 
+    seed = get_seed_fallback_ips()
     logger.info(
         "DoH discovery yielded no new IPs (system DNS: %s); using seed fallback IPs %s",
         ", ".join(system_ips) or "unknown",
-        ", ".join(_SEED_FALLBACK_IPS),
+        ", ".join(seed),
     )
-    return list(_SEED_FALLBACK_IPS)
+    return seed
 
 
 def _rewrite_request_for_ip(request: httpx.Request, ip: str) -> httpx.Request:
@@ -244,3 +312,24 @@ def _rewrite_request_for_ip(request: httpx.Request, ip: str) -> httpx.Request:
 
 def _is_retryable_connect_error(exc: Exception) -> bool:
     return isinstance(exc, (httpx.ConnectTimeout, httpx.ConnectError))
+
+
+def _describe_exc(exc: BaseException) -> str:
+    """Human-readable cause for log lines.
+
+    httpx connect errors frequently have an empty ``str()`` (the original
+    ``ConnectError`` carries no message), which produced log lines like
+    ``Fallback IP X failed:`` with nothing after the colon. Always include the
+    exception type, and append the message when present.
+    """
+    message = str(exc).strip()
+    name = type(exc).__name__
+    cause = exc.__cause__ or exc.__context__
+    detail = f"{name}: {message}" if message else name
+    if not message and cause is not None:
+        cause_msg = str(cause).strip()
+        if cause_msg:
+            detail = f"{name}: {cause_msg}"
+        else:
+            detail = f"{name} ({type(cause).__name__})"
+    return detail
