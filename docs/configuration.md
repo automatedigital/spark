@@ -692,11 +692,22 @@ If `web.backend` is not set, the backend is auto-detected from available API key
 ```yaml
 browser:
   inactivity_timeout: 120        # Seconds before auto-closing idle sessions
-  command_timeout: 30
+  command_timeout: 30            # Per-command wall-clock ceiling (seconds), floored at 5
   record_sessions: false         # Record sessions as WebM to ~/.spark/browser_recordings/
   camofox:
     managed_persistence: false   # Persist cookies/logins across restarts
 ```
+
+`command_timeout` is the wall-clock ceiling for a **single** agent-browser
+command (open/snapshot/click/…), not a page-load timeout — agent-browser has
+its own internal navigation waits. The first navigation in a session raises the
+floor to `max(command_timeout, 60)` to cover the cold daemon + Chromium launch.
+The value is floored at 5 seconds. On a healthy machine 30s is ample; if the
+browser backend cannot launch (e.g. a headless Linux server missing Chromium
+system libraries), a preflight health check and a consecutive-timeout circuit
+breaker fail fast with an actionable error instead of waiting out repeated
+timeouts. Run `spark doctor` and `agent-browser install --with-deps` to fix a
+headless server.
 
 See the [Browser feature page](tools/browser.md) for details on Browserbase, Browser Use, and local Chrome CDP setup.
 
