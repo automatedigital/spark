@@ -13,7 +13,9 @@ import {
   Server,
   Sparkles,
 } from "lucide-react";
-import { api, openExternal, type OAuthStartResponse } from "@/lib/api";
+import { api, openExternal, setRemoteConnection, type OAuthStartResponse } from "@/lib/api";
+import { validateRemoteConnection } from "@/lib/connection";
+import { isTauri } from "@/sidecar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -440,6 +442,34 @@ function InlineOAuth({
 }
 
 export function OnboardingWizard({ onComplete }: Props) {
+  // Desktop-only "choose how to connect" gate shown before the provider flow.
+  // On web there is no local-sidecar choice, so we skip straight to step 1.
+  const desktop = isTauri();
+  const [phase, setPhase] = useState<"mode" | "setup">(desktop ? "mode" : "setup");
+  // Remote-connection fields (desktop "Connect to an existing instance" path).
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [remoteToken, setRemoteToken] = useState("");
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+
+  const handleRemoteConnect = async () => {
+    setRemoteBusy(true);
+    setRemoteError(null);
+    try {
+      const result = await validateRemoteConnection(remoteUrl, remoteToken);
+      if (!result.ok) {
+        setRemoteError(result.error ?? "Could not connect");
+        return;
+      }
+      setRemoteConnection(remoteUrl, remoteToken);
+      onComplete();
+    } catch (e) {
+      setRemoteError(`Could not connect: ${e}`);
+    } finally {
+      setRemoteBusy(false);
+    }
+  };
+
   const [step, setStep] = useState(1);
   const [provider, setProvider] = useState<ProviderMeta | null>(null);
   const [enableFailover, setEnableFailover] = useState(true);
@@ -604,10 +634,130 @@ export function OnboardingWizard({ onComplete }: Props) {
         key={step}
         style={{ animation: "fade-in 200ms ease-out" }}
       >
-        <div className="mb-8">
-          <StepDots step={step} />
-        </div>
+        {phase === "setup" && (
+          <div className="mb-8">
+            <StepDots step={step} />
+          </div>
+        )}
 
+        {/* ── Phase: choose connection mode (desktop only) ── */}
+        {phase === "mode" && (
+          <div className="border border-border bg-card/90 p-7 shadow-2xl sm:p-9">
+            <div className="flex flex-col items-center gap-5 text-center">
+              <BrandLogo className="h-16 w-16" />
+              <h1 className="text-2xl font-semibold tracking-tight">
+                How do you want to run Spark?
+              </h1>
+              <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                Run Spark locally on this Mac, or connect this app to an existing
+                Spark instance running elsewhere (for example, a VPS).
+              </p>
+              <div className="mt-2 flex w-full flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPhase("setup")}
+                  className="group flex items-center gap-4 border border-border bg-background/40 p-4 text-left transition hover:border-primary/50 hover:bg-foreground/5"
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center border border-border bg-secondary/40 text-primary">
+                    <Cpu className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-foreground">
+                      Run locally on this Mac
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Uses the built-in agent on this computer
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(-1)}
+                  className="group flex items-center gap-4 border border-border bg-background/40 p-4 text-left transition hover:border-primary/50 hover:bg-foreground/5"
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center border border-border bg-secondary/40 text-primary">
+                    <Network className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-foreground">
+                      Connect to an existing Spark instance
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Point this app at a remote dashboard URL + token
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Phase: remote-connect form (desktop only; step === -1 sentinel) ── */}
+        {phase === "mode" && step === -1 && (
+          <div className="mt-4 border border-border bg-card/90 p-7 shadow-2xl sm:p-9">
+            <button
+              type="button"
+              onClick={() => {
+                setStep(1);
+                setRemoteError(null);
+              }}
+              className="mb-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Back
+            </button>
+            <div className="flex flex-col gap-4">
+              <div className="text-center">
+                <h1 className="text-xl font-semibold tracking-tight">
+                  Connect to a Spark instance
+                </h1>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Enter the dashboard URL and access token from your remote Spark.
+                </p>
+              </div>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                  <Globe className="h-3.5 w-3.5" /> Dashboard URL
+                </span>
+                <Input
+                  value={remoteUrl}
+                  onChange={(e) => setRemoteUrl(e.target.value)}
+                  placeholder="https://spark.example.com"
+                  autoFocus
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                  <KeyRound className="h-3.5 w-3.5" /> Access token
+                </span>
+                <Input
+                  type="password"
+                  value={remoteToken}
+                  onChange={(e) => setRemoteToken(e.target.value)}
+                  placeholder="dashboard token"
+                />
+              </label>
+              {remoteError && (
+                <p className="text-xs text-red-400">{remoteError}</p>
+              )}
+              <Button
+                className="w-full"
+                size="lg"
+                disabled={remoteBusy || !remoteUrl.trim() || !remoteToken.trim()}
+                onClick={handleRemoteConnect}
+              >
+                {remoteBusy ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Connecting…
+                  </>
+                ) : (
+                  "Connect"
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {phase === "setup" && (
         <div className="border border-border bg-card/90 p-7 shadow-2xl sm:p-9">
           {/* ── Step 1 — Welcome ── */}
           {step === 1 && (
@@ -925,6 +1075,7 @@ export function OnboardingWizard({ onComplete }: Props) {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

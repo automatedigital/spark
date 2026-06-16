@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Mic,
   Monitor,
+  Network,
   Palette,
   Plug,
   Radio,
@@ -26,7 +27,15 @@ import EnvPage from "@/pages/EnvPage";
 import UpdatesPage from "@/pages/UpdatesPage";
 import AppearancePage from "@/pages/AppearancePage";
 import MemoryPage from "@/pages/MemoryPage";
-import { api } from "@/lib/api";
+import {
+  api,
+  getConnectionMode,
+  getRemoteBaseUrl,
+  setRemoteConnection,
+  setLocalConnection,
+} from "@/lib/api";
+import { validateRemoteConnection, displayHost } from "@/lib/connection";
+import { isTauri } from "@/sidecar";
 import type { McpServersResponse } from "@/lib/api";
 import { getNestedValue, setNestedValue } from "@/lib/nested";
 import { AutoField } from "@/components/AutoField";
@@ -367,6 +376,116 @@ function VoiceSection() {
   return <ConfigSectionForm categories={["voice", "tts", "stt"]} />;
 }
 
+/* Desktop-only: switch between running Spark locally vs connecting to a
+ * remote instance (VPS). Mirrors the onboarding remote-connect flow and is
+ * the single place to edit/clear the remote URL + token after setup. */
+function ConnectionSection() {
+  const [mode, setMode] = useState(getConnectionMode());
+  const [url, setUrl] = useState(getRemoteBaseUrl() ?? "");
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
+
+  const connectRemote = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await validateRemoteConnection(url, token);
+      if (!result.ok) {
+        setError(result.error ?? "Could not connect");
+        return;
+      }
+      setRemoteConnection(url, token);
+      showToast("Connected. Reloading…", "success");
+      setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+      setError(`Could not connect: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const switchToLocal = () => {
+    setLocalConnection();
+    setMode("local");
+    setUrl("");
+    setToken("");
+    showToast("Switched to Local Mac. Reloading…", "success");
+    setTimeout(() => window.location.reload(), 600);
+  };
+
+  const currentHost = displayHost(getRemoteBaseUrl());
+
+  return (
+    <div className="flex flex-col gap-5 p-6">
+      <div>
+        <h3 className="text-sm font-semibold">Connection</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {mode === "remote"
+            ? `Currently connected to a remote Spark instance${currentHost ? ` @ ${currentHost}` : ""}.`
+            : "Currently running Spark locally on this Mac."}
+        </p>
+      </div>
+
+      <div className="flex gap-2">
+        <Button
+          variant={mode === "local" ? "default" : "outline"}
+          size="sm"
+          onClick={mode === "local" ? undefined : switchToLocal}
+        >
+          <Cpu className="mr-1.5 h-4 w-4" /> Local Mac
+        </Button>
+        <Button
+          variant={mode === "remote" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setMode("remote")}
+        >
+          <Network className="mr-1.5 h-4 w-4" /> Remote (VPS)
+        </Button>
+      </div>
+
+      {mode === "remote" && (
+        <div className="flex max-w-md flex-col gap-3">
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-muted-foreground">Dashboard URL</span>
+            <Input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://spark.example.com"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-muted-foreground">Access token</span>
+            <Input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="dashboard token"
+            />
+          </label>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={busy || !url.trim() || !token.trim()}
+              onClick={connectRemote}
+            >
+              {busy ? "Connecting…" : "Connect & save"}
+            </Button>
+            {getConnectionMode() === "remote" && (
+              <Button size="sm" variant="outline" onClick={switchToLocal}>
+                Clear &amp; use Local
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      <Toast toast={toast} />
+    </div>
+  );
+}
+
 interface SectionChild {
   id: string;
   label: string;
@@ -403,6 +522,8 @@ const SECTION_GROUPS: SectionDef[][] = [
     },
   ],
   [
+    // Desktop-only — filtered out on web (no local-sidecar choice there).
+    { id: "connection", label: "Connection", icon: Network, component: ConnectionSection },
     { id: "providers", label: "Providers", icon: Sparkles, component: ProvidersSection },
     { id: "gateway", label: "Gateway", icon: Radio, component: StatusPage },
     { id: "tools-keys", label: "Tools & Keys", icon: KeyRound, component: EnvPage },
@@ -411,6 +532,11 @@ const SECTION_GROUPS: SectionDef[][] = [
   ],
   [{ id: "about", label: "About", icon: Info, component: UpdatesPage }],
 ];
+
+// Hide the desktop-only "Connection" section when running in a browser.
+const VISIBLE_SECTION_GROUPS: SectionDef[][] = isTauri()
+  ? SECTION_GROUPS
+  : SECTION_GROUPS.map((g) => g.filter((s) => s.id !== "connection"));
 
 const ALL_SECTIONS = SECTION_GROUPS.flat();
 
@@ -525,7 +651,7 @@ export default function SettingsPanel({ onClose, initialTab = "model" }: Setting
               role="tablist"
               aria-label="Settings sections"
             >
-              {SECTION_GROUPS.map((group, gi) => (
+              {VISIBLE_SECTION_GROUPS.map((group, gi) => (
                 <div key={gi} className="flex flex-col gap-1">
                   {gi > 0 && <div className="mx-2 my-1.5 border-t border-border/70" />}
                   {group.map((section) => (
@@ -564,7 +690,7 @@ export default function SettingsPanel({ onClose, initialTab = "model" }: Setting
                 role="tablist"
                 aria-label="Settings sections"
               >
-                {ALL_SECTIONS.map((section) => renderNavButton(section, true))}
+                {VISIBLE_SECTION_GROUPS.flat().map((section) => renderNavButton(section, true))}
               </div>
               <div className="hidden min-w-0 flex-1 items-center gap-2 md:flex">
                 <div className="truncate text-sm font-medium text-foreground">{headerLabel}</div>

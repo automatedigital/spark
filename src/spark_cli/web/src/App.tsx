@@ -27,7 +27,8 @@ import SettingsPanel from "@/components/SettingsPanel";
 import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
-import { api, getDashboardToken, setDashboardToken } from "@/lib/api";
+import { api, getDashboardToken, setDashboardToken, getConnectionMode, getRemoteBaseUrl, getApiBase } from "@/lib/api";
+import { displayHost } from "@/lib/connection";
 import { useUpdateModal } from "@/lib/updateModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
@@ -431,7 +432,7 @@ function AppShell() {
           return;
         }
         const storedToken = getDashboardToken();
-        const probe = await fetch("/api/config", {
+        const probe = await fetch(`${getApiBase()}/api/config`, {
           headers: storedToken
             ? { Authorization: `Bearer ${storedToken}` }
             : undefined,
@@ -921,6 +922,12 @@ function AppShell() {
                   }`}
                 />
                 {gatewayReady ? "Gateway ready" : "Gateway offline"}
+              </span>
+              <span className="text-border">·</span>
+              <span>
+                {getConnectionMode() === "remote"
+                  ? `Remote @ ${displayHost(getRemoteBaseUrl()) || "remote"}`
+                  : "Local"}
               </span>
               <span className="text-border">·</span>
               <span>Agents {runningTaskCount}</span>
