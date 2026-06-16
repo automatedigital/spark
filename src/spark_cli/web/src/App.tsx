@@ -723,7 +723,7 @@ function AppShell() {
               direction="up"
               navLabel={navLabel}
             />
-            {updateAvailable && (
+            {!isTauri() && updateAvailable && (
               <button
                 type="button"
                 title="Update available"
