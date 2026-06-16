@@ -58,7 +58,7 @@ class DesktopGatewaySupervisor:
 
     def __init__(self) -> None:
         self._thread: Optional[threading.Thread] = None
-        self._runner: Optional["GatewayRunner"] = None
+        self._runner: Optional[GatewayRunner] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._started_by_us = False
         self._lock = threading.Lock()
@@ -109,7 +109,7 @@ class DesktopGatewaySupervisor:
             logger.info("Started background gateway for desktop app.")
             return True
 
-    def _capture_runner(self, runner: "GatewayRunner") -> None:
+    def _capture_runner(self, runner: GatewayRunner) -> None:
         self._runner = runner
 
     def _run(self) -> None:
