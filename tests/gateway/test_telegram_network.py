@@ -72,6 +72,18 @@ def _telegram_request(path="/botTOKEN/getMe"):
     return httpx.Request("GET", f"https://api.telegram.org{path}")
 
 
+@pytest.fixture(autouse=True)
+def _fast_fallback_retries(monkeypatch):
+    """Keep per-IP retry behaviour deterministic and instant in tests.
+
+    Default to a single connect attempt (so existing call-count assertions
+    hold) and zero backoff (so failure paths don't actually sleep). Tests that
+    exercise the retry logic override ``_FALLBACK_CONNECT_ATTEMPTS`` locally.
+    """
+    monkeypatch.setattr(tnet, "_FALLBACK_CONNECT_ATTEMPTS", 1)
+    monkeypatch.setattr(tnet, "_FALLBACK_RETRY_BACKOFF", 0)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # IP parsing & validation
 # ═══════════════════════════════════════════════════════════════════════════
@@ -642,3 +654,141 @@ class TestDiscoverFallbackIps:
 
         ips = await tnet.discover_fallback_ips()
         assert ips == ["149.154.167.220"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 0.4 — seed IPs, retry/backoff, and failure-cause logging
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestSeedFallbackIps:
+    def test_seed_default_is_multiple_in_range_ips(self):
+        seed = tnet._SEED_FALLBACK_IPS
+        assert len(seed) >= 2, "seed should provide multiple fallback endpoints"
+        import ipaddress
+        net = ipaddress.ip_network("149.154.160.0/20")
+        for ip in seed:
+            assert ipaddress.ip_address(ip) in net, f"{ip} not in Telegram DC block"
+        # All entries survive validation/normalization
+        assert tnet._normalize_fallback_ips(seed) == seed
+
+    def test_get_seed_returns_multi_ip_default_when_env_unset(self, monkeypatch):
+        monkeypatch.delenv("TELEGRAM_FALLBACK_IPS", raising=False)
+        assert tnet.get_seed_fallback_ips() == list(tnet._SEED_FALLBACK_IPS)
+
+    def test_env_override_replaces_seed(self, monkeypatch):
+        monkeypatch.setenv("TELEGRAM_FALLBACK_IPS", "149.154.171.5, 149.154.175.50")
+        assert tnet.get_seed_fallback_ips() == ["149.154.171.5", "149.154.175.50"]
+
+    def test_env_override_with_only_invalid_falls_back_to_seed(self, monkeypatch):
+        monkeypatch.setenv("TELEGRAM_FALLBACK_IPS", "bad, 10.0.0.1, ::1")
+        assert tnet.get_seed_fallback_ips() == list(tnet._SEED_FALLBACK_IPS)
+
+
+class TestDescribeExc:
+    def test_includes_type_when_message_empty(self):
+        # httpx.ConnectError with no message → empty str(), the original bug
+        exc = httpx.ConnectError("")
+        assert str(exc) == ""
+        desc = tnet._describe_exc(exc)
+        assert "ConnectError" in desc and desc.strip() != ""
+
+    def test_includes_message_when_present(self):
+        desc = tnet._describe_exc(httpx.ConnectError("Network is unreachable"))
+        assert "ConnectError" in desc
+        assert "Network is unreachable" in desc
+
+    def test_surfaces_underlying_cause(self):
+        try:
+            try:
+                raise OSError("Network is unreachable")
+            except OSError as os_err:
+                raise httpx.ConnectError("") from os_err
+        except httpx.ConnectError as exc:
+            desc = tnet._describe_exc(exc)
+        assert "Network is unreachable" in desc
+
+
+class TestFailureLoggingIncludesCause:
+    @pytest.mark.asyncio
+    async def test_fallback_failure_log_is_not_empty(self, monkeypatch, caplog):
+        calls = []
+        # ConnectError with empty message reproduces the empty-reason bug
+        empty_err = httpx.ConnectError("")
+        behavior = {"api.telegram.org": "timeout", "149.154.167.220": empty_err}
+        monkeypatch.setattr(
+            tnet.httpx, "AsyncHTTPTransport", _fake_transport_factory(calls, behavior)
+        )
+
+        transport = tnet.TelegramFallbackTransport(["149.154.167.220"])
+        with caplog.at_level("WARNING"):
+            with pytest.raises(httpx.ConnectError):
+                await transport.handle_async_request(_telegram_request())
+
+        # The log line for the failed fallback IP must include a cause, not
+        # end with a bare colon.
+        fallback_lines = [
+            r.getMessage() for r in caplog.records
+            if "Fallback IP 149.154.167.220 failed" in r.getMessage()
+        ]
+        assert fallback_lines, "expected a fallback-failure log line"
+        line = fallback_lines[0]
+        assert not line.rstrip().endswith("failed:"), "log still has empty reason"
+        assert "ConnectError" in line
+
+
+class TestRetryBackoff:
+    @pytest.mark.asyncio
+    async def test_retries_each_ip_before_giving_up(self, monkeypatch):
+        monkeypatch.setattr(tnet, "_FALLBACK_CONNECT_ATTEMPTS", 3)
+        monkeypatch.setattr(tnet, "_FALLBACK_RETRY_BACKOFF", 0)
+        sleeps = []
+
+        async def fake_sleep(secs):
+            sleeps.append(secs)
+
+        monkeypatch.setattr(tnet.asyncio, "sleep", fake_sleep)
+
+        calls = []
+        behavior = {"api.telegram.org": "timeout", "149.154.167.220": "timeout"}
+        monkeypatch.setattr(
+            tnet.httpx, "AsyncHTTPTransport", _fake_transport_factory(calls, behavior)
+        )
+
+        transport = tnet.TelegramFallbackTransport(["149.154.167.220"])
+        with pytest.raises(httpx.ConnectTimeout):
+            await transport.handle_async_request(_telegram_request())
+
+        # primary tried 3x + fallback tried 3x
+        assert [c["url_host"] for c in calls].count("api.telegram.org") == 3
+        assert [c["url_host"] for c in calls].count("149.154.167.220") == 3
+        # backoff slept between retries (2 per IP * 2 IPs = 4)
+        assert len(sleeps) == 4
+
+    @pytest.mark.asyncio
+    async def test_retry_recovers_within_same_ip(self, monkeypatch):
+        monkeypatch.setattr(tnet, "_FALLBACK_CONNECT_ATTEMPTS", 3)
+        monkeypatch.setattr(tnet, "_FALLBACK_RETRY_BACKOFF", 0)
+
+        calls = []
+        # A transport whose .220 path fails once then succeeds
+        state = {"fail_count": 1}
+
+        class FlakyTransport(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request):
+                calls.append({"url_host": request.url.host})
+                if request.url.host == "api.telegram.org":
+                    raise httpx.ConnectTimeout("primary down")
+                if state["fail_count"] > 0:
+                    state["fail_count"] -= 1
+                    raise httpx.ConnectError("transient")
+                return httpx.Response(200, request=request, text="ok")
+
+            async def aclose(self):
+                pass
+
+        monkeypatch.setattr(tnet.httpx, "AsyncHTTPTransport", lambda **kw: FlakyTransport())
+
+        transport = tnet.TelegramFallbackTransport(["149.154.167.220"])
+        resp = await transport.handle_async_request(_telegram_request())
+        assert resp.status_code == 200
+        assert transport._sticky_ip == "149.154.167.220"
