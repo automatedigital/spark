@@ -75,7 +75,6 @@ export interface Translations {
       newSession: string;
       skillsAndTools: string;
       messaging: string;
-      artifacts: string;
     };
   };
 

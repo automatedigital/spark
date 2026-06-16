@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  Archive,
   Blocks,
   ChevronLeft,
   ChevronRight,
@@ -24,7 +23,6 @@ import SkillsPage from "@/pages/SkillsPage";
 import ConnectorsPage from "@/pages/ConnectorsPage";
 import SkillsToolsPage from "@/pages/SkillsToolsPage";
 import MessagingPage from "@/pages/MessagingPage";
-import ArtifactsPage from "@/pages/ArtifactsPage";
 import SettingsPanel from "@/components/SettingsPanel";
 import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
@@ -48,13 +46,12 @@ import { useEventBus } from "@/hooks/useEventBus";
 const PRIMARY_NAV = [
   { id: "skillsTools", labelKey: "skillsAndTools" as const, icon: Blocks },
   { id: "messaging", labelKey: "messaging" as const, icon: MessageCircle },
-  { id: "artifacts", labelKey: "artifacts" as const, icon: Archive },
+  { id: "files", labelKey: "files" as const, icon: FolderOpen },
 ] as const;
 
 // Demoted pages — reachable via the "More" menu + command palette.
 const MORE_NAV = [
   { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
-  { id: "files", labelKey: "files" as const, icon: FolderOpen },
   { id: "canvas", labelKey: "canvas" as const, icon: Square },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
@@ -70,7 +67,6 @@ const PAGE_COMPONENTS = {
   connectors: ConnectorsPage,
   skillsTools: SkillsToolsPage,
   messaging: MessagingPage,
-  artifacts: ArtifactsPage,
 } as const;
 
 type PageId = keyof typeof PAGE_COMPONENTS;
@@ -92,10 +88,9 @@ const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
   connectors: "connectors",
   skillsTools: "skillsAndTools",
   messaging: "messaging",
-  artifacts: "artifacts",
 };
 
-const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas", "messaging", "skillsTools", "artifacts"]);
+const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas", "messaging", "skillsTools"]);
 
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
@@ -453,9 +448,12 @@ function AppShell() {
     };
   }, []);
 
+  // ── Live status footer: poll every ~8s (paused while tab is hidden) ──
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const fetchStatus = async () => {
       try {
         const [status, modelStatus, cronJobs] = await Promise.all([
           api.getStatus(),
@@ -480,9 +478,36 @@ function AppShell() {
           setGatewayReady(false);
         }
       }
-    })();
+    };
+
+    const startPolling = () => {
+      if (interval !== null) return;
+      void fetchStatus();
+      interval = setInterval(() => void fetchStatus(), 8_000);
+    };
+
+    const stopPolling = () => {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    if (document.visibilityState !== "hidden") startPolling();
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       cancelled = true;
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
