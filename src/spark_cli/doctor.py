@@ -125,6 +125,49 @@ def check_info(text: str):
     print(f"    {color('→', Colors.CYAN)} {text}")
 
 
+def _check_headless_browser_deps() -> None:
+    """Advisory check for Chromium system libraries on headless Linux.
+
+    On a Linux server with no ``$DISPLAY``, agent-browser's bundled Chromium
+    still needs shared libraries (libnss3, libatk, libgbm, etc.). When they are
+    missing, Chromium fails to launch and every browser command hangs to the
+    full timeout. This check is purely advisory — it prints guidance and never
+    appends to ``issues`` or fails the doctor run, because many headless setups
+    (containers with deps preinstalled, custom Chromium) are perfectly valid.
+    """
+    if not sys.platform.startswith("linux"):
+        return
+    if os.environ.get("DISPLAY"):
+        # A display is present — not the headless server scenario.
+        return
+
+    # Probe for a few representative Chromium runtime libraries. ldconfig is the
+    # most portable way to ask "is this shared lib resolvable?" without launching
+    # Chromium. If ldconfig itself is unavailable, stay silent rather than guess.
+    if not shutil.which("ldconfig"):
+        return
+    try:
+        ldconfig_out = subprocess.run(
+            ["ldconfig", "-p"], capture_output=True, text=True, timeout=10
+        ).stdout
+    except Exception:
+        return
+
+    required = ["libnss3", "libgbm", "libatk-1.0", "libxkbcommon", "libasound"]
+    missing = [lib for lib in required if lib not in ldconfig_out]
+
+    if missing:
+        check_warn(
+            "Headless browser system libraries",
+            f"(missing: {', '.join(missing)})",
+        )
+        check_info("No $DISPLAY detected — Chromium may fail to launch headless.")
+        check_info("Install dependencies with: agent-browser install --with-deps")
+        check_info("(advisory only — browser commands would otherwise hang to timeout)")
+    else:
+        check_ok("Headless browser system libraries", "(Chromium deps present)")
+
+
 def _check_gateway_service_linger(issues: list[str]) -> None:
     """Warn when a systemd user gateway service will stop after logout."""
     try:
@@ -678,6 +721,12 @@ def run_doctor(args):
         except Exception as exc:
             check_warn("agent-browser check failed", f"({exc})")
             issues.append("Run 'spark doctor --fix' to repair agent-browser")
+
+        # Headless Linux advisory — on a server with no $DISPLAY, Chromium
+        # needs its system libraries or every browser command hangs to the
+        # full timeout. Advisory only: it does not append to ``issues`` and
+        # never fails the run, since many headless setups are perfectly fine.
+        _check_headless_browser_deps()
     else:
         if _is_termux():
             check_info("Node.js not found (browser tools are optional in the tested Termux path)")
