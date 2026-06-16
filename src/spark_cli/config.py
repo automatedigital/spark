@@ -809,6 +809,15 @@ DEFAULT_CONFIG = {
         # the address from the bind host.  Leave empty to auto-detect.
         "public_url": "",
     },
+    # macOS / desktop app behaviour.
+    "desktop": {
+        # When true, the desktop app auto-starts the messaging gateway in the
+        # background on launch (so platforms like Telegram/Discord can reach
+        # Spark while the app is open) and stops it on quit. Set false to opt
+        # out — the app then never spawns its own gateway and leaves any
+        # user-managed external gateway untouched.
+        "gateway_autostart": True,
+    },
     # Multi-agent Kanban board (SQLite kanban.db under SPARK_HOME).
     "kanban": {
         "dispatch_in_gateway": False,
@@ -832,7 +841,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 24,
+    "_config_version": 25,
 }
 
 # =============================================================================
