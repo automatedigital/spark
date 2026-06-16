@@ -75,7 +75,6 @@ export const en: Translations = {
       newSession: "New session",
       skillsAndTools: "Skills & Tools",
       messaging: "Messaging",
-      artifacts: "Artifacts",
     },
   },
 

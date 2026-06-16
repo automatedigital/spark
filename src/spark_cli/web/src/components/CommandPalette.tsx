@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, LayoutGrid, MessageSquare, MessageCircle, Clock, Package, Plug, Settings, FolderOpen, ListTodo, Loader2, Square, Brain, Blocks, Archive } from "lucide-react";
+import { Search, LayoutGrid, MessageSquare, MessageCircle, Clock, Package, Plug, Settings, FolderOpen, ListTodo, Loader2, Square, Brain, Blocks } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CronJob, KanbanTaskRow, SessionInfo, SkillInfo, WorkspaceProject } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
@@ -25,7 +25,6 @@ interface CommandPaletteProps {
 const PAGE_ITEMS = [
   { id: "skillsTools", label: "Skills & Tools", description: "Skills and connectable tools", icon: Blocks },
   { id: "messaging", label: "Messaging", description: "Connect messaging platforms", icon: MessageCircle },
-  { id: "artifacts", label: "Artifacts", description: "Generated images, files and links", icon: Archive },
   { id: "chat", label: "Chat", description: "Projects and conversations", icon: MessageSquare },
   { id: "files", label: "Files", description: "Workspace files", icon: FolderOpen },
   { id: "canvas", label: "Canvas", description: "Visual board", icon: Square },
