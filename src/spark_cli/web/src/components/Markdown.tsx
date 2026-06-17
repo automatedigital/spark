@@ -14,6 +14,15 @@ import rust from "highlight.js/lib/languages/rust";
 import go from "highlight.js/lib/languages/go";
 import { Copy, CheckCheck, X } from "lucide-react";
 import { mediaFileUrl } from "@/lib/api";
+import {
+  type BlockNode,
+  type BlockProps,
+  parseBlocks,
+  parseInline,
+  findStableBoundary,
+  blockPropsEqual,
+  mediaKind,
+} from "./markdownParse";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -45,171 +54,94 @@ hljs.registerLanguage("go", go);
  * Handles: fenced code (+ syntax highlight + copy), tables, task lists,
  * blockquotes, headings, hr, lists, paragraphs,
  * inline: bold, italic, strikethrough, code, links, bare URLs.
+ *
+ * Parsing + memo helpers live in ./markdownParse so they can be unit-tested
+ * without a DOM. This file holds only the React components.
  */
-export const Markdown = memo(function Markdown({ content, highlightTerms }: { content: string; highlightTerms?: string[] }) {
-  const blocks = useMemo(() => parseBlocks(content), [content]);
 
+// Above this size we stop doing per-block work on the already-committed prefix
+// while a message is still streaming — render it verbatim and only format the
+// live tail. Prevents a single pathological message from saturating the renderer.
+const SOFT_RENDER_CAP = 80_000;
+
+export const Markdown = memo(function Markdown({
+  content,
+  highlightTerms,
+  streaming = false,
+}: {
+  content: string;
+  highlightTerms?: string[];
+  streaming?: boolean;
+}) {
+  // Split the message into a stable, already-committed prefix and a small live
+  // "tail" that is still streaming in. Only the tail is re-parsed on each
+  // animation frame, and committed blocks are memoized so they don't re-render —
+  // so per-frame cost stays bounded no matter how long the full message grows.
+  // This is what keeps the webview from pinning a CPU core on long
+  // web-search / delegation responses.
+  const boundary = useMemo(() => findStableBoundary(content), [content]);
+  const stablePart = content.slice(0, boundary);
+  const tailPart = content.slice(boundary);
+
+  const stableBlocks = useMemo(() => parseBlocks(stablePart), [stablePart]);
+  const tailBlocks = useMemo(() => parseBlocks(tailPart), [tailPart]);
+
+  // Pathological-size guard: above the cap, skip block parsing/rendering of the
+  // committed prefix entirely while streaming. On turn completion the message is
+  // re-parsed normally (streaming=false → full path below).
+  if (streaming && content.length > SOFT_RENDER_CAP) {
+    return (
+      <div className="text-sm text-foreground leading-relaxed space-y-2">
+        <pre className="whitespace-pre-wrap font-sans">{stablePart}</pre>
+        {tailBlocks.map((block, i) => (
+          <MemoBlock
+            key={`t${i}`}
+            block={block}
+            highlightTerms={highlightTerms}
+            live={i === tailBlocks.length - 1}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const total = stableBlocks.length + tailBlocks.length;
   return (
     <div className="text-sm text-foreground leading-relaxed space-y-2">
-      {blocks.map((block, i) => (
-        <Block key={i} block={block} highlightTerms={highlightTerms} />
+      {stableBlocks.map((block, i) => (
+        <MemoBlock key={i} block={block} highlightTerms={highlightTerms} live={false} />
       ))}
+      {tailBlocks.map((block, i) => {
+        const idx = stableBlocks.length + i;
+        return (
+          <MemoBlock
+            key={idx}
+            block={block}
+            highlightTerms={highlightTerms}
+            live={streaming && idx === total - 1}
+          />
+        );
+      })}
     </div>
   );
 });
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-
-type BlockNode =
-  | { type: "code"; lang: string; content: string }
-  | { type: "heading"; level: number; content: string }
-  | { type: "hr" }
-  | { type: "list"; ordered: boolean; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] }
-  | { type: "blockquote"; content: string }
-  | { type: "paragraph"; content: string };
-
-/* ------------------------------------------------------------------ */
-/*  Block parser                                                       */
-/* ------------------------------------------------------------------ */
-
-function isTableSeparator(line: string): boolean {
-  return /^\|[-: |]+\|?\s*$/.test(line.trim());
-}
-
-function parseTableRow(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((c) => c.trim());
-}
-
-function parseBlocks(text: string): BlockNode[] {
-  const lines = text.split("\n");
-  const blocks: BlockNode[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Fenced code block
-    const fenceMatch = line.match(/^```(\w*)/);
-    if (fenceMatch) {
-      const lang = fenceMatch[1] || "";
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      i++; // skip closing ```
-      blocks.push({ type: "code", lang, content: codeLines.join("\n") });
-      continue;
-    }
-
-    // Table — need header + separator + at least one row
-    if (line.trim().startsWith("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      const headers = parseTableRow(line);
-      i += 2; // skip header and separator
-      const rows: string[][] = [];
-      while (i < lines.length && lines[i].trim().startsWith("|")) {
-        rows.push(parseTableRow(lines[i]));
-        i++;
-      }
-      blocks.push({ type: "table", headers, rows });
-      continue;
-    }
-
-    // Heading
-    const headingMatch = line.match(/^(#{1,4})\s+(.+)/);
-    if (headingMatch) {
-      blocks.push({ type: "heading", level: headingMatch[1].length, content: headingMatch[2] });
-      i++;
-      continue;
-    }
-
-    // Horizontal rule
-    if (/^[-*_]{3,}\s*$/.test(line)) {
-      blocks.push({ type: "hr" });
-      i++;
-      continue;
-    }
-
-    // Blockquote
-    if (/^>\s?/.test(line)) {
-      const bqLines: string[] = [];
-      while (i < lines.length && /^>\s?/.test(lines[i])) {
-        bqLines.push(lines[i].replace(/^>\s?/, ""));
-        i++;
-      }
-      blocks.push({ type: "blockquote", content: bqLines.join("\n") });
-      continue;
-    }
-
-    // Unordered list (including task list items)
-    if (/^[-*+]\s/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*+]\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*+]\s/, ""));
-        i++;
-      }
-      blocks.push({ type: "list", ordered: false, items });
-      continue;
-    }
-
-    // Ordered list
-    if (/^\d+[.)]\s/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+[.)]\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+[.)]\s/, ""));
-        i++;
-      }
-      blocks.push({ type: "list", ordered: true, items });
-      continue;
-    }
-
-    // Empty line
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
-
-    // Paragraph — collect consecutive non-empty, non-special lines
-    const paraLines: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() !== "" &&
-      !lines[i].match(/^```/) &&
-      !lines[i].match(/^#{1,4}\s/) &&
-      !lines[i].match(/^[-*+]\s/) &&
-      !lines[i].match(/^\d+[.)]\s/) &&
-      !lines[i].match(/^[-*_]{3,}\s*$/) &&
-      !lines[i].match(/^>\s?/) &&
-      !lines[i].trim().startsWith("|")
-    ) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-    if (paraLines.length > 0) {
-      blocks.push({ type: "paragraph", content: paraLines.join("\n") });
-    }
-  }
-
-  return blocks;
-}
+const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live }: BlockProps) {
+  return <Block block={block} highlightTerms={highlightTerms} live={live} />;
+}, blockPropsEqual);
 
 /* ------------------------------------------------------------------ */
 /*  Code block with syntax highlight + copy button                    */
 /* ------------------------------------------------------------------ */
 
-function CodeBlock({ lang, content }: { lang: string; content: string }) {
+function CodeBlock({ lang, content, live }: { lang: string; content: string; live?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   const highlighted = useMemo(() => {
+    // Defer syntax highlighting while the block is still streaming in — hljs is
+    // O(n) and re-running it every frame on a growing code block is O(n²).
+    // Render plain text now; highlight once the block is complete (live=false).
+    if (live) return null;
     if (lang && hljs.getLanguage(lang)) {
       try {
         return hljs.highlight(content, { language: lang }).value;
@@ -218,7 +150,7 @@ function CodeBlock({ lang, content }: { lang: string; content: string }) {
       }
     }
     return null;
-  }, [lang, content]);
+  }, [lang, content, live]);
 
   const handleCopy = () => {
     void navigator.clipboard.writeText(content).then(() => {
@@ -264,10 +196,10 @@ function CodeBlock({ lang, content }: { lang: string; content: string }) {
 /*  Block renderer                                                     */
 /* ------------------------------------------------------------------ */
 
-function Block({ block, highlightTerms }: { block: BlockNode; highlightTerms?: string[] }) {
+function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTerms?: string[]; live?: boolean }) {
   switch (block.type) {
     case "code":
-      return <CodeBlock lang={block.lang} content={block.content} />;
+      return <CodeBlock lang={block.lang} content={block.content} live={live} />;
 
     case "heading": {
       const Tag = `h${Math.min(block.level, 4)}` as "h1" | "h2" | "h3" | "h4";
@@ -358,75 +290,8 @@ function Block({ block, highlightTerms }: { block: BlockNode; highlightTerms?: s
 }
 
 /* ------------------------------------------------------------------ */
-/*  Inline parser + renderer                                           */
+/*  Inline renderer                                                    */
 /* ------------------------------------------------------------------ */
-
-type InlineNode =
-  | { type: "text"; content: string }
-  | { type: "code"; content: string }
-  | { type: "bold"; content: string }
-  | { type: "italic"; content: string }
-  | { type: "strike"; content: string }
-  | { type: "link"; text: string; href: string }
-  | { type: "media"; path: string }
-  | { type: "br" };
-
-function parseInline(text: string): InlineNode[] {
-  const nodes: InlineNode[] = [];
-  // Priority: MEDIA > code > link > bold > italic > strikethrough > bare URL > line break
-  const pattern =
-    /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:~?\/|[A-Za-z]:\\)\S+(?:[^\S\n]+\S+)*?\.(?:png|jpe?g|gif|webp|mp4|mov|avi|mkv|webm|ogg|opus|mp3|wav|m4a)(?=[\s`"',;:)\]}]|$)|\S+)[`"']?|(`[^`]+`)|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|~~([^~]+)~~|(\bhttps?:\/\/[^\s<>)\]]+)|(\n)/gi;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push({ type: "text", content: text.slice(lastIndex, match.index) });
-    }
-
-    if (match[1]) {
-      nodes.push({ type: "media", path: cleanMediaPath(match[1]) });
-    } else if (match[2]) {
-      nodes.push({ type: "code", content: match[2].slice(1, -1) });
-    } else if (match[3]) {
-      nodes.push({ type: "link", text: match[4], href: match[5] });
-    } else if (match[6]) {
-      nodes.push({ type: "bold", content: match[7] });
-    } else if (match[8]) {
-      nodes.push({ type: "italic", content: match[9] });
-    } else if (match[10]) {
-      nodes.push({ type: "strike", content: match[10] });
-    } else if (match[11]) {
-      nodes.push({ type: "link", text: match[11], href: match[11] });
-    } else if (match[12]) {
-      nodes.push({ type: "br" });
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push({ type: "text", content: text.slice(lastIndex) });
-  }
-
-  return nodes;
-}
-
-function cleanMediaPath(path: string): string {
-  let cleaned = path.trim();
-  if (cleaned.length >= 2 && "`\"'".includes(cleaned[0]) && cleaned[0] === cleaned[cleaned.length - 1]) {
-    cleaned = cleaned.slice(1, -1).trim();
-  }
-  return cleaned.replace(/^[`"']+|[`"',.;:)}\]]+$/g, "");
-}
-
-function mediaKind(path: string): "image" | "video" | "audio" | "file" {
-  const ext = path.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
-  if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "image";
-  if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext)) return "video";
-  if (["ogg", "opus", "mp3", "wav", "m4a"].includes(ext)) return "audio";
-  return "file";
-}
 
 function MediaPreview({ path }: { path: string }) {
   const [open, setOpen] = useState(false);
