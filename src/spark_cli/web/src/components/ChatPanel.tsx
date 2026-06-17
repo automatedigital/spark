@@ -330,7 +330,7 @@ const AssistantRow = memo(function AssistantRow({
       <SparkAgentAvatar />
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
-          <Markdown content={msg.content} />
+          <Markdown content={msg.content} streaming={msg.streaming} />
         ) : (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -487,6 +487,11 @@ export function ChatPanel({
   // Token batching: accumulate tokens and flush once per animation frame
   const tokenBufferRef = useRef("");
   const rafPendingRef = useRef<number | null>(null);
+  // Reasoning batching: same rAF coalescing as tokens, so a model that streams
+  // reasoning in many small deltas triggers at most one re-render per frame
+  // instead of one per delta.
+  const reasoningBufferRef = useRef("");
+  const reasoningRafRef = useRef<number | null>(null);
   // Timestamp of the last chat event received for the active turn. Drives the
   // stall watchdog that recovers from a silently-dropped turn (lost SSE).
   const lastEventAtRef = useRef<number>(0);
@@ -510,6 +515,11 @@ export function ChatPanel({
       cancelAnimationFrame(rafPendingRef.current);
       rafPendingRef.current = null;
       tokenBufferRef.current = "";
+    }
+    if (reasoningRafRef.current !== null) {
+      cancelAnimationFrame(reasoningRafRef.current);
+      reasoningRafRef.current = null;
+      reasoningBufferRef.current = "";
     }
     setActiveSessionId(sessionId);
     const optimistic: ChatMessage[] = initialMessage
@@ -610,6 +620,44 @@ export function ChatPanel({
     }
   }, [flushTokenBuffer]);
 
+  const flushReasoningBuffer = useCallback(() => {
+    reasoningRafRef.current = null;
+    const buffered = reasoningBufferRef.current;
+    reasoningBufferRef.current = "";
+    if (!buffered) return;
+    setChatMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role === "reasoning") {
+        next[next.length - 1] = { ...last, text: last.text ? `${last.text}${buffered}` : buffered };
+      } else {
+        next.push({ id: nid(), role: "reasoning", text: buffered });
+      }
+      return next;
+    });
+  }, []);
+
+  // Accumulate reasoning deltas and flush once per animation frame, mirroring tokens.
+  const appendReasoning = useCallback((text: string) => {
+    reasoningBufferRef.current += text;
+    if (reasoningRafRef.current === null) {
+      reasoningRafRef.current = requestAnimationFrame(flushReasoningBuffer);
+    }
+  }, [flushReasoningBuffer]);
+
+  // Flush buffered tokens AND reasoning immediately — call before appending a tool
+  // row, finalizing, or ending a turn so ordering and the final deltas are preserved.
+  const flushPendingStream = useCallback(() => {
+    if (rafPendingRef.current !== null) {
+      cancelAnimationFrame(rafPendingRef.current);
+      flushTokenBuffer();
+    }
+    if (reasoningRafRef.current !== null) {
+      cancelAnimationFrame(reasoningRafRef.current);
+      flushReasoningBuffer();
+    }
+  }, [flushTokenBuffer, flushReasoningBuffer]);
+
   // Re-sync turn state after a suspected lost event (SSE reconnect or stall).
   // Polls the backend's authoritative turn-status; if the turn already finished
   // we flush + finalize the assistant bubble and reload history so nothing is
@@ -624,10 +672,7 @@ export function ChatPanel({
       if (status.session_id && sid !== activeSessionRef.current) return; // session switched mid-poll
       if (!status.turn_active) {
         // Turn finished while we weren't listening — finalize from history.
-        if (rafPendingRef.current !== null) {
-          cancelAnimationFrame(rafPendingRef.current);
-          flushTokenBuffer();
-        }
+        flushPendingStream();
         finalizeAssistant();
         setStreaming(false);
         setStatusLabel(null);
@@ -652,7 +697,7 @@ export function ChatPanel({
     } finally {
       resyncInFlightRef.current = false;
     }
-  }, [flushTokenBuffer, finalizeAssistant]);
+  }, [flushPendingStream, finalizeAssistant]);
 
   useEventBus((env) => {
     // Synthetic local event from the SSE bus reopening after a drop. Events
@@ -674,10 +719,7 @@ export function ChatPanel({
         break;
       }
       case "chat.tool_start": {
-        if (rafPendingRef.current !== null) {
-          cancelAnimationFrame(rafPendingRef.current);
-          flushTokenBuffer();
-        }
+        flushPendingStream();
         finalizeAssistant();
         setChatMessages((prev) => [
           ...prev,
@@ -719,18 +761,7 @@ export function ChatPanel({
       }
       case "chat.reasoning": {
         const text = String((data as { text?: string }).text ?? "");
-        if (text) {
-          setChatMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last?.role === "reasoning") {
-              next[next.length - 1] = { ...last, text: last.text ? `${last.text}${text}` : text };
-              return next;
-            }
-            next.push({ id: nid(), role: "reasoning", text });
-            return next;
-          });
-        }
+        if (text) appendReasoning(text);
         break;
       }
       case "chat.status": {
@@ -739,10 +770,7 @@ export function ChatPanel({
         break;
       }
       case "chat.approval_requested": {
-        if (rafPendingRef.current !== null) {
-          cancelAnimationFrame(rafPendingRef.current);
-          flushTokenBuffer();
-        }
+        flushPendingStream();
         finalizeAssistant();
         const approval = (data as { approval?: Record<string, unknown> }).approval ?? {};
         setChatMessages((prev) => [...prev, { id: nid(), role: "approval", approval }]);
@@ -775,10 +803,7 @@ export function ChatPanel({
         break;
       }
       case "chat.interrupted": {
-        if (rafPendingRef.current !== null) {
-          cancelAnimationFrame(rafPendingRef.current);
-          flushTokenBuffer();
-        }
+        flushPendingStream();
         finalizeAssistant();
         const msg = (data as { message?: string }).message;
         setChatMessages((prev) => [
@@ -791,10 +816,7 @@ export function ChatPanel({
       }
       case "chat.turn_done": {
         // Flush any remaining buffered tokens before finalizing
-        if (rafPendingRef.current !== null) {
-          cancelAnimationFrame(rafPendingRef.current);
-          flushTokenBuffer();
-        }
+        flushPendingStream();
         finalizeAssistant();
         setStreaming(false);
         setStatusLabel(null);
