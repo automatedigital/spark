@@ -188,3 +188,11 @@ make inline parsing (`parseInline`, `Markdown.tsx:374`) and reconciliation heavi
 
 Net effect: per-frame work during a long stream is bounded by the small live tail instead
 of the whole growing message, so the renderer no longer saturates a core and freezes.
+
+### Release
+
+- Fix merged to `main` in PR #51.
+- Shipped in **desktop app v1.3.1** (bumped `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`
+  from 1.3.0 → 1.3.1), built and published to GitHub Releases.
+- The graphify knowledge graph (`graph.json` + `GRAPH_REPORT.md` + `manifest.json`) is now
+  tracked in git; the regenerable `cache/` and dated backup snapshots are gitignored.
