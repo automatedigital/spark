@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUp, Brain, Check, ChevronDown, Loader2, Plus, Settings, Square } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ModelStatusResponse, ModelSuggestionsResponse } from "@/lib/api";
@@ -229,7 +230,9 @@ function ModelDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [rect, setRect] = useState<DOMRect | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Build deduplicated list with current value always included
@@ -238,13 +241,32 @@ function ModelDropdown({
     ? allOptions.filter((s) => s.toLowerCase().includes(search.toLowerCase()))
     : allOptions;
 
+  // Track the trigger's viewport position so the portalled menu can be placed
+  // with fixed positioning (it lives outside the overflow-hidden popover, so
+  // it can never be clipped).
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (ref.current) setRect(ref.current.getBoundingClientRect());
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
-    const t = setTimeout(() => document.addEventListener("mousedown", handler), 0);
-    return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
   }, [open]);
 
   useEffect(() => {
@@ -256,6 +278,58 @@ function ModelDropdown({
     setOpen(false);
     if (v !== value) onChange(v);
   };
+
+  // Open upward: the composer sits at the bottom of the screen, so anchor the
+  // menu's bottom to the trigger's top.
+  const menu =
+    open && rect
+      ? createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              left: rect.left,
+              width: rect.width,
+              bottom: window.innerHeight - rect.top + 4,
+            }}
+            className="z-[200] rounded-md border border-border bg-popover shadow-xl overflow-hidden"
+          >
+            {allOptions.length > 5 && (
+              <div className="border-b border-border px-2 py-1.5">
+                <input
+                  ref={searchRef}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setOpen(false);
+                    if (e.key === "Enter" && filtered.length === 1) select(filtered[0]);
+                  }}
+                  placeholder="Search models…"
+                  className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+                />
+              </div>
+            )}
+            <div className="max-h-[240px] overflow-y-auto py-1">
+              {filtered.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground/40">No matches</div>
+              ) : (
+                filtered.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => select(opt)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-left transition hover:bg-secondary"
+                  >
+                    <Check className={`h-3 w-3 shrink-0 ${opt === value ? "text-primary" : "opacity-0"}`} />
+                    <span className="truncate">{opt}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div ref={ref} className="relative">
@@ -280,44 +354,7 @@ function ModelDropdown({
         </div>
       </button>
 
-      {open && (
-        <div className="absolute top-full mt-1 left-0 right-0 z-[60] rounded-md border border-border bg-popover shadow-xl overflow-hidden">
-          {/* Search */}
-          {allOptions.length > 5 && (
-            <div className="border-b border-border px-2 py-1.5">
-              <input
-                ref={searchRef}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setOpen(false);
-                  if (e.key === "Enter" && filtered.length === 1) select(filtered[0]);
-                }}
-                placeholder="Search models…"
-                className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
-              />
-            </div>
-          )}
-          {/* Options */}
-          <div className="max-h-[180px] overflow-y-auto py-1">
-            {filtered.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground/40">No matches</div>
-            ) : (
-              filtered.map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => select(opt)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-left transition hover:bg-secondary"
-                >
-                  <Check className={`h-3 w-3 shrink-0 ${opt === value ? "text-primary" : "opacity-0"}`} />
-                  <span className="truncate">{opt}</span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {menu}
     </div>
   );
 }
