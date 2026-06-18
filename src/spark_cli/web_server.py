@@ -1646,7 +1646,7 @@ async def diagnostics_webview(
         except Exception:
             _log.debug("diagnostic session resolution failed session=%s", active_session_id, exc_info=True)
 
-    active_turn = any((sid in _web_queues or sid in _web_streaming) for sid in candidates if sid)
+    active_turn = any((sid in _web_streaming) for sid in candidates if sid)
     return {
         "ok": True,
         "sidecar_pid": os.getpid(),
@@ -6391,8 +6391,8 @@ async def conversation_turn_status(session_id: str):
 
     Lightweight source of truth the UI can poll to recover from a lost
     ``chat.turn_done`` event (e.g. the SSE bus dropped mid-turn). A turn is
-    active iff a token queue is registered in ``_web_queues`` for the session
-    or its resolved leaf descendant.
+    active iff the session or its resolved leaf descendant is present in
+    ``_web_streaming``.
     """
     from core.spark_state import SessionDB
 
@@ -6407,7 +6407,7 @@ async def conversation_turn_status(session_id: str):
         # Best-effort: fall back to the raw id if resolution fails.
         pass
 
-    active = any((c in _web_queues or c in _web_streaming) for c in candidates if c)
+    active = any((c in _web_streaming) for c in candidates if c)
     return {"session_id": session_id, "turn_active": active}
 
 
