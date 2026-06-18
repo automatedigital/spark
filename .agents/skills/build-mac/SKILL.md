@@ -44,11 +44,21 @@ If a stage fails, show the relevant log lines and the fix hint from the table ab
 
 ## Signing & notarization (Developer ID)
 
-By default the build **ad-hoc signs** (`codesign --sign -`) and **skips
-notarization** — local dev builds need no Apple certs and behave exactly as
-before. To produce a Gatekeeper-approved, distributable DMG, set environment
-variables before running `scripts/build_desktop.sh`. Signing and notarization
-are driven entirely by env vars; nothing is hardcoded and no secret is committed.
+> **This machine is already set up.** `scripts/build_desktop.sh` auto-sources
+> `scripts/release.env` (gitignored) on every run, which sets
+> `APPLE_SIGNING_IDENTITY` + `APPLE_KEYCHAIN_PROFILE` (`spark-notary`). So every
+> `/build-mac` and `/release-mac` here produces a **signed + notarized** DMG with
+> no manual `export`. Do **not** ship an ad-hoc build for a release. If you ever
+> see "ad-hoc signing" in the build log, `scripts/release.env` is missing —
+> recreate it from `scripts/release.env.example` (and confirm the notary profile
+> with `xcrun notarytool history --keychain-profile spark-notary`).
+
+By default (no `scripts/release.env`, no env vars) the build **ad-hoc signs**
+(`codesign --sign -`) and **skips notarization** — local dev builds need no Apple
+certs. To produce a Gatekeeper-approved, distributable DMG, either rely on
+`scripts/release.env` (preferred) or set environment variables before running
+`scripts/build_desktop.sh`. Signing and notarization are driven entirely by env
+vars; nothing is hardcoded and no secret is committed.
 
 ### Required env vars
 
