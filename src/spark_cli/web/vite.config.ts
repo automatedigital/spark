@@ -18,7 +18,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:9119",
+      // Override with SPARK_API_TARGET to point the dev proxy at a backend on a
+      // non-default port (e.g. when the installed app already holds 9119).
+      "/api": process.env.SPARK_API_TARGET || "http://127.0.0.1:9119",
     },
   },
   test: {

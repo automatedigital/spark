@@ -220,9 +220,10 @@ export const api = {
   getModelInfo: () => fetchJSON<ModelInfoResponse>("/api/model/info"),
   getModelStatus: () => fetchJSON<ModelStatusResponse>("/api/model/status"),
   getModelSuggestions: () => fetchJSON<ModelSuggestionsResponse>("/api/model/suggestions"),
-  getAvailableModels: (provider: string) =>
-    fetchJSON<{ provider: string; models: string[]; strict: boolean }>(
-      `/api/model/available?provider=${encodeURIComponent(provider)}`,
+  getAvailableModels: (provider: string, baseUrl?: string) =>
+    fetchJSON<{ provider: string; models: string[]; live: boolean; strict: boolean }>(
+      `/api/model/available?provider=${encodeURIComponent(provider)}` +
+        (baseUrl ? `&base_url=${encodeURIComponent(baseUrl)}` : ""),
     ),
   setSmartModel: (model: string) =>
     fetchJSON<{ ok: boolean; model: string }>("/api/model/smart", {
