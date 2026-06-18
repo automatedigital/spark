@@ -476,6 +476,11 @@ export function OnboardingWizard({ onComplete }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("http://localhost:11434");
   const [customModel, setCustomModel] = useState("");
+  // Live Ollama model catalog pulled from the entered base URL.
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [ollamaModel, setOllamaModel] = useState("");
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelsFetched, setModelsFetched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedSummary, setSavedSummary] = useState<string>("");
@@ -487,8 +492,38 @@ export function OnboardingWizard({ onComplete }: Props) {
     setApiKey("");
     setCustomModel("");
     setBaseUrl("http://localhost:11434");
+    setOllamaModels([]);
+    setOllamaModel("");
+    setModelsFetched(false);
     setError(null);
     setStep(3);
+  };
+
+  // Pull the live model list from the Ollama server at the entered base URL so
+  // the user picks a model that actually exists (instead of a hardcoded guess).
+  const fetchOllamaModels = async (url: string) => {
+    if (!url.trim()) {
+      setError("Please enter the Ollama base URL.");
+      return;
+    }
+    setLoadingModels(true);
+    setError(null);
+    try {
+      const r = await api.getAvailableModels("ollama", url.trim());
+      setOllamaModels(r.models);
+      setModelsFetched(true);
+      // Default to the first model, or keep the current pick if still present.
+      setOllamaModel((prev) => (prev && r.models.includes(prev) ? prev : r.models[0] ?? ""));
+      if (r.models.length === 0) {
+        setError("No models found at that URL. Is Ollama running and reachable?");
+      }
+    } catch {
+      setOllamaModels([]);
+      setModelsFetched(true);
+      setError("Couldn't reach Ollama at that URL.");
+    } finally {
+      setLoadingModels(false);
+    }
   };
 
   const goBackToProviders = () => {
@@ -573,13 +608,21 @@ export function OnboardingWizard({ onComplete }: Props) {
       setError("Please enter the Ollama base URL.");
       return;
     }
+    if (!modelsFetched) {
+      await fetchOllamaModels(baseUrl);
+      return;
+    }
+    if (!ollamaModel) {
+      setError("Please select a model.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      await persistModelConfig(provider.id, provider.defaultModel, {
+      await persistModelConfig(provider.id, ollamaModel, {
         base_url: baseUrl.trim(),
       });
-      finish(`${provider.name} · ${baseUrl.trim()}`);
+      finish(`${provider.name} · ${ollamaModel}`);
     } catch (e) {
       setError(`Could not save: ${e}`);
     } finally {
@@ -912,17 +955,62 @@ export function OnboardingWizard({ onComplete }: Props) {
                     <label className="text-xs uppercase tracking-wider text-muted-foreground">
                       Base URL
                     </label>
-                    <Input
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      placeholder="http://localhost:11434"
-                      onKeyDown={(e) => e.key === "Enter" && handleOllamaContinue()}
-                      autoFocus
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        value={baseUrl}
+                        onChange={(e) => {
+                          setBaseUrl(e.target.value);
+                          setModelsFetched(false);
+                          setOllamaModels([]);
+                        }}
+                        placeholder="http://localhost:11434"
+                        onKeyDown={(e) => e.key === "Enter" && void fetchOllamaModels(baseUrl)}
+                        autoFocus
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => void fetchOllamaModels(baseUrl)}
+                        disabled={loadingModels || !baseUrl.trim()}
+                      >
+                        {loadingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fetch models"}
+                      </Button>
+                    </div>
                   </div>
+
+                  {modelsFetched && ollamaModels.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Model
+                      </label>
+                      <select
+                        value={ollamaModel}
+                        onChange={(e) => setOllamaModel(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        {ollamaModels.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-muted-foreground/70">
+                        {ollamaModels.length} model{ollamaModels.length === 1 ? "" : "s"} found on your server.
+                      </p>
+                    </div>
+                  )}
+
                   {error && <p className="text-xs text-destructive">{error}</p>}
-                  <Button onClick={handleOllamaContinue} disabled={saving}>
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue"}
+                  <Button
+                    onClick={handleOllamaContinue}
+                    disabled={saving || loadingModels || (modelsFetched && ollamaModels.length === 0)}
+                  >
+                    {saving || loadingModels ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : modelsFetched && ollamaModels.length > 0 ? (
+                      "Continue"
+                    ) : (
+                      "Fetch models"
+                    )}
                   </Button>
                 </>
               )}
