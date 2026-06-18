@@ -471,6 +471,77 @@ def fetch_model_metadata(force_refresh: bool = False) -> Dict[str, Dict[str, Any
         return _model_metadata_cache or {}
 
 
+def list_ollama_models(base_url: str) -> List[str]:
+    """Return the model names served by an Ollama instance at ``base_url``.
+
+    Queries Ollama's native ``/api/tags`` endpoint. Returns an empty list if the
+    server is unreachable or returns no models — callers should treat an empty
+    list as "couldn't reach the provider" rather than "no models exist".
+    """
+    server_url = _normalize_base_url(base_url)
+    if server_url.endswith("/v1"):
+        server_url = server_url[:-3].rstrip("/")
+    if not server_url:
+        return []
+    try:
+        import httpx
+
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(f"{server_url}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+        names = [
+            str(m.get("name", "")).strip()
+            for m in data.get("models", [])
+            if isinstance(m, dict) and m.get("name")
+        ]
+        return sorted({n for n in names if n})
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Failed to list Ollama models from %s: %s", server_url, e)
+        return []
+
+
+def list_openrouter_models() -> List[str]:
+    """Return all model ids available on OpenRouter (e.g. ``anthropic/claude-...``)."""
+    try:
+        response = requests.get(OPENROUTER_MODELS_URL, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        ids = [
+            str(m.get("id", "")).strip()
+            for m in data.get("data", [])
+            if isinstance(m, dict) and m.get("id")
+        ]
+        return sorted({i for i in ids if i})
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Failed to list OpenRouter models: %s", e)
+        return []
+
+
+def list_provider_models(provider: str, base_url: str = "", api_key: str = "") -> List[str]:
+    """Return live model names for ``provider``.
+
+    - ``ollama``  → queries the local Ollama ``/api/tags`` endpoint at ``base_url``.
+    - ``openrouter`` → queries OpenRouter's public model catalog.
+    - ``custom`` / anything with a ``base_url`` → queries the OpenAI-compatible
+      ``/models`` endpoint.
+
+    Returns an empty list when the provider has no live catalog (the caller
+    falls back to static suggestions) or when the provider is unreachable.
+    """
+    provider = (provider or "").strip().lower()
+    base_url = (base_url or "").strip()
+
+    if provider == "ollama":
+        return list_ollama_models(base_url or "http://localhost:11434")
+    if provider == "openrouter":
+        return list_openrouter_models()
+    if base_url:
+        meta = fetch_endpoint_model_metadata(base_url, api_key=api_key)
+        return sorted({k for k in meta if "/" in k or ":" in k} or set(meta))
+    return []
+
+
 def fetch_endpoint_model_metadata(
     base_url: str,
     api_key: str = "",

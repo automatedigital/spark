@@ -1,11 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   X,
   Archive,
   Brain,
+  Check,
+  ChevronDown,
   Cpu,
   Info,
   KeyRound,
+  Loader2,
   MessageCircle,
   Mic,
   Monitor,
@@ -13,9 +16,9 @@ import {
   Palette,
   Plug,
   Radio,
+  RefreshCw,
   Shield,
   SlidersHorizontal,
-  Sparkles,
   Wrench,
 } from "lucide-react";
 import StatusPage from "@/pages/StatusPage";
@@ -42,6 +45,8 @@ import { AutoField } from "@/components/AutoField";
 import { OAuthProvidersCard } from "@/components/OAuthProvidersCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectOption } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/Toast";
 
@@ -52,6 +57,360 @@ import { Toast } from "@/components/Toast";
 /*  button — used by the Model / Chat / Workspace / Safety /           */
 /*  Memory & Context / Voice sections.                                 */
 /* ------------------------------------------------------------------ */
+
+/* Provider list — must mirror the model_provider select options in
+ * web_server.py (_SCHEMA_OVERRIDES). */
+const PROVIDER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "(none)" },
+  { value: "openai-codex", label: "OpenAI Codex (ChatGPT)" },
+  { value: "openrouter", label: "OpenRouter" },
+  { value: "anthropic", label: "Anthropic (Claude)" },
+  { value: "qwen-oauth", label: "Qwen (OAuth)" },
+  { value: "github-copilot", label: "GitHub Copilot" },
+  { value: "copilot-acp", label: "Copilot (ACP)" },
+  { value: "zai", label: "Z.AI" },
+  { value: "kimi-for-coding", label: "Kimi for Coding" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "alibaba", label: "Alibaba" },
+  { value: "minimax", label: "MiniMax" },
+  { value: "minimax-cn", label: "MiniMax (CN)" },
+  { value: "xai", label: "xAI" },
+  { value: "ollama", label: "Ollama (local)" },
+  { value: "custom", label: "Custom (OpenAI-compatible)" },
+];
+
+// Providers whose models are reached over an HTTP base URL the user controls.
+const BASE_URL_PROVIDERS = new Set(["ollama", "custom", "openrouter"]);
+// Providers with a single canonical endpoint — always set on selection,
+// overwriting whatever was there (e.g. OpenRouter only has one host).
+const PROVIDER_FIXED_BASE_URL: Record<string, string> = {
+  openrouter: "https://openrouter.ai/api/v1",
+};
+// Default base URLs pre-filled only when the field is empty or still holds a
+// canonical default (so a user's custom LAN address isn't clobbered).
+const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
+  ollama: "http://localhost:11434",
+};
+const _CANONICAL_BASE_URLS = new Set([
+  ...Object.values(PROVIDER_FIXED_BASE_URL),
+  ...Object.values(PROVIDER_DEFAULT_BASE_URL),
+]);
+// Providers that authenticate with an API key stored in .env (key → env var).
+const PROVIDER_API_KEY_ENV: Record<string, string> = {
+  openrouter: "OPENROUTER_API_KEY",
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+  xai: "XAI_API_KEY",
+};
+
+/* Searchable model dropdown that pulls the live catalog from the provider.
+ * Always a dropdown (never a bare text box); a typed query that doesn't match
+ * can still be applied as a custom model name. */
+function ModelCombobox({
+  value,
+  provider,
+  baseUrl,
+  onChange,
+}: {
+  value: string;
+  provider: string;
+  baseUrl: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [live, setLive] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  const load = () => {
+    if (!provider) {
+      setModels([]);
+      setLive(false);
+      return;
+    }
+    setLoading(true);
+    api
+      .getAvailableModels(provider, baseUrl || undefined)
+      .then((r) => {
+        setModels(r.models);
+        setLive(r.live);
+      })
+      .catch(() => {
+        setModels([]);
+        setLive(false);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  // Refetch whenever the provider or base URL changes.
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, baseUrl]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const options = value && !models.includes(value) ? [value, ...models] : models;
+  const filtered = search
+    ? options.filter((m) => m.toLowerCase().includes(search.toLowerCase()))
+    : options;
+  const canUseCustom = search.trim() && !options.includes(search.trim());
+
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+    setSearch("");
+  };
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm">Model</Label>
+        <button
+          type="button"
+          onClick={load}
+          disabled={!provider || loading}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+          title="Refresh model list from provider"
+        >
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          Refresh
+        </button>
+      </div>
+      <span className="text-xs text-muted-foreground/70">
+        {provider
+          ? live
+            ? `Pulled live from ${provider}.`
+            : loading
+              ? "Loading models…"
+              : `Couldn't reach ${provider} — showing suggestions. Check the base URL / API key.`
+          : "Select a provider first."}
+      </span>
+      <div ref={ref} className="relative">
+        <button
+          type="button"
+          disabled={!provider}
+          onClick={() => setOpen((o) => !o)}
+          className="flex w-full items-center justify-between rounded-md border border-input bg-background px-2.5 py-2 text-sm transition hover:border-border focus:outline-none disabled:opacity-50"
+        >
+          <span className="truncate">
+            {value || <span className="text-muted-foreground/40">Select model…</span>}
+          </span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+        {open && (
+          <div className="absolute top-full z-[70] mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-xl">
+            <div className="border-b border-border px-2 py-1.5">
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setOpen(false);
+                  if (e.key === "Enter") {
+                    if (filtered.length === 1) pick(filtered[0]);
+                    else if (canUseCustom) pick(search.trim());
+                  }
+                }}
+                placeholder="Search or type a model name…"
+                className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+              />
+            </div>
+            <div className="max-h-[220px] overflow-y-auto py-1">
+              {filtered.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => pick(m)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition hover:bg-secondary"
+                >
+                  <Check className={`h-3 w-3 shrink-0 ${m === value ? "text-primary" : "opacity-0"}`} />
+                  <span className="truncate font-mono text-xs">{m}</span>
+                </button>
+              ))}
+              {canUseCustom && (
+                <button
+                  type="button"
+                  onClick={() => pick(search.trim())}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition hover:bg-secondary"
+                >
+                  <Check className="h-3 w-3 shrink-0 opacity-0" />
+                  <span className="truncate text-xs">
+                    Use custom: <span className="font-mono">{search.trim()}</span>
+                  </span>
+                </button>
+              )}
+              {filtered.length === 0 && !canUseCustom && (
+                <div className="px-3 py-2 text-xs text-muted-foreground/40">
+                  {provider ? "No models found" : "Select a provider"}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* API-key input for key-authenticated providers. Reads the redacted state from
+ * /api/env and saves immediately (the .env store, not config.yaml). */
+function ProviderApiKeyField({ envVar }: { envVar: string }) {
+  const [isSet, setIsSet] = useState(false);
+  const [redacted, setRedacted] = useState<string | null>(null);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const { toast, showToast } = useToast();
+
+  const reload = () => {
+    api
+      .getEnvVars()
+      .then((vars) => {
+        const info = vars[envVar];
+        setIsSet(!!info?.is_set);
+        setRedacted(info?.redacted_value ?? null);
+      })
+      .catch(() => {});
+  };
+  useEffect(reload, [envVar]);
+
+  const save = async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    try {
+      await api.setEnvVar(envVar, value.trim());
+      showToast("API key saved", "success");
+      setValue("");
+      reload();
+    } catch (e) {
+      showToast(`Failed to save key: ${e}`, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-1.5">
+      <Toast toast={toast} />
+      <Label className="text-sm">API key</Label>
+      <span className="text-xs text-muted-foreground/70">
+        Stored in <span className="font-mono">{envVar}</span>.{" "}
+        {isSet ? `Currently set (${redacted ?? "••••"}).` : "Not set."}
+      </span>
+      <div className="flex gap-2">
+        <Input
+          type="password"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={isSet ? "Enter a new key to replace" : "Paste API key"}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+          }}
+        />
+        <Button size="sm" onClick={() => void save()} disabled={saving || !value.trim()}>
+          {saving ? "Saving…" : "Save key"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* Provider + model + base URL + API key editor. Shares the parent form's
+ * config object so it saves through the same "Save changes" button (the API
+ * key is the one exception — it persists to .env immediately). */
+function ModelProviderBlock({
+  config,
+  setConfig,
+}: {
+  config: Record<string, unknown>;
+  setConfig: (updater: (c: Record<string, unknown> | null) => Record<string, unknown> | null) => void;
+}) {
+  const provider = String(getNestedValue(config, "model_provider") ?? "");
+  const model = String(getNestedValue(config, "model") ?? "");
+  const baseUrl = String(getNestedValue(config, "model_base_url") ?? "");
+
+  const setKey = (key: string, v: unknown) =>
+    setConfig((c) => (c ? setNestedValue(c, key, v) : c));
+
+  const onProviderChange = (next: string) => {
+    setConfig((c) => {
+      if (!c) return c;
+      let updated = setNestedValue(c, "model_provider", next);
+      const currentBase = String(getNestedValue(c, "model_base_url") ?? "");
+      const isCanonical = _CANONICAL_BASE_URLS.has(currentBase);
+      const fixed = PROVIDER_FIXED_BASE_URL[next];
+      const fallback = PROVIDER_DEFAULT_BASE_URL[next];
+      if (fixed) {
+        // Single-endpoint provider — always pin to its canonical URL.
+        updated = setNestedValue(updated, "model_base_url", fixed);
+      } else if (fallback && (!currentBase || isCanonical)) {
+        // Fill a default only when empty or still a canonical default, so a
+        // custom LAN address (e.g. a remote Ollama host) is preserved.
+        updated = setNestedValue(updated, "model_base_url", fallback);
+      } else if (!BASE_URL_PROVIDERS.has(next) && isCanonical) {
+        // Switching to a hosted provider that needs no base URL — clear stale
+        // canonical values (but leave custom ones alone).
+        updated = setNestedValue(updated, "model_base_url", "");
+      }
+      return updated;
+    });
+  };
+
+  const apiKeyEnv = PROVIDER_API_KEY_ENV[provider];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-1.5">
+        <Label className="text-sm">Provider</Label>
+        <span className="text-xs text-muted-foreground/70">
+          SMART model provider. Selecting Ollama or OpenRouter pulls the available models below.
+        </span>
+        <Select value={provider} onValueChange={onProviderChange}>
+          {PROVIDER_OPTIONS.map((opt) => (
+            <SelectOption key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectOption>
+          ))}
+        </Select>
+      </div>
+
+      {BASE_URL_PROVIDERS.has(provider) && (
+        <div className="grid gap-1.5">
+          <Label className="text-sm">Base URL</Label>
+          <span className="text-xs text-muted-foreground/70">
+            Endpoint Spark queries for the model list and completions.
+          </span>
+          <Input
+            value={baseUrl}
+            onChange={(e) => setKey("model_base_url", e.target.value)}
+            placeholder="http://localhost:11434"
+          />
+        </div>
+      )}
+
+      {apiKeyEnv && <ProviderApiKeyField envVar={apiKeyEnv} />}
+
+      <ModelCombobox
+        value={model}
+        provider={provider}
+        baseUrl={baseUrl}
+        onChange={(v) => setKey("model", v)}
+      />
+    </div>
+  );
+}
 
 interface ConfigSectionFormProps {
   categories: string[];
@@ -122,16 +481,30 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-1">
       <Toast toast={toast} />
       {intro && <p className="pb-3 text-xs text-muted-foreground">{intro}</p>}
-      {fields.map(([key, s]) => (
-        <div key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
-          <AutoField
-            schemaKey={key}
-            schema={s}
-            value={getNestedValue(config, key)}
-            onChange={(v) => setConfig((c) => (c ? setNestedValue(c, key, v) : c))}
-          />
-        </div>
-      ))}
+      {fields.map(([key, s]) => {
+        // The model / provider / base-URL trio is rendered by a single
+        // provider-aware editor (dropdown that pulls live models), so swap the
+        // generic AutoField for ModelProviderBlock at the "model" anchor and
+        // skip the other two keys it handles.
+        if (key === "model_provider" || key === "model_base_url") return null;
+        if (key === "model") {
+          return (
+            <div key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
+              <ModelProviderBlock config={config} setConfig={setConfig} />
+            </div>
+          );
+        }
+        return (
+          <div key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
+            <AutoField
+              schemaKey={key}
+              schema={s}
+              value={getNestedValue(config, key)}
+              onChange={(v) => setConfig((c) => (c ? setNestedValue(c, key, v) : c))}
+            />
+          </div>
+        );
+      })}
       {fields.length === 0 && (
         <p className="py-8 text-center text-sm text-muted-foreground">No settings in this section.</p>
       )}
@@ -140,32 +513,6 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
           {saving ? "Saving…" : "Save changes"}
         </Button>
       </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Providers — OAuth account connections                              */
-/* ------------------------------------------------------------------ */
-
-function ProvidersSection() {
-  const { toast, showToast } = useToast();
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-      <Toast toast={toast} />
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Plug className="h-4 w-4 text-muted-foreground" />
-          Connect an account
-        </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Sign in with a subscription or API key. Spark runs the sign-in flow for you, right here in the app.
-        </p>
-      </div>
-      <OAuthProvidersCard
-        onError={(msg) => showToast(msg, "error")}
-        onSuccess={(msg) => showToast(msg, "success")}
-      />
     </div>
   );
 }
@@ -351,12 +698,31 @@ const NON_MODEL_GENERAL_KEYS = [
 ];
 
 function ModelSection() {
+  const { toast, showToast } = useToast();
   return (
-    <ConfigSectionForm
-      categories={["general", "auxiliary", "curator"]}
-      excludeKeys={NON_MODEL_GENERAL_KEYS}
-      intro="Applies to new sessions. Use the model picker in the composer to hot-swap the active chat."
-    />
+    <div className="flex flex-col gap-10">
+      <ConfigSectionForm
+        categories={["general", "auxiliary", "curator"]}
+        excludeKeys={NON_MODEL_GENERAL_KEYS}
+        intro="Applies to new sessions. Use the model picker in the composer to hot-swap the active chat."
+      />
+      <div className="mx-auto w-full max-w-2xl border-t border-border pt-8">
+        <Toast toast={toast} />
+        <div className="mb-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Plug className="h-4 w-4 text-muted-foreground" />
+            Connect an account
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Sign in with a subscription or API key. Spark runs the sign-in flow for you, right here in the app.
+          </p>
+        </div>
+        <OAuthProvidersCard
+          onError={(msg) => showToast(msg, "error")}
+          onSuccess={(msg) => showToast(msg, "success")}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -524,7 +890,6 @@ const SECTION_GROUPS: SectionDef[][] = [
   [
     // Desktop-only — filtered out on web (no local-sidecar choice there).
     { id: "connection", label: "Connection", icon: Network, component: ConnectionSection },
-    { id: "providers", label: "Providers", icon: Sparkles, component: ProvidersSection },
     { id: "gateway", label: "Gateway", icon: Radio, component: StatusPage },
     { id: "tools-keys", label: "Tools & Keys", icon: KeyRound, component: EnvPage },
     { id: "mcp", label: "MCP", icon: Plug, component: McpSection },
@@ -552,6 +917,7 @@ const LEGACY_TAB_MAP: Record<string, SettingsTabId> = {
   config: "advanced",
   keys: "tools-keys",
   updates: "about",
+  providers: "model", // Providers merged into the Model section.
 };
 
 interface SettingsPanelProps {

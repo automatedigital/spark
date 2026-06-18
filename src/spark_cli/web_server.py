@@ -2243,53 +2243,91 @@ _PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
 _STRICT_MODEL_PROVIDERS = frozenset({"openai-codex", "qwen-oauth"})
 
 
+def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, bool]:
+    """Resolve the model catalog for ``provider`` (live where possible).
+
+    Returns ``(models, live)`` where ``live`` indicates the list came from
+    querying the provider directly (vs. static suggestions). For ollama,
+    openrouter and OpenAI-compatible custom endpoints we query the provider so
+    the dropdown reflects what's actually installed/available. Everything else
+    falls back to the curated suggestion lists.
+    """
+    provider = (provider or "").strip()
+    base_url = (base_url or "").strip()
+
+    if provider == "openai-codex":
+        try:
+            from spark_cli.codex_models import get_codex_model_ids
+
+            return get_codex_model_ids(), False
+        except Exception:
+            return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
+
+    if provider in {"ollama", "openrouter", "custom"} or base_url:
+        try:
+            from agent.model_metadata import list_provider_models
+
+            api_key = ""
+            if provider == "openrouter":
+                api_key = load_env().get("OPENROUTER_API_KEY", "") or ""
+            live = list_provider_models(provider, base_url=base_url, api_key=api_key)
+            if live:
+                return live, True
+        except Exception:
+            _log.exception("live model fetch failed for provider=%s", provider)
+        # Fall back to static hints when the provider is unreachable.
+        return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
+
+    return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
+
+
 @app.get("/api/model/available")
-def get_available_models(provider: str = ""):
+def get_available_models(provider: str = "", base_url: str = ""):
     """Return the model catalog for a given provider plus whether the UI should
     enforce a strict dropdown.
 
     Query params:
         provider — provider id (e.g. "openai-codex"). Defaults to "".
+        base_url — optional endpoint URL used to query local/custom providers
+                   (ollama, OpenAI-compatible servers) for their live catalog.
 
     Response:
         provider — echoed provider id
         models   — list of known model names for that provider (may be empty)
+        live     — True when the list was fetched live from the provider
         strict   — True when the UI should only allow choosing from `models`
                    (fixed/managed catalogs like openai-codex); False when the
                    user may type a custom name (ollama, openrouter, custom).
     """
     provider = (provider or "").strip()
-    if provider == "openai-codex":
-        try:
-            from spark_cli.codex_models import get_codex_model_ids
-
-            models = get_codex_model_ids()
-        except Exception:
-            models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
-    else:
-        models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
+    models, live = _resolve_provider_models(provider, base_url)
     strict = provider in _STRICT_MODEL_PROVIDERS
-    return {"provider": provider, "models": models, "strict": strict}
+    return {"provider": provider, "models": models, "live": live, "strict": strict}
 
 
 @app.get("/api/model/suggestions")
 def get_model_suggestions():
     """Return provider-aware model name suggestions for the quick-settings popover."""
-    SUGGESTIONS = _PROVIDER_MODEL_SUGGESTIONS
     try:
         cfg = load_config()
         model_cfg = cfg.get("model", "")
         smart_provider = ""
+        smart_base_url = ""
         if isinstance(model_cfg, dict):
             smart_provider = str(model_cfg.get("provider", "") or "")
+            smart_base_url = str(model_cfg.get("base_url", "") or "")
 
         routing_cfg = cfg.get("smart_model_routing", {}) or {}
         cheap = routing_cfg.get("cheap_model", {}) or {}
         fast_provider = str(cheap.get("provider", "") or "")
+        fast_base_url = str(cheap.get("base_url", "") or "")
+
+        smart_models, _ = _resolve_provider_models(smart_provider, smart_base_url)
+        fast_models, _ = _resolve_provider_models(fast_provider, fast_base_url)
 
         return {
-            "smart": SUGGESTIONS.get(smart_provider, []),
-            "fast": SUGGESTIONS.get(fast_provider, []),
+            "smart": smart_models,
+            "fast": fast_models,
             "smart_provider": smart_provider,
             "fast_provider": fast_provider,
         }
