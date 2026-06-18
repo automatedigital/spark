@@ -33,6 +33,7 @@ export interface BlockProps {
   block: BlockNode;
   highlightTerms?: string[];
   live: boolean;
+  safeMode?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -253,6 +254,7 @@ function termsEqual(a?: string[], b?: string[]): boolean {
 export function blockPropsEqual(prev: BlockProps, next: BlockProps): boolean {
   return (
     prev.live === next.live &&
+    prev.safeMode === next.safeMode &&
     termsEqual(prev.highlightTerms, next.highlightTerms) &&
     blocksEqual(prev.block, next.block)
   );

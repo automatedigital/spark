@@ -1050,8 +1050,8 @@
     "semantic_hash": "b5474754e5a3d18337c026ab07576032"
   },
   "src/spark_cli/web/src-tauri/tauri.conf.json": {
-    "mtime": 1781646847.9462576,
-    "ast_hash": "5fcbd17da2aec6ebfe5fd158d76e153f",
+    "mtime": 1781719695.7709384,
+    "ast_hash": "1f607255108b321eb92e460da8028ee4",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/App.tsx": {
@@ -1070,8 +1070,8 @@
     "semantic_hash": "edfcc2673f5999ab37ac7b95aa78d674"
   },
   "src/spark_cli/web/src/components/ChatPanel.tsx": {
-    "mtime": 1781716991.5624294,
-    "ast_hash": "7cdabe0940fc3f9ead38cc57a26b4483",
+    "mtime": 1781785681.5350745,
+    "ast_hash": "35d185451d3d73ac377ed4d6ed7e82fe",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/CodexUsageBadge.tsx": {
@@ -1095,8 +1095,8 @@
     "semantic_hash": "b7b8620714a9550fdfaebee54f6f4200"
   },
   "src/spark_cli/web/src/components/Markdown.tsx": {
-    "mtime": 1781717341.834265,
-    "ast_hash": "964adb5f774a20e83484a002299a3d90",
+    "mtime": 1781785221.4893217,
+    "ast_hash": "6ac85aed777e173eb8aa65738b9bdf3e",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/ModelBadge.tsx": {
@@ -1180,9 +1180,9 @@
     "semantic_hash": "8878f711d399f881d54f20370b0e1f60"
   },
   "src/spark_cli/web/src/components/chat/ReasoningBubble.tsx": {
-    "mtime": 1780797721.0645547,
-    "ast_hash": "190ca06f962e02e55957fc9dbba344d8",
-    "semantic_hash": "190ca06f962e02e55957fc9dbba344d8"
+    "mtime": 1781785188.8613944,
+    "ast_hash": "18d2545110dfe583d622e158ee5fd61b",
+    "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/chat/SessionInfoBar.tsx": {
     "mtime": 1779883581.4679334,
@@ -1205,9 +1205,9 @@
     "semantic_hash": "de9ba0cd784380dab79c126d0788209b"
   },
   "src/spark_cli/web/src/components/chat/ToolCallBubble.tsx": {
-    "mtime": 1780797721.0640714,
-    "ast_hash": "7d4e29dff56a679003250181d5d20fa7",
-    "semantic_hash": "7d4e29dff56a679003250181d5d20fa7"
+    "mtime": 1781785175.6075928,
+    "ast_hash": "f7ec9aa61784a5f5d588d3d4871f6cb4",
+    "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/chat/TypeOnTitle.tsx": {
     "mtime": 1780442151.187295,
@@ -1595,8 +1595,8 @@
     "semantic_hash": "1e92effe975e204b0b8630303a245ba6"
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1781715508.3330555,
-    "ast_hash": "4771862faf25cae00b1c1daecbc16a97",
+    "mtime": 1781787734.4297376,
+    "ast_hash": "d1e32b23002a7a498dbbdc3ece38d3fe",
     "semantic_hash": ""
   },
   "src/spark_cli/webhook.py": {
@@ -2710,8 +2710,8 @@
     "semantic_hash": ""
   },
   "scripts/build_desktop.sh": {
-    "mtime": 1781632910.3339057,
-    "ast_hash": "8be2a8ad980862bdd942b32d801e6e46",
+    "mtime": 1781775908.2607381,
+    "ast_hash": "30e54df2ceb34632f64aa6e1c2195548",
     "semantic_hash": ""
   },
   "scripts/build_skills_index.py": {
@@ -5400,8 +5400,8 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
-    "mtime": 1779839864.097048,
-    "ast_hash": "312cfab7b86a604431488ea4a1f10102",
+    "mtime": 1781785768.881165,
+    "ast_hash": "8252acea64c9b149a16ddd9e8c8ff288",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_webhook_cli.py": {
@@ -6335,8 +6335,8 @@
     "semantic_hash": ""
   },
   ".agents/skills/build-mac/SKILL.md": {
-    "mtime": 1781613008.6361878,
-    "ast_hash": "ef95ddaf53eaf67599680c7d182b9037",
+    "mtime": 1781775908.260116,
+    "ast_hash": "b1e67b634f234ab8653f23a3327f187e",
     "semantic_hash": ""
   },
   ".agents/skills/release-mac/SKILL.md": {
@@ -6450,8 +6450,8 @@
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1781717519.8508115,
-    "ast_hash": "d54e16debac94f0131a8ddbdc14bceb6",
+    "mtime": 1781788016.6726289,
+    "ast_hash": "06d2cb247a6e82a931cc99510ffbf5ae",
     "semantic_hash": ""
   },
   "README.md": {
@@ -9315,8 +9315,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/index.html": {
-    "mtime": 1781717380.817319,
-    "ast_hash": "fcc919dc06fab83c5caf53d5e9ef9354",
+    "mtime": 1781786292.3699481,
+    "ast_hash": "d4eee90c9c654e8b29c359d1478eab5e",
     "semantic_hash": ""
   },
   "skills/research/arxiv/SKILL.md": {
@@ -9485,38 +9485,58 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/favicon.png": {
-    "mtime": 1781717380.2705715,
+    "mtime": 1781786290.5848837,
     "ast_hash": "404d206cc280041848bccc555139033a",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/icon_small-dark.png": {
-    "mtime": 1781717380.274418,
+    "mtime": 1781786290.5952594,
     "ast_hash": "ac2c0ffe7ec9edc4cf3a3d6d5196dcda",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/icon_small-light.png": {
-    "mtime": 1781717380.2750502,
+    "mtime": 1781786290.5972724,
     "ast_hash": "d56006c2400add99962cf6798c789268",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/Markdown.test.ts": {
-    "mtime": 1781717346.209656,
-    "ast_hash": "8ec477614f84416bd460549e55c17c80",
+    "mtime": 1781785709.9625502,
+    "ast_hash": "82abb940e9dd29a205f499c9be2841b5",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/markdownParse.ts": {
-    "mtime": 1781717271.1557384,
-    "ast_hash": "d5db869b28a21142b17a931e69f65209",
+    "mtime": 1781785235.9795508,
+    "ast_hash": "f6fb98652cdfecf73fce18743d643e31",
     "semantic_hash": ""
   },
-  "src/spark_cli/web_dist/assets/event-BSuqccjr.js": {
-    "mtime": 1781717380.8174555,
-    "ast_hash": "9fccfd83adc5175b8db4028029acd3ab",
+  "scripts/seed_heavy_web_session.py": {
+    "mtime": 1781786156.080707,
+    "ast_hash": "2536dffbc83b35c0d81a822c8e34c856",
     "semantic_hash": ""
   },
-  "src/spark_cli/web_dist/assets/index-Cbklbrgz.js": {
-    "mtime": 1781717380.81787,
-    "ast_hash": "6ea88a4cd1861c06c017b377d1b7c364",
+  "src/spark_cli/web/src/lib/renderHealth.test.ts": {
+    "mtime": 1781785701.3862236,
+    "ast_hash": "9e13b4a9ede0ac8d1c653a46eec78522",
+    "semantic_hash": ""
+  },
+  "src/spark_cli/web/src/lib/renderHealth.ts": {
+    "mtime": 1781785659.0158355,
+    "ast_hash": "b789ec4c250914a61a9cef9a54c7c7b2",
+    "semantic_hash": ""
+  },
+  "src/spark_cli/web_dist/assets/event-CYTCyjtn.js": {
+    "mtime": 1781786292.3693922,
+    "ast_hash": "ad821af35698d96f9c892ba466bf7ab7",
+    "semantic_hash": ""
+  },
+  "src/spark_cli/web_dist/assets/index-DMlK9FmW.js": {
+    "mtime": 1781786292.3714318,
+    "ast_hash": "0b453647f188608d4693c67f26822fa3",
+    "semantic_hash": ""
+  },
+  "docs/desktop-webview-diagnostics.md": {
+    "mtime": 1781785635.2607825,
+    "ast_hash": "23b16b9203a24b402859c84952d06ada",
     "semantic_hash": ""
   }
 }

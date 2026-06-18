@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2, Paperclip } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2, Paperclip, Copy } from "lucide-react";
 import { detectOutputType } from "@/lib/detectOutputType";
 
 // Detect file paths in tool result text (e.g. "Saved to /path/to/file.py")
@@ -37,10 +37,18 @@ const COLOR_CLASSES: Record<string, { border: string; bg: string; text: string }
   green: { border: "border-success/30", bg: "bg-success/5", text: "text-success/70" },
 };
 
-function ResultPreview({ result }: { result: string }) {
+const LARGE_RESULT_CHARS = 12_000;
+
+function formatBytes(chars: number): string {
+  if (chars < 1000) return `${chars} chars`;
+  if (chars < 1_000_000) return `${(chars / 1000).toFixed(chars < 10_000 ? 1 : 0)}K chars`;
+  return `${(chars / 1_000_000).toFixed(1)}M chars`;
+}
+
+function ResultPreview({ result, safeMode }: { result: string; safeMode?: boolean }) {
   const [fullscreen, setFullscreen] = useState(false);
   const trimmed = result.trim();
-  const detected = detectOutputType(trimmed);
+  const detected = safeMode || result.length > LARGE_RESULT_CHARS ? { kind: "text" as const } : detectOutputType(trimmed);
 
   if (detected.kind === "image") {
     return (
@@ -69,8 +77,8 @@ function ResultPreview({ result }: { result: string }) {
     return <video controls src={detected.url} className="max-h-48 rounded w-full" />;
   }
   return (
-    <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap font-mono text-foreground/90 max-h-48 overflow-y-auto">
-      {result.length > 12000 ? `${result.slice(0, 12000)}…` : result}
+    <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap font-mono text-foreground/90 max-h-[360px] overflow-y-auto">
+      {result}
     </pre>
   );
 }
@@ -109,6 +117,7 @@ export function ToolCallBubble({
   startedAt,
   endedAt,
   repeatCount,
+  safeMode,
   onAttachPath,
 }: {
   name: string;
@@ -119,9 +128,11 @@ export function ToolCallBubble({
   startedAt?: number;
   endedAt?: number;
   repeatCount?: number;
+  safeMode?: boolean;
   onAttachPath?: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const lname = name.toLowerCase();
   const family = Object.keys(TOOL_FAMILIES).find((k) => lname.includes(k));
@@ -141,6 +152,8 @@ export function ToolCallBubble({
       : null;
 
   const argPreview = getArgPreview(name, args);
+  const resultSize = result ? formatBytes(result.length) : null;
+  const isLargeResult = (result?.length ?? 0) > LARGE_RESULT_CHARS;
 
   let argsStr: string;
   try {
@@ -148,6 +161,14 @@ export function ToolCallBubble({
   } catch {
     argsStr = String(args);
   }
+
+  const copyResult = () => {
+    if (!result) return;
+    void navigator.clipboard.writeText(result).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   return (
     <div className="overflow-hidden rounded-md bg-foreground/[0.035] text-xs">
@@ -166,14 +187,19 @@ export function ToolCallBubble({
         )}
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {elapsed && <span className="text-[10px] text-muted-foreground/50">{elapsed}</span>}
+          {resultSize && (
+            <span className="text-[10px] text-muted-foreground/50">
+              {isLargeResult ? `large output · ${resultSize}` : resultSize}
+            </span>
+          )}
           {repeatCount != null && repeatCount > 0 && (
             <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
               ×{repeatCount + 1}
             </span>
           )}
           {!done ? (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground animate-pulse">
-              <Loader2 className="h-3 w-3 animate-spin" />
+            <span className={`flex items-center gap-1 text-[10px] text-muted-foreground ${safeMode ? "" : "animate-pulse"}`}>
+              <Loader2 className={`h-3 w-3 ${safeMode ? "" : "animate-spin"}`} />
               running
             </span>
           ) : (
@@ -188,10 +214,23 @@ export function ToolCallBubble({
           </pre>
           {result != null && result !== "" && (
             <div>
-              <div className="text-[10px] text-muted-foreground mb-1">Result</div>
-              <ResultPreview result={result} />
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="text-[10px] text-muted-foreground">
+                  Result {resultSize ? <span className="text-muted-foreground/50">· {resultSize}</span> : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={copyResult}
+                  className="inline-flex items-center gap-1 rounded-md bg-foreground/6 px-1.5 py-0.5 text-[10px] text-muted-foreground transition hover:bg-foreground/9 hover:text-foreground"
+                  title="Copy full result"
+                >
+                  <Copy className="h-2.5 w-2.5" />
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <ResultPreview result={result} safeMode={safeMode} />
               {resultTruncated && (
-                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Output truncated for display — full result sent to agent.</p>
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Output was truncated before it reached the UI stream.</p>
               )}
               {onAttachPath && done && (() => {
                 const paths = extractOutputPaths(result);

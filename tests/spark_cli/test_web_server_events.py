@@ -286,6 +286,94 @@ class TestConversationControl:
         finally:
             db2.close()
 
+    def test_cached_web_agent_validation_matches_db_history(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("cache_ok", source="web", model="m1")
+            db.append_message("cache_ok", "user", content="hello")
+            db.append_message("cache_ok", "assistant", content="hi")
+            history = db.get_messages_as_conversation("cache_ok")
+        finally:
+            db.close()
+
+        agent = MagicMock()
+        agent._session_messages = list(history)
+
+        assert web_server._cached_web_agent_matches_history("cache_ok", agent, history) is True
+
+    def test_cached_web_agent_validation_rejects_stale_context(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("cache_stale", source="web", model="m1")
+            db.append_message("cache_stale", "user", content="first")
+            db.append_message("cache_stale", "assistant", content="answer")
+            history = db.get_messages_as_conversation("cache_stale")
+        finally:
+            db.close()
+
+        agent = MagicMock()
+        agent._session_messages = [{"role": "user", "content": "different"}]
+
+        assert web_server._cached_web_agent_matches_history("cache_stale", agent, history) is False
+
+    def test_turn_done_payload_includes_reconciliation_metadata(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("turn_done_meta", source="web", model="m1")
+            db.append_message("turn_done_meta", "user", content="hello")
+            assistant_id = db.append_message("turn_done_meta", "assistant", content="hi")
+        finally:
+            db.close()
+
+        payload = web_server._turn_done_payload(
+            {
+                "input_tokens": 3,
+                "output_tokens": 4,
+                "cache_read_tokens": 5,
+                "cache_write_tokens": 6,
+                "estimated_cost_usd": 0.01,
+                "model": "m1",
+            },
+            "turn_done_meta",
+        )
+
+        assert payload["session_id"] == "turn_done_meta"
+        assert payload["message_count"] == 2
+        assert payload["final_assistant_message_id"] == assistant_id
+        assert payload["final_assistant_present"] is True
+        assert payload["tokens"]["input"] == 3
+        assert payload["model"] == "m1"
+
+    def test_interrupted_boundary_persists_after_dangling_user(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("interrupt_boundary", source="web", model="m1")
+            db.append_message("interrupt_boundary", "user", content="long request")
+        finally:
+            db.close()
+
+        web_server._persist_interrupted_turn_boundary("interrupt_boundary", "new direction")
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("interrupt_boundary")
+            assert [m["role"] for m in msgs] == ["user", "assistant"]
+            assert "interrupted" in msgs[-1]["content"].lower()
+        finally:
+            db2.close()
+
     def test_interrupt_requires_agent(self, web_client):
         resp = web_client.post("/api/conversations/none/interrupt", json={})
         assert resp.status_code == 404
@@ -299,6 +387,31 @@ class TestConversationControl:
         assert resp.status_code == 200
         agent.interrupt.assert_called_once_with("stop")
 
+    def test_interrupt_endpoint_persists_boundary_when_user_is_dangling(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("s_interrupt", source="web", model="m1")
+            db.append_message("s_interrupt", "user", content="please continue")
+        finally:
+            db.close()
+
+        agent = MagicMock()
+        web_server._web_agents["s_interrupt"] = agent
+
+        resp = web_client.post("/api/conversations/s_interrupt/interrupt", json={"message": "redirect"})
+        assert resp.status_code == 200
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("s_interrupt")
+            assert msgs[-1]["role"] == "assistant"
+            assert "interrupted" in msgs[-1]["content"].lower()
+        finally:
+            db2.close()
+
     def test_model_switch_409_when_streaming(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
 
@@ -308,6 +421,29 @@ class TestConversationControl:
         resp = web_client.post("/api/conversations/s1/model", json={"model": "anthropic/claude-sonnet-4.6"})
         assert resp.status_code == 409
         web_server._web_streaming.discard("s1")
+
+    def test_turn_status_uses_web_streaming_without_queue(self, web_client):
+        import spark_cli.web_server as web_server
+
+        web_server._web_streaming.add("s_streaming")
+        try:
+            resp = web_client.get("/api/conversations/s_streaming/turn-status")
+            assert resp.status_code == 200
+            assert resp.json()["turn_active"] is True
+        finally:
+            web_server._web_streaming.discard("s_streaming")
+
+    def test_webview_diagnostics_reports_sidecar_and_activity_monitor_note(self, web_client):
+        resp = web_client.get(
+            "/api/diagnostics/webview?active_session_id=s1&safe_mode=true&recent_long_task_count=4&connection_mode=local"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["sidecar_pid"] > 0
+        assert data["safe_mode"] is True
+        assert data["recent_long_task_count"] == 4
+        assert data["connection_mode"] == "local"
+        assert "127.0.0.1:9119" in data["activity_monitor_process_name_note"]
 
     def test_model_switch_persists_global_and_closes_cached_agent(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server

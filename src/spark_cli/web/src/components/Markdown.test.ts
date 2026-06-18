@@ -123,6 +123,11 @@ describe("blockPropsEqual drives committed-block skip during streaming", () => {
     const [block] = parseBlocks("```js\nconst x = 1;\n```");
     expect(blockPropsEqual({ block, live: true }, { block, live: false })).toBe(false);
   });
+
+  it("treats a block as changed when safe mode flips", () => {
+    const [block] = parseBlocks("MEDIA: /tmp/shot.png");
+    expect(blockPropsEqual({ block, live: false, safeMode: false }, { block, live: false, safeMode: true })).toBe(false);
+  });
 });
 
 /**

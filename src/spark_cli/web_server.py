@@ -565,6 +565,7 @@ _CATEGORY_MERGE: Dict[str, str] = {
     "cron": "agent",
     "network": "agent",
     "checkpoints": "agent",
+    "desktop": "general",
     "approvals": "security",
     "human_delay": "display",
     "smart_model_routing": "general",
@@ -1612,6 +1613,55 @@ async def diagnostics_summary():
             "configured": bool(get_configured_dashboard_secret()),
         },
         "actions": [a.to_metadata() for a in ADMIN_ACTIONS.values()],
+    }
+
+
+@app.get("/api/diagnostics/webview")
+async def diagnostics_webview(
+    active_session_id: Optional[str] = None,
+    safe_mode: Optional[bool] = None,
+    recent_long_task_count: Optional[int] = None,
+    connection_mode: Optional[str] = None,
+):
+    """Runtime diagnostics for the desktop/web chat shell.
+
+    The browser owns safe-mode and long-task state, so callers can pass those
+    values as query params when collecting a complete diagnostic snapshot.
+    """
+    candidates = {active_session_id} if active_session_id else set()
+    if active_session_id:
+        try:
+            from core.spark_state import SessionDB
+
+            db = SessionDB()
+            try:
+                sid = db.resolve_session_id(active_session_id)
+                if sid:
+                    candidates.add(sid)
+                    latest = db.resolve_latest_descendant(sid)
+                    if latest:
+                        candidates.add(latest)
+            finally:
+                db.close()
+        except Exception:
+            _log.debug("diagnostic session resolution failed session=%s", active_session_id, exc_info=True)
+
+    active_turn = any((sid in _web_queues or sid in _web_streaming) for sid in candidates if sid)
+    return {
+        "ok": True,
+        "sidecar_pid": os.getpid(),
+        "desktop": _is_desktop_app(),
+        "desktop_version": _desktop_app_version(),
+        "active_session_id": active_session_id,
+        "active_turn": active_turn,
+        "safe_mode": safe_mode,
+        "recent_long_task_count": recent_long_task_count,
+        "connection_mode": connection_mode,
+        "activity_monitor_process_name_note": (
+            "Spark desktop is a Tauri shell that navigates its main webview to "
+            "the local sidecar at http://127.0.0.1:9119, so macOS may show the "
+            "webview page URL rather than the Spark app name for the busy renderer."
+        ),
     }
 
 
@@ -4153,13 +4203,15 @@ def _make_web_chat_callbacks(
         )
 
     def tool_complete_callback(tid: str, name: str, args: Any, result: Any) -> None:
+        result_text = "" if result is None else str(result)
         _publish_event(
             "chat.tool_end",
             {
                 "id": tid,
                 "name": name,
                 "args": _json_safe(args),
-                "result": _truncate_str(result),
+                "result": result_text,
+                "result_chars": len(result_text),
                 "ts": time.time(),
             },
             current_session_id[0],
@@ -4198,20 +4250,56 @@ def _make_web_chat_callbacks(
     )
 
 
-def _turn_done_payload(result: Any) -> Dict[str, Any]:
+def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            for msg in reversed(db.get_messages(session_id)):
+                if msg.get("role") == "assistant":
+                    return {
+                        "final_assistant_message_id": msg.get("id"),
+                        "final_assistant_present": bool(str(msg.get("content") or "").strip()),
+                    }
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("last assistant lookup failed session=%s", session_id, exc_info=True)
+    return {"final_assistant_message_id": None, "final_assistant_present": False}
+
+
+def _turn_done_payload(
+    result: Any,
+    session_id: Optional[str] = None,
+    *,
+    interrupted: bool = False,
+    migrated_session_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Extract token/cost stats from a run_conversation() result for chat.turn_done."""
+    payload: Dict[str, Any] = {
+        "session_id": session_id,
+        "message_count": _session_message_count(session_id) if session_id else 0,
+        "interrupted": interrupted,
+        "migrated_session_id": migrated_session_id,
+    }
+    if session_id:
+        payload.update(_last_assistant_message_info(session_id))
     if not isinstance(result, dict):
-        return {}
-    return {
-        "tokens": {
+        return payload
+    payload.update(
+        {
+            "tokens": {
             "input": result.get("input_tokens", 0) or 0,
             "output": result.get("output_tokens", 0) or 0,
             "cache_read": result.get("cache_read_tokens", 0) or 0,
             "cache_write": result.get("cache_write_tokens", 0) or 0,
-        },
-        "cost_usd": result.get("estimated_cost_usd"),
-        "model": result.get("model"),
-    }
+            },
+            "cost_usd": result.get("estimated_cost_usd"),
+            "model": result.get("model"),
+        }
+    )
+    return payload
 
 
 def _execute_web_slash_command(session_id: str, message: str) -> "str | None":
@@ -5167,6 +5255,113 @@ def _session_message_count(session_id: str) -> int:
         return 0
 
 
+def _message_content_hash(message: dict[str, Any]) -> str:
+    content = str(message.get("content") or "")
+    return hashlib.sha256(content.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def _conversation_signature(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    last_user = next((m for m in reversed(messages) if m.get("role") == "user"), None)
+    last_assistant = next((m for m in reversed(messages) if m.get("role") == "assistant"), None)
+    approx_tokens = sum(max(1, len(str(m.get("content") or "")) // 4) for m in messages)
+    return {
+        "count": len(messages),
+        "last_role": messages[-1].get("role") if messages else None,
+        "last_roles": [m.get("role") for m in messages[-5:]],
+        "last_user_hash": _message_content_hash(last_user) if last_user else None,
+        "last_assistant_present": bool(
+            last_assistant and str(last_assistant.get("content") or "").strip()
+        ),
+        "approx_tokens": approx_tokens,
+    }
+
+
+def _agent_history_snapshot(agent: Any) -> list[dict[str, Any]]:
+    session_messages = getattr(agent, "_session_messages", None)
+    if isinstance(session_messages, list) and session_messages:
+        return list(session_messages)
+    warm_messages = getattr(agent, "messages", None)
+    if isinstance(warm_messages, list) and warm_messages:
+        return list(warm_messages)
+    return []
+
+
+def _web_history_flags(session_id: str) -> dict[str, bool]:
+    flags = {"prior_interrupted": False, "migrated": False}
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            resolved = db.resolve_session_id(session_id)
+            latest = db.resolve_latest_descendant(resolved or session_id)
+            flags["migrated"] = bool(latest and resolved and latest != resolved)
+            messages = db.get_messages(resolved or session_id)
+            flags["prior_interrupted"] = bool(
+                messages and messages[-1].get("finish_reason") == "interrupted"
+            )
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("web history flag lookup failed session=%s", session_id, exc_info=True)
+    return flags
+
+
+def _cached_web_agent_matches_history(
+    session_id: str,
+    agent: Any,
+    db_history: list[dict[str, Any]],
+) -> bool:
+    cached_history = _agent_history_snapshot(agent)
+    db_sig = _conversation_signature(db_history)
+    cached_sig = _conversation_signature(cached_history)
+    matches = (
+        db_sig["count"] == cached_sig["count"]
+        and db_sig["last_role"] == cached_sig["last_role"]
+        and db_sig["last_user_hash"] == cached_sig["last_user_hash"]
+        and db_sig["last_assistant_present"] == cached_sig["last_assistant_present"]
+    )
+    flags = _web_history_flags(session_id)
+    _log.debug(
+        "web context validation session=%s source=%s db_count=%s cached_count=%s db_last=%s cached_last=%s db_roles=%s cached_roles=%s db_tokens~%s cached_tokens~%s prior_interrupted=%s migrated=%s match=%s",
+        session_id,
+        "cached_agent" if cached_history else "empty_cached_agent",
+        db_sig["count"],
+        cached_sig["count"],
+        db_sig["last_role"],
+        cached_sig["last_role"],
+        db_sig["last_roles"],
+        cached_sig["last_roles"],
+        db_sig["approx_tokens"],
+        cached_sig["approx_tokens"],
+        flags["prior_interrupted"],
+        flags["migrated"],
+        matches,
+    )
+    return matches
+
+
+def _persist_interrupted_turn_boundary(session_id: str, message: Optional[str] = None) -> None:
+    """Persist a small assistant boundary if interruption leaves a dangling user row."""
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            sid = db.resolve_session_id(session_id) or session_id
+            messages = db.get_messages(sid)
+            if not messages or messages[-1].get("role") != "user":
+                return
+            note = "Turn interrupted before a complete assistant response was saved."
+            if message:
+                note += " A redirect message was submitted for the next turn."
+            db.append_message(sid, "assistant", content=note, finish_reason="interrupted")
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("interrupted boundary persist failed session=%s", session_id, exc_info=True)
+
+
 _MAX_CONTEXT_ITEMS = 20
 _MAX_CONTEXT_ITEM_BYTES = 500 * 1024  # 500 KB per item in full mode
 
@@ -5643,7 +5838,7 @@ async def create_conversation(body: ConversationCreate):
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
+            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
 
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
@@ -5688,7 +5883,12 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         _web_queues[session_id] = queue
         turn_route = _resolve_web_turn_route(body.message)
         agent = _web_agents.get(session_id)
-        if agent and _web_agent_signatures.get(session_id) == turn_route["signature"]:
+        conversation_history = db.get_messages_as_conversation(session_id)
+        if (
+            agent
+            and _web_agent_signatures.get(session_id) == turn_route["signature"]
+            and _cached_web_agent_matches_history(session_id, agent, conversation_history)
+        ):
             agent.stream_delta_callback = token_callback
             agent.tool_start_callback = tool_start_callback
             agent.tool_complete_callback = tool_complete_callback
@@ -5696,8 +5896,8 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             agent.status_callback = status_callback
             agent.session_migrated_callback = session_migrated_callback
             agent.request_overrides = turn_route.get("request_overrides")
+            conversation_history = None
         else:
-            conversation_history = db.get_messages_as_conversation(session_id)
             agent = _new_web_agent(
                 session_id=session_id,
                 model=turn_route["model"],
@@ -5750,7 +5950,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
+            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
 
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
@@ -5763,6 +5963,7 @@ async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
         raise HTTPException(status_code=404, detail="Session not in active memory.")
     try:
         agent.interrupt(body.message)
+        _persist_interrupted_turn_boundary(session_id, body.message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     _publish_event(
@@ -6127,8 +6328,9 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _web_streaming.add(session_id)
+        result = None
         try:
-            await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None,
                 lambda: _run_web_agent_turn(agent, user_msg, conv_hist),
             )
@@ -6138,7 +6340,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", {}, session_id)  # retry — result not captured
+            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
 
     asyncio.create_task(run_agent_task())
     return {"ok": True, "session_id": session_id}
@@ -6205,7 +6407,7 @@ async def conversation_turn_status(session_id: str):
         # Best-effort: fall back to the raw id if resolution fails.
         pass
 
-    active = any(c in _web_queues for c in candidates if c)
+    active = any((c in _web_queues or c in _web_streaming) for c in candidates if c)
     return {"session_id": session_id, "turn_active": active}
 
 
@@ -6446,7 +6648,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             except Exception:
                 _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result), session_id)
+            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
 
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True, "source": source}

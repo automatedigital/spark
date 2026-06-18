@@ -1,198 +1,248 @@
-# Spark Improvement Plan
+# Plan: Stabilize Spark Web UI/Desktop Without Hiding Assistant Responses
 
-## Desktop/WebUI Freeze on Long Responses (web-search + delegation)
+## Goal
 
-### Problem statement
+Fix the freeze/crash class seen in long Spark conversations while preserving one important product rule:
 
-The macOS desktop app (and the WebUI it embeds) **freezes and becomes unclickable**
-partway through long assistant responses. The user reports it "usually freezes or
-cuts out when it's a longer response" and suspects it's "related to web search and
-delegation."
+- [x] Assistant responses must remain fully readable by default. Do not add a hard assistant-message render budget that replaces the answer with a preview or forces the user to click to read the full response.
+- [x] Tool calls, reasoning blocks, logs, and other secondary diagnostic output may be collapsed by default and expanded manually.
+- [x] If the UI detects browser main-thread distress, it may enter a safe render mode that reduces expensive decorations, measurement, highlighting, and open diagnostic panels, while still showing the full assistant text.
 
-### Evidence
+## Current Understanding
 
-- **Activity Monitor:** the process `http://127.0.0.1:9119` is pinned at **100.7% CPU**
-  (one full core). On macOS this is the **WKWebView/Tauri renderer** for the Spark
-  dashboard — i.e. the **frontend**, not the backend. The Python `spark-server`
-  process was only at **4.6% CPU**.
-- **Log (`~/Downloads/log.md`):** session `20260617_172240_b0492dcc` ran a parallel
-  `delegate_task` (2 subagents doing web research, returned **27,134 chars** in 66.9s),
-  then streamed a **14,078-char** final response. The gateway then **restarts**
-  (`Starting Spark Gateway…`) at 17:26:16 — consistent with the user force-quitting a
-  frozen app. The same restart pattern appears earlier (11:17, 17:21, 17:26).
-- The earlier session also shows many large `terminal`/tool outputs (19.8k, 39.5k,
-  28.8k chars) — large payloads streaming into the UI.
+- [x] The freeze is probably in the shared Web UI renderer, not exclusively in the macOS native shell.
+- [x] The desktop app is a Tauri shell pointed at the local Spark dashboard sidecar on `http://127.0.0.1:9119`, so Activity Monitor showing `http://127.0.0.1:9119` is expected for the webview page.
+- [x] The browser Web UI and desktop app share the same React chat renderer, markdown renderer, SSE event flow, and session APIs.
+- [x] Prior fixes already reduced streaming markdown cost:
+  - [x] `9f63cc10` added SSE reconnection and turn-status recovery.
+  - [x] `2b4ec6d8` split markdown parsing into stable prefix plus live tail, batched token updates with `requestAnimationFrame`, deferred live syntax highlighting, and added a streaming soft cap.
+- [x] The remaining risk is likely defense-in-depth work around huge secondary rows, layout/measurement churn, long-task detection, safe-mode recovery, and context replay after interrupted turns.
 
-### Root cause
+## Evidence To Keep In Mind
 
-While a long assistant message streams, `AssistantRow` renders
-`<Markdown content={msg.content} />` (`src/spark_cli/web/src/components/ChatPanel.tsx:333`).
-On each animation-frame flush (`flushTokenBuffer`, `ChatPanel.tsx:588`) the message
-content grows and the `Markdown` component:
+- [x] Screenshot 1 shows the app frozen while a response appears partially rendered and the turn status still says `THINKING...`.
+- [x] Screenshot 2 shows a follow-up question receiving a clarification response despite visible prior context about Porsche fuel costs.
+- [x] Screenshot 3 shows the webview/page process at about 100% CPU.
+- [x] Attached logs show large web turns, large delegated/tool outputs, and at least one `interrupted_during_api_call`.
+- [x] Logs showing `history=0` do not prove total context loss; they mean no explicit `conversation_history` argument was passed, which is normal when a cached web agent is reused. Still, cached-agent state must be validated after interrupts, reloads, compression, and sidecar restarts.
 
-1. Re-runs `parseBlocks(content)` over the **entire** string (`Markdown.tsx:50`, `:91`).
-2. Re-renders **every** `Block` — `Block` is **not** memoized and is keyed by array
-   index (`Markdown.tsx:54`), so React reconciles all N blocks every frame.
-3. Re-highlights the in-progress fenced code block with `hljs.highlight` every frame
-   (`Markdown.tsx:212`) — O(n²) per code block.
+## Non-Goals
 
-Per-frame cost scales with message length, so the work is **O(n²)** over the stream.
-For multi-KB responses this saturates a single core, starving the webview's input/event
-handling → the window stops responding to clicks → the user force-quits → the gateway
-restarts. If the renderer is CPU/OOM-killed by the OS, the response "cuts out."
+- [x] Do not hide or truncate the assistant's main answer behind a mandatory "show more" affordance.
+- [x] Do not remove markdown rendering entirely for normal assistant answers.
+- [x] Do not make desktop-only changes until browser Web UI behavior has also been tested.
+- [x] Do not rely on a single fix. This should be resilient even if the exact freeze trigger changes.
 
-**Why web-search + delegation trigger it:** those turns produce the longest final
-responses, emit the most `chat.token` events, and yield URL/link-dense paragraphs that
-make inline parsing (`parseInline`, `Markdown.tsx:374`) and reconciliation heavier.
+## Phase 0: Reproduce And Instrument
 
-### Contributing factors (secondary)
+- [x] Add a dev-only fixture or test helper that creates a synthetic heavy session with:
+  - [x] a long assistant response with many markdown blocks,
+  - [x] a long single-paragraph assistant response,
+  - [x] long code blocks,
+  - [x] a large table,
+  - [x] large reasoning text,
+  - [x] large tool outputs from multiple tools.
+- [ ] Reproduce in browser Web UI at `http://127.0.0.1:9119`.
+- [ ] Reproduce in the Tauri desktop app.
+- [ ] Capture Chrome/WebKit performance profiles for:
+  - [ ] live streaming,
+  - [ ] turn completion,
+  - [ ] loading the session from SQLite history,
+  - [ ] expanding a large tool call,
+  - [ ] expanding a large reasoning block.
+- [x] Add safe debug logging for web turns:
+  - [x] session id,
+  - [x] whether context source is cached agent, DB replay, or rebuilt agent,
+  - [x] message count,
+  - [x] last few roles,
+  - [x] approximate token count,
+  - [x] whether the prior turn was interrupted or migrated.
+- [x] Ensure logs never include full user/assistant/tool content for this debug line.
 
-- **Reasoning updates are not batched.** `chat.reasoning` calls `setChatMessages` on
-  every event with no rAF coalescing (`ChatPanel.tsx:720`), unlike `chat.token`. Models
-  that stream reasoning trigger one unbatched full re-render per delta.
-- **Per-token SSE volume.** `token_callback` publishes one `chat.token` event per model
-  token (`src/spark_cli/web_server.py:4146`); each event invokes every bus listener
-  (`useEventBus.ts:31`). A 3,500-token response = ~3,500 events.
-- **Inline regex risk.** `parseInline` uses a large alternation regex with a nested
-  quantifier in the `MEDIA:` branch (`Markdown.tsx:378`) — a catastrophic-backtracking
-  shape if `MEDIA:` ever precedes pathological input. Low probability, high impact.
-- **Virtualizer re-measure.** The streaming row grows continuously while
-  `virtualizer.measureElement` (ResizeObserver) re-measures it; combined with
-  `scrollToIndex` this can add layout thrash (`ChatPanel.tsx:1266`, `:1277`).
-- **No per-message render ceiling.** A single very large message has no guardrail, so the
-  renderer can be killed rather than degrade gracefully.
+## Phase 1: Collapse Heavy Secondary Output By Default
 
-### Goal / acceptance criteria
+- [x] Keep assistant messages fully visible.
+- [x] Ensure all tool calls are collapsed by default when restored from history and while streaming.
+- [x] Keep the existing manual toggle for opening tool calls.
+- [x] In closed tool-call rows, show only lightweight metadata:
+  - [x] tool name,
+  - [x] status,
+  - [x] elapsed time,
+  - [x] small argument preview,
+  - [x] output size or "large output" indicator.
+- [x] When a tool call is opened, render result content inside a bounded scroll container.
+- [x] Provide copy-full-result behavior so users can access the full tool output without forcing the full output into page layout.
+- [x] Avoid media previews for large/unknown tool results until the tool row is opened.
+- [x] Apply the same closed-by-default behavior to historical tool rows loaded from SQLite.
+- [ ] Add tests that a historical session with many large tool results loads with tool rows closed.
 
-- Streaming a 15k+ char response (with code blocks and many links) keeps the renderer
-  **well under one core** and the UI stays clickable throughout.
-- Per-frame render cost during streaming is **bounded** (independent of total message
-  length) — only the growing tail re-renders.
-- No regression in rendered markdown fidelity, copy buttons, media previews, tables,
-  task lists, reasoning, or tool bubbles.
+## Phase 2: Collapse And De-Emphasize Reasoning Blocks
 
----
+- [x] Keep reasoning blocks collapsed by default.
+- [x] In closed reasoning rows, show:
+  - [x] "Reasoning",
+  - [x] active/done state,
+  - [x] approximate word count,
+  - [x] a very small plain-text preview only if it is cheap.
+- [x] When opened, render reasoning in a bounded scroll container.
+- [x] Do not markdown-parse reasoning text.
+- [x] Avoid live animation or large preview updates for rapidly growing reasoning text.
+- [ ] Add tests for large reasoning text loaded from history and streamed live.
 
-## Phase 0 — Reproduce & instrument (confirm before changing)
+## Phase 3: Add Frontend Long-Task Monitoring
 
-- [x] Add a repro that exercises the parse/render hot path on large, growing markdown
-      (with headings, long paragraphs, links, and fenced code). Implemented as a
-      unit-test characterization in `src/spark_cli/web/src/components/Markdown.test.ts`
-      ("streaming parse cost is bounded by the tail") rather than a shipped UI harness.
-- [x] Capture the cost characteristic via `Date.now()` timers in that test: parsing a
-      ~56k-char message's live tail stays <2ms/frame, independent of prefix size.
-- [x] Confirm the O(n²) shape by code analysis: the old path re-ran `parseBlocks` over
-      the whole string and re-rendered every (un-memoized, index-keyed) `Block` each
-      animation-frame flush, so per-frame work grew with total length. (See root-cause
-      writeup above.)
-- [x] Confirm which process is the renderer (`http://127.0.0.1:9119`, the WKWebView at
-      100.7% CPU) vs. `spark-server` (Python, 4.6%) — fix belongs in the frontend.
-- [ ] (Manual, on packaged app) Reproduce the real-world `delegate_task` + web-search
-      path and capture a live devtools profile before/after. Folded into the Phase 4
-      real-app verification — not runnable from the dev box used for this change.
+- [x] Add a small browser-side performance monitor using `PerformanceObserver` for `longtask` entries where supported.
+- [x] Track recent long tasks in memory:
+  - [x] count,
+  - [x] max duration,
+  - [x] rolling time window,
+  - [x] active session id,
+  - [x] whether a turn is streaming.
+- [x] When repeated long tasks are detected, automatically enable safe render mode for the active session.
+- [x] Persist a per-session safe-mode flag in local storage so reopening the same heavy thread starts safely.
+- [x] Publish a lightweight in-app status notice when safe mode turns on.
+- [x] Add a manual "Disable safe mode for this thread" action.
+- [x] Add tests or a controllable hook to simulate long-task events and verify safe mode activates.
 
-## Phase 1 — Frontend render hot-path (root cause)
+## Phase 4: Define Safe Render Mode
 
-- [x] Memoize `Block` via `React.memo` + a structural comparator (`blockPropsEqual` in
-      `markdownParse.ts`), so unchanged blocks skip reconciliation. `MemoBlock` wraps
-      `Block` in `Markdown.tsx`.
-- [x] Keep block ordering/index stable so memoized blocks aren't invalidated as the tail
-      grows: stable blocks render first in order, tail blocks after — index of any
-      committed block is constant over the stream.
-- [x] Split parsing into a stable committed prefix + live tail via `findStableBoundary`
-      (boundary = last blank line outside any code fence), so committed blocks are parsed
-      once. Equivalence to whole-string parsing is locked by unit tests.
-- [x] Defer syntax highlighting for the in-progress code block: `CodeBlock` skips
-      `hljs.highlight` when `live` and renders plain `<code>`; it highlights once the
-      block completes (`live` flips false). Flagged via the last tail block.
-- [x] `InlineContent`'s `useMemo(parseInline)` now only recomputes for the changing tail
-      paragraph, since committed paragraph blocks no longer re-render at all.
-- [x] Characterized via unit test that per-frame parse work is bounded by the tail size,
-      not total message length (Phase 0 test). Live devtools re-profile = Phase 4 manual.
+Safe render mode must protect the page without hiding the assistant answer.
 
-## Phase 2 — Reduce streaming update volume
+- [x] Full assistant message text remains visible.
+- [x] Tool calls remain closed unless manually opened.
+- [x] Reasoning remains closed unless manually opened.
+- [x] Syntax highlighting is disabled or deferred for very large code blocks.
+- [x] Inline media previews are disabled unless explicitly opened.
+- [x] Row measurement is debounced or minimized.
+- [x] Smooth auto-scroll is disabled for the active heavy thread.
+- [x] Nonessential animations are disabled.
+- [x] Search highlighting is deferred until the user explicitly searches.
+- [x] The user can still copy assistant text and interact with the composer.
+- [x] Add a visible but unobtrusive safe-mode indicator in the chat header.
 
-- [x] Batch `chat.reasoning` updates through a rAF buffer (`reasoningBufferRef` +
-      `flushReasoningBuffer` + `appendReasoning`), mirroring `chat.token`. A shared
-      `flushPendingStream()` flushes both buffers before tool rows / finalize / turn end,
-      and the session-switch effect cancels the reasoning rAF too.
-- [~] Coalesce tokens server-side — **deliberately deferred.** Rationale: the backend was
-      not the bottleneck (Python ~5% CPU vs. the renderer at 100%), the frontend already
-      rAF-batches render, and threading a turn-end flush through 4 call sites + every
-      interrupt/turn_done path risks silently dropping a response's tail on the streaming
-      hot path. The plan itself says ship Phase 1 first and measure before doing this.
-      Revisit only if profiling shows SSE volume is still a problem after Phase 1.
-- [~] (Depends on the deferred item above.)
-- [~] (Depends on the deferred item above.)
+## Phase 5: Reduce Virtualizer And Layout Churn
 
-## Phase 3 — Resilience & graceful degradation
+- [x] Audit `ChatPanel.tsx` virtualizer usage around `measureElement`.
+- [x] Avoid measuring closed tool/reasoning rows as if their hidden full content affects layout.
+- [x] Debounce measurement of the active streaming assistant row.
+- [x] Avoid `smooth` scrolling while a large response is streaming.
+- [x] Only auto-scroll when the user is already close to the bottom.
+- [x] Use role-aware estimated row sizes:
+  - [x] user row,
+  - [x] assistant row,
+  - [x] closed tool row,
+  - [x] open tool row,
+  - [x] closed reasoning row,
+  - [x] open reasoning row.
+- [x] Add browser-level verification that scrolling and typing remain responsive in a heavy session.
 
-- [x] Per-message soft cap (`SOFT_RENDER_CAP = 80_000`): above it, a streaming message
-      renders its committed prefix verbatim (`<pre>`) and only block-parses the live tail;
-      it formats fully on completion (`streaming=false`). Prevents pathological blowup.
-- [x] Hardened `parseInline`: replaced the `MEDIA:` branch's nested
-      `\S+(?:[^\S\n]+\S+)*?` quantifier (catastrophic-backtracking shape) with a linear
-      lazy `[^\n]*?`; capture-group numbering unchanged. Adversarial-input unit test added
-      (asserts <100ms on inputs that would have hung the old pattern).
-- [x] Reviewed the virtualizer path: the auto-scroll effect keys on
-      `[collapsedMessages.length, streaming, virtualizer]`, so it does not fire per-frame
-      during streaming; `measureElement` re-measures the tail at most once per frame. With
-      committed blocks now memoized, the growing row's reconciliation is bounded. No change
-      needed; left as-is to avoid scroll regressions.
-- [x] Verified the stall watchdog (`STALL_MS = 45_000`) + `resyncTurnState`: a busy frame
-      is now bounded (well under the 45s threshold), and `resyncTurnState` uses
-      `flushPendingStream()` so both buffers are flushed on recovery.
+## Phase 6: Harden Context Replay And Interrupt Recovery
 
-## Phase 4 — Verification & regression coverage
+- [x] On follow-up web turns, resolve the current leaf session id before running the agent.
+- [x] Load DB conversation history or validate cached-agent history before reuse.
+- [x] Compare cached-agent state with DB state:
+  - [x] message count,
+  - [x] last role,
+  - [x] last user content hash,
+  - [x] last assistant presence,
+  - [x] compression/migration state.
+- [x] If cached state and DB state disagree, rebuild the web agent or pass explicit `conversation_history`.
+- [x] Treat `interrupted_during_api_call` as a boundary:
+  - [ ] persist partial visible assistant text if it was shown,
+  - [x] otherwise persist a clear assistant note that the turn was interrupted,
+  - [x] prevent the next turn from silently continuing from a dangling user-only state.
+- [ ] Add backend tests covering follow-up after:
+  - [ ] interrupt,
+  - [ ] reload,
+  - [ ] sidecar restart,
+  - [ ] compression migration,
+  - [ ] stale cached agent.
 
-- [x] Added a frontend unit test asserting committed blocks are reported unchanged
-      (skip re-render) as the tail grows, via the exact `blockPropsEqual` comparator
-      React uses — and that a block re-renders when its `live` flag flips.
-- [x] Added an adversarial `parseInline` unit test with a <100ms timeout assertion so a
-      regression to catastrophic backtracking fails CI.
-- [x] Frontend suite green: `vitest run` → 35 passed; `tsc -b && vite build` clean
-      (0 type errors); `eslint` 0 errors on changed files (1 pre-existing warning,
-      unrelated, untouched).
-- [~] `pytest` for backend changes — N/A: no Python changed (token coalescing deferred).
-- [x] Rebuilt the web bundle into `web_dist/` (consumed by the desktop app) and rebuilt
-      the macOS desktop app via `/build-mac`.
-- [x] Ran `graphify update .` to keep the knowledge graph current.
-- [ ] (Manual, on packaged app) Stream a real `delegate_task` + web-search turn producing
-      a 15k+ char response and confirm the renderer stays under one core and the UI is
-      clickable throughout (stop button, sidebar, scroll). Also confirm code highlighting
-      applies on completion and copy buttons work. Requires a live agent session with
-      API credentials — to be done by the reporter / on a machine with a configured
-      profile.
+## Phase 7: Improve SSE And Turn Completion Recovery
 
----
+- [x] Publish `chat.turn_done` only after final assistant state is persisted enough for the UI to reconcile.
+- [x] Include authoritative metadata in `chat.turn_done`:
+  - [x] resolved session id,
+  - [x] message count,
+  - [x] final assistant message id if available,
+  - [x] interrupted flag if applicable,
+  - [x] migrated session id if applicable.
+- [ ] On `chat.turn_done`, reconcile local streamed state with the DB tail once, without replacing visible assistant content with stale/incomplete data.
+- [x] Update turn-status to consider `_web_streaming`, not only `_web_queues`.
+- [ ] Add tests for dropped SSE connection mid-turn.
+- [ ] Add tests for turn completion after the EventSource has disconnected.
 
-### Notes / out of scope
+## Phase 8: Crash And Safe-Mode Recovery
 
-- The background "review/skill-save" turn that fires after each user turn (e.g.
-  `20260617_112526_ded07e` in the log) adds backend work but runs on the Python side
-  (~5% CPU) and is not implicated in the freeze. Leave as-is for this fix.
-- Token coalescing (Phase 2) is an optimization, not the root cause; ship Phase 1 first and
-  measure whether Phase 2 is still needed. **Decision: deferred** (see Phase 2) — backend
-  was never the bottleneck and the change risks dropping response tails on the hot path.
-- Follow the standard feature-branch + PR workflow; do not push directly to `main`.
+- [x] Store the last active session id and render health metadata locally.
+- [x] If desktop or browser reloads after a suspected heavy-thread stall, reopen that session in safe mode.
+- [x] Add a small "Recovered this thread in safe mode" notice.
+- [x] Allow the user to turn safe mode off once the thread is responsive.
+- [x] Add a desktop diagnostic endpoint/action that reports:
+  - [x] sidecar PID,
+  - [x] active session id,
+  - [x] active turn status,
+  - [x] safe-mode state,
+  - [x] recent long-task counts,
+  - [x] current connection mode.
+- [x] Document why Activity Monitor can show `http://127.0.0.1:9119` for Spark desktop.
 
-### What shipped in this change
+## Phase 9: Verification Matrix
 
-- `markdownParse.ts` (new): pure parser + memo helpers, unit-tested without a DOM.
-- `Markdown.tsx`: streaming-aware incremental parse (stable prefix + live tail), memoized
-  blocks, deferred code highlighting, and an 80k-char soft cap.
-- `ChatPanel.tsx`: rAF-batched reasoning + a shared `flushPendingStream()`.
-- `Markdown.test.ts` (new): 17 tests — parse-equivalence, memo-skip behavior, ReDoS
-  hardening, and tail-bounded parse cost.
-- Rebuilt `web_dist/` + the macOS app.
+- [x] Browser Web UI using the same local server path on isolated port `http://127.0.0.1:9129`.
+- [ ] Tauri desktop app using the bundled sidecar.
+- [ ] Fresh session with a long assistant response.
+- [x] Existing heavy session loaded from SQLite history.
+- [x] Session with many delegated subagent/tool results.
+- [ ] Session with a long reasoning stream.
+- [ ] Session interrupted during an API call, then followed up.
+- [ ] Session after compression migration.
+- [ ] Remote/LAN dashboard with SSE reconnect.
+- [x] Safe mode automatically enabled by simulated long tasks.
+- [x] Safe mode manually disabled by the user.
 
-Net effect: per-frame work during a long stream is bounded by the small live tail instead
-of the whole growing message, so the renderer no longer saturates a core and freezes.
+## Tests To Add
 
-### Release
+- [ ] Frontend unit tests:
+  - [ ] tool rows default closed for large historical outputs,
+  - [ ] reasoning rows default closed for large historical reasoning,
+  - [x] safe-mode state persists per session,
+  - [x] safe-mode activation responds to long-task monitor events,
+  - [x] assistant message content remains fully present in the DOM/state.
+- [ ] Frontend browser tests:
+  - [x] load heavy fixture session and confirm composer remains usable,
+  - [ ] stream a long response and confirm stop button/sidebar remain interactive,
+  - [x] expand a large tool row manually and confirm bounded scroll container,
+  - [x] reload after safe-mode flag and confirm safe mode is active.
+- [x] Backend tests:
+  - [x] cached-agent mismatch triggers DB replay or rebuild,
+  - [x] interrupted turn persists a coherent boundary,
+  - [x] turn-status reports active while `_web_streaming` is active,
+  - [x] turn_done includes reconciliation metadata.
 
-- Fix merged to `main` in PR #51.
-- Shipped in **desktop app v1.3.1** (bumped `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`
-  from 1.3.0 → 1.3.1), built and published to GitHub Releases.
-- The graphify knowledge graph (`graph.json` + `GRAPH_REPORT.md` + `manifest.json`) is now
-  tracked in git; the regenerable `cache/` and dated backup snapshots are gitignored.
+## Implementation Order
+
+- [x] Phase 0: build repro/instrumentation first.
+- [x] Phase 1: collapse heavy tool output by default.
+- [x] Phase 2: collapse reasoning output by default.
+- [x] Phase 3: add long-task monitoring.
+- [x] Phase 4: add safe render mode.
+- [x] Phase 5: reduce virtualizer/layout churn.
+- [x] Phase 6: harden context replay and interrupt recovery.
+- [x] Phase 7: improve SSE/turn completion reconciliation.
+- [x] Phase 8: add crash/safe-mode recovery and diagnostics.
+- [ ] Phase 9: verify in browser and desktop.
+- [x] Rebuild web assets.
+- [x] Rebuild macOS app.
+- [x] Run focused frontend tests.
+- [x] Run focused backend tests.
+- [x] Run full test suite before pushing.
+
+## Open Questions
+
+- [ ] Did screenshot 1 freeze while streaming, after completion, or during history reload?
+- [ ] Did the user submit a redirect while the previous turn was still active?
+- [ ] Are freezes correlated more with delegated tool output, reasoning output, markdown-heavy assistant output, or virtualizer measurement?
+- [ ] Should safe mode be per session, global until restart, or both?
+- [ ] Should there be a user-visible setting for "always collapse tool calls"?
+- [ ] Can Tauri/WebKit expose a better Activity Monitor process name, or is that cosmetic only?

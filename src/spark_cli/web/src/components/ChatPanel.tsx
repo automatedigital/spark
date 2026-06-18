@@ -14,6 +14,7 @@ import {
   ChevronDown,
   CornerUpLeft,
   FileText,
+  ShieldCheck,
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api } from "@/lib/api";
@@ -37,11 +38,17 @@ import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
+import {
+  persistSafeMode,
+  pruneLongTasks,
+  readSafeMode,
+  rememberRenderHealth,
+  shouldEnableSafeMode,
+  type LongTaskSample,
+} from "@/lib/renderHealth";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
-
-const MAX_RESULT_CHARS = 12_000;
 
 type ChatMessage =
   | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[]; redirect?: boolean }
@@ -320,9 +327,11 @@ const UserRow = memo(function UserRow({
 
 const AssistantRow = memo(function AssistantRow({
   msg,
+  safeMode,
   onPromoteToBrief,
 }: {
   msg: AssistantMsg;
+  safeMode?: boolean;
   onPromoteToBrief?: (text: string) => void;
 }) {
   return (
@@ -330,10 +339,10 @@ const AssistantRow = memo(function AssistantRow({
       <SparkAgentAvatar />
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
-          <Markdown content={msg.content} streaming={msg.streaming} />
+          <Markdown content={msg.content} streaming={msg.streaming} safeMode={safeMode} />
         ) : (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Loader2 className={`h-3 w-3 ${safeMode ? "" : "animate-spin"}`} />
             <span className="text-xs">Thinking…</span>
           </span>
         )}
@@ -372,10 +381,12 @@ const AssistantRow = memo(function AssistantRow({
 const ToolRow = memo(function ToolRow({
   msg,
   repeatCount,
+  safeMode,
   onAttachPath,
 }: {
   msg: ToolMsg;
   repeatCount: number;
+  safeMode?: boolean;
   onAttachPath?: (path: string) => void;
 }) {
   return (
@@ -385,14 +396,15 @@ const ToolRow = memo(function ToolRow({
         startedAt={msg.startedAt} endedAt={msg.endedAt}
         repeatCount={repeatCount > 0 ? repeatCount : undefined}
         resultTruncated={msg.resultTruncated}
+        safeMode={safeMode}
         onAttachPath={onAttachPath}
       />
     </div>
   );
 });
 
-const ReasoningRow = memo(function ReasoningRow({ msg, isActive }: { msg: ReasoningMsg; isActive?: boolean }) {
-  return <div className="pl-9"><ReasoningBubble text={msg.text} isActive={isActive} /></div>;
+const ReasoningRow = memo(function ReasoningRow({ msg, isActive, safeMode }: { msg: ReasoningMsg; isActive?: boolean; safeMode?: boolean }) {
+  return <div className="pl-9"><ReasoningBubble text={msg.text} isActive={isActive} safeMode={safeMode} /></div>;
 });
 
 const ApprovalRow = memo(function ApprovalRow({
@@ -480,10 +492,13 @@ export function ChatPanel({
     parentTitle: string | null;
     forkCount: number;
   } | null>(null);
+  const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
+  const [safeModeNotice, setSafeModeNotice] = useState<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
   const streamingRef = useRef(false);
+  const safeModeRef = useRef(safeMode);
   // Token batching: accumulate tokens and flush once per animation frame
   const tokenBufferRef = useRef("");
   const rafPendingRef = useRef<number | null>(null);
@@ -500,6 +515,7 @@ export function ChatPanel({
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
+  safeModeRef.current = safeMode;
 
   // Desktop (§3.1): reflect agent activity in the menu-bar tray indicator.
   useEffect(() => {
@@ -537,6 +553,9 @@ export function ChatPanel({
     setEditingUser(null);
     setSessionStats({});
     setForkInfo(null);
+    const restoredSafeMode = readSafeMode(sessionId);
+    setSafeMode(restoredSafeMode);
+    setSafeModeNotice(restoredSafeMode ? "Recovered this thread in safe mode." : null);
     if (sessionId) {
       api.getSessionForks(sessionId).then((info) => {
         setForkInfo({
@@ -583,6 +602,67 @@ export function ChatPanel({
   useEffect(() => {
     rememberLocalTurn(activeSessionRef.current, chatMessages);
   }, [chatMessages]);
+
+  useEffect(() => {
+    rememberRenderHealth(activeSessionId, safeMode);
+  }, [activeSessionId, safeMode]);
+
+  const enableSafeMode = useCallback((reason: string, longTaskCount = 0) => {
+    const sid = activeSessionRef.current;
+    if (!sid || safeModeRef.current) return;
+    persistSafeMode(sid, true);
+    safeModeRef.current = true;
+    setSafeMode(true);
+    setSafeModeNotice(reason);
+    rememberRenderHealth(sid, true, longTaskCount);
+    setChatMessages((prev) => [
+      ...prev,
+      { id: nid(), role: "note", text: reason },
+    ]);
+  }, []);
+
+  const disableSafeMode = useCallback(() => {
+    const sid = activeSessionRef.current;
+    persistSafeMode(sid, false);
+    safeModeRef.current = false;
+    setSafeMode(false);
+    setSafeModeNotice(null);
+    rememberRenderHealth(sid, false);
+  }, []);
+
+  useEffect(() => {
+    if (typeof PerformanceObserver === "undefined") return;
+    if (!PerformanceObserver.supportedEntryTypes?.includes("longtask")) return;
+
+    let recent: LongTaskSample[] = [];
+    const WINDOW_MS = 12_000;
+    const TRIGGER_COUNT = 4;
+    const TRIGGER_DURATION_MS = 250;
+
+    let observer: PerformanceObserver;
+    try {
+      observer = new PerformanceObserver((list) => {
+        const now = performance.now();
+        for (const entry of list.getEntries()) {
+          recent.push({ start: entry.startTime, duration: entry.duration });
+        }
+        recent = pruneLongTasks(recent, now, WINDOW_MS);
+        if (
+          shouldEnableSafeMode(recent, {
+            streaming: streamingRef.current,
+            triggerCount: TRIGGER_COUNT,
+            triggerDurationMs: TRIGGER_DURATION_MS,
+          })
+        ) {
+          enableSafeMode("Safe render mode turned on for this thread after repeated browser long tasks.", recent.length);
+        }
+      });
+      observer.observe({ type: "longtask", buffered: false });
+    } catch {
+      return;
+    }
+    return () => observer.disconnect();
+  }, [enableSafeMode]);
 
   const finalizeAssistant = useCallback(() => {
     setChatMessages((prev) => {
@@ -744,11 +824,10 @@ export function ChatPanel({
             const row = next[i];
             if (row.role === "tool" && row.toolId === tid) {
               const full = String(data.result ?? "");
-              const truncated = full.length > MAX_RESULT_CHARS;
               next[i] = {
                 ...row,
-                result: truncated ? `${full.slice(0, MAX_RESULT_CHARS)}…` : full,
-                resultTruncated: truncated || undefined,
+                result: full,
+                resultTruncated: Boolean(data.truncated) || undefined,
                 done: true,
                 endedAt: typeof data.ts === "number" ? data.ts : undefined,
               };
@@ -1220,9 +1299,9 @@ export function ChatPanel({
   useEffect(() => {
     if (!searchMatches.length) return;
     const idx = searchMatches[searchMatchIdx % searchMatches.length];
-    virtualizer.scrollToIndex(idx, { align: "center", behavior: "smooth" });
+    virtualizer.scrollToIndex(idx, { align: "center", behavior: safeMode ? "instant" : "smooth" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchMatchIdx, searchMatches]);
+  }, [searchMatchIdx, searchMatches, safeMode]);
 
   // Drag-and-drop state
   const [isDragOver, setIsDragOver] = useState(false);
@@ -1285,13 +1364,59 @@ export function ChatPanel({
     return collapsed;
   }, [chatMessages, streaming]);
 
+  const estimateRowSize = useCallback((index: number) => {
+    const item = collapsedMessages[index];
+    if (!item || item.msg === null) return 56;
+    switch (item.msg.role) {
+      case "user":
+        return 72;
+      case "assistant":
+        return Math.min(900, Math.max(96, Math.ceil(item.msg.content.length / 95) * 22 + 48));
+      case "tool":
+        return 44;
+      case "reasoning":
+        return 44;
+      case "approval":
+        return 160;
+      case "feedback_form":
+        return 280;
+      case "note":
+        return 32;
+      default:
+        return 80;
+    }
+  }, [collapsedMessages]);
+
   const virtualizer = useVirtualizer({
     count: collapsedMessages.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 80,
-    overscan: 10,
+    estimateSize: estimateRowSize,
+    overscan: safeMode ? 4 : 10,
     gap: 12,
   });
+
+  const measureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const measureRowElement = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const index = Number(el.dataset.index);
+    const item = collapsedMessages[index];
+    if (
+      safeMode &&
+      item?.msg !== null &&
+      (item?.msg.role === "tool" || item?.msg.role === "reasoning")
+    ) {
+      return;
+    }
+    if (streaming && item?.msg !== null && item?.msg.role === "assistant") {
+      if (measureTimerRef.current) return;
+      measureTimerRef.current = setTimeout(() => {
+        measureTimerRef.current = null;
+        virtualizer.measureElement(el);
+      }, safeMode ? 250 : 80);
+      return;
+    }
+    virtualizer.measureElement(el);
+  }, [collapsedMessages, safeMode, streaming, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
@@ -1304,10 +1429,10 @@ export function ChatPanel({
     if (count !== prevCountRef.current || (streaming && atBottom)) {
       prevCountRef.current = count;
       if (count > 0) {
-        virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming ? "instant" : "smooth" });
+        virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
       }
     }
-  }, [collapsedMessages.length, streaming, virtualizer]);
+  }, [collapsedMessages.length, streaming, safeMode, virtualizer]);
 
   return (
     <div
@@ -1334,6 +1459,17 @@ export function ChatPanel({
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <StatusPill streaming={streaming} label={statusLabel} />
+            {safeMode && (
+              <button
+                type="button"
+                onClick={disableSafeMode}
+                className="inline-flex items-center gap-1 rounded-md bg-success/10 px-1.5 py-0.5 text-[10px] text-success/80 transition hover:bg-success/15 hover:text-success"
+                title={safeModeNotice ?? "Safe render mode is active. Click to disable for this thread."}
+              >
+                <ShieldCheck className="h-2.5 w-2.5" />
+                Safe render
+              </button>
+            )}
             {forkInfo?.parentSessionId && (
               <span className="inline-flex items-center gap-1 rounded-md bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 <CornerUpLeft className="h-2.5 w-2.5" />
@@ -1452,7 +1588,7 @@ export function ChatPanel({
                   <div
                     key="typing"
                     data-index={vItem.index}
-                    ref={virtualizer.measureElement}
+                    ref={measureRowElement}
                     style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
                   >
                     <div className="flex gap-2">
@@ -1480,11 +1616,11 @@ export function ChatPanel({
                 );
               } else if (msg.role === "assistant") {
                 if (!msg.content && !msg.streaming) return null;
-                rowContent = <AssistantRow msg={msg} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
+                rowContent = <AssistantRow msg={msg} safeMode={safeMode} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
               } else if (msg.role === "tool") {
-                rowContent = <ToolRow msg={msg} repeatCount={repeatCount} onAttachPath={attachPath} />;
+                rowContent = <ToolRow msg={msg} repeatCount={repeatCount} safeMode={safeMode} onAttachPath={attachPath} />;
               } else if (msg.role === "reasoning") {
-                rowContent = <ReasoningRow msg={msg} isActive={streaming && vItem.index === collapsedMessages.length - 1} />;
+                rowContent = <ReasoningRow msg={msg} isActive={streaming && vItem.index === collapsedMessages.length - 1} safeMode={safeMode} />;
               } else if (msg.role === "approval") {
                 rowContent = <ApprovalRow msg={msg} disabled={approvalBusy} onChoice={submitApproval} />;
               } else if (msg.role === "note") {
@@ -1509,7 +1645,7 @@ export function ChatPanel({
                 <div
                   key={msg.id}
                   data-index={vItem.index}
-                  ref={virtualizer.measureElement}
+                  ref={measureRowElement}
                   style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
                 >
                   {rowContent}

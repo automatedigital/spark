@@ -68,10 +68,12 @@ export const Markdown = memo(function Markdown({
   content,
   highlightTerms,
   streaming = false,
+  safeMode = false,
 }: {
   content: string;
   highlightTerms?: string[];
   streaming?: boolean;
+  safeMode?: boolean;
 }) {
   // Split the message into a stable, already-committed prefix and a small live
   // "tail" that is still streaming in. Only the tail is re-parsed on each
@@ -97,8 +99,9 @@ export const Markdown = memo(function Markdown({
           <MemoBlock
             key={`t${i}`}
             block={block}
-            highlightTerms={highlightTerms}
+            highlightTerms={safeMode ? undefined : highlightTerms}
             live={i === tailBlocks.length - 1}
+            safeMode={safeMode}
           />
         ))}
       </div>
@@ -109,7 +112,7 @@ export const Markdown = memo(function Markdown({
   return (
     <div className="text-sm text-foreground leading-relaxed space-y-2">
       {stableBlocks.map((block, i) => (
-        <MemoBlock key={i} block={block} highlightTerms={highlightTerms} live={false} />
+        <MemoBlock key={i} block={block} highlightTerms={safeMode ? undefined : highlightTerms} live={false} safeMode={safeMode} />
       ))}
       {tailBlocks.map((block, i) => {
         const idx = stableBlocks.length + i;
@@ -117,8 +120,9 @@ export const Markdown = memo(function Markdown({
           <MemoBlock
             key={idx}
             block={block}
-            highlightTerms={highlightTerms}
+            highlightTerms={safeMode ? undefined : highlightTerms}
             live={streaming && idx === total - 1}
+            safeMode={safeMode}
           />
         );
       })}
@@ -134,14 +138,14 @@ const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live }: Block
 /*  Code block with syntax highlight + copy button                    */
 /* ------------------------------------------------------------------ */
 
-function CodeBlock({ lang, content, live }: { lang: string; content: string; live?: boolean }) {
+function CodeBlock({ lang, content, live, safeMode }: { lang: string; content: string; live?: boolean; safeMode?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   const highlighted = useMemo(() => {
     // Defer syntax highlighting while the block is still streaming in — hljs is
     // O(n) and re-running it every frame on a growing code block is O(n²).
     // Render plain text now; highlight once the block is complete (live=false).
-    if (live) return null;
+    if (live || safeMode || content.length > 24_000) return null;
     if (lang && hljs.getLanguage(lang)) {
       try {
         return hljs.highlight(content, { language: lang }).value;
@@ -150,7 +154,7 @@ function CodeBlock({ lang, content, live }: { lang: string; content: string; liv
       }
     }
     return null;
-  }, [lang, content, live]);
+  }, [lang, content, live, safeMode]);
 
   const handleCopy = () => {
     void navigator.clipboard.writeText(content).then(() => {
@@ -196,10 +200,10 @@ function CodeBlock({ lang, content, live }: { lang: string; content: string; liv
 /*  Block renderer                                                     */
 /* ------------------------------------------------------------------ */
 
-function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTerms?: string[]; live?: boolean }) {
+function Block({ block, highlightTerms, live, safeMode }: { block: BlockNode; highlightTerms?: string[]; live?: boolean; safeMode?: boolean }) {
   switch (block.type) {
     case "code":
-      return <CodeBlock lang={block.lang} content={block.content} live={live} />;
+      return <CodeBlock lang={block.lang} content={block.content} live={live} safeMode={safeMode} />;
 
     case "heading": {
       const Tag = `h${Math.min(block.level, 4)}` as "h1" | "h2" | "h3" | "h4";
@@ -209,7 +213,7 @@ function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTer
         h3: "text-sm font-semibold",
         h4: "text-sm font-medium",
       };
-      return <Tag className={sizes[Tag]}><InlineContent text={block.content} highlightTerms={highlightTerms} /></Tag>;
+      return <Tag className={sizes[Tag]}><InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} /></Tag>;
     }
 
     case "hr":
@@ -218,7 +222,7 @@ function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTer
     case "blockquote":
       return (
         <blockquote className="border-l-2 border-primary/40 pl-3 text-muted-foreground italic bg-secondary/20 py-1 rounded-r-sm">
-          <InlineContent text={block.content} highlightTerms={highlightTerms} />
+          <InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} />
         </blockquote>
       );
 
@@ -230,7 +234,7 @@ function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTer
               <tr className="bg-secondary/60 border-b border-border/60">
                 {block.headers.map((h, i) => (
                   <th key={i} className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">
-                    <InlineContent text={h} highlightTerms={highlightTerms} />
+                    <InlineContent text={h} highlightTerms={highlightTerms} safeMode={safeMode} />
                   </th>
                 ))}
               </tr>
@@ -240,7 +244,7 @@ function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTer
                 <tr key={ri} className={ri % 2 === 0 ? "bg-background" : "bg-secondary/20"}>
                   {row.map((cell, ci) => (
                     <td key={ci} className="px-3 py-1.5 border-t border-border/30 text-foreground/90">
-                      <InlineContent text={cell} highlightTerms={highlightTerms} />
+                      <InlineContent text={cell} highlightTerms={highlightTerms} safeMode={safeMode} />
                     </td>
                   ))}
                 </tr>
@@ -271,13 +275,13 @@ function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTer
                     {done ? "✓" : ""}
                   </span>
                   <span className={done ? "line-through text-muted-foreground" : ""}>
-                    <InlineContent text={taskMatch[2]} highlightTerms={highlightTerms} />
+                    <InlineContent text={taskMatch[2]} highlightTerms={highlightTerms} safeMode={safeMode} />
                   </span>
                 </li>
               );
             }
             return (
-              <li key={i}><InlineContent text={item} highlightTerms={highlightTerms} /></li>
+              <li key={i}><InlineContent text={item} highlightTerms={highlightTerms} safeMode={safeMode} /></li>
             );
           })}
         </Tag>
@@ -285,7 +289,7 @@ function Block({ block, highlightTerms, live }: { block: BlockNode; highlightTer
     }
 
     case "paragraph":
-      return <p><InlineContent text={block.content} highlightTerms={highlightTerms} /></p>;
+      return <p><InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} /></p>;
   }
 }
 
@@ -365,7 +369,7 @@ function MediaPreview({ path }: { path: string }) {
   );
 }
 
-function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?: string[] }) {
+function InlineContent({ text, highlightTerms, safeMode }: { text: string; highlightTerms?: string[]; safeMode?: boolean }) {
   const nodes = useMemo(() => parseInline(text), [text]);
 
   return (
@@ -381,11 +385,11 @@ function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?
               </code>
             );
           case "bold":
-            return <strong key={i} className="font-semibold"><InlineContent text={node.content} highlightTerms={highlightTerms} /></strong>;
+            return <strong key={i} className="font-semibold"><InlineContent text={node.content} highlightTerms={highlightTerms} safeMode={safeMode} /></strong>;
           case "italic":
-            return <em key={i}><InlineContent text={node.content} highlightTerms={highlightTerms} /></em>;
+            return <em key={i}><InlineContent text={node.content} highlightTerms={highlightTerms} safeMode={safeMode} /></em>;
           case "strike":
-            return <del key={i} className="text-muted-foreground line-through"><InlineContent text={node.content} highlightTerms={highlightTerms} /></del>;
+            return <del key={i} className="text-muted-foreground line-through"><InlineContent text={node.content} highlightTerms={highlightTerms} safeMode={safeMode} /></del>;
           case "link":
             return (
               <a
@@ -399,7 +403,13 @@ function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?
               </a>
             );
           case "media":
-            return <MediaPreview key={i} path={node.path} />;
+            return safeMode ? (
+              <code key={i} className="bg-secondary/60 px-1.5 py-0.5 text-xs font-mono text-primary/90">
+                MEDIA: {node.path}
+              </code>
+            ) : (
+              <MediaPreview key={i} path={node.path} />
+            );
           case "br":
             return <br key={i} />;
         }
