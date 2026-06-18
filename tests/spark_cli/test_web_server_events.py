@@ -433,6 +433,54 @@ class TestConversationControl:
         finally:
             web_server._web_streaming.discard("s_streaming")
 
+    def test_turn_status_ignores_stale_queue_after_turn_done(self, web_client):
+        import asyncio
+
+        import spark_cli.web_server as web_server
+
+        web_server._web_queues["s_done"] = asyncio.Queue()
+        try:
+            resp = web_client.get("/api/conversations/s_done/turn-status")
+            assert resp.status_code == 200
+            assert resp.json()["turn_active"] is False
+        finally:
+            web_server._web_queues.pop("s_done", None)
+
+    def test_completed_conversation_without_stream_consumer_is_not_active(self, web_client, monkeypatch):
+        import time
+
+        import spark_cli.web_server as web_server
+
+        class FakeAgent:
+            session_id = "pending"
+
+        def fake_new_agent(**kwargs):
+            agent = FakeAgent()
+            agent.session_id = kwargs["session_id"]
+            return agent
+
+        monkeypatch.setattr(web_server, "_new_web_agent", fake_new_agent)
+        monkeypatch.setattr(web_server, "_run_web_agent_turn", lambda *_args, **_kwargs: {"final_response": "done"})
+        monkeypatch.setattr(web_server, "_maybe_auto_title_web", lambda *_args, **_kwargs: None)
+
+        resp = web_client.post("/api/conversations", json={"message": "hi"})
+        assert resp.status_code == 200
+        session_id = resp.json()["session_id"]
+
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            status = web_client.get(f"/api/conversations/{session_id}/turn-status")
+            assert status.status_code == 200
+            if status.json()["turn_active"] is False:
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("completed web turn still reported active")
+
+        assert session_id in web_server._web_queues
+        status = web_client.get(f"/api/conversations/{session_id}/turn-status")
+        assert status.json()["turn_active"] is False
+
     def test_webview_diagnostics_reports_sidecar_and_activity_monitor_note(self, web_client):
         resp = web_client.get(
             "/api/diagnostics/webview?active_session_id=s1&safe_mode=true&recent_long_task_count=4&connection_mode=local"
@@ -444,6 +492,19 @@ class TestConversationControl:
         assert data["recent_long_task_count"] == 4
         assert data["connection_mode"] == "local"
         assert "127.0.0.1:9119" in data["activity_monitor_process_name_note"]
+
+    def test_webview_diagnostics_ignores_stale_queue_after_turn_done(self, web_client):
+        import asyncio
+
+        import spark_cli.web_server as web_server
+
+        web_server._web_queues["s_done"] = asyncio.Queue()
+        try:
+            resp = web_client.get("/api/diagnostics/webview?active_session_id=s_done")
+            assert resp.status_code == 200
+            assert resp.json()["active_turn"] is False
+        finally:
+            web_server._web_queues.pop("s_done", None)
 
     def test_model_switch_persists_global_and_closes_cached_agent(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
