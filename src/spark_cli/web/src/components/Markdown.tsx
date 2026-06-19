@@ -59,10 +59,10 @@ hljs.registerLanguage("go", go);
  * without a DOM. This file holds only the React components.
  */
 
-// Above this size we stop doing per-block work on the already-committed prefix
-// while a message is still streaming — render it verbatim and only format the
-// live tail. Prevents a single pathological message from saturating the renderer.
-const SOFT_RENDER_CAP = 80_000;
+// Above this size we stop doing expensive block/inline markdown work. The user
+// still gets the complete response text, but we avoid repeatedly feeding very
+// large assistant messages through regex-heavy parsing in WebKit.
+const SOFT_RENDER_CAP = 6_000;
 
 export const Markdown = memo(function Markdown({
   content,
@@ -74,6 +74,32 @@ export const Markdown = memo(function Markdown({
   highlightTerms?: string[];
   streaming?: boolean;
   safeMode?: boolean;
+}) {
+  if (safeMode || streaming || content.length > SOFT_RENDER_CAP) {
+    return (
+      <div
+        role="article"
+        aria-label={streaming ? "Streaming assistant response" : "Full assistant response"}
+        className="w-full min-w-0 max-w-full whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground"
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return <ParsedMarkdown content={content} highlightTerms={highlightTerms} streaming={streaming} safeMode={safeMode} />;
+});
+
+function ParsedMarkdown({
+  content,
+  highlightTerms,
+  streaming,
+  safeMode,
+}: {
+  content: string;
+  highlightTerms?: string[];
+  streaming: boolean;
+  safeMode: boolean;
 }) {
   // Split the message into a stable, already-committed prefix and a small live
   // "tail" that is still streaming in. Only the tail is re-parsed on each
@@ -87,26 +113,6 @@ export const Markdown = memo(function Markdown({
 
   const stableBlocks = useMemo(() => parseBlocks(stablePart), [stablePart]);
   const tailBlocks = useMemo(() => parseBlocks(tailPart), [tailPart]);
-
-  // Pathological-size guard: above the cap, skip block parsing/rendering of the
-  // committed prefix entirely while streaming. On turn completion the message is
-  // re-parsed normally (streaming=false → full path below).
-  if (streaming && content.length > SOFT_RENDER_CAP) {
-    return (
-      <div className="text-sm text-foreground leading-relaxed space-y-2">
-        <pre className="whitespace-pre-wrap font-sans">{stablePart}</pre>
-        {tailBlocks.map((block, i) => (
-          <MemoBlock
-            key={`t${i}`}
-            block={block}
-            highlightTerms={safeMode ? undefined : highlightTerms}
-            live={i === tailBlocks.length - 1}
-            safeMode={safeMode}
-          />
-        ))}
-      </div>
-    );
-  }
 
   const total = stableBlocks.length + tailBlocks.length;
   return (
@@ -128,10 +134,10 @@ export const Markdown = memo(function Markdown({
       })}
     </div>
   );
-});
+}
 
-const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live }: BlockProps) {
-  return <Block block={block} highlightTerms={highlightTerms} live={live} />;
+const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live, safeMode }: BlockProps) {
+  return <Block block={block} highlightTerms={highlightTerms} live={live} safeMode={safeMode} />;
 }, blockPropsEqual);
 
 /* ------------------------------------------------------------------ */

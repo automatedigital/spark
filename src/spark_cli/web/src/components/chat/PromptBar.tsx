@@ -286,6 +286,7 @@ function ModelDropdown({
       ? createPortal(
           <div
             ref={menuRef}
+            data-model-dropdown-menu="true"
             style={{
               position: "fixed",
               left: rect.left,
@@ -317,7 +318,12 @@ function ModelDropdown({
                   <button
                     key={opt}
                     type="button"
-                    onClick={() => select(opt)}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      select(opt);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-left transition hover:bg-secondary"
                   >
                     <Check className={`h-3 w-3 shrink-0 ${opt === value ? "text-primary" : "opacity-0"}`} />
@@ -379,7 +385,14 @@ function ModelQuickSettings({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      const target = e.target as HTMLElement | null;
+      if (
+        ref.current?.contains(e.target as Node) ||
+        target?.closest('[data-model-dropdown-menu="true"]')
+      ) {
+        return;
+      }
+      onClose();
     };
     const t = setTimeout(() => document.addEventListener("mousedown", handler), 0);
     return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };

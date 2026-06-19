@@ -564,19 +564,23 @@ pub fn run() {
                 .resource_dir()?
                 .join("spark-server")
                 .join("spark-server");
+            let bundled_skills = app.path().resource_dir()?.join("skills");
 
             if exe.exists() {
                 // SPARK_DESKTOP tells the backend it's running as the local
                 // desktop sidecar, so it may open external URLs (OAuth pages)
                 // in the user's browser via the OS.
-                match Command::new(&exe)
+                let mut command = Command::new(&exe);
+                command
                     .arg(SIDECAR_PORT.to_string())
                     .env("SPARK_DESKTOP", "1")
                     // SPARK_DESKTOP_VERSION lets the backend compare the running
                     // .app shell against the latest GitHub release for self-update.
-                    .env("SPARK_DESKTOP_VERSION", env!("CARGO_PKG_VERSION"))
-                    .spawn()
-                {
+                    .env("SPARK_DESKTOP_VERSION", env!("CARGO_PKG_VERSION"));
+                if bundled_skills.exists() {
+                    command.env("SPARK_BUNDLED_SKILLS", &bundled_skills);
+                }
+                match command.spawn() {
                     Ok(child) => {
                         eprintln!("[spark] sidecar spawned (pid {}) from {:?}", child.id(), exe);
                         let state: State<Sidecar> = app.state();

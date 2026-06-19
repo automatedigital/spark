@@ -89,6 +89,23 @@ _web_streaming: set = set()  # session_id strings with an active agent turn
 _admin_runs: dict[str, dict[str, Any]] = {}
 _admin_run_queues: dict[str, thread_queue.Queue] = {}
 
+_EVENT_QUEUE_SIZE = 512
+_PRIORITY_EVENT_TOPICS = {
+    "chat.turn_done",
+    "chat.interrupted",
+    "chat.session_migrated",
+    "chat.approval_requested",
+    "chat.approval_resolved",
+}
+_DROPPABLE_EVENT_TOPICS = {
+    "chat.token",
+    "chat.status",
+    "chat.reasoning",
+    "chat.tool_start",
+    "chat.tool_end",
+}
+_event_drop_counts: dict[str, int] = {}
+
 
 @asynccontextmanager
 def _prefetch_update_check() -> None:
@@ -268,6 +285,35 @@ def _truncate_str(s: Any, max_len: int = 16000) -> str:
     return t if len(t) <= max_len else t[: max_len - 1] + "…"
 
 
+def _tool_result_preview(result: Any, max_len: int = 2000) -> dict[str, Any]:
+    text = "" if result is None else str(result)
+    return {
+        "result_preview": _truncate_str(text, max_len),
+        "result_chars": len(text),
+        "result_truncated": len(text) > max_len,
+        "has_full_result": len(text) > max_len,
+    }
+
+
+def _message_for_history_response(msg: dict[str, Any], include_tool_results: bool = False) -> dict[str, Any]:
+    """Return a UI-safe message copy for chat history responses.
+
+    Tool payloads can be tens of thousands of characters and are collapsed in
+    the UI by default. Sending every full tool result during a history sync
+    defeats that collapse and can stall WebKit after a long tool-heavy turn.
+    Keep the full result available through the per-tool result endpoint, but
+    make the normal history page carry only a bounded preview.
+    """
+    out = dict(msg)
+    if out.get("role") != "tool" or include_tool_results:
+        return out
+
+    content = out.get("content") or ""
+    out.update(_tool_result_preview(content))
+    out["content"] = out["result_preview"]
+    return out
+
+
 def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
     """Small response preview for auth diagnostics without exposing secrets."""
     try:
@@ -295,6 +341,15 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         for q in tuple(_event_subscribers):
             try:
                 q.put_nowait(envelope)
+                continue
+            except asyncio.QueueFull:
+                if topic in _PRIORITY_EVENT_TOPICS and _make_room_for_priority_event(q):
+                    try:
+                        q.put_nowait(envelope)
+                        continue
+                    except asyncio.QueueFull:
+                        pass
+                _record_event_drop(topic, session_id)
             except Exception:
                 _event_subscribers.discard(q)
 
@@ -302,6 +357,36 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         loop.call_soon_threadsafe(_fanout)
     except Exception:
         pass
+
+
+def _record_event_drop(topic: str, session_id: Optional[str]) -> None:
+    key = f"{session_id or '-'}:{topic}"
+    count = _event_drop_counts.get(key, 0) + 1
+    _event_drop_counts[key] = count
+    if count in {1, 10, 100}:
+        _log.warning(
+            "Dropped web SSE event due to slow subscriber session=%s topic=%s count=%s",
+            session_id,
+            topic,
+            count,
+        )
+
+
+def _make_room_for_priority_event(q: asyncio.Queue) -> bool:
+    """Drop older low-value events so completion/control events can be delivered."""
+    try:
+        pending = q._queue  # type: ignore[attr-defined]
+    except Exception:
+        return False
+    for env in tuple(pending):
+        if isinstance(env, dict) and env.get("topic") in _DROPPABLE_EVENT_TOPICS:
+            try:
+                pending.remove(env)
+                _record_event_drop(str(env.get("topic") or "unknown"), env.get("session_id"))
+                return True
+            except ValueError:
+                return not q.full()
+    return not q.full()
 
 
 def push_job_notification(job_id: str, job_name: str, success: bool, summary: str) -> None:
@@ -341,7 +426,7 @@ async def sse_events_bus(request: Request, topics: str = "sessions,chat"):
     from fastapi.responses import StreamingResponse as _StreamingResponse
 
     prefixes = tuple(p.strip() for p in topics.split(",") if p.strip())
-    queue: asyncio.Queue = asyncio.Queue(maxsize=512)
+    queue: asyncio.Queue = asyncio.Queue(maxsize=_EVENT_QUEUE_SIZE)
     _event_subscribers.add(queue)
 
     async def event_generator():
@@ -3604,6 +3689,7 @@ async def get_session_messages(
     session_id: str,
     limit: int = 0,
     before_id: Optional[str] = None,
+    include_tool_results: bool = False,
 ):
     from core.spark_state import SessionDB
 
@@ -3625,6 +3711,10 @@ async def get_session_messages(
                 messages = messages[:idx]
         if limit > 0:
             messages = messages[-limit:]
+        messages = [
+            _message_for_history_response(m, include_tool_results=include_tool_results)
+            for m in messages
+        ]
         has_earlier = len(messages) < total
         resp: dict[str, Any] = {
             "session_id": leaf_sid,
@@ -3648,6 +3738,29 @@ async def get_session_messages(
             "ETag": etag,
             "Cache-Control": "no-cache",
         })
+    finally:
+        db.close()
+
+
+@app.get("/api/sessions/{session_id}/tool-results/{tool_call_id}")
+async def get_session_tool_result(session_id: str, tool_call_id: str):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        leaf_sid = db.resolve_latest_descendant(sid)
+        for msg in db.get_messages(leaf_sid):
+            if msg.get("role") == "tool" and msg.get("tool_call_id") == tool_call_id:
+                return {
+                    "session_id": leaf_sid,
+                    "tool_call_id": tool_call_id,
+                    "content": msg.get("content") or "",
+                    "tool_name": msg.get("tool_name"),
+                }
+        raise HTTPException(status_code=404, detail="Tool result not found")
     finally:
         db.close()
 
@@ -4173,6 +4286,20 @@ _web_queues: Dict[str, asyncio.Queue] = {}   # session_id → token queue (activ
 _web_agents: Dict[str, Any] = {}             # session_id → AIAgent (multi-turn context)
 _web_agent_signatures: Dict[str, Any] = {}    # session_id → effective model/runtime signature
 
+
+def _web_max_iterations() -> int:
+    """Bound web turns so routine dashboard chats do not become runaway tool loops."""
+    raw = os.getenv("SPARK_WEB_MAX_ITERATIONS", "").strip()
+    if not raw:
+        raw = str((load_config().get("dashboard") or {}).get("max_iterations") or "")
+    if raw:
+        try:
+            return max(1, min(90, int(raw)))
+        except (TypeError, ValueError):
+            _log.warning("Invalid web max-iterations setting: %r", raw)
+    return 20
+
+
 # Codex usage-limit hit state — updated when a usage_limit_reached error occurs during inference.
 # Shape: {"hit_at": float, "resets_at": float | None, "resets_in_seconds": int | None}
 _codex_usage_limit_hit: Dict[str, Any] = {}
@@ -4241,15 +4368,13 @@ def _make_web_chat_callbacks(
         )
 
     def tool_complete_callback(tid: str, name: str, args: Any, result: Any) -> None:
-        result_text = "" if result is None else str(result)
         _publish_event(
             "chat.tool_end",
             {
                 "id": tid,
                 "name": name,
                 "args": _json_safe(args),
-                "result": result_text,
-                "result_chars": len(result_text),
+                **_tool_result_preview(result),
                 "ts": time.time(),
             },
             current_session_id[0],
@@ -5142,6 +5267,7 @@ def _new_web_agent(
     agent = AIAgent(
         session_id=session_id,
         model=model,
+        max_iterations=_web_max_iterations(),
         api_key=runtime.get("api_key"),
         base_url=runtime.get("base_url"),
         provider=runtime.get("provider"),
@@ -5745,6 +5871,7 @@ async def canvas_chat(body: CanvasChatBody):
         agent = AIAgent(
             session_id="canvas_" + uuid.uuid4().hex[:12],
             model=turn_route["model"],
+            max_iterations=_web_max_iterations(),
             api_key=runtime.get("api_key"),
             base_url=runtime.get("base_url"),
             provider=runtime.get("provider"),

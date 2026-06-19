@@ -49,6 +49,7 @@ import {
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
+const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
 
 type ChatMessage =
   | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[]; redirect?: boolean }
@@ -99,27 +100,30 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
     }
   }
   messages.forEach((m, i) => {
+    const baseId = m.id ? `db:${m.id}` : `db:${m.role}:${i}`;
     if (m.role === "user") {
       // Skip internal system-injected continuation messages (e.g. codex ack loop)
       if ((m.content ?? "").startsWith("[System:")) return;
-      out.push({ id: nid(), role: "user", content: m.content ?? "", sessionIdx: i });
+      out.push({ id: baseId, role: "user", content: m.content ?? "", sessionIdx: i });
     } else if (m.role === "assistant") {
       const reasoning = m.reasoning?.trim();
       if (reasoning) {
-        out.push({ id: nid(), role: "reasoning", text: reasoning });
+        out.push({ id: `${baseId}:reasoning`, role: "reasoning", text: reasoning });
       }
-      if (m.content?.trim()) {
-        out.push({ id: nid(), role: "assistant", content: m.content });
+      if (hasText(m.content)) {
+        out.push({ id: baseId, role: "assistant", content: m.content ?? "" });
       }
     } else if (m.role === "tool") {
       const toolId = m.tool_call_id ?? "";
+      const result = String(m.result_preview ?? m.content ?? "");
       out.push({
-        id: nid(),
+        id: toolId ? `tool:${toolId}` : baseId,
         role: "tool",
         toolId,
         name: m.tool_name ?? toolCallNames[toolId] ?? "tool",
         args: {},
-        result: m.content ?? "",
+        result,
+        resultTruncated: Boolean(m.result_truncated ?? m.has_full_result) || undefined,
         done: true,
       });
     }
@@ -136,7 +140,7 @@ function rememberLocalTurn(sessionId: string | null, messages: ChatMessage[]) {
     -1,
   );
   const turn = lastUserIdx >= 0 ? messages.slice(lastUserIdx + 1) : messages;
-  if (turn.some((m) => m.role === "assistant" && Boolean(m.content.trim()))) {
+  if (turn.some((m) => m.role === "assistant" && hasText(m.content))) {
     localTurnCache.set(sessionId, turn);
   }
 }
@@ -154,37 +158,34 @@ function mergeSyncedMessages(
   );
 
   const cachedTurn = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
-  const recoveryMessages = prev.some(
-    (m) => m.role === "assistant" && Boolean(m.content.trim()),
-  ) ? prev : cachedTurn;
+  const recoveryMessages = prev.some((m) => m.role === "assistant" && hasText(m.content)) ? prev : cachedTurn;
   const latestLocalAssistant = [...recoveryMessages]
     .reverse()
     .find((m): m is Extract<ChatMessage, { role: "assistant" }> =>
-      m.role === "assistant" && Boolean(m.content.trim()),
+      m.role === "assistant" && hasText(m.content),
     );
   if (!latestLocalAssistant) return withForms(mapped);
 
-  const localContent = latestLocalAssistant.content.trim();
-  const mappedAssistantContents = mapped
+  const mappedAssistantIds = new Set(
+    mapped
+      .filter((m): m is Extract<ChatMessage, { role: "assistant" }> => m.role === "assistant")
+      .map((m) => m.id),
+  );
+  const mappedAssistantCount = mapped
     .filter((m): m is Extract<ChatMessage, { role: "assistant" }> => m.role === "assistant")
-    .map((m) => m.content.trim())
-    .filter(Boolean);
+    .filter((m) => hasText(m.content)).length;
   const recoveryAssistantCount = recoveryMessages.filter(
-    (m) => m.role === "assistant" && Boolean(m.content.trim()),
+    (m) => m.role === "assistant" && hasText(m.content),
   ).length;
-  const mappedHasLocalAssistant = mappedAssistantContents.some((content) => content === localContent);
-  if (mappedHasLocalAssistant) return withForms(mapped);
+  if (mappedAssistantIds.has(latestLocalAssistant.id)) return withForms(mapped);
 
-  const latestMappedContent = mappedAssistantContents[mappedAssistantContents.length - 1] ?? "";
-  if (latestMappedContent.includes(localContent)) return withForms(mapped);
-
-  if (mappedAssistantContents.length < recoveryAssistantCount || !latestMappedContent) {
+  if (mappedAssistantCount < recoveryAssistantCount) {
     const missingLocalRows = cachedTurn.filter((msg) => {
       if (msg.role === "assistant") {
-        return !mappedAssistantContents.includes(msg.content.trim());
+        return hasText(msg.content) && !mappedAssistantIds.has(msg.id);
       }
       if (msg.role === "reasoning") {
-        return !mapped.some((m) => m.role === "reasoning" && m.text.trim() === msg.text.trim());
+        return !mapped.some((m) => m.role === "reasoning" && m.id === msg.id);
       }
       return false;
     });
@@ -383,11 +384,13 @@ const ToolRow = memo(function ToolRow({
   repeatCount,
   safeMode,
   onAttachPath,
+  onFetchFullResult,
 }: {
   msg: ToolMsg;
   repeatCount: number;
   safeMode?: boolean;
   onAttachPath?: (path: string) => void;
+  onFetchFullResult?: (toolId: string) => Promise<string | null>;
 }) {
   return (
     <div className="pl-9">
@@ -398,6 +401,7 @@ const ToolRow = memo(function ToolRow({
         resultTruncated={msg.resultTruncated}
         safeMode={safeMode}
         onAttachPath={onAttachPath}
+        onFetchFullResult={onFetchFullResult ? () => onFetchFullResult(msg.toolId) : undefined}
       />
     </div>
   );
@@ -823,11 +827,11 @@ export function ChatPanel({
           for (let i = next.length - 1; i >= 0; i--) {
             const row = next[i];
             if (row.role === "tool" && row.toolId === tid) {
-              const full = String(data.result ?? "");
+              const preview = String(data.result_preview ?? data.result ?? "");
               next[i] = {
                 ...row,
-                result: full,
-                resultTruncated: Boolean(data.truncated) || undefined,
+                result: preview,
+                resultTruncated: Boolean(data.result_truncated ?? data.truncated) || undefined,
                 done: true,
                 endedAt: typeof data.ts === "number" ? data.ts : undefined,
               };
@@ -932,6 +936,15 @@ export function ChatPanel({
         const cur = activeSessionRef.current;
         if (cur) {
           onSessionUpdated?.(cur);
+          void api
+            .getSessionMessages(cur, HISTORY_PAGE)
+            .then((resp) => {
+              const mapped = sessionMessagesToChat(
+                resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+              );
+              setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? cur));
+            })
+            .catch(() => {});
           // Sync sessionIdx values on recent user messages for retry/fork.
           // Fetch only the tail (last 20) to avoid transmitting the full history
           // every turn. Patch sessionIdx in-place rather than replacing the list.
@@ -942,14 +955,14 @@ export function ChatPanel({
                 const tail = resp.messages.filter((m) => m.role === "user");
                 if (tail.length === 0) return;
                 const tailByContent = new Map(tail.map((m, i) => [
-                  (m.content ?? "").trim(),
+                  m.content ?? "",
                   resp.messages.indexOf(tail[i]),
                 ]));
                 setChatMessages((prev) => {
                   let changed = false;
                   const next = prev.map((m) => {
                     if (m.role !== "user") return m;
-                    const newIdx = tailByContent.get(m.content.trim());
+                    const newIdx = tailByContent.get(m.content);
                     if (newIdx != null && newIdx !== m.sessionIdx) {
                       changed = true;
                       return { ...m, sessionIdx: newIdx };
@@ -976,13 +989,13 @@ export function ChatPanel({
   useEffect(() => {
     if (!streaming) return;
     lastEventAtRef.current = Date.now();
-    const STALL_MS = 45_000;
+    const STALL_MS = 3_000;
     const interval = setInterval(() => {
       if (!streamingRef.current) return;
       if (Date.now() - lastEventAtRef.current >= STALL_MS) {
         void resyncTurnState();
       }
-    }, 15_000);
+    }, 2_000);
     return () => clearInterval(interval);
   }, [streaming, resyncTurnState]);
 
@@ -1162,6 +1175,21 @@ export function ChatPanel({
     });
   }, []);
 
+  const fetchFullToolResult = useCallback(async (toolId: string) => {
+    const sid = activeSessionRef.current;
+    if (!sid || !toolId) return null;
+    const resp = await api.getSessionToolResult(sid, toolId);
+    const content = resp.content ?? "";
+    setChatMessages((prev) =>
+      prev.map((m) =>
+        m.role === "tool" && m.toolId === toolId
+          ? { ...m, result: content, resultTruncated: false }
+          : m,
+      ),
+    );
+    return content;
+  }, []);
+
   const removeContextItem = useCallback((id: string) => {
     setContextItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
@@ -1292,7 +1320,6 @@ export function ChatPanel({
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMessages, searchQuery]);
 
   // Scroll active match into view using the virtualizer
@@ -1618,7 +1645,7 @@ export function ChatPanel({
                 if (!msg.content && !msg.streaming) return null;
                 rowContent = <AssistantRow msg={msg} safeMode={safeMode} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
               } else if (msg.role === "tool") {
-                rowContent = <ToolRow msg={msg} repeatCount={repeatCount} safeMode={safeMode} onAttachPath={attachPath} />;
+                rowContent = <ToolRow msg={msg} repeatCount={repeatCount} safeMode={safeMode} onAttachPath={attachPath} onFetchFullResult={fetchFullToolResult} />;
               } else if (msg.role === "reasoning") {
                 rowContent = <ReasoningRow msg={msg} isActive={streaming && vItem.index === collapsedMessages.length - 1} safeMode={safeMode} />;
               } else if (msg.role === "approval") {

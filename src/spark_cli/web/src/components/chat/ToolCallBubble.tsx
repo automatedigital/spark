@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2, Paperclip, Copy } from "lucide-react";
 import { detectOutputType } from "@/lib/detectOutputType";
 
@@ -119,6 +119,7 @@ export function ToolCallBubble({
   repeatCount,
   safeMode,
   onAttachPath,
+  onFetchFullResult,
 }: {
   name: string;
   args: Record<string, unknown>;
@@ -130,9 +131,17 @@ export function ToolCallBubble({
   repeatCount?: number;
   safeMode?: boolean;
   onAttachPath?: (path: string) => void;
+  onFetchFullResult?: () => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [displayResult, setDisplayResult] = useState(result);
+  const [loadingFullResult, setLoadingFullResult] = useState(false);
+  const [fullResultError, setFullResultError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDisplayResult(result);
+  }, [result]);
 
   const lname = name.toLowerCase();
   const family = Object.keys(TOOL_FAMILIES).find((k) => lname.includes(k));
@@ -152,8 +161,8 @@ export function ToolCallBubble({
       : null;
 
   const argPreview = getArgPreview(name, args);
-  const resultSize = result ? formatBytes(result.length) : null;
-  const isLargeResult = (result?.length ?? 0) > LARGE_RESULT_CHARS;
+  const resultSize = displayResult ? formatBytes(displayResult.length) : null;
+  const isLargeResult = (displayResult?.length ?? 0) > LARGE_RESULT_CHARS || Boolean(resultTruncated);
 
   let argsStr: string;
   try {
@@ -163,11 +172,28 @@ export function ToolCallBubble({
   }
 
   const copyResult = () => {
-    if (!result) return;
-    void navigator.clipboard.writeText(result).then(() => {
+    if (!displayResult) return;
+    void navigator.clipboard.writeText(displayResult).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
+  };
+
+  const toggleOpen = () => {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen && resultTruncated && onFetchFullResult && !loadingFullResult) {
+      setLoadingFullResult(true);
+      setFullResultError(null);
+      void onFetchFullResult()
+        .then((full) => {
+          if (full != null) setDisplayResult(full);
+        })
+        .catch((err) => {
+          setFullResultError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => setLoadingFullResult(false));
+    }
   };
 
   return (
@@ -175,7 +201,7 @@ export function ToolCallBubble({
       <button
         type="button"
         className="flex w-full items-center gap-2 px-3 py-2 cursor-pointer hover:bg-foreground/5 transition-colors text-left"
-        onClick={() => setOpen(!open)}
+        onClick={toggleOpen}
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
         <Icon className={`h-3.5 w-3.5 shrink-0 ${colors.text}`} />
@@ -212,7 +238,7 @@ export function ToolCallBubble({
           <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap font-mono text-muted-foreground max-h-40 overflow-y-auto">
             {argsStr}
           </pre>
-          {result != null && result !== "" && (
+          {displayResult != null && displayResult !== "" && (
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <div className="text-[10px] text-muted-foreground">
@@ -228,12 +254,18 @@ export function ToolCallBubble({
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-              <ResultPreview result={result} safeMode={safeMode} />
-              {resultTruncated && (
-                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Output was truncated before it reached the UI stream.</p>
+              <ResultPreview result={displayResult} safeMode={safeMode} />
+              {loadingFullResult && (
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Loading full output…</p>
+              )}
+              {fullResultError && (
+                <p className="text-[10px] text-destructive/80 mt-0.5">Could not load full output: {fullResultError}</p>
+              )}
+              {resultTruncated && !loadingFullResult && !fullResultError && (
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Showing a live preview. Opened rows fetch the full output from history when available.</p>
               )}
               {onAttachPath && done && (() => {
-                const paths = extractOutputPaths(result);
+                const paths = extractOutputPaths(displayResult);
                 if (paths.length === 0) return null;
                 return (
                   <div className="mt-1.5 flex flex-wrap gap-1">

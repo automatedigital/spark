@@ -51,6 +51,30 @@ class TestEventBus:
         assert env["session_id"] == "sess1"
         assert env["data"]["t"] == "hi"
 
+    def test_priority_turn_done_survives_full_subscriber_queue(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            q: asyncio.Queue = asyncio.Queue(maxsize=2)
+            web_server._event_subscribers.add(q)
+            try:
+                web_server._publish_event("chat.token", {"t": "a"}, "sess1")
+                web_server._publish_event("chat.token", {"t": "b"}, "sess1")
+                web_server._publish_event("chat.turn_done", {"ok": True}, "sess1")
+                await asyncio.sleep(0.05)
+                items = []
+                while not q.empty():
+                    items.append(q.get_nowait())
+                return items
+            finally:
+                web_server._event_subscribers.discard(q)
+
+        items = asyncio.run(run())
+        assert any(item["topic"] == "chat.turn_done" for item in items)
+        assert len(items) <= 2
+
 
 class TestConversationModels:
     def test_get_conversation_models(self, web_client):
@@ -132,6 +156,64 @@ class TestConversationControl:
 
         resp = web_client.patch("/api/sessions/title_two/title", json={"title": "Taken"})
         assert resp.status_code == 400
+
+    def test_session_tool_result_endpoint_returns_full_tool_content(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("tool_result_session", source="web", model="m1")
+            db.append_message("tool_result_session", "user", content="hello")
+            db.append_message(
+                "tool_result_session",
+                "tool",
+                content="full output" * 1000,
+                tool_call_id="call_123",
+                tool_name="browser_console",
+            )
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/sessions/tool_result_session/tool-results/call_123")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tool_call_id"] == "call_123"
+        assert data["tool_name"] == "browser_console"
+        assert data["content"] == "full output" * 1000
+
+    def test_session_messages_preview_large_tool_content_by_default(self, web_client):
+        from core.spark_state import SessionDB
+
+        full_output = "large output " * 1000
+        db = SessionDB()
+        try:
+            db.create_session("tool_preview_session", source="web", model="m1")
+            db.append_message("tool_preview_session", "user", content="hello")
+            db.append_message(
+                "tool_preview_session",
+                "tool",
+                content=full_output,
+                tool_call_id="call_preview",
+                tool_name="browser_console",
+            )
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/sessions/tool_preview_session/messages")
+        assert resp.status_code == 200
+        tool_msg = next(m for m in resp.json()["messages"] if m["role"] == "tool")
+        assert tool_msg["content"] == tool_msg["result_preview"]
+        assert len(tool_msg["content"]) < len(full_output)
+        assert tool_msg["result_chars"] == len(full_output)
+        assert tool_msg["result_truncated"] is True
+        assert tool_msg["has_full_result"] is True
+
+        full_resp = web_client.get(
+            "/api/sessions/tool_preview_session/messages?include_tool_results=true",
+        )
+        assert full_resp.status_code == 200
+        full_tool_msg = next(m for m in full_resp.json()["messages"] if m["role"] == "tool")
+        assert full_tool_msg["content"] == full_output
 
     def test_conversation_message_rehydrates_stored_web_session(self, web_client, monkeypatch):
         import core.run_agent as run_agent

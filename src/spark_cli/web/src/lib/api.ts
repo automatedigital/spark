@@ -185,6 +185,10 @@ export const api = {
     fetchJSON<{ ok: boolean; warm: boolean }>(`/api/sessions/${encodeURIComponent(id)}/warm`, {
       method: "POST",
     }),
+  getSessionToolResult: (id: string, toolCallId: string) =>
+    fetchJSON<{ session_id: string; tool_call_id: string; content: string; tool_name?: string | null }>(
+      `/api/sessions/${encodeURIComponent(id)}/tool-results/${encodeURIComponent(toolCallId)}`,
+    ),
   getTurnStatus: (id: string) =>
     fetchJSON<{ session_id: string; turn_active: boolean }>(
       `/api/conversations/${encodeURIComponent(id)}/turn-status`,
@@ -1608,8 +1612,13 @@ export interface EnvVarInfo {
 }
 
 export interface SessionMessage {
+  id?: string;
   role: "user" | "assistant" | "system" | "tool";
   content: string | null;
+  result_preview?: string | null;
+  result_chars?: number | null;
+  result_truncated?: boolean | null;
+  has_full_result?: boolean | null;
   tool_calls?: Array<{
     id: string;
     function: { name: string; arguments: string };

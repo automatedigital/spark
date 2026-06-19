@@ -69,6 +69,13 @@ rm -rf "$APP/Contents/Resources/spark-server"
 cp -R "$REPO_ROOT/dist/spark-server" "$APP/Contents/Resources/spark-server"
 chmod +x "$APP/Contents/Resources/spark-server/spark-server"
 
+# Bundled skills live outside the PyInstaller sidecar tree. Ship them as app
+# resources and point the sidecar at this copy on launch so first-run/repair
+# skill sync works in packaged desktop builds without a source checkout.
+echo "==> Injecting bundled skills into $APP"
+rm -rf "$APP/Contents/Resources/skills"
+cp -R "$REPO_ROOT/skills" "$APP/Contents/Resources/skills"
+
 # 4b. Re-sign after sidecar injection (DMG staging will sign again after cp -R).
 #     sign_mac_app.sh uses Developer ID + hardened runtime when
 #     APPLE_SIGNING_IDENTITY is set, otherwise falls back to ad-hoc `--sign -`.
