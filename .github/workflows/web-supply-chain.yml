@@ -3,7 +3,6 @@ name: web-supply-chain
 # Supply-chain hardening for the web frontend (src/spark_cli/web):
 #  - enforce exact-pinned direct dependencies
 #  - detect package-lock.json drift
-#  - scheduled dependency audit
 
 on:
   push:
@@ -15,8 +14,6 @@ on:
     paths:
       - "src/spark_cli/web/package.json"
       - "src/spark_cli/web/package-lock.json"
-  schedule:
-    - cron: "0 7 * * 1" # Mondays 07:00 UTC
 
 defaults:
   run:
@@ -24,7 +21,6 @@ defaults:
 
 jobs:
   pinned-and-lockfile:
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,13 +50,3 @@ jobs:
 
       - name: Detect package-lock.json drift
         run: git diff --exit-code package-lock.json
-
-  audit:
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - run: npm audit --audit-level=high

@@ -50,6 +50,48 @@ The canonical primary surface of the web dashboard (`ChatPage`): multi-thread
 conversation plus an embedded file tree (`FileTreePane`) and terminal
 (`WorkspaceTerminalPanel`). Supersedes the former Workspace surface.
 
+### Thread
+A durable Spark conversation. A thread is either a **Chat thread** or a
+**Project thread**.
+
+### Chat thread
+A thread with no project binding. Use for general conversation, one-off tasks,
+and work that should not be grouped under a project.
+
+### Project thread
+A thread bound to a Project. Use when the conversation should live with the
+project's related files, previews, tasks, and changes.
+
+### Project
+A named work container for related files, previews, tasks, changes, and project
+threads. Prefer Project over Workspace when describing user-facing work groups.
+
+### Quick Ask
+A lightweight macOS entry surface for starting or sending a brief prompt without
+opening the full Chat workbench. Quick Ask can expand into Chat when the task
+needs project context, files, panels, or longer interaction.
+
+### Artifact
+A durable work product produced, opened, or managed from a thread. Artifacts
+include canvases and tasks; they should stay connected to the conversation that
+created or uses them.
+
+### Canvas
+A visual artifact that can open as a full-screen work surface when it needs
+focused editing or inspection.
+
+### Task
+A trackable work artifact that belongs near the active thread or project. Tasks
+should appear contextually, especially in the Chat project panel, and expand only
+when the user needs more detail.
+
+### Subagent
+A delegated child agent spawned from a parent thread. A subagent has its own
+child thread/transcript, but should remain visually attached to the parent thread:
+show subagents in the same right-side project/task sidebar pattern, and let users
+open a subagent thread in that sidebar while the main parent chat stays visible in
+the center.
+
 ### Toolset
 A named bundle of tools (`_SPARK_CORE_TOOLS` and others in `toolsets.py`) that
 can be enabled/disabled per platform. Changing the active toolset mid-conversation
