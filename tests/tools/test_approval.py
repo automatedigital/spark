@@ -12,7 +12,6 @@ from tools.approval import (
     is_approved,
     load_permanent,
     prompt_dangerous_approval,
-    submit_pending,
 )
 
 
@@ -108,6 +107,61 @@ class TestSafeCommand:
         assert is_dangerous is False
         assert key is None
         assert desc is None
+
+    def test_benign_node_e_probe_is_safe(self):
+        cmd = "node -e \"try{require('playwright');console.log('playwright yes')}catch(e){console.log('no',e.message)}\""
+        is_dangerous, key, desc = detect_dangerous_command(cmd)
+        assert is_dangerous is False
+        assert key is None
+        assert desc is None
+
+    def test_benign_python_c_probe_is_safe(self):
+        is_dangerous, key, desc = detect_dangerous_command("python -c 'import json; print(json.dumps({\"ok\": True}))'")
+        assert is_dangerous is False
+        assert key is None
+        assert desc is None
+
+    def test_interpreter_c_destructive_shell_content_is_still_detected(self):
+        cmd = "python -c 'import os; os.system(\"rm -rf /tmp/spark-test-danger\")'"
+        is_dangerous, key, desc = detect_dangerous_command(cmd)
+        assert is_dangerous is True
+        assert key is not None
+        assert "recursive" in desc.lower() or "delete" in desc.lower()
+
+    def test_python_c_recursive_delete_api_is_detected(self):
+        cmd = "python -c 'import shutil; shutil.rmtree(\"/tmp/spark-test-danger\")'"
+        is_dangerous, key, desc = detect_dangerous_command(cmd)
+        assert is_dangerous is True
+        assert key is not None
+        assert "recursive" in desc.lower() or "delete" in desc.lower()
+
+    def test_node_e_recursive_delete_api_is_detected(self):
+        cmd = "node -e \"const fs = require('fs'); fs.rm('/tmp/spark-test-danger', { recursive: true, force: true }, () => {})\""
+        is_dangerous, key, desc = detect_dangerous_command(cmd)
+        assert is_dangerous is True
+        assert key is not None
+        assert "recursive" in desc.lower() or "delete" in desc.lower()
+
+    def test_gateway_probe_does_not_emit_approval_request(self, monkeypatch):
+        session_key = "benign-probe-session"
+        seen = []
+        token = approval_module.set_current_session_key(session_key)
+        approval_module.register_gateway_notify(session_key, lambda approval: seen.append(approval))
+        try:
+            monkeypatch.setenv("SPARK_GATEWAY_SESSION", "1")
+            monkeypatch.delenv("SPARK_INTERACTIVE", raising=False)
+            monkeypatch.delenv("SPARK_EXEC_ASK", raising=False)
+            with mock_patch("tools.approval._get_approval_mode", return_value="manual"):
+                result = approval_module.check_all_command_guards(
+                    "node -e \"console.log('playwright yes')\"",
+                    "local",
+                )
+            assert result["approved"] is True
+            assert seen == []
+        finally:
+            approval_module.unregister_gateway_notify(session_key)
+            approval_module.reset_current_session_key(token)
+            approval_module.clear_session(session_key)
 
 
 def _clear_session(key):
@@ -606,7 +660,7 @@ class TestNormalizationBypass:
         """ANSI CSI color codes wrapping 'rm' must be stripped and caught."""
         cmd = "\x1b[31mrm\x1b[0m -rf /"
         dangerous, key, desc = detect_dangerous_command(cmd)
-        assert dangerous is True, f"ANSI-wrapped 'rm -rf /' was not detected"
+        assert dangerous is True, "ANSI-wrapped 'rm -rf /' was not detected"
 
     def test_ansi_osc_embedded_rm(self):
         """ANSI OSC sequences embedded in command must be stripped."""
@@ -818,5 +872,3 @@ class TestChmodExecuteCombo:
         cmd = "chmod +x script.sh"
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is False
-
-

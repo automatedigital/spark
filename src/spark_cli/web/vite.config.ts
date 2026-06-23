@@ -16,6 +16,10 @@ export default defineConfig({
     outDir: "../web_dist",
     emptyOutDir: true,
   },
+  optimizeDeps: {
+    // Do not crawl packaged Tauri/Python resource HTML under src-tauri.
+    entries: ["index.html"],
+  },
   server: {
     proxy: {
       // Override with SPARK_API_TARGET to point the dev proxy at a backend on a

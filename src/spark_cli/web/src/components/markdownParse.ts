@@ -273,7 +273,7 @@ export function parseInline(text: string): InlineNode[] {
   // input following a literal "MEDIA:". `[^\n]*?` is linear. Capture-group
   // numbering is unchanged.
   const pattern =
-    /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:~?\/|[A-Za-z]:\\)[^\n]*?\.(?:png|jpe?g|gif|webp|mp4|mov|avi|mkv|webm|ogg|opus|mp3|wav|m4a)(?=[\s`"',;:)\]}]|$)|\S+)[`"']?|(`[^`]+`)|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|~~([^~]+)~~|(\bhttps?:\/\/[^\s<>)\]]+)|(\n)/gi;
+    /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:~?\/|[A-Za-z]:\\)[^\n]*?\.(?:png|jpe?g|gif|webp|mp4|mov|avi|mkv|webm|ogg|opus|mp3|wav|m4a)(?=[\s`"',;:)\]}]|$)|\S+)[`"']?|(`[^`]+`)|(\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|~~([^~]+)~~|(\bhttps?:\/\/[^\s<]+)|(\n)/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -295,7 +295,9 @@ export function parseInline(text: string): InlineNode[] {
     } else if (match[10]) {
       nodes.push({ type: "strike", content: match[10] });
     } else if (match[11]) {
-      nodes.push({ type: "link", text: match[11], href: match[11] });
+      const { href, trailing } = splitTrailingUrlPunctuation(match[11]);
+      nodes.push({ type: "link", text: href, href });
+      if (trailing) nodes.push({ type: "text", content: trailing });
     } else if (match[12]) {
       nodes.push({ type: "br" });
     }
@@ -308,6 +310,31 @@ export function parseInline(text: string): InlineNode[] {
   }
 
   return nodes;
+}
+
+function splitTrailingUrlPunctuation(url: string): { href: string; trailing: string } {
+  let href = url;
+  let trailing = "";
+  const moveTrailing = () => {
+    trailing = href[href.length - 1] + trailing;
+    href = href.slice(0, -1);
+  };
+
+  while (href && /[.,;:!?]/.test(href[href.length - 1])) {
+    moveTrailing();
+  }
+
+  const pairs: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+  while (href && pairs[href[href.length - 1]]) {
+    const close = href[href.length - 1];
+    const open = pairs[close];
+    const opens = [...href].filter((char) => char === open).length;
+    const closes = [...href].filter((char) => char === close).length;
+    if (closes <= opens) break;
+    moveTrailing();
+  }
+
+  return { href, trailing };
 }
 
 export function cleanMediaPath(path: string): string {

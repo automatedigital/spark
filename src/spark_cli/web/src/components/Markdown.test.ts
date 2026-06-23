@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Markdown } from "./Markdown";
 import { parseBlocks, parseInline, findStableBoundary, blockPropsEqual } from "./markdownParse";
 
 /**
@@ -76,6 +79,127 @@ describe("parseInline hardening (no catastrophic backtracking)", () => {
   it("still recognizes a real MEDIA: image path", () => {
     const nodes = parseInline("MEDIA: /tmp/shot.png");
     expect(nodes.some((n) => n.type === "media")).toBe(true);
+  });
+});
+
+describe("streaming markdown parser regression coverage", () => {
+  it("parses the screenshot shape as markdown blocks while content is still streaming", () => {
+    const content = [
+      "## Heading",
+      "",
+      "### 1. Subheading",
+      "",
+      "A paragraph with **bold** text.",
+      "",
+      "- first bullet",
+      "- second bullet",
+      "",
+      "streamed tail appended after a blank line",
+    ].join("\n");
+    const boundary = findStableBoundary(content);
+    const blocks = [
+      ...parseBlocks(content.slice(0, boundary)),
+      ...parseBlocks(content.slice(boundary)),
+    ];
+
+    expect(blocks).toEqual([
+      { type: "heading", level: 2, content: "Heading" },
+      { type: "heading", level: 3, content: "1. Subheading" },
+      { type: "paragraph", content: "A paragraph with **bold** text." },
+      { type: "list", ordered: false, items: ["first bullet", "second bullet"] },
+      { type: "paragraph", content: "streamed tail appended after a blank line" },
+    ]);
+    const paragraph = blocks.find((block) => block.type === "paragraph" && block.content.includes("**bold**"));
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(parseInline(paragraph.content)).toContainEqual({ type: "bold", content: "bold" });
+    }
+  });
+
+  it("keeps partial streaming constructs safe and lets them settle to the final parse", () => {
+    const partials = [
+      "##",
+      "## Partial heading",
+      "**partial bold",
+      "[partial link](https://example.com",
+      "```ts\nconst x = 1;",
+      "- partial list item",
+      "> partial quote",
+      "| a | b |\n|---|---|",
+    ];
+
+    for (const partial of partials) {
+      expect(() => parseBlocks(partial)).not.toThrow();
+      expect(() => parseInline(partial)).not.toThrow();
+    }
+
+    expect(parseBlocks("## Partial heading")).toEqual([
+      { type: "heading", level: 2, content: "Partial heading" },
+    ]);
+    expect(parseInline("**partial bold**")).toContainEqual({ type: "bold", content: "partial bold" });
+    expect(parseInline("[partial link](https://example.com)")).toContainEqual({
+      type: "link",
+      text: "partial link",
+      href: "https://example.com",
+    });
+  });
+});
+
+describe("Markdown component streaming behavior", () => {
+  it("renders markdown while streaming instead of raw pre-wrapped syntax", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content: "## Heading\n\nA **bold** line.\n\n- one",
+      streaming: true,
+    }));
+
+    expect(html).toContain("<h2");
+    expect(html).toContain("<strong");
+    expect(html).toContain("<ul");
+    expect(html).not.toContain("## Heading");
+  });
+
+  it("keeps safe mode plain even while streaming", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content: "## Heading\n\nA **bold** line.",
+      streaming: true,
+      safeMode: true,
+    }));
+
+    expect(html).not.toContain("<h2");
+    expect(html).not.toContain("<strong");
+    expect(html).toContain("## Heading");
+    expect(html).toContain("**bold**");
+  });
+});
+
+describe("parseInline links", () => {
+  it("parses markdown links and bare URLs into link nodes", () => {
+    expect(parseInline("[docs](https://example.com/path?q=1#frag)")).toEqual([
+      { type: "link", text: "docs", href: "https://example.com/path?q=1#frag" },
+    ]);
+    expect(parseInline("visit https://example.com/path?q=1#frag")).toEqual([
+      { type: "text", content: "visit " },
+      { type: "link", text: "https://example.com/path?q=1#frag", href: "https://example.com/path?q=1#frag" },
+    ]);
+  });
+
+  it("keeps trailing punctuation outside bare URL hrefs", () => {
+    expect(parseInline("See https://example.com/path?q=1#frag.")).toEqual([
+      { type: "text", content: "See " },
+      { type: "link", text: "https://example.com/path?q=1#frag", href: "https://example.com/path?q=1#frag" },
+      { type: "text", content: "." },
+    ]);
+    expect(parseInline("(https://example.com/a(b)).")).toEqual([
+      { type: "text", content: "(" },
+      { type: "link", text: "https://example.com/a(b)", href: "https://example.com/a(b)" },
+      { type: "text", content: ")." },
+    ]);
+  });
+
+  it("supports parenthesized URLs inside markdown links", () => {
+    expect(parseInline("[example](https://example.com/a(b)?q=1#frag)")).toEqual([
+      { type: "link", text: "example", href: "https://example.com/a(b)?q=1#frag" },
+    ]);
   });
 });
 

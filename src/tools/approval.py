@@ -15,7 +15,6 @@ import re
 import sys
 import threading
 import unicodedata
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +92,8 @@ DANGEROUS_PATTERNS = [
     (r':\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:', "fork bomb"),
     # Any shell invocation via -c or combined flags like -lc, -ic, etc.
     (r'\b(bash|sh|zsh|ksh)\s+-[^\s]*c(\s+|$)', "shell command via -c/-lc flag"),
-    (r'\b(python[23]?|perl|ruby|node)\s+-[ec]\s+', "script execution via -e/-c flag"),
+    (r'\bpython[23]?\s+-c\s+.*\bshutil\.rmtree\s*\(', "recursive delete via inline Python"),
+    (r'\bnode\s+-e\s+.*\bfs\.(?:rm|rmdir)(?:sync)?\s*\([^)]*\brecursive\s*:', "recursive delete via inline Node"),
     (r'\b(curl|wget)\b.*\|\s*(ba)?sh\b', "pipe remote content to shell"),
     (r'\b(bash|sh|zsh|ksh)\s+<\s*<?\s*\(\s*(curl|wget)\b', "execute remote script via process substitution"),
     (rf'\btee\b.*["\']?{_SENSITIVE_WRITE_TARGET}', "overwrite system file via tee"),
@@ -218,7 +218,7 @@ class _ApprovalEntry:
     def __init__(self, data: dict):
         self.event = threading.Event()
         self.data = data          # command, description, pattern_keys, …
-        self.result: Optional[str] = None  # "once"|"session"|"always"|"deny"
+        self.result: str | None = None  # "once"|"session"|"always"|"deny"
 
 
 _gateway_queues: dict[str, list] = {}        # session_key → [_ApprovalEntry, …]
@@ -444,7 +444,7 @@ def prompt_dangerous_approval(command: str, description: str,
 
             result = {"choice": ""}
 
-            def get_input():
+            def get_input(result=result):
                 try:
                     prompt = "      Choice [o/s/a/D]: " if allow_permanent else "      Choice [o/s/D]: "
                     result["choice"] = input(prompt).strip().lower()
@@ -536,7 +536,7 @@ def _smart_approve(command: str, description: str) -> str:
     (openai/codex#13860).
     """
     try:
-        from agent.auxiliary_client import get_text_auxiliary_client, auxiliary_max_tokens_param
+        from agent.auxiliary_client import auxiliary_max_tokens_param, get_text_auxiliary_client
 
         client, model = get_text_auxiliary_client(task="approval")
         if not client or not model:

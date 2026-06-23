@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type MouseEvent } from "react";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -13,7 +13,8 @@ import markdown from "highlight.js/lib/languages/markdown";
 import rust from "highlight.js/lib/languages/rust";
 import go from "highlight.js/lib/languages/go";
 import { Copy, CheckCheck, X } from "lucide-react";
-import { mediaFileUrl } from "@/lib/api";
+import { mediaFileUrl, openExternal } from "@/lib/api";
+import { isTauri } from "@/sidecar";
 import {
   type BlockNode,
   type BlockProps,
@@ -75,7 +76,7 @@ export const Markdown = memo(function Markdown({
   streaming?: boolean;
   safeMode?: boolean;
 }) {
-  if (safeMode || streaming || content.length > SOFT_RENDER_CAP) {
+  if (safeMode || (!streaming && content.length > SOFT_RENDER_CAP)) {
     return (
       <div
         role="article"
@@ -375,6 +376,12 @@ function MediaPreview({ path }: { path: string }) {
   );
 }
 
+function openLinkInDesktop(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  if (!isTauri() || !/^https?:\/\//i.test(href)) return;
+  event.preventDefault();
+  void openExternal(href);
+}
+
 function InlineContent({ text, highlightTerms, safeMode }: { text: string; highlightTerms?: string[]; safeMode?: boolean }) {
   const nodes = useMemo(() => parseInline(text), [text]);
 
@@ -403,6 +410,7 @@ function InlineContent({ text, highlightTerms, safeMode }: { text: string; highl
                 href={node.href}
                 target="_blank"
                 rel="noreferrer"
+                onClick={(event) => openLinkInDesktop(event, node.href)}
                 className="text-primary underline underline-offset-2 decoration-primary/30 hover:decoration-primary/60 transition-colors"
               >
                 {node.text}
