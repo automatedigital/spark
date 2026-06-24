@@ -1,256 +1,161 @@
-# Pete Feedback Remediation Plan
+# Stabilize Desktop Chat Streaming and Issue Capture
 
-Date: 2026-06-22
+## Goal
 
-Scope: address Pete's feedback that long Spark answers are hard to read, streaming
-markdown currently shows raw syntax such as `##`, `###`, `**bold**`, and `-`
-bullets during generation, hyperlinks in rendered answers do not open, and a new
-unexpected command approval popup appeared for routine script checks.
+Fix the desktop/web chat reliability regressions reported on 2026-06-24 before adding the new `/issue` workflow.
 
-Important implementation constraints:
+The main product outcome is simple: while Spark is working, the UI must always look alive, remain editable, expose a reliable stop control, avoid render freezes on long markdown, and recover truthfully from backend stalls, retries, interrupts, and EventSource drops.
 
-- Keep active prompt caching stable. Any system prompt / SOUL change only affects
-  newly built sessions; do not rebuild active system prompts mid-conversation.
-- Only change Spark's built-in agent defaults and Web UI rendering paths, not
-  user-created projects under `.spark/workspace/`.
-- Preserve the previous markdown performance work: streaming must parse bounded
-  committed/tail chunks rather than reparsing the full growing answer on every
-  token.
-- Treat the provided screenshot as the primary visual regression: assistant
-  output should render headings, subheadings, bold text, and bullet lists while
-  the answer is still streaming.
-- Treat the approval-popup screenshot as a product regression for normal
-  built-in Spark operation. Routine agent commands should run without user
-  approval. Keep safeguards for genuinely destructive or credential-risky
-  commands, but do not interrupt users for benign checks such as `node -e`
-  dependency probes.
+## Evidence to Preserve
 
-## Parallelization Plan
+- Issue 01 screenshot: `screenshots/240626/Issue 01 - Screenshot 2026-06-24 at 08.54.14.png`
+- Issue 01 logs: `references/logs/Issue 01 - Logs 240626.md`
+- Issue 02 screenshot: `screenshots/240626/Issue 02 - Screenshot 2026-06-24 at 09.22.10.png`
+- Issue 02 logs: `references/logs/Issue 02 - Logs 240626.md`
+- Issue 03 screenshot: `screenshots/240626/Issue 03 - Screenshot 2026-06-24 at 10.08.29.png`
+- Issue 04 screenshot: `screenshots/240626/Issue 04 - Screenshot 2026-06-24 at 10.09.45.png`
+- Issue 04a screenshot: `screenshots/240626/Issue 04a - Screenshot 2026-06-24 at 10.10.34.png`
+- Issue 04 logs: `references/logs/Issue 04 - Logs 240626.md`
+- Issue 05 screenshot: `screenshots/240626/Issue 05 - Screenshot 2026-06-24 at 10.11.49.png`
+- Issue 05a screenshot: `screenshots/240626/Issue 05a - Screenshot 2026-06-24 at 10.14.39.png`
 
-- Lane A, prompt concision, can run independently of the Web UI work.
-- Lane B, streaming markdown rendering, can run in parallel with Lane A and Lane C.
-- Lane C, hyperlink opening, can run in parallel with Lane A and most of Lane B,
-  but final QA should use the same browser smoke run as Lane B.
-- Lane D, command approval policy, can run in parallel with Lanes A-C because it
-  primarily touches terminal approval policy and approval UI event handling.
-- Lane E, tests and visual verification, starts after each lane has code ready.
-  Unit tests can be added per lane, but browser screenshot verification should
-  happen after Lanes B-D land.
-- Lane F, graph/docs cleanup, runs last after code changes are complete.
+## Code Areas
 
-## Lane A - Make Default Answers More Concise
+- Web chat shell: `src/spark_cli/web/src/components/ChatPanel.tsx`
+- Composer and stop/redirect controls: `src/spark_cli/web/src/components/chat/PromptBar.tsx`
+- Markdown rendering: `src/spark_cli/web/src/components/Markdown.tsx`
+- Markdown parsing helpers: `src/spark_cli/web/src/components/markdownParse.ts`
+- Render-health safe mode: `src/spark_cli/web/src/lib/renderHealth.ts`
+- Frontend API client: `src/spark_cli/web/src/lib/api.ts`
+- Web conversation endpoints and SSE events: `src/spark_cli/web_server.py`
+- Agent interruption: `src/core/run_agent/`, `src/tools/interrupt.py`
+- Slash command registry: `src/spark_cli/commands.py`
+- Skill slash command bridge: `src/agent/skill_commands.py`
+- Existing GitHub issue skill/template: `skills/github/github-issues/`
 
-- [x] Inspect the current system prompt assembly path before editing:
-  `src/core/run_agent/prompt_cache.py`, `src/agent/prompt_builder.py`, and
-  `src/spark_cli/default_soul.py`. Confirm whether the best durable default is
-  the seeded `DEFAULT_SOUL_MD`, a new prompt-builder guidance block, or a small
-  platform-neutral addition near existing platform hints.
-- [x] Add concise-answer guidance that asks Spark to prefer short, scannable
-  answers by default, avoid repeating obvious context, and expand only when the
-  user asks for depth or the task requires it. Keep the guidance specific enough
-  to reduce token use but not so terse that coding, legal/financial caveats, or
-  implementation reports become incomplete.
-- [x] If changing `DEFAULT_SOUL_MD`, keep `DEFAULT_AGENT_PERSONA` synchronized
-  through the existing constant flow in `src/spark_cli/default_soul.py`. Do not
-  edit user-owned `~/.spark/SOUL.md` files directly.
-- [x] If changing prompt assembly outside `DEFAULT_SOUL_MD`, add or update a
-  focused prompt-building test under `tests/agent/test_prompt_builder.py` or
-  `tests/run_agent/test_run_agent.py` that proves the new concision guidance is
-  included once and does not duplicate existing memory/tool guidance.
-- [x] Check caching-sensitive expectations. If the rendered system prompt golden
-  output changes, update the relevant golden test in `tests/run_agent/` in the
-  same implementation commit and document that the change applies to newly
-  constructed sessions only.
+## External References
 
-## Lane B - Restore Markdown While Streaming
+- React memoization and render caching: https://react.dev/reference/react/useMemo
+- Long task detection: https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver
+- Long task timing threshold and semantics: https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongTaskTiming
+- TanStack Virtual chat guidance for streaming, dynamic rows, and bottom anchoring: https://tanstack.com/virtual/latest/docs/chat
+- TanStack Virtual dynamic measurement API: https://tanstack.com/virtual/latest/docs/api/virtualizer
 
-- [x] Reproduce the current bug in the Web UI path: in
-  `src/spark_cli/web/src/components/Markdown.tsx`, `Markdown` returns plain
-  `whitespace-pre-wrap` text whenever `streaming` is true. This explains the
-  screenshot where headings and bold syntax appear raw during a streamed answer.
-- [x] Change `Markdown` so `streaming` no longer disables markdown parsing by
-  itself. `safeMode` should still force plain text, and very large completed
-  content may still use a fallback if needed, but ordinary streaming assistant
-  messages must flow through `ParsedMarkdown`.
-- [x] Preserve the bounded streaming parser design already present in
-  `ParsedMarkdown`: `findStableBoundary(content)` splits committed prefix from
-  live tail, `parseBlocks(stablePart)` and `parseBlocks(tailPart)` are memoized,
-  and only the live tail block should update each frame.
-- [x] Review `SOFT_RENDER_CAP` behavior. Decide whether the cap should apply to
-  streaming content at all. If it remains, make sure long answers do not switch
-  to raw markdown prematurely in the common case Pete reported.
-- [x] Ensure incomplete streaming constructs degrade gracefully:
-  partial headings, partial bold spans, partial links, unclosed code fences,
-  lists, blockquotes, and tables should render without throwing and should settle
-  into the same output as the final non-streaming render.
-- [x] Add tests in `src/spark_cli/web/src/components/Markdown.test.ts` that lock
-  the parser invariants for the screenshot shape:
-  `## Heading`, `### 1. Subheading`, `**bold**`, unordered lists, and a streamed
-  tail appended after a blank line.
-- [x] Add a test that characterizes the regression directly: a streaming
-  assistant message with markdown should be parsed into heading/list/bold block
-  data instead of being treated as raw plain text. If this requires a component
-  render test, use the existing Vitest setup and keep it narrowly scoped.
-- [x] Confirm syntax highlighting remains deferred while a code block is live:
-  `CodeBlock` should render plain code for `live=true` and only call
-  `highlight.js` after the block is complete.
-- [x] Verify safe mode still works. When safe mode is active, markdown can remain
-  plain text and animations should remain disabled.
+## Working Hypotheses
 
-## Lane C - Fix Hyperlink Opening
+- Issues 02, 03, and part of 05 are likely render-pressure bugs: long assistant responses, tables, code fences, or tool output trigger repeated parsing, highlighting, measurement, or virtualizer work during streaming.
+- Issues 01, 04, and part of 05 are likely state-truth bugs: the frontend can locally believe a turn stopped while the backend is still active, or can miss the authoritative `chat.turn_done`/interrupt state during SSE gaps, backend retries, overloads, or session migration.
+- The logs show real long backend turns, retries, overloads, and interrupted API calls. The UI must distinguish "backend is slow but alive" from "frontend is frozen" and must not mark work as done until backend turn state confirms it.
 
-- [x] Trace rendered links from `parseInline()` in
-  `src/spark_cli/web/src/components/markdownParse.ts` through `InlineContent` in
-  `src/spark_cli/web/src/components/Markdown.tsx`. Confirm both markdown links
-  (`[text](https://example.com)`) and bare URLs produce `link` nodes.
-- [x] Reproduce the click failure in both browser dashboard and Tauri desktop if
-  possible. Check whether the problem is missing link parsing during streaming,
-  browser default navigation inside the React app, Tauri external-open behavior,
-  or event handling inside a virtualized chat row.
-- [x] For normal browser dashboard links, ensure clicking opens the target in a
-  new tab/window with `target="_blank"` and `rel="noreferrer"` without React
-  Router intercepting it.
-- [x] For Tauri desktop links, inspect `src/spark_cli/web/src/lib/desktop.ts`
-  and the Tauri bridge in `src/spark_cli/web/src-tauri/src/lib.rs`. If needed,
-  route external `http://` and `https://` links through the native shell/open
-  API instead of attempting in-webview navigation.
-- [x] Keep local media/file previews working. Do not break `MediaPreview`,
-  `mediaFileUrl()`, image/video/audio previews, or file-link styling while
-  fixing ordinary web links.
-- [x] Harden URL parsing edge cases in `parseInline()` if needed: trailing
-  punctuation, parentheses, query strings, fragments, and `https://` URLs next
-  to markdown punctuation should not produce broken `href` values.
-- [x] Add unit tests for `parseInline()` covering markdown links, bare URLs,
-  trailing punctuation, and parentheses.
-- [x] Add a browser smoke test or manual QA note that clicks a rendered answer
-  hyperlink and confirms a new page/tab or native browser open occurs.
+## Phase 0 - Reproduce and Baseline
 
-## Lane D - Remove Unexpected Command Approval Popups
+- [ ] Inspect every 2026-06-24 screenshot and write a short note for each: visible UI state, whether stop button is present, whether text input is editable, whether the assistant bubble is streaming, and whether formatting is broken.
+- [ ] Summarize the referenced logs into `references/logs/Issue 240626 analysis.md`, including timestamps for long API calls, overload retries, `interrupted_during_api_call`, and turn completion.
+- [ ] Reproduce in desktop dev mode with a long markdown-heavy response, a long tool-heavy response, and a response interrupted by typing a new message mid-stream.
+- [ ] Capture baseline browser performance evidence: count long tasks, measure token-to-paint delay, and note when safe mode turns on.
+- [ ] Confirm whether these issues reproduce in browser dashboard, Tauri desktop, or only remote dashboard mode.
+- [ ] Record exact commands used for reproduction in this plan before changing behavior.
 
-- [x] Reproduce the popup from the screenshot with a benign command similar to
-  `node -e "try{require('playwright');console.log('playwright yes')}catch(e){console.log('no',e.message)}"`.
-  Confirm whether the interruption is caused by the generic
-  `script execution via -e/-c flag` pattern in `src/tools/approval.py`, a config
-  default, a Web UI approval event, or another guard.
-- [x] Inspect the command approval flow before changing behavior:
-  `src/tools/approval.py`, `src/tools/terminal_tool.py`,
-  `src/spark_cli/web/src/components/chat/ApprovalPrompt.tsx`,
-  `src/spark_cli/web/src/components/ChatPanel.tsx`, and setup/config defaults
-  in `src/spark_cli/setup.py` / `src/spark_cli/config.py`.
-- [x] Decide the intended product default with maintainers before implementation:
-  routine commands should run without approval in normal Spark sessions, while
-  destructive commands such as `rm -rf`, `git reset --hard`, force pushes,
-  system file writes, credential file writes, process-kill patterns, and remote
-  pipe-to-shell should still be blocked or require explicit consent.
-- [x] Narrow or remove the broad script-execution approval pattern for benign
-  local interpreters. The current pattern flags all `python -c`, `node -e`,
-  `ruby -e`, and similar commands even when they only print, check imports, or
-  run harmless local diagnostics. Replace it with risk-based detection or smart
-  auto-approval so common probes do not show approval UI.
-- [x] Verify `approvals.mode` defaults and setup presets. If the intended default
-  is no command approvals, update config defaults and setup copy accordingly.
-  If approvals remain configurable, ensure existing users can set
-  `approvals.mode: off` without hidden Web UI prompts.
-- [x] Keep session-scoped and permanent approval mechanics intact for cases that
-  still require approval. Do not remove `/approve`, `/deny`, gateway approval
-  resolution, or ACP permission bridging unless they are explicitly replaced.
-- [x] Update Web UI behavior so approval cards are not shown for auto-approved or
-  no-approval commands. If an approval is still required, the card should explain
-  a genuinely risky action, not a generic interpreter flag.
-- [x] Add or update tests in `tests/tools/test_approval.py` and
-  `tests/tools/test_yolo_mode.py` to prove benign `node -e` / `python -c`
-  commands run without prompting under the intended default, while destructive
-  patterns still require approval or are blocked.
-- [x] Add a Web/server regression test if approval events are emitted
-  incorrectly: use `tests/spark_cli/test_web_server_events.py` or a focused
-  ChatPanel test to ensure no `chat.approval_requested` event appears for benign
-  command probes.
-- [x] Manually verify the screenshot scenario no longer appears during normal
-  agent operation. The command should execute and stream its result without
-  requiring Once, Session, Always, or Deny.
+## Phase 1 - Make Turn State Authoritative
 
-## Lane E - Verification And Regression Coverage
+- [ ] Replace the bare `_web_streaming: set[str]` usage in `src/spark_cli/web_server.py` with a small active-turn state record keyed by resolved session id: `started_at`, `last_event_at`, `status`, `interrupt_requested`, `active_agent_session_id`, and `phase`.
+- [ ] Register active-turn state before `/api/conversations`, `/api/conversations/{session_id}/messages`, retry, and workspace conversation endpoints return, not only after the background task starts.
+- [ ] Clear active-turn state only in the task `finally` block after persistence, session update emission, queue close, and `chat.turn_done` publication have all happened.
+- [ ] Extend `/api/conversations/{session_id}/turn-status` to return resolved session id, latest descendant id, `turn_active`, current status text, `started_at`, `last_event_at`, and `interrupt_requested`.
+- [ ] Update `api.getTurnStatus()` types in `src/spark_cli/web/src/lib/api.ts`.
+- [ ] Make `/api/conversations/{session_id}/interrupt` resolve aliases/latest descendants before looking up the agent, so stop works after context compression/session migration.
+- [ ] Change interrupt UX semantics so `chat.interrupted` or `interrupt_requested` means "stopping/redirecting", not "the turn is fully done"; only `chat.turn_done` or `turn-status.turn_active === false` should clear streaming UI.
+- [ ] Add a regression test that an interrupt request leaves the turn active until the background agent task exits.
+- [ ] Add a regression test that `turn-status` returns active immediately after a web message endpoint accepts a turn.
+- [ ] Add a regression test that interrupt works when the requested session id resolves to a compressed/latest descendant session id.
 
-- [x] Run focused Web tests from `src/spark_cli/web`:
-  `npm run test -- Markdown.test.ts` if supported by Vitest, otherwise
-  `npm run test`.
-- [x] Run full Web checks from `src/spark_cli/web`: `npm run test`,
-  `npm run lint`, and `npm run build`.
-- [x] Run focused Python prompt tests after Lane A:
-  `source venv/bin/activate && python -m pytest tests/agent/test_prompt_builder.py tests/run_agent/test_run_agent.py -q`
-  or a narrower subset if only one test file changed.
-- [x] Run focused approval tests after Lane D:
-  `source venv/bin/activate && python -m pytest tests/tools/test_approval.py tests/tools/test_yolo_mode.py tests/spark_cli/test_web_server_events.py -q`
-  or the narrower subset directly affected by the approval-policy change.
-- [x] Manually verify the screenshot scenario in the Web UI with a long answer
-  containing headings, bold text, bullets, and a hyperlink. The answer should be
-  readable while streaming, not only after completion.
-- [x] Manually verify a very long response still avoids render freezes. Watch for
-  safe-mode activation, long-task counters, scroll jank, and syntax-highlight
-  delays on large code blocks.
-- [x] Manually verify link clicks in browser dashboard and, if the desktop app is
-  available, in Tauri desktop.
-- [x] Manually verify routine terminal commands run without unexpected approval
-  popups, including the `node -e` Playwright check from the screenshot.
-- [x] Confirm no unrelated files are modified. This plan was requested as a
-  narrow remediation; implementation commits should stay scoped to prompt
-  guidance, markdown rendering, link handling, approval behavior, and tests.
+## Phase 2 - Fix Stop, Redirect, and "Still Working" UX
 
-## Lane F - Graph And Documentation Cleanup
+- [ ] In `ChatPanel.tsx`, introduce explicit frontend turn substates: `idle`, `starting`, `streaming`, `stalled`, `stopping`, and `redirecting`.
+- [ ] Keep `PromptBar` editable while streaming, but make Enter behavior explicit: no text means stop remains available; text means redirect is available; stop remains visible either way.
+- [ ] Ensure the stop button is visible whenever frontend streaming is true or backend `turn-status.turn_active` is true, even if the last visible message is a tool row, note row, or empty typing row.
+- [ ] On stop click, optimistically switch to `stopping`, keep the stop control disabled or guarded against duplicate clicks, and poll `turn-status` until the backend confirms inactive.
+- [ ] On redirect submit, append a visible redirected user row and keep the turn state as `redirecting` until the backend confirms whether the redirect became the next turn.
+- [ ] Audit `sendMessage()` so typing mid-answer never clears the input before the redirect request has been accepted or safely queued.
+- [ ] Make the stall watchdog escalate status text over time: `Still working...`, then `Still waiting for backend...`, then `Reconnecting...` if EventSource has dropped.
+- [ ] Use `chat.status` events to surface backend retry/overload/waiting states when available.
+- [ ] Add a pure state-transition helper for chat turn state and test it with Vitest instead of burying every transition directly in React component state.
+- [ ] Add tests for these transitions: token received, tool start/end, interrupt requested, turn done after interrupt, SSE reconnect while active, SSE reconnect after missed `turn_done`, and session migration.
 
-- [x] After code changes, run `graphify update .` from the repo root so
-  `graphify-out/` stays current. Dirty graph files are expected, but include
-  them only if this repo normally commits updated graph output.
-- [x] Update user-facing docs only if behavior or settings changed. Likely
-  candidates are `docs/web-dashboard.md` and
-  `src/spark_cli/web/README.md`; skip docs if the fix is purely restorative and
-  existing docs already describe the intended behavior.
-- [x] Add a short implementation note to the final commit or PR description
-  explaining the intended default: concise answers by default, markdown rendered
-  during streaming, links open externally, and safe mode remains the fallback for
-  pathological render cost.
+## Phase 3 - Harden Markdown Rendering
 
-## Suggested Agent Assignment
+- [ ] Add markdown parser tests for partial fenced code blocks, unclosed fences, huge paragraphs, huge tables, nested emphasis, bare URLs, media links, task lists, and malformed markdown.
+- [ ] Add a streaming performance fixture that appends tokens to a 10k, 50k, and 100k character assistant message and asserts parsing work stays bounded.
+- [ ] In `Markdown.tsx`, apply the soft render cap during streaming too. Long streaming messages should render a bounded parsed tail plus plain text for the rest, or switch to safe plain text until final.
+- [ ] Avoid reparsing the entire stable prefix on every token. Cache committed parsed blocks by stable boundary and only parse newly committed text plus the current live tail.
+- [ ] Audit `parseInline()` and table parsing in `markdownParse.ts` for regex backtracking and unbounded per-token work; replace any risky regex path with linear scanning or hard caps.
+- [ ] Cap table rendering during streaming: limit rows/cells parsed live, then render the full table only after the block is stable and below a size threshold.
+- [ ] Keep syntax highlighting disabled while code blocks are live and enforce the existing size cap after completion.
+- [ ] Make safe mode reversible and visible: when long tasks trigger safe mode, show a compact inline notice with a "render markdown" retry option after the turn finishes.
+- [ ] Persist render-health details per session so a reopened problematic thread starts safe and explains why.
+- [ ] Add tests to `src/spark_cli/web/src/components/Markdown.test.ts` covering safe-mode fallback, streaming cap behavior, and final rich rendering after streaming completes.
 
-- [x] Agent 1 can take Lane A only. It touches Python prompt/default-soul files
-  and Python tests, and does not need to coordinate with Web UI code except for
-  final verification.
-- [x] Agent 2 can take Lane B only. It touches `Markdown.tsx`,
-  `markdownParse.ts` only if parser behavior needs adjustment, and
-  `Markdown.test.ts`.
-- [x] Agent 3 can take Lane C only. It touches link parsing/rendering and
-  desktop/browser external-open code if needed.
-- [x] Agent 4 can take Lane D only. It touches command approval policy,
-  terminal dispatch, setup/config defaults, approval tests, and possibly the Web
-  approval event/card path.
-- [x] Agent 5 can take Lane E after Agents 1-4 have branches or patches ready.
-  This agent should run the combined checks and perform browser/Tauri QA.
-- [x] One agent should own final integration to avoid merge churn in
-  `Markdown.tsx` and `Markdown.test.ts`, because Lane B and Lane C may both
-  touch inline rendering.
+## Phase 4 - Stabilize Virtualized Chat Rows
 
-## Acceptance Criteria
+- [ ] Review TanStack Virtual usage in `ChatPanel.tsx` for streaming rows with dynamic heights.
+- [ ] Use stable message ids for virtual row keys so row identity does not drift when tool rows collapse or earlier history prepends.
+- [ ] Throttle measuring the live assistant row and skip measurement for unchanged committed rows.
+- [ ] Preserve bottom anchoring while streaming without forcing a smooth scroll on every token.
+- [ ] Verify prepending earlier history does not jump the current viewport.
+- [ ] Add a stress test or manual QA script for rapid token updates, tall code blocks, large tool results, and repeated collapsed tool rows.
 
-- [x] New Spark sessions include explicit concise-answer guidance without
-  duplicating existing prompt blocks or breaking prompt-cache invariants.
-- [x] While an assistant answer is streaming, headings, bold text, lists,
-  blockquotes, code fences, tables, and paragraphs render as markdown whenever
-  safe mode is not active.
-- [x] The raw-markdown screenshot case no longer reproduces for ordinary
-  streaming answers.
-- [x] Hyperlinks in assistant answers open successfully from the browser Web UI.
-- [x] Hyperlinks in assistant answers open successfully from the macOS desktop
-  app or have a documented fallback if desktop cannot be tested locally.
-- [x] Routine benign terminal commands, including `node -e` and `python -c`
-  diagnostic probes, run without showing an approval popup in normal Spark
-  sessions.
-- [x] Destructive or high-risk commands still require approval or are blocked,
-  according to the final approval policy.
-- [x] Markdown render performance remains bounded for long responses; completed
-  blocks do not re-render on every token, and code highlighting remains deferred
-  for live code blocks.
-- [x] Focused tests cover prompt guidance, streaming markdown parsing, link
-  parsing/open behavior, and approval-policy regressions.
-- [x] `npm run test`, `npm run lint`, `npm run build` in
-  `src/spark_cli/web`, and the relevant Python prompt tests pass before pushing
-  implementation changes.
+## Phase 5 - Backend Progress and Error Transparency
+
+- [ ] Emit `chat.status` for long backend gaps: API call started, retry scheduled, tool running longer than threshold, waiting for approval, context compression, and interrupt requested.
+- [ ] Include retry/error summaries in status events without exposing secrets or huge payloads.
+- [ ] Ensure `chat.turn_done` payload includes `final_assistant_present`, `interrupted`, token stats, and any backend error class.
+- [ ] In the frontend, display backend overload/API retry notes as status, not as final assistant content.
+- [ ] If a turn ends with no assistant content and no intentional interrupt, show a recoverable error note with retry guidance.
+- [ ] Add tests that backend exceptions still publish `chat.turn_done` and clear active-turn state.
+
+## Phase 6 - Manual QA Matrix
+
+- [ ] Long markdown response: headings, bullets, tables, code fences, and links stream without UI freeze.
+- [ ] Huge tool output response: tool rows collapse, full-result fetch still works, and scrolling stays responsive.
+- [ ] Type while assistant is mid-answer: redirect is visible, old turn stops, new instruction is handled once.
+- [ ] Press stop while a tool is running: UI says stopping, backend interrupt is requested, final state clears only when backend is inactive.
+- [ ] Simulate dropped SSE: close/reopen EventSource or throttle network; UI recovers from `turn-status`.
+- [ ] Simulate backend overload/retry: status shows retry/waiting and does not look finished.
+- [ ] Context compression/session migration during a turn: events follow the new session id and stop still works.
+- [ ] Restart desktop while a prior session has a recent active-looking turn: history and turn-status reconcile cleanly.
+
+## Phase 7 - Add `/issue` Skill
+
+- [ ] Create a built-in skill named `issue` so `/issue` appears through `scan_skill_commands()` and the web `/api/commands` skill list.
+- [ ] Place the skill under an appropriate skill category, likely `skills/github/issue/SKILL.md`, and make its frontmatter name exactly `issue`.
+- [ ] Have the skill collect: user description, current session id, recent redacted logs, relevant screenshots/files, Spark version/git SHA, OS/platform, active profile, web/desktop mode, and reproduction steps.
+- [ ] Reuse `skills/github/github-issues/templates/bug-report.md` or add a focused template for Spark product bugs.
+- [ ] Require the agent to show the exact GitHub issue title, body, labels, and attachments/references before creating the issue.
+- [ ] Use the existing GitHub issue workflow (`gh issue create` first, REST fallback if needed) rather than adding a new tool unless the existing skill cannot attach the required evidence.
+- [ ] Add guidance for screenshots referenced by `@path` and for logs under `references/logs/`.
+- [ ] Add redaction rules: never include API keys, bearer tokens, dashboard tokens, full home-directory secrets, or unrelated session content.
+- [ ] Add a happy-path test that the skill is discoverable as `/issue` in CLI skill commands.
+- [ ] Add a web command-list test that installed skills include `/issue` in `/api/commands`.
+- [ ] Add a dry-run/manual QA step: invoke `/issue` with the 2026-06-24 screenshots and logs, verify the drafted issue is detailed, redacted, and asks for approval before submission.
+
+## Verification Commands
+
+- [ ] `source venv/bin/activate`
+- [ ] `python -m pytest tests/ -m "not slow and not integration" -q`
+- [ ] `python -m pytest tests/run_agent/ tests/tools/test_interrupt.py -q`
+- [ ] `python -m pytest tests/spark_cli/ tests/cli/ -q`
+- [ ] `cd src/spark_cli/web && npm run test`
+- [ ] `cd src/spark_cli/web && npm run lint`
+- [ ] `cd src/spark_cli/web && npm run build`
+- [ ] `ruff check src/`
+- [ ] `mypy src/agent/ src/spark_cli/`
+
+## Definition of Done
+
+- [ ] All five reported issues have a clear root-cause note or an evidence-backed explanation in the implementation PR.
+- [ ] The stop button is always visible and functional while any backend turn is active.
+- [ ] Typing during a response either redirects cleanly or remains queued visibly; it never makes the UI look finished while work continues.
+- [ ] Long markdown responses stay responsive in desktop and browser dashboard.
+- [ ] Backend overloads, retries, and long-running tools produce visible status updates.
+- [ ] The app recovers from missed SSE events by polling authoritative turn state.
+- [ ] `/issue` can draft a detailed, redacted GitHub issue with logs and screenshots, and it asks for approval before submitting.
