@@ -26,7 +26,7 @@ def web_client(monkeypatch, tmp_path):
 
     monkeypatch.setattr(web_server, "_web_event_loop", asyncio.get_event_loop())
     web_server._event_subscribers.clear()
-    web_server._web_streaming.clear()
+    web_server._web_active_turns.clear()
     web_server._web_agents.clear()
     web_server._web_agent_signatures.clear()
     web_server._web_queues.clear()
@@ -75,6 +75,104 @@ class TestEventBus:
         assert any(item["topic"] == "chat.turn_done" for item in items)
         assert len(items) <= 2
 
+    def test_tool_callback_emits_status_event(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            q: asyncio.Queue = asyncio.Queue()
+            web_server._event_subscribers.add(q)
+            try:
+                web_server._mark_web_turn_active("sess_status")
+                callbacks = web_server._make_web_chat_callbacks("sess_status", asyncio.Queue(), loop)
+                tool_start = callbacks[1]
+                tool_start("tid_1", "terminal", {"command": "echo ok"})
+                items = []
+                for _ in range(2):
+                    items.append(await asyncio.wait_for(q.get(), timeout=2.0))
+                return items
+            finally:
+                web_server._event_subscribers.discard(q)
+                web_server._clear_web_turn("sess_status")
+
+        events = asyncio.run(run())
+        status = next(item for item in events if item["topic"] == "chat.status")
+        assert status["session_id"] == "sess_status"
+        assert status["data"]["kind"] == "tool_running"
+        assert status["data"]["message"] == "Tool running: terminal"
+
+    def test_tool_callbacks_emit_backend_duration_seconds(self, web_client, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        class FakeClock:
+            def __init__(self):
+                self._times = [1000.0, 1000.1, 1012.5, 1012.6]
+                self._monotonic = [50.0, 62.5]
+
+            def time(self):
+                return self._times.pop(0) if self._times else 1012.6
+
+            def monotonic(self):
+                return self._monotonic.pop(0) if self._monotonic else 62.5
+
+        monkeypatch.setattr(web_server, "time", FakeClock())
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            q: asyncio.Queue = asyncio.Queue()
+            web_server._event_subscribers.add(q)
+            try:
+                web_server._mark_web_turn_active("sess_duration")
+                callbacks = web_server._make_web_chat_callbacks("sess_duration", asyncio.Queue(), loop)
+                tool_start = callbacks[1]
+                tool_complete = callbacks[2]
+                tool_start("tid_1", "web_extract", {"urls": ["https://example.com"]})
+                tool_complete("tid_1", "web_extract", {"urls": ["https://example.com"]}, "{}")
+                items = []
+                while len(items) < 4:
+                    items.append(await asyncio.wait_for(q.get(), timeout=2.0))
+                return items
+            finally:
+                web_server._event_subscribers.discard(q)
+                web_server._clear_web_turn("sess_duration")
+
+        events = asyncio.run(run())
+        start = next(item for item in events if item["topic"] == "chat.tool_start")
+        end = next(item for item in events if item["topic"] == "chat.tool_end")
+        assert isinstance(start["data"]["started_at"], float)
+        assert isinstance(end["data"]["ended_at"], float)
+        assert end["data"]["duration_seconds"] == 12.5
+
+    def test_token_callback_updates_stream_snapshot_before_turn_done(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            web_server._mark_web_turn_active("sess_snapshot")
+            callbacks = web_server._make_web_chat_callbacks("sess_snapshot", asyncio.Queue(), loop)
+            token_callback = callbacks[0]
+            token_callback("hello")
+            token_callback(" world")
+
+        asyncio.run(run())
+        try:
+            status = web_client.get("/api/conversations/sess_snapshot/turn-status")
+            assert status.status_code == 200
+            assert status.json()["stream_text_chars"] == len("hello world")
+            assert status.json()["stream_revision"] == 2
+
+            snapshot = web_client.get("/api/conversations/sess_snapshot/stream-snapshot")
+            assert snapshot.status_code == 200
+            data = snapshot.json()
+            assert data["turn_active"] is True
+            assert data["stream_text"] == "hello world"
+            assert data["stream_revision"] == 2
+        finally:
+            web_server._clear_web_turn("sess_snapshot")
+
 
 class TestConversationModels:
     def test_get_conversation_models(self, web_client):
@@ -84,6 +182,21 @@ class TestConversationModels:
         assert "models" in data
         assert len(data["models"]) >= 1
         assert "id" in data["models"][0]
+
+    def test_commands_include_issue_skill(self, web_client, monkeypatch):
+        from pathlib import Path
+
+        import agent.skill_commands as skill_commands
+        import tools.skills_tool as skills_tool
+
+        repo_skills = Path(__file__).resolve().parents[2] / "skills"
+        skill_commands._skill_commands = {}
+        monkeypatch.setattr(skills_tool, "SKILLS_DIR", repo_skills)
+
+        resp = web_client.get("/api/commands")
+        assert resp.status_code == 200
+        names = {cmd["name"] for cmd in resp.json()}
+        assert "issue" in names
 
 
 class TestConversationControl:
@@ -340,6 +453,113 @@ class TestConversationControl:
         finally:
             db2.close()
 
+    def test_web_turn_fallback_materializes_large_markdown_response(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        full_report = "# Big Report\n\n" + ("body paragraph\n\n" * 2_000)
+
+        db = SessionDB()
+        try:
+            db.create_session("artifact_web", source="web", model="m1")
+        finally:
+            db.close()
+
+        web_server._persist_web_turn_if_missing(
+            "artifact_web",
+            "Write a comprehensive markdown report",
+            {"final_response": full_report},
+            before_message_count=0,
+        )
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("artifact_web")
+            assert [m["role"] for m in msgs] == ["user", "assistant"]
+            assert msgs[0]["content"] == "Write a comprehensive markdown report"
+            assert "Open the markdown file" in msgs[1]["content"]
+            assert "No content was hidden or discarded" in msgs[1]["content"]
+            assert len(msgs[1]["content"]) < len(full_report)
+
+            artifact_root = web_server.get_spark_home() / "workspace" / "chat-artifacts" / "artifact_web"
+            files = list(artifact_root.glob("*.md"))
+            assert len(files) == 1
+            assert files[0].read_text(encoding="utf-8") == full_report
+        finally:
+            db2.close()
+
+    def test_web_turn_fallback_strips_internal_delivery_instruction(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        raw_message = "Write a comprehensive markdown report"
+        injected_message = web_server._with_long_document_delivery_instruction(raw_message)
+
+        db = SessionDB()
+        try:
+            db.create_session("artifact_instruction_web", source="web", model="m1")
+            db.append_message("artifact_instruction_web", "user", content=injected_message)
+        finally:
+            db.close()
+
+        web_server._persist_web_turn_if_missing(
+            "artifact_instruction_web",
+            raw_message,
+            {"final_response": "Short acknowledgement."},
+            before_message_count=0,
+        )
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("artifact_instruction_web")
+            assert [m["role"] for m in msgs] == ["user", "assistant"]
+            assert msgs[0]["content"] == raw_message
+            assert "Spark delivery instruction" not in msgs[0]["content"]
+            assert msgs[1]["content"] == "Short acknowledgement."
+        finally:
+            db2.close()
+
+    def test_web_turn_fallback_replaces_persisted_large_assistant_with_artifact(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        full_report = "# Persisted Report\n\n" + ("body paragraph\n\n" * 2_000)
+
+        db = SessionDB()
+        try:
+            db.create_session("artifact_replace_web", source="web", model="m1")
+            db.append_message("artifact_replace_web", "user", content="Write a long report")
+            db.append_message("artifact_replace_web", "assistant", content=full_report)
+        finally:
+            db.close()
+
+        web_server._persist_web_turn_if_missing(
+            "artifact_replace_web",
+            "Write a long report",
+            {"final_response": full_report},
+            before_message_count=0,
+        )
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("artifact_replace_web")
+            assert len(msgs) == 2
+            assert msgs[1]["role"] == "assistant"
+            assert "Open the markdown file" in msgs[1]["content"]
+            assert full_report not in msgs[1]["content"]
+
+            artifact_root = (
+                web_server.get_spark_home()
+                / "workspace"
+                / "chat-artifacts"
+                / "artifact_replace_web"
+            )
+            files = list(artifact_root.glob("*.md"))
+            assert len(files) == 1
+            assert files[0].read_text(encoding="utf-8") == full_report
+        finally:
+            db2.close()
+
     def test_web_turn_fallback_does_not_duplicate_persisted_assistant(self, web_client):
         import spark_cli.web_server as web_server
         from core.spark_state import SessionDB
@@ -469,6 +689,52 @@ class TestConversationControl:
         assert resp.status_code == 200
         agent.interrupt.assert_called_once_with("stop")
 
+    def test_interrupt_request_leaves_turn_active_until_task_clears(self, web_client):
+        import spark_cli.web_server as web_server
+
+        agent = MagicMock()
+        web_server._web_agents["s_active"] = agent
+        web_server._mark_web_turn_active("s_active", status="Running…", phase="streaming")
+        try:
+            resp = web_client.post("/api/conversations/s_active/interrupt", json={"message": "redirect"})
+            assert resp.status_code == 200
+
+            status = web_client.get("/api/conversations/s_active/turn-status")
+            assert status.status_code == 200
+            data = status.json()
+            assert data["turn_active"] is True
+            assert data["interrupt_requested"] is True
+            assert data["phase"] == "redirecting"
+        finally:
+            web_server._clear_web_turn("s_active")
+
+    def test_interrupt_resolves_latest_descendant_agent(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("parent_session", source="web", model="m1")
+            db.create_session("child_session", source="web", model="m1", parent_session_id="parent_session")
+
+            def _mark_compressed(conn):
+                conn.execute("UPDATE sessions SET end_reason = 'compression' WHERE id = ?", ("parent_session",))
+
+            db._execute_write(_mark_compressed)
+        finally:
+            db.close()
+
+        agent = MagicMock()
+        web_server._web_agents["child_session"] = agent
+        web_server._mark_web_turn_active("child_session")
+        try:
+            resp = web_client.post("/api/conversations/parent_session/interrupt", json={"message": "stop latest"})
+            assert resp.status_code == 200
+            assert resp.json()["session_id"] == "child_session"
+            agent.interrupt.assert_called_once_with("stop latest")
+        finally:
+            web_server._clear_web_turn("child_session")
+
     def test_interrupt_endpoint_persists_boundary_when_user_is_dangling(self, web_client):
         import spark_cli.web_server as web_server
         from core.spark_state import SessionDB
@@ -499,21 +765,26 @@ class TestConversationControl:
 
         agent = MagicMock()
         web_server._web_agents["s1"] = agent
-        web_server._web_streaming.add("s1")
+        web_server._mark_web_turn_active("s1")
         resp = web_client.post("/api/conversations/s1/model", json={"model": "anthropic/claude-sonnet-4.6"})
         assert resp.status_code == 409
-        web_server._web_streaming.discard("s1")
+        web_server._clear_web_turn("s1")
 
-    def test_turn_status_uses_web_streaming_without_queue(self, web_client):
+    def test_turn_status_uses_active_turn_without_queue(self, web_client):
         import spark_cli.web_server as web_server
 
-        web_server._web_streaming.add("s_streaming")
+        web_server._mark_web_turn_active("s_streaming", status="Running…", phase="streaming")
         try:
             resp = web_client.get("/api/conversations/s_streaming/turn-status")
             assert resp.status_code == 200
-            assert resp.json()["turn_active"] is True
+            data = resp.json()
+            assert data["turn_active"] is True
+            assert data["status"] == "Running…"
+            assert data["phase"] == "streaming"
+            assert data["started_at"] is not None
+            assert data["last_event_at"] is not None
         finally:
-            web_server._web_streaming.discard("s_streaming")
+            web_server._clear_web_turn("s_streaming")
 
     def test_turn_status_ignores_stale_queue_after_turn_done(self, web_client):
         import asyncio
@@ -562,6 +833,81 @@ class TestConversationControl:
         assert session_id in web_server._web_queues
         status = web_client.get(f"/api/conversations/{session_id}/turn-status")
         assert status.json()["turn_active"] is False
+
+    def test_turn_status_active_immediately_after_conversation_accepts(self, web_client, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        class FakeAgent:
+            session_id = "pending"
+
+        def fake_new_agent(**kwargs):
+            agent = FakeAgent()
+            agent.session_id = kwargs["session_id"]
+            return agent
+
+        created_tasks = []
+
+        monkeypatch.setattr(web_server, "_new_web_agent", fake_new_agent)
+        monkeypatch.setattr(web_server.asyncio, "create_task", lambda coro: created_tasks.append(coro))
+        monkeypatch.setattr(web_server, "_maybe_auto_title_web", lambda *_args, **_kwargs: None)
+
+        try:
+            resp = web_client.post("/api/conversations", json={"message": "hi"})
+            assert resp.status_code == 200
+            session_id = resp.json()["session_id"]
+
+            status = web_client.get(f"/api/conversations/{session_id}/turn-status")
+            assert status.status_code == 200
+            assert status.json()["turn_active"] is True
+        finally:
+            for coro in created_tasks:
+                coro.close()
+
+    def test_backend_exception_publishes_turn_done_and_clears_active(self, web_client, monkeypatch):
+        import time
+
+        import spark_cli.web_server as web_server
+
+        class FakeAgent:
+            session_id = "pending"
+
+        def fake_new_agent(**kwargs):
+            agent = FakeAgent()
+            agent.session_id = kwargs["session_id"]
+            return agent
+
+        events = []
+        original_publish = web_server._publish_event
+
+        def capture_event(topic, data, session_id=None):
+            events.append((topic, data, session_id))
+            return original_publish(topic, data, session_id)
+
+        def explode(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(web_server, "_new_web_agent", fake_new_agent)
+        monkeypatch.setattr(web_server, "_run_web_agent_turn", explode)
+        monkeypatch.setattr(web_server, "_maybe_auto_title_web", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(web_server, "_publish_event", capture_event)
+
+        resp = web_client.post("/api/conversations", json={"message": "hi"})
+        assert resp.status_code == 200
+        session_id = resp.json()["session_id"]
+
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            status = web_client.get(f"/api/conversations/{session_id}/turn-status")
+            assert status.status_code == 200
+            if status.json()["turn_active"] is False:
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("failed web turn still reported active")
+
+        done = [event for event in events if event[0] == "chat.turn_done"]
+        assert done
+        assert done[-1][1]["backend_error_class"] == "RuntimeError"
 
     def test_webview_diagnostics_reports_sidecar_and_activity_monitor_note(self, web_client):
         resp = web_client.get(

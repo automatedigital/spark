@@ -96,6 +96,14 @@ These unlock optional tools. None are required — only set what you use.
 | `FIRECRAWL_API_URL` | Custom Firecrawl endpoint for self-hosted instances |
 | `TAVILY_API_KEY` | AI-native search, extract, and crawl via [Tavily](https://app.tavily.com/home) |
 | `EXA_API_KEY` | AI-native search and content retrieval via [Exa](https://exa.ai/) |
+| `PARALLEL_SEARCH_MODE` | Parallel search mode, `fast`, `one-shot`, or `agentic` (default: `fast`) |
+| `WEB_TOOLS_HTTP_TIMEOUT` | HTTP timeout in seconds for web tool API calls (default: 20) |
+| `WEB_EXTRACT_SCRAPE_TIMEOUT` | Per-page timeout in seconds for web extraction (default: `WEB_TOOLS_HTTP_TIMEOUT`) |
+| `WEB_EXTRACT_CONCURRENCY` | Number of URLs `web_extract` scrapes concurrently (default: 4, max: 8) |
+| `WEB_EXTRACT_FAST_MAX_CHARS_PER_PAGE` | Raw extraction cap per page when LLM processing is off (default: 12000) |
+| `WEB_EXTRACT_FAST_FETCH` | Try direct HTTP extraction before Firecrawl for normal web pages (`true`/`false`, default: `true`) |
+| `WEB_EXTRACT_FAST_FETCH_TIMEOUT` | Direct HTTP extraction timeout in seconds (default: 6) |
+| `WEB_EXTRACT_FAST_FETCH_MIN_CHARS` | Minimum readable characters needed before direct extraction skips Firecrawl fallback (default: 300) |
 | `BROWSERBASE_API_KEY` | Cloud browser automation via [Browserbase](https://browserbase.com/) |
 | `BROWSERBASE_PROJECT_ID` | Browserbase project ID |
 | `BROWSER_USE_API_KEY` | Cloud browser via [Browser Use](https://browser-use.com/) |

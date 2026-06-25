@@ -28,6 +28,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -85,9 +86,23 @@ _log = logging.getLogger(__name__)
 # Captured at startup — fan-out SSE events from sync agent threads
 _web_event_loop: Optional[asyncio.AbstractEventLoop] = None
 _event_subscribers: set = set()  # asyncio.Queue
-_web_streaming: set = set()  # session_id strings with an active agent turn
 _admin_runs: dict[str, dict[str, Any]] = {}
 _admin_run_queues: dict[str, thread_queue.Queue] = {}
+
+
+@dataclass
+class WebActiveTurn:
+    started_at: float
+    last_event_at: float
+    status: str
+    interrupt_requested: bool
+    active_agent_session_id: Optional[str]
+    phase: str
+    stream_text: str = ""
+    stream_revision: int = 0
+
+
+_web_active_turns: dict[str, WebActiveTurn] = {}
 
 _EVENT_QUEUE_SIZE = 512
 _PRIORITY_EVENT_TOPICS = {
@@ -105,6 +120,131 @@ _DROPPABLE_EVENT_TOPICS = {
     "chat.tool_end",
 }
 _event_drop_counts: dict[str, int] = {}
+
+
+def _resolve_web_turn_ids(session_id: Optional[str]) -> dict[str, Optional[str]]:
+    """Resolve a user-facing session id to the latest active conversation leaf."""
+    if not session_id:
+        return {"requested": session_id, "resolved": session_id, "latest": session_id}
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            resolved = db.resolve_session_id(session_id) or session_id
+            latest = db.resolve_latest_descendant(resolved) if resolved else resolved
+            return {"requested": session_id, "resolved": resolved, "latest": latest or resolved}
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("web turn id resolution failed session=%s", session_id, exc_info=True)
+        return {"requested": session_id, "resolved": session_id, "latest": session_id}
+
+
+def _web_turn_candidates(session_id: Optional[str]) -> set[str]:
+    ids = _resolve_web_turn_ids(session_id)
+    return {str(v) for v in ids.values() if v}
+
+
+def _web_turn_key(session_id: str) -> str:
+    ids = _resolve_web_turn_ids(session_id)
+    return str(ids.get("latest") or ids.get("resolved") or session_id)
+
+
+def _mark_web_turn_active(
+    session_id: str,
+    *,
+    status: str = "Starting…",
+    phase: str = "starting",
+    active_agent_session_id: Optional[str] = None,
+) -> WebActiveTurn:
+    key = _web_turn_key(session_id)
+    now = time.time()
+    turn = WebActiveTurn(
+        started_at=now,
+        last_event_at=now,
+        status=status,
+        interrupt_requested=False,
+        active_agent_session_id=active_agent_session_id,
+        phase=phase,
+    )
+    _web_active_turns[key] = turn
+    return turn
+
+
+def _touch_web_turn(
+    session_id: Optional[str],
+    *,
+    status: Optional[str] = None,
+    phase: Optional[str] = None,
+    interrupt_requested: Optional[bool] = None,
+    active_agent_session_id: Optional[str] = None,
+) -> None:
+    if not session_id:
+        return
+    for candidate in _web_turn_candidates(session_id):
+        turn = _web_active_turns.get(candidate)
+        if not turn:
+            continue
+        turn.last_event_at = time.time()
+        if status is not None:
+            turn.status = status
+        if phase is not None:
+            turn.phase = phase
+        if interrupt_requested is not None:
+            turn.interrupt_requested = interrupt_requested
+        if active_agent_session_id is not None:
+            turn.active_agent_session_id = active_agent_session_id
+        return
+
+
+def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
+    if not session_id or not token:
+        return
+    for candidate in _web_turn_candidates(session_id):
+        turn = _web_active_turns.get(candidate)
+        if not turn:
+            continue
+        turn.last_event_at = time.time()
+        turn.phase = "streaming"
+        turn.stream_text += token
+        turn.stream_revision += 1
+        return
+
+
+def _clear_web_turn(session_id: str) -> None:
+    for candidate in _web_turn_candidates(session_id):
+        _web_active_turns.pop(candidate, None)
+
+
+def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTurn]]:
+    for candidate in _web_turn_candidates(session_id):
+        turn = _web_active_turns.get(candidate)
+        if turn:
+            return candidate, turn
+    return None, None
+
+
+def _is_web_turn_active(session_id: Optional[str]) -> bool:
+    if not session_id:
+        return False
+    return _get_web_turn(session_id)[1] is not None
+
+
+def _get_web_agent_for_turn(session_id: str) -> tuple[Optional[str], Any]:
+    ids = _resolve_web_turn_ids(session_id)
+    candidates = [
+        ids.get("latest"),
+        ids.get("resolved"),
+        ids.get("requested"),
+    ]
+    for candidate in candidates:
+        if candidate and candidate in _web_agents:
+            return candidate, _web_agents[candidate]
+    _, turn = _get_web_turn(session_id)
+    if turn and turn.active_agent_session_id and turn.active_agent_session_id in _web_agents:
+        return turn.active_agent_session_id, _web_agents[turn.active_agent_session_id]
+    return None, None
 
 
 @asynccontextmanager
@@ -191,7 +331,7 @@ async def _lifespan(_app: FastAPI):
             _log.debug("desktop gateway shutdown skipped", exc_info=True)
         _web_event_loop = None
         _event_subscribers.clear()
-        _web_streaming.clear()
+        _web_active_turns.clear()
         _web_queues.clear()
 
 
@@ -1731,7 +1871,7 @@ async def diagnostics_webview(
         except Exception:
             _log.debug("diagnostic session resolution failed session=%s", active_session_id, exc_info=True)
 
-    active_turn = any((sid in _web_streaming) for sid in candidates if sid)
+    active_turn = any(_is_web_turn_active(sid) for sid in candidates if sid)
     return {
         "ok": True,
         "sidecar_pid": os.getpid(),
@@ -2594,7 +2734,7 @@ async def update_config(body: ConfigUpdate):
     try:
         save_config(_denormalize_config_from_web(body.config))
         for sid in list(_web_agents.keys()):
-            if sid not in _web_streaming:
+            if not _is_web_turn_active(sid):
                 _close_web_agent(sid)
         return {"ok": True}
     except Exception:
@@ -3831,7 +3971,7 @@ async def delete_session_endpoint(session_id: str):
             raise HTTPException(status_code=404, detail="Session not found")
         _close_web_agent(session_id)
         _web_queues.pop(session_id, None)
-        _web_streaming.discard(session_id)
+        _clear_web_turn(session_id)
         unregister_gateway_notify(session_id)
         _emit_sessions_changed("deleted", session_id)
         return {"ok": True}
@@ -4188,7 +4328,7 @@ async def update_config_raw(body: RawConfigUpdate):
             raise HTTPException(status_code=400, detail="YAML must be a mapping")
         save_config(parsed)
         for sid in list(_web_agents.keys()):
-            if sid not in _web_streaming:
+            if not _is_web_turn_active(sid):
                 _close_web_agent(sid)
         return {"ok": True}
     except yaml.YAMLError as e:
@@ -4342,6 +4482,16 @@ class ConversationApprovalBody(BaseModel):
     resolve_all: bool = False
 
 
+def _publish_web_status(session_id: str, kind: str, message: str, *, phase: Optional[str] = None) -> None:
+    text = _truncate_str(message, 2000)
+    _touch_web_turn(session_id, status=text, phase=phase or str(kind or "status"))
+    _publish_event(
+        "chat.status",
+        {"kind": kind, "message": text},
+        session_id,
+    )
+
+
 def _make_web_chat_callbacks(
     session_id: str,
     queue: asyncio.Queue,
@@ -4350,10 +4500,15 @@ def _make_web_chat_callbacks(
     # Mutable holder so the migrate callback can switch the channel that
     # subsequent events publish on after a compression-driven session split.
     current_session_id = [session_id]
+    tool_started_monotonic: dict[str, float] = {}
+
+    def publish_status(kind: str, message: str, *, phase: Optional[str] = None) -> None:
+        _publish_web_status(current_session_id[0], kind, message, phase=phase)
 
     def token_callback(token: Optional[str]) -> None:
         if token is None:
             return
+        _append_web_turn_token(current_session_id[0], token)
         try:
             loop.call_soon_threadsafe(queue.put_nowait, token)
         except Exception:
@@ -4361,13 +4516,20 @@ def _make_web_chat_callbacks(
         _publish_event("chat.token", {"t": token}, current_session_id[0])
 
     def tool_start_callback(tid: str, name: str, args: Any) -> None:
+        started_at = time.time()
+        tool_started_monotonic[tid] = time.monotonic()
+        publish_status("tool_running", f"Tool running: {name}", phase="tool")
         _publish_event(
             "chat.tool_start",
-            {"id": tid, "name": name, "args": _json_safe(args), "ts": time.time()},
+            {"id": tid, "name": name, "args": _json_safe(args), "ts": started_at, "started_at": started_at},
             current_session_id[0],
         )
 
     def tool_complete_callback(tid: str, name: str, args: Any, result: Any) -> None:
+        ended_at = time.time()
+        started = tool_started_monotonic.pop(tid, None)
+        duration_seconds = max(0.0, time.monotonic() - started) if started is not None else None
+        publish_status("tool_finished", f"Tool finished: {name}", phase="streaming")
         _publish_event(
             "chat.tool_end",
             {
@@ -4375,20 +4537,19 @@ def _make_web_chat_callbacks(
                 "name": name,
                 "args": _json_safe(args),
                 **_tool_result_preview(result),
-                "ts": time.time(),
+                "ts": ended_at,
+                "ended_at": ended_at,
+                **({"duration_seconds": duration_seconds} if duration_seconds is not None else {}),
             },
             current_session_id[0],
         )
 
     def reasoning_callback(text: str) -> None:
+        _touch_web_turn(current_session_id[0], phase="reasoning")
         _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, current_session_id[0])
 
     def status_callback(kind: str, message: str) -> None:
-        _publish_event(
-            "chat.status",
-            {"kind": kind, "message": _truncate_str(message, 2000)},
-            current_session_id[0],
-        )
+        publish_status(kind, message)
 
     def session_migrated_callback(old_id: str, new_id: str, reason: str) -> None:
         # Publish the migration event on the OLD channel so listeners pinned
@@ -4396,12 +4557,24 @@ def _make_web_chat_callbacks(
         # all subsequent events flow on the NEW channel — otherwise the UI
         # would update activeSessionRef to new_id and then drop every
         # following event because the filter would no longer match.
+        old_key, turn = _get_web_turn(old_id)
+        if old_key and turn:
+            _web_active_turns.pop(old_key, None)
+            turn.last_event_at = time.time()
+            turn.phase = "streaming"
+            turn.status = "Context compressed; continuing…"
+            turn.active_agent_session_id = new_id
+            _web_active_turns[new_id] = turn
+        if old_id in _web_agents and new_id not in _web_agents:
+            _web_agents[new_id] = _web_agents[old_id]
+            _web_agent_signatures[new_id] = _web_agent_signatures.get(old_id)
         _publish_event(
             "chat.session_migrated",
             {"old_session_id": old_id, "new_session_id": new_id, "reason": reason},
             current_session_id[0],
         )
         current_session_id[0] = new_id
+        publish_status("context_compression", "Context compressed; continuing…", phase="streaming")
 
     return (
         token_callback,
@@ -4445,6 +4618,7 @@ def _turn_done_payload(
         "message_count": _session_message_count(session_id) if session_id else 0,
         "interrupted": interrupted,
         "migrated_session_id": migrated_session_id,
+        "backend_error_class": None,
     }
     if session_id:
         payload.update(_last_assistant_message_info(session_id))
@@ -4460,6 +4634,7 @@ def _turn_done_payload(
             },
             "cost_usd": result.get("estimated_cost_usd"),
             "model": result.get("model"),
+            "backend_error_class": result.get("backend_error_class"),
         }
     )
     return payload
@@ -5122,6 +5297,7 @@ def _run_web_agent_turn(
     _refresh_web_agent_for_computer_use(agent, user_message)
 
     user_message = _inject_brief_if_present(agent.session_id, user_message)
+    user_message = _with_long_document_delivery_instruction(user_message)
 
     tok = set_current_session_key(agent.session_id)
     try:
@@ -5346,6 +5522,121 @@ def _extract_final_response(result: Any) -> str:
     return ""
 
 
+_LONG_ASSISTANT_ARTIFACT_CHARS = 20_000
+_REPORT_ARTIFACT_CHARS = 6_000
+_LONG_DOCUMENT_REQUEST_RE = re.compile(
+    r"\b("
+    r"markdown\s+report|comprehensive\s+(?:markdown\s+)?report|"
+    r"long\s+and\s+structured|white\s*paper|whitepaper|"
+    r"write\s+(?:a\s+)?(?:comprehensive\s+|long\s+)?(?:report|document|guide)|"
+    r"generate\s+(?:a\s+)?(?:comprehensive\s+|long\s+)?(?:report|document|guide)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_long_document_request(message: str) -> bool:
+    return bool(_LONG_DOCUMENT_REQUEST_RE.search(message or ""))
+
+
+def _with_long_document_delivery_instruction(message: str) -> str:
+    """Nudge report-like web turns toward file artifacts instead of huge chat rows."""
+    if not _looks_like_long_document_request(message):
+        return message
+    if "Spark delivery instruction" in message:
+        return message
+    return (
+        f"{message}\n\n"
+        "[Spark delivery instruction: If this request needs a long markdown report, "
+        "document, guide, or other large structured output, do not stream the full "
+        "document inline in chat. Keep the chat response brief, create the full "
+        "markdown as a workspace file using available file-writing tools, and give "
+        "the user the file path/link. The chat response should summarize what was "
+        "created rather than contain the entire report.]"
+    )
+
+
+def _safe_artifact_filename(text: str, fallback: str = "assistant-response") -> str:
+    title = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            title = stripped.lstrip("#").strip()
+            break
+    if not title:
+        title = text.strip().splitlines()[0] if text.strip() else fallback
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", title.lower()).strip("-")
+    return (slug or fallback)[:72].strip("-") or fallback
+
+
+def _write_chat_markdown_artifact(session_id: str, content: str) -> tuple[Path, str, str]:
+    workspace_root = get_spark_home() / "workspace"
+    safe_session = re.sub(r"[^a-zA-Z0-9_.-]+", "-", session_id).strip("-") or "session"
+    artifact_dir = workspace_root / "chat-artifacts" / safe_session
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    base = _safe_artifact_filename(content)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = artifact_dir / f"{stamp}-{base}.md"
+    counter = 2
+    while path.exists():
+        path = artifact_dir / f"{stamp}-{base}-{counter}.md"
+        counter += 1
+    path.write_text(content, encoding="utf-8")
+
+    rel_path = path.relative_to(workspace_root).as_posix()
+    media_url = f"/api/media?path={urllib.parse.quote(str(path))}"
+    return path, rel_path, media_url
+
+
+def _assistant_artifact_card(content: str, rel_path: str, media_url: str) -> str:
+    return (
+        "I created the full markdown response as a file instead of placing a very "
+        "large document inline in chat.\n\n"
+        f"[Open the markdown file]({media_url})\n\n"
+        f"`{rel_path}`\n\n"
+        f"Saved {len(content):,} characters to the file. No content was hidden or discarded."
+    )
+
+
+def _maybe_materialize_large_assistant_response(
+    session_id: str,
+    user_message: str,
+    final_response: str,
+) -> str:
+    if not final_response:
+        return final_response
+    should_artifact = len(final_response) >= _LONG_ASSISTANT_ARTIFACT_CHARS
+    if not should_artifact and _looks_like_long_document_request(user_message):
+        should_artifact = len(final_response) >= _REPORT_ARTIFACT_CHARS
+    if not should_artifact:
+        return final_response
+    try:
+        _path, rel_path, media_url = _write_chat_markdown_artifact(session_id, final_response)
+        return _assistant_artifact_card(final_response, rel_path, media_url)
+    except Exception:
+        _log.debug("assistant artifact materialization failed session=%s", session_id, exc_info=True)
+        return final_response
+
+
+def _replace_message_content(message_id: Any, content: str, db: Any = None) -> None:
+    try:
+        if db is not None:
+            db._conn.execute("UPDATE messages SET content = ? WHERE id = ?", (content, message_id))
+            db._conn.commit()
+            return
+        from core.spark_state import SessionDB
+
+        owned_db = SessionDB()
+        try:
+            owned_db._conn.execute("UPDATE messages SET content = ? WHERE id = ?", (content, message_id))
+            owned_db._conn.commit()
+        finally:
+            owned_db.close()
+    except Exception:
+        _log.debug("assistant message replacement failed message_id=%s", message_id, exc_info=True)
+
+
 def _strip_user_message_prefix(session_id: str, prefix: str, raw_message: str) -> None:
     """After the agent saves a user message with a context prefix, replace it with the clean version."""
     try:
@@ -5382,23 +5673,54 @@ def _persist_web_turn_if_missing(
         db = SessionDB()
         try:
             messages = db.get_messages(session_id)
-            final_response = _extract_final_response(result).strip()
+            final_response = _extract_final_response(result)
+
+            display_response = (
+                _maybe_materialize_large_assistant_response(
+                    session_id,
+                    user_message,
+                    final_response,
+                )
+                if final_response.strip()
+                else ""
+            )
 
             new_messages = messages[before_message_count:]
-            has_user = any(
-                m.get("role") == "user" and m.get("content") == user_message
-                for m in new_messages
+            user_messages = [m for m in new_messages if m.get("role") == "user"]
+            delivery_instruction_user_messages = [
+                m
+                for m in user_messages
+                if "Spark delivery instruction" in str(m.get("content") or "")
+                and user_message in str(m.get("content") or "")
+            ]
+            has_user = any(m.get("content") == user_message for m in user_messages) or bool(
+                delivery_instruction_user_messages
             )
-            has_assistant = any(
-                m.get("role") == "assistant" and str(m.get("content") or "").strip()
+            for message in delivery_instruction_user_messages:
+                _replace_message_content(message.get("id"), user_message, db)
+
+            assistant_messages = [
+                m
                 for m in new_messages
-            )
+                if m.get("role") == "assistant" and str(m.get("content") or "").strip()
+            ]
+            has_assistant = bool(assistant_messages)
+
+            if display_response and display_response != final_response and assistant_messages:
+                latest = assistant_messages[-1]
+                current = str(latest.get("content") or "").strip()
+                if (
+                    current == final_response
+                    or current == final_response.strip()
+                    or len(current) >= _REPORT_ARTIFACT_CHARS
+                ):
+                    _replace_message_content(latest.get("id"), display_response, db)
 
             if not has_user:
                 db.append_message(session_id, "user", content=user_message)
-            if final_response:
+            if display_response:
                 if not has_assistant:
-                    db.append_message(session_id, "assistant", content=final_response)
+                    db.append_message(session_id, "assistant", content=display_response)
         finally:
             db.close()
     except Exception:
@@ -5977,34 +6299,39 @@ async def create_conversation(body: ConversationCreate):
     _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
+        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
 
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
-        _web_streaming.add(session_id)
+        _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
         before_message_count = _session_message_count(session_id)
         result = None
         try:
             slash_text = _execute_web_slash_command(session_id, message)
             if slash_text is not None:
+                _publish_web_status(session_id, "slash_command", "Running slash command…", phase="streaming")
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
                 _items = validated_items
+                _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 result = await loop.run_in_executor(
                     None, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
-        except Exception:
+        except Exception as exc:
             _log.exception("Web chat agent error session=%s", session_id)
+            result = {"backend_error_class": type(exc).__name__}
         finally:
-            _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
             _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
+            _clear_web_turn(session_id)
 
+    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
 
@@ -6089,59 +6416,78 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
+        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
 
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
-        _web_streaming.add(session_id)
+        _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
         before_message_count = _session_message_count(session_id)
         result = None
         try:
             slash_text = _execute_web_slash_command(session_id, message)
             if slash_text is not None:
+                _publish_web_status(session_id, "slash_command", "Running slash command…", phase="streaming")
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
                 _items = validated_items
+                _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 result = await loop.run_in_executor(
                     None, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
                 )
-        except Exception:
+        except Exception as exc:
             _log.exception("Web chat follow-up error session=%s", session_id)
+            result = {"backend_error_class": type(exc).__name__}
         finally:
-            _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
             _persist_web_turn_if_missing(session_id, message, result, before_message_count)
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
+            _clear_web_turn(session_id)
 
+    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
 
 
 @app.post("/api/conversations/{session_id}/interrupt")
 async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
-    agent = _web_agents.get(session_id)
+    agent_session_id, agent = _get_web_agent_for_turn(session_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Session not in active memory.")
     try:
+        phase = "redirecting" if body.message else "stopping"
+        status = "Redirecting…" if body.message else "Stopping…"
+        _touch_web_turn(
+            agent_session_id or session_id,
+            status=status,
+            phase=phase,
+            interrupt_requested=True,
+            active_agent_session_id=agent_session_id,
+        )
         agent.interrupt(body.message)
-        _persist_interrupted_turn_boundary(session_id, body.message)
+        _persist_interrupted_turn_boundary(agent_session_id or session_id, body.message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     _publish_event(
-        "chat.interrupted",
-        {"message": body.message or ""},
-        session_id,
+        "chat.status",
+        {"kind": "interrupt_requested", "message": status},
+        agent_session_id or session_id,
     )
-    return {"ok": True, "session_id": session_id}
+    _publish_event(
+        "chat.interrupted",
+        {"message": body.message or "", "interrupt_requested": True, "phase": phase},
+        agent_session_id or session_id,
+    )
+    return {"ok": True, "session_id": agent_session_id or session_id}
 
 
 @app.post("/api/conversations/{session_id}/model")
 async def switch_conversation_model(session_id: str, body: ConversationModelBody):
-    if session_id in _web_streaming:
+    if _is_web_turn_active(session_id):
         raise HTTPException(
             status_code=409, detail="Cannot switch model while a turn is running."
         )
@@ -6166,7 +6512,7 @@ async def switch_conversation_model(session_id: str, body: ConversationModelBody
 
     write_model_switch_result(result)
     for sid in list(_web_agents.keys()):
-        if sid not in _web_streaming:
+        if not _is_web_turn_active(sid):
             _close_web_agent(sid)
     _update_web_session_model(session_id, result.new_model)
     _publish_event("chat.model_changed", {"model": result.new_model}, session_id)
@@ -6393,8 +6739,8 @@ async def summarize_file(body: SummarizeFileRequest):
 async def retry_conversation(session_id: str, body: ConversationRetryBody):
     from tools.approval import register_gateway_notify, unregister_gateway_notify
 
-    agent = _web_agents.get(session_id)
-    if session_id in _web_streaming:
+    agent_session_id, agent = _get_web_agent_for_turn(session_id)
+    if _is_web_turn_active(session_id):
         raise HTTPException(status_code=409, detail="A turn is already running.")
 
     from core.spark_state import SessionDB
@@ -6404,6 +6750,8 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
+        sid = db.resolve_latest_descendant(sid)
+        session_id = sid
         msgs = db.get_messages(sid)
         idx = body.message_index
         if idx < 0 or idx >= len(msgs):
@@ -6463,7 +6811,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         session_migrated_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
     turn_route = _resolve_web_turn_route(user_msg)
-    if agent and _web_agent_signatures.get(session_id) == turn_route["signature"]:
+    if agent and _web_agent_signatures.get(agent_session_id or session_id) == turn_route["signature"]:
         agent.stream_delta_callback = token_callback
         agent.tool_start_callback = tool_start_callback
         agent.tool_complete_callback = tool_complete_callback
@@ -6488,25 +6836,29 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
     _update_web_session_model(session_id, turn_route["model"])
 
     def _gw_notify(data: dict) -> None:
+        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
 
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
-        _web_streaming.add(session_id)
+        _touch_web_turn(session_id, status="Retrying…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
         result = None
         try:
+            _publish_web_status(session_id, "api_call_started", "Retrying model call…", phase="api")
             result = await loop.run_in_executor(
                 None,
                 lambda: _run_web_agent_turn(agent, user_msg, conv_hist),
             )
-        except Exception:
+        except Exception as exc:
             _log.exception("Web chat retry error session=%s", session_id)
+            result = {"backend_error_class": type(exc).__name__}
         finally:
-            _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
+            _clear_web_turn(session_id)
 
+    _mark_web_turn_active(session_id, status="Retrying…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
     return {"ok": True, "session_id": session_id}
 
@@ -6555,25 +6907,59 @@ async def conversation_turn_status(session_id: str):
     """Report whether an agent turn is currently active for this session.
 
     Lightweight source of truth the UI can poll to recover from a lost
-    ``chat.turn_done`` event (e.g. the SSE bus dropped mid-turn). A turn is
-    active iff the session or its resolved leaf descendant is present in
-    ``_web_streaming``.
+    ``chat.turn_done`` event (e.g. the SSE bus dropped mid-turn).
     """
-    from core.spark_state import SessionDB
+    ids = _resolve_web_turn_ids(session_id)
+    active_key, turn = _get_web_turn(session_id)
+    payload: dict[str, Any] = {
+        "session_id": ids.get("requested") or session_id,
+        "resolved_session_id": ids.get("resolved") or session_id,
+        "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
+        "active_turn_session_id": active_key,
+        "turn_active": turn is not None,
+        "status": None,
+        "phase": "idle",
+        "started_at": None,
+        "last_event_at": None,
+        "interrupt_requested": False,
+        "active_agent_session_id": None,
+    }
+    if turn:
+        payload.update(
+            {
+                "started_at": turn.started_at,
+                "last_event_at": turn.last_event_at,
+                "status": turn.status,
+                "interrupt_requested": turn.interrupt_requested,
+                "active_agent_session_id": turn.active_agent_session_id,
+                "phase": turn.phase,
+                "stream_revision": turn.stream_revision,
+                "stream_text_chars": len(turn.stream_text),
+            }
+        )
+    return payload
 
-    candidates = {session_id}
-    try:
-        db = SessionDB()
-        sid = db.resolve_session_id(session_id)
-        if sid:
-            candidates.add(sid)
-            candidates.add(db.resolve_latest_descendant(sid))
-    except Exception:
-        # Best-effort: fall back to the raw id if resolution fails.
-        pass
 
-    active = any((c in _web_streaming) for c in candidates if c)
-    return {"session_id": session_id, "turn_active": active}
+@app.get("/api/conversations/{session_id}/stream-snapshot")
+async def conversation_stream_snapshot(session_id: str):
+    """Return the accumulated in-flight assistant text for recovery.
+
+    Token SSE events are intentionally droppable under backpressure.  The UI
+    calls this heavier endpoint only during stall/reconnect recovery so it can
+    patch a partial assistant bubble without waiting for final persistence.
+    """
+    ids = _resolve_web_turn_ids(session_id)
+    active_key, turn = _get_web_turn(session_id)
+    return {
+        "session_id": ids.get("requested") or session_id,
+        "resolved_session_id": ids.get("resolved") or session_id,
+        "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
+        "active_turn_session_id": active_key,
+        "turn_active": turn is not None,
+        "stream_text": turn.stream_text if turn else "",
+        "stream_revision": turn.stream_revision if turn else 0,
+        "stream_text_chars": len(turn.stream_text) if turn else 0,
+    }
 
 
 @app.get("/api/conversations/{session_id}/stream")
@@ -6777,30 +7163,33 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
+        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
 
     raw_message = body.message
 
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
-        _web_streaming.add(session_id)
+        _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
         before_message_count = _session_message_count(session_id)
         result = None
         slash_text = None
         try:
             slash_text = _execute_web_slash_command(session_id, raw_message)
             if slash_text is not None:
+                _publish_web_status(session_id, "slash_command", "Running slash command…", phase="streaming")
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
                 _items = validated_items
+                _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 result = await loop.run_in_executor(
                     None, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
-        except Exception:
+        except Exception as exc:
             _log.exception("Workspace chat agent error session=%s slug=%s", session_id, slug)
+            result = {"backend_error_class": type(exc).__name__}
         finally:
-            _web_streaming.discard(session_id)
             unregister_gateway_notify(session_id)
             _strip_user_message_prefix(session_id, context_prefix, raw_message)
             _persist_web_turn_if_missing(session_id, raw_message, result, before_message_count)
@@ -6814,7 +7203,9 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
+            _clear_web_turn(session_id)
 
+    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True, "source": source}
 

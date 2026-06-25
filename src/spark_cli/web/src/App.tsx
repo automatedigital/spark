@@ -407,6 +407,7 @@ function AppShell() {
     const handler = (event: Event) => {
       const target = (event as CustomEvent<GlobalNavTarget>).detail;
       if (target?.type === "canvas") navigateTo("canvas");
+      if (target?.type === "file") navigateTo("files");
       // Thread/project targets are consumed by the session store; make sure
       // the chat page is visible so the selection shows up.
       if (target?.type === "thread" || target?.type === "project") navigateTo("chat");

@@ -74,6 +74,27 @@ def _connection_error():
     )
 
 
+class FakeCodexResponseStream:
+    def __init__(self, events, final_response):
+        self._events = list(events)
+        self._final_response = final_response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def __iter__(self):
+        for delay, event in self._events:
+            if delay:
+                threading.Event().wait(delay)
+            yield event
+
+    def get_final_response(self):
+        return self._final_response
+
+
 def test_retry_after_api_connection_error_recreates_request_client(monkeypatch):
     first_request = FakeRequestClient(lambda **kwargs: (_ for _ in ()).throw(_connection_error()))
     second_request = FakeRequestClient(lambda **kwargs: {"ok": True})
@@ -110,6 +131,79 @@ def test_closed_shared_client_is_recreated_before_request(monkeypatch):
     assert stale_shared.close_calls >= 1
     assert replacement_shared.close_calls == 0
     assert len(factory.calls) == 2
+
+
+def test_web_non_streaming_call_emits_provider_wait_status(monkeypatch):
+    done = threading.Event()
+
+    def slow_responder(**kwargs):
+        done.wait(timeout=6.5)
+        return {"ok": True}
+
+    request_client = FakeRequestClient(slow_responder)
+    factory = OpenAIFactory([request_client])
+    monkeypatch.setattr(run_agent, "OpenAI", factory)
+
+    agent = _build_agent()
+    agent.platform = "web"
+    statuses = []
+    agent.status_callback = lambda event, message: statuses.append((event, message))
+
+    result = agent._interruptible_api_call({"model": agent.model, "messages": []})
+
+    assert result == {"ok": True}
+    assert any(
+        event == "lifecycle" and "Waiting for provider response" in message
+        for event, message in statuses
+    )
+
+
+def test_codex_stream_progress_prevents_outer_stale_timeout(monkeypatch):
+    events = [
+        (
+            0.12,
+            SimpleNamespace(type="response.output_text.delta", delta="hello "),
+        ),
+        (
+            0.12,
+            SimpleNamespace(type="response.output_text.delta", delta="world"),
+        ),
+        (
+            0.12,
+            SimpleNamespace(type="response.completed", response=None),
+        ),
+    ]
+    final_response = SimpleNamespace(
+        output=[
+            SimpleNamespace(
+                type="message",
+                role="assistant",
+                status="completed",
+                content=[SimpleNamespace(type="output_text", text="hello world")],
+            )
+        ],
+        status="completed",
+        model="gpt-5-codex",
+    )
+    request_client = FakeRequestClient(lambda **kwargs: (_ for _ in ()).throw(AssertionError("chat completions unused")))
+    request_client.responses = SimpleNamespace(
+        stream=lambda **kwargs: FakeCodexResponseStream(events, final_response)
+    )
+    factory = OpenAIFactory([request_client])
+    monkeypatch.setattr(run_agent, "OpenAI", factory)
+    monkeypatch.setenv("SPARK_API_CALL_STALE_TIMEOUT", "0.2")
+
+    streamed = []
+    agent = _build_agent()
+    agent.api_mode = "codex_responses"
+    agent.platform = "web"
+    agent.stream_delta_callback = streamed.append
+
+    response = agent._interruptible_api_call({"model": agent.model, "messages": []})
+
+    assert response is final_response
+    assert "".join(streamed) == "hello world"
+    assert request_client.close_calls >= 1
 
 
 def test_concurrent_requests_do_not_break_each_other_when_one_client_closes(monkeypatch):

@@ -60,10 +60,13 @@ def build_tool_output(name: str) -> str:
     return "\n".join(lines)
 
 
-def seed(session_id: str) -> None:
+def seed(session_id: str, history_turns: int = 0) -> None:
     db = SessionDB()
     try:
         db.create_session(session_id, source="web", model="synthetic/heavy")
+        for i in range(history_turns):
+            db.append_message(session_id, "user", content=f"Earlier synthetic prompt {i}")
+            db.append_message(session_id, "assistant", content=f"Earlier synthetic answer {i}")
         db.append_message(session_id, "user", content="Create a renderer stress-test response.")
         db.append_message(
             session_id,
@@ -93,8 +96,14 @@ def seed(session_id: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session-id", default="synthetic_heavy_web_session")
+    parser.add_argument(
+        "--history-turns",
+        type=int,
+        default=0,
+        help="Add this many earlier user/assistant turns so the UI can exercise prepending history.",
+    )
     args = parser.parse_args()
-    seed(args.session_id)
+    seed(args.session_id, max(0, args.history_turns))
     print(args.session_id)
 
 

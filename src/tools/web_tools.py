@@ -45,6 +45,8 @@ import logging
 import os
 import re
 import asyncio
+from html.parser import HTMLParser
+from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 import httpx
 try:
@@ -282,7 +284,7 @@ def _tavily_request(endpoint: str, payload: dict) -> dict:
     payload["api_key"] = api_key
     url = f"{_TAVILY_BASE_URL}/{endpoint.lstrip('/')}"
     logger.info("Tavily %s request to %s", endpoint, url)
-    response = httpx.post(url, json=payload, timeout=60)
+    response = httpx.post(url, json=payload, timeout=_web_http_timeout())
     response.raise_for_status()
     return response.json()
 
@@ -425,6 +427,211 @@ def _extract_scrape_payload(scrape_result: Any) -> Dict[str, Any]:
 
 
 DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION = 5000
+DEFAULT_FAST_EXTRACT_MAX_CHARS_PER_PAGE = 12_000
+DEFAULT_WEB_HTTP_TIMEOUT_SECONDS = 20
+DEFAULT_FAST_FETCH_TIMEOUT_SECONDS = 6
+DEFAULT_FAST_FETCH_MIN_CHARS = 300
+
+
+def _env_int(name: str, default: int, *, min_value: int = 1, max_value: int = 300) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(min_value, min(max_value, value))
+
+
+def _web_http_timeout() -> int:
+    return _env_int("WEB_TOOLS_HTTP_TIMEOUT", DEFAULT_WEB_HTTP_TIMEOUT_SECONDS, min_value=3, max_value=120)
+
+
+def _web_extract_scrape_timeout() -> int:
+    return _env_int("WEB_EXTRACT_SCRAPE_TIMEOUT", _web_http_timeout(), min_value=3, max_value=120)
+
+
+def _web_extract_concurrency() -> int:
+    return _env_int("WEB_EXTRACT_CONCURRENCY", 4, min_value=1, max_value=8)
+
+
+def _web_extract_fast_max_chars_per_page() -> int:
+    return _env_int(
+        "WEB_EXTRACT_FAST_MAX_CHARS_PER_PAGE",
+        DEFAULT_FAST_EXTRACT_MAX_CHARS_PER_PAGE,
+        min_value=1_000,
+        max_value=100_000,
+    )
+
+
+def _web_extract_fast_fetch_enabled() -> bool:
+    return os.getenv("WEB_EXTRACT_FAST_FETCH", "true").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _web_extract_fast_fetch_timeout() -> int:
+    return _env_int("WEB_EXTRACT_FAST_FETCH_TIMEOUT", DEFAULT_FAST_FETCH_TIMEOUT_SECONDS, min_value=2, max_value=30)
+
+
+def _web_extract_fast_fetch_min_chars() -> int:
+    return _env_int("WEB_EXTRACT_FAST_FETCH_MIN_CHARS", DEFAULT_FAST_FETCH_MIN_CHARS, min_value=50, max_value=5_000)
+
+
+class _FastHTMLTextExtractor(HTMLParser):
+    """Small dependency-free HTML to readable text extractor for fast web_extract."""
+
+    _BLOCK_TAGS = {
+        "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt",
+        "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header",
+        "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table", "tbody", "td",
+        "tfoot", "th", "thead", "tr", "ul",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._skip_depth = 0
+        self._title_depth = 0
+        self._title_parts: List[str] = []
+        self._parts: List[str] = []
+
+    @property
+    def title(self) -> str:
+        return _normalize_extracted_text(" ".join(self._title_parts), max_newlines=1)
+
+    def text(self) -> str:
+        return _normalize_extracted_text(" ".join(self._parts))
+
+    def handle_starttag(self, tag: str, attrs: List[tuple[str, Optional[str]]]) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "svg", "canvas"}:
+            self._skip_depth += 1
+            return
+        if tag == "title":
+            self._title_depth += 1
+            return
+        if self._skip_depth:
+            return
+        if tag == "li":
+            self._parts.append("\n- ")
+        elif tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "svg", "canvas"} and self._skip_depth:
+            self._skip_depth -= 1
+            return
+        if tag == "title" and self._title_depth:
+            self._title_depth -= 1
+            return
+        if not self._skip_depth and tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._title_depth:
+            self._title_parts.append(data)
+            return
+        if not self._skip_depth:
+            self._parts.append(data)
+
+
+def _normalize_extracted_text(text: str, *, max_newlines: int = 2) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [" ".join(line.split()) for line in text.split("\n")]
+    normalized = "\n".join(line for line in lines if line)
+    if max_newlines > 0:
+        normalized = re.sub(r"\n{%d,}" % (max_newlines + 1), "\n" * max_newlines, normalized)
+    return normalized.strip()
+
+
+def _looks_like_pdf_url(url: str) -> bool:
+    try:
+        return urlparse(url).path.lower().endswith(".pdf")
+    except Exception:
+        return False
+
+
+def _html_to_fast_markdown(html: str) -> tuple[str, str]:
+    parser = _FastHTMLTextExtractor()
+    parser.feed(html)
+    parser.close()
+    title = parser.title
+    if len(title) > 180:
+        title = title[:177].rstrip() + "..."
+    return parser.text(), title
+
+
+async def _fast_fetch_extract_one(url: str, format: Optional[str] = None) -> Dict[str, Any]:
+    if _looks_like_pdf_url(url):
+        return {"url": url, "title": "", "content": "", "raw_content": "", "error": "fast_fetch_skipped_pdf"}
+
+    blocked = check_website_access(url)
+    if blocked:
+        return {
+            "url": url,
+            "title": "",
+            "content": "",
+            "raw_content": "",
+            "error": blocked["message"],
+            "blocked_by_policy": {"host": blocked["host"], "rule": blocked["rule"], "source": blocked["source"]},
+        }
+
+    timeout = _web_extract_fast_fetch_timeout()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; SparkAgent/1.0; +https://github.com)",
+        "Accept": "text/html, text/plain, application/xhtml+xml;q=0.9, */*;q=0.5",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+    except Exception as exc:
+        return {"url": url, "title": "", "content": "", "raw_content": "", "error": f"fast_fetch_failed: {exc}"}
+
+    final_url = str(response.url)
+    final_blocked = check_website_access(final_url)
+    if final_blocked:
+        return {
+            "url": final_url,
+            "title": "",
+            "content": "",
+            "raw_content": "",
+            "error": final_blocked["message"],
+            "blocked_by_policy": {"host": final_blocked["host"], "rule": final_blocked["rule"], "source": final_blocked["source"]},
+        }
+
+    content_type = response.headers.get("content-type", "").lower()
+    if "pdf" in content_type or "octet-stream" in content_type:
+        return {"url": final_url, "title": "", "content": "", "raw_content": "", "error": "fast_fetch_skipped_binary"}
+
+    raw_text = response.text or ""
+    title = ""
+    if "html" in content_type or "<html" in raw_text[:500].lower() or "<!doctype html" in raw_text[:500].lower():
+        text, title = _html_to_fast_markdown(raw_text)
+    else:
+        text = _normalize_extracted_text(raw_text)
+
+    if len(text) < _web_extract_fast_fetch_min_chars():
+        return {"url": final_url, "title": title, "content": "", "raw_content": "", "error": "fast_fetch_too_little_content"}
+
+    return {
+        "url": final_url,
+        "title": title,
+        "content": text,
+        "raw_content": text,
+        "metadata": {"sourceURL": final_url, "title": title, "extractor": "fast_fetch"},
+    }
+
+
+async def _fast_fetch_extract(urls: List[str], format: Optional[str] = None) -> List[Dict[str, Any]]:
+    semaphore = asyncio.Semaphore(_web_extract_concurrency())
+
+    async def run_one(url: str) -> Dict[str, Any]:
+        async with semaphore:
+            return await _fast_fetch_extract_one(url, format=format)
+
+    return await asyncio.gather(*(run_one(url) for url in urls))
+
 
 def _is_spark_auxiliary_client(client: Any) -> bool:
     """Return True for the legacy hosted auxiliary endpoint."""
@@ -946,9 +1153,9 @@ def _parallel_search(query: str, limit: int = 5) -> dict:
     if is_interrupted():
         return {"error": "Interrupted", "success": False}
 
-    mode = os.getenv("PARALLEL_SEARCH_MODE", "agentic").lower().strip()
+    mode = os.getenv("PARALLEL_SEARCH_MODE", "fast").lower().strip()
     if mode not in ("fast", "one-shot", "agentic"):
-        mode = "agentic"
+        mode = "fast"
 
     logger.info("Parallel search: '%s' (mode=%s, limit=%d)", query, mode, limit)
     response = _get_parallel_client().beta.search(
@@ -1147,9 +1354,10 @@ def web_search_tool(query: str, limit: int = 5) -> str:
 async def web_extract_tool(
     urls: List[str],
     format: str = None,
-    use_llm_processing: bool = True,
+    use_llm_processing: bool = False,
     model: Optional[str] = None,
-    min_length: int = DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION
+    min_length: int = DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION,
+    max_chars_per_page: Optional[int] = None,
 ) -> str:
     """
     Extract content from specific web pages using available extraction API backend.
@@ -1160,9 +1368,10 @@ async def web_extract_tool(
     Args:
         urls (List[str]): List of URLs to extract content from
         format (str): Desired output format ("markdown" or "html", optional)
-        use_llm_processing (bool): Whether to process content with LLM for summarization (default: True)
+        use_llm_processing (bool): Whether to process content with LLM for summarization (default: False)
         model (Optional[str]): The model to use for LLM processing (defaults to current auxiliary backend model)
         min_length (int): Minimum content length to trigger LLM processing (default: 5000)
+        max_chars_per_page (Optional[int]): Raw extraction cap per page when LLM processing is disabled.
 
     Security: URLs are checked for embedded secrets before fetching.
     
@@ -1191,7 +1400,8 @@ async def web_extract_tool(
             "format": format,
             "use_llm_processing": use_llm_processing,
             "model": model,
-            "min_length": min_length
+            "min_length": min_length,
+            "max_chars_per_page": max_chars_per_page,
         },
         "error": None,
         "pages_extracted": 0,
@@ -1246,31 +1456,29 @@ async def web_extract_tool(
                     # Default: request markdown for LLM-readiness and include html as backup
                     formats = ["markdown", "html"]
 
-                # Always use individual scraping for simplicity and reliability
-                # Batch scraping adds complexity without much benefit for small numbers of URLs
                 results: List[Dict[str, Any]] = []
 
                 from tools.interrupt import is_interrupted as _is_interrupted
-                for url in safe_urls:
+
+                async def scrape_one_firecrawl(url: str) -> Dict[str, Any]:
                     if _is_interrupted():
-                        results.append({"url": url, "error": "Interrupted", "title": ""})
-                        continue
+                        return {"url": url, "error": "Interrupted", "title": ""}
 
                     # Website policy check — block before fetching
                     blocked = check_website_access(url)
                     if blocked:
                         logger.info("Blocked web_extract for %s by rule %s", blocked["host"], blocked["rule"])
-                        results.append({
+                        return {
                             "url": url, "title": "", "content": "",
                             "error": blocked["message"],
                             "blocked_by_policy": {"host": blocked["host"], "rule": blocked["rule"], "source": blocked["source"]},
-                        })
-                        continue
+                        }
 
                     try:
                         logger.info("Scraping: %s", url)
-                        # Run synchronous Firecrawl scrape in a thread with a
-                        # 60s timeout so a hung fetch doesn't block the session.
+                        # Run synchronous Firecrawl scrape in a worker thread.
+                        # URLs are extracted concurrently with a short per-page
+                        # timeout so one slow page does not make chat feel stuck.
                         try:
                             scrape_result = await asyncio.wait_for(
                                 asyncio.to_thread(
@@ -1278,15 +1486,15 @@ async def web_extract_tool(
                                     url=url,
                                     formats=formats,
                                 ),
-                                timeout=60,
+                                timeout=_web_extract_scrape_timeout(),
                             )
                         except asyncio.TimeoutError:
                             logger.warning("Firecrawl scrape timed out for %s", url)
-                            results.append({
+                            timeout = _web_extract_scrape_timeout()
+                            return {
                                 "url": url, "title": "", "content": "",
-                                "error": "Scrape timed out after 60s — page may be too large or unresponsive. Try browser_navigate instead.",
-                            })
-                            continue
+                                "error": f"Scrape timed out after {timeout}s — page may be too large or unresponsive. Try browser_navigate instead.",
+                            }
 
                         scrape_payload = _extract_scrape_payload(scrape_result)
                         metadata = scrape_payload.get("metadata", {})
@@ -1311,33 +1519,63 @@ async def web_extract_tool(
                         final_blocked = check_website_access(final_url)
                         if final_blocked:
                             logger.info("Blocked redirected web_extract for %s by rule %s", final_blocked["host"], final_blocked["rule"])
-                            results.append({
+                            return {
                                 "url": final_url, "title": title, "content": "", "raw_content": "",
                                 "error": final_blocked["message"],
                                 "blocked_by_policy": {"host": final_blocked["host"], "rule": final_blocked["rule"], "source": final_blocked["source"]},
-                            })
-                            continue
+                            }
 
                         # Choose content based on requested format
                         chosen_content = content_markdown if (format == "markdown" or (format is None and content_markdown)) else content_html or content_markdown or ""
 
-                        results.append({
+                        return {
                             "url": final_url,
                             "title": title,
                             "content": chosen_content,
                             "raw_content": chosen_content,
                             "metadata": metadata  # Now guaranteed to be a dict
-                        })
+                        }
 
                     except Exception as scrape_err:
                         logger.debug("Scrape failed for %s: %s", url, scrape_err)
-                        results.append({
+                        return {
                             "url": url,
                             "title": "",
                             "content": "",
                             "raw_content": "",
                             "error": str(scrape_err)
-                        })
+                        }
+
+                semaphore = asyncio.Semaphore(_web_extract_concurrency())
+
+                async def scrape_firecrawl_limited(url: str) -> Dict[str, Any]:
+                    async with semaphore:
+                        return await scrape_one_firecrawl(url)
+
+                async def scrape_firecrawl_many(urls_to_scrape: List[str]) -> List[Dict[str, Any]]:
+                    return await asyncio.gather(*(scrape_firecrawl_limited(url) for url in urls_to_scrape))
+
+                if _web_extract_fast_fetch_enabled() and format != "html":
+                    fast_results = await _fast_fetch_extract(safe_urls, format=format)
+                    fallback_urls: List[str] = []
+                    for original_url, fast_result in zip(safe_urls, fast_results):
+                        if fast_result.get("error") and not fast_result.get("blocked_by_policy"):
+                            fallback_urls.append(original_url)
+
+                    fallback_results = await scrape_firecrawl_many(fallback_urls) if fallback_urls else []
+                    fallback_iter = iter(fallback_results)
+                    results = []
+                    fast_successes = 0
+                    for fast_result in fast_results:
+                        if fast_result.get("error") and not fast_result.get("blocked_by_policy"):
+                            results.append(next(fallback_iter))
+                        else:
+                            fast_successes += 1
+                            results.append(fast_result)
+                    if fast_successes:
+                        logger.info("Fast web_extract handled %d/%d URL(s)", fast_successes, len(safe_urls))
+                else:
+                    results = await scrape_firecrawl_many(safe_urls)
 
         # Merge any SSRF-blocked results back in
         if ssrf_blocked:
@@ -1429,12 +1667,28 @@ async def web_extract_tool(
                 content_length = len(result.get('raw_content', ''))
                 logger.info("%s (%d characters)", url, content_length)
         
+        max_chars = max_chars_per_page if max_chars_per_page is not None else _web_extract_fast_max_chars_per_page()
+        try:
+            max_chars = int(max_chars)
+        except (TypeError, ValueError):
+            max_chars = _web_extract_fast_max_chars_per_page()
+        max_chars = max(1_000, min(100_000, max_chars))
+
+        def trim_content(content: str) -> str:
+            if use_llm_processing or len(content) <= max_chars:
+                return content
+            return (
+                content[:max_chars]
+                + f"\n\n[Content truncated for fast extraction — showing first {max_chars:,} of {len(content):,} chars. "
+                + "Call web_extract with use_llm_processing=true for an LLM-compressed summary, or use browser tools for the full page.]"
+            )
+
         # Trim output to minimal fields per entry: title, content, error
         trimmed_results = [
             {
                 "url": r.get("url", ""),
                 "title": r.get("title", ""),
-                "content": r.get("content", ""),
+                "content": trim_content(r.get("content", "") or ""),
                 "error": r.get("error"),
                 **({  "blocked_by_policy": r["blocked_by_policy"]} if "blocked_by_policy" in r else {}),
             }
@@ -2043,7 +2297,7 @@ WEB_SEARCH_SCHEMA = {
 
 WEB_EXTRACT_SCHEMA = {
     "name": "web_extract",
-    "description": "Extract content from web page URLs. Returns page content in markdown format. Also works with PDF URLs (arxiv papers, documents, etc.) — pass the PDF link directly and it converts to markdown text. Pages under 5000 chars return full markdown; larger pages are LLM-summarized and capped at ~5000 chars per page. Pages over 2M chars are refused. If a URL fails or times out, use the browser tool to access it instead.",
+    "description": "Extract markdown content from web page URLs quickly. Also works with PDF URLs (arxiv papers, documents, etc.) — pass the PDF link directly and it converts to markdown text. By default this is a fast raw extraction capped per page; set use_llm_processing=true only when you need a slower LLM-compressed summary of long pages. If a URL fails or times out, use the browser tool to access it instead.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -2052,11 +2306,41 @@ WEB_EXTRACT_SCHEMA = {
                 "items": {"type": "string"},
                 "description": "List of URLs to extract content from (max 5 URLs per call)",
                 "maxItems": 5
+            },
+            "use_llm_processing": {
+                "type": "boolean",
+                "description": "Optional. Defaults to false for speed. Set true only when extracting long pages that need LLM summarization before returning to chat."
+            },
+            "max_chars_per_page": {
+                "type": "integer",
+                "description": "Optional raw-content cap per page when use_llm_processing is false. Defaults to 12000.",
+                "minimum": 1000,
+                "maximum": 100000
             }
         },
         "required": ["urls"]
     }
 }
+
+
+def _bool_arg(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "y", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "n", "off"}:
+            return False
+    return default
+
+
+def _int_arg(value: Any, default: int, *, min_value: int, max_value: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(min_value, min(max_value, parsed))
 
 registry.register(
     name="web_search",
@@ -2073,7 +2357,16 @@ registry.register(
     toolset="web",
     schema=WEB_EXTRACT_SCHEMA,
     handler=lambda args, **kw: web_extract_tool(
-        args.get("urls", [])[:5] if isinstance(args.get("urls"), list) else [], "markdown"),
+        args.get("urls", [])[:5] if isinstance(args.get("urls"), list) else [],
+        "markdown",
+        use_llm_processing=_bool_arg(args.get("use_llm_processing"), False),
+        max_chars_per_page=_int_arg(
+            args.get("max_chars_per_page"),
+            _web_extract_fast_max_chars_per_page(),
+            min_value=1_000,
+            max_value=100_000,
+        ),
+    ),
     check_fn=check_web_api_key,
     requires_env=_web_requires_env(),
     is_async=True,

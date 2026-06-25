@@ -38,6 +38,7 @@ import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
+import { nextChatTurnState, normalizeBackendPhase, type ChatTurnState } from "@/lib/chatTurnState";
 import {
   persistSafeMode,
   pruneLongTasks,
@@ -50,6 +51,8 @@ import {
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
 const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
+const STREAM_FLUSH_INTERVAL_MS = 160;
+const STREAM_SNAPSHOT_POLL_MS = 2_000;
 
 type ChatMessage =
   | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[]; redirect?: boolean }
@@ -65,6 +68,7 @@ type ChatMessage =
       done?: boolean;
       startedAt?: number;
       endedAt?: number;
+      durationSeconds?: number;
     }
   | { id: string; role: "reasoning"; text: string }
   | {
@@ -149,6 +153,7 @@ function mergeSyncedMessages(
   mapped: ChatMessage[],
   prev: ChatMessage[],
   sessionId: string | null,
+  options: { preferSyncedAssistants?: boolean } = {},
 ): ChatMessage[] {
   if (mapped.length === 0 && prev.length > 0) return prev;
 
@@ -156,6 +161,13 @@ function mergeSyncedMessages(
   const withForms = (messages: ChatMessage[]) => (
     forms.length > 0 ? [...messages, ...forms] : messages
   );
+
+  if (
+    options.preferSyncedAssistants &&
+    mapped.some((m) => m.role === "assistant" && hasText(m.content))
+  ) {
+    return withForms(mapped);
+  }
 
   const cachedTurn = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
   const recoveryMessages = prev.some((m) => m.role === "assistant" && hasText(m.content)) ? prev : cachedTurn;
@@ -243,6 +255,14 @@ type ReasoningMsg = Extract<ChatMessage, { role: "reasoning" }>;
 type ApprovalMsg = Extract<ChatMessage, { role: "approval" }>;
 type NoteMsg = Extract<ChatMessage, { role: "note" }>;
 type FeedbackFormMsg = Extract<ChatMessage, { role: "feedback_form" }>;
+
+function toolDurationSeconds(msg: ToolMsg): number | undefined {
+  if (typeof msg.durationSeconds === "number") return Math.max(0, msg.durationSeconds);
+  if (typeof msg.startedAt === "number" && typeof msg.endedAt === "number") {
+    return Math.max(0, msg.endedAt - msg.startedAt);
+  }
+  return undefined;
+}
 
 const MODE_SHORT: Record<string, string> = {
   path_only: "path", excerpt: "excerpt", summary: "summary", full: "full", search: "search",
@@ -396,7 +416,7 @@ const ToolRow = memo(function ToolRow({
     <div className="pl-9">
       <ToolCallBubble
         name={msg.name} args={msg.args} result={msg.result} done={msg.done}
-        startedAt={msg.startedAt} endedAt={msg.endedAt}
+        startedAt={msg.startedAt} endedAt={msg.endedAt} durationSeconds={msg.durationSeconds}
         repeatCount={repeatCount > 0 ? repeatCount : undefined}
         resultTruncated={msg.resultTruncated}
         safeMode={safeMode}
@@ -480,7 +500,11 @@ export function ChatPanel({
     return "";
   });
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
-  const [streaming, setStreaming] = useState(false);
+  const [turnState, setTurnState] = useState<ChatTurnState>("idle");
+  const streaming = turnState !== "idle";
+  const setStreaming = useCallback((active: boolean) => {
+    setTurnState(active ? "streaming" : "idle");
+  }, []);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [hasEarlier, setHasEarlier] = useState(false);
@@ -502,10 +526,12 @@ export function ChatPanel({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
   const streamingRef = useRef(false);
+  const turnStateRef = useRef<ChatTurnState>("idle");
   const safeModeRef = useRef(safeMode);
   // Token batching: accumulate tokens and flush once per animation frame
   const tokenBufferRef = useRef("");
   const rafPendingRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<number | null>(null);
   // Reasoning batching: same rAF coalescing as tokens, so a model that streams
   // reasoning in many small deltas triggers at most one re-render per frame
   // instead of one per delta.
@@ -514,11 +540,24 @@ export function ChatPanel({
   // Timestamp of the last chat event received for the active turn. Drives the
   // stall watchdog that recovers from a silently-dropped turn (lost SSE).
   const lastEventAtRef = useRef<number>(0);
+  // Timestamp of the last visible assistant token. Status/reasoning events can
+  // keep the backend heartbeat alive while the rendered answer itself is stuck.
+  const lastTokenAtRef = useRef<number>(0);
   // Guards against overlapping turn-status re-sync polls.
   const resyncInFlightRef = useRef(false);
+  const resyncTurnStateRef = useRef<(() => Promise<void>) | null>(null);
+  // SSE is the fast path; the backend stream snapshot is the source of truth.
+  // Track revisions so recovery polling only repaints when the server advanced.
+  const streamRevisionRef = useRef(0);
+  const streamTextCharsRef = useRef(0);
+  const streamSnapshotInFlightRef = useRef(false);
+  // Keep the viewport pinned to the live tail while the user is following the
+  // stream, but stop auto-scrolling as soon as they deliberately scroll upward.
+  const followStreamRef = useRef(true);
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
+  turnStateRef.current = turnState;
   safeModeRef.current = safeMode;
 
   // Desktop (§3.1): reflect agent activity in the menu-bar tray indicator.
@@ -530,7 +569,12 @@ export function ChatPanel({
     if (sessionId && sessionId === activeSessionRef.current && streamingRef.current) {
       return;
     }
-    // Cancel any pending rAF flushes from the previous session
+    // Cancel any pending token flushes from the previous session
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+      tokenBufferRef.current = "";
+    }
     if (rafPendingRef.current !== null) {
       cancelAnimationFrame(rafPendingRef.current);
       rafPendingRef.current = null;
@@ -554,6 +598,10 @@ export function ChatPanel({
     // the turn already finished, and by the chat.turn_done event otherwise.
     setStreaming(!!initialMessage);
     setStatusLabel(initialMessage ? "Thinking…" : null);
+    lastTokenAtRef.current = initialMessage ? Date.now() : 0;
+    streamRevisionRef.current = 0;
+    streamTextCharsRef.current = 0;
+    followStreamRef.current = true;
     setEditingUser(null);
     setSessionStats({});
     setForkInfo(null);
@@ -583,7 +631,9 @@ export function ChatPanel({
           const mapped = sessionMessagesToChat(
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
-          setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? sessionId));
+          setChatMessages((prev) => (
+            mergeSyncedMessages(mapped, initialMessage ? prev : optimistic, resp.session_id ?? sessionId)
+          ));
           setHasEarlier(resp.has_earlier ?? false);
           // If history already contains an assistant reply, the turn finished
           // before/at mount — clear the optimistic streaming flag so we don't
@@ -696,13 +746,76 @@ export function ChatPanel({
     });
   }, []);
 
-  // Accumulate tokens and flush once per animation frame instead of on every token
+  const syncLiveAssistantSnapshot = useCallback((text: string, revision?: number | null) => {
+    if (!text) return false;
+    const normalizedRevision = typeof revision === "number" ? revision : 0;
+    const isNewerRevision = normalizedRevision > streamRevisionRef.current;
+    const isLongerText = text.length > streamTextCharsRef.current;
+    if (!isNewerRevision && !isLongerText) return false;
+
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    if (rafPendingRef.current !== null) {
+      cancelAnimationFrame(rafPendingRef.current);
+      rafPendingRef.current = null;
+    }
+    tokenBufferRef.current = "";
+
+    streamRevisionRef.current = Math.max(streamRevisionRef.current, normalizedRevision);
+    streamTextCharsRef.current = Math.max(streamTextCharsRef.current, text.length);
+    lastTokenAtRef.current = Date.now();
+    let applied = false;
+    setChatMessages((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 0; i--) {
+        const msg = next[i];
+        if (msg.role !== "assistant") continue;
+        if (msg.content === text) return prev;
+        next[i] = { ...msg, content: text, streaming: true };
+        applied = true;
+        return next;
+      }
+      next.push({ id: nid(), role: "assistant", content: text, streaming: true });
+      applied = true;
+      return next;
+    });
+    return applied;
+  }, []);
+
+  // Accumulate tokens and flush at a controlled cadence instead of on every
+  // animation frame. Long markdown responses can otherwise spend the whole
+  // stream re-rendering the live assistant row.
   const appendToken = useCallback((token: string) => {
     tokenBufferRef.current += token;
-    if (rafPendingRef.current === null) {
-      rafPendingRef.current = requestAnimationFrame(flushTokenBuffer);
+    lastTokenAtRef.current = Date.now();
+    if (flushTimerRef.current === null && rafPendingRef.current === null) {
+      flushTimerRef.current = window.setTimeout(() => {
+        flushTimerRef.current = null;
+        rafPendingRef.current = requestAnimationFrame(flushTokenBuffer);
+      }, STREAM_FLUSH_INTERVAL_MS);
     }
   }, [flushTokenBuffer]);
+
+  const reconcileStreamSnapshot = useCallback(async (sid: string) => {
+    if (streamSnapshotInFlightRef.current) return;
+    streamSnapshotInFlightRef.current = true;
+    try {
+      const snapshot = await api.getStreamSnapshot(sid);
+      if (!streamingRef.current || activeSessionRef.current !== sid) return;
+      if (snapshot.stream_text) {
+        syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
+      }
+      if (!snapshot.turn_active) {
+        void resyncTurnStateRef.current?.();
+      }
+    } catch {
+      /* snapshot reconciliation is best-effort */
+    } finally {
+      streamSnapshotInFlightRef.current = false;
+    }
+  }, [syncLiveAssistantSnapshot]);
 
   const flushReasoningBuffer = useCallback(() => {
     reasoningRafRef.current = null;
@@ -732,6 +845,10 @@ export function ChatPanel({
   // Flush buffered tokens AND reasoning immediately — call before appending a tool
   // row, finalizing, or ending a turn so ordering and the final deltas are preserved.
   const flushPendingStream = useCallback(() => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
     if (rafPendingRef.current !== null) {
       cancelAnimationFrame(rafPendingRef.current);
       flushTokenBuffer();
@@ -767,21 +884,58 @@ export function ChatPanel({
               (m) => m.role === "user" || m.role === "assistant" || m.role === "tool",
             ),
           );
-          setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? sid));
+          setChatMessages((prev) => mergeSyncedMessages(
+            mapped,
+            prev,
+            resp.session_id ?? sid,
+            { preferSyncedAssistants: true },
+          ));
         } catch {
           /* keep whatever we have locally */
         }
       } else {
         // Still running — reset the stall clock and reassure the user.
         lastEventAtRef.current = Date.now();
-        setStatusLabel((prev) => prev ?? "Still working…");
+        setTurnState(normalizeBackendPhase(status.phase, status.interrupt_requested));
+        setStatusLabel((prev) => status.status ?? prev ?? "Still working…");
+        try {
+          const snapshot = await api.getStreamSnapshot(status.active_turn_session_id ?? sid);
+          if (snapshot.stream_text) {
+            syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
+          }
+        } catch {
+          /* snapshot recovery is best-effort */
+        }
       }
     } catch {
       /* network blip — leave state untouched, watchdog will retry */
     } finally {
       resyncInFlightRef.current = false;
     }
-  }, [flushPendingStream, finalizeAssistant]);
+  }, [flushPendingStream, finalizeAssistant, setStreaming, syncLiveAssistantSnapshot]);
+
+  resyncTurnStateRef.current = resyncTurnState;
+
+  // During active turns, continuously reconcile the UI against the backend's
+  // authoritative stream buffer. SSE remains the low-latency path, but this
+  // prevents a dropped event, paused tab, or render hiccup from stranding the
+  // visible answer on an old markdown prefix.
+  useEffect(() => {
+    if (!streaming) return;
+    const sid = activeSessionId;
+    if (!sid) return;
+    let cancelled = false;
+    const pollSnapshot = async () => {
+      if (cancelled || !streamingRef.current || activeSessionRef.current !== sid) return;
+      await reconcileStreamSnapshot(sid);
+    };
+    void pollSnapshot();
+    const interval = setInterval(() => void pollSnapshot(), STREAM_SNAPSHOT_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeSessionId, streaming, reconcileStreamSnapshot]);
 
   useEventBus((env) => {
     // Synthetic local event from the SSE bus reopening after a drop. Events
@@ -800,11 +954,13 @@ export function ChatPanel({
       case "chat.token": {
         const t = data.t;
         if (typeof t === "string" && t) appendToken(t);
+        setTurnState((prev) => nextChatTurnState(prev, { type: "token" }));
         break;
       }
       case "chat.tool_start": {
         flushPendingStream();
         finalizeAssistant();
+        setTurnState((prev) => nextChatTurnState(prev, { type: "tool_start" }));
         setChatMessages((prev) => [
           ...prev,
           {
@@ -814,7 +970,7 @@ export function ChatPanel({
             name: String(data.name ?? "tool"),
             args: (data.args as Record<string, unknown>) ?? {},
             done: false,
-            startedAt: typeof data.ts === "number" ? data.ts : undefined,
+            startedAt: typeof data.started_at === "number" ? data.started_at : typeof data.ts === "number" ? data.ts : undefined,
           },
         ]);
         setStatusLabel(`Tool: ${String(data.name ?? "")}`);
@@ -822,6 +978,7 @@ export function ChatPanel({
       }
       case "chat.tool_end": {
         const tid = String(data.id ?? "");
+        setTurnState((prev) => nextChatTurnState(prev, { type: "tool_end" }));
         setChatMessages((prev) => {
           const next = [...prev];
           for (let i = next.length - 1; i >= 0; i--) {
@@ -833,7 +990,8 @@ export function ChatPanel({
                 result: preview,
                 resultTruncated: Boolean(data.result_truncated ?? data.truncated) || undefined,
                 done: true,
-                endedAt: typeof data.ts === "number" ? data.ts : undefined,
+                endedAt: typeof data.ended_at === "number" ? data.ended_at : typeof data.ts === "number" ? data.ts : undefined,
+                durationSeconds: typeof data.duration_seconds === "number" ? data.duration_seconds : undefined,
               };
               break;
             }
@@ -868,6 +1026,7 @@ export function ChatPanel({
         break;
       case "chat.session_migrated": {
         const newId = String((data as { new_session_id?: string }).new_session_id ?? "");
+        setTurnState((prev) => nextChatTurnState(prev, { type: "session_migrated" }));
         if (newId && newId !== activeSessionRef.current) {
           activeSessionRef.current = newId;
           setActiveSessionId(newId);
@@ -889,25 +1048,32 @@ export function ChatPanel({
         flushPendingStream();
         finalizeAssistant();
         const msg = (data as { message?: string }).message;
+        const phase = (data as { phase?: string }).phase === "redirecting" ? "redirecting" : "stopping";
         setChatMessages((prev) => [
           ...prev,
           { id: nid(), role: "note", text: msg ? `Interrupted: ${msg}` : "Interrupted." },
         ]);
-        setStreaming(false);
-        setStatusLabel(null);
+        setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested", redirect: phase === "redirecting" }));
+        setStatusLabel(phase === "redirecting" ? "Redirecting…" : "Stopping…");
+        void resyncTurnState();
         break;
       }
       case "chat.turn_done": {
         // Flush any remaining buffered tokens before finalizing
         flushPendingStream();
         finalizeAssistant();
-        setStreaming(false);
+        setTurnState((prev) => nextChatTurnState(prev, { type: "turn_done" }));
         setStatusLabel(null);
         // Extract token/cost stats from the richer payload
         {
           const tokens = data.tokens as Record<string, number> | undefined;
           const cost = typeof data.cost_usd === "number" ? data.cost_usd : undefined;
           const model = typeof data.model === "string" ? data.model : undefined;
+          const interrupted = Boolean((data as { interrupted?: boolean }).interrupted);
+          const finalAssistantPresent = Boolean((data as { final_assistant_present?: boolean }).final_assistant_present);
+          const backendErrorClass = typeof (data as { backend_error_class?: unknown }).backend_error_class === "string"
+            ? String((data as { backend_error_class?: string }).backend_error_class)
+            : "";
           setSessionStats((prev) => ({
             model: model ?? prev.model,
             inputTokens: (prev.inputTokens ?? 0) + (tokens?.input ?? 0),
@@ -932,6 +1098,18 @@ export function ChatPanel({
               return prev;
             });
           }
+          if (!interrupted && (!finalAssistantPresent || backendErrorClass)) {
+            setChatMessages((prev) => [
+              ...prev,
+              {
+                id: nid(),
+                role: "note",
+                text: backendErrorClass
+                  ? `Turn ended with a backend error (${backendErrorClass}). You can retry this message.`
+                  : "Turn ended without a saved assistant response. You can retry this message.",
+              },
+            ]);
+          }
         }
         const cur = activeSessionRef.current;
         if (cur) {
@@ -942,7 +1120,12 @@ export function ChatPanel({
               const mapped = sessionMessagesToChat(
                 resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
               );
-              setChatMessages((prev) => mergeSyncedMessages(mapped, prev, resp.session_id ?? cur));
+              setChatMessages((prev) => mergeSyncedMessages(
+                mapped,
+                prev,
+                resp.session_id ?? cur,
+                { preferSyncedAssistants: true },
+              ));
             })
             .catch(() => {});
           // Sync sessionIdx values on recent user messages for retry/fork.
@@ -989,15 +1172,54 @@ export function ChatPanel({
   useEffect(() => {
     if (!streaming) return;
     lastEventAtRef.current = Date.now();
+    if (!lastTokenAtRef.current) lastTokenAtRef.current = Date.now();
     const STALL_MS = 3_000;
     const interval = setInterval(() => {
       if (!streamingRef.current) return;
-      if (Date.now() - lastEventAtRef.current >= STALL_MS) {
+      const now = Date.now();
+      const elapsed = now - lastEventAtRef.current;
+      const tokenElapsed = now - (lastTokenAtRef.current || lastEventAtRef.current);
+      if (elapsed >= 30_000) {
+        setStatusLabel("Reconnecting…");
+      } else if (elapsed >= 12_000) {
+        setStatusLabel("Still waiting for backend…");
+      } else if (tokenElapsed >= 12_000) {
+        setStatusLabel("Waiting for provider response…");
+      } else if (elapsed >= STALL_MS) {
+        setStatusLabel((prev) => prev ?? "Still working…");
+      }
+      if (elapsed >= STALL_MS || tokenElapsed >= 12_000) {
         void resyncTurnState();
       }
     }, 2_000);
     return () => clearInterval(interval);
   }, [streaming, resyncTurnState]);
+
+  // If a missed event or app resume leaves the local UI idle while the backend
+  // still has an active turn, restore the working controls from turn-status.
+  useEffect(() => {
+    if (!activeSessionId || streaming) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const status = await api.getTurnStatus(activeSessionId);
+        if (cancelled || activeSessionRef.current !== activeSessionId) return;
+        if (status.turn_active) {
+          lastEventAtRef.current = Date.now();
+          setTurnState(normalizeBackendPhase(status.phase, status.interrupt_requested));
+          setStatusLabel(status.status ?? "Still working…");
+        }
+      } catch {
+        /* idle reconciliation is best-effort */
+      }
+    };
+    void poll();
+    const interval = setInterval(() => void poll(), 5_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeSessionId, streaming]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -1008,16 +1230,18 @@ export function ChatPanel({
     if (streaming) {
       const sid = activeSessionId;
       if (!sid) return;
-      setInput("");
       setChatMessages((prev) => [
         ...prev,
         { id: nid(), role: "user", content: text, redirect: true },
       ]);
+      setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested", redirect: true }));
       setStatusLabel("Redirecting…");
       try {
         await api.interruptConversation(sid, text);
+        setInput("");
       } catch {
-        /* ignore — the running turn may have already finished */
+        setStatusLabel("Redirect requested; waiting for backend state…");
+        void resyncTurnState();
       }
       return;
     }
@@ -1038,8 +1262,11 @@ export function ChatPanel({
       setChatMessages((prev) => [...prev, { id: nid(), role: "feedback_form" as const }]);
     }
 
-    setStreaming(true);
+    setTurnState(nextChatTurnState(turnStateRef.current, { type: "submit" }));
     setStatusLabel("Thinking…");
+    followStreamRef.current = true;
+    streamRevisionRef.current = 0;
+    streamTextCharsRef.current = 0;
 
     // Yield to the browser paint cycle so the stop button renders
     // before we block on the API call.
@@ -1076,10 +1303,14 @@ export function ChatPanel({
   const stop = async () => {
     const sid = activeSessionId;
     if (!sid) return;
+    if (turnStateRef.current === "stopping" || turnStateRef.current === "redirecting") return;
+    setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested" }));
+    setStatusLabel("Stopping…");
     try {
       await api.interruptConversation(sid);
     } catch {
-      /* ignore */
+      setStatusLabel("Stop requested; waiting for backend state…");
+      void resyncTurnState();
     }
   };
 
@@ -1117,6 +1348,9 @@ export function ChatPanel({
       await api.retryConversation(sid, sessionIdx, edited);
       setStreaming(true);
       setStatusLabel("Thinking…");
+      followStreamRef.current = true;
+      streamRevisionRef.current = 0;
+      streamTextCharsRef.current = 0;
       setChatMessages((prev) => {
         const next = [...prev];
         while (next.length > 0) {
@@ -1138,7 +1372,7 @@ export function ChatPanel({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [setStreaming]);
 
   const submitApproval = useCallback(async (choice: "once" | "session" | "always" | "deny") => {
     const sid = activeSessionRef.current;
@@ -1365,7 +1599,7 @@ export function ChatPanel({
 
   // Collapse consecutive same-name tool calls and append a typing indicator
   // synthetic entry when streaming has started but no assistant token arrived yet.
-  type CollapsedItem = { msg: ChatMessage; repeatCount: number } | { msg: null; id: "typing" };
+  type CollapsedItem = { msg: ChatMessage; repeatCount: number; id: string } | { msg: null; id: "typing" };
   const collapsedMessages = useMemo<CollapsedItem[]>(() => {
     const collapsed: CollapsedItem[] = [];
     for (const msg of chatMessages) {
@@ -1375,9 +1609,24 @@ export function ChatPanel({
         prev && prev.msg !== null && prev.msg.role === "tool" &&
         msg.name === (prev.msg as Extract<ChatMessage, { role: "tool" }>).name
       ) {
-        collapsed[collapsed.length - 1] = { msg, repeatCount: (prev as { msg: ChatMessage; repeatCount: number }).repeatCount + 1 };
+        const previousTool = prev.msg as ToolMsg;
+        const previousDuration = toolDurationSeconds(previousTool);
+        const currentDuration = toolDurationSeconds(msg);
+        const combinedDuration =
+          previousDuration !== undefined || currentDuration !== undefined
+            ? (previousDuration ?? 0) + (currentDuration ?? 0)
+            : undefined;
+        collapsed[collapsed.length - 1] = {
+          msg: {
+            ...msg,
+            startedAt: previousTool.startedAt ?? msg.startedAt,
+            durationSeconds: combinedDuration,
+          },
+          repeatCount: (prev as { msg: ChatMessage; repeatCount: number; id: string }).repeatCount + 1,
+          id: prev.id,
+        };
       } else {
-        collapsed.push({ msg, repeatCount: 0 });
+        collapsed.push({ msg, repeatCount: 0, id: msg.id });
       }
     }
     // Append typing indicator if streaming but last message isn't an active assistant bubble
@@ -1390,6 +1639,14 @@ export function ChatPanel({
     }
     return collapsed;
   }, [chatMessages, streaming]);
+
+  const streamingAssistantChars = useMemo(() => {
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      const msg = chatMessages[i];
+      if (msg.role === "assistant" && msg.streaming) return msg.content.length;
+    }
+    return 0;
+  }, [chatMessages]);
 
   const estimateRowSize = useCallback((index: number) => {
     const item = collapsedMessages[index];
@@ -1417,12 +1674,12 @@ export function ChatPanel({
   const virtualizer = useVirtualizer({
     count: collapsedMessages.length,
     getScrollElement: () => scrollContainerRef.current,
+    getItemKey: (index) => collapsedMessages[index]?.id ?? index,
     estimateSize: estimateRowSize,
     overscan: safeMode ? 4 : 10,
     gap: 12,
   });
 
-  const measureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const measureRowElement = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     const index = Number(el.dataset.index);
@@ -1435,31 +1692,62 @@ export function ChatPanel({
       return;
     }
     if (streaming && item?.msg !== null && item?.msg.role === "assistant") {
-      if (measureTimerRef.current) return;
-      measureTimerRef.current = setTimeout(() => {
-        measureTimerRef.current = null;
-        virtualizer.measureElement(el);
-      }, safeMode ? 250 : 80);
+      // A streaming assistant row changes height constantly. Measuring it on
+      // every flush can monopolize the main thread; the length-based estimate is
+      // good enough until the turn completes, when normal measurement resumes.
       return;
     }
     virtualizer.measureElement(el);
   }, [collapsedMessages, safeMode, streaming, virtualizer]);
 
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const updateFollowState = () => {
+      followStreamRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
+    };
+    updateFollowState();
+    el.addEventListener("scroll", updateFollowState, { passive: true });
+    return () => el.removeEventListener("scroll", updateFollowState);
+  }, [activeSessionId]);
+
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
   const prevCountRef = useRef(0);
+  const autoScrollRafRef = useRef<number | null>(null);
+  const lastAutoScrollAtRef = useRef(0);
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const count = collapsedMessages.length;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (count !== prevCountRef.current || (streaming && atBottom)) {
+    const countChanged = count !== prevCountRef.current;
+    const shouldFollow = streaming && (followStreamRef.current || atBottom);
+    if (countChanged || shouldFollow) {
       prevCountRef.current = count;
       if (count > 0) {
-        virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
+        if (autoScrollRafRef.current !== null) cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = requestAnimationFrame(() => {
+          autoScrollRafRef.current = null;
+          if (countChanged) {
+            virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
+            lastAutoScrollAtRef.current = Date.now();
+            return;
+          }
+          if (Date.now() - lastAutoScrollAtRef.current >= 250) {
+            el.scrollTop = el.scrollHeight;
+            lastAutoScrollAtRef.current = Date.now();
+          }
+        });
       }
     }
-  }, [collapsedMessages.length, streaming, safeMode, virtualizer]);
+    return () => {
+      if (autoScrollRafRef.current !== null) {
+        cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = null;
+      }
+    };
+  }, [collapsedMessages.length, streamingAssistantChars, streaming, safeMode, virtualizer]);
 
   return (
     <div
@@ -1592,7 +1880,7 @@ export function ChatPanel({
             <p className="text-xs mt-1 opacity-60">Type a message below</p>
           </div>
         ) : (
-          <div ref={messageListRef} style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
+          <>
             {hasEarlier && (
               <div className="flex justify-center pt-1 pb-2">
                 <button
@@ -1605,6 +1893,7 @@ export function ChatPanel({
                 </button>
               </div>
             )}
+            <div ref={messageListRef} style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
             {virtualizer.getVirtualItems().map((vItem) => {
               const item = collapsedMessages[vItem.index];
               if (!item) return null;
@@ -1632,7 +1921,7 @@ export function ChatPanel({
                 );
               }
 
-              const { msg, repeatCount } = item as { msg: ChatMessage; repeatCount: number };
+              const { msg, repeatCount } = item as { msg: ChatMessage; repeatCount: number; id: string };
               let rowContent: React.ReactNode = null;
 
               if (msg.role === "user") {
@@ -1670,7 +1959,7 @@ export function ChatPanel({
 
               return (
                 <div
-                  key={msg.id}
+                  key={item.id}
                   data-index={vItem.index}
                   ref={measureRowElement}
                   style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
@@ -1679,7 +1968,8 @@ export function ChatPanel({
                 </div>
               );
             })}
-          </div>
+            </div>
+          </>
         )}
         {error && (
           <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">

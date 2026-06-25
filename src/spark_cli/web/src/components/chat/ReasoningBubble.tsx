@@ -33,13 +33,13 @@ export function ReasoningBubble({ text, isActive, safeMode }: { text: string; is
         </div>
       )}
 
-      <div
-        className={`overflow-hidden ${safeMode ? "" : "transition-all duration-200 ease-in-out"} ${open ? "max-h-[400px]" : "max-h-0"}`}
-      >
-        <div className="border-t border-border/45 px-3 py-2 text-muted-foreground leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-[400px]">
-          {text}
+      {open && (
+        <div className={`overflow-hidden ${safeMode ? "" : "transition-all duration-200 ease-in-out"} max-h-[400px]`}>
+          <div className="border-t border-border/45 px-3 py-2 text-muted-foreground leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-[400px]">
+            {text}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

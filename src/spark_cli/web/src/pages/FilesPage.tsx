@@ -39,7 +39,12 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { api, mediaFileUrl } from "@/lib/api";
 import type { FileListEntry } from "@/lib/api";
-import { setGlobalNavTarget } from "@/lib/globalNavigation";
+import {
+  GLOBAL_NAV_EVENT,
+  setGlobalNavTarget,
+  takeGlobalNavTarget,
+  type GlobalNavTarget,
+} from "@/lib/globalNavigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +118,38 @@ function FileIcon({ name, isDir = false }: { name: string; isDir?: boolean }) {
 // ── Breadcrumb ─────────────────────────────────────────────────────────────────
 
 const ROOT_PATH = ".";
+
+function workspaceRelativePath(path: string): string | null {
+  const normalized = path.trim().replace(/\\/g, "/").replace(/^['"`]+|['"`]+$/g, "");
+  if (!normalized) return null;
+  if (!normalized.startsWith("/") && !normalized.startsWith("~")) {
+    return normalized.replace(/^\.\//, "");
+  }
+  const markers = ["/.spark/workspace/", "~/.spark/workspace/"];
+  for (const marker of markers) {
+    const index = normalized.indexOf(marker);
+    if (index >= 0) return normalized.slice(index + marker.length);
+  }
+  return null;
+}
+
+function parentDirForFile(path: string): string {
+  const rel = workspaceRelativePath(path);
+  if (!rel) return ROOT_PATH;
+  const parts = rel.split("/").filter(Boolean);
+  parts.pop();
+  return parts.length ? parts.join("/") : ROOT_PATH;
+}
+
+function fileEntryFromPath(path: string, fallbackName?: string): FileListEntry {
+  const rel = workspaceRelativePath(path);
+  const cleanPath = rel || path.trim().replace(/^['"`]+|['"`]+$/g, "");
+  return {
+    name: fallbackName || cleanPath.split(/[\\/]/).filter(Boolean).pop() || "file",
+    path: cleanPath,
+    type: "file",
+  };
+}
 
 function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
   // path "." → root only; "projects/wiki" → ["projects", "wiki"]
@@ -576,7 +613,7 @@ export default function FilesPage() {
     });
   }, []);
 
-  const handleSelectFile = async (entry: FileListEntry) => {
+  const handleSelectFile = useCallback(async (entry: FileListEntry) => {
     // Canvas files open in the Canvas tab rather than the inline editor.
     if (entry.name.endsWith(".canvas.json")) {
       const id = entry.name.slice(0, -".canvas.json".length);
@@ -595,7 +632,7 @@ export default function FilesPage() {
     } else {
       setSelectedFile({ path: entry.path, name: entry.name, content: null, loading: false, dirty: false });
     }
-  };
+  }, []);
 
   const handleNavigate = (path: string) => {
     setCurrentPath(path);
@@ -618,6 +655,24 @@ export default function FilesPage() {
       setSaving(false);
     }
   }, [selectedFile]);
+
+  const openFileTarget = useCallback((target: Extract<GlobalNavTarget, { type: "file" }>) => {
+    const entry = fileEntryFromPath(target.path, target.name);
+    setCurrentPath(parentDirForFile(target.path));
+    void handleSelectFile(entry);
+  }, [handleSelectFile]);
+
+  useEffect(() => {
+    const initial = takeGlobalNavTarget("file");
+    if (initial?.type === "file") openFileTarget(initial);
+
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<GlobalNavTarget>).detail;
+      if (target?.type === "file") openFileTarget(target);
+    };
+    window.addEventListener(GLOBAL_NAV_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
+  }, [openFileTarget]);
 
   const cat = selectedFile ? fileCategory(selectedFile.name) : null;
   const isText = cat === "text";
