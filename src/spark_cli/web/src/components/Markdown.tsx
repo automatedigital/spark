@@ -12,17 +12,19 @@ import css from "highlight.js/lib/languages/css";
 import markdown from "highlight.js/lib/languages/markdown";
 import rust from "highlight.js/lib/languages/rust";
 import go from "highlight.js/lib/languages/go";
-import { Copy, CheckCheck, X } from "lucide-react";
-import { mediaFileUrl, openExternal } from "@/lib/api";
+import { Copy, CheckCheck, X, FileText, ExternalLink, FolderOpen, Loader2 } from "lucide-react";
+import { api, mediaFileUrl, openExternal } from "@/lib/api";
+import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
 import {
   type BlockNode,
   type BlockProps,
+  type MarkdownRenderSegment,
   parseBlocks,
   parseInline,
-  findStableBoundary,
   blockPropsEqual,
   mediaKind,
+  buildMarkdownRenderSegments,
 } from "./markdownParse";
 
 hljs.registerLanguage("javascript", javascript);
@@ -60,10 +62,9 @@ hljs.registerLanguage("go", go);
  * without a DOM. This file holds only the React components.
  */
 
-// Above this size we stop doing expensive block/inline markdown work. The user
-// still gets the complete response text, but we avoid repeatedly feeding very
-// large assistant messages through regex-heavy parsing in WebKit.
-const SOFT_RENDER_CAP = 6_000;
+const LARGE_INLINE_PLAIN_CHARS = 20_000;
+const LOCAL_FILE_PATH_PATTERN =
+  /(?:~|\/(?:Users|private|var|tmp|Volumes|home|opt|usr|etc|mnt|workspace|[A-Za-z0-9._-]+))[^\s`"'<>]*\.(?:md|markdown|txt|json|yaml|yml|csv|log|py|ts|tsx|js|jsx|html|css|scss|sql|sh|zsh|toml|xml|pdf|png|jpe?g|gif|webp|svg)/gi;
 
 export const Markdown = memo(function Markdown({
   content,
@@ -76,7 +77,7 @@ export const Markdown = memo(function Markdown({
   streaming?: boolean;
   safeMode?: boolean;
 }) {
-  if (safeMode || (!streaming && content.length > SOFT_RENDER_CAP)) {
+  if (safeMode || streaming || content.length > LARGE_INLINE_PLAIN_CHARS) {
     return (
       <div
         role="article"
@@ -102,40 +103,73 @@ function ParsedMarkdown({
   streaming: boolean;
   safeMode: boolean;
 }) {
-  // Split the message into a stable, already-committed prefix and a small live
-  // "tail" that is still streaming in. Only the tail is re-parsed on each
-  // animation frame, and committed blocks are memoized so they don't re-render —
-  // so per-frame cost stays bounded no matter how long the full message grows.
-  // This is what keeps the webview from pinning a CPU core on long
-  // web-search / delegation responses.
-  const boundary = useMemo(() => findStableBoundary(content), [content]);
-  const stablePart = content.slice(0, boundary);
-  const tailPart = content.slice(boundary);
+  const segments = useMemo(
+    () => buildMarkdownRenderSegments(content, streaming),
+    [content, streaming],
+  );
 
-  const stableBlocks = useMemo(() => parseBlocks(stablePart), [stablePart]);
-  const tailBlocks = useMemo(() => parseBlocks(tailPart), [tailPart]);
-
-  const total = stableBlocks.length + tailBlocks.length;
   return (
     <div className="text-sm text-foreground leading-relaxed space-y-2">
-      {stableBlocks.map((block, i) => (
-        <MemoBlock key={i} block={block} highlightTerms={safeMode ? undefined : highlightTerms} live={false} safeMode={safeMode} />
-      ))}
-      {tailBlocks.map((block, i) => {
-        const idx = stableBlocks.length + i;
-        return (
-          <MemoBlock
-            key={idx}
-            block={block}
+      {segments.map((segment) => (
+        segment.kind === "plain" ? (
+          <MemoPlainSegment key={`${segment.kind}:${segment.start}:${segment.end}`} segment={segment} />
+        ) : (
+          <MemoMarkdownSegment
+            key={`${segment.kind}:${segment.start}:${segment.end}`}
+            segment={segment}
             highlightTerms={safeMode ? undefined : highlightTerms}
-            live={streaming && idx === total - 1}
             safeMode={safeMode}
           />
-        );
-      })}
+        )
+      ))}
     </div>
   );
 }
+
+const MemoPlainSegment = memo(function PlainSegment({ segment }: { segment: MarkdownRenderSegment }) {
+  return (
+    <div className="whitespace-pre-wrap break-words text-foreground/90">
+      {segment.text}
+    </div>
+  );
+}, (prev, next) => (
+  prev.segment.text === next.segment.text &&
+  prev.segment.start === next.segment.start &&
+  prev.segment.end === next.segment.end
+));
+
+const MemoMarkdownSegment = memo(function MarkdownSegment({
+  segment,
+  highlightTerms,
+  safeMode,
+}: {
+  segment: MarkdownRenderSegment;
+  highlightTerms?: string[];
+  safeMode?: boolean;
+}) {
+  const blocks = useMemo(() => parseBlocks(segment.text), [segment.text]);
+  const total = blocks.length;
+  return (
+    <>
+      {blocks.map((block, i) => (
+        <MemoBlock
+          key={i}
+          block={block}
+          highlightTerms={safeMode ? undefined : highlightTerms}
+          live={segment.live && i === total - 1}
+          safeMode={safeMode}
+        />
+      ))}
+    </>
+  );
+}, (prev, next) => (
+  prev.segment.text === next.segment.text &&
+  prev.segment.start === next.segment.start &&
+  prev.segment.end === next.segment.end &&
+  prev.segment.live === next.segment.live &&
+  prev.safeMode === next.safeMode &&
+  termsEqual(prev.highlightTerms, next.highlightTerms)
+));
 
 const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live, safeMode }: BlockProps) {
   return <Block block={block} highlightTerms={highlightTerms} live={live} safeMode={safeMode} />;
@@ -234,12 +268,19 @@ function Block({ block, highlightTerms, live, safeMode }: { block: BlockNode; hi
       );
 
     case "table":
+      {
+        const MAX_LIVE_TABLE_ROWS = 80;
+        const MAX_LIVE_TABLE_CELLS = 8;
+        const rows = live ? block.rows.slice(0, MAX_LIVE_TABLE_ROWS) : block.rows;
+        const headers = live ? block.headers.slice(0, MAX_LIVE_TABLE_CELLS) : block.headers;
+        const hiddenRows = block.rows.length - rows.length;
+        const renderRow = (row: string[]) => (live ? row.slice(0, MAX_LIVE_TABLE_CELLS) : row);
       return (
         <div className="overflow-x-auto rounded-md border border-border/60">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-secondary/60 border-b border-border/60">
-                {block.headers.map((h, i) => (
+                {headers.map((h, i) => (
                   <th key={i} className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">
                     <InlineContent text={h} highlightTerms={highlightTerms} safeMode={safeMode} />
                   </th>
@@ -247,9 +288,9 @@ function Block({ block, highlightTerms, live, safeMode }: { block: BlockNode; hi
               </tr>
             </thead>
             <tbody>
-              {block.rows.map((row, ri) => (
+              {rows.map((row, ri) => (
                 <tr key={ri} className={ri % 2 === 0 ? "bg-background" : "bg-secondary/20"}>
-                  {row.map((cell, ci) => (
+                  {renderRow(row).map((cell, ci) => (
                     <td key={ci} className="px-3 py-1.5 border-t border-border/30 text-foreground/90">
                       <InlineContent text={cell} highlightTerms={highlightTerms} safeMode={safeMode} />
                     </td>
@@ -258,8 +299,14 @@ function Block({ block, highlightTerms, live, safeMode }: { block: BlockNode; hi
               ))}
             </tbody>
           </table>
+          {hiddenRows > 0 && (
+            <div className="border-t border-border/40 bg-secondary/30 px-3 py-1.5 text-[11px] text-muted-foreground">
+              Showing first {rows.length} rows while streaming.
+            </div>
+          )}
         </div>
       );
+      }
 
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";
@@ -376,6 +423,121 @@ function MediaPreview({ path }: { path: string }) {
   );
 }
 
+function isLocalFilePath(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return false;
+  LOCAL_FILE_PATH_PATTERN.lastIndex = 0;
+  const match = LOCAL_FILE_PATH_PATTERN.exec(trimmed);
+  return Boolean(match && match.index === 0 && match[0].length === trimmed.length);
+}
+
+function splitLocalFilePaths(text: string): Array<{ kind: "text"; value: string } | { kind: "file"; value: string }> {
+  const parts: Array<{ kind: "text"; value: string } | { kind: "file"; value: string }> = [];
+  LOCAL_FILE_PATH_PATTERN.lastIndex = 0;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = LOCAL_FILE_PATH_PATTERN.exec(text))) {
+    if (match.index > last) parts.push({ kind: "text", value: text.slice(last, match.index) });
+    parts.push({ kind: "file", value: match[0] });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ kind: "text", value: text.slice(last) });
+  return parts;
+}
+
+function FilePathAction({ path }: { path: string }) {
+  const [open, setOpen] = useState(false);
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const name = path.split(/[\\/]/).pop() || "file";
+  const rawUrl = mediaFileUrl(path);
+
+  const handleOpen = () => {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (!nextOpen || content !== null || loading) return;
+    setLoading(true);
+    setError(null);
+    void api.readChatFile(path)
+      .then((text) => setContent(text))
+      .catch((err) => setError(err instanceof Error ? err.message : "Could not open file"))
+      .finally(() => setLoading(false));
+  };
+
+  const handleRawClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!isTauri()) return;
+    event.preventDefault();
+    void openExternal(rawUrl);
+  };
+
+  const handleOpenInFiles = () => {
+    setGlobalNavTarget({ type: "file", path, name });
+  };
+
+  return (
+    <span className="my-1 inline-block max-w-full align-middle">
+      <span className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:border-primary/60 hover:bg-primary/15">
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="inline-flex min-w-0 items-center gap-1.5"
+          title={`Open ${path}`}
+        >
+          {loading ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <FileText className="h-3.5 w-3.5 shrink-0" />}
+          <span className="truncate">{name}</span>
+        </button>
+        <a
+          href={rawUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={handleRawClick}
+          className="shrink-0 text-primary/70 transition-colors hover:text-primary"
+          title="Open raw file"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+        <button
+          type="button"
+          onClick={handleOpenInFiles}
+          className="inline-flex shrink-0 items-center gap-1 rounded-sm border-l border-primary/25 pl-1.5 text-primary/80 transition-colors hover:text-primary"
+          title="Open in Files"
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          <span>Files</span>
+        </button>
+      </span>
+      {open ? (
+        <span className="mt-2 block max-w-full overflow-hidden rounded-md border border-border/70 bg-background/75">
+          <span className="flex items-center justify-between gap-3 border-b border-border/50 bg-secondary/50 px-3 py-1.5">
+            <span className="min-w-0 truncate text-xs font-medium text-foreground">{name}</span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+              title="Close file preview"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </span>
+          <span className="block px-3 py-2">
+            {loading ? (
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Opening file...
+              </span>
+            ) : error ? (
+              <span className="text-xs text-destructive">{error}</span>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/90">{content ?? ""}</pre>
+            )}
+          </span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function openLinkInDesktop(event: MouseEvent<HTMLAnchorElement>, href: string) {
   if (!isTauri() || !/^https?:\/\//i.test(href)) return;
   event.preventDefault();
@@ -390,8 +552,11 @@ function InlineContent({ text, highlightTerms, safeMode }: { text: string; highl
       {nodes.map((node, i) => {
         switch (node.type) {
           case "text":
-            return <HighlightedText key={i} text={node.content} terms={highlightTerms} />;
+            return <TextWithFileActions key={i} text={node.content} terms={highlightTerms} safeMode={safeMode} />;
           case "code":
+            if (!safeMode && isLocalFilePath(node.content)) {
+              return <FilePathAction key={i} path={node.content.trim()} />;
+            }
             return (
               <code key={i} className="bg-secondary/60 px-1.5 py-0.5 text-xs font-mono text-primary/90">
                 {node.content}
@@ -430,6 +595,31 @@ function InlineContent({ text, highlightTerms, safeMode }: { text: string; highl
       })}
     </>
   );
+}
+
+function TextWithFileActions({ text, terms, safeMode }: { text: string; terms?: string[]; safeMode?: boolean }) {
+  if (safeMode) return <HighlightedText text={text} terms={terms} />;
+  const parts = splitLocalFilePaths(text);
+  if (parts.length === 1 && parts[0].kind === "text") {
+    return <HighlightedText text={text} terms={terms} />;
+  }
+  return (
+    <>
+      {parts.map((part, i) => (
+        part.kind === "file" ? (
+          <FilePathAction key={i} path={part.value} />
+        ) : (
+          <HighlightedText key={i} text={part.value} terms={terms} />
+        )
+      ))}
+    </>
+  );
+}
+
+function termsEqual(a?: string[], b?: string[]): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((t, i) => t === b[i]);
 }
 
 /** Highlight search terms within a plain text string. */

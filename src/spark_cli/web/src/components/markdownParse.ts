@@ -36,6 +36,14 @@ export interface BlockProps {
   safeMode?: boolean;
 }
 
+export interface MarkdownRenderSegment {
+  kind: "markdown" | "plain";
+  text: string;
+  start: number;
+  end: number;
+  live: boolean;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Block parser                                                       */
 /* ------------------------------------------------------------------ */
@@ -51,6 +59,14 @@ function parseTableRow(line: string): string[] {
     .replace(/\|$/, "")
     .split("|")
     .map((c) => c.trim());
+}
+
+function isTableStart(lines: string[], index: number): boolean {
+  return (
+    lines[index]?.trim().startsWith("|") &&
+    index + 1 < lines.length &&
+    isTableSeparator(lines[index + 1])
+  );
 }
 
 export function parseBlocks(text: string): BlockNode[] {
@@ -77,7 +93,7 @@ export function parseBlocks(text: string): BlockNode[] {
     }
 
     // Table — need header + separator + at least one row
-    if (line.trim().startsWith("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+    if (isTableStart(lines, i)) {
       const headers = parseTableRow(line);
       i += 2; // skip header and separator
       const rows: string[][] = [];
@@ -154,7 +170,7 @@ export function parseBlocks(text: string): BlockNode[] {
       !lines[i].match(/^\d+[.)]\s/) &&
       !lines[i].match(/^[-*_]{3,}\s*$/) &&
       !lines[i].match(/^>\s?/) &&
-      !lines[i].trim().startsWith("|")
+      !isTableStart(lines, i)
     ) {
       paraLines.push(lines[i]);
       i++;
@@ -191,6 +207,156 @@ export function findStableBoundary(content: string): number {
     }
   }
   return safe > content.length ? content.length : safe;
+}
+
+function stableBlankBoundaries(content: string): number[] {
+  const boundaries: number[] = [];
+  let insideFence = false;
+  let lineStart = 0;
+
+  for (let i = 0; i <= content.length; i++) {
+    if (i !== content.length && content[i] !== "\n") continue;
+
+    const line = content.slice(lineStart, i);
+    if (line.startsWith("```")) {
+      insideFence = !insideFence;
+    } else if (line === "" && !insideFence) {
+      boundaries.push(Math.min(content.length, i + 1));
+    }
+    lineStart = i + 1;
+  }
+
+  return boundaries;
+}
+
+function splitPlainSegments(
+  text: string,
+  offset: number,
+  size: number,
+  live: boolean,
+): MarkdownRenderSegment[] {
+  const segments: MarkdownRenderSegment[] = [];
+  for (let start = 0; start < text.length; start += size) {
+    const end = Math.min(text.length, start + size);
+    segments.push({
+      kind: "plain",
+      text: text.slice(start, end),
+      start: offset + start,
+      end: offset + end,
+      live,
+    });
+  }
+  return segments;
+}
+
+export function splitStableMarkdownSegments(
+  content: string,
+  options: { targetSize?: number; maxSize?: number } = {},
+): MarkdownRenderSegment[] {
+  const targetSize = options.targetSize ?? 4_000;
+  const maxSize = options.maxSize ?? 10_000;
+  if (!content) return [];
+  if (content.length <= targetSize) {
+    return [{ kind: "markdown", text: content, start: 0, end: content.length, live: false }];
+  }
+
+  const boundaries = stableBlankBoundaries(content);
+  const segments: MarkdownRenderSegment[] = [];
+  let start = 0;
+  let boundaryIdx = 0;
+
+  while (start < content.length) {
+    const minEnd = Math.min(content.length, start + targetSize);
+    const maxEnd = Math.min(content.length, start + maxSize);
+    let best = 0;
+
+    while (boundaryIdx < boundaries.length && boundaries[boundaryIdx] <= start) {
+      boundaryIdx++;
+    }
+    for (let i = boundaryIdx; i < boundaries.length && boundaries[i] <= maxEnd; i++) {
+      best = boundaries[i];
+      if (boundaries[i] >= minEnd) break;
+    }
+
+    const end = best > start ? best : maxEnd;
+    segments.push({
+      kind: "markdown",
+      text: content.slice(start, end),
+      start,
+      end,
+      live: false,
+    });
+    start = end;
+  }
+
+  return segments;
+}
+
+export function buildMarkdownRenderSegments(
+  content: string,
+  streaming: boolean,
+  options: {
+    chunkTargetSize?: number;
+    chunkMaxSize?: number;
+    liveTailSize?: number;
+    streamingHeadSize?: number;
+    streamingFullSize?: number;
+    plainSegmentSize?: number;
+  } = {},
+): MarkdownRenderSegment[] {
+  const chunkTargetSize = options.chunkTargetSize ?? 4_000;
+  const chunkMaxSize = options.chunkMaxSize ?? 10_000;
+  const liveTailSize = options.liveTailSize ?? 1_600;
+  const streamingHeadSize = options.streamingHeadSize ?? 800;
+  const streamingFullSize = options.streamingFullSize ?? 800;
+  const plainSegmentSize = options.plainSegmentSize ?? 8_000;
+
+  if (!content) return [];
+  if (!streaming) {
+    return splitStableMarkdownSegments(content, {
+      targetSize: chunkTargetSize,
+      maxSize: chunkMaxSize,
+    });
+  }
+
+  if (content.length <= streamingFullSize) {
+    return [{
+      kind: "markdown",
+      text: content,
+      start: 0,
+      end: content.length,
+      live: true,
+    }];
+  }
+
+  const headEnd = Math.min(streamingHeadSize, content.length);
+  const tailStart = Math.max(headEnd, content.length - liveTailSize);
+  const hiddenChars = Math.max(0, tailStart - headEnd);
+  const segments: MarkdownRenderSegment[] = [
+    {
+      kind: "markdown",
+      text: content.slice(0, headEnd),
+      start: 0,
+      end: headEnd,
+      live: false,
+    },
+  ];
+  if (hiddenChars > 0) {
+    segments.push(...splitPlainSegments(
+      `\n\n... ${hiddenChars.toLocaleString()} characters received; showing the live tail while streaming ...\n\n`,
+      headEnd,
+      plainSegmentSize,
+      false,
+    ));
+  }
+  segments.push({
+    kind: "plain",
+    text: content.slice(tailStart),
+    start: tailStart,
+    end: content.length,
+    live: true,
+  });
+  return segments;
 }
 
 /* ------------------------------------------------------------------ */

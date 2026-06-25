@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Markdown } from "./Markdown";
-import { parseBlocks, parseInline, findStableBoundary, blockPropsEqual } from "./markdownParse";
+import {
+  parseBlocks,
+  parseInline,
+  findStableBoundary,
+  blockPropsEqual,
+  buildMarkdownRenderSegments,
+} from "./markdownParse";
 
 /**
  * The streaming renderer splits a message into a stable committed prefix and a
@@ -143,19 +149,47 @@ describe("streaming markdown parser regression coverage", () => {
       href: "https://example.com",
     });
   });
+
+  it("treats pipe-prefixed ASCII diagrams as paragraphs instead of hanging", () => {
+    const content = [
+      "+--------------------------------------+",
+      "| Experience & Edge Layer              |",
+      "| CDN | WAF | API Gateway | Auth Proxy |",
+      "+--------------------------------------+",
+      "",
+      "tail",
+    ].join("\n");
+    const start = Date.now();
+    const blocks = parseBlocks(content);
+
+    expect(Date.now() - start).toBeLessThan(100);
+    expect(blocks).toEqual([
+      {
+        type: "paragraph",
+        content: [
+          "+--------------------------------------+",
+          "| Experience & Edge Layer              |",
+          "| CDN | WAF | API Gateway | Auth Proxy |",
+          "+--------------------------------------+",
+        ].join("\n"),
+      },
+      { type: "paragraph", content: "tail" },
+    ]);
+  });
 });
 
 describe("Markdown component streaming behavior", () => {
-  it("renders markdown while streaming instead of raw pre-wrapped syntax", () => {
+  it("renders active streams as plain text to keep the hot path safe", () => {
     const html = renderToStaticMarkup(createElement(Markdown, {
       content: "## Heading\n\nA **bold** line.\n\n- one",
       streaming: true,
     }));
 
-    expect(html).toContain("<h2");
-    expect(html).toContain("<strong");
-    expect(html).toContain("<ul");
-    expect(html).not.toContain("## Heading");
+    expect(html).not.toContain("<h2");
+    expect(html).not.toContain("<strong");
+    expect(html).not.toContain("<ul");
+    expect(html).toContain("## Heading");
+    expect(html).toContain("**bold**");
   });
 
   it("keeps safe mode plain even while streaming", () => {
@@ -169,6 +203,157 @@ describe("Markdown component streaming behavior", () => {
     expect(html).not.toContain("<strong");
     expect(html).toContain("## Heading");
     expect(html).toContain("**bold**");
+  });
+
+  it("keeps long active streams plain until completion", () => {
+    const content = [
+      "# Older heading",
+      "",
+      "older stable text\n\n".repeat(500),
+      "## Fresh tail",
+      "",
+      "A **bold** live tail.",
+    ].join("\n");
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content,
+      streaming: true,
+    }));
+
+    expect(html).toContain("Older heading");
+    expect(html).toContain("older stable text");
+    expect(html).toContain("## Fresh tail");
+    expect(html).toContain("**bold** live tail");
+    expect(html).not.toContain("<h2");
+  });
+
+  it("keeps the streaming markdown parse window small for long responses", () => {
+    const content = [
+      "# Head",
+      "",
+      "streaming paragraph\n\n".repeat(180),
+      "## Live tail",
+      "",
+      "A **bold** live tail.",
+    ].join("\n");
+    const segments = buildMarkdownRenderSegments(content, true);
+    const markdownChars = segments
+      .filter((segment) => segment.kind === "markdown")
+      .reduce((sum, segment) => sum + segment.text.length, 0);
+
+    expect(content.length).toBeGreaterThan(3_000);
+    expect(markdownChars).toBeLessThanOrEqual(900);
+    expect(segments.some((segment) => segment.kind === "plain")).toBe(true);
+  });
+
+  it("renders large completed markdown in chunks instead of falling back to raw text", () => {
+    const content = [
+      "# Older heading",
+      "",
+      "stable paragraph\n\n".repeat(500),
+      "## Final heading",
+      "",
+      "A **bold** final tail.",
+    ].join("\n");
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content,
+      streaming: false,
+    }));
+
+    expect(html).toContain("<h1");
+    expect(html).toContain("<h2");
+    expect(html).toContain("<strong");
+    expect(html).not.toContain("## Final heading");
+  });
+
+  it("renders completed markdown richly when under the soft cap", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content: "## Done\n\nA **bold** final answer.\n\n```bash\necho ok\n```",
+      streaming: false,
+    }));
+
+    expect(html).toContain("<h2");
+    expect(html).toContain("<strong");
+    expect(html).toContain("Copy code");
+    expect(html).not.toContain("## Done");
+  });
+
+  it("defers syntax highlighting for live code and enables it after completion", () => {
+    const content = "```js\nconst x = 1;\n```";
+    const live = renderToStaticMarkup(createElement(Markdown, { content, streaming: true }));
+    const done = renderToStaticMarkup(createElement(Markdown, { content, streaming: false }));
+
+    expect(live).not.toContain("hljs-keyword");
+    expect(done).toContain("hljs-keyword");
+  });
+
+  it("renders local markdown file paths in code spans as openable file buttons", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content: "Created the report here: `/Users/joe/.spark/workspace/current-best-llm-report.md`",
+      streaming: false,
+    }));
+
+    expect(html).toContain("<button");
+    expect(html).toContain("current-best-llm-report.md");
+    expect(html).toContain("Open raw file");
+    expect(html).toContain("Open in Files");
+    expect(html).not.toContain("<code");
+  });
+
+  it("renders local markdown file paths in plain text as openable file buttons", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content: "Report saved at /Users/joe/.spark/workspace/current-best-llm-report.md.",
+      streaming: false,
+    }));
+
+    expect(html).toContain("<button");
+    expect(html).toContain("current-best-llm-report.md");
+    expect(html).toContain("Open in Files");
+    expect(html).toContain("Report saved at ");
+  });
+
+  it("keeps large streaming tables plain until completion", () => {
+    const content = [
+      "| a | b |",
+      "|---|---|",
+      ...Array.from({ length: 120 }, (_, i) => `| ${i} | ${i + 1} |`),
+    ].join("\n");
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content,
+      streaming: true,
+    }));
+
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain("<td>119</td>");
+    expect(html).toContain("| a | b |");
+    expect(html).toContain("| 119 | 120 |");
+  });
+});
+
+describe("markdown parser malformed and large input coverage", () => {
+  it("handles unclosed fences, huge paragraphs, huge tables, task lists, and malformed links", () => {
+    const hugeParagraph = "word ".repeat(20_000);
+    expect(() => parseBlocks(hugeParagraph)).not.toThrow();
+    expect(parseBlocks("- [ ] todo\n- [x] done")).toEqual([
+      { type: "list", ordered: false, items: ["[ ] todo", "[x] done"] },
+    ]);
+
+    const table = [
+      "| a | b | c |",
+      "|---|---|---|",
+      ...Array.from({ length: 300 }, (_, i) => `| ${i} | ${i + 1} | ${i + 2} |`),
+    ].join("\n");
+    const [tableBlock] = parseBlocks(table);
+    expect(tableBlock.type).toBe("table");
+    if (tableBlock.type === "table") expect(tableBlock.rows).toHaveLength(300);
+
+    expect(() => parseBlocks("```bash\necho still open")).not.toThrow();
+    expect(() => parseInline("[broken](https://example.com")).not.toThrow();
+    expect(() => parseInline("***".repeat(5000) + "text")).not.toThrow();
+    expect(parseInline("https://example.com/a(b).")).toContainEqual({
+      type: "link",
+      text: "https://example.com/a(b)",
+      href: "https://example.com/a(b)",
+    });
   });
 });
 
@@ -275,6 +460,89 @@ describe("streaming parse cost is bounded by the tail, not the whole message", (
     for (let i = 0; i < 60; i++) parseBlocks(tailPart); // ~one second of frames
     const perFrame = (Date.now() - start) / 60;
     expect(perFrame).toBeLessThan(2); // sub-2ms/frame for tail parse
+  });
+
+  it("keeps parse work bounded for 10k, 50k, and 100k character streams", () => {
+    for (const size of [10_000, 50_000, 100_000]) {
+      const prefix = "stable paragraph\n\n".repeat(Math.ceil(size / "stable paragraph\n\n".length)).slice(0, size);
+      const content = `${prefix}\n\nlive tail still growing`;
+      const boundary = findStableBoundary(content);
+      const tailPart = content.slice(boundary);
+
+      expect(tailPart.length).toBeLessThan(200);
+      const start = Date.now();
+      for (let i = 0; i < 60; i++) parseBlocks(tailPart);
+      const perFrame = (Date.now() - start) / 60;
+      expect(perFrame).toBeLessThan(2);
+    }
+  });
+
+  it("segments huge open streaming blocks into a markdown head plus plain live tail", () => {
+    const content = "one very long open paragraph ".repeat(5_000);
+    const segments = buildMarkdownRenderSegments(content, true, {
+      liveTailSize: 2_000,
+      streamingHeadSize: 1_000,
+      streamingFullSize: 3_000,
+    });
+    const livePlain = segments.filter((segment) => segment.kind === "plain" && segment.live);
+    const notice = segments.find((segment) => segment.kind === "plain" && !segment.live);
+    const markdown = segments.filter((segment) => segment.kind === "markdown");
+
+    expect(markdown).toHaveLength(1);
+    expect(notice?.text).toContain("showing the live tail");
+    expect(livePlain).toHaveLength(1);
+    expect(livePlain[0].text.length).toBeLessThanOrEqual(2_000);
+    expect(markdown[0].text).toBe(content.slice(0, 1_000));
+    expect(livePlain[0].text).toBe(content.slice(-2_000));
+  });
+
+  it("splits stable markdown on safe boundaries so old chunks stay memoizable", () => {
+    const content = Array.from({ length: 180 }, (_, i) => `## Section ${i}\n\nBody ${i}.`).join("\n\n");
+    const segments = buildMarkdownRenderSegments(content, false, {
+      chunkTargetSize: 500,
+      chunkMaxSize: 900,
+    });
+
+    expect(segments.length).toBeGreaterThan(3);
+    expect(segments.every((segment) => segment.kind === "markdown" && !segment.live)).toBe(true);
+    expect(segments.map((segment) => segment.text).join("")).toBe(content);
+  });
+
+  it("does not hide content when segmenting very large completed markdown", () => {
+    const content = [
+      "# Head",
+      "",
+      "middle paragraph\n\n".repeat(6_000),
+      "## Tail",
+      "",
+      "A **bold** tail.",
+    ].join("\n");
+    const segments = buildMarkdownRenderSegments(content, false, {
+      chunkTargetSize: 1_000,
+      chunkMaxSize: 1_500,
+    });
+
+    expect(segments.length).toBeGreaterThan(2);
+    expect(segments.every((segment) => segment.kind === "markdown" && !segment.live)).toBe(true);
+    expect(segments.map((segment) => segment.text).join("")).toBe(content);
+    expect(segments.some((segment) => segment.text.includes("hidden for render performance"))).toBe(false);
+  });
+
+  it("renders oversized completed messages as full plain text instead of hiding content", () => {
+    const content = [
+      "# Head",
+      "",
+      "middle paragraph\n\n".repeat(6_000),
+      "## Tail",
+    ].join("\n");
+
+    const html = renderToStaticMarkup(createElement(Markdown, { content }));
+
+    expect(html).toContain("# Head");
+    expect(html).toContain("middle paragraph");
+    expect(html).toContain("## Tail");
+    expect(html).not.toContain("hidden for render performance");
+    expect(html).not.toContain("<h1");
   });
 });
 

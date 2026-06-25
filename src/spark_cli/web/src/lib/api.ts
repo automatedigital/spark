@@ -16,12 +16,12 @@ const DASHBOARD_TOKEN_KEY = "spark_dashboard_token";
 // URL builders, and sseUrl all funnel through it.
 
 export function getConnectionMode(): ConnectionMode {
-  if (typeof localStorage === "undefined") return "local";
+  if (typeof localStorage === "undefined" || typeof localStorage.getItem !== "function") return "local";
   return parseConnectionMode(localStorage.getItem(CONNECTION_MODE_KEY));
 }
 
 export function getRemoteBaseUrl(): string | null {
-  if (typeof localStorage === "undefined") return null;
+  if (typeof localStorage === "undefined" || typeof localStorage.getItem !== "function") return null;
   return localStorage.getItem(REMOTE_BASE_URL_KEY);
 }
 
@@ -53,7 +53,7 @@ export function setLocalConnection(): void {
 let _sessionToken: string | null = null;
 
 export function getDashboardToken(): string | null {
-  if (typeof localStorage === "undefined") return null;
+  if (typeof localStorage === "undefined" || typeof localStorage.getItem !== "function") return null;
   return localStorage.getItem(DASHBOARD_TOKEN_KEY);
 }
 
@@ -190,8 +190,35 @@ export const api = {
       `/api/sessions/${encodeURIComponent(id)}/tool-results/${encodeURIComponent(toolCallId)}`,
     ),
   getTurnStatus: (id: string) =>
-    fetchJSON<{ session_id: string; turn_active: boolean }>(
+    fetchJSON<{
+      session_id: string;
+      resolved_session_id: string;
+      latest_session_id: string;
+      active_turn_session_id: string | null;
+      turn_active: boolean;
+      status: string | null;
+      phase: "idle" | string;
+      started_at: number | null;
+      last_event_at: number | null;
+      interrupt_requested: boolean;
+      active_agent_session_id: string | null;
+      stream_revision?: number;
+      stream_text_chars?: number;
+    }>(
       `/api/conversations/${encodeURIComponent(id)}/turn-status`,
+    ),
+  getStreamSnapshot: (id: string) =>
+    fetchJSON<{
+      session_id: string;
+      resolved_session_id: string;
+      latest_session_id: string;
+      active_turn_session_id: string | null;
+      turn_active: boolean;
+      stream_text: string;
+      stream_revision: number;
+      stream_text_chars: number;
+    }>(
+      `/api/conversations/${encodeURIComponent(id)}/stream-snapshot`,
     ),
   deleteSession: (id: string) =>
     fetchJSON<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {

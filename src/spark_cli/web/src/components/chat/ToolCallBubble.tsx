@@ -45,6 +45,10 @@ function formatBytes(chars: number): string {
   return `${(chars / 1_000_000).toFixed(1)}M chars`;
 }
 
+function formatSeconds(seconds: number): string {
+  return `${Math.max(0, seconds).toFixed(1)}s`;
+}
+
 function ResultPreview({ result, safeMode }: { result: string; safeMode?: boolean }) {
   const [fullscreen, setFullscreen] = useState(false);
   const trimmed = result.trim();
@@ -116,6 +120,7 @@ export function ToolCallBubble({
   done,
   startedAt,
   endedAt,
+  durationSeconds,
   repeatCount,
   safeMode,
   onAttachPath,
@@ -128,6 +133,7 @@ export function ToolCallBubble({
   done?: boolean;
   startedAt?: number;
   endedAt?: number;
+  durationSeconds?: number;
   repeatCount?: number;
   safeMode?: boolean;
   onAttachPath?: (path: string) => void;
@@ -156,8 +162,10 @@ export function ToolCallBubble({
   const Icon = familyInfo?.icon ?? Wrench;
 
   const elapsed =
-    done && startedAt && endedAt
-      ? `${((endedAt - startedAt) / 1000).toFixed(1)}s`
+    done && typeof durationSeconds === "number"
+      ? formatSeconds(durationSeconds)
+      : done && typeof startedAt === "number" && typeof endedAt === "number"
+      ? formatSeconds(endedAt - startedAt)
       : null;
 
   const argPreview = getArgPreview(name, args);

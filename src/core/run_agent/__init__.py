@@ -3862,7 +3862,13 @@ class AIAgent(_PromptCacheMixin):
     def _close_request_openai_client(self, client: Any, *, reason: str) -> None:
         self._close_openai_client(client, reason=reason, shared=False)
 
-    def _run_codex_stream(self, api_kwargs: dict, client: Any = None, on_first_delta: callable = None):
+    def _run_codex_stream(
+        self,
+        api_kwargs: dict,
+        client: Any = None,
+        on_first_delta: callable = None,
+        on_progress: callable = None,
+    ):
         """Execute one streaming Responses API request and return the final response."""
         import httpx as _httpx
 
@@ -3911,6 +3917,11 @@ class AIAgent(_PromptCacheMixin):
             try:
                 with active_client.responses.stream(**api_kwargs) as stream:
                     for event in stream:
+                        if on_progress:
+                            try:
+                                on_progress()
+                            except Exception:
+                                pass
                         self._touch_activity("receiving stream response")
                         if self._interrupt_requested:
                             break
@@ -4004,7 +4015,9 @@ class AIAgent(_PromptCacheMixin):
                     self._client_log_context(),
                     exc,
                 )
-                return self._run_codex_create_stream_fallback(api_kwargs, client=active_client)
+                return self._run_codex_create_stream_fallback(
+                    api_kwargs, client=active_client, on_progress=on_progress,
+                )
             except RuntimeError as exc:
                 err_text = str(exc)
                 missing_completed = "response.completed" in err_text
@@ -4021,10 +4034,17 @@ class AIAgent(_PromptCacheMixin):
                         "Responses stream did not emit response.completed; falling back to create(stream=True). %s",
                         self._client_log_context(),
                     )
-                    return self._run_codex_create_stream_fallback(api_kwargs, client=active_client)
+                    return self._run_codex_create_stream_fallback(
+                        api_kwargs, client=active_client, on_progress=on_progress,
+                    )
                 raise
 
-    def _run_codex_create_stream_fallback(self, api_kwargs: dict, client: Any = None):
+    def _run_codex_create_stream_fallback(
+        self,
+        api_kwargs: dict,
+        client: Any = None,
+        on_progress: callable = None,
+    ):
         """Fallback path for stream completion edge cases on Codex-style Responses backends."""
         active_client = client or self._ensure_primary_openai_client(reason="codex_create_stream_fallback")
         fallback_kwargs = dict(api_kwargs)
@@ -4043,6 +4063,11 @@ class AIAgent(_PromptCacheMixin):
         collected_text_deltas: list = []
         try:
             for event in stream_or_response:
+                if on_progress:
+                    try:
+                        on_progress()
+                    except Exception:
+                        pass
                 self._touch_activity("receiving stream response")
                 event_type = getattr(event, "type", None)
                 if not event_type and isinstance(event, dict):
@@ -4333,15 +4358,30 @@ class AIAgent(_PromptCacheMixin):
         """
         result = {"response": None, "error": None}
         request_client_holder = {"client": None}
+        provider_progress_at = {"t": time.time()}
+
+        def _mark_provider_progress() -> None:
+            provider_progress_at["t"] = time.time()
 
         def _call():
             try:
                 if self.api_mode == "codex_responses":
                     request_client_holder["client"] = self._create_request_openai_client(reason="codex_stream_request")
+                    _first_delta = getattr(self, "_codex_on_first_delta", None)
+
+                    def _on_first_delta() -> None:
+                        _mark_provider_progress()
+                        if _first_delta:
+                            try:
+                                _first_delta()
+                            except Exception:
+                                pass
+
                     result["response"] = self._run_codex_stream(
                         api_kwargs,
                         client=request_client_holder["client"],
-                        on_first_delta=getattr(self, "_codex_on_first_delta", None),
+                        on_first_delta=_on_first_delta,
+                        on_progress=_mark_provider_progress,
                     )
                 elif self.api_mode == "anthropic_messages":
                     result["response"] = self._anthropic_messages_create(api_kwargs)
@@ -4362,6 +4402,11 @@ class AIAgent(_PromptCacheMixin):
         # detector kills the connection early so the main retry loop can
         # apply richer recovery (credential rotation, provider fallback).
         _stale_base = float(os.getenv("SPARK_API_CALL_STALE_TIMEOUT", 300.0))
+        if _stale_base == 300.0 and getattr(self, "platform", None) == "web":
+            # Web users experience long silent provider waits as a frozen app.
+            # Keep the env var as an escape hatch, but make the default retry
+            # loop responsive enough for interactive desktop/dashboard turns.
+            _stale_base = 60.0
         _base_url = getattr(self, "_base_url", None) or ""
         if _stale_base == 300.0 and _base_url and is_local_endpoint(_base_url):
             _stale_timeout = float("inf")
@@ -4375,11 +4420,13 @@ class AIAgent(_PromptCacheMixin):
                 _stale_timeout = _stale_base
 
         _call_start = time.time()
+        provider_progress_at["t"] = _call_start
         self._touch_activity("waiting for non-streaming API response")
 
         t = threading.Thread(target=_call, daemon=True)
         t.start()
         _poll_count = 0
+        _last_status_emit = _call_start
         while t.is_alive():
             t.join(timeout=0.3)
             _poll_count += 1
@@ -4392,20 +4439,37 @@ class AIAgent(_PromptCacheMixin):
                     f"waiting for non-streaming response ({int(_elapsed)}s elapsed)"
                 )
 
+            # Status callbacks drive the web UI.  Emit frequent progress while
+            # a non-streaming provider call is pending so a partial answer does
+            # not look frozen between response chunks, retries, or stale kills.
+            _now = time.time()
+            _elapsed = _now - _call_start
+            _silent_elapsed = _now - provider_progress_at["t"]
+            _status_interval = 5.0 if getattr(self, "platform", None) == "web" else 30.0
+            if _elapsed >= 5.0 and (_now - _last_status_emit) >= _status_interval:
+                _last_status_emit = _now
+                timeout_text = (
+                    ""
+                    if _stale_timeout == float("inf")
+                    else f" Timeout in about {max(0, int(_stale_timeout - _silent_elapsed))}s."
+                )
+                self._emit_status(
+                    f"Waiting for provider response ({int(_elapsed)}s elapsed).{timeout_text}"
+                )
+
             # Stale-call detector: kill the connection if no response
             # arrives within the configured timeout.
-            _elapsed = time.time() - _call_start
-            if _elapsed > _stale_timeout:
+            if _silent_elapsed > _stale_timeout:
                 _est_ctx = sum(len(str(v)) for v in api_kwargs.get("messages", [])) // 4
                 logger.warning(
-                    "Non-streaming API call stale for %.0fs (threshold %.0fs). "
+                    "API call stale for %.0fs without provider progress (threshold %.0fs). "
                     "model=%s context=~%s tokens. Killing connection.",
-                    _elapsed, _stale_timeout,
+                    _silent_elapsed, _stale_timeout,
                     api_kwargs.get("model", "unknown"), f"{_est_ctx:,}",
                 )
                 self._emit_status(
-                    f"⚠️ No response from provider for {int(_elapsed)}s "
-                    f"(non-streaming, model: {api_kwargs.get('model', 'unknown')}). "
+                    f"⚠️ No provider progress for {int(_silent_elapsed)}s "
+                    f"(model: {api_kwargs.get('model', 'unknown')}). "
                     f"Aborting call."
                 )
                 try:
@@ -4424,14 +4488,14 @@ class AIAgent(_PromptCacheMixin):
                 except Exception:
                     pass
                 self._touch_activity(
-                    f"stale non-streaming call killed after {int(_elapsed)}s"
+                    f"stale provider call killed after {int(_silent_elapsed)}s without progress"
                 )
                 # Wait briefly for the thread to notice the closed connection.
                 t.join(timeout=2.0)
                 if result["error"] is None and result["response"] is None:
                     result["error"] = TimeoutError(
-                        f"Non-streaming API call timed out after {int(_elapsed)}s "
-                        f"with no response (threshold: {int(_stale_timeout)}s)"
+                        f"API call timed out after {int(_silent_elapsed)}s "
+                        f"with no provider progress (threshold: {int(_stale_timeout)}s)"
                     )
                 break
 
@@ -8741,6 +8805,24 @@ class AIAgent(_PromptCacheMixin):
                     _provider = getattr(self, "provider", "unknown")
                     _base = getattr(self, "base_url", "unknown")
                     _model = getattr(self, "model", "unknown")
+                    _summary_lower = _error_summary.lower()
+                    _web_stale_provider = (
+                        getattr(self, "platform", None) == "web"
+                        and (
+                            "non-streaming api call timed out" in _summary_lower
+                            or "with no provider progress" in _summary_lower
+                        )
+                    )
+                    if _web_stale_provider:
+                        # The web UI has already been showing provider-wait
+                        # heartbeats for this turn. Repeating the same stale
+                        # provider request twice more leaves the browser
+                        # looking frozen for minutes, and usually indicates a
+                        # bad provider/backend path rather than useful work.
+                        max_retries = retry_count
+                        self._emit_status(
+                            "Provider stopped responding; ending this web turn so you can retry."
+                        )
                     _status_code_str = f" [HTTP {status_code}]" if status_code else ""
                     self._vprint(f"{self.log_prefix}⚠️  API call failed (attempt {retry_count}/{max_retries}): {error_type}{_status_code_str}", force=True)
                     self._vprint(f"{self.log_prefix}   🔌 Provider: {_provider}  Model: {_model}", force=True)
@@ -9146,8 +9228,12 @@ class AIAgent(_PromptCacheMixin):
                         # client once for transient transport errors (stale
                         # connection pool, TCP reset).  Only attempted once
                         # per API call block.
-                        if not primary_recovery_attempted and self._try_recover_primary_transport(
-                            api_error, retry_count=retry_count, max_retries=max_retries,
+                        if (
+                            not _web_stale_provider
+                            and not primary_recovery_attempted
+                            and self._try_recover_primary_transport(
+                                api_error, retry_count=retry_count, max_retries=max_retries,
+                            )
                         ):
                             primary_recovery_attempted = True
                             retry_count = 0

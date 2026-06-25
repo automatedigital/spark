@@ -8,13 +8,15 @@ Coverage:
   check_web_api_key() — unified availability check across all web backends.
 """
 
-import importlib
+import asyncio
 import json
 import os
 import sys
+import time
 import types
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 
 class TestFirecrawlClientConfig:
@@ -481,8 +483,9 @@ class TestParallelClientConfig:
     def test_creates_client_with_key(self):
         """PARALLEL_API_KEY set → creates Parallel client."""
         with patch.dict(os.environ, {"PARALLEL_API_KEY": "test-key"}):
-            from tools.web_tools import _get_parallel_client
             from parallel import Parallel
+
+            from tools.web_tools import _get_parallel_client
 
             client = _get_parallel_client()
             assert client is not None
@@ -655,3 +658,125 @@ def test_web_requires_env_includes_exa_key():
     from tools.web_tools import _web_requires_env
 
     assert "EXA_API_KEY" in _web_requires_env()
+
+
+class TestWebToolFastDefaults:
+    """Regression coverage for web tools staying fast in normal chat use."""
+
+    def test_parallel_search_defaults_to_fast_mode(self):
+        import tools.web_tools
+
+        client = MagicMock()
+        client.beta.search.return_value.results = []
+
+        with patch("tools.web_tools._get_parallel_client", return_value=client), \
+             patch.dict(os.environ, {}, clear=True), \
+             patch("tools.interrupt.is_interrupted", return_value=False):
+            result = tools.web_tools._parallel_search("best llm model", limit=5)
+
+        assert result == {"success": True, "data": {"web": []}}
+        assert client.beta.search.call_args.kwargs["mode"] == "fast"
+
+    def test_registered_web_extract_handler_disables_llm_processing_by_default(self):
+        import tools.web_tools as web_tools
+        from tools.registry import registry
+
+        assert web_tools.WEB_EXTRACT_SCHEMA["name"] == "web_extract"
+        entry = registry.get_entry("web_extract")
+        assert entry is not None
+
+        with patch("tools.web_tools.web_extract_tool", new=AsyncMock(return_value='{"results": []}')) as mock_extract:
+            result = asyncio.get_event_loop().run_until_complete(
+                entry.handler({"urls": ["https://example.com"]})
+            )
+
+        assert result == '{"results": []}'
+        assert mock_extract.await_args.kwargs["use_llm_processing"] is False
+        assert mock_extract.await_args.kwargs["max_chars_per_page"] == 12_000
+
+    def test_firecrawl_extract_scrapes_urls_concurrently(self):
+        import tools.web_tools
+
+        class FakeFirecrawl:
+            def scrape(self, url, formats):
+                time.sleep(0.3)
+                return {
+                    "metadata": {"title": url, "sourceURL": url},
+                    "markdown": f"content for {url}",
+                }
+
+        urls = ["https://example.com/a", "https://example.com/b"]
+
+        with patch("tools.web_tools._get_backend", return_value="firecrawl"), \
+             patch("tools.web_tools._get_firecrawl_client", return_value=FakeFirecrawl()), \
+             patch("tools.web_tools.is_safe_url", return_value=True), \
+             patch("tools.web_tools.check_website_access", return_value=None), \
+             patch("tools.interrupt.is_interrupted", return_value=False), \
+             patch.dict(os.environ, {
+                 "WEB_EXTRACT_CONCURRENCY": "2",
+                 "WEB_EXTRACT_SCRAPE_TIMEOUT": "5",
+                 "WEB_EXTRACT_FAST_FETCH": "false",
+             }):
+            start = time.monotonic()
+            result = asyncio.get_event_loop().run_until_complete(
+                tools.web_tools.web_extract_tool(urls, use_llm_processing=False)
+            )
+            elapsed = time.monotonic() - start
+
+        payload = json.loads(result)
+        assert elapsed < 0.55
+        assert [item["url"] for item in payload["results"]] == urls
+        assert all("content for https://example.com/" in item["content"] for item in payload["results"])
+
+    def test_firecrawl_backend_uses_fast_fetch_before_scrape(self):
+        import tools.web_tools
+
+        class FakeResponse:
+            url = "https://example.com/page"
+            headers = {"content-type": "text/html; charset=utf-8"}
+            text = """
+            <html>
+              <head><title>Example Page</title><script>ignore()</script></head>
+              <body>
+                <h1>Current LLM Rankings</h1>
+                <p>Claude Opus 4.8 and GPT-5.5 are leading frontier models.</p>
+                <p>This paragraph gives enough useful body content for fast extraction.</p>
+                <p>Additional benchmark notes make the extracted page long enough.</p>
+              </body>
+            </html>
+            """
+
+            def raise_for_status(self):
+                return None
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def get(self, url):
+                return FakeResponse()
+
+        with patch("tools.web_tools._get_backend", return_value="firecrawl"), \
+             patch("tools.web_tools.httpx.AsyncClient", FakeAsyncClient), \
+             patch("tools.web_tools._get_firecrawl_client") as firecrawl_client, \
+             patch("tools.web_tools.is_safe_url", return_value=True), \
+             patch("tools.web_tools.check_website_access", return_value=None), \
+             patch("tools.interrupt.is_interrupted", return_value=False), \
+             patch.dict(os.environ, {
+                 "WEB_EXTRACT_FAST_FETCH": "true",
+                 "WEB_EXTRACT_FAST_FETCH_MIN_CHARS": "50",
+             }):
+            result = asyncio.get_event_loop().run_until_complete(
+                tools.web_tools.web_extract_tool(["https://example.com/page"], use_llm_processing=False)
+            )
+
+        payload = json.loads(result)
+        assert firecrawl_client.call_count == 0
+        assert payload["results"][0]["title"] == "Example Page"
+        assert "Current LLM Rankings" in payload["results"][0]["content"]

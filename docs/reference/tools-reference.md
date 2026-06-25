@@ -153,7 +153,7 @@ Spark can also load tools dynamically from MCP servers. MCP tools appear with a 
 | Tool | Description | Requires |
 |------|-------------|----------|
 | `web_search` | Search the web and return up to 5 relevant results with titles, URLs, and descriptions. | `EXA_API_KEY` or `PARALLEL_API_KEY` or `FIRECRAWL_API_KEY` or `TAVILY_API_KEY` |
-| `web_extract` | Extract content from a URL as markdown. Works with PDF URLs too — pass the link directly and it converts to markdown text. Pages under 5000 chars return full markdown; larger pages are LLM-summarized. | `EXA_API_KEY` or `PARALLEL_API_KEY` or `FIRECRAWL_API_KEY` or `TAVILY_API_KEY` |
+| `web_extract` | Extract content from a URL as markdown. Works with PDF URLs too — pass the link directly and it converts to markdown text. Defaults to fast raw extraction with a per-page cap; pass `use_llm_processing=true` when you need slower LLM summarization of long pages. | `EXA_API_KEY` or `PARALLEL_API_KEY` or `FIRECRAWL_API_KEY` or `TAVILY_API_KEY` |
 
 ## `tts` toolset
 
