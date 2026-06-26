@@ -383,6 +383,31 @@ export const api = {
   getConversationStream: (sessionId: string): EventSource =>
     new EventSource(sseUrl(`/api/conversations/${encodeURIComponent(sessionId)}/stream`)),
 
+  getConversationSubagents: (sessionId: string) =>
+    fetchJSON<ConversationSubagentsResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents`,
+    ),
+
+  getConversationSubagent: (sessionId: string, subagentId: string) =>
+    fetchJSON<ConversationSubagentResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}`,
+    ),
+
+  getConversationSubagentMessages: (sessionId: string, subagentId: string, includeToolResults = false) =>
+    fetchJSON<ConversationSubagentMessagesResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}/messages${includeToolResults ? "?include_tool_results=true" : ""}`,
+    ),
+
+  interruptConversationSubagent: (sessionId: string, subagentId: string, message?: string) =>
+    fetchJSON<ConversationSubagentInterruptResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}/interrupt`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message ?? null }),
+      },
+    ),
+
   getConversationModels: () =>
     fetchJSON<ConversationModelsResponse>("/api/conversations/models"),
 
@@ -1499,6 +1524,9 @@ export interface StatusResponse {
     token_file: string;
     require_auth_nonlocal: boolean;
   };
+  dashboard_features?: {
+    subagents_sidebar?: boolean;
+  };
 }
 
 export interface DashboardAuthInfo {
@@ -1941,6 +1969,102 @@ export interface ChatApprovalRequestedData {
     pattern_keys?: string[];
   };
 }
+
+export type SubagentStatus =
+  | "queued"
+  | "starting"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "interrupted"
+  | "stale"
+  | string;
+
+export interface SubagentEvent {
+  id?: string;
+  run_id?: string;
+  subagent_id?: string;
+  type?: string;
+  kind?: string;
+  role?: string;
+  text?: string | null;
+  content?: string | null;
+  message?: string | null;
+  status?: SubagentStatus;
+  tool_name?: string | null;
+  tool_call_id?: string | null;
+  ts?: number;
+  timestamp?: number;
+  created_at?: number;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface SubagentRun {
+  id: string;
+  run_id?: string;
+  subagent_id?: string;
+  parent_session_id?: string | null;
+  conversation_id?: string | null;
+  child_session_id?: string | null;
+  name?: string | null;
+  task?: string | null;
+  goal?: string | null;
+  context?: string | null;
+  status: SubagentStatus;
+  summary?: string | null;
+  error?: string | null;
+  model?: string | null;
+  started_at?: number | null;
+  updated_at?: number | null;
+  ended_at?: number | null;
+  elapsed_seconds?: number | null;
+  duration_seconds?: number | null;
+  events?: SubagentEvent[];
+  transcript?: SubagentEvent[];
+  metadata?: Record<string, unknown> | null;
+  [key: string]: unknown;
+}
+
+export interface ConversationSubagentsResponse {
+  session_id: string;
+  subagents: SubagentRun[];
+}
+
+export interface ConversationSubagentResponse {
+  session_id: string;
+  subagent: SubagentRun;
+}
+
+export interface ConversationSubagentMessagesResponse {
+  session_id: string;
+  requested_session_id?: string;
+  subagent_id: string;
+  child_session_id?: string | null;
+  messages: SessionMessage[];
+  total: number;
+  limit: number;
+  offset?: number;
+  include_tool_results?: boolean;
+}
+
+export interface ConversationSubagentInterruptResponse {
+  ok: boolean;
+  session_id: string;
+  subagent_id: string;
+  child_session_id?: string | null;
+  status: SubagentStatus;
+}
+
+export type ChatSubagentEventData = Partial<SubagentRun> & {
+  id?: string;
+  run_id?: string;
+  subagent_id?: string;
+  event?: SubagentEvent;
+  events?: SubagentEvent[];
+  transcript?: SubagentEvent[];
+};
 
 export interface SessionsChangedData {
   action: "created" | "updated" | "deleted";

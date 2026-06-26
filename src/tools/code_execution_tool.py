@@ -90,9 +90,9 @@ _TOOL_STUBS = {
     ),
     "web_extract": (
         "web_extract",
-        "urls: list",
+        "urls: list, use_llm_processing: bool = True, max_chars_per_page: int = 20000",
         '"""Extract content from URLs. Returns dict with results list of {url, title, content, error}."""',
-        '{"urls": urls}',
+        '{"urls": urls, "use_llm_processing": use_llm_processing, "max_chars_per_page": max_chars_per_page}',
     ),
     "read_file": (
         "read_file",
@@ -1272,7 +1272,7 @@ _TOOL_DOC_LINES = [
      "  web_search(query: str, limit: int = 5) -> dict\n"
      "    Returns {\"data\": {\"web\": [{\"url\", \"title\", \"description\"}, ...]}}"),
     ("web_extract",
-     "  web_extract(urls: list[str]) -> dict\n"
+     "  web_extract(urls: list[str], use_llm_processing: bool = True, max_chars_per_page: int = 20000) -> dict\n"
      "    Returns {\"results\": [{\"url\", \"title\", \"content\", \"error\"}, ...]} where content is markdown"),
     ("read_file",
      "  read_file(path: str, offset: int = 1, limit: int = 500) -> dict\n"

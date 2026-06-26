@@ -1005,6 +1005,14 @@ export function ChatPanel({
         if (text) appendReasoning(text);
         break;
       }
+      case "chat.subagent.created": {
+        const run = (data as { subagent?: { name?: string; task?: string } }).subagent ?? {};
+        const name = typeof run.name === "string" && run.name.trim() ? run.name.trim() : "sub-agent";
+        const task = typeof run.task === "string" && run.task.trim() ? `: ${run.task.trim().slice(0, 140)}` : "";
+        setChatMessages((prev) => [...prev, { id: nid(), role: "note", text: `Created ${name}${task}` }]);
+        setStatusLabel(`Created ${name}`);
+        break;
+      }
       case "chat.status": {
         const msg = String((data as { message?: string }).message ?? "");
         if (msg) setStatusLabel(msg);

@@ -173,6 +173,216 @@ class TestEventBus:
         finally:
             web_server._clear_web_turn("sess_snapshot")
 
+    def test_subagent_callback_persists_and_publishes_snapshot(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("subagent_parent", source="web", model="m1")
+        finally:
+            db.close()
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            q: asyncio.Queue = asyncio.Queue()
+            web_server._event_subscribers.add(q)
+            try:
+                callbacks = web_server._make_web_chat_callbacks("subagent_parent", asyncio.Queue(), loop)
+                subagent_callback = callbacks[-1]
+                subagent_callback(
+                    {
+                        "schema": "spark.subagent.lifecycle.v1",
+                        "type": "subagent.started",
+                        "event": "started",
+                        "subagent_id": "subagent-1",
+                        "task_index": 0,
+                        "task_number": 1,
+                        "task_count": 1,
+                        "display_name": "Subagent 1",
+                        "goal_preview": "Inspect the files",
+                        "model": "m1",
+                        "payload": {
+                            "parent_session_id": "subagent_parent",
+                            "provider": "test-provider",
+                            "toolsets": ["terminal"],
+                            "preview": "reading",
+                        },
+                    }
+                )
+                return await asyncio.wait_for(q.get(), timeout=2.0)
+            finally:
+                web_server._event_subscribers.discard(q)
+
+        env = asyncio.run(run())
+        assert env["topic"] == "chat.subagent.started"
+        assert env["session_id"] == "subagent_parent"
+        assert env["data"]["subagent_id"] == "subagent-1"
+        assert env["data"]["subagent"]["status"] == "running"
+
+        listing = web_client.get("/api/conversations/subagent_parent/subagents")
+        assert listing.status_code == 200
+        runs = listing.json()["subagents"]
+        assert len(runs) == 1
+        assert runs[0]["id"] == "subagent-1"
+        assert runs[0]["parent_session_id"] == "subagent_parent"
+        assert runs[0]["task"] == "Inspect the files"
+
+        detail = web_client.get("/api/conversations/subagent_parent/subagents/subagent-1")
+        assert detail.status_code == 200
+        data = detail.json()
+        assert data["subagent"]["id"] == "subagent-1"
+        assert data["events"][0]["event_type"] == "started"
+        assert data["events"][0]["data"]["event"] == "started"
+
+    def test_subagent_snapshots_follow_full_compression_chain(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("chain_parent", source="web", model="m1")
+            db.create_session("chain_mid", source="web", model="m1", parent_session_id="chain_parent")
+            db.create_session("chain_latest", source="web", model="m1", parent_session_id="chain_mid")
+            db.create_session("chain_child", source="web", model="m1", parent_session_id="chain_mid")
+
+            def _mark_compressed(conn):
+                conn.execute("UPDATE sessions SET end_reason = 'compression' WHERE id IN (?, ?)", ("chain_parent", "chain_mid"))
+
+            db._execute_write(_mark_compressed)
+            db.create_subagent_run(
+                {
+                    "id": "chain_subagent",
+                    "parent_session_id": "chain_mid",
+                    "child_session_id": "chain_child",
+                    "task_index": 0,
+                    "name": "Chain",
+                    "status": "completed",
+                    "task": "work from middle",
+                }
+            )
+        finally:
+            db.close()
+
+        original = web_client.get("/api/conversations/chain_parent/subagents")
+        latest = web_client.get("/api/conversations/chain_latest/subagents")
+        detail = web_client.get("/api/conversations/chain_parent/subagents/chain_subagent")
+
+        assert original.status_code == 200
+        assert latest.status_code == 200
+        assert detail.status_code == 200
+        assert [r["id"] for r in original.json()["subagents"]] == ["chain_subagent"]
+        assert [r["id"] for r in latest.json()["subagents"]] == ["chain_subagent"]
+        assert detail.json()["subagent"]["parent_session_id"] == "chain_mid"
+
+    def test_subagent_messages_returns_child_session_messages_safely(self, web_client):
+        from core.spark_state import SessionDB
+
+        large_tool_output = "x" * 3000
+        db = SessionDB()
+        try:
+            db.create_session("msg_parent", source="web", model="m1")
+            db.create_session("msg_child", source="web", model="m1", parent_session_id="msg_parent")
+            db.create_subagent_run(
+                {
+                    "id": "msg_subagent",
+                    "parent_session_id": "msg_parent",
+                    "child_session_id": "msg_child",
+                    "task_index": 0,
+                    "name": "Messages",
+                    "status": "running",
+                    "task": "read files",
+                }
+            )
+            db.append_message("msg_child", "user", content="child prompt")
+            db.append_message("msg_child", "tool", content=large_tool_output, tool_name="terminal")
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/conversations/msg_parent/subagents/msg_subagent/messages")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["child_session_id"] == "msg_child"
+        assert data["total"] == 2
+        assert [m["message_index"] for m in data["messages"]] == [0, 1]
+        tool_msg = data["messages"][1]
+        assert tool_msg["role"] == "tool"
+        assert tool_msg["result_truncated"] is True
+        assert len(tool_msg["content"]) < len(large_tool_output)
+
+        full = web_client.get(
+            "/api/conversations/msg_parent/subagents/msg_subagent/messages?include_tool_results=true"
+        )
+        assert full.status_code == 200
+        assert full.json()["messages"][1]["content"] == large_tool_output
+
+    def test_subagent_interrupt_calls_tracked_active_child(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("interrupt_parent", source="web", model="m1")
+            db.create_session("interrupt_child", source="web", model="m1", parent_session_id="interrupt_parent")
+            db.create_subagent_run(
+                {
+                    "id": "interrupt_subagent",
+                    "parent_session_id": "interrupt_parent",
+                    "child_session_id": "interrupt_child",
+                    "task_index": 0,
+                    "name": "Interrupt",
+                    "status": "running",
+                    "task": "long task",
+                }
+            )
+        finally:
+            db.close()
+
+        child = MagicMock()
+        child.session_id = "interrupt_child"
+        parent = MagicMock()
+        parent._active_children = [child]
+        web_server._web_agents["interrupt_parent"] = parent
+        web_server._mark_web_turn_active("interrupt_parent")
+        try:
+            resp = web_client.post(
+                "/api/conversations/interrupt_parent/subagents/interrupt_subagent/interrupt",
+                json={"message": "stop child"},
+            )
+            assert resp.status_code == 200
+            child.interrupt.assert_called_once_with("stop child")
+            assert resp.json()["status"] == "stopping"
+        finally:
+            web_server._clear_web_turn("interrupt_parent")
+            web_server._web_agents.pop("interrupt_parent", None)
+
+    def test_subagent_interrupt_conflicts_when_child_not_active(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("inactive_parent", source="web", model="m1")
+            db.create_session("inactive_child", source="web", model="m1", parent_session_id="inactive_parent")
+            db.create_subagent_run(
+                {
+                    "id": "inactive_subagent",
+                    "parent_session_id": "inactive_parent",
+                    "child_session_id": "inactive_child",
+                    "task_index": 0,
+                    "name": "Inactive",
+                    "status": "completed",
+                    "task": "done",
+                }
+            )
+        finally:
+            db.close()
+
+        resp = web_client.post(
+            "/api/conversations/inactive_parent/subagents/inactive_subagent/interrupt",
+            json={},
+        )
+        assert resp.status_code == 409
+
 
 class TestConversationModels:
     def test_get_conversation_models(self, web_client):
@@ -215,9 +425,9 @@ class TestConversationControl:
         assert resp.status_code == 200
         ids = {row["id"] for row in resp.json()["sessions"]}
         assert "web_session" in ids
-        assert "web_child_session" in ids
+        assert "web_child_session" not in ids
         assert "cli_session" not in ids
-        assert resp.json()["total"] == 2
+        assert resp.json()["total"] == 1
 
     def test_session_search_can_filter_to_web_source(self, web_client):
         from core.spark_state import SessionDB

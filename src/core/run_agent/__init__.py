@@ -249,6 +249,7 @@ class AIAgent(_PromptCacheMixin):
         tool_progress_callback: callable = None,
         tool_start_callback: callable = None,
         tool_complete_callback: callable = None,
+        subagent_event_callback: callable = None,
         thinking_callback: callable = None,
         reasoning_callback: callable = None,
         clarify_callback: callable = None,
@@ -409,6 +410,7 @@ class AIAgent(_PromptCacheMixin):
         self.tool_progress_callback = tool_progress_callback
         self.tool_start_callback = tool_start_callback
         self.tool_complete_callback = tool_complete_callback
+        self.subagent_event_callback = subagent_event_callback
         self.suppress_status_output = False
         self.thinking_callback = thinking_callback
         self.reasoning_callback = reasoning_callback
@@ -4015,9 +4017,9 @@ class AIAgent(_PromptCacheMixin):
                     self._client_log_context(),
                     exc,
                 )
-                return self._run_codex_create_stream_fallback(
-                    api_kwargs, client=active_client, on_progress=on_progress,
-                )
+                if on_progress is None:
+                    return self._run_codex_create_stream_fallback(api_kwargs, client=active_client)
+                return self._run_codex_create_stream_fallback(api_kwargs, client=active_client, on_progress=on_progress)
             except RuntimeError as exc:
                 err_text = str(exc)
                 missing_completed = "response.completed" in err_text
@@ -4034,9 +4036,9 @@ class AIAgent(_PromptCacheMixin):
                         "Responses stream did not emit response.completed; falling back to create(stream=True). %s",
                         self._client_log_context(),
                     )
-                    return self._run_codex_create_stream_fallback(
-                        api_kwargs, client=active_client, on_progress=on_progress,
-                    )
+                    if on_progress is None:
+                        return self._run_codex_create_stream_fallback(api_kwargs, client=active_client)
+                    return self._run_codex_create_stream_fallback(api_kwargs, client=active_client, on_progress=on_progress)
                 raise
 
     def _run_codex_create_stream_fallback(

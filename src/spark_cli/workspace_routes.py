@@ -46,6 +46,7 @@ router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 _MAX_FILE_READ_BYTES = 512 * 1024  # 512 KB
 _MAX_TREE_DEPTH = 4
 _SLUG_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+_GLOBAL_WORKSPACE_SLUG = "__workspace__"
 _TERMINAL_RUN_TTL_SECONDS = 1800
 _PREVIEW_LOG_LIMIT = 500
 _PREVIEW_PORT_START = 4173
@@ -84,6 +85,8 @@ def _workspace_root() -> Path:
 def _project_dir(slug: str) -> Path:
     if not _SLUG_RE.match(slug):
         raise HTTPException(status_code=400, detail=f"Invalid project name: {slug!r}")
+    if slug == _GLOBAL_WORKSPACE_SLUG:
+        return _workspace_root()
     p = _workspace_root() / slug
     if not p.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {slug!r}")
@@ -248,6 +251,8 @@ def create_project(body: ProjectCreate):
     slug = re.sub(r"-{2,}", "-", slug)
     if not _SLUG_RE.match(slug):
         raise HTTPException(status_code=400, detail=f"Invalid project name: {name!r}")
+    if slug == _GLOBAL_WORKSPACE_SLUG:
+        raise HTTPException(status_code=400, detail=f"Reserved project name: {slug!r}")
     if not is_valid_template(body.template):
         raise HTTPException(status_code=400, detail=f"Unknown template: {body.template!r}")
     root = _workspace_root()
@@ -483,6 +488,8 @@ def delete_workspace_chat_file(path: str = Query(...)):
 
 @router.delete("/projects/{slug}")
 def delete_project(slug: str):
+    if slug == _GLOBAL_WORKSPACE_SLUG:
+        raise HTTPException(status_code=400, detail="Cannot delete the workspace root")
     project_dir = _project_dir(slug)
     if slug in _preview_sessions:
         _stop_preview_session(slug)

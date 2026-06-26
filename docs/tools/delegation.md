@@ -54,6 +54,14 @@ delegate_task(tasks=[
 
 All three run concurrently. Results return sorted by task index regardless of which finished first.
 
+## Inspecting Subagents In The Dashboard
+
+In the web dashboard, delegated children appear in the right-hand chat sidebar under the `Subagents` tab. Each row shows the generated child name, current status, elapsed time, and the delegated task preview. Click a row to open the child thread in the same sidebar.
+
+The child thread is read-only in v1. It shows the task card, reasoning summaries, tool calls, bounded tool output previews, completion summary, and failures or interruptions. The parent chat remains the source of truth for the final answer; intermediate child transcript content is visible for inspection but does not get injected into the parent's prompt history.
+
+While a child is running, the detail header includes a stop control. Stopping the parent turn still interrupts all active children.
+
 ## Worked Examples
 
 ### Research Three Topics at Once
@@ -170,6 +178,7 @@ If omitted, subagents use the same model as the parent.
 
 - Up to 3 tasks run concurrently via `ThreadPoolExecutor`
 - CLI mode: a tree-view shows each subagent's tool calls live
+- Web dashboard: the `Subagents` right-sidebar tab shows live rows and child transcripts
 - Gateway mode: progress is batched and relayed to the parent's callback
 - Interrupting the parent interrupts all active children
 - Results return in input order

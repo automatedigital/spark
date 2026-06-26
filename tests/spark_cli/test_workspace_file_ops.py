@@ -100,3 +100,35 @@ def test_path_traversal_rejected(client):
     _make_project()
     res = client.put("/api/workspace/projects/proj/file?path=../escape.txt", json={"content": "x"})
     assert res.status_code == 400
+
+
+def test_global_workspace_scope_uses_workspace_root(client):
+    workspace = get_spark_home() / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / "root-note.md").write_text("hello root")
+
+    tree = client.get("/api/workspace/projects/__workspace__/tree")
+    assert tree.status_code == 200
+    names = {node["name"] for node in tree.json()["tree"]}
+    assert "root-note.md" in names
+
+    read = client.get("/api/workspace/projects/__workspace__/file?path=root-note.md")
+    assert read.status_code == 200
+    assert read.json()["content"] == "hello root"
+
+    written = client.put(
+        "/api/workspace/projects/__workspace__/file?path=notes/from-chat.md",
+        json={"content": "from chat"},
+    )
+    assert written.status_code == 200
+    assert (workspace / "notes" / "from-chat.md").read_text() == "from chat"
+
+
+def test_global_workspace_scope_cannot_delete_workspace_root(client):
+    workspace = get_spark_home() / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    res = client.delete("/api/workspace/projects/__workspace__")
+
+    assert res.status_code == 400
+    assert workspace.exists()

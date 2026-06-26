@@ -144,6 +144,14 @@ Some tools need direct access to agent state, so `run_agent.py` intercepts them 
 | `session_search` | Queries session history via the agent's session DB |
 | `delegate_task` | Spawns subagents with isolated context |
 
+### Subagent Lifecycle
+
+`delegate_task` creates child `AIAgent` instances with isolated message history, their own session IDs, and the toolsets allowed by `delegation.default_toolsets` or the call arguments. The parent blocks until each child finishes, but the child lifecycle is still emitted in real time for surfaces that can display it.
+
+The canonical lifecycle payloads live in `agent/subagents.py` and use the `spark.subagent.lifecycle.v1` schema. Events include `created`, `started`, `thinking`, `tool_started`, `tool_output`, `tool_completed`, `status`, `completed`, `failed`, and `interrupted`. Web dashboard callbacks persist these as `subagent_runs` and `subagent_events`, publish `chat.subagent.*` SSE topics, and keep the full child transcript separate from the parent prompt history. CLI and gateway continue to receive concise progress through `tool_progress_callback`.
+
+The parent conversation receives only the structured delegation result returned by `delegate_task`. Child transcripts, tool previews, and sidebar state are UI/session metadata, so they do not mutate the parent system prompt, invalidate prompt caching, or add hidden context after a conversation starts.
+
 ## Callbacks — Wiring Into Real-Time Progress
 
 Set these on your `AIAgent` instance to get live updates in CLI, gateway, and ACP integrations:
@@ -158,6 +166,9 @@ Set these on your `AIAgent` instance to get live updates in CLI, gateway, and AC
 | `stream_delta_callback` | Each streaming token | CLI streaming display |
 | `tool_gen_callback` | Tool call parsed from stream | CLI tool preview in spinner |
 | `status_callback` | State changes (thinking, executing, etc.) | ACP status updates |
+| `subagent_event_callback` | Subagent lifecycle events | Web dashboard subagent sidebar |
+
+ACP v1 continues to expose delegation through normal tool-call progress. Structured subagent sidebar notifications are intentionally dashboard-only until the ACP client protocol has a dedicated UI contract for child transcripts.
 
 ## Iteration Budgets and Fallbacks
 
@@ -195,6 +206,7 @@ Auxiliary tasks (vision, compression, web extraction, session search) each have 
 3. Preserves the last N messages intact (`compression.protect_last_n`, default: 20)
 4. Keeps tool call/result pairs together — never splits them
 5. Generates a new session lineage ID (compression creates a child session)
+6. Keeps subagent run records discoverable from both the original session ID and the latest compressed descendant
 
 ### After Every Turn
 

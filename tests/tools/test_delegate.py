@@ -11,12 +11,12 @@ Run with:  python -m pytest tests/test_delegate.py -v
 
 import json
 import os
-import sys
 import threading
 import time
 import unittest
 from unittest.mock import MagicMock, patch
 
+from agent.subagents import SUBAGENT_LIFECYCLE_CALLBACK_EVENT
 from tools.delegate_tool import (
     DELEGATE_BLOCKED_TOOLS,
     DELEGATE_TASK_SCHEMA,
@@ -51,6 +51,7 @@ def _make_mock_parent(depth=0):
     parent._active_children_lock = threading.Lock()
     parent._print_fn = None
     parent.tool_progress_callback = None
+    parent.subagent_event_callback = None
     parent.thinking_callback = None
     return parent
 
@@ -184,7 +185,7 @@ class TestDelegateTask(unittest.TestCase):
             "summary": "Done", "api_calls": 1, "duration_seconds": 1.0
         }
         parent = _make_mock_parent()
-        result = json.loads(delegate_task(
+        json.loads(delegate_task(
             goal="This should be ignored",
             tasks=[{"goal": "Actual task"}],
             parent_agent=parent,
@@ -398,6 +399,116 @@ class TestToolNamePreservation(unittest.TestCase):
 
 class TestDelegateObservability(unittest.TestCase):
     """Tests for enriched metadata returned by _run_single_child."""
+
+    def test_lifecycle_events_emitted_without_changing_result_shape(self):
+        parent = _make_mock_parent(depth=0)
+        lifecycle_events = []
+        progress_events = []
+        parent.subagent_event_callback = lifecycle_events.append
+        parent.tool_progress_callback = lambda *args, **kwargs: progress_events.append((args, kwargs))
+
+        with patch("core.run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.session_id = "child-session"
+            mock_child.model = "claude-sonnet-4-6"
+            mock_child.session_prompt_tokens = 12
+            mock_child.session_completion_tokens = 34
+
+            def _build_child(**kwargs):
+                mock_child.tool_progress_callback = kwargs.get("tool_progress_callback")
+                mock_child.thinking_callback = kwargs.get("thinking_callback")
+                return mock_child
+
+            def _run_child(user_message):
+                mock_child.tool_progress_callback("_thinking", "Checking the target file")
+                mock_child.tool_progress_callback(
+                    "tool.started",
+                    "read_file",
+                    "/tmp/example.txt",
+                    {"path": "/tmp/example.txt", "large": "x" * 1000},
+                )
+                mock_child.tool_progress_callback(
+                    "tool.output",
+                    "read_file",
+                    "read line",
+                )
+                mock_child.tool_progress_callback(
+                    "tool.completed",
+                    "read_file",
+                    None,
+                    None,
+                    duration=0.25,
+                    is_error=False,
+                    result_lines=3,
+                )
+                return {
+                    "final_response": "done",
+                    "completed": True,
+                    "interrupted": False,
+                    "api_calls": 1,
+                    "messages": [],
+                }
+
+            mock_child.run_conversation.side_effect = _run_child
+            MockAgent.side_effect = _build_child
+
+            result = json.loads(delegate_task(goal="Inspect file", parent_agent=parent))
+
+        self.assertEqual(set(result.keys()), {"results", "total_duration_seconds"})
+        self.assertEqual(result["results"][0]["summary"], "done")
+
+        event_names = [event["event"] for event in lifecycle_events]
+        self.assertEqual(
+            event_names,
+            [
+                "created",
+                "started",
+                "thinking",
+                "tool_started",
+                "tool_output",
+                "tool_completed",
+                "completed",
+            ],
+        )
+        self.assertEqual(lifecycle_events[0]["subagent_id"], "subagent-1")
+        self.assertNotEqual(lifecycle_events[0]["display_name"], "Subagent 1")
+        self.assertEqual(lifecycle_events[3]["payload"]["tool"], "read_file")
+        self.assertLessEqual(len(lifecycle_events[3]["payload"]["args"]["large"]), 500)
+        self.assertEqual(lifecycle_events[4]["event"], "tool_output")
+        self.assertEqual(lifecycle_events[4]["payload"]["preview"], "read line")
+
+        progress_lifecycle = [
+            args[0]
+            for args, _kwargs in progress_events
+            if args and args[0] == SUBAGENT_LIFECYCLE_CALLBACK_EVENT
+        ]
+        self.assertEqual(len(progress_lifecycle), len(lifecycle_events))
+
+    def test_lifecycle_interrupted_event_emitted(self):
+        parent = _make_mock_parent(depth=0)
+        lifecycle_events = []
+        parent.subagent_event_callback = lifecycle_events.append
+
+        with patch("core.run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.session_id = "child-session"
+            mock_child.model = "claude-sonnet-4-6"
+            mock_child.session_prompt_tokens = 0
+            mock_child.session_completion_tokens = 0
+            mock_child.run_conversation.return_value = {
+                "final_response": "",
+                "completed": False,
+                "interrupted": True,
+                "api_calls": 1,
+                "messages": [],
+            }
+            MockAgent.return_value = mock_child
+
+            result = json.loads(delegate_task(goal="Stop soon", parent_agent=parent))
+
+        self.assertEqual(result["results"][0]["status"], "interrupted")
+        self.assertEqual(lifecycle_events[-1]["event"], "interrupted")
+        self.assertEqual(lifecycle_events[-1]["payload"]["exit_reason"], "interrupted")
 
     def test_observability_fields_present(self):
         """Completed child should return tool_trace, tokens, model, exit_reason."""

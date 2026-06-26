@@ -175,6 +175,21 @@ Four tools are intercepted before registry dispatch because they need agent-leve
 
 Their schemas are still registered for `get_tool_definitions`, but their handlers return a stub error if dispatch somehow reaches them directly.
 
+#### `delegate_task` runtime
+
+`delegate_task` is the subagent tool. It builds one or more child `AIAgent` instances, assigns each child a stable run record, and executes independent tasks concurrently up to `delegation.max_concurrent_children`. Children receive isolated conversation history, a stable child session ID, and a bounded tool surface. Recursive delegation, shared memory writes, direct user clarification, and other blocked toolsets remain unavailable to children.
+
+Child tool progress is bridged back to the parent as lifecycle events:
+
+- `created` and `started` when the child run is registered and begins execution
+- `thinking`, `tool_started`, `tool_output`, and `tool_completed` while the child works
+- `status` for control-plane updates such as an interrupt request
+- `completed`, `failed`, or `interrupted` when the child exits
+
+The web dashboard persists these previews separately from normal session messages. Full tool results still live in the child session transcript; the sidebar APIs serve bounded previews by default and only return full tool content when explicitly requested.
+
+For performance, the delegated child prompt explicitly asks the model to batch independent web searches, extracts, file reads, and other unrelated tool calls in a single assistant turn. The agent loop then runs those tool calls through the same parallel execution path used by the parent.
+
 ### Async bridging
 
 When a tool handler is async, `_run_async()` bridges it to the sync dispatch path:

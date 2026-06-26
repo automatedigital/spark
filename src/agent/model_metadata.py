@@ -224,6 +224,7 @@ _URL_TO_PROVIDER: Dict[str, str] = {
     "api.kimi.com": "kimi-coding",
     "api.arcee.ai": "arcee",
     "api.minimax": "minimax",
+    "minimaxi.com": "minimax-cn",
     "dashscope.aliyuncs.com": "alibaba",
     "dashscope-intl.aliyuncs.com": "alibaba",
     "portal.qwen.ai": "qwen-oauth",

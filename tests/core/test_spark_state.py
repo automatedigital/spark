@@ -8,7 +8,6 @@ import sqlite3
 import threading
 import time
 import uuid
-from pathlib import Path
 
 import pytest
 
@@ -58,6 +57,79 @@ class TestSchemaInit:
     def test_wal_mode_active(self, db):
         row = db._conn.execute("PRAGMA journal_mode").fetchone()
         assert row[0].lower() == "wal"
+
+    def test_v8_database_migrates_subagent_tables(self, tmp_path):
+        db_path = tmp_path / "old_state.db"
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.executescript(
+                """
+                CREATE TABLE schema_version (version INTEGER NOT NULL);
+                INSERT INTO schema_version (version) VALUES (8);
+                CREATE TABLE sessions (
+                    id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    user_id TEXT,
+                    model TEXT,
+                    model_config TEXT,
+                    system_prompt TEXT,
+                    parent_session_id TEXT,
+                    started_at REAL NOT NULL,
+                    ended_at REAL,
+                    end_reason TEXT,
+                    message_count INTEGER DEFAULT 0,
+                    tool_call_count INTEGER DEFAULT 0,
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    cache_read_tokens INTEGER DEFAULT 0,
+                    cache_write_tokens INTEGER DEFAULT 0,
+                    reasoning_tokens INTEGER DEFAULT 0,
+                    billing_provider TEXT,
+                    billing_base_url TEXT,
+                    billing_mode TEXT,
+                    estimated_cost_usd REAL,
+                    actual_cost_usd REAL,
+                    cost_status TEXT,
+                    cost_source TEXT,
+                    pricing_version TEXT,
+                    title TEXT,
+                    kanban_status TEXT DEFAULT 'backlog'
+                );
+                CREATE TABLE messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL REFERENCES sessions(id),
+                    role TEXT NOT NULL,
+                    content TEXT,
+                    tool_call_id TEXT,
+                    tool_calls TEXT,
+                    tool_name TEXT,
+                    timestamp REAL NOT NULL,
+                    token_count INTEGER,
+                    finish_reason TEXT,
+                    reasoning TEXT,
+                    reasoning_details TEXT,
+                    codex_reasoning_items TEXT
+                );
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        migrated = SessionDB(db_path=db_path)
+        try:
+            version = migrated._conn.execute("SELECT version FROM schema_version").fetchone()[0]
+            tables = {
+                row[0]
+                for row in migrated._conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            assert version == 9
+            assert "subagent_runs" in tables
+            assert "subagent_events" in tables
+        finally:
+            migrated.close()
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +215,101 @@ class TestSessionLifecycle:
         db.create_session(child, source="cli", parent_session_id=parent)
         session = db.get_session(child)
         assert session["parent_session_id"] == parent
+
+
+# ---------------------------------------------------------------------------
+# Subagent lifecycle persistence
+# ---------------------------------------------------------------------------
+
+class TestSubagentLifecycleStorage:
+    def test_list_subagent_runs_follows_original_intermediate_and_latest_ids(self, db):
+        db.create_session("root", source="web", model="m1")
+        db.create_session("mid", source="web", model="m1", parent_session_id="root")
+        db.create_session("leaf", source="web", model="m1", parent_session_id="mid")
+        db.create_session("child", source="web", model="m1", parent_session_id="mid")
+
+        def _mark_compressed(conn):
+            conn.execute("UPDATE sessions SET end_reason = 'compression' WHERE id IN (?, ?)", ("root", "mid"))
+
+        db._execute_write(_mark_compressed)
+        db.create_subagent_run(
+            {
+                "id": "run-mid",
+                "parent_session_id": "mid",
+                "child_session_id": "child",
+                "task_index": 0,
+                "name": "Worker",
+                "status": "completed",
+                "task": "finish work",
+            }
+        )
+
+        assert db.resolve_compression_chain("root") == ["root", "mid", "leaf"]
+        assert db.resolve_compression_chain("leaf") == ["root", "mid", "leaf"]
+        assert [r["id"] for r in db.list_subagent_runs("root")] == ["run-mid"]
+        assert [r["id"] for r in db.list_subagent_runs("leaf")] == ["run-mid"]
+
+    def test_child_sessions_hidden_from_rich_list_by_default(self, db):
+        db.create_session("visible-parent", source="web", model="m1")
+        db.create_session("hidden-child", source="web", model="m1", parent_session_id="visible-parent")
+
+        default_ids = {row["id"] for row in db.list_sessions_rich(limit=10)}
+        with_children_ids = {row["id"] for row in db.list_sessions_rich(limit=10, include_children=True)}
+
+        assert "visible-parent" in default_ids
+        assert "hidden-child" not in default_ids
+        assert {"visible-parent", "hidden-child"}.issubset(with_children_ids)
+
+    def test_delete_parent_cascades_subagent_runs_and_events(self, db):
+        db.create_session("delete-parent", source="web", model="m1")
+        db.create_session("delete-child", source="web", model="m1", parent_session_id="delete-parent")
+        db.create_subagent_run(
+            {
+                "id": "delete-run",
+                "parent_session_id": "delete-parent",
+                "child_session_id": "delete-child",
+                "task_index": 0,
+                "name": "Worker",
+                "status": "running",
+            }
+        )
+        db.append_subagent_event("delete-run", "started", {"event": "started"})
+
+        assert db.delete_session("delete-parent") is True
+        assert db.get_subagent_run("delete-run") is None
+        assert db.get_subagent_events("delete-run") == []
+        assert db.get_session("delete-child") is not None
+        assert db.get_session("delete-child")["parent_session_id"] is None
+
+    def test_subagent_snapshot_recovers_after_restart(self, tmp_path):
+        db_path = tmp_path / "state.db"
+        first = SessionDB(db_path=db_path)
+        try:
+            first.create_session("restart-parent", source="web", model="m1")
+            first.create_subagent_run(
+                {
+                    "id": "restart-run",
+                    "parent_session_id": "restart-parent",
+                    "task_index": 0,
+                    "name": "Restart",
+                    "status": "running",
+                    "task": "persist me",
+                }
+            )
+            first.append_subagent_event("restart-run", "started", {"event": "started"})
+        finally:
+            first.close()
+
+        second = SessionDB(db_path=db_path)
+        try:
+            runs = second.list_subagent_runs("restart-parent")
+            events = second.get_subagent_events("restart-run")
+            assert runs[0]["id"] == "restart-run"
+            assert runs[0]["task"] == "persist me"
+            assert events[0]["event_type"] == "started"
+            assert events[0]["data"]["event"] == "started"
+        finally:
+            second.close()
 
 
 # ---------------------------------------------------------------------------

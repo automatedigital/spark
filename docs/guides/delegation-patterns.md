@@ -10,6 +10,8 @@ Spark can spawn isolated child agents and run them in parallel. Each subagent ge
 
 For the full feature reference, see [Subagent Delegation](../tools/delegation.md).
 
+In the web dashboard, open a chat thread and use the right-hand `Subagents` tab to watch delegated children live. The tab lists generated child names, statuses, elapsed time, and task previews; clicking a child opens its readable transcript with reasoning, tool calls, and the final summary.
+
 ---
 
 ## When Delegation Pays Off
