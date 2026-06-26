@@ -48,6 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ROOT_PATH, fileEntryFromPath, parentDirForFile } from "./filesPathUtils";
 
 // Layout + background overrides — syntax colors come from oneDark, background matches app UI
 const cmLayout = [
@@ -116,40 +117,6 @@ function FileIcon({ name, isDir = false }: { name: string; isDir?: boolean }) {
 }
 
 // ── Breadcrumb ─────────────────────────────────────────────────────────────────
-
-const ROOT_PATH = ".";
-
-function workspaceRelativePath(path: string): string | null {
-  const normalized = path.trim().replace(/\\/g, "/").replace(/^['"`]+|['"`]+$/g, "");
-  if (!normalized) return null;
-  if (!normalized.startsWith("/") && !normalized.startsWith("~")) {
-    return normalized.replace(/^\.\//, "");
-  }
-  const markers = ["/.spark/workspace/", "~/.spark/workspace/"];
-  for (const marker of markers) {
-    const index = normalized.indexOf(marker);
-    if (index >= 0) return normalized.slice(index + marker.length);
-  }
-  return null;
-}
-
-function parentDirForFile(path: string): string {
-  const rel = workspaceRelativePath(path);
-  if (!rel) return ROOT_PATH;
-  const parts = rel.split("/").filter(Boolean);
-  parts.pop();
-  return parts.length ? parts.join("/") : ROOT_PATH;
-}
-
-function fileEntryFromPath(path: string, fallbackName?: string): FileListEntry {
-  const rel = workspaceRelativePath(path);
-  const cleanPath = rel || path.trim().replace(/^['"`]+|['"`]+$/g, "");
-  return {
-    name: fallbackName || cleanPath.split(/[\\/]/).filter(Boolean).pop() || "file",
-    path: cleanPath,
-    type: "file",
-  };
-}
 
 function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
   // path "." → root only; "projects/wiki" → ["projects", "wiki"]

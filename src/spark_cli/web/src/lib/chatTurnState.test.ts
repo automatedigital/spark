@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { nextChatTurnState, normalizeBackendPhase } from "./chatTurnState";
+import {
+  nextChatTurnState,
+  normalizeBackendPhase,
+  recoverTurnStateFromBackend,
+} from "./chatTurnState";
 
 describe("chat turn state", () => {
   it("moves from submit to streaming when tokens arrive", () => {
@@ -38,5 +42,21 @@ describe("chat turn state", () => {
   it("normalizes backend interrupt flags", () => {
     expect(normalizeBackendPhase(null, true)).toBe("stopping");
     expect(normalizeBackendPhase("redirecting", true)).toBe("redirecting");
+  });
+
+  it("recovers selected-session state from backend turn status", () => {
+    expect(recoverTurnStateFromBackend({ turnActive: false, phase: "streaming" })).toBe("idle");
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "starting" })).toBe("starting");
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "stopping" })).toBe("stopping");
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "redirecting" })).toBe("redirecting");
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "provider_wait" })).toBe("streaming");
+  });
+
+  it("lets interrupt_requested recover stopping even for unknown active phases", () => {
+    expect(recoverTurnStateFromBackend({
+      turnActive: true,
+      phase: "provider_wait",
+      interruptRequested: true,
+    })).toBe("stopping");
   });
 });

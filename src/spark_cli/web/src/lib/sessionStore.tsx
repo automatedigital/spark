@@ -31,6 +31,15 @@ import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/l
 const PINNED_KEY = "spark-pinned-sessions";
 const EXPANDED_KEY = "spark-chat-expanded";
 
+export type PendingInitialMessages = Record<string, string>;
+
+export function pendingInitialMessageForSession(
+  pending: PendingInitialMessages,
+  sessionId: string | null,
+): string | undefined {
+  return sessionId ? pending[sessionId] : undefined;
+}
+
 export function slugFromSource(source: string | null | undefined): string | null {
   if (!source?.startsWith("workspace:")) return null;
   return source.slice("workspace:".length);
@@ -81,8 +90,8 @@ export interface SessionStoreValue {
   newProjectThread: (slug: string) => void;
   cancelCompose: () => void;
   /** First message of a just-created thread, consumed by ChatPanel. */
-  pendingInitialMessage: string | null;
-  clearPendingInitialMessage: () => void;
+  pendingInitialMessages: PendingInitialMessages;
+  clearPendingInitialMessage: (sessionId?: string) => void;
   threadCreated: (sessionId: string, initialMessage: string) => void;
 
   // Unread
@@ -110,7 +119,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composingFor, setComposingFor] = useState<string | null>(null);
-  const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null);
+  const [pendingInitialMessages, setPendingInitialMessages] = useState<PendingInitialMessages>({});
 
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<SessionInfo[] | null>(null);
@@ -125,6 +134,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   // Track last-known message count per session so we can detect new messages via SSE
   const lastMessageCountRef = useRef<Map<string, number>>(new Map());
+  const notifiedMessageCountRef = useRef<Map<string, number>>(new Map());
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
@@ -149,6 +159,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       const counts = new Map<string, number>();
       res.sessions.forEach((s) => counts.set(s.id, s.message_count ?? 0));
       lastMessageCountRef.current = counts;
+      notifiedMessageCountRef.current = new Map(counts);
       setSessions(res.sessions);
     } catch (e) {
       console.error("Load sessions failed", e);
@@ -170,6 +181,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
     if (data.action === "deleted" && sid) {
       dismissSessionNotification(sid);
+      lastMessageCountRef.current.delete(sid);
+      notifiedMessageCountRef.current.delete(sid);
       setSessions((prev) => prev.filter((s) => s.id !== sid));
       if (selectedIdRef.current === sid) {
         setSelectedId(null);
@@ -180,21 +193,25 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
     if (data.session) {
       const row = data.session;
+      const newCount = row.message_count ?? 0;
+      const lastCount = lastMessageCountRef.current.get(row.id) ?? 0;
+      const notifiedCount = notifiedMessageCountRef.current.get(row.id) ?? 0;
+      const isSelected = row.id === selectedIdRef.current;
+      const notificationTitle = threadTitle(row) || "Untitled thread";
+      const notificationPreview = row.preview?.trim() ? row.preview : null;
 
       // Detect new messages on a thread the user isn't currently viewing →
       // show an unread notification dot + bell entry.
-      if (row.id !== selectedIdRef.current && (row.message_count ?? 0) > 0) {
-        const lastCount = lastMessageCountRef.current.get(row.id) ?? 0;
-        const newCount = row.message_count ?? 0;
-        if (newCount > lastCount) {
-          addSessionNotification(
-            row.id,
-            threadTitle(row) || "Untitled thread",
-            row.preview ?? null,
-          );
-        }
-        lastMessageCountRef.current.set(row.id, Math.max(lastCount, newCount));
+      if (isSelected) {
+        markSessionRead(row.id);
+        notifiedMessageCountRef.current.set(row.id, Math.max(notifiedCount, newCount));
+      } else if (newCount > notifiedCount && !row.is_active) {
+        addSessionNotification(row.id, notificationTitle, notificationPreview);
+        notifiedMessageCountRef.current.set(row.id, newCount);
+      } else if (!row.is_active && getUnreadSessionIds().has(row.id)) {
+        addSessionNotification(row.id, notificationTitle, notificationPreview);
       }
+      lastMessageCountRef.current.set(row.id, Math.max(lastCount, newCount));
 
       setSessions((prev) => {
         const idx = prev.findIndex((s) => s.id === row.id);
@@ -265,6 +282,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
         const session = prev.find((s) => s.id === id);
         if (session?.message_count != null) {
           lastMessageCountRef.current.set(id, session.message_count);
+          notifiedMessageCountRef.current.set(id, session.message_count);
         }
         return prev;
       });
@@ -304,13 +322,21 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const cancelCompose = useCallback(() => setComposingFor(null), []);
 
   const threadCreated = useCallback((sessionId: string, initialMessage: string) => {
-    setPendingInitialMessage(initialMessage);
+    setPendingInitialMessages((pending) => ({ ...pending, [sessionId]: initialMessage }));
     setComposingFor(null);
     setSelectedId(sessionId);
     void reloadSessions();
   }, [reloadSessions]);
 
-  const clearPendingInitialMessage = useCallback(() => setPendingInitialMessage(null), []);
+  const clearPendingInitialMessage = useCallback((sessionId?: string) => {
+    setPendingInitialMessages((pending) => {
+      if (!sessionId) return {};
+      if (!(sessionId in pending)) return pending;
+      const next = { ...pending };
+      delete next[sessionId];
+      return next;
+    });
+  }, []);
 
   // Desktop tray "New Chat" + global sidebar "New session" dispatch this event.
   useEffect(() => {
@@ -436,7 +462,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     newSession,
     newProjectThread,
     cancelCompose,
-    pendingInitialMessage,
+    pendingInitialMessages,
     clearPendingInitialMessage,
     threadCreated,
     unreadSessionIds,

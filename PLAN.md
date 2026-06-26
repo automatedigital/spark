@@ -1,138 +1,91 @@
-# Sub-Agents First-Class UI Plan
+# PLAN
 
-## References
+## Researched Tasklist For Agents
 
-- [Floating sidebar, full window](screenshots/260626/01_Sub-Agent_FloatingSidebar_Screenshot%202026-06-25%20at%2021.07.27.png)
-- [Floating sidebar, close crop](screenshots/260626/02_Sub-Agent_FloatingSidebar_Screenshot%202026-06-25%20at%2021.07.34.png)
-- [Expanded sub-agent sidebar](screenshots/260626/03_Sub-Agent_ExpandedSidebar_Screenshot%202026-06-25%20at%2021.07.41.png)
+### Agent 1: Clickable Links In User Chat Bubbles
 
-## Goal
+- [x] Start in `src/spark_cli/web/src/components/ChatPanel.tsx`.
+- [x] Update the user-bubble plain text renderer around `BUBBLE_TOKEN_RE` and `renderTokens()` so user-sent URLs become clickable without moving user messages through the full assistant `Markdown` renderer.
+- [x] Preserve the existing token behavior: `@file` references and leading slash commands must still render with `text-primary font-medium`.
+- [x] Add a small URL tokenizer that recognizes `http://`, `https://`, and likely `www.` URLs inside normal user text.
+- [x] Strip trailing punctuation from the clickable href/text boundary when punctuation is sentence grammar, for example `https://example.com).` should link only the URL.
+- [x] Keep URL parsing intentionally modest: do not parse markdown, code spans, or local file paths in user bubbles unless they already worked there.
+- [x] Render links with subtle styling that matches user bubbles: quiet underline or primary tint on hover, no bulky chips, and `break-words`/`overflow-wrap` behavior for long URLs.
+- [x] Use `target="_blank"` and `rel="noreferrer"` for browser links.
+- [x] For desktop/Tauri, check existing helpers in `src/spark_cli/web/src/lib/api.ts` and `src/spark_cli/web/src/lib/desktop.ts`; use the same external-opening convention already used by `Markdown.tsx` if the app needs intercepted desktop opening.
+- [x] Ensure link clicks do not trigger edit/retry/fork/copy hover controls or otherwise interfere with the user row action buttons.
+- [x] Keep assistant rendering unchanged: `src/spark_cli/web/src/components/Markdown.tsx` already handles assistant markdown links, bare URLs, and file path chips.
+- [x] Add focused tests near the existing markdown/render tests, or add a small `ChatPanel` renderer test if needed.
+- [x] Cover these cases in tests: plain URL, `www.` URL, URL followed by `.`, URL inside parentheses, existing `@files/foo.ts`, leading `/model`, mixed text with two links, and unsafe-looking text that should remain plain.
+- [x] Run the relevant frontend tests from `src/spark_cli/web`, especially `Markdown.test.ts` and any new `ChatPanel` test.
+- [x] Acceptance covered by `userBubbleTokens.test.ts`: `https://` links are clickable tokens while `@files/app.ts` and `/model` remain highlighted tokens.
 
-Make sub-agents a visible, inspectable part of Spark. When the main agent calls `delegate_task`, each child agent should appear in a Codex-style "Subagents" at-a-glance area in the right-hand sidebar. Clicking a sub-agent should expand the right side into that sub-agent's transcript, status, task, and controls while keeping the main thread visible.
+### Agent 2: Open In Files Should Select And Preview The File
 
-## Current State
+- [x] Start in `src/spark_cli/web/src/components/Markdown.tsx`, `src/spark_cli/web/src/lib/globalNavigation.ts`, and `src/spark_cli/web/src/pages/FilesPage.tsx`.
+- [x] Confirm the current chat action dispatches `setGlobalNavTarget({ type: "file", path, name })` from `FilePathAction.handleOpenInFiles()`.
+- [x] Fix the navigation lifecycle so clicking `Open in Files` switches to the Files area and then selects the file preview, rather than only changing tabs.
+- [x] Prefer reusing `GLOBAL_NAV_EVENT`, `GLOBAL_NAV_TARGET_KEY`, and `takeGlobalNavTarget("file")`; only add new routing state if the existing event/localStorage handoff cannot cover the tab switch plus delayed mount.
+- [x] Audit the app-level global navigation handling in `src/spark_cli/web/src/App.tsx` so a `file` target routes to the Files view before `FilesPage` consumes the target.
+- [x] Harden `workspaceRelativePath()`, `parentDirForFile()`, and `fileEntryFromPath()` in `FilesPage.tsx` for paths produced by chat output.
+- [x] Support workspace-relative paths such as `files/report.md`, `./files/report.md`, and nested paths like `reports/2026/summary.md`.
+- [x] Support absolute Spark workspace paths containing `/.spark/workspace/`.
+- [x] Support profile-aware Spark workspace paths if they appear in output, for example paths containing `/.spark/profiles/<profile>/workspace/`.
+- [x] Be careful with non-workspace absolute paths: either leave them as safe non-previewable entries with a clear error, or normalize only when the backend file APIs can actually read them.
+- [x] Make selected-file feedback immediate: set `selectedFile` before the read starts, show loading for text files, and keep image/video/binary previews instant.
+- [x] Ensure the file browser highlights the selected file after `setCurrentPath(parentDirForFile(...))`; if the list loads after selection, selection should not be lost.
+- [x] Preserve the special `.canvas.json` behavior in `handleSelectFile()`, which routes canvas files to the Canvas tab.
+- [x] Add tests for pure path helpers by exporting or moving them to a small testable utility if that is the least invasive option.
+- [x] UI-level delayed-mount behavior resolved through the existing global navigation handoff; path normalization and selected-file construction are covered by extracted helper tests.
+- [x] Cover these path cases in tests: `files/a.md`, `./files/a.md`, `/Users/joe/.spark/workspace/files/a.md`, `/Users/joe/.spark/profiles/dev/workspace/files/a.md`, nested folders, quoted paths, and backslash-normalized paths.
+- [x] Run `Markdown.test.ts` because it already asserts local file paths render `Open in Files`.
+- [x] Acceptance covered by `Markdown.test.ts` for `Open in Files` rendering and `filesPathUtils.test.ts` for selected file/path preview setup.
 
-- `src/tools/delegate_tool.py` already creates child `AIAgent` instances, runs them in parallel, blocks the parent until they complete, and returns structured summaries.
-- `src/tools/delegate_tool.py` has `_build_child_progress_callback()` for CLI/gateway progress, but the callback mostly batches tool names and does not expose first-class sub-agent entities.
-- `src/core/run_agent/__init__.py` already supports `tool_progress_callback`, `stream_delta_callback`, `thinking_callback`, child interrupt tracking, and a delegation depth guard.
-- `src/spark_cli/web_server.py` already has a shared `/api/events` SSE bus with `chat.*` topics, per-conversation token streams, turn snapshots, and tool/reasoning event callbacks.
-- `src/spark_cli/web/src/pages/ChatPage.tsx` already owns the chat layout and workspace right panel; this is the natural place to add the Codex-like floating and expanded sub-agent panel.
-- `src/spark_cli/web/src/components/ChatPanel.tsx` already renders chat, tool, reasoning, approval, status, and prompt controls; reuse these patterns for the sub-agent transcript instead of building a separate visual language.
+### Agent 3: Parallel Thread Progress, Stop Controls, And Notifications
 
-## Product Behavior
+- [x] Start in `src/spark_cli/web/src/components/ChatPanel.tsx`, `src/spark_cli/web/src/lib/chatTurnState.ts`, `src/spark_cli/web/src/lib/sessionStore.tsx`, `src/spark_cli/web/src/lib/unreadSessionStore.ts`, and `src/spark_cli/web/src/components/NotificationBell.tsx`.
+- [x] Treat the backend as the source of truth before adding new frontend state: `src/spark_cli/web_server.py` already exposes `GET /api/conversations/{session_id}/turn-status` and `GET /api/conversations/{session_id}/stream-snapshot`.
+- [x] Understand the current frontend recovery path: `ChatPanel` polls `turn-status` when idle, polls `stream-snapshot` while streaming, handles `BUS_RECONNECTED_TOPIC`, and uses `normalizeBackendPhase()` to restore `starting`, `streaming`, `stopping`, or `redirecting`.
+- [x] Identify why returning to an in-progress thread can lose the stop button: likely causes include `turnState` being local to the mounted `ChatPanel`, session switches clearing local buffers, or events for inactive sessions being ignored by `if (!sid || sid !== activeSessionRef.current) return`.
+- [x] Do not make one global `streaming` boolean for all sessions. Progress must be keyed by session id or recovered per selected session.
+- [x] When a selected session changes, immediately call `getTurnStatus(selectedId)` and set the local `turnState` from `phase`/`interrupt_requested` before waiting for SSE.
+- [x] If `turn_active` is true, call `getStreamSnapshot(active_turn_session_id ?? selectedId)` and hydrate the current assistant bubble with `stream_text` when available.
+- [x] If `turn_active` is false, ensure the UI clears streaming state, finalizes any local assistant bubble, and refreshes recent history from `getSessionMessages()`.
+- [x] Make stop use the authoritative active session id returned by turn status when present, while still preserving the visible selected thread id.
+- [x] Preserve migration behavior: `chat.session_migrated` can move the active turn from the old session id to a new compressed session id; do not break `onSessionUpdated`.
+- [x] Scope `pendingInitialMessage` by session id so the optimistic first user bubble for a newly created thread cannot appear in another active thread while that other thread is still streaming.
+- [x] Store pending initial messages in a per-session map so starting thread B does not overwrite thread A's first prompt before thread A has saved backend history.
+- [x] Add a focused regression test for session-scoped pending initial messages, covering both directions: thread B's first prompt must not render at the top of thread A, and thread A's first prompt must remain available while thread B is also pending.
+- [x] Keep per-session progress around when navigating away so live reasoning/tool rows do not disappear when switching between active threads; do not mutate conversation history or system prompts to do this.
+- [x] Use `SessionInfo.is_active` and `message_count` from `src/spark_cli/web/src/lib/api.ts` only as sidebar hints; use `turn-status` for stop-button truth.
+- [x] Update `sessionStore.tsx` notification logic so off-screen thread completion or new assistant output creates exactly one notification entry through `addSessionNotification()`.
+- [x] Refresh existing unread chat notifications when later session metadata arrives, so an early `Untitled thread` notification updates to the final generated thread title.
+- [x] Make chat notification rows open their thread via the global thread navigation target, while keeping the `x` button as dismiss-only.
+- [x] Avoid notifying for the thread the user is currently viewing.
+- [x] Avoid duplicate notifications when `sessions.changed` fires multiple times for title updates, auto-title, tool-only changes, or final `turn_done` refreshes.
+- [x] Sync read state through `markSessionRead()` when the user opens a thread, `dismissSessionNotification()` when they dismiss one item, and `clearAllSessionNotifications()` when they clear the bell.
+- [x] Consider making `SessionNotification` include a reason/status such as `completed` vs `updated` only if the existing bell needs clearer copy; keep payload additive and small.
+- [x] Add tests for `unreadSessionStore.ts` because it is currently untested and owns deduping, dismissal, and unread counts.
+- [x] Extend `chatTurnState.test.ts` for returning to an active backend turn from idle, including `starting`, `stopping`, `redirecting`, and unknown active phases.
+- [x] Add focused React or store tests for `sessionStore.tsx` if the existing setup allows it; otherwise cover notification dedupe with extracted pure helpers.
+- [x] Confirmed no backend endpoint contract changes were needed, so `tests/spark_cli/test_web_server_events.py` did not require extension.
+- [x] Manual acceptance completed in the web UI: start thread A, switch to thread B, return to thread A while it is running, and confirm status plus stop button remain correct.
+- [x] Manual acceptance completed in the web UI: off-screen thread completion produces one chat notification, and the notification row opens/clears the thread.
+- [x] Stopping/redirect state covered by `chatTurnState.test.ts` for interrupted, stopping, redirecting, unknown active phases, and late backend recovery.
 
-- [x] A delegated child appears immediately in the right sidebar as soon as it is created.
-- [x] Each sub-agent row shows a stable glyph/color, display name, and live status text such as `is working`, `done`, `failed`, or `stopped`.
-- [x] The compact right sidebar keeps the existing Environment/Changes/Local/Branch/Commit/Create PR area, then adds a `Subagents` section matching the screenshot.
-- [x] If no sub-agents exist, the sidebar does not show an empty sub-agent section unless a turn is actively delegating.
-- [x] Clicking a sub-agent opens the selected child transcript inside the right-hand `Subagents` sidebar tab while the main thread remains visible.
-- [x] The expanded pane header shows the selected sub-agent glyph/name, status, elapsed time, and close/collapse controls.
-- [x] The expanded pane begins with the delegated task/context card and supports `Show more` for long prompts.
-- [x] The expanded pane streams child commentary, reasoning summaries, tool activity, and final summary while the child runs.
-- [x] The parent thread still receives only the existing delegation result summary in its own context; exposing child transcripts in UI must not alter parent prompt caching or parent conversation history.
-- [x] Interrupting the parent turn stops running sub-agents and updates their statuses in the UI.
-- [x] Reloading the web UI during an active or completed delegated turn restores the sub-agent list and the latest available transcript snapshot.
+## Cross-Agent Guardrails
 
-## Phase 1: Backend Sub-Agent Lifecycle Contract
+- [x] Keep changes scoped to the web chat/files/notification surfaces unless a backend contract is proven incomplete.
+- [x] Do not introduce broad visual redesign; use existing compact Spark dashboard styling.
+- [x] Do not alter past conversation context, toolsets, system prompts, or prompt-cache-sensitive behavior for UI state.
+- [x] Do not hardcode `~/.spark` in backend code; use profile-safe helpers there. Frontend path parsing may recognize displayed paths, but backend storage paths must stay profile-safe.
+- [x] Keep APIs additive where possible so older clients ignore new fields.
+- [x] Prefer small pure helpers for parsing/deduping so tests do not require a full browser harness.
 
-- [x] Define a canonical sub-agent run model with fields: `id`, `parent_session_id`, `child_session_id`, `task_index`, `name`, `glyph`, `color`, `status`, `task`, `context_preview`, `model`, `provider`, `toolsets`, `started_at`, `last_event_at`, `ended_at`, `duration_seconds`, `exit_reason`, `summary`, `error`, `tokens`, and `tool_trace`.
-- [x] Add a small lifecycle helper module, likely `src/agent/subagents.py` or `src/core/run_agent/subagents.py`, so `delegate_tool.py` does not become the state/event dumping ground.
-- [x] Generate stable display identities for each parent turn: use deterministic names/glyphs/colors in creation order, then persist them so reloads do not reshuffle rows.
-- [x] Ensure each child gets a stable `child_session_id` before it starts running, and store that id on the lifecycle record.
-- [x] Emit lifecycle events for `created`, `started`, `thinking`, `tool_started`, `tool_output`, `tool_completed`, `status`, `completed`, `failed`, and `interrupted`.
-- [x] Keep lifecycle event payloads JSON-safe, bounded, and free of secrets; truncate args/results at web-preview limits and keep full tool results in existing message/tool result storage.
-- [x] Preserve existing `delegate_task` return shape for backwards compatibility.
-- [x] Preserve existing `DELEGATE_BLOCKED_TOOLS`, `MAX_DEPTH`, `max_concurrent_children`, config routing, credential-pool leasing, and heartbeat behavior.
-- [x] Add unit tests for lifecycle creation, event ordering, status transitions, deterministic identities, truncation, and interrupt/failure handling.
+## Final Verification
 
-## Phase 2: Persistence And Snapshots
-
-- [x] Add persistence for sub-agent runs without polluting top-level session lists. Preferred shape: a new `subagent_runs` table keyed by `id`, linked to parent and child sessions.
-- [x] Add migration for the new table in `src/core/spark_state.py` and bump `SCHEMA_VERSION`.
-- [x] Store transcript events either as child `messages` in `SessionDB` plus lightweight event metadata, or as a bounded `subagent_events` table if child messages are not sufficient for live replay.
-- [x] Ensure `SessionDB.list_sessions_rich()` continues hiding child sessions by default.
-- [x] Add `SessionDB` helpers such as `create_subagent_run`, `update_subagent_run`, `append_subagent_event`, `list_subagent_runs(parent_session_id)`, and `get_subagent_transcript(subagent_id)`.
-- [x] Include compression/session migration behavior: when a parent session migrates, active sub-agent records should remain discoverable from the latest session id and the original requested session id.
-- [x] Add tests for schema migration from an older DB, cascade/delete behavior, child-session hiding, and snapshot recovery after process restart.
-
-## Phase 3: Web Server Events And API
-
-- [x] Extend `_make_web_chat_callbacks()` or introduce a sibling callback factory so web turns pass a `subagent_event_callback` into `AIAgent`/`delegate_task`.
-- [x] Publish sub-agent lifecycle changes on `/api/events` using topics under `chat.subagent.*`, reusing the existing `chat` topic subscription.
-- [x] Add `GET /api/conversations/{session_id}/subagents` returning the current snapshot list for reload/reconnect.
-- [x] Add `GET /api/conversations/{session_id}/subagents/{subagent_id}` returning detail plus recent transcript events.
-- [x] Add `GET /api/conversations/{session_id}/subagents/{subagent_id}/messages` if the expanded pane will render from child `SessionDB` messages rather than event records.
-- [x] Add optional `POST /api/conversations/{session_id}/subagents/{subagent_id}/interrupt` for stopping one child without stopping the parent, if safe with current child tracking.
-- [x] Make reconnect recovery call the snapshot endpoint when the event bus emits `bus.reconnected`.
-- [x] Add FastAPI tests in `tests/spark_cli/test_web_server_events.py` for event publication, snapshots, reconnect recovery, migration handling, and authorization.
-
-## Phase 4: Frontend State And API Types
-
-- [x] Add TypeScript types for `SubagentRun`, `SubagentEvent`, and snapshot responses in `src/spark_cli/web/src/lib/api.ts`.
-- [x] Add API helpers for listing sub-agents, fetching detail/transcripts, and interrupting a sub-agent.
-- [x] Add a small state hook, likely `useSubagents(sessionId)`, that merges initial snapshot data with live `chat.subagent.*` events.
-- [x] Handle session migration by following `chat.session_migrated` and reloading sub-agent snapshots for the new session id.
-- [x] Handle `bus.reconnected` by refetching snapshots and reconciling statuses without duplicating events.
-- [x] Keep updates coalesced enough that parallel sub-agents with busy tool loops do not cause chat list jank.
-- [x] Add frontend tests for event merge behavior, duplicate suppression, status ordering, reconnect recovery, and selected-subagent preservation.
-
-## Phase 5: Codex-Style Right Sidebar UI
-
-- [x] Refactor `ChatPage.tsx` so the right-hand area exposes sub-agents as a first-class sidebar tab alongside Files, Terminal, Preview, and Changes.
-- [x] Build `SubagentsAtGlance` with the screenshot's row density, section label, divider, glyph, name, muted status text, and hover/click states.
-- [x] Build `SubagentGlyph` with deterministic color/glyph variants matching the screenshot direction: yellow, purple, orange, red, then additional accessible variants.
-- [x] Add compact empty/hidden rules: hide the section when there are no sub-agents; show a small pending state when delegation is starting but no child id exists yet.
-- [x] Build `SubagentDetailPanel` for expanded mode with header tab, close button, elapsed timer, task card, transcript, and status footer.
-- [x] Reuse `Markdown`, `ToolCallBubble`, `ReasoningBubble`, `StatusPill`, and `PromptBar` visual patterns where possible.
-- [x] Decide and implement v1 interactivity: read-only transcript plus stop button, or direct follow-up prompt routed to the child. If follow-up is included, add backend routing and tests in Phase 3 before enabling the prompt.
-- [x] Make the expanded panel resizable with the existing `ResizeDivider` behavior and persist the width separately from workspace panel width.
-- [x] Ensure workspace tabs (`Files`, `Terminal`, `Preview`, `Changes`) and sub-agent expanded view do not fight for the same right-panel state.
-- [x] On mobile/tablet widths, replace the split view with a full-screen drawer or modal sheet that preserves the main chat route.
-- [x] Match the screenshot's dark, quiet UI: compact typography, muted dividers, 8px or smaller radii, no nested cards, no decorative gradients.
-- [x] Add loading, no transcript, failed, interrupted, and completed states.
-- [x] Add accessibility labels, keyboard navigation for sub-agent rows, Escape-to-close, and focus restoration.
-
-## Phase 6: Main Thread Integration
-
-- [x] Add a subtle inline chat event when the parent creates a child, similar to `Created an agent`, without duplicating all child transcript content in the main thread.
-- [x] When `delegate_task` runs multiple tasks, make each row show the delegated task title rather than only `Worker 1`.
-- [x] Show parent-level aggregate progress in the compact sidebar: number working, completed, failed.
-- [x] Add a `Subagents` badge/count to the chat header when the compact sidebar is closed.
-- [x] Make parent interrupt/redirect clearly update child rows to `stopping` then `stopped` or `interrupted`.
-- [x] Verify context compression does not lose active sub-agent UI state.
-
-## Phase 7: CLI, Gateway, And ACP Compatibility
-
-- [x] Keep existing CLI spinner tree output working while adding lifecycle callbacks.
-- [x] Keep gateway text progress concise; do not flood messaging platforms with full child transcripts unless explicitly requested later.
-- [x] Decide whether ACP should receive structured sub-agent events; if yes, extend `src/acp_adapter/events.py` with compatible notifications.
-- [x] Update docs in `docs/building/agent-loop.md`, `docs/building/tools-runtime.md`, and `docs/configuration.md` to describe first-class sub-agent lifecycle and limits.
-- [x] Add a short user-facing docs section describing how to ask Spark to delegate work and where to inspect sub-agents in the web UI.
-
-## Phase 8: Testing And Verification
-
-- [x] Run targeted Python tests for delegation: `source venv/bin/activate` then `python -m pytest tests/tools/test_delegate.py tests/agent/test_subagent_progress.py -q`.
-- [x] Run targeted web-server tests: `source venv/bin/activate` then `python -m pytest tests/spark_cli/test_web_server_events.py -q`.
-- [x] Run chat/frontend tests from `src/spark_cli/web`: `npm test -- --run` or the repo's existing focused test command.
-- [x] Run `npm run build` in `src/spark_cli/web` to catch TypeScript and Vite integration issues.
-- [x] Manually test a single delegated task and a parallel batch from the web UI.
-- [x] Manually test reload during delegation, event-bus reconnect, parent stop, child failure, and completed transcript restore.
-- [x] Use Playwright screenshots for desktop compact, desktop expanded, and mobile drawer states, comparing against the three reference screenshots.
-- [x] Run `graphify update .` after implementation so the project graph stays current.
-
-## Rollout Notes
-
-- [x] Gate the UI behind a config flag such as `dashboard.subagents_sidebar` until backend snapshots and reload behavior are stable.
-- [x] Keep all new API payloads additive so old clients ignore them.
-- [x] Avoid changing the parent prompt/system prompt after a conversation starts; sub-agent visibility is UI state, not parent context mutation.
-- [x] Bound transcript event retention for noisy tool output, and rely on existing full tool-result retrieval for deep inspection.
-- [x] Add logging around lifecycle creation/update failures, but never let UI event persistence failure fail the actual delegated task.
-
-## Definition Of Done
-
-- [x] Asking Spark to delegate one or more tasks creates visible sub-agent rows in the compact right sidebar.
-- [x] Clicking a sub-agent opens an expanded right pane with its task, live transcript, tool activity, status, and final summary.
-- [x] The UI recovers correctly after reload or SSE reconnect.
-- [x] Parent interrupt stops active children and updates the UI.
-- [x] Existing CLI/gateway delegation behavior remains compatible.
-- [x] Targeted backend, web-server, and frontend tests pass.
+- [x] From `src/spark_cli/web`, run the relevant frontend tests: markdown rendering, chat turn state, unread session store, and any new file-navigation tests.
+- [x] Backend tests not required because this work did not change backend endpoint contracts.
+- [x] Manually tested the desktop web UI with two parallel running threads, notification open/clear behavior, and live progress restoration while switching threads.
+- [x] Confirm there are no unrelated refactors, no noisy style drift, and no regression to assistant markdown/file path rendering.
+- [x] After code changes are complete, run `graphify update .` so the project graph stays current.

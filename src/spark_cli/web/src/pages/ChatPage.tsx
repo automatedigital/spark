@@ -35,7 +35,11 @@ import { WorkspaceTerminalPanel } from "@/components/workspace/WorkspaceTerminal
 import { WorkspaceChangesPanel } from "@/components/workspace/WorkspaceChangesPanel";
 import { WorkspacePreviewPanel } from "@/components/workspace/WorkspacePreviewPanel";
 import { previewAutoOpenEnabled } from "@/lib/previewPrefs";
-import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
+import {
+  pendingInitialMessageForSession,
+  useSessionStore,
+  slugFromSource,
+} from "@/lib/sessionStore";
 import { useSubagents } from "@/hooks/useSubagents";
 import { SubagentsPanel } from "@/components/chat/SubagentsPanel";
 import { preserveSelectedSubagentId } from "@/lib/subagents";
@@ -758,7 +762,7 @@ export default function ChatPage() {
     cancelCompose,
     selectSession,
     threadCreated,
-    pendingInitialMessage,
+    pendingInitialMessages,
     clearPendingInitialMessage,
   } = useSessionStore();
 
@@ -939,6 +943,7 @@ export default function ChatPage() {
 
   const rightPanelAvailable = Boolean(rightPanelWorkspaceSlug);
   const activeRightPanelWidth = rightTab === "subagents" ? subagentPanelWidth : rightPanelWidth;
+  const activeInitialMessage = pendingInitialMessageForSession(pendingInitialMessages, selectedId);
 
   // ── Render ──
   return (
@@ -985,9 +990,12 @@ export default function ChatPage() {
                 sessionId={selectedId}
                 sessionTitle={selectedSession ? threadTitle(selectedSession) : null}
                 workspaceSlug={activeProjectSlug ?? undefined}
-                initialMessage={pendingInitialMessage ?? undefined}
+                initialMessage={activeInitialMessage}
                 onBack={() => selectSession(null)}
-                onSessionCreated={(id) => selectSession(id)}
+                onSessionCreated={(id, initialMessage) => {
+                  if (initialMessage) threadCreated(id, initialMessage);
+                  else selectSession(id);
+                }}
                 onSessionUpdated={clearPendingInitialMessage}
                 className="min-h-0 flex-1"
               />
