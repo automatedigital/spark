@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronLeft,
@@ -17,7 +17,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
-import { api } from "@/lib/api";
+import { api, openExternal } from "@/lib/api";
 import type { SessionMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
@@ -36,9 +36,14 @@ import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
+import { tokenizeUserBubbleText } from "@/lib/userBubbleTokens";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
-import { nextChatTurnState, normalizeBackendPhase, type ChatTurnState } from "@/lib/chatTurnState";
+import {
+  nextChatTurnState,
+  recoverTurnStateFromBackend,
+  type ChatTurnState,
+} from "@/lib/chatTurnState";
 import {
   persistSafeMode,
   pruneLongTasks,
@@ -47,6 +52,7 @@ import {
   shouldEnableSafeMode,
   type LongTaskSample,
 } from "@/lib/renderHealth";
+import { isTauri } from "@/sidecar";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
@@ -137,16 +143,56 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
 
 const localTurnCache = new Map<string, ChatMessage[]>();
 
+function cacheableTranscript(messages: ChatMessage[]): ChatMessage[] {
+  return messages
+    .filter((msg) => msg.role !== "feedback_form")
+    .slice(-300)
+    .map((msg) => ({ ...msg }));
+}
+
 function rememberLocalTurn(sessionId: string | null, messages: ChatMessage[]) {
   if (!sessionId) return;
-  const lastUserIdx = messages.reduce(
-    (latest, msg, idx) => (msg.role === "user" ? idx : latest),
-    -1,
-  );
-  const turn = lastUserIdx >= 0 ? messages.slice(lastUserIdx + 1) : messages;
-  if (turn.some((m) => m.role === "assistant" && hasText(m.content))) {
-    localTurnCache.set(sessionId, turn);
+  const transcript = cacheableTranscript(messages);
+  if (transcript.some((m) => m.role !== "note")) {
+    localTurnCache.set(sessionId, transcript);
   }
+}
+
+function cacheKey(msg: ChatMessage): string {
+  switch (msg.role) {
+    case "user":
+      return `user:${msg.content}`;
+    case "assistant":
+      return `assistant:${msg.content}`;
+    case "tool":
+      return msg.toolId
+        ? `tool:${msg.toolId}`
+        : `tool:${msg.name}:${msg.startedAt ?? ""}:${msg.result ?? ""}`;
+    case "reasoning":
+      return `reasoning:${msg.text}`;
+    case "approval":
+      return `approval:${JSON.stringify(msg.approval)}`;
+    case "note":
+      return `note:${msg.text}`;
+    case "feedback_form":
+      return `feedback:${msg.id}`;
+  }
+}
+
+function mergeCachedProgress(mapped: ChatMessage[], cached: ChatMessage[]): ChatMessage[] {
+  if (cached.length === 0) return mapped;
+  if (mapped.length === 0) return cached;
+
+  const base = cached.length > mapped.length ? cached : mapped;
+  const extras = cached.length > mapped.length ? mapped : cached;
+  const seen = new Set(base.map(cacheKey));
+  const missing = extras.filter((msg) => {
+    const key = cacheKey(msg);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return missing.length > 0 ? [...base, ...missing] : base;
 }
 
 function mergeSyncedMessages(
@@ -155,12 +201,14 @@ function mergeSyncedMessages(
   sessionId: string | null,
   options: { preferSyncedAssistants?: boolean } = {},
 ): ChatMessage[] {
-  if (mapped.length === 0 && prev.length > 0) return prev;
-
   const forms = prev.filter((m) => m.role === "feedback_form");
   const withForms = (messages: ChatMessage[]) => (
     forms.length > 0 ? [...messages, ...forms] : messages
   );
+  const cachedTurn = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
+
+  if (mapped.length === 0 && prev.length > 0) return withForms(prev);
+  if (mapped.length === 0 && cachedTurn.length > 0) return withForms(cachedTurn);
 
   if (
     options.preferSyncedAssistants &&
@@ -169,14 +217,13 @@ function mergeSyncedMessages(
     return withForms(mapped);
   }
 
-  const cachedTurn = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
   const recoveryMessages = prev.some((m) => m.role === "assistant" && hasText(m.content)) ? prev : cachedTurn;
   const latestLocalAssistant = [...recoveryMessages]
     .reverse()
     .find((m): m is Extract<ChatMessage, { role: "assistant" }> =>
       m.role === "assistant" && hasText(m.content),
     );
-  if (!latestLocalAssistant) return withForms(mapped);
+  if (!latestLocalAssistant) return withForms(mergeCachedProgress(mapped, cachedTurn));
 
   const mappedAssistantIds = new Set(
     mapped
@@ -211,16 +258,13 @@ function mergeSyncedMessages(
     ]);
   }
 
-  return withForms(mapped);
+  return withForms(mergeCachedProgress(mapped, cachedTurn));
 }
 
 // ── Memoized row components ───────────────────────────────────────────────────
 // Defined at module scope so their identity is stable — React.memo bails out
 // any row whose props haven't changed, preventing re-renders of the full
 // message list on every streaming token.
-
-// Highlight @file and /command tokens in plain text (used in user message bubbles)
-const BUBBLE_TOKEN_RE = /(@\S+)|(^\/\S+)/gm;
 
 function SparkAgentIcon({ className = "h-4 w-4" }: { className?: string }) {
   return <BrandLogo className={className} />;
@@ -235,17 +279,33 @@ function SparkAgentAvatar() {
 }
 
 function renderTokens(text: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  let last = 0;
-  BUBBLE_TOKEN_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = BUBBLE_TOKEN_RE.exec(text)) !== null) {
-    if (m.index > last) nodes.push(text.slice(last, m.index));
-    nodes.push(<span key={m.index} className="text-primary font-medium">{m[0]}</span>);
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
+  return tokenizeUserBubbleText(text).map((token, index) => {
+    if (token.type === "highlight") {
+      return <span key={index} className="text-primary font-medium">{token.text}</span>;
+    }
+    if (token.type === "link") {
+      return (
+        <a
+          key={index}
+          href={token.href}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => openUserBubbleLink(event, token.href)}
+          className="break-words text-primary/90 underline decoration-primary/25 underline-offset-2 transition-colors hover:text-primary hover:decoration-primary/60"
+        >
+          {token.text}
+        </a>
+      );
+    }
+    return token.text;
+  });
+}
+
+function openUserBubbleLink(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  event.stopPropagation();
+  if (!isTauri()) return;
+  event.preventDefault();
+  void openExternal(href);
 }
 
 type UserMsg = Extract<ChatMessage, { role: "user" }>;
@@ -528,6 +588,8 @@ export function ChatPanel({
   const streamingRef = useRef(false);
   const turnStateRef = useRef<ChatTurnState>("idle");
   const safeModeRef = useRef(safeMode);
+  const activeTurnSessionIdRef = useRef<string | null>(null);
+  const sessionRecoverySeqRef = useRef(0);
   // Token batching: accumulate tokens and flush once per animation frame
   const tokenBufferRef = useRef("");
   const rafPendingRef = useRef<number | null>(null);
@@ -586,10 +648,14 @@ export function ChatPanel({
       reasoningBufferRef.current = "";
     }
     setActiveSessionId(sessionId);
+    activeSessionRef.current = sessionId;
+    const recoverySeq = ++sessionRecoverySeqRef.current;
     const optimistic: ChatMessage[] = initialMessage
       ? [{ id: nid(), role: "user", content: initialMessage }]
       : [];
-    setChatMessages(optimistic);
+    const cachedTranscript = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
+    const initialTranscript = cachedTranscript.length > 0 ? cachedTranscript : optimistic;
+    setChatMessages(initialTranscript);
     setError(null);
     // Mounting with an initialMessage means the composer just started a turn for
     // this new thread (its postConversation already kicked off the agent). Show
@@ -601,6 +667,7 @@ export function ChatPanel({
     lastTokenAtRef.current = initialMessage ? Date.now() : 0;
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = 0;
+    activeTurnSessionIdRef.current = null;
     followStreamRef.current = true;
     setEditingUser(null);
     setSessionStats({});
@@ -609,6 +676,77 @@ export function ChatPanel({
     setSafeMode(restoredSafeMode);
     setSafeModeNotice(restoredSafeMode ? "Recovered this thread in safe mode." : null);
     if (sessionId) {
+      const selectedSessionId = sessionId;
+      void api.getTurnStatus(selectedSessionId).then(async (status) => {
+        const recoveryStillCurrent = (...ids: Array<string | null | undefined>) => {
+          const current = activeSessionRef.current;
+          return recoverySeq === sessionRecoverySeqRef.current && (
+            current === selectedSessionId || ids.some((id) => Boolean(id) && id === current)
+          );
+        };
+        if (!recoveryStillCurrent(
+          status.resolved_session_id,
+          status.latest_session_id,
+          status.active_turn_session_id,
+        )) return;
+        activeTurnSessionIdRef.current = status.turn_active
+          ? status.active_turn_session_id ?? selectedSessionId
+          : null;
+        const recoveredState = recoverTurnStateFromBackend({
+          turnActive: status.turn_active,
+          phase: status.phase,
+          interruptRequested: status.interrupt_requested,
+        });
+        setTurnState(recoveredState);
+        setStatusLabel(status.turn_active ? status.status ?? "Still working…" : null);
+        if (status.turn_active) {
+          lastEventAtRef.current = Date.now();
+          const snapshotSessionId = status.active_turn_session_id ?? selectedSessionId;
+          try {
+            const snapshot = await api.getStreamSnapshot(snapshotSessionId);
+            if (!recoveryStillCurrent(
+              snapshot.resolved_session_id,
+              snapshot.latest_session_id,
+              snapshot.active_turn_session_id,
+            )) return;
+            activeTurnSessionIdRef.current = snapshot.turn_active
+              ? snapshot.active_turn_session_id ?? snapshotSessionId
+              : null;
+            if (snapshot.stream_text) {
+              syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
+            }
+            if (!snapshot.turn_active) {
+              setTurnState("idle");
+              setStatusLabel(null);
+              flushPendingStream();
+              finalizeAssistant();
+            }
+          } catch {
+            /* snapshot hydration is best-effort */
+          }
+          return;
+        }
+        flushPendingStream();
+        finalizeAssistant();
+        try {
+          const resp = await api.getSessionMessages(selectedSessionId, HISTORY_PAGE);
+          if (!recoveryStillCurrent(resp.session_id)) return;
+          const mapped = sessionMessagesToChat(
+            resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+          );
+          setChatMessages((prev) => mergeSyncedMessages(
+            mapped,
+            initialTranscript.length > 0 ? prev : optimistic,
+            resp.session_id ?? selectedSessionId,
+            { preferSyncedAssistants: true },
+          ));
+          setHasEarlier(resp.has_earlier ?? false);
+        } catch {
+          /* history recovery is best-effort */
+        }
+      }).catch(() => {
+        /* selected-session turn recovery is best-effort */
+      });
       api.getSessionForks(sessionId).then((info) => {
         setForkInfo({
           parentSessionId: info.parent_session_id,
@@ -632,7 +770,7 @@ export function ChatPanel({
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
           setChatMessages((prev) => (
-            mergeSyncedMessages(mapped, initialMessage ? prev : optimistic, resp.session_id ?? sessionId)
+            mergeSyncedMessages(mapped, initialTranscript.length > 0 ? prev : optimistic, resp.session_id ?? sessionId)
           ));
           setHasEarlier(resp.has_earlier ?? false);
           // If history already contains an assistant reply, the turn finished
@@ -640,7 +778,7 @@ export function ChatPanel({
           // show a perpetual typing indicator (the turn_done event would
           // otherwise be the only thing to clear it, and it may have fired
           // before we subscribed).
-          if (streamingRef.current && mapped.some((m) => m.role === "assistant")) {
+          if (streamingRef.current && !activeTurnSessionIdRef.current && mapped.some((m) => m.role === "assistant")) {
             setStreaming(false);
             setStatusLabel(null);
           }
@@ -802,8 +940,12 @@ export function ChatPanel({
     if (streamSnapshotInFlightRef.current) return;
     streamSnapshotInFlightRef.current = true;
     try {
-      const snapshot = await api.getStreamSnapshot(sid);
+      const snapshotSessionId = activeTurnSessionIdRef.current ?? sid;
+      const snapshot = await api.getStreamSnapshot(snapshotSessionId);
       if (!streamingRef.current || activeSessionRef.current !== sid) return;
+      activeTurnSessionIdRef.current = snapshot.turn_active
+        ? snapshot.active_turn_session_id ?? snapshotSessionId
+        : null;
       if (snapshot.stream_text) {
         syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
       }
@@ -870,8 +1012,9 @@ export function ChatPanel({
     resyncInFlightRef.current = true;
     try {
       const status = await api.getTurnStatus(sid);
-      if (status.session_id && sid !== activeSessionRef.current) return; // session switched mid-poll
+      if (sid !== activeSessionRef.current) return; // session switched mid-poll
       if (!status.turn_active) {
+        activeTurnSessionIdRef.current = null;
         // Turn finished while we weren't listening — finalize from history.
         flushPendingStream();
         finalizeAssistant();
@@ -895,11 +1038,21 @@ export function ChatPanel({
         }
       } else {
         // Still running — reset the stall clock and reassure the user.
+        const snapshotSessionId = status.active_turn_session_id ?? sid;
+        activeTurnSessionIdRef.current = snapshotSessionId;
         lastEventAtRef.current = Date.now();
-        setTurnState(normalizeBackendPhase(status.phase, status.interrupt_requested));
+        setTurnState(recoverTurnStateFromBackend({
+          turnActive: true,
+          phase: status.phase,
+          interruptRequested: status.interrupt_requested,
+        }));
         setStatusLabel((prev) => status.status ?? prev ?? "Still working…");
         try {
-          const snapshot = await api.getStreamSnapshot(status.active_turn_session_id ?? sid);
+          const snapshot = await api.getStreamSnapshot(snapshotSessionId);
+          if (sid !== activeSessionRef.current) return;
+          activeTurnSessionIdRef.current = snapshot.turn_active
+            ? snapshot.active_turn_session_id ?? snapshotSessionId
+            : null;
           if (snapshot.stream_text) {
             syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
           }
@@ -1214,9 +1367,16 @@ export function ChatPanel({
         const status = await api.getTurnStatus(activeSessionId);
         if (cancelled || activeSessionRef.current !== activeSessionId) return;
         if (status.turn_active) {
+          activeTurnSessionIdRef.current = status.active_turn_session_id ?? activeSessionId;
           lastEventAtRef.current = Date.now();
-          setTurnState(normalizeBackendPhase(status.phase, status.interrupt_requested));
+          setTurnState(recoverTurnStateFromBackend({
+            turnActive: true,
+            phase: status.phase,
+            interruptRequested: status.interrupt_requested,
+          }));
           setStatusLabel(status.status ?? "Still working…");
+        } else {
+          activeTurnSessionIdRef.current = null;
         }
       } catch {
         /* idle reconciliation is best-effort */
@@ -1237,7 +1397,7 @@ export function ChatPanel({
     // While a turn is streaming, a submit becomes a redirect: interrupt the
     // running turn and hand it the new message (read on the next loop iter).
     if (streaming) {
-      const sid = activeSessionId;
+      const sid = activeTurnSessionIdRef.current ?? activeSessionId;
       if (!sid) return;
       setChatMessages((prev) => [
         ...prev,
@@ -1310,7 +1470,7 @@ export function ChatPanel({
   };
 
   const stop = async () => {
-    const sid = activeSessionId;
+    const sid = activeTurnSessionIdRef.current ?? activeSessionId;
     if (!sid) return;
     if (turnStateRef.current === "stopping" || turnStateRef.current === "redirecting") return;
     setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested" }));

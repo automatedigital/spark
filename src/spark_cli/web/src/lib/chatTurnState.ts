@@ -20,6 +20,19 @@ export function normalizeBackendPhase(phase: string | null | undefined, interrup
   return "streaming";
 }
 
+export function recoverTurnStateFromBackend({
+  turnActive,
+  phase,
+  interruptRequested = false,
+}: {
+  turnActive: boolean;
+  phase?: string | null;
+  interruptRequested?: boolean;
+}): ChatTurnState {
+  if (!turnActive) return "idle";
+  return normalizeBackendPhase(phase, interruptRequested);
+}
+
 export function nextChatTurnState(current: ChatTurnState, event: ChatTurnEvent): ChatTurnState {
   switch (event.type) {
     case "submit":

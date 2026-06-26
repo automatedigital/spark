@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle, MessageSquare, XCircle, X } from "lucide-react";
 import { getDashboardToken } from "@/lib/api";
 import { nativeNotify } from "@/lib/desktop";
+import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
 import {
   dismissSessionNotification,
@@ -26,6 +27,7 @@ const MAX_NOTIFICATIONS = 50;
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<JobNotification[]>([]);
   const [sessionNotifications, setSessionNotifications] = useState<SessionNotification[]>(getSessionNotifications);
+  const [sessionUnread, setSessionUnread] = useState(getUnreadSessionCount);
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -33,6 +35,7 @@ export function NotificationBell() {
   // Subscribe to unread session store
   useEffect(() => subscribeToUnreadSessions(() => {
     setSessionNotifications(getSessionNotifications());
+    setSessionUnread(getUnreadSessionCount());
   }), []);
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const totalUnread = unread + getUnreadSessionCount();
+  const totalUnread = unread + sessionUnread;
 
   const handleOpen = () => {
     setOpen((o) => !o);
@@ -91,6 +94,12 @@ export function NotificationBell() {
 
   const dismiss = (id: string) =>
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+
+  const openSessionNotification = (sessionId: string) => {
+    setGlobalNavTarget({ type: "thread", id: sessionId });
+    dismissSessionNotification(sessionId);
+    setOpen(false);
+  };
 
   return (
     <div className="relative" ref={panelRef}>
@@ -133,23 +142,30 @@ export function NotificationBell() {
                 {sessionNotifications.map((n) => (
                   <div
                     key={n.sessionId}
-                    className="flex items-start gap-3 px-4 py-3 border-b border-border/50 hover:bg-accent/30 transition-colors"
+                    className="flex items-start gap-2 border-b border-border/50 px-4 py-3 transition-colors hover:bg-accent/30"
                   >
-                    <MessageSquare className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate">{n.title}</div>
-                      {n.preview && (
-                        <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-                          {n.preview}
-                        </div>
-                      )}
-                      <div className="text-[10px] text-muted-foreground/60 mt-1">
-                        {new Date(n.ts * 1000).toLocaleTimeString()}
-                      </div>
-                    </div>
                     <button
                       type="button"
-                      className="shrink-0 text-muted-foreground/50 hover:text-muted-foreground transition"
+                      className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                      onClick={() => openSessionNotification(n.sessionId)}
+                      aria-label={`Open ${n.title}`}
+                    >
+                      <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium">{n.title}</div>
+                        {n.preview && (
+                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            {n.preview}
+                          </div>
+                        )}
+                        <div className="mt-1 text-[10px] text-muted-foreground/60">
+                          {new Date(n.ts * 1000).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 text-muted-foreground/50 transition hover:text-muted-foreground"
                       onClick={() => dismissSessionNotification(n.sessionId)}
                       aria-label="Dismiss"
                     >

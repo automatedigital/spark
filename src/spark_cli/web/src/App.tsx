@@ -92,6 +92,25 @@ const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
 
 const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas", "messaging", "skillsTools"]);
 
+function pageForGlobalNavTarget(target: GlobalNavTarget): PageId {
+  switch (target.type) {
+    case "canvas":
+      return "canvas";
+    case "file":
+      return "files";
+    case "task":
+      return "kanban";
+    case "scheduled-task":
+      return "cron";
+    case "skill":
+      return "skills";
+    case "thread":
+    case "project":
+    default:
+      return "chat";
+  }
+}
+
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -255,9 +274,7 @@ function AppShell() {
     return saved === null ? true : saved === "true";
   });
   const [navHovered, setNavHovered] = useState(false);
-  const [animKey, setAnimKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const initialRef = useRef(true);
 
   // Pages (e.g. Skills & Tools → "Manage MCP servers") can open Settings.
   useEffect(() => {
@@ -390,7 +407,7 @@ function AppShell() {
     void onDeepLink((url) => {
       const target = deepLinkToNavTarget(url);
       if (!target) return;
-      navigateTo(target.type === "canvas" ? "canvas" : "chat");
+      navigateTo(pageForGlobalNavTarget(target));
       setGlobalNavTarget(target);
     }).then((u) => (disposed ? u() : unsubs.push(u)));
 
@@ -400,16 +417,12 @@ function AppShell() {
     };
   }, []);
 
-  // A canvas nav target (e.g. opening a *.canvas.json from Files) switches to the
-  // Canvas tab; CanvasPage itself consumes the target to open the right canvas.
+  // Global nav switches to the owning page first; that page consumes the
+  // one-shot localStorage target after it mounts.
   useEffect(() => {
     const handler = (event: Event) => {
       const target = (event as CustomEvent<GlobalNavTarget>).detail;
-      if (target?.type === "canvas") navigateTo("canvas");
-      if (target?.type === "file") navigateTo("files");
-      // Thread/project targets are consumed by the session store; make sure
-      // the chat page is visible so the selection shows up.
-      if (target?.type === "thread" || target?.type === "project") navigateTo("chat");
+      if (target) navigateTo(pageForGlobalNavTarget(target));
     };
     window.addEventListener(GLOBAL_NAV_EVENT, handler);
     return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
@@ -560,14 +573,6 @@ function AppShell() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (initialRef.current) {
-      initialRef.current = false;
-      return;
-    }
-    setAnimKey((k) => k + 1);
-  }, [page]);
 
   // ── Activity counts: initial fetch ──
   useEffect(() => {
@@ -844,7 +849,7 @@ function AppShell() {
           </header>
 
           <main
-            key={animKey}
+            key={page}
             className={FULL_WIDTH_PAGES.has(page) ? "relative flex-1 flex flex-col overflow-hidden" : "relative mx-auto min-h-0 w-full max-w-[1320px] flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-6"}
             style={{ animation: "fade-in 150ms ease-out" }}
           >

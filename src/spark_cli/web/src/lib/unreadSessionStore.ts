@@ -30,9 +30,17 @@ export function addSessionNotification(
   title: string,
   preview: string | null,
 ) {
-  unreadIds.add(sessionId);
   const existing = notifications.findIndex((n) => n.sessionId === sessionId);
   const note: SessionNotification = { sessionId, title, preview, ts: Date.now() / 1000 };
+  if (
+    existing >= 0 &&
+    unreadIds.has(sessionId) &&
+    notifications[existing].title === title &&
+    notifications[existing].preview === preview
+  ) {
+    return;
+  }
+  unreadIds.add(sessionId);
   if (existing >= 0) {
     notifications = [
       note,
@@ -44,25 +52,28 @@ export function addSessionNotification(
   notify();
 }
 
-/** Mark a session as read (user opened it). Keeps the notification entry but removes the unread dot. */
+/** Mark a session as read (user opened it). Removes any bell entry for that session. */
 export function markSessionRead(sessionId: string) {
-  if (unreadIds.has(sessionId)) {
-    unreadIds.delete(sessionId);
-    // Also remove from the notification list so the bell clears it too
-    notifications = notifications.filter((n) => n.sessionId !== sessionId);
+  const hadUnread = unreadIds.delete(sessionId);
+  const beforeCount = notifications.length;
+  // Also remove from the notification list so the bell clears it too
+  notifications = notifications.filter((n) => n.sessionId !== sessionId);
+  if (hadUnread || notifications.length !== beforeCount) {
     notify();
   }
 }
 
 /** Explicitly dismiss a notification (e.g. from the bell dropdown). */
 export function dismissSessionNotification(sessionId: string) {
-  unreadIds.delete(sessionId);
+  const hadUnread = unreadIds.delete(sessionId);
+  const beforeCount = notifications.length;
   notifications = notifications.filter((n) => n.sessionId !== sessionId);
-  notify();
+  if (hadUnread || notifications.length !== beforeCount) notify();
 }
 
 /** Clear all session notifications. */
 export function clearAllSessionNotifications() {
+  if (unreadIds.size === 0 && notifications.length === 0) return;
   unreadIds.clear();
   notifications = [];
   notify();
@@ -84,4 +95,10 @@ export function getUnreadSessionCount(): number {
 export function subscribeToUnreadSessions(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+export function resetUnreadSessionStoreForTests() {
+  unreadIds.clear();
+  notifications = [];
+  listeners.clear();
 }
