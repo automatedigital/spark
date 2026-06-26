@@ -8,7 +8,6 @@ import {
   FolderOpen,
   LayoutGrid,
   MessageCircle,
-  MessageSquare,
   MoreHorizontal,
   Plus,
   Settings,
@@ -48,14 +47,13 @@ const PRIMARY_NAV = [
   { id: "skillsTools", labelKey: "skillsAndTools" as const, icon: Blocks },
   { id: "messaging", labelKey: "messaging" as const, icon: MessageCircle },
   { id: "files", labelKey: "files" as const, icon: FolderOpen },
+  { id: "cron", labelKey: "cron" as const, icon: Clock },
 ] as const;
 
 // Demoted pages — reachable via the "More" menu + command palette.
 const MORE_NAV = [
-  { id: "chat", labelKey: "chat" as const, icon: MessageSquare },
   { id: "canvas", labelKey: "canvas" as const, icon: Square },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
-  { id: "cron", labelKey: "cron" as const, icon: Clock },
 ] as const;
 
 const PAGE_COMPONENTS = {
@@ -75,6 +73,7 @@ type PageId = keyof typeof PAGE_COMPONENTS;
 type NavLabelKey =
   | (typeof PRIMARY_NAV)[number]["labelKey"]
   | (typeof MORE_NAV)[number]["labelKey"]
+  | "chat"
   | "newSession"
   | "skills"
   | "connectors";
@@ -154,7 +153,7 @@ function SparkLogo({ className = "" }: { className?: string }) {
   return <BrandLogo className={`h-7 w-7 ${className}`} />;
 }
 
-// ── More menu (demoted pages: Chat, Files, Canvas, Kanban, Cron) ──
+// ── More menu (demoted pages: Chat, Canvas, Kanban) ──────────────────────────
 
 function MoreMenu({
   page,

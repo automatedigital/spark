@@ -197,28 +197,6 @@ function NewSessionHero({
         </p>
       </div>
       <div className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-6 sm:pb-8">
-        <div className="mb-2 flex items-center gap-2">
-          <label htmlFor="hero-project-picker" className="text-xs text-muted-foreground/70">
-            Project
-          </label>
-          <div className="relative">
-            <select
-              id="hero-project-picker"
-              value={projectSlug}
-              onChange={(e) => persistProject(e.target.value)}
-              disabled={starting}
-              className="appearance-none rounded-md border border-input bg-background/40 py-1 pl-2 pr-7 text-xs text-foreground outline-none focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
-            >
-              <option value="">No project (just chat)</option>
-              {projects.map((p) => (
-                <option key={p.slug} value={p.slug}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
-          </div>
-        </div>
         <PromptBar
           input={msg}
           setInput={setMsg}
@@ -229,6 +207,9 @@ function NewSessionHero({
           disabled={starting}
           placeholder="Start with a goal"
           workspaceSlug={projectSlug || undefined}
+          projectOptions={projects}
+          selectedProjectSlug={projectSlug}
+          onProjectChange={persistProject}
         />
       </div>
     </div>

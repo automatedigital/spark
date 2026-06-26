@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUp, Brain, Check, ChevronDown, Loader2, Plus, Settings, Square } from "lucide-react";
+import { ArrowUp, Brain, Check, ChevronDown, FolderOpen, Loader2, Plus, Settings, Square } from "lucide-react";
 import { api } from "@/lib/api";
-import type { ModelStatusResponse, ModelSuggestionsResponse } from "@/lib/api";
+import type { ModelStatusResponse, ModelSuggestionsResponse, WorkspaceProject } from "@/lib/api";
 import { shortModelName } from "@/lib/modelName";
 import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 import { AtFileMenu } from "@/components/chat/AtFileMenu";
@@ -23,6 +23,9 @@ interface PromptBarProps {
   workspaceSlug?: string;
   contextItems?: ContextItem[];
   sessionId?: string | null;
+  projectOptions?: WorkspaceProject[];
+  selectedProjectSlug?: string;
+  onProjectChange?: (slug: string) => void;
   /** Override the idle placeholder text. */
   placeholder?: string;
 }
@@ -210,6 +213,136 @@ const REASONING_OPTIONS = [
   { value: "high", label: "High" },
   { value: "xhigh", label: "Max" },
 ] as const;
+
+// ── Project picker ────────────────────────────────────────────────────────────
+
+function ProjectPicker({
+  projects,
+  value,
+  disabled,
+  onChange,
+}: {
+  projects: WorkspaceProject[];
+  value: string;
+  disabled?: boolean;
+  onChange: (slug: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const selected = projects.find((p) => p.slug === value);
+  const options = [{ slug: "", name: "No project" }, ...projects];
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (ref.current) setRect(ref.current.getBoundingClientRect());
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  const selectProject = (slug: string) => {
+    setOpen(false);
+    if (slug !== value) onChange(slug);
+  };
+
+  const menu = open && rect
+    ? (() => {
+        const menuHeight = Math.min(260, options.length * 32 + 8);
+        const openUp = rect.bottom + menuHeight + 8 > window.innerHeight;
+        return createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            left: rect.left,
+            width: Math.max(rect.width, 164),
+            ...(openUp
+              ? { bottom: window.innerHeight - rect.top + 6 }
+              : { top: rect.bottom + 6 }),
+          }}
+          className="z-[210] overflow-hidden rounded-lg border border-border bg-popover/95 p-1 shadow-xl shadow-black/25 backdrop-blur-xl"
+          role="menu"
+        >
+          {options.map((project) => {
+            const isSelected = project.slug === value;
+            return (
+              <button
+                key={project.slug || "__none__"}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isSelected}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  selectProject(project.slug);
+                }}
+                className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition ${
+                  isSelected
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
+                }`}
+              >
+                <Check className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-primary/80" : "opacity-0"}`} />
+                <span className="min-w-0 flex-1 truncate">{project.name}</span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+        );
+      })()
+    : null;
+
+  return (
+    <div ref={ref} className="relative min-w-0">
+      <button
+        type="button"
+        aria-label="Project"
+        title={selected ? `Project: ${selected.name}` : "No project"}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex h-7 max-w-[190px] items-center gap-1.5 rounded-md border border-transparent px-2 text-[11px] font-medium transition select-none disabled:pointer-events-none disabled:opacity-50 sm:max-w-[230px] ${
+          open
+            ? "bg-foreground/10 text-foreground"
+            : "bg-foreground/[0.045] text-muted-foreground/70 hover:bg-foreground/7 hover:text-foreground"
+        }`}
+      >
+        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground/45" />
+        <span className="min-w-0 truncate text-foreground/90">{selected?.name ?? "No project"}</span>
+        <ChevronDown className={`h-3 w-3 shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {menu}
+    </div>
+  );
+}
 
 // ── Model dropdown ────────────────────────────────────────────────────────────
 
@@ -519,6 +652,9 @@ export function PromptBar({
   workspaceSlug,
   contextItems = [],
   sessionId,
+  projectOptions,
+  selectedProjectSlug,
+  onProjectChange,
   placeholder,
 }: PromptBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -712,6 +848,7 @@ export function PromptBar({
     if (!e || e === "none") return null;
     return REASONING_OPTIONS.find((o) => o.value === e)?.label ?? e;
   })();
+  const showProjectPicker = projectOptions !== undefined && selectedProjectSlug !== undefined && !!onProjectChange;
 
   return (
     <div className="px-3 pb-3 pt-2 shrink-0 relative">
@@ -819,6 +956,15 @@ export function PromptBar({
               )}
               <ChevronDown className={`h-3 w-3 opacity-40 transition-transform ${showSettings ? "rotate-180" : ""}`} />
             </button>
+          )}
+
+          {showProjectPicker && (
+            <ProjectPicker
+              projects={projectOptions}
+              value={selectedProjectSlug}
+              disabled={inputBlocked}
+              onChange={onProjectChange}
+            />
           )}
 
           <div className="flex-1" />
