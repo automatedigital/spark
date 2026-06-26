@@ -42,11 +42,12 @@ import tempfile
 import threading
 import time
 import uuid
+from typing import Any
 
-_IS_WINDOWS = platform.system() == "Windows"
-from typing import Any, Dict, List, Optional
+from tools.registry import registry, tool_error
 
 # Availability gate: UDS requires a POSIX OS
+_IS_WINDOWS = platform.system() == "Windows"
 logger = logging.getLogger(__name__)
 
 SANDBOX_AVAILABLE = sys.platform != "win32"
@@ -90,9 +91,9 @@ _TOOL_STUBS = {
     ),
     "web_extract": (
         "web_extract",
-        "urls: list",
+        "urls: list, use_llm_processing: bool = True, max_chars_per_page: int = 20000",
         '"""Extract content from URLs. Returns dict with results list of {url, title, content, error}."""',
-        '{"urls": urls}',
+        '{"urls": urls, "use_llm_processing": use_llm_processing, "max_chars_per_page": max_chars_per_page}',
     ),
     "read_file": (
         "read_file",
@@ -127,7 +128,7 @@ _TOOL_STUBS = {
 }
 
 
-def generate_spark_tools_module(enabled_tools: List[str],
+def generate_spark_tools_module(enabled_tools: list[str],
                                  transport: str = "uds") -> str:
     """
     Build the source code for the spark_tools.py stub module.
@@ -330,7 +331,7 @@ def _rpc_server_loop(
         while True:
             try:
                 chunk = conn.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 break
             if not chunk:
                 break
@@ -413,7 +414,7 @@ def _rpc_server_loop(
 
                 conn.sendall((result + "\n").encode())
 
-    except socket.timeout:
+    except TimeoutError:
         logger.debug("RPC listener socket timeout")
     except OSError as e:
         logger.debug("RPC listener socket error: %s", e, exc_info=True)
@@ -437,9 +438,15 @@ def _get_or_create_env(task_id: str):
     Returns ``(env, env_type)`` tuple.
     """
     from tools.terminal_tool import (
-        _active_environments, _env_lock, _create_environment,
-        _get_env_config, _last_activity, _start_cleanup_thread,
-        _creation_locks, _creation_locks_lock, _task_env_overrides,
+        _active_environments,
+        _create_environment,
+        _creation_locks,
+        _creation_locks_lock,
+        _env_lock,
+        _get_env_config,
+        _last_activity,
+        _start_cleanup_thread,
+        _task_env_overrides,
     )
 
     effective_task_id = task_id or "default"
@@ -706,8 +713,8 @@ def _rpc_poll_loop(
 
 def _execute_remote(
     code: str,
-    task_id: Optional[str],
-    enabled_tools: Optional[List[str]],
+    task_id: str | None,
+    enabled_tools: list[str] | None,
 ) -> str:
     """Run a script on the remote terminal backend via file-based RPC.
 
@@ -864,7 +871,7 @@ def _execute_remote(
     stdout_text = redact_sensitive_text(stdout_text)
 
     # Build response
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "status": status,
         "output": stdout_text,
         "tool_calls_made": tool_call_counter[0],
@@ -890,8 +897,8 @@ def _execute_remote(
 
 def execute_code(
     code: str,
-    task_id: Optional[str] = None,
-    enabled_tools: Optional[List[str]] = None,
+    task_id: str | None = None,
+    enabled_tools: list[str] | None = None,
 ) -> str:
     """
     Run a Python script in a sandboxed child process with RPC access
@@ -1168,7 +1175,7 @@ def execute_code(
         stderr_text = redact_sensitive_text(stderr_text)
 
         # Build response
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "status": status,
             "output": stdout_text,
             "tool_calls_made": tool_call_counter[0],
@@ -1316,6 +1323,17 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None) -> dict:
     else:
         import_str = "..."
 
+    terminal_limit = (
+        " terminal() is foreground-only (no background or pty)."
+        if "terminal" in enabled_sandbox_tools
+        else ""
+    )
+    json_parse_hint = (
+        "  json_parse(text: str) — json.loads with strict=False; use for terminal() output with control chars\n"
+        if "terminal" in enabled_sandbox_tools
+        else "  json_parse(text: str) — json.loads with strict=False for tolerant JSON parsing\n"
+    )
+
     description = (
         "Run a Python script that can call Spark tools programmatically. "
         "Use this when you need 3+ tool calls with processing logic between them, "
@@ -1328,11 +1346,11 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None) -> dict:
         f"Available via `from spark_tools import ...`:\n\n"
         f"{tool_lines}\n\n"
         "Limits: 5-minute timeout, 50KB stdout cap, max 50 tool calls per script. "
-        "terminal() is foreground-only (no background or pty).\n\n"
+        f"{terminal_limit}\n\n"
         "Print your final result to stdout. Use Python stdlib (json, re, math, csv, "
         "datetime, collections, etc.) for processing between tool calls.\n\n"
         "Also available (no import needed — built into spark_tools):\n"
-        "  json_parse(text: str) — json.loads with strict=False; use for terminal() output with control chars\n"
+        f"{json_parse_hint}"
         "  shell_quote(s: str) — shlex.quote(); use when interpolating dynamic strings into shell commands\n"
         "  retry(fn, max_attempts=3, delay=2) — retry with exponential backoff for transient failures"
     )
@@ -1360,9 +1378,6 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None) -> dict:
 # Default schema used at registration time (all sandbox tools listed)
 EXECUTE_CODE_SCHEMA = build_execute_code_schema()
 
-
-# --- Registry ---
-from tools.registry import registry, tool_error
 
 registry.register(
     name="execute_code",

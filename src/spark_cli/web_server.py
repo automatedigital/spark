@@ -18,8 +18,8 @@ import os
 import platform
 import queue as thread_queue
 import re
-import shutil
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -27,10 +27,10 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -38,22 +38,26 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from spark_cli import __version__, __release_date__
+from gateway.status import get_running_pid, read_runtime_status
+from spark_cli import __release_date__, __version__
+from spark_cli import web_turn_state as _web_turn_state
+from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.config import (
     DEFAULT_CONFIG,
     OPTIONAL_ENV_VARS,
+    check_config_version,
     get_config_path,
     get_env_path,
     get_spark_home,
     load_config,
     load_env,
+    redact_key,
+    remove_env_value,
     save_config,
     save_env_value,
-    remove_env_value,
-    check_config_version,
-    redact_key,
 )
-from gateway.status import get_running_pid, read_runtime_status
+from spark_cli.connectors_routes import register_connectors_routes
+from spark_cli.connectors_routes import set_server_port as _set_connectors_port
 from spark_cli.dashboard_auth import (
     dashboard_token_path,
     ensure_dashboard_token_file,
@@ -61,18 +65,53 @@ from spark_cli.dashboard_auth import (
     get_configured_dashboard_secret,
     validate_dashboard_request,
 )
-from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.kanban_routes import register_kanban_routes
+from spark_cli.web_schemas import (
+    AdminActionStart,
+    BriefUpdate,
+    CanvasChatBody,
+    ConfigUpdate,
+    ConversationApprovalBody,
+    ConversationCreate,
+    ConversationForkBody,
+    ConversationInterrupt,
+    ConversationMessage,
+    ConversationModelBody,
+    ConversationRetryBody,
+    CronJobCreate,
+    CronJobUpdate,
+    EnvVarDelete,
+    EnvVarReveal,
+    EnvVarUpdate,
+    FeedbackSubmitBody,
+    GatewayControlRequest,
+    KanbanUpdate,
+    ManifestUpdate,
+    McpServerCreate,
+    OAuthSubmitBody,
+    OnboardingSkillsRequest,
+    OpenExternalRequest,
+    PluginActionRequest,
+    ProfileCreateRequest,
+    ProfileExportRequest,
+    ProfileImportRequest,
+    ProfileRenameRequest,
+    RawConfigUpdate,
+    SkillToggle,
+    SummarizeFileRequest,
+    TokenEstimateRequest,
+    WorkspaceConvCreate,
+)
+from spark_cli.web_events import WebEventBus
+from spark_cli.web_turn_state import WebActiveTurn, _web_active_turns
 from spark_cli.workflow_routes import register_workflow_routes
-from spark_cli.workspace_routes import register_workspace_routes
-from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
+from spark_cli.project_routes import register_project_routes
 
 try:
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import APIRouter, FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
-    from pydantic import BaseModel
     from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError:
     raise SystemExit(
@@ -84,71 +123,24 @@ WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
 # Captured at startup — fan-out SSE events from sync agent threads
-_web_event_loop: Optional[asyncio.AbstractEventLoop] = None
-_event_subscribers: set = set()  # asyncio.Queue
+_web_event_loop: asyncio.AbstractEventLoop | None = None
+_web_event_bus = WebEventBus(logger=_log)
+_event_subscribers = _web_event_bus.subscribers  # asyncio.Queue; compatibility alias
 _admin_runs: dict[str, dict[str, Any]] = {}
 _admin_run_queues: dict[str, thread_queue.Queue] = {}
+_event_drop_counts = _web_event_bus.drop_counts  # compatibility alias
 
 
-@dataclass
-class WebActiveTurn:
-    started_at: float
-    last_event_at: float
-    status: str
-    interrupt_requested: bool
-    active_agent_session_id: Optional[str]
-    phase: str
-    stream_text: str = ""
-    stream_revision: int = 0
+def _resolve_web_turn_ids(session_id: str | None) -> dict[str, str | None]:
+    return _web_turn_state.resolve_web_turn_ids(session_id)
 
 
-_web_active_turns: dict[str, WebActiveTurn] = {}
-
-_EVENT_QUEUE_SIZE = 512
-_PRIORITY_EVENT_TOPICS = {
-    "chat.turn_done",
-    "chat.interrupted",
-    "chat.session_migrated",
-    "chat.approval_requested",
-    "chat.approval_resolved",
-}
-_DROPPABLE_EVENT_TOPICS = {
-    "chat.token",
-    "chat.status",
-    "chat.reasoning",
-    "chat.tool_start",
-    "chat.tool_end",
-}
-_event_drop_counts: dict[str, int] = {}
-
-
-def _resolve_web_turn_ids(session_id: Optional[str]) -> dict[str, Optional[str]]:
-    """Resolve a user-facing session id to the latest active conversation leaf."""
-    if not session_id:
-        return {"requested": session_id, "resolved": session_id, "latest": session_id}
-    try:
-        from core.spark_state import SessionDB
-
-        db = SessionDB()
-        try:
-            resolved = db.resolve_session_id(session_id) or session_id
-            latest = db.resolve_latest_descendant(resolved) if resolved else resolved
-            return {"requested": session_id, "resolved": resolved, "latest": latest or resolved}
-        finally:
-            db.close()
-    except Exception:
-        _log.debug("web turn id resolution failed session=%s", session_id, exc_info=True)
-        return {"requested": session_id, "resolved": session_id, "latest": session_id}
-
-
-def _web_turn_candidates(session_id: Optional[str]) -> set[str]:
-    ids = _resolve_web_turn_ids(session_id)
-    return {str(v) for v in ids.values() if v}
+def _web_turn_candidates(session_id: str | None) -> set[str]:
+    return _web_turn_state.web_turn_candidates(session_id)
 
 
 def _web_turn_key(session_id: str) -> str:
-    ids = _resolve_web_turn_ids(session_id)
-    return str(ids.get("latest") or ids.get("resolved") or session_id)
+    return _web_turn_state.web_turn_key(session_id)
 
 
 def _mark_web_turn_active(
@@ -156,95 +148,53 @@ def _mark_web_turn_active(
     *,
     status: str = "Starting…",
     phase: str = "starting",
-    active_agent_session_id: Optional[str] = None,
+    active_agent_session_id: str | None = None,
 ) -> WebActiveTurn:
-    key = _web_turn_key(session_id)
-    now = time.time()
-    turn = WebActiveTurn(
-        started_at=now,
-        last_event_at=now,
+    return _web_turn_state.mark_web_turn_active(
+        session_id,
         status=status,
-        interrupt_requested=False,
-        active_agent_session_id=active_agent_session_id,
         phase=phase,
+        active_agent_session_id=active_agent_session_id,
+        clock=time.time,
     )
-    _web_active_turns[key] = turn
-    return turn
 
 
 def _touch_web_turn(
-    session_id: Optional[str],
+    session_id: str | None,
     *,
-    status: Optional[str] = None,
-    phase: Optional[str] = None,
-    interrupt_requested: Optional[bool] = None,
-    active_agent_session_id: Optional[str] = None,
+    status: str | None = None,
+    phase: str | None = None,
+    interrupt_requested: bool | None = None,
+    active_agent_session_id: str | None = None,
 ) -> None:
-    if not session_id:
-        return
-    for candidate in _web_turn_candidates(session_id):
-        turn = _web_active_turns.get(candidate)
-        if not turn:
-            continue
-        turn.last_event_at = time.time()
-        if status is not None:
-            turn.status = status
-        if phase is not None:
-            turn.phase = phase
-        if interrupt_requested is not None:
-            turn.interrupt_requested = interrupt_requested
-        if active_agent_session_id is not None:
-            turn.active_agent_session_id = active_agent_session_id
-        return
+    return _web_turn_state.touch_web_turn(
+        session_id,
+        status=status,
+        phase=phase,
+        interrupt_requested=interrupt_requested,
+        active_agent_session_id=active_agent_session_id,
+        clock=time.time,
+    )
 
 
-def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
-    if not session_id or not token:
-        return
-    for candidate in _web_turn_candidates(session_id):
-        turn = _web_active_turns.get(candidate)
-        if not turn:
-            continue
-        turn.last_event_at = time.time()
-        turn.phase = "streaming"
-        turn.stream_text += token
-        turn.stream_revision += 1
-        return
+def _append_web_turn_token(session_id: str | None, token: str) -> None:
+    return _web_turn_state.append_web_turn_token(session_id, token, clock=time.time)
 
 
 def _clear_web_turn(session_id: str) -> None:
-    for candidate in _web_turn_candidates(session_id):
-        _web_active_turns.pop(candidate, None)
+    return _web_turn_state.clear_web_turn(session_id)
 
 
-def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTurn]]:
-    for candidate in _web_turn_candidates(session_id):
-        turn = _web_active_turns.get(candidate)
-        if turn:
-            return candidate, turn
-    return None, None
+def _get_web_turn(session_id: str) -> tuple[str | None, WebActiveTurn | None]:
+    return _web_turn_state.get_web_turn(session_id)
 
 
-def _is_web_turn_active(session_id: Optional[str]) -> bool:
-    if not session_id:
-        return False
-    return _get_web_turn(session_id)[1] is not None
+def _is_web_turn_active(session_id: str | None) -> bool:
+    return _web_turn_state.is_web_turn_active(session_id)
 
 
-def _get_web_agent_for_turn(session_id: str) -> tuple[Optional[str], Any]:
-    ids = _resolve_web_turn_ids(session_id)
-    candidates = [
-        ids.get("latest"),
-        ids.get("resolved"),
-        ids.get("requested"),
-    ]
-    for candidate in candidates:
-        if candidate and candidate in _web_agents:
-            return candidate, _web_agents[candidate]
-    _, turn = _get_web_turn(session_id)
-    if turn and turn.active_agent_session_id and turn.active_agent_session_id in _web_agents:
-        return turn.active_agent_session_id, _web_agents[turn.active_agent_session_id]
-    return None, None
+def _get_web_agent_for_turn(session_id: str) -> tuple[str | None, Any]:
+    return _web_turn_state.get_web_agent_for_turn(session_id, _web_agents)
 
 
 @asynccontextmanager
@@ -291,12 +241,12 @@ def _prewarm_agent_stack() -> None:
     """
     try:
         import core.model_tools  # noqa: F401  (runs _discover_tools at import)
-        from core.run_agent import AIAgent  # noqa: F401
 
         # Warm the models.dev metadata fetch now (during the desktop loading
         # screen) rather than on the first chat turn — it runs synchronously in
         # AIAgent.__init__ and can stall for seconds when models.dev is slow.
         from agent.models_dev import fetch_models_dev
+        from core.run_agent import AIAgent  # noqa: F401
 
         fetch_models_dev()
     except Exception:
@@ -336,6 +286,10 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Spark Agent", version=__version__, lifespan=_lifespan)
+config_router = APIRouter(tags=["config"])
+oauth_router = APIRouter(tags=["oauth"])
+conversation_router = APIRouter(tags=["conversation"])
+project_compat_router = APIRouter(tags=["project"])
 
 # ---------------------------------------------------------------------------
 # Session token for protecting sensitive endpoints (reveal).
@@ -346,7 +300,7 @@ _SERVER_INSTANCE_ID = uuid.uuid4().hex
 _SESSION_TOKEN = secrets.token_urlsafe(32)
 
 # Simple rate limiter for the reveal endpoint
-_reveal_timestamps: List[float] = []
+_reveal_timestamps: list[float] = []
 _REVEAL_MAX_PER_WINDOW = 5
 _REVEAL_WINDOW_SECONDS = 30
 
@@ -471,62 +425,17 @@ def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
     return preview
 
 
-def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> None:
-    loop = _web_event_loop
-    if loop is None:
-        return
-    envelope = {"topic": topic, "session_id": session_id, "ts": time.time(), "data": data}
-
-    def _fanout() -> None:
-        for q in tuple(_event_subscribers):
-            try:
-                q.put_nowait(envelope)
-                continue
-            except asyncio.QueueFull:
-                if topic in _PRIORITY_EVENT_TOPICS and _make_room_for_priority_event(q):
-                    try:
-                        q.put_nowait(envelope)
-                        continue
-                    except asyncio.QueueFull:
-                        pass
-                _record_event_drop(topic, session_id)
-            except Exception:
-                _event_subscribers.discard(q)
-
-    try:
-        loop.call_soon_threadsafe(_fanout)
-    except Exception:
-        pass
+def _publish_event(topic: str, data: dict, session_id: str | None = None) -> None:
+    _web_event_bus.publish(topic, data, session_id, loop=_web_event_loop)
 
 
-def _record_event_drop(topic: str, session_id: Optional[str]) -> None:
-    key = f"{session_id or '-'}:{topic}"
-    count = _event_drop_counts.get(key, 0) + 1
-    _event_drop_counts[key] = count
-    if count in {1, 10, 100}:
-        _log.warning(
-            "Dropped web SSE event due to slow subscriber session=%s topic=%s count=%s",
-            session_id,
-            topic,
-            count,
-        )
+def _record_event_drop(topic: str, session_id: str | None) -> None:
+    _web_event_bus.record_drop(topic, session_id)
 
 
 def _make_room_for_priority_event(q: asyncio.Queue) -> bool:
     """Drop older low-value events so completion/control events can be delivered."""
-    try:
-        pending = q._queue  # type: ignore[attr-defined]
-    except Exception:
-        return False
-    for env in tuple(pending):
-        if isinstance(env, dict) and env.get("topic") in _DROPPABLE_EVENT_TOPICS:
-            try:
-                pending.remove(env)
-                _record_event_drop(str(env.get("topic") or "unknown"), env.get("session_id"))
-                return True
-            except ValueError:
-                return not q.full()
-    return not q.full()
+    return _web_event_bus.make_room_for_priority_event(q)
 
 
 def push_job_notification(job_id: str, job_name: str, success: bool, summary: str) -> None:
@@ -543,18 +452,13 @@ def push_job_notification(job_id: str, job_name: str, success: bool, summary: st
 
 
 def _topic_allowed(topic: str, prefixes: tuple[str, ...]) -> bool:
-    if not prefixes:
-        return True
-    for p in prefixes:
-        if topic == p or topic.startswith(p + "."):
-            return True
-    return False
+    return _web_event_bus.topic_allowed(topic, prefixes)
 
 
 def _emit_sessions_changed(
-    action: str, session_id: str, session: Optional[dict] = None
+    action: str, session_id: str, session: dict | None = None
 ) -> None:
-    payload: Dict[str, Any] = {"action": action, "session_id": session_id}
+    payload: dict[str, Any] = {"action": action, "session_id": session_id}
     if session is not None:
         payload["session"] = session
     _publish_event("sessions.changed", payload, session_id)
@@ -566,30 +470,9 @@ async def sse_events_bus(request: Request, topics: str = "sessions,chat"):
     from fastapi.responses import StreamingResponse as _StreamingResponse
 
     prefixes = tuple(p.strip() for p in topics.split(",") if p.strip())
-    queue: asyncio.Queue = asyncio.Queue(maxsize=_EVENT_QUEUE_SIZE)
-    _event_subscribers.add(queue)
-
-    async def event_generator():
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    env = await asyncio.wait_for(queue.get(), timeout=30.0)
-                except asyncio.TimeoutError:
-                    yield "event: ping\ndata: {}\n\n"
-                    continue
-                if not _topic_allowed(env.get("topic", ""), prefixes):
-                    continue
-                try:
-                    yield f"data: {json.dumps(env, default=str)}\n\n"
-                except Exception:
-                    continue
-        finally:
-            _event_subscribers.discard(queue)
 
     return _StreamingResponse(
-        event_generator(),
+        _web_event_bus.event_stream(request, prefixes),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -604,7 +487,7 @@ async def sse_events_bus(request: Request, topics: str = "sessions,chat"):
 # ---------------------------------------------------------------------------
 
 # Manual overrides for fields that need select options or custom types
-_SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
+_SCHEMA_OVERRIDES: dict[str, dict[str, Any]] = {
     "agent.name": {
         "type": "string",
         "description": "The name your agent uses for itself. Applies to new conversations.",
@@ -783,7 +666,7 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
 }
 
 # Categories with fewer fields get merged into "general" to avoid tab sprawl.
-_CATEGORY_MERGE: Dict[str, str] = {
+_CATEGORY_MERGE: dict[str, str] = {
     "privacy": "security",
     "context": "agent",
     "skills": "agent",
@@ -832,11 +715,11 @@ def _infer_type(value: Any) -> str:
 
 
 def _build_schema_from_config(
-    config: Dict[str, Any],
+    config: dict[str, Any],
     prefix: str = "",
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Walk DEFAULT_CONFIG and produce a flat dot-path → field schema dict."""
-    schema: Dict[str, Dict[str, Any]] = {}
+    schema: dict[str, dict[str, Any]] = {}
     for key, value in config.items():
         full_key = f"{prefix}.{key}" if prefix else key
 
@@ -857,7 +740,7 @@ def _build_schema_from_config(
             # Recurse into nested dicts
             schema.update(_build_schema_from_config(value, full_key))
         else:
-            entry: Dict[str, Any] = {
+            entry: dict[str, Any] = {
                 "type": _infer_type(value),
                 "description": full_key.replace(".", " → ").replace("_", " ").title(),
                 "category": category,
@@ -884,84 +767,13 @@ _model_virtual_entries = [
     ("model_api_mode", _SCHEMA_OVERRIDES["model_api_mode"]),
     ("model_context_length", _SCHEMA_OVERRIDES["model_context_length"]),
 ]
-_ordered_schema: Dict[str, Dict[str, Any]] = {}
+_ordered_schema: dict[str, dict[str, Any]] = {}
 for _k, _v in CONFIG_SCHEMA.items():
     _ordered_schema[_k] = _v
     if _k == "model":
         for _virtual_key, _virtual_entry in _model_virtual_entries:
             _ordered_schema[_virtual_key] = _virtual_entry
 CONFIG_SCHEMA = _ordered_schema
-
-
-class ConfigUpdate(BaseModel):
-    config: dict
-
-
-class EnvVarUpdate(BaseModel):
-    key: str
-    value: str
-
-
-class EnvVarDelete(BaseModel):
-    key: str
-
-
-class EnvVarReveal(BaseModel):
-    key: str
-
-
-class AdminActionStart(BaseModel):
-    args: Dict[str, Any] = {}
-    confirm: bool = False
-
-
-class GatewayControlRequest(BaseModel):
-    action: str
-    confirm: bool = False
-
-
-class ProfileCreateRequest(BaseModel):
-    name: str
-    clone_from: Optional[str] = None
-    clone_config: bool = False
-    clone_all: bool = False
-    no_alias: bool = True
-
-
-class ProfileRenameRequest(BaseModel):
-    new_name: str
-    confirm: bool = False
-
-
-class ProfileExportRequest(BaseModel):
-    output_path: Optional[str] = None
-    confirm: bool = False
-
-
-class ProfileImportRequest(BaseModel):
-    archive_path: str
-    name: Optional[str] = None
-    confirm: bool = False
-
-
-class McpServerCreate(BaseModel):
-    name: str
-    url: Optional[str] = None
-    command: Optional[str] = None
-    args: List[str] = []
-    env: Dict[str, str] = {}
-
-
-class PluginActionRequest(BaseModel):
-    name: str
-    confirm: bool = False
-
-
-class FeedbackSubmitBody(BaseModel):
-    name: str = ""
-    email: str = ""
-    area: str = ""
-    note: str
 
 
 class AdminAction:
@@ -971,12 +783,12 @@ class AdminAction:
         label: str,
         description: str,
         risk: str,
-        command: Callable[[Dict[str, Any]], List[str]],
+        command: Callable[[dict[str, Any]], list[str]],
         *,
         requires_confirmation: bool = False,
         long_running: bool = False,
-        args_schema: Optional[dict] = None,
-        availability: Optional[Callable[[], tuple[bool, Optional[str]]]] = None,
+        args_schema: dict | None = None,
+        availability: Callable[[], tuple[bool, str | None]] | None = None,
     ):
         self.id = action_id
         self.label = label
@@ -1006,15 +818,15 @@ class AdminAction:
         }
 
 
-def _spark_command(*parts: str) -> List[str]:
+def _spark_command(*parts: str) -> list[str]:
     return [sys.executable, "-m", "spark_cli.main", *parts]
 
 
-def _gateway_command(action: str) -> List[str]:
+def _gateway_command(action: str) -> list[str]:
     return _spark_command("gateway", action)
 
 
-def _update_command(check_only: bool) -> List[str]:
+def _update_command(check_only: bool) -> list[str]:
     try:
         from core.spark_constants import get_spark_home
         spark_home = get_spark_home()
@@ -1030,7 +842,7 @@ def _update_command(check_only: bool) -> List[str]:
     return _spark_command("update", "--gateway")
 
 
-def _debug_command(args: Dict[str, Any]) -> List[str]:
+def _debug_command(args: dict[str, Any]) -> list[str]:
     lines = int(args.get("lines") or 200)
     lines = max(20, min(lines, 2000))
     return _spark_command("debug", "share", "--local", "--lines", str(lines))
@@ -1843,10 +1655,10 @@ async def diagnostics_summary():
 
 @app.get("/api/diagnostics/webview")
 async def diagnostics_webview(
-    active_session_id: Optional[str] = None,
-    safe_mode: Optional[bool] = None,
-    recent_long_task_count: Optional[int] = None,
-    connection_mode: Optional[str] = None,
+    active_session_id: str | None = None,
+    safe_mode: bool | None = None,
+    recent_long_task_count: int | None = None,
+    connection_mode: str | None = None,
 ):
     """Runtime diagnostics for the desktop/web chat shell.
 
@@ -1944,7 +1756,7 @@ def _secret_reveal_authorized(request: Request) -> bool:
 
 
 @app.get("/api/sessions")
-async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] = None):
+async def get_sessions(limit: int = 20, offset: int = 0, source: str | None = None):
     try:
         from core.spark_state import SessionDB
 
@@ -1977,7 +1789,7 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
 
 
 @app.get("/api/sessions/search")
-async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = None):
+async def search_sessions(q: str = "", limit: int = 20, source: str | None = None):
     """Full-text search across session message content using FTS5."""
     if not q or not q.strip():
         return {"results": []}
@@ -2021,7 +1833,7 @@ async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = 
         raise HTTPException(status_code=500, detail="Search failed")
 
 
-def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_config_for_web(config: dict[str, Any]) -> dict[str, Any]:
     """Normalize config for the web UI.
 
     Spark supports ``model`` as either a bare string (``"anthropic/claude-sonnet-4"``)
@@ -2050,7 +1862,7 @@ def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-@app.get("/api/config")
+@config_router.get("/api/config")
 async def get_config():
     config = _normalize_config_for_web(load_config())
     # Strip internal keys that the frontend shouldn't see or send back
@@ -2088,10 +1900,6 @@ async def get_onboarding_status():
 
 # Skill names seeded for the "minimal" onboarding choice.
 _MINIMAL_SKILLS = {"find-skills", "codebase-inspection", "frontend-design", "excalidraw", "claude-code"}
-
-
-class OnboardingSkillsRequest(BaseModel):
-    mode: str  # "recommended" | "minimal" | "none"
 
 
 @app.post("/api/onboarding/skills")
@@ -2134,10 +1942,6 @@ async def setup_onboarding_skills(req: OnboardingSkillsRequest):
     }
 
 
-class OpenExternalRequest(BaseModel):
-    url: str
-
-
 @app.post("/api/system/open-external")
 async def open_external(req: OpenExternalRequest):
     """Open a URL in the user's default browser.
@@ -2164,12 +1968,12 @@ async def open_external(req: OpenExternalRequest):
         return {"opened": False, "error": str(exc)}
 
 
-@app.get("/api/config/defaults")
+@config_router.get("/api/config/defaults")
 async def get_defaults():
     return DEFAULT_CONFIG
 
 
-@app.get("/api/config/schema")
+@config_router.get("/api/config/schema")
 async def get_schema():
     schema = dict(CONFIG_SCHEMA)
     try:
@@ -2198,7 +2002,7 @@ _EMPTY_MODEL_INFO: dict = {
 }
 
 
-@app.get("/api/model/codex-usage")
+@config_router.get("/api/model/codex-usage")
 def get_codex_usage():
     """Return Codex provider status and any captured usage-limit state.
 
@@ -2246,8 +2050,9 @@ def get_codex_usage():
         # Fetch live usage from the wham/usage endpoint (discovered via CodexBar)
         # Requires the ChatGPT-Account-Id header extracted from the JWT claims.
         try:
-            import httpx as _httpx
             import base64 as _base64
+
+            import httpx as _httpx
 
             access_token = status.get("api_key", "")
             # Extract chatgpt_account_id from JWT payload
@@ -2316,7 +2121,7 @@ def get_codex_usage():
         return {"available": False, "reason": "internal_error"}
 
 
-@app.get("/api/model/info")
+@config_router.get("/api/model/info")
 def get_model_info():
     """Return resolved model metadata for the currently configured model.
 
@@ -2395,7 +2200,7 @@ def get_model_info():
         return dict(_EMPTY_MODEL_INFO)
 
 
-@app.get("/api/model/status")
+@config_router.get("/api/model/status")
 def get_model_status():
     """Return all model/routing/reasoning state needed by the prompt bar."""
     try:
@@ -2446,7 +2251,7 @@ def get_model_status():
 
 # Provider-aware model name catalogs. Used by both the quick-settings popover
 # (/api/model/suggestions) and the Config editor dropdown (/api/model/available).
-_PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
+_PROVIDER_MODEL_SUGGESTIONS: dict[str, list] = {
     "openai-codex": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini", "o3-mini"],
     "qwen-oauth": ["qwen3-coder-plus", "qwen3-coder-flash"],
     "openai": ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini"],
@@ -2506,7 +2311,7 @@ def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, b
     return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
 
 
-@app.get("/api/model/available")
+@config_router.get("/api/model/available")
 def get_available_models(provider: str = "", base_url: str = ""):
     """Return the model catalog for a given provider plus whether the UI should
     enforce a strict dropdown.
@@ -2530,7 +2335,7 @@ def get_available_models(provider: str = "", base_url: str = ""):
     return {"provider": provider, "models": models, "live": live, "strict": strict}
 
 
-@app.get("/api/model/suggestions")
+@config_router.get("/api/model/suggestions")
 def get_model_suggestions():
     """Return provider-aware model name suggestions for the quick-settings popover."""
     try:
@@ -2561,8 +2366,8 @@ def get_model_suggestions():
         return {"smart": [], "fast": [], "smart_provider": "", "fast_provider": ""}
 
 
-@app.put("/api/model/fast")
-def set_fast_model(body: Dict[str, Any]):
+@config_router.put("/api/model/fast")
+def set_fast_model(body: dict[str, Any]):
     """Update just the fast model name, preserving other routing config."""
     try:
         from spark_cli.config import save_config
@@ -2584,8 +2389,8 @@ def set_fast_model(body: Dict[str, Any]):
         return JSONResponse({"error": "Failed to save fast model"}, status_code=500)
 
 
-@app.put("/api/model/smart")
-def set_smart_model(body: Dict[str, Any]):
+@config_router.put("/api/model/smart")
+def set_smart_model(body: dict[str, Any]):
     """Update just the smart model name, preserving provider/url/api_mode."""
     try:
         from spark_cli.config import save_config
@@ -2608,7 +2413,7 @@ def set_smart_model(body: Dict[str, Any]):
         return JSONResponse({"error": "Failed to save model"}, status_code=500)
 
 
-@app.get("/api/model/reasoning")
+@config_router.get("/api/model/reasoning")
 def get_reasoning_effort():
     """Return current reasoning effort and whether the active model supports it."""
     try:
@@ -2640,8 +2445,8 @@ def get_reasoning_effort():
         return {"effort": "none", "supported": False}
 
 
-@app.put("/api/model/reasoning")
-def set_reasoning_effort(body: Dict[str, Any]):
+@config_router.put("/api/model/reasoning")
+def set_reasoning_effort(body: dict[str, Any]):
     """Set reasoning effort level. Valid values: none, minimal, low, medium, high, xhigh."""
     try:
         from core.spark_constants import parse_reasoning_effort
@@ -2662,7 +2467,7 @@ def set_reasoning_effort(body: Dict[str, Any]):
         return JSONResponse({"error": "Failed to save reasoning effort"}, status_code=500)
 
 
-def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
     """Reverse _normalize_config_for_web before saving.
 
     Reconstructs ``model`` as a dict by reading the current on-disk config
@@ -2692,7 +2497,7 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
 
     model_val = config.get("model")
     if isinstance(model_val, str) and model_val:
-        def _apply_model_virtuals(model_config: Dict[str, Any]) -> Dict[str, Any]:
+        def _apply_model_virtuals(model_config: dict[str, Any]) -> dict[str, Any]:
             model_config["default"] = model_val
             if model_provider:
                 model_config["provider"] = model_provider
@@ -2729,7 +2534,7 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-@app.put("/api/config")
+@config_router.put("/api/config")
 async def update_config(body: ConfigUpdate):
     try:
         save_config(_denormalize_config_from_web(body.config))
@@ -2753,7 +2558,7 @@ async def get_session_token():
     return {"token": _SESSION_TOKEN}
 
 
-@app.get("/api/env")
+@config_router.get("/api/env")
 async def get_env_vars():
     env_on_disk = load_env()
     result = {}
@@ -2772,7 +2577,7 @@ async def get_env_vars():
     return result
 
 
-@app.put("/api/env")
+@config_router.put("/api/env")
 async def set_env_var(body: EnvVarUpdate):
     try:
         save_env_value(body.key, body.value)
@@ -2782,7 +2587,7 @@ async def set_env_var(body: EnvVarUpdate):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.delete("/api/env")
+@config_router.delete("/api/env")
 async def remove_env_var(body: EnvVarDelete):
     try:
         removed = remove_env_value(body.key)
@@ -2796,7 +2601,7 @@ async def remove_env_var(body: EnvVarDelete):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.post("/api/env/reveal")
+@config_router.post("/api/env/reveal")
 async def reveal_env_var(body: EnvVarReveal, request: Request):
     """Return the real (unredacted) value of a single env var.
 
@@ -2841,7 +2646,7 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
 # can surface a one-click copy.
 
 
-def _truncate_token(value: Optional[str], visible: int = 6) -> str:
+def _truncate_token(value: str | None, visible: int = 6) -> str:
     """Return ``...XXXXXX`` (last N chars) for safe display in the UI.
 
     We never expose more than the trailing ``visible`` characters of an
@@ -2860,7 +2665,7 @@ def _truncate_token(value: Optional[str], visible: int = 6) -> str:
     return f"…{s[-visible:]}"
 
 
-def _anthropic_oauth_status() -> Dict[str, Any]:
+def _anthropic_oauth_status() -> dict[str, Any]:
     """Combined status across the three Anthropic credential sources we read.
 
     Spark resolves Anthropic creds in this order at runtime:
@@ -2871,9 +2676,9 @@ def _anthropic_oauth_status() -> Dict[str, Any]:
     """
     try:
         from agent.anthropic_adapter import (
-            read_spark_oauth_credentials,
-            read_claude_code_credentials,
             _SPARK_OAUTH_FILE,
+            read_claude_code_credentials,
+            read_spark_oauth_credentials,
         )
     except ImportError:
         read_claude_code_credentials = None  # type: ignore
@@ -2925,7 +2730,7 @@ def _anthropic_oauth_status() -> Dict[str, Any]:
     return {"logged_in": False, "source": None}
 
 
-def _claude_code_only_status() -> Dict[str, Any]:
+def _claude_code_only_status() -> dict[str, Any]:
     """Surface Claude Code CLI credentials as their own provider entry.
 
     Independent of the Anthropic entry above so users can see whether their
@@ -2957,7 +2762,7 @@ def _claude_code_only_status() -> Dict[str, Any]:
 # right UI: ``pkce`` = open URL + paste callback code, ``device_code`` =
 # show code + verification URL + poll, ``external`` = read-only (delegated
 # to a third-party CLI like Claude Code or Qwen).
-_OAUTH_PROVIDER_CATALOG: tuple[Dict[str, Any], ...] = (
+_OAUTH_PROVIDER_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "anthropic",
         "name": "Anthropic (Claude API)",
@@ -2993,7 +2798,7 @@ _OAUTH_PROVIDER_CATALOG: tuple[Dict[str, Any], ...] = (
 )
 
 
-def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
+def _resolve_provider_status(provider_id: str, status_fn) -> dict[str, Any]:
     """Dispatch to the right status helper for an OAuth provider entry."""
     if status_fn is not None:
         try:
@@ -3029,7 +2834,7 @@ def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
     return {"logged_in": False}
 
 
-@app.get("/api/providers/oauth")
+@oauth_router.get("/api/providers/oauth")
 async def list_oauth_providers():
     """Enumerate every OAuth-capable LLM provider with current status.
 
@@ -3063,7 +2868,7 @@ async def list_oauth_providers():
     return {"providers": providers}
 
 
-@app.delete("/api/providers/oauth/{provider_id}")
+@oauth_router.delete("/api/providers/oauth/{provider_id}")
 async def disconnect_oauth_provider(provider_id: str, request: Request):
     """Disconnect an OAuth provider. Token-protected (matches /env/reveal)."""
     # Accept either the per-process session token OR the configured dashboard
@@ -3152,7 +2957,7 @@ async def disconnect_oauth_provider(provider_id: str, request: Request):
 # expired sessions so the dict doesn't grow without bound.
 
 _OAUTH_SESSION_TTL_SECONDS = 15 * 60
-_oauth_sessions: Dict[str, Dict[str, Any]] = {}
+_oauth_sessions: dict[str, dict[str, Any]] = {}
 _oauth_sessions_lock = threading.Lock()
 
 # Import OAuth constants from canonical source instead of duplicating.
@@ -3161,9 +2966,17 @@ _oauth_sessions_lock = threading.Lock()
 try:
     from agent.anthropic_adapter import (
         _OAUTH_CLIENT_ID as _ANTHROPIC_OAUTH_CLIENT_ID,
-        _OAUTH_TOKEN_URL as _ANTHROPIC_OAUTH_TOKEN_URL,
+    )
+    from agent.anthropic_adapter import (
         _OAUTH_REDIRECT_URI as _ANTHROPIC_OAUTH_REDIRECT_URI,
+    )
+    from agent.anthropic_adapter import (
         _OAUTH_SCOPES as _ANTHROPIC_OAUTH_SCOPES,
+    )
+    from agent.anthropic_adapter import (
+        _OAUTH_TOKEN_URL as _ANTHROPIC_OAUTH_TOKEN_URL,
+    )
+    from agent.anthropic_adapter import (
         _generate_pkce as _generate_pkce_pair,
     )
 
@@ -3184,7 +2997,7 @@ def _gc_oauth_sessions() -> None:
             _oauth_sessions.pop(sid, None)
 
 
-def _new_oauth_session(provider_id: str, flow: str) -> tuple[str, Dict[str, Any]]:
+def _new_oauth_session(provider_id: str, flow: str) -> tuple[str, dict[str, Any]]:
     """Create + register a new OAuth session, return (session_id, session_dict)."""
     sid = secrets.token_urlsafe(16)
     sess = {
@@ -3221,13 +3034,14 @@ def _save_anthropic_oauth_creds(
     # the file write — pool registration only matters for the rotation
     # strategy, not for runtime credential resolution.
     try:
+        import uuid
+
         from agent.credential_pool import (
-            PooledCredential,
-            load_pool,
             AUTH_TYPE_OAUTH,
             SOURCE_MANUAL,
+            PooledCredential,
+            load_pool,
         )
-        import uuid
 
         pool = load_pool("anthropic")
         # Avoid duplicate entries: delete any prior dashboard-issued OAuth entry
@@ -3257,7 +3071,7 @@ def _save_anthropic_oauth_creds(
         _log.warning("anthropic pool add (dashboard) failed: %s", e)
 
 
-def _start_anthropic_pkce() -> Dict[str, Any]:
+def _start_anthropic_pkce() -> dict[str, Any]:
     """Begin PKCE flow. Returns the auth URL the UI should open."""
     if not _ANTHROPIC_OAUTH_AVAILABLE:
         raise HTTPException(
@@ -3286,7 +3100,7 @@ def _start_anthropic_pkce() -> Dict[str, Any]:
     }
 
 
-def _submit_anthropic_pkce(session_id: str, code_input: str) -> Dict[str, Any]:
+def _submit_anthropic_pkce(session_id: str, code_input: str) -> dict[str, Any]:
     """Exchange authorization code for tokens. Persists on success."""
     with _oauth_sessions_lock:
         sess = _oauth_sessions.get(session_id)
@@ -3354,7 +3168,7 @@ def _submit_anthropic_pkce(session_id: str, code_input: str) -> Dict[str, Any]:
     return {"ok": True, "status": "approved"}
 
 
-async def _start_device_code_flow(provider_id: str) -> Dict[str, Any]:
+async def _start_device_code_flow(provider_id: str) -> dict[str, Any]:
     """Initiate a device-code flow (OpenAI Codex).
 
     Calls the provider's device-auth endpoint via the existing CLI helpers,
@@ -3433,10 +3247,10 @@ def _codex_full_login_worker(session_id: str) -> None:
             return
 
         import httpx
+
         from spark_cli.auth import (
             CODEX_OAUTH_CLIENT_ID,
             CODEX_OAUTH_TOKEN_URL,
-            DEFAULT_CODEX_BASE_URL,
         )
 
         issuer = "https://auth.openai.com"
@@ -3705,7 +3519,7 @@ def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool
     return True
 
 
-@app.post("/api/providers/oauth/{provider_id}/start")
+@oauth_router.post("/api/providers/oauth/{provider_id}/start")
 async def start_oauth_login(provider_id: str, request: Request):
     """Initiate an OAuth login flow. Token-protected."""
     # Accept either the per-process session token OR the configured dashboard
@@ -3738,12 +3552,7 @@ async def start_oauth_login(provider_id: str, request: Request):
     raise HTTPException(status_code=400, detail="Unsupported flow")
 
 
-class OAuthSubmitBody(BaseModel):
-    session_id: str
-    code: str
-
-
-@app.post("/api/providers/oauth/{provider_id}/submit")
+@oauth_router.post("/api/providers/oauth/{provider_id}/submit")
 async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Request):
     """Submit the auth code for PKCE flows. Token-protected."""
     # Accept either the per-process session token OR the configured dashboard
@@ -3765,7 +3574,7 @@ async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Re
     )
 
 
-@app.get("/api/providers/oauth/{provider_id}/poll/{session_id}")
+@oauth_router.get("/api/providers/oauth/{provider_id}/poll/{session_id}")
 async def poll_oauth_session(provider_id: str, session_id: str):
     """Poll a device-code session's status (no auth — read-only state)."""
     with _oauth_sessions_lock:
@@ -3786,7 +3595,7 @@ async def poll_oauth_session(provider_id: str, session_id: str):
     }
 
 
-@app.delete("/api/providers/oauth/sessions/{session_id}")
+@oauth_router.delete("/api/providers/oauth/sessions/{session_id}")
 async def cancel_oauth_session(session_id: str, request: Request):
     """Cancel a pending OAuth session. Token-protected."""
     # Accept either the per-process session token OR the configured dashboard
@@ -3828,7 +3637,7 @@ async def get_session_messages(
     request: Request,
     session_id: str,
     limit: int = 0,
-    before_id: Optional[str] = None,
+    before_id: str | None = None,
     include_tool_results: bool = False,
 ):
     from core.spark_state import SessionDB
@@ -4049,11 +3858,11 @@ async def warm_session_agent(session_id: str):
 async def get_logs(
     file: str = "agent",
     lines: int = 100,
-    level: Optional[str] = None,
-    component: Optional[str] = None,
-    search: Optional[str] = None,
+    level: str | None = None,
+    component: str | None = None,
+    search: str | None = None,
 ):
-    from spark_cli.logs import _read_tail, LOG_FILES
+    from spark_cli.logs import LOG_FILES, _read_tail
 
     log_name = LOG_FILES.get(file)
     if not log_name:
@@ -4102,17 +3911,6 @@ async def get_logs(
 # ---------------------------------------------------------------------------
 # Cron job management endpoints
 # ---------------------------------------------------------------------------
-
-
-class CronJobCreate(BaseModel):
-    prompt: str
-    schedule: str
-    name: str = ""
-    deliver: str = "local"
-
-
-class CronJobUpdate(BaseModel):
-    updates: dict
 
 
 @app.get("/api/cron/jobs")
@@ -4210,16 +4008,11 @@ async def delete_cron_job(job_id: str):
 # ---------------------------------------------------------------------------
 
 
-class SkillToggle(BaseModel):
-    name: str
-    enabled: bool
-
-
 @app.get("/api/skills")
 async def get_skills():
-    from tools.skills_tool import _find_all_skills
-    from tools.skills_sync import sync_skills
     from spark_cli.skills_config import get_disabled_skills
+    from tools.skills_sync import sync_skills
+    from tools.skills_tool import _find_all_skills
 
     try:
         sync_skills(quiet=True)
@@ -4269,12 +4062,12 @@ async def toggle_skill(body: SkillToggle):
 
 @app.get("/api/tools/toolsets")
 async def get_toolsets():
+    from core.toolsets import resolve_toolset
     from spark_cli.tools_config import (
         _get_effective_configurable_toolsets,
         _get_platform_tools,
         _toolset_has_keys,
     )
-    from core.toolsets import resolve_toolset
 
     config = load_config()
     enabled_toolsets = _get_platform_tools(
@@ -4308,11 +4101,7 @@ async def get_toolsets():
 # ---------------------------------------------------------------------------
 
 
-class RawConfigUpdate(BaseModel):
-    yaml_text: str
-
-
-@app.get("/api/config/raw")
+@config_router.get("/api/config/raw")
 async def get_config_raw():
     path = get_config_path()
     if not path.exists():
@@ -4320,7 +4109,7 @@ async def get_config_raw():
     return {"yaml": path.read_text(encoding="utf-8")}
 
 
-@app.put("/api/config/raw")
+@config_router.put("/api/config/raw")
 async def update_config_raw(body: RawConfigUpdate):
     try:
         parsed = yaml.safe_load(body.yaml_text)
@@ -4406,7 +4195,7 @@ async def get_usage_analytics(days: int = 30):
 @app.get("/api/analytics/skills")
 async def get_skills_analytics(limit: int = 20):
     try:
-        from tools.skill_usage import top_skills, lifecycle_counts
+        from tools.skill_usage import lifecycle_counts, top_skills
         return {
             "top_skills": top_skills(limit=limit),
             "lifecycle_counts": lifecycle_counts(),
@@ -4422,9 +4211,9 @@ async def get_skills_analytics(limit: int = 20):
 _KANBAN_STATUSES = {"backlog", "active", "review", "done"}
 
 # In-memory state for web chat sessions
-_web_queues: Dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
-_web_agents: Dict[str, Any] = {}             # session_id → AIAgent (multi-turn context)
-_web_agent_signatures: Dict[str, Any] = {}    # session_id → effective model/runtime signature
+_web_queues: dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
+_web_agents: dict[str, Any] = {}             # session_id → AIAgent (multi-turn context)
+_web_agent_signatures: dict[str, Any] = {}    # session_id → effective model/runtime signature
 
 
 def _web_max_iterations() -> int:
@@ -4442,47 +4231,10 @@ def _web_max_iterations() -> int:
 
 # Codex usage-limit hit state — updated when a usage_limit_reached error occurs during inference.
 # Shape: {"hit_at": float, "resets_at": float | None, "resets_in_seconds": int | None}
-_codex_usage_limit_hit: Dict[str, Any] = {}
+_codex_usage_limit_hit: dict[str, Any] = {}
 
 
-class KanbanUpdate(BaseModel):
-    status: str
-
-
-class ConversationCreate(BaseModel):
-    message: str
-    model: Optional[str] = None
-    context_items: list = []
-
-
-class ConversationMessage(BaseModel):
-    message: str
-    context_items: list = []
-
-
-class ConversationInterrupt(BaseModel):
-    message: Optional[str] = None
-
-
-class ConversationModelBody(BaseModel):
-    model: str
-
-
-class ConversationForkBody(BaseModel):
-    from_message_index: Optional[int] = None
-
-
-class ConversationRetryBody(BaseModel):
-    message_index: int
-    message: Optional[str] = None
-
-
-class ConversationApprovalBody(BaseModel):
-    choice: str
-    resolve_all: bool = False
-
-
-def _publish_web_status(session_id: str, kind: str, message: str, *, phase: Optional[str] = None) -> None:
+def _publish_web_status(session_id: str, kind: str, message: str, *, phase: str | None = None) -> None:
     text = _truncate_str(message, 2000)
     _touch_web_turn(session_id, status=text, phase=phase or str(kind or "status"))
     _publish_event(
@@ -4502,10 +4254,10 @@ def _make_web_chat_callbacks(
     current_session_id = [session_id]
     tool_started_monotonic: dict[str, float] = {}
 
-    def publish_status(kind: str, message: str, *, phase: Optional[str] = None) -> None:
+    def publish_status(kind: str, message: str, *, phase: str | None = None) -> None:
         _publish_web_status(current_session_id[0], kind, message, phase=phase)
 
-    def token_callback(token: Optional[str]) -> None:
+    def token_callback(token: str | None) -> None:
         if token is None:
             return
         _append_web_turn_token(current_session_id[0], token)
@@ -4557,14 +4309,13 @@ def _make_web_chat_callbacks(
         # all subsequent events flow on the NEW channel — otherwise the UI
         # would update activeSessionRef to new_id and then drop every
         # following event because the filter would no longer match.
-        old_key, turn = _get_web_turn(old_id)
-        if old_key and turn:
-            _web_active_turns.pop(old_key, None)
-            turn.last_event_at = time.time()
-            turn.phase = "streaming"
-            turn.status = "Context compressed; continuing…"
-            turn.active_agent_session_id = new_id
-            _web_active_turns[new_id] = turn
+        _web_turn_state.migrate_web_turn(
+            old_id,
+            new_id,
+            status="Context compressed; continuing…",
+            active_agent_session_id=new_id,
+            clock=time.time,
+        )
         if old_id in _web_agents and new_id not in _web_agents:
             _web_agents[new_id] = _web_agents[old_id]
             _web_agent_signatures[new_id] = _web_agent_signatures.get(old_id)
@@ -4586,7 +4337,7 @@ def _make_web_chat_callbacks(
     )
 
 
-def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
+def _last_assistant_message_info(session_id: str) -> dict[str, Any]:
     try:
         from core.spark_state import SessionDB
 
@@ -4607,13 +4358,13 @@ def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
 
 def _turn_done_payload(
     result: Any,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
     *,
     interrupted: bool = False,
-    migrated_session_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    migrated_session_id: str | None = None,
+) -> dict[str, Any]:
     """Extract token/cost stats from a run_conversation() result for chat.turn_done."""
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "session_id": session_id,
         "message_count": _session_message_count(session_id) if session_id else 0,
         "interrupted": interrupted,
@@ -4903,8 +4654,10 @@ def _web_cmd_tools(args: str) -> str:
         if not names:
             return f"Usage: `/tools {subcommand} <name> [name …]`"
         try:
-            import io, sys
+            import io
+            import sys
             from argparse import Namespace
+
             from spark_cli.tools_config import tools_disable_enable_command
             buf = io.StringIO()
             old_stdout, sys.stdout = sys.stdout, buf
@@ -4934,6 +4687,7 @@ def _web_cmd_tools(args: str) -> str:
 def _web_cmd_toolsets() -> str:
     try:
         from tools.toolsets import get_all_toolsets, get_toolset_info
+
         from spark_cli.tools_config import _get_platform_tools
         cfg = load_config()
         enabled = set(_get_platform_tools(cfg, "web") or [])
@@ -4986,6 +4740,7 @@ def _web_cmd_skills(args: str) -> str:
 def _web_cmd_cron() -> str:
     try:
         import json
+
         from tools.cronjob_tools import cronjob as cronjob_tool
         result = json.loads(cronjob_tool(action="list"))
         jobs = result.get("jobs", []) if isinstance(result, dict) else []
@@ -5053,6 +4808,7 @@ def _web_cmd_files() -> str:
 def _web_cmd_save(session_id: str) -> str:
     import json
     from datetime import datetime
+
     from core.spark_constants import get_spark_home
     try:
         from core.spark_state import SessionDB
@@ -5106,7 +4862,7 @@ def _web_cmd_status(session_id: str) -> str:
     return "\n".join(lines)
 
 
-def _get_workspace_root(slug: Optional[str] = None) -> "Path":
+def _get_workspace_root(slug: str | None = None) -> "Path":
     """Return the resolved workspace root, optionally scoped to a project slug."""
     base = (get_spark_home() / "workspace").resolve()
     if slug:
@@ -5114,7 +4870,7 @@ def _get_workspace_root(slug: Optional[str] = None) -> "Path":
     return base
 
 
-def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional[str]:
+def _resolve_context_item_content(item: Any, workspace_root: "Path") -> str | None:
     """Return the text to inject for a context item, or None if nothing to inject."""
     from spark_cli.context_models import InclusionMode
 
@@ -5286,8 +5042,8 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
-    conversation_history: Optional[list[dict[str, Any]]] = None,
-    context_items: Optional[list] = None,
+    conversation_history: list[dict[str, Any]] | None = None,
+    context_items: list | None = None,
 ) -> Any:
     from tools.approval import reset_current_session_key, set_current_session_key
 
@@ -5366,7 +5122,7 @@ def _default_web_chat_model() -> str:
     return read_global_model_config().model
 
 
-def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
+def _resolve_web_turn_route(user_message: str) -> dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
     from agent.smart_model_routing import resolve_turn_route
     from spark_cli.model_config import read_global_model_config
@@ -5424,8 +5180,8 @@ def _new_web_agent(
     *,
     session_id: str,
     model: str,
-    runtime: Optional[dict[str, Any]] = None,
-    request_overrides: Optional[dict[str, Any]] = None,
+    runtime: dict[str, Any] | None = None,
+    request_overrides: dict[str, Any] | None = None,
     signature: Any = None,
     token_callback: Any,
     tool_start_callback: Any,
@@ -5433,7 +5189,7 @@ def _new_web_agent(
     reasoning_callback: Any,
     status_callback: Any,
     session_migrated_callback: Any = None,
-    working_dir: Optional[str] = None,
+    working_dir: str | None = None,
 ) -> Any:
     from core.run_agent import AIAgent
     from core.spark_state import SessionDB
@@ -5827,7 +5583,7 @@ def _cached_web_agent_matches_history(
     return matches
 
 
-def _persist_interrupted_turn_boundary(session_id: str, message: Optional[str] = None) -> None:
+def _persist_interrupted_turn_boundary(session_id: str, message: str | None = None) -> None:
     """Persist a small assistant boundary if interruption leaves a dangling user row."""
     try:
         from core.spark_state import SessionDB
@@ -5852,7 +5608,7 @@ _MAX_CONTEXT_ITEMS = 20
 _MAX_CONTEXT_ITEM_BYTES = 500 * 1024  # 500 KB per item in full mode
 
 
-def _validate_context_items(raw_items: list, workspace_slug: Optional[str] = None) -> list:
+def _validate_context_items(raw_items: list, workspace_slug: str | None = None) -> list:
     """Validate incoming context items. Returns validated list or raises HTTPException."""
     if not raw_items:
         return []
@@ -5902,8 +5658,9 @@ def _persist_context_items(session_id: str, raw_items: list) -> None:
     try:
         import json as _json
         import time as _time
-        from spark_cli.context_models import ContextItem
+
         from core.spark_state import SessionDB
+        from spark_cli.context_models import ContextItem
 
         items = [ContextItem.model_validate(i) for i in raw_items]
         db = SessionDB()
@@ -5952,15 +5709,6 @@ def _count_tokens_fast(text: str) -> int:
         return len(text) // 4
 
 
-class TokenEstimateRequest(BaseModel):
-    prompt: str = ""
-    context_items: list = []
-    brief: str = ""
-    session_id: Optional[str] = None
-    history_message_count: int = 0
-    model: Optional[str] = None
-
-
 @app.post("/api/estimate-tokens")
 async def estimate_tokens(body: TokenEstimateRequest):
     from spark_cli.context_models import ContextBucket, ContextEstimate
@@ -5971,7 +5719,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
     attached_tokens = 0
     item_buckets: list[ContextBucket] = []
     if body.context_items:
-        workspace_root: Optional[Path] = None
+        workspace_root: Path | None = None
         for raw in body.context_items:
             item = raw if isinstance(raw, dict) else (raw.model_dump() if hasattr(raw, "model_dump") else {})
             label = item.get("label") or item.get("source_path") or item.get("id", "item")
@@ -6134,7 +5882,7 @@ async def get_slash_commands():
     return out
 
 
-@app.get("/api/conversations/config")
+@conversation_router.get("/api/conversations/config")
 async def get_conversation_config():
     """Return the default model for web chat conversations."""
     from spark_cli.model_config import read_global_model_config
@@ -6143,7 +5891,7 @@ async def get_conversation_config():
     return {"default_model": model_cfg.model, "provider": model_cfg.provider}
 
 
-@app.get("/api/conversations/models")
+@conversation_router.get("/api/conversations/models")
 async def get_conversation_models():
     """Curated model ids for the web UI picker (OpenRouter-style)."""
     curated = [
@@ -6154,13 +5902,6 @@ async def get_conversation_models():
         ("deepseek/deepseek-r1", "Reasoning"),
     ]
     return {"models": [{"id": mid, "hint": h} for mid, h in curated]}
-
-
-class CanvasChatBody(BaseModel):
-    message: str
-    history: list[dict] = []
-    model: Optional[str] = None
-    slug: Optional[str] = None
 
 
 @app.post("/api/canvas/chat")
@@ -6218,7 +5959,7 @@ async def canvas_chat(body: CanvasChatBody):
     return {"ok": True, "reply": reply, "model": turn_route["model"]}
 
 
-@app.post("/api/conversations")
+@conversation_router.post("/api/conversations")
 async def create_conversation(body: ConversationCreate):
     """Start a new web chat session. Spawns AIAgent in a thread, returns session_id."""
     import uuid
@@ -6336,7 +6077,7 @@ async def create_conversation(body: ConversationCreate):
     return {"session_id": session_id, "ok": True}
 
 
-@app.post("/api/conversations/{session_id}/messages")
+@conversation_router.post("/api/conversations/{session_id}/messages")
 async def send_conversation_message(session_id: str, body: ConversationMessage):
     """Send a follow-up message to an existing web chat session."""
     from tools.approval import register_gateway_notify, unregister_gateway_notify
@@ -6354,7 +6095,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
 
     from core.spark_state import SessionDB
 
-    conversation_history: Optional[list[dict[str, Any]]] = None
+    conversation_history: list[dict[str, Any]] | None = None
     db = SessionDB()
     try:
         sid = db.resolve_session_id(session_id)
@@ -6453,7 +6194,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     return {"session_id": session_id, "ok": True}
 
 
-@app.post("/api/conversations/{session_id}/interrupt")
+@conversation_router.post("/api/conversations/{session_id}/interrupt")
 async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
     agent_session_id, agent = _get_web_agent_for_turn(session_id)
     if not agent:
@@ -6485,7 +6226,7 @@ async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
     return {"ok": True, "session_id": agent_session_id or session_id}
 
 
-@app.post("/api/conversations/{session_id}/model")
+@conversation_router.post("/api/conversations/{session_id}/model")
 async def switch_conversation_model(session_id: str, body: ConversationModelBody):
     if _is_web_turn_active(session_id):
         raise HTTPException(
@@ -6519,7 +6260,7 @@ async def switch_conversation_model(session_id: str, body: ConversationModelBody
     return {"ok": True, "session_id": session_id, "model": result.new_model}
 
 
-@app.post("/api/conversations/{session_id}/fork")
+@conversation_router.post("/api/conversations/{session_id}/fork")
 async def fork_conversation(session_id: str, body: ConversationForkBody):
     import uuid
     from datetime import datetime
@@ -6589,10 +6330,6 @@ async def get_session_forks(session_id: str):
         db.close()
 
 
-class BriefUpdate(BaseModel):
-    text: str
-
-
 @app.get("/api/sessions/{session_id}/brief")
 async def get_session_brief(session_id: str):
     from core.spark_state import SessionDB
@@ -6621,11 +6358,8 @@ async def update_session_brief(session_id: str, body: BriefUpdate):
         db.close()
 
 
-class ManifestUpdate(BaseModel):
-    data: dict = {}
-
-
-@app.get("/api/workspace/projects/{slug}/manifest")
+@project_compat_router.get("/api/projects/{slug}/manifest")
+@project_compat_router.get("/api/workspace/projects/{slug}/manifest")
 async def get_workspace_manifest(slug: str):
     from core.spark_state import SessionDB
     db = SessionDB()
@@ -6636,7 +6370,8 @@ async def get_workspace_manifest(slug: str):
         db.close()
 
 
-@app.put("/api/workspace/projects/{slug}/manifest")
+@project_compat_router.put("/api/projects/{slug}/manifest")
+@project_compat_router.put("/api/workspace/projects/{slug}/manifest")
 async def update_workspace_manifest(slug: str, body: ManifestUpdate):
     from core.spark_state import SessionDB
     db = SessionDB()
@@ -6656,16 +6391,12 @@ _BINARY_EXTENSIONS = {
 _SUMMARIZE_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
-class SummarizeFileRequest(BaseModel):
-    path: str
-    workspace_slug: Optional[str] = None
-
-
 async def _generate_summary(text: str, filename: str) -> str:
     """Generate a summary via the configured LLM."""
+    import openai as _openai
+
     from spark_cli.model_config import read_global_model_config
     from spark_cli.runtime_provider import resolve_runtime_provider
-    import openai as _openai
 
     runtime = resolve_runtime_provider(requested=None)
     model_cfg = read_global_model_config()
@@ -6735,7 +6466,7 @@ async def summarize_file(body: SummarizeFileRequest):
         db.close()
 
 
-@app.post("/api/conversations/{session_id}/retry")
+@conversation_router.post("/api/conversations/{session_id}/retry")
 async def retry_conversation(session_id: str, body: ConversationRetryBody):
     from tools.approval import register_gateway_notify, unregister_gateway_notify
 
@@ -6863,7 +6594,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
     return {"ok": True, "session_id": session_id}
 
 
-@app.post("/api/conversations/{session_id}/approval")
+@conversation_router.post("/api/conversations/{session_id}/approval")
 async def conversation_approval(session_id: str, body: ConversationApprovalBody):
     from tools import approval as approval_mod
 
@@ -6883,7 +6614,7 @@ async def conversation_approval(session_id: str, body: ConversationApprovalBody)
     return {"ok": True, "session_id": session_id, "resolved": n}
 
 
-@app.post("/api/conversations/{session_id}/feedback")
+@conversation_router.post("/api/conversations/{session_id}/feedback")
 async def conversation_feedback(session_id: str, body: FeedbackSubmitBody):
     import httpx as _httpx
 
@@ -6902,7 +6633,7 @@ async def conversation_feedback(session_id: str, body: FeedbackSubmitBody):
     return {"ok": True}
 
 
-@app.get("/api/conversations/{session_id}/turn-status")
+@conversation_router.get("/api/conversations/{session_id}/turn-status")
 async def conversation_turn_status(session_id: str):
     """Report whether an agent turn is currently active for this session.
 
@@ -6940,7 +6671,7 @@ async def conversation_turn_status(session_id: str):
     return payload
 
 
-@app.get("/api/conversations/{session_id}/stream-snapshot")
+@conversation_router.get("/api/conversations/{session_id}/stream-snapshot")
 async def conversation_stream_snapshot(session_id: str):
     """Return the accumulated in-flight assistant text for recovery.
 
@@ -6962,7 +6693,7 @@ async def conversation_stream_snapshot(session_id: str):
     }
 
 
-@app.get("/api/conversations/{session_id}/stream")
+@conversation_router.get("/api/conversations/{session_id}/stream")
 async def stream_conversation(session_id: str):
     """SSE endpoint streaming agent response tokens for a web chat session."""
     from fastapi.responses import StreamingResponse as _StreamingResponse
@@ -6976,7 +6707,7 @@ async def stream_conversation(session_id: str):
             while True:
                 try:
                     token = await asyncio.wait_for(queue.get(), timeout=30.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield "event: ping\ndata: {}\n\n"
                     continue
                 if token is None:
@@ -7033,15 +6764,21 @@ def mount_spa(application: FastAPI):
         )
 
 
+app.include_router(config_router)
+app.include_router(oauth_router)
+app.include_router(conversation_router)
+app.include_router(project_compat_router)
 register_kanban_routes(app)
-register_workspace_routes(app)
+register_project_routes(app)
 register_connectors_routes(app)
 register_canvas_routes(app)
 from spark_cli.memory_routes import register_memory_routes
+
 register_memory_routes(app)
 register_workflow_routes(app)
 from spark_cli.artifacts_routes import register_artifacts_routes
 from spark_cli.messaging_routes import register_messaging_routes
+
 register_messaging_routes(app)
 register_artifacts_routes(app)
 
@@ -7049,13 +6786,8 @@ register_artifacts_routes(app)
 # ── Workspace conversation endpoints ─────────────────────────────────────────
 
 
-class WorkspaceConvCreate(BaseModel):
-    message: str
-    model: Optional[str] = None
-    context_items: list = []
-
-
-@app.post("/api/workspace/projects/{slug}/conversations")
+@project_compat_router.post("/api/projects/{slug}/conversations")
+@project_compat_router.post("/api/workspace/projects/{slug}/conversations")
 async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     """Start a Spark agent conversation scoped to a workspace project."""
     from datetime import datetime
@@ -7210,7 +6942,8 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     return {"session_id": session_id, "ok": True, "source": source}
 
 
-@app.get("/api/workspace/projects/{slug}/conversations")
+@project_compat_router.get("/api/projects/{slug}/conversations")
+@project_compat_router.get("/api/workspace/projects/{slug}/conversations")
 async def list_workspace_conversations(slug: str, limit: int = 30, offset: int = 0):
     """List chat sessions for a workspace project."""
     from core.spark_state import SessionDB
@@ -7237,6 +6970,7 @@ mount_spa(app)
 def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool = True):
     """Start the web UI server."""
     import uvicorn
+
     from core.spark_constants import get_public_base_url, is_server_environment
 
     ensure_dashboard_token_file()

@@ -19,11 +19,11 @@ Quick orientation for new contributors. See `AGENTS.md` for the detailed develop
 
 | Package | What lives here |
 |---------|----------------|
-| `src/core/` | Agent runtime: `run_agent/` (the `AIAgent` loop in `__init__.py`, with caching-sensitive system-prompt assembly isolated in `prompt_cache.py` per ADR-0001, plus leaf helpers `parallelism.py`, `sanitize.py`, `stdio.py`, `iteration_budget.py`), `cli/` (prompt_toolkit TUI — `SparkCLI` split across `__init__.py` + concern mixins like `commands_mixin`, `display_mixin`, `voice_mixin`), `spark_state.py` (SQLite sessions), `model_tools.py` (tool dispatch) |
+| `src/core/` | Agent runtime: `run_agent/` (the `AIAgent` loop in `__init__.py`, caching-sensitive system-prompt assembly in `prompt_cache.py`, provider request helpers in `provider_calls.py`, API message repair in `message_state.py`, tool-loop dispatch helpers in `tool_loop.py`, memory-flush helpers in `persistence.py`, plus leaf helpers `parallelism.py`, `sanitize.py`, `stdio.py`, `iteration_budget.py`), `cli/` (prompt_toolkit TUI — `SparkCLI` split across `__init__.py` + concern mixins like `commands_mixin`, `display_mixin`, `voice_mixin`), `spark_state.py` (SQLite sessions), `model_tools.py` (tool dispatch) |
 | `src/agent/` | Agent internals: prompt building, context compression, memory management, model metadata, display/spinner |
 | `src/spark_cli/` | CLI entry point (`main.py`) and all `spark` subcommands; also contains the React/Vite web dashboard (`web/`) and FastAPI server |
 | `src/tools/` | Tool implementations — one file per tool, registered via `tools/registry.py`. 40+ tools: terminal, file, web, vision, browser, code execution, MCP, delegation |
-| `src/gateway/` | Messaging platform gateway: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, and more. Entry via `gateway/run.py` |
+| `src/gateway/` | Messaging platform gateway: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, and more. Entry via `gateway/run.py`, with slash-command dispatch in `gateway/commands.py`, authorization in `gateway/authz.py`, session hygiene in `gateway/session_hygiene.py`, and cron ticking in `gateway/cron_tick.py` |
 | `src/plugins/` | Pluggable memory backends: Honcho, Mem0, Supermemory, RetainDB, Hindsight, etc. |
 | `src/cron/` | Natural-language cron scheduler — `spark cron` subcommand, job definitions, scheduler loop |
 | `src/acp_adapter/` | Agent Client Protocol server for editor integrations (VS Code, Zed, JetBrains) |

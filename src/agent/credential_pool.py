@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
+import re
 import threading
 import time
 import uuid
-import os
-import re
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from core.spark_constants import OPENROUTER_BASE_URL
 import spark_cli.auth as auth_mod
+from core.spark_constants import OPENROUTER_BASE_URL
 from spark_cli.auth import (
     CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
     PROVIDER_REGISTRY,
@@ -22,13 +22,13 @@ from spark_cli.auth import (
     _codex_access_token_is_expiring,
     _decode_jwt_claims,
     _import_codex_cli_tokens,
-    _write_codex_cli_tokens,
     _load_auth_store,
     _load_provider_state,
     _resolve_kimi_base_url,
     _resolve_zai_base_url,
     _save_auth_store,
     _save_provider_state,
+    _write_codex_cli_tokens,
     read_credential_pool,
     write_credential_pool,
 )
@@ -36,7 +36,7 @@ from spark_cli.auth import (
 logger = logging.getLogger(__name__)
 
 
-def _load_config_safe() -> Optional[dict]:
+def _load_config_safe() -> dict | None:
     """Load config.yaml, returning None on any error."""
     try:
         from spark_cli.config import load_config
@@ -96,22 +96,22 @@ class PooledCredential:
     priority: int
     source: str
     access_token: str
-    refresh_token: Optional[str] = None
-    last_status: Optional[str] = None
-    last_status_at: Optional[float] = None
-    last_error_code: Optional[int] = None
-    last_error_reason: Optional[str] = None
-    last_error_message: Optional[str] = None
-    last_error_reset_at: Optional[float] = None
-    base_url: Optional[str] = None
-    expires_at: Optional[str] = None
-    expires_at_ms: Optional[int] = None
-    last_refresh: Optional[str] = None
-    inference_base_url: Optional[str] = None
-    agent_key: Optional[str] = None
-    agent_key_expires_at: Optional[str] = None
+    refresh_token: str | None = None
+    last_status: str | None = None
+    last_status_at: float | None = None
+    last_error_code: int | None = None
+    last_error_reason: str | None = None
+    last_error_message: str | None = None
+    last_error_reset_at: float | None = None
+    base_url: str | None = None
+    expires_at: str | None = None
+    expires_at_ms: int | None = None
+    last_refresh: str | None = None
+    inference_base_url: str | None = None
+    agent_key: str | None = None
+    agent_key_expires_at: str | None = None
     request_count: int = 0
-    extra: Dict[str, Any] = None  # type: ignore[assignment]
+    extra: dict[str, Any] = None  # type: ignore[assignment]
 
     def __post_init__(self):
         if self.extra is None:
@@ -123,7 +123,7 @@ class PooledCredential:
         raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
 
     @classmethod
-    def from_dict(cls, provider: str, payload: Dict[str, Any]) -> "PooledCredential":
+    def from_dict(cls, provider: str, payload: dict[str, Any]) -> PooledCredential:
         field_names = {f.name for f in fields(cls) if f.name != "provider"}
         data = {k: payload.get(k) for k in field_names if k in payload}
         extra = {k: payload[k] for k in _EXTRA_KEYS if k in payload and payload[k] is not None}
@@ -136,7 +136,7 @@ class PooledCredential:
         data.setdefault("access_token", "")
         return cls(provider=provider, **data)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         _ALWAYS_EMIT = {
             "last_status",
             "last_status_at",
@@ -145,7 +145,7 @@ class PooledCredential:
             "last_error_message",
             "last_error_reset_at",
         }
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         for field_def in fields(self):
             if field_def.name in ("provider", "extra"):
                 continue
@@ -162,7 +162,7 @@ class PooledCredential:
         return str(self.access_token or "")
 
     @property
-    def runtime_base_url(self) -> Optional[str]:
+    def runtime_base_url(self) -> str | None:
         return self.base_url
 
 
@@ -175,7 +175,7 @@ def label_from_token(token: str, fallback: str) -> str:
     return fallback
 
 
-def _next_priority(entries: List[PooledCredential]) -> int:
+def _next_priority(entries: list[PooledCredential]) -> int:
     return max((entry.priority for entry in entries), default=-1) + 1
 
 
@@ -184,14 +184,14 @@ def _is_manual_source(source: str) -> bool:
     return normalized == SOURCE_MANUAL or normalized.startswith(f"{SOURCE_MANUAL}:")
 
 
-def _exhausted_ttl(error_code: Optional[int]) -> int:
+def _exhausted_ttl(error_code: int | None) -> int:
     """Return cooldown seconds based on the HTTP status that caused exhaustion."""
     if error_code == 429:
         return EXHAUSTED_TTL_429_SECONDS
     return EXHAUSTED_TTL_DEFAULT_SECONDS
 
 
-def _parse_absolute_timestamp(value: Any) -> Optional[float]:
+def _parse_absolute_timestamp(value: Any) -> float | None:
     """Best-effort parse for provider reset timestamps.
 
     Accepts epoch seconds, epoch milliseconds, and ISO-8601 strings.
@@ -221,7 +221,7 @@ def _parse_absolute_timestamp(value: Any) -> Optional[float]:
     return None
 
 
-def _extract_retry_delay_seconds(message: str) -> Optional[float]:
+def _extract_retry_delay_seconds(message: str) -> float | None:
     if not message:
         return None
     delay_match = re.search(r"quotaResetDelay[:\s\"]+(\d+(?:\.\d+)?)(ms|s)", message, re.IGNORECASE)
@@ -234,10 +234,10 @@ def _extract_retry_delay_seconds(message: str) -> Optional[float]:
     return None
 
 
-def _normalize_error_context(error_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _normalize_error_context(error_context: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(error_context, dict):
         return {}
-    normalized: Dict[str, Any] = {}
+    normalized: dict[str, Any] = {}
     reason = error_context.get("reason")
     if isinstance(reason, str) and reason.strip():
         normalized["reason"] = reason.strip()
@@ -259,7 +259,7 @@ def _normalize_error_context(error_context: Optional[Dict[str, Any]]) -> Dict[st
     return normalized
 
 
-def _exhausted_until(entry: PooledCredential) -> Optional[float]:
+def _exhausted_until(entry: PooledCredential) -> float | None:
     if entry.last_status != STATUS_EXHAUSTED:
         return None
     reset_at = _parse_absolute_timestamp(getattr(entry, "last_error_reset_at", None))
@@ -275,7 +275,7 @@ def _normalize_custom_pool_name(name: str) -> str:
     return name.strip().lower().replace(" ", "-")
 
 
-def _iter_custom_providers(config: Optional[dict] = None):
+def _iter_custom_providers(config: dict | None = None):
     """Yield (normalized_name, entry_dict) for each valid custom_providers entry."""
     if config is None:
         config = _load_config_safe()
@@ -301,7 +301,7 @@ def _iter_custom_providers(config: Optional[dict] = None):
         yield _normalize_custom_pool_name(name), entry
 
 
-def get_custom_provider_pool_key(base_url: str) -> Optional[str]:
+def get_custom_provider_pool_key(base_url: str) -> str | None:
     """Look up the custom_providers list in config.yaml and return 'custom:<name>' for a matching base_url.
 
     Returns None if no match is found.
@@ -316,7 +316,7 @@ def get_custom_provider_pool_key(base_url: str) -> Optional[str]:
     return None
 
 
-def list_custom_pool_providers() -> List[str]:
+def list_custom_pool_providers() -> list[str]:
     """Return all 'custom:*' pool keys that have entries in auth.json."""
     pool_data = read_credential_pool(None)
     return sorted(
@@ -327,7 +327,7 @@ def list_custom_pool_providers() -> List[str]:
     )
 
 
-def _get_custom_provider_config(pool_key: str) -> Optional[Dict[str, Any]]:
+def _get_custom_provider_config(pool_key: str) -> dict[str, Any] | None:
     """Return the custom_providers config entry matching a pool key like 'custom:together.ai'."""
     if not pool_key.startswith(CUSTOM_POOL_PREFIX):
         return None
@@ -358,13 +358,13 @@ DEFAULT_MAX_CONCURRENT_PER_CREDENTIAL = 1
 
 
 class CredentialPool:
-    def __init__(self, provider: str, entries: List[PooledCredential]):
+    def __init__(self, provider: str, entries: list[PooledCredential]):
         self.provider = provider
         self._entries = sorted(entries, key=lambda entry: entry.priority)
-        self._current_id: Optional[str] = None
+        self._current_id: str | None = None
         self._strategy = get_pool_strategy(provider)
         self._lock = threading.Lock()
-        self._active_leases: Dict[str, int] = {}
+        self._active_leases: dict[str, int] = {}
         self._max_concurrent = DEFAULT_MAX_CONCURRENT_PER_CREDENTIAL
 
     def has_credentials(self) -> bool:
@@ -374,10 +374,10 @@ class CredentialPool:
         """True if at least one entry is not currently in exhaustion cooldown."""
         return bool(self._available_entries())
 
-    def entries(self) -> List[PooledCredential]:
+    def entries(self) -> list[PooledCredential]:
         return list(self._entries)
 
-    def current(self) -> Optional[PooledCredential]:
+    def current(self) -> PooledCredential | None:
         if not self._current_id:
             return None
         return next((entry for entry in self._entries if entry.id == self._current_id), None)
@@ -398,8 +398,8 @@ class CredentialPool:
     def _mark_exhausted(
         self,
         entry: PooledCredential,
-        status_code: Optional[int],
-        error_context: Optional[Dict[str, Any]] = None,
+        status_code: int | None,
+        error_context: dict[str, Any] | None = None,
     ) -> PooledCredential:
         normalized_error = _normalize_error_context(error_context)
         updated = replace(
@@ -525,7 +525,7 @@ class CredentialPool:
         except Exception as exc:
             logger.debug("Failed to sync %s pool entry back to auth store: %s", self.provider, exc)
 
-    def _refresh_entry(self, entry: PooledCredential, *, force: bool) -> Optional[PooledCredential]:
+    def _refresh_entry(self, entry: PooledCredential, *, force: bool) -> PooledCredential | None:
         if entry.auth_type != AUTH_TYPE_OAUTH or not entry.refresh_token:
             if force:
                 self._mark_exhausted(entry, None)
@@ -716,11 +716,11 @@ class CredentialPool:
             )
         return False
 
-    def select(self) -> Optional[PooledCredential]:
+    def select(self) -> PooledCredential | None:
         with self._lock:
             return self._select_unlocked()
 
-    def _available_entries(self, *, clear_expired: bool = False, refresh: bool = False) -> List[PooledCredential]:
+    def _available_entries(self, *, clear_expired: bool = False, refresh: bool = False) -> list[PooledCredential]:
         """Return entries not currently in exhaustion cooldown.
 
         When *clear_expired* is True, entries whose cooldown has elapsed are
@@ -729,7 +729,7 @@ class CredentialPool:
         """
         now = time.time()
         cleared_any = False
-        available: List[PooledCredential] = []
+        available: list[PooledCredential] = []
         for entry in self._entries:
             # For anthropic claude_code entries, sync from the credentials file
             # before any status/refresh checks. This picks up tokens refreshed
@@ -777,7 +777,7 @@ class CredentialPool:
             self._persist()
         return available
 
-    def _select_unlocked(self) -> Optional[PooledCredential]:
+    def _select_unlocked(self) -> PooledCredential | None:
         available = self._available_entries(clear_expired=True, refresh=True)
         if not available:
             self._current_id = None
@@ -807,7 +807,7 @@ class CredentialPool:
         self._current_id = entry.id
         return entry
 
-    def peek(self) -> Optional[PooledCredential]:
+    def peek(self) -> PooledCredential | None:
         current = self.current()
         if current is not None:
             return current
@@ -817,9 +817,9 @@ class CredentialPool:
     def mark_exhausted_and_rotate(
         self,
         *,
-        status_code: Optional[int],
-        error_context: Optional[Dict[str, Any]] = None,
-    ) -> Optional[PooledCredential]:
+        status_code: int | None,
+        error_context: dict[str, Any] | None = None,
+    ) -> PooledCredential | None:
         with self._lock:
             entry = self.current() or self._select_unlocked()
             if entry is None:
@@ -837,7 +837,7 @@ class CredentialPool:
                 logger.info("credential pool: rotated to %s", _next_label)
             return next_entry
 
-    def acquire_lease(self, credential_id: Optional[str] = None) -> Optional[str]:
+    def acquire_lease(self, credential_id: str | None = None) -> str | None:
         """Acquire a soft lease on a credential.
 
         If a specific credential_id is provided, lease that entry directly.
@@ -877,11 +877,11 @@ class CredentialPool:
             else:
                 self._active_leases[credential_id] = count - 1
 
-    def try_refresh_current(self) -> Optional[PooledCredential]:
+    def try_refresh_current(self) -> PooledCredential | None:
         with self._lock:
             return self._try_refresh_current_unlocked()
 
-    def _try_refresh_current_unlocked(self) -> Optional[PooledCredential]:
+    def _try_refresh_current_unlocked(self) -> PooledCredential | None:
         entry = self.current()
         if entry is None:
             return None
@@ -914,7 +914,7 @@ class CredentialPool:
             self._persist()
         return count
 
-    def remove_index(self, index: int) -> Optional[PooledCredential]:
+    def remove_index(self, index: int) -> PooledCredential | None:
         if index < 1 or index > len(self._entries):
             return None
         removed = self._entries.pop(index - 1)
@@ -927,7 +927,7 @@ class CredentialPool:
             self._current_id = None
         return removed
 
-    def resolve_target(self, target: Any) -> Tuple[Optional[int], Optional[PooledCredential], Optional[str]]:
+    def resolve_target(self, target: Any) -> tuple[int | None, PooledCredential | None, str | None]:
         raw = str(target or "").strip()
         if not raw:
             return None, None, "No credential target provided."
@@ -959,7 +959,7 @@ class CredentialPool:
         return entry
 
 
-def _upsert_entry(entries: List[PooledCredential], provider: str, source: str, payload: Dict[str, Any]) -> bool:
+def _upsert_entry(entries: list[PooledCredential], provider: str, source: str, payload: dict[str, Any]) -> bool:
     existing_idx = None
     for idx, entry in enumerate(entries):
         if entry.source == source:
@@ -996,7 +996,7 @@ def _upsert_entry(entries: List[PooledCredential], provider: str, source: str, p
     return False
 
 
-def _normalize_pool_priorities(provider: str, entries: List[PooledCredential]) -> bool:
+def _normalize_pool_priorities(provider: str, entries: list[PooledCredential]) -> bool:
     if provider != "anthropic":
         return False
 
@@ -1030,9 +1030,9 @@ def _normalize_pool_priorities(provider: str, entries: List[PooledCredential]) -
     return changed
 
 
-def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tuple[bool, Set[str]]:
+def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tuple[bool, set[str]]:
     changed = False
-    active_sources: Set[str] = set()
+    active_sources: set[str] = set()
     auth_store = _load_auth_store()
 
     if provider == "anthropic":
@@ -1047,7 +1047,10 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
         except ImportError:
             pass
 
-        from agent.anthropic_adapter import read_claude_code_credentials, read_spark_oauth_credentials
+        from agent.anthropic_adapter import (
+            read_claude_code_credentials,
+            read_spark_oauth_credentials,
+        )
 
         for source_name, creds in (
             ("spark_pkce", read_spark_oauth_credentials()),
@@ -1140,9 +1143,9 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
     return changed, active_sources
 
 
-def _seed_from_env(provider: str, entries: List[PooledCredential]) -> Tuple[bool, Set[str]]:
+def _seed_from_env(provider: str, entries: list[PooledCredential]) -> tuple[bool, set[str]]:
     changed = False
-    active_sources: Set[str] = set()
+    active_sources: set[str] = set()
     if provider == "openrouter":
         token = os.getenv("OPENROUTER_API_KEY", "").strip()
         if token:
@@ -1205,7 +1208,7 @@ def _seed_from_env(provider: str, entries: List[PooledCredential]) -> Tuple[bool
     return changed, active_sources
 
 
-def _prune_stale_seeded_entries(entries: List[PooledCredential], active_sources: Set[str]) -> bool:
+def _prune_stale_seeded_entries(entries: list[PooledCredential], active_sources: set[str]) -> bool:
     retained = [
         entry
         for entry in entries
@@ -1222,10 +1225,10 @@ def _prune_stale_seeded_entries(entries: List[PooledCredential], active_sources:
     return True
 
 
-def _seed_custom_pool(pool_key: str, entries: List[PooledCredential]) -> Tuple[bool, Set[str]]:
+def _seed_custom_pool(pool_key: str, entries: list[PooledCredential]) -> tuple[bool, set[str]]:
     """Seed a custom endpoint pool from custom_providers config and model config."""
     changed = False
-    active_sources: Set[str] = set()
+    active_sources: set[str] = set()
 
     # Seed from the custom_providers config entry's api_key field
     cp_config = _get_custom_provider_config(pool_key)

@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ _BLOCKED_DOMAINS = frozenset({
 })
 
 
-def _get_headers(token: str = "") -> Dict[str, str]:
+def _get_headers(token: str = "") -> dict[str, str]:
     """Return authorization headers for HA REST API."""
     if not token:
         _, token = _get_config()
@@ -76,9 +76,9 @@ def _get_headers(token: str = "") -> Dict[str, str]:
 
 def _filter_and_summarize(
     states: list,
-    domain: Optional[str] = None,
-    area: Optional[str] = None,
-) -> Dict[str, Any]:
+    domain: str | None = None,
+    area: str | None = None,
+) -> dict[str, Any]:
     """Filter raw HA states by domain/area and return a compact summary."""
     if domain:
         states = [s for s in states if s.get("entity_id", "").startswith(f"{domain}.")]
@@ -103,9 +103,9 @@ def _filter_and_summarize(
 
 
 async def _async_list_entities(
-    domain: Optional[str] = None,
-    area: Optional[str] = None,
-) -> Dict[str, Any]:
+    domain: str | None = None,
+    area: str | None = None,
+) -> dict[str, Any]:
     """Fetch entity states from HA and optionally filter by domain/area."""
     import aiohttp
 
@@ -119,7 +119,7 @@ async def _async_list_entities(
     return _filter_and_summarize(states, domain, area)
 
 
-async def _async_get_state(entity_id: str) -> Dict[str, Any]:
+async def _async_get_state(entity_id: str) -> dict[str, Any]:
     """Fetch detailed state of a single entity."""
     import aiohttp
 
@@ -140,11 +140,11 @@ async def _async_get_state(entity_id: str) -> Dict[str, Any]:
 
 
 def _build_service_payload(
-    entity_id: Optional[str] = None,
-    data: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    entity_id: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build the JSON payload for a HA service call."""
-    payload: Dict[str, Any] = {}
+    payload: dict[str, Any] = {}
     if data:
         payload.update(data)
     # entity_id parameter takes precedence over data["entity_id"]
@@ -157,7 +157,7 @@ def _parse_service_response(
     domain: str,
     service: str,
     result: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Parse HA service call response into a structured result."""
     affected = []
     if isinstance(result, list):
@@ -177,9 +177,9 @@ def _parse_service_response(
 async def _async_call_service(
     domain: str,
     service: str,
-    entity_id: Optional[str] = None,
-    data: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    entity_id: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Call a Home Assistant service."""
     import aiohttp
 
@@ -292,7 +292,7 @@ def _handle_call_service(args: dict, **kw) -> str:
 # List services
 # ---------------------------------------------------------------------------
 
-async def _async_list_services(domain: Optional[str] = None) -> Dict[str, Any]:
+async def _async_list_services(domain: str | None = None) -> dict[str, Any]:
     """Fetch available services from HA and optionally filter by domain."""
     import aiohttp
 
@@ -313,7 +313,7 @@ async def _async_list_services(domain: Optional[str] = None) -> Dict[str, Any]:
         d = svc_domain.get("domain", "")
         domain_services = {}
         for svc_name, svc_info in svc_domain.get("services", {}).items():
-            svc_entry: Dict[str, Any] = {"description": svc_info.get("description", "")}
+            svc_entry: dict[str, Any] = {"description": svc_info.get("description", "")}
             fields = svc_info.get("fields", {})
             if fields:
                 svc_entry["fields"] = {

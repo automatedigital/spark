@@ -18,9 +18,9 @@ import logging
 import os
 import random
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any
 from urllib.parse import quote, unquote
 
 import httpx
@@ -31,9 +31,9 @@ from gateway.platforms.base import (
     MessageEvent,
     MessageType,
     SendResult,
-    cache_image_from_bytes,
     cache_audio_from_bytes,
     cache_document_from_bytes,
+    cache_image_from_bytes,
     cache_image_from_url,
 )
 from gateway.platforms.helpers import redact_phone
@@ -56,7 +56,7 @@ HEALTH_CHECK_STALE_THRESHOLD = 120.0  # seconds without SSE activity before conc
 # ---------------------------------------------------------------------------
 
 
-def _parse_comma_list(value: str) -> List[str]:
+def _parse_comma_list(value: str) -> list[str]:
     """Split a comma-separated string into a list, stripping whitespace."""
     return [v.strip() for v in value.split(",") if v.strip()]
 
@@ -154,15 +154,15 @@ class SignalAdapter(BasePlatformAdapter):
         self.group_allow_from = set(_parse_comma_list(group_allowed_str))
 
         # HTTP client
-        self.client: Optional[httpx.AsyncClient] = None
+        self.client: httpx.AsyncClient | None = None
 
         # Background tasks
-        self._sse_task: Optional[asyncio.Task] = None
-        self._health_monitor_task: Optional[asyncio.Task] = None
-        self._typing_tasks: Dict[str, asyncio.Task] = {}
+        self._sse_task: asyncio.Task | None = None
+        self._health_monitor_task: asyncio.Task | None = None
+        self._typing_tasks: dict[str, asyncio.Task] = {}
         self._running = False
         self._last_sse_activity = 0.0
-        self._sse_response: Optional[httpx.Response] = None
+        self._sse_response: httpx.Response | None = None
 
         # Normalize account for self-message filtering
         self._account_normalized = self.account.strip()
@@ -489,11 +489,11 @@ class SignalAdapter(BasePlatformAdapter):
         ts_ms = envelope_data.get("timestamp", 0)
         if ts_ms:
             try:
-                timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+                timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=UTC)
             except (ValueError, OSError):
-                timestamp = datetime.now(tz=timezone.utc)
+                timestamp = datetime.now(tz=UTC)
         else:
-            timestamp = datetime.now(tz=timezone.utc)
+            timestamp = datetime.now(tz=UTC)
 
         # Build and dispatch event
         event = MessageEvent(
@@ -591,13 +591,13 @@ class SignalAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a text message."""
         await self._stop_typing_indicator(chat_id)
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "account": self.account,
             "message": content,
         }
@@ -628,7 +628,7 @@ class SignalAdapter(BasePlatformAdapter):
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:
         """Send a typing indicator."""
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "account": self.account,
         }
 
@@ -643,7 +643,7 @@ class SignalAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
+        caption: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send an image. Supports http(s):// and file:// URLs."""
@@ -668,7 +668,7 @@ class SignalAdapter(BasePlatformAdapter):
         if file_size > SIGNAL_MAX_ATTACHMENT_SIZE:
             return SendResult(success=False, error=f"Image too large ({file_size} bytes)")
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "account": self.account,
             "message": caption or "",
             "attachments": [file_path],
@@ -690,7 +690,7 @@ class SignalAdapter(BasePlatformAdapter):
         chat_id: str,
         file_path: str,
         media_label: str,
-        caption: Optional[str] = None,
+        caption: str | None = None,
     ) -> SendResult:
         """Send any file as a Signal attachment via RPC.
 
@@ -707,7 +707,7 @@ class SignalAdapter(BasePlatformAdapter):
         if file_size > SIGNAL_MAX_ATTACHMENT_SIZE:
             return SendResult(success=False, error=f"{media_label} too large ({file_size} bytes)")
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "account": self.account,
             "message": caption or "",
             "attachments": [file_path],
@@ -728,8 +728,8 @@ class SignalAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        filename: Optional[str] = None,
+        caption: str | None = None,
+        filename: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a document/file attachment."""
@@ -739,8 +739,8 @@ class SignalAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a local image file as a native Signal attachment.
@@ -754,8 +754,8 @@ class SignalAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send an audio file as a Signal attachment.
@@ -769,8 +769,8 @@ class SignalAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a video file as a Signal attachment."""
@@ -799,7 +799,7 @@ class SignalAdapter(BasePlatformAdapter):
     # Chat Info
     # ------------------------------------------------------------------
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Get information about a chat/contact."""
         if chat_id.startswith("group:"):
             return {

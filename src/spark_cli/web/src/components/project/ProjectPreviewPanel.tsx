@@ -95,7 +95,7 @@ const DEVICES: { id: DeviceId; label: string; width: number | null; Icon: typeof
   { id: "desktop", label: "Desktop", width: 1280, Icon: Monitor },
 ];
 
-export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; visible?: boolean }) {
+export function ProjectPreviewPanel({ slug, visible = true }: { slug: string; visible?: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
@@ -545,7 +545,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
     setShowMenu(false);
     setDialog({
       title: "Clear browsing data?",
-      body: "Signs out of all sites and clears cookies for this workspace.",
+      body: "Signs out of all sites and clears cookies for this project.",
       confirmLabel: "Clear",
       destructive: true,
       onConfirm: () => {
@@ -884,7 +884,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             ) : (
               <iframe
                 ref={iframeRef}
-                title="Workspace browser"
+                title="Project browser"
                 src={frameSrc}
                 className="h-full w-full border-0 bg-white"
                 sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"

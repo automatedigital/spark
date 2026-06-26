@@ -24,27 +24,26 @@ import logging
 import os
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
 # Session-scoped list of credential files to mount.
 # Backed by ContextVar to prevent cross-session data bleed in the gateway pipeline.
-_registered_files_var: ContextVar[Dict[str, str]] = ContextVar("_registered_files")
+_registered_files_var: ContextVar[dict[str, str]] = ContextVar("_registered_files")
 
 
-def _get_registered() -> Dict[str, str]:
+def _get_registered() -> dict[str, str]:
     """Get or create the registered credential files dict for the current context/session."""
     try:
         return _registered_files_var.get()
     except LookupError:
-        val: Dict[str, str] = {}
+        val: dict[str, str] = {}
         _registered_files_var.set(val)
         return val
 
 
 # Cache for config-based file list (loaded once per process).
-_config_files: List[Dict[str, str]] | None = None
+_config_files: list[dict[str, str]] | None = None
 
 
 def _resolve_spark_home() -> Path:
@@ -105,7 +104,7 @@ def register_credential_file(
 def register_credential_files(
     entries: list,
     container_base: str = "/root/.spark",
-) -> List[str]:
+) -> list[str]:
     """Register multiple credential files from skill frontmatter entries.
 
     Each entry is either a string (relative path) or a dict with a ``path``
@@ -127,13 +126,13 @@ def register_credential_files(
     return missing
 
 
-def _load_config_files() -> List[Dict[str, str]]:
+def _load_config_files() -> list[dict[str, str]]:
     """Load ``terminal.credential_files`` from config.yaml (cached)."""
     global _config_files
     if _config_files is not None:
         return _config_files
 
-    result: List[Dict[str, str]] = []
+    result: list[dict[str, str]] = []
     try:
         from spark_cli.config import read_raw_config
         spark_home = _resolve_spark_home()
@@ -172,13 +171,13 @@ def _load_config_files() -> List[Dict[str, str]]:
     return _config_files
 
 
-def get_credential_file_mounts() -> List[Dict[str, str]]:
+def get_credential_file_mounts() -> list[dict[str, str]]:
     """Return all credential files that should be mounted into remote sandboxes.
 
     Each item has ``host_path`` and ``container_path`` keys.
     Combines skill-registered files and user config.
     """
-    mounts: Dict[str, str] = {}
+    mounts: dict[str, str] = {}
 
     # Skill-registered files
     for container_path, host_path in _get_registered().items():
@@ -200,7 +199,7 @@ def get_credential_file_mounts() -> List[Dict[str, str]]:
 
 def get_skills_directory_mount(
     container_base: str = "/root/.spark",
-) -> list[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Return mount info for all skill directories (local + external).
 
     Skills may include ``scripts/``, ``templates/``, and ``references/``
@@ -291,7 +290,7 @@ def _safe_skills_path(skills_dir: Path) -> str:
 
 def iter_skills_files(
     container_base: str = "/root/.spark",
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Yield individual (host_path, container_path) entries for skills files.
 
     Includes both the local skills dir and any external dirs configured via
@@ -299,7 +298,7 @@ def iter_skills_files(
     that upload files individually (Daytona, Modal) rather than mounting a
     directory.
     """
-    result: List[Dict[str, str]] = []
+    result: list[dict[str, str]] = []
 
     spark_home = _resolve_spark_home()
     skills_dir = spark_home / "skills"
@@ -351,7 +350,7 @@ _CACHE_DIRS: list[tuple[str, str]] = [
 
 def get_cache_directory_mounts(
     container_base: str = "/root/.spark",
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Return mount entries for each cache directory that exists on disk.
 
     Used by Docker to create bind mounts.  Each entry has ``host_path`` and
@@ -360,7 +359,7 @@ def get_cache_directory_mounts(
     """
     from core.spark_constants import get_spark_dir
 
-    mounts: List[Dict[str, str]] = []
+    mounts: list[dict[str, str]] = []
     for new_subpath, old_name in _CACHE_DIRS:
         host_dir = get_spark_dir(new_subpath, old_name)
         if host_dir.is_dir():
@@ -375,7 +374,7 @@ def get_cache_directory_mounts(
 
 def iter_cache_files(
     container_base: str = "/root/.spark",
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Return individual (host_path, container_path) entries for cache files.
 
     Used by Modal to upload files individually and resync before each command.
@@ -383,7 +382,7 @@ def iter_cache_files(
     """
     from core.spark_constants import get_spark_dir
 
-    result: List[Dict[str, str]] = []
+    result: list[dict[str, str]] = []
     for new_subpath, old_name in _CACHE_DIRS:
         host_dir = get_spark_dir(new_subpath, old_name)
         if not host_dir.is_dir():

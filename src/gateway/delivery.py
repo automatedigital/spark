@@ -9,10 +9,10 @@ Routes messages to the appropriate destination based on:
 """
 
 import logging
-from pathlib import Path
-from datetime import datetime
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 from spark_cli.config import get_spark_home
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 MAX_PLATFORM_OUTPUT = 4000
 TRUNCATED_VISIBLE = 3800
 
-from .config import Platform, GatewayConfig
+from .config import GatewayConfig, Platform
 from .session import SessionSource
 
 
@@ -37,13 +37,13 @@ class DeliveryTarget:
     - "telegram:123456" → specific Telegram chat
     """
     platform: Platform
-    chat_id: Optional[str] = None  # None means use home channel
-    thread_id: Optional[str] = None
+    chat_id: str | None = None  # None means use home channel
+    thread_id: str | None = None
     is_origin: bool = False
     is_explicit: bool = False  # True if chat_id was explicitly specified
-    
+
     @classmethod
-    def parse(cls, target: str, origin: Optional[SessionSource] = None) -> "DeliveryTarget":
+    def parse(cls, target: str, origin: SessionSource | None = None) -> "DeliveryTarget":
         """
         Parse a delivery target string.
         
@@ -54,7 +54,7 @@ class DeliveryTarget:
         - "telegram:123456" → specific Telegram chat
         """
         target = target.strip().lower()
-        
+
         if target == "origin":
             if origin:
                 return cls(
@@ -66,10 +66,10 @@ class DeliveryTarget:
             else:
                 # Fallback to local if no origin
                 return cls(platform=Platform.LOCAL, is_origin=True)
-        
+
         if target == "local":
             return cls(platform=Platform.LOCAL)
-        
+
         # Check for platform:chat_id or platform:chat_id:thread_id format
         if ":" in target:
             parts = target.split(":", 2)
@@ -82,7 +82,7 @@ class DeliveryTarget:
             except ValueError:
                 # Unknown platform, treat as local
                 return cls(platform=Platform.LOCAL)
-        
+
         # Just a platform name (use home channel)
         try:
             platform = Platform(target)
@@ -90,7 +90,7 @@ class DeliveryTarget:
         except ValueError:
             # Unknown platform, treat as local
             return cls(platform=Platform.LOCAL)
-    
+
     def to_string(self) -> str:
         """Convert back to string format."""
         if self.is_origin:
@@ -111,8 +111,8 @@ class DeliveryRouter:
     Handles the logic of resolving delivery targets and dispatching
     messages to the right platform adapters.
     """
-    
-    def __init__(self, config: GatewayConfig, adapters: Dict[Platform, Any] = None):
+
+    def __init__(self, config: GatewayConfig, adapters: dict[Platform, Any] = None):
         """
         Initialize the delivery router.
         
@@ -123,15 +123,15 @@ class DeliveryRouter:
         self.config = config
         self.adapters = adapters or {}
         self.output_dir = get_spark_home() / "cron" / "output"
-    
+
     async def deliver(
         self,
         content: str,
-        targets: List[DeliveryTarget],
-        job_id: Optional[str] = None,
-        job_name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        targets: list[DeliveryTarget],
+        job_id: str | None = None,
+        job_name: str | None = None,
+        metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Deliver content to all specified targets.
         
@@ -146,14 +146,14 @@ class DeliveryRouter:
             Dict with delivery results per target
         """
         results = {}
-        
+
         for target in targets:
             try:
                 if target.platform == Platform.LOCAL:
                     result = self._deliver_local(content, job_id, job_name, metadata)
                 else:
                     result = await self._deliver_to_platform(target, content, metadata)
-                
+
                 results[target.to_string()] = {
                     "success": True,
                     "result": result
@@ -163,55 +163,55 @@ class DeliveryRouter:
                     "success": False,
                     "error": str(e)
                 }
-        
+
         return results
-    
+
     def _deliver_local(
         self,
         content: str,
-        job_id: Optional[str],
-        job_name: Optional[str],
-        metadata: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        job_id: str | None,
+        job_name: str | None,
+        metadata: dict[str, Any] | None
+    ) -> dict[str, Any]:
         """Save content to local files."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         if job_id:
             output_path = self.output_dir / job_id / f"{timestamp}.md"
         else:
             output_path = self.output_dir / "misc" / f"{timestamp}.md"
-        
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Build the output document
         lines = []
         if job_name:
             lines.append(f"# {job_name}")
         else:
             lines.append("# Delivery Output")
-        
+
         lines.append("")
         lines.append(f"**Timestamp:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         if job_id:
             lines.append(f"**Job ID:** {job_id}")
-        
+
         if metadata:
             for key, value in metadata.items():
                 lines.append(f"**{key}:** {value}")
-        
+
         lines.append("")
         lines.append("---")
         lines.append("")
         lines.append(content)
-        
+
         output_path.write_text("\n".join(lines))
-        
+
         return {
             "path": str(output_path),
             "timestamp": timestamp
         }
-    
+
     def _save_full_output(self, content: str, job_id: str) -> Path:
         """Save full cron output to disk and return the file path."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -225,17 +225,17 @@ class DeliveryRouter:
         self,
         target: DeliveryTarget,
         content: str,
-        metadata: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        metadata: dict[str, Any] | None
+    ) -> dict[str, Any]:
         """Deliver content to a messaging platform."""
         adapter = self.adapters.get(target.platform)
-        
+
         if not adapter:
             raise ValueError(f"No adapter configured for {target.platform.value}")
-        
+
         if not target.chat_id:
             raise ValueError(f"No chat ID for {target.platform.value} delivery")
-        
+
         # Guard: truncate oversized cron output to stay within platform limits
         if len(content) > MAX_PLATFORM_OUTPUT:
             job_id = (metadata or {}).get("job_id", "unknown")
@@ -245,7 +245,7 @@ class DeliveryRouter:
                 content[:TRUNCATED_VISIBLE]
                 + f"\n\n... [truncated, full output saved to {saved_path}]"
             )
-        
+
         send_metadata = dict(metadata or {})
         if target.thread_id and "thread_id" not in send_metadata:
             send_metadata["thread_id"] = target.thread_id

@@ -38,9 +38,9 @@ import mimetypes
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 try:
@@ -58,7 +58,6 @@ except ImportError:
     httpx = None  # type: ignore[assignment]
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -67,6 +66,7 @@ from gateway.platforms.base import (
     cache_document_from_bytes,
     cache_image_from_bytes,
 )
+from gateway.platforms.helpers import MessageDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ def check_wecom_requirements() -> bool:
     return AIOHTTP_AVAILABLE and HTTPX_AVAILABLE
 
 
-def _coerce_list(value: Any) -> List[str]:
+def _coerce_list(value: Any) -> list[str]:
     """Coerce config values into a trimmed string list."""
     if value is None:
         return []
@@ -128,7 +128,7 @@ def _normalize_entry(raw: str) -> str:
     return value.strip()
 
 
-def _entry_matches(entries: List[str], target: str) -> bool:
+def _entry_matches(entries: list[str], target: str) -> bool:
     """Case-insensitive allowlist match with ``*`` support."""
     normalized_target = str(target).strip().lower()
     for entry in entries:
@@ -165,21 +165,21 @@ class WeComAdapter(BasePlatformAdapter):
         self._group_allow_from = _coerce_list(extra.get("group_allow_from") or extra.get("groupAllowFrom"))
         self._groups = extra.get("groups") if isinstance(extra.get("groups"), dict) else {}
 
-        self._session: Optional["aiohttp.ClientSession"] = None
-        self._ws: Optional["aiohttp.ClientWebSocketResponse"] = None
-        self._http_client: Optional["httpx.AsyncClient"] = None
-        self._listen_task: Optional[asyncio.Task] = None
-        self._heartbeat_task: Optional[asyncio.Task] = None
-        self._pending_responses: Dict[str, asyncio.Future] = {}
+        self._session: aiohttp.ClientSession | None = None
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._http_client: httpx.AsyncClient | None = None
+        self._listen_task: asyncio.Task | None = None
+        self._heartbeat_task: asyncio.Task | None = None
+        self._pending_responses: dict[str, asyncio.Future] = {}
         self._dedup = MessageDeduplicator(max_size=DEDUP_MAX_SIZE)
-        self._reply_req_ids: Dict[str, str] = {}
+        self._reply_req_ids: dict[str, str] = {}
 
         # Text batching: merge rapid successive messages (Telegram-style).
         # WeCom clients split long messages around 4000 chars.
         self._text_batch_delay_seconds = float(os.getenv("SPARK_WECOM_TEXT_BATCH_DELAY_SECONDS", "0.6"))
         self._text_batch_split_delay_seconds = float(os.getenv("SPARK_WECOM_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0"))
-        self._pending_text_batches: Dict[str, MessageEvent] = {}
-        self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_text_batches: dict[str, MessageEvent] = {}
+        self._pending_text_batch_tasks: dict[str, asyncio.Task] = {}
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -287,7 +287,7 @@ class WeComAdapter(BasePlatformAdapter):
             errmsg = auth_payload.get("errmsg", "authentication failed")
             raise RuntimeError(f"{errmsg} (errcode={errcode})")
 
-    async def _wait_for_handshake(self, req_id: str) -> Dict[str, Any]:
+    async def _wait_for_handshake(self, req_id: str) -> dict[str, Any]:
         """Wait for the subscribe acknowledgement."""
         if not self._ws:
             raise RuntimeError("WebSocket not initialized")
@@ -371,7 +371,7 @@ class WeComAdapter(BasePlatformAdapter):
         except asyncio.CancelledError:
             pass
 
-    async def _dispatch_payload(self, payload: Dict[str, Any]) -> None:
+    async def _dispatch_payload(self, payload: dict[str, Any]) -> None:
         """Route inbound websocket payloads."""
         req_id = self._payload_req_id(payload)
         cmd = str(payload.get("cmd") or "")
@@ -397,13 +397,13 @@ class WeComAdapter(BasePlatformAdapter):
                 future.set_exception(exc)
             self._pending_responses.pop(req_id, None)
 
-    async def _send_json(self, payload: Dict[str, Any]) -> None:
+    async def _send_json(self, payload: dict[str, Any]) -> None:
         """Send a raw JSON frame over the active websocket."""
         if not self._ws or self._ws.closed:
             raise RuntimeError("WeCom websocket is not connected")
         await self._ws.send_json(payload)
 
-    async def _send_request(self, cmd: str, body: Dict[str, Any], timeout: float = REQUEST_TIMEOUT_SECONDS) -> Dict[str, Any]:
+    async def _send_request(self, cmd: str, body: dict[str, Any], timeout: float = REQUEST_TIMEOUT_SECONDS) -> dict[str, Any]:
         """Send a JSON request and await the correlated response."""
         if not self._ws or self._ws.closed:
             raise RuntimeError("WeCom websocket is not connected")
@@ -421,10 +421,10 @@ class WeComAdapter(BasePlatformAdapter):
     async def _send_reply_request(
         self,
         reply_req_id: str,
-        body: Dict[str, Any],
+        body: dict[str, Any],
         cmd: str = APP_CMD_RESPONSE,
         timeout: float = REQUEST_TIMEOUT_SECONDS,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Send a reply frame correlated to an inbound callback req_id."""
         if not self._ws or self._ws.closed:
             raise RuntimeError("WeCom websocket is not connected")
@@ -449,14 +449,14 @@ class WeComAdapter(BasePlatformAdapter):
         return f"{prefix}-{uuid.uuid4().hex}"
 
     @staticmethod
-    def _payload_req_id(payload: Dict[str, Any]) -> str:
+    def _payload_req_id(payload: dict[str, Any]) -> str:
         headers = payload.get("headers")
         if isinstance(headers, dict):
             return str(headers.get("req_id") or "")
         return ""
 
     @staticmethod
-    def _parse_json(raw: Any) -> Optional[Dict[str, Any]]:
+    def _parse_json(raw: Any) -> dict[str, Any] | None:
         try:
             payload = json.loads(raw)
         except Exception:
@@ -468,7 +468,7 @@ class WeComAdapter(BasePlatformAdapter):
     # Inbound message parsing
     # ------------------------------------------------------------------
 
-    async def _on_message(self, payload: Dict[str, Any]) -> None:
+    async def _on_message(self, payload: dict[str, Any]) -> None:
         """Process an inbound WeCom message callback event."""
         body = payload.get("body")
         if not isinstance(body, dict):
@@ -525,7 +525,7 @@ class WeComAdapter(BasePlatformAdapter):
             media_types=media_types,
             reply_to_message_id=f"quote:{msg_id}" if has_reply_context else None,
             reply_to_text=reply_text if has_reply_context else None,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
         )
 
         # Only batch plain text messages — commands, media, etc. dispatch
@@ -606,10 +606,10 @@ class WeComAdapter(BasePlatformAdapter):
                 self._pending_text_batch_tasks.pop(key, None)
 
     @staticmethod
-    def _extract_text(body: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    def _extract_text(body: dict[str, Any]) -> tuple[str, str | None]:
         """Extract plain text and quoted text from a callback payload."""
-        text_parts: List[str] = []
-        reply_text: Optional[str] = None
+        text_parts: list[str] = []
+        reply_text: str | None = None
         msgtype = str(body.get("msgtype") or "").lower()
 
         if msgtype == "mixed":
@@ -653,11 +653,11 @@ class WeComAdapter(BasePlatformAdapter):
 
         return "\n".join(part for part in text_parts if part).strip(), reply_text
 
-    async def _extract_media(self, body: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    async def _extract_media(self, body: dict[str, Any]) -> tuple[list[str], list[str]]:
         """Best-effort extraction of inbound media to local cache paths."""
-        media_paths: List[str] = []
-        media_types: List[str] = []
-        refs: List[Tuple[str, Dict[str, Any]]] = []
+        media_paths: list[str] = []
+        media_types: list[str] = []
+        refs: list[tuple[str, dict[str, Any]]] = []
         msgtype = str(body.get("msgtype") or "").lower()
 
         if msgtype == "mixed":
@@ -698,7 +698,7 @@ class WeComAdapter(BasePlatformAdapter):
 
         return media_paths, media_types
 
-    async def _cache_media(self, kind: str, media: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    async def _cache_media(self, kind: str, media: dict[str, Any]) -> tuple[str, str] | None:
         """Cache an inbound image/file/media reference to local storage."""
         if "base64" in media and media.get("base64"):
             try:
@@ -780,7 +780,7 @@ class WeComAdapter(BasePlatformAdapter):
         return fallback
 
     @staticmethod
-    def _guess_filename(url: str, content_disposition: Optional[str], content_type: str) -> str:
+    def _guess_filename(url: str, content_disposition: str | None, content_type: str) -> str:
         if content_disposition:
             match = re.search(r'filename="?([^";]+)"?', content_disposition)
             if match:
@@ -793,7 +793,7 @@ class WeComAdapter(BasePlatformAdapter):
         return name
 
     @staticmethod
-    def _derive_message_type(body: Dict[str, Any], text: str, media_types: List[str]) -> MessageType:
+    def _derive_message_type(body: dict[str, Any], text: str, media_types: list[str]) -> MessageType:
         """Choose the normalized inbound message type."""
         if any(mtype.startswith(("application/", "text/")) for mtype in media_types):
             return MessageType.DOCUMENT
@@ -826,7 +826,7 @@ class WeComAdapter(BasePlatformAdapter):
             return _entry_matches(sender_allow, sender_id)
         return True
 
-    def _resolve_group_cfg(self, chat_id: str) -> Dict[str, Any]:
+    def _resolve_group_cfg(self, chat_id: str) -> dict[str, Any]:
         if not isinstance(self._groups, dict):
             return {}
         if chat_id in self._groups and isinstance(self._groups[chat_id], dict):
@@ -847,7 +847,7 @@ class WeComAdapter(BasePlatformAdapter):
         while len(self._reply_req_ids) > DEDUP_MAX_SIZE:
             self._reply_req_ids.pop(next(iter(self._reply_req_ids)))
 
-    def _reply_req_id_for_message(self, reply_to: Optional[str]) -> Optional[str]:
+    def _reply_req_id_for_message(self, reply_to: str | None) -> str | None:
         normalized = str(reply_to or "").strip()
         if not normalized or normalized.startswith("quote:"):
             return None
@@ -888,7 +888,7 @@ class WeComAdapter(BasePlatformAdapter):
         return "file"
 
     @staticmethod
-    def _apply_file_size_limits(file_size: int, detected_type: str, content_type: Optional[str] = None) -> Dict[str, Any]:
+    def _apply_file_size_limits(file_size: int, detected_type: str, content_type: str | None = None) -> dict[str, Any]:
         file_size_mb = file_size / (1024 * 1024)
         normalized_type = str(detected_type or "file").lower()
         normalized_content_type = str(content_type or "").strip().lower()
@@ -952,7 +952,7 @@ class WeComAdapter(BasePlatformAdapter):
         }
 
     @staticmethod
-    def _response_error(response: Dict[str, Any]) -> Optional[str]:
+    def _response_error(response: dict[str, Any]) -> str | None:
         errcode = response.get("errcode", 0)
         if errcode in (0, None):
             return None
@@ -960,7 +960,7 @@ class WeComAdapter(BasePlatformAdapter):
         return f"WeCom errcode {errcode}: {errmsg}"
 
     @classmethod
-    def _raise_for_wecom_error(cls, response: Dict[str, Any], operation: str) -> None:
+    def _raise_for_wecom_error(cls, response: dict[str, Any], operation: str) -> None:
         error = cls._response_error(response)
         if error:
             raise RuntimeError(f"{operation} failed: {error}")
@@ -997,7 +997,7 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         url: str,
         max_bytes: int,
-    ) -> Tuple[bytes, Dict[str, str]]:
+    ) -> tuple[bytes, dict[str, str]]:
         from tools.url_safety import is_safe_url
         if not is_safe_url(url):
             raise ValueError(f"Blocked unsafe URL (SSRF protection): {url[:80]}")
@@ -1045,8 +1045,8 @@ class WeComAdapter(BasePlatformAdapter):
     async def _load_outbound_media(
         self,
         media_source: str,
-        file_name: Optional[str] = None,
-    ) -> Tuple[bytes, str, str]:
+        file_name: str | None = None,
+    ) -> tuple[bytes, str, str]:
         source = str(media_source or "").strip()
         if not source:
             raise ValueError("media source is required")
@@ -1080,8 +1080,8 @@ class WeComAdapter(BasePlatformAdapter):
     async def _prepare_outbound_media(
         self,
         media_source: str,
-        file_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        file_name: str | None = None,
+    ) -> dict[str, Any]:
         data, content_type, resolved_name = await self._load_outbound_media(media_source, file_name=file_name)
         detected_type = self._detect_wecom_media_type(content_type)
         size_check = self._apply_file_size_limits(len(data), detected_type, content_type)
@@ -1093,7 +1093,7 @@ class WeComAdapter(BasePlatformAdapter):
             **size_check,
         }
 
-    async def _upload_media_bytes(self, data: bytes, media_type: str, filename: str) -> Dict[str, Any]:
+    async def _upload_media_bytes(self, data: bytes, media_type: str, filename: str) -> dict[str, Any]:
         if not data:
             raise ValueError("Cannot upload empty media")
 
@@ -1151,7 +1151,7 @@ class WeComAdapter(BasePlatformAdapter):
             "created_at": finish_body.get("created_at"),
         }
 
-    async def _send_media_message(self, chat_id: str, media_type: str, media_id: str) -> Dict[str, Any]:
+    async def _send_media_message(self, chat_id: str, media_type: str, media_id: str) -> dict[str, Any]:
         response = await self._send_request(
             APP_CMD_SEND,
             {
@@ -1163,7 +1163,7 @@ class WeComAdapter(BasePlatformAdapter):
         self._raise_for_wecom_error(response, "send media message")
         return response
 
-    async def _send_reply_stream(self, reply_req_id: str, content: str) -> Dict[str, Any]:
+    async def _send_reply_stream(self, reply_req_id: str, content: str) -> dict[str, Any]:
         response = await self._send_reply_request(
             reply_req_id,
             {
@@ -1183,7 +1183,7 @@ class WeComAdapter(BasePlatformAdapter):
         reply_req_id: str,
         media_type: str,
         media_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         response = await self._send_reply_request(
             reply_req_id,
             {
@@ -1198,8 +1198,8 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-    ) -> Optional[SendResult]:
+        reply_to: str | None = None,
+    ) -> SendResult | None:
         if not content:
             return None
         result = await self.send(chat_id=chat_id, content=content, reply_to=reply_to)
@@ -1211,9 +1211,9 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         media_source: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
     ) -> SendResult:
         if not chat_id:
             return SendResult(success=False, error="chat_id is required")
@@ -1253,7 +1253,7 @@ class WeComAdapter(BasePlatformAdapter):
                     prepared["final_type"],
                     upload_result["media_id"],
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return SendResult(success=False, error="Timeout sending media to WeCom")
         except Exception as exc:
             logger.error("[%s] Failed to send media %s: %s", self.name, media_source, exc)
@@ -1291,8 +1291,8 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send markdown to a WeCom chat via proactive ``aibot_send_msg``."""
         del metadata
@@ -1313,7 +1313,7 @@ class WeComAdapter(BasePlatformAdapter):
                         "markdown": {"content": content[:self.MAX_MESSAGE_LENGTH]},
                     },
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return SendResult(success=False, error="Timeout sending message to WeCom")
         except Exception as exc:
             logger.error("[%s] Send failed: %s", self.name, exc)
@@ -1333,9 +1333,9 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         del metadata
 
@@ -1356,8 +1356,8 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         del kwargs
@@ -1372,9 +1372,9 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         del kwargs
@@ -1390,8 +1390,8 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         del kwargs
@@ -1406,8 +1406,8 @@ class WeComAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         del kwargs
@@ -1422,7 +1422,7 @@ class WeComAdapter(BasePlatformAdapter):
         """WeCom does not expose typing indicators in this adapter."""
         del chat_id, metadata
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Return minimal chat info."""
         return {
             "name": chat_id,

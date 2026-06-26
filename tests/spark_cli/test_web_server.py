@@ -227,6 +227,14 @@ class TestWebServerEndpoints:
             )
             assert resp.status_code != 401
 
+    def test_oauth_routes_are_registered_on_oauth_router(self):
+        import spark_cli.web_server as web_server
+
+        paths = {getattr(route, "path", "") for route in web_server.oauth_router.routes}
+
+        assert "/api/providers/oauth" in paths
+        assert "/api/providers/oauth/{provider_id}/start" in paths
+
     def test_codex_cli_auth_preference_only_when_installed(self, monkeypatch):
         """Auto mode uses the official Codex CLI only when it is installed; users
         without Codex installed still get Spark's built-in device-code flow."""

@@ -19,14 +19,16 @@ import logging
 import os
 import re
 import shlex
-import sys
 import signal
+import sys
 import tempfile
 import threading
 import time
-from pathlib import Path
+from collections.abc import Callable
 from datetime import datetime
-from typing import Optional, Any, Callable
+from pathlib import Path
+from typing import Any
+
 
 # ---------------------------------------------------------------------------
 # SSL certificate auto-detection for NixOS and other non-standard systems.
@@ -77,12 +79,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # Resolve Spark home directory (respects SPARK_HOME override)
 from core.spark_constants import get_spark_home, get_spark_workspace
 from core.utils import atomic_yaml_write, is_truthy_value
+
 _spark_home = get_spark_home()
 
 # Load environment variables from ~/.spark/.env first.
 # User-managed env files should override stale shell exports on restart.
 from dotenv import load_dotenv  # backward-compat for tests that monkeypatch this symbol
+
 from spark_cli.env_loader import load_spark_dotenv
+
 _env_path = _spark_home / '.env'
 load_spark_dotenv(spark_home=_spark_home, project_env=Path(__file__).resolve().parents[1] / '.env')
 
@@ -256,19 +261,19 @@ if not _configured_cwd or _configured_cwd in (".", "auto", "cwd"):
         messaging_cwd = str(_workspace)
     os.environ["TERMINAL_CWD"] = messaging_cwd.strip()
 
+from gateway.authz import (
+    check_inbound_authorization,
+    expand_whatsapp_auth_aliases,
+    get_unauthorized_dm_behavior,
+    is_user_authorized,
+    normalize_whatsapp_identifier,
+)
 from gateway.config import (
-    Platform,
     GatewayConfig,
+    Platform,
     load_gateway_config,
 )
-from gateway.session import (
-    SessionStore,
-    SessionSource,
-    SessionContext,
-    build_session_context,
-    build_session_context_prompt,
-    build_session_key,
-)
+from gateway.cron_tick import start_cron_thread, start_cron_ticker
 from gateway.delivery import DeliveryRouter
 from gateway.platforms.base import (
     BasePlatformAdapter,
@@ -281,49 +286,25 @@ from gateway.restart import (
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
 )
+from gateway.session import (
+    SessionContext,
+    SessionSource,
+    SessionStore,
+    build_session_context,
+    build_session_context_prompt,
+    build_session_key,
+)
+from gateway.session_hygiene import run_session_hygiene
 
 
 def _normalize_whatsapp_identifier(value: str) -> str:
     """Strip WhatsApp JID/LID syntax down to its stable numeric identifier."""
-    return (
-        str(value or "")
-        .strip()
-        .replace("+", "", 1)
-        .split(":", 1)[0]
-        .split("@", 1)[0]
-    )
+    return normalize_whatsapp_identifier(value)
 
 
 def _expand_whatsapp_auth_aliases(identifier: str) -> set:
     """Resolve WhatsApp phone/LID aliases using bridge session mapping files."""
-    normalized = _normalize_whatsapp_identifier(identifier)
-    if not normalized:
-        return set()
-
-    session_dir = _spark_home / "whatsapp" / "session"
-    resolved = set()
-    queue = [normalized]
-
-    while queue:
-        current = queue.pop(0)
-        if not current or current in resolved:
-            continue
-
-        resolved.add(current)
-        for suffix in ("", "_reverse"):
-            mapping_path = session_dir / f"lid-mapping-{current}{suffix}.json"
-            if not mapping_path.exists():
-                continue
-            try:
-                mapped = _normalize_whatsapp_identifier(
-                    json.loads(mapping_path.read_text(encoding="utf-8"))
-                )
-            except Exception:
-                continue
-            if mapped and mapped not in resolved:
-                queue.append(mapped)
-
-    return resolved
+    return expand_whatsapp_auth_aliases(identifier, _spark_home)
 
 logger = logging.getLogger(__name__)
 
@@ -400,8 +381,8 @@ def _check_unavailable_skill(command_name: str) -> str | None:
     # Normalize: command uses hyphens, skill names may use hyphens or underscores
     normalized = command_name.lower().replace("_", "-")
     try:
-        from tools.skills_tool import _get_disabled_skill_names
         from agent.skill_utils import get_all_skills_dirs
+        from tools.skills_tool import _get_disabled_skill_names
         disabled = _get_disabled_skill_names()
 
         # Check disabled skills across all dirs (local + external)
@@ -450,7 +431,7 @@ def _load_gateway_config() -> dict:
         config_path = _spark_home / 'config.yaml'
         if config_path.exists():
             import yaml
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, encoding='utf-8') as f:
                 return yaml.safe_load(f) or {}
     except Exception:
         logger.debug("Could not load gateway config from %s", _spark_home / 'config.yaml')
@@ -473,7 +454,7 @@ def _resolve_gateway_model(config: dict | None = None) -> str:
     return ""
 
 
-def _resolve_spark_bin() -> Optional[list[str]]:
+def _resolve_spark_bin() -> list[str] | None:
     """Resolve the Spark update command as argv parts.
 
     Tries in order:
@@ -540,16 +521,16 @@ class GatewayRunner:
     _running_agents_ts: dict[str, float] = {}
     _busy_input_mode: str = "interrupt"
     _restart_drain_timeout: float = DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT
-    _exit_code: Optional[int] = None
+    _exit_code: int | None = None
     _draining: bool = False
     _restart_requested: bool = False
     _restart_task_started: bool = False
     _restart_detached: bool = False
     _restart_via_service: bool = False
-    _stop_task: Optional[asyncio.Task] = None
+    _stop_task: asyncio.Task | None = None
     _session_model_overrides: dict[str, dict[str, str]] = {}
-    
-    def __init__(self, config: Optional[GatewayConfig] = None):
+
+    def __init__(self, config: GatewayConfig | None = None):
         self.config = config or load_gateway_config()
         self.adapters: dict[Platform, BasePlatformAdapter] = {}
 
@@ -577,15 +558,15 @@ class GatewayRunner:
         self._shutdown_event = asyncio.Event()
         self._exit_cleanly = False
         self._exit_with_failure = False
-        self._exit_reason: Optional[str] = None
-        self._exit_code: Optional[int] = None
+        self._exit_reason: str | None = None
+        self._exit_code: int | None = None
         self._draining = False
         self._restart_requested = False
         self._restart_task_started = False
         self._restart_detached = False
         self._restart_via_service = False
-        self._stop_task: Optional[asyncio.Task] = None
-        
+        self._stop_task: asyncio.Task | None = None
+
         # Track running agents per session for interrupt support
         # Key: session_key, Value: AIAgent instance
         self._running_agents: dict[str, Any] = {}
@@ -631,7 +612,7 @@ class GatewayRunner:
             ensure_installed(log_failures=False)
         except Exception:
             pass  # Non-fatal — fail-open at scan time if unavailable
-        
+
         # Initialize session database for session_search tool support
         self._session_db = None
         try:
@@ -639,11 +620,11 @@ class GatewayRunner:
             self._session_db = SessionDB()
         except Exception as e:
             logger.debug("SQLite session store not available: %s", e)
-        
+
         # DM pairing store for code-based user authorization
         from gateway.pairing import PairingStore
         self.pairing_store = PairingStore()
-        
+
         # Event hook system
         from gateway.hooks import HookRegistry
         self.hooks = HookRegistry()
@@ -721,7 +702,7 @@ class GatewayRunner:
     def _flush_memories_for_session(
         self,
         old_session_id: str,
-        session_key: Optional[str] = None,
+        session_key: str | None = None,
     ):
         """Prompt the agent to save memories/skills before context is lost.
 
@@ -825,7 +806,7 @@ class GatewayRunner:
     async def _async_flush_memories(
         self,
         old_session_id: str,
-        session_key: Optional[str] = None,
+        session_key: str | None = None,
     ):
         """Run the sync memory flush in a thread pool so it won't block the event loop."""
         loop = asyncio.get_event_loop()
@@ -845,11 +826,11 @@ class GatewayRunner:
         return self._exit_with_failure
 
     @property
-    def exit_reason(self) -> Optional[str]:
+    def exit_reason(self) -> str | None:
         return self._exit_reason
 
     @property
-    def exit_code(self) -> Optional[int]:
+    def exit_code(self) -> int | None:
         return self._exit_code
 
     def _session_key_for_source(self, source: SessionSource) -> str:
@@ -874,9 +855,9 @@ class GatewayRunner:
     def _resolve_session_agent_runtime(
         self,
         *,
-        source: Optional[SessionSource] = None,
-        session_key: Optional[str] = None,
-        user_config: Optional[dict] = None,
+        source: SessionSource | None = None,
+        session_key: str | None = None,
+        user_config: dict | None = None,
     ) -> tuple[str, dict]:
         """Resolve model/runtime from the universal config for a gateway session."""
         model = _resolve_gateway_model(user_config)
@@ -901,14 +882,14 @@ class GatewayRunner:
         return model, runtime_kwargs
 
     @staticmethod
-    def _gateway_config_fingerprint(config: Optional[dict]) -> str:
+    def _gateway_config_fingerprint(config: dict | None) -> str:
         """Return a stable fingerprint for live gateway config refreshes."""
         try:
             return json.dumps(config or {}, sort_keys=True, default=str)
         except Exception:
             return repr(config)
 
-    def _refresh_live_config_state(self, user_config: Optional[dict]) -> None:
+    def _refresh_live_config_state(self, user_config: dict | None) -> None:
         """Apply config.yaml changes made while the gateway is already running.
 
         The gateway caches AIAgent instances for prompt caching and also supports
@@ -1063,7 +1044,7 @@ class GatewayRunner:
     def _queue_during_drain_enabled(self) -> bool:
         return self._restart_requested and self._busy_input_mode == "queue"
 
-    def _update_runtime_status(self, gateway_state: Optional[str] = None, exit_reason: Optional[str] = None) -> None:
+    def _update_runtime_status(self, gateway_state: str | None = None, exit_reason: str | None = None) -> None:
         try:
             from gateway.status import write_runtime_status
             write_runtime_status(
@@ -1079,9 +1060,9 @@ class GatewayRunner:
         self,
         platform: str,
         *,
-        platform_state: Optional[str] = None,
-        error_code: Optional[str] = None,
-        error_message: Optional[str] = None,
+        platform_state: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         try:
             from gateway.status import write_runtime_status
@@ -1093,7 +1074,7 @@ class GatewayRunner:
             )
         except Exception:
             pass
-    
+
     @staticmethod
     def _load_prefill_messages() -> list[dict[str, Any]]:
         """Load ephemeral prefill messages from config or env var.
@@ -1123,7 +1104,7 @@ class GatewayRunner:
             logger.warning("Prefill messages file not found: %s", path)
             return []
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = _json.load(f)
             if not isinstance(data, list):
                 logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -1514,7 +1495,7 @@ class GatewayRunner:
             write_runtime_status(gateway_state="starting", exit_reason=None)
         except Exception:
             pass
-        
+
         # Warn if no user allowlists are configured and open access is not opted in
         _any_allowlist = any(
             os.getenv(v)
@@ -1552,10 +1533,10 @@ class GatewayRunner:
                 "Set GATEWAY_ALLOW_ALL_USERS=true in ~/.spark/.env to allow open access, "
                 "or configure platform allowlists (e.g., TELEGRAM_ALLOWED_USERS=your_id)."
             )
-        
+
         # Discover and load event hooks
         self.hooks.discover_and_load()
-        
+
         # Recover background processes from checkpoint (crash recovery)
         try:
             from tools.process_registry import process_registry
@@ -1593,24 +1574,24 @@ class GatewayRunner:
         enabled_platform_count = 0
         startup_nonretryable_errors: list[str] = []
         startup_retryable_errors: list[str] = []
-        
+
         # Initialize and connect each configured platform
         for platform, platform_config in self.config.platforms.items():
             if not platform_config.enabled:
                 continue
             enabled_platform_count += 1
-            
+
             adapter = self._create_adapter(platform, platform_config)
             if not adapter:
                 logger.warning("No adapter available for %s", platform.value)
                 continue
-            
+
             # Set up message + fatal error handlers
             adapter.set_message_handler(self._handle_message)
             adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
             adapter.set_session_store(self.session_store)
             adapter.set_busy_session_handler(self._handle_active_session_busy_message)
-            
+
             # Try to connect
             logger.info("Connecting to %s...", platform.value)
             self._update_platform_runtime_status(
@@ -1687,7 +1668,7 @@ class GatewayRunner:
                     "attempts": 1,
                     "next_retry": time.monotonic() + 30,
                 }
-        
+
         if connected_count == 0:
             if startup_nonretryable_errors:
                 reason = "; ".join(startup_nonretryable_errors)
@@ -1710,13 +1691,13 @@ class GatewayRunner:
                 return False
             logger.warning("No messaging platforms enabled.")
             logger.info("Gateway will continue running for cron job execution.")
-        
+
         # Update delivery router with adapters
         self.delivery_router.adapters = self.adapters
-        
+
         self._running = True
         self._update_runtime_status("running")
-        
+
         # Emit gateway:startup hook
         hook_count = len(self.hooks.loaded_hooks)
         if hook_count:
@@ -1724,10 +1705,10 @@ class GatewayRunner:
         await self.hooks.emit("gateway:startup", {
             "platforms": [p.value for p in self.adapters.keys()],
         })
-        
+
         if connected_count > 0:
             logger.info("Gateway running with %s platform(s)", connected_count)
-        
+
         # Build initial channel directory for send_message name resolution
         try:
             from gateway.channel_directory import build_channel_directory
@@ -1736,7 +1717,7 @@ class GatewayRunner:
             logger.info("Channel directory built: %d target(s)", ch_count)
         except Exception as e:
             logger.warning("Channel directory build failed: %s", e)
-        
+
         # Check if we're restarting after a /update command. If the update is
         # still running, keep watching so we notify once it actually finishes.
         notified = await self._send_update_notification()
@@ -1848,9 +1829,9 @@ class GatewayRunner:
             logger.warning("Embedded dashboard/dispatcher startup skipped: %s", e)
 
         logger.info("Press Ctrl+C to stop")
-        
+
         return True
-    
+
     async def _session_expiry_watcher(self, interval: int = 300):
         """Background task that proactively flushes memories for expired sessions.
         
@@ -2214,16 +2195,16 @@ class GatewayRunner:
 
         self._stop_task = asyncio.create_task(_stop_impl())
         await self._stop_task
-    
+
     async def wait_for_shutdown(self) -> None:
         """Wait for shutdown signal."""
         await self._shutdown_event.wait()
-    
+
     def _create_adapter(
-        self, 
-        platform: Platform, 
+        self,
+        platform: Platform,
         config: Any
-    ) -> Optional[BasePlatformAdapter]:
+    ) -> BasePlatformAdapter | None:
         """Create the appropriate adapter for a platform."""
         if hasattr(config, "extra") and isinstance(config.extra, dict):
             config.extra.setdefault(
@@ -2241,21 +2222,21 @@ class GatewayRunner:
                 logger.warning("Telegram: python-telegram-bot not installed")
                 return None
             return TelegramAdapter(config)
-        
+
         elif platform == Platform.DISCORD:
             from gateway.platforms.discord import DiscordAdapter, check_discord_requirements
             if not check_discord_requirements():
                 logger.warning("Discord: discord.py not installed")
                 return None
             return DiscordAdapter(config)
-        
+
         elif platform == Platform.WHATSAPP:
             from gateway.platforms.whatsapp import WhatsAppAdapter, check_whatsapp_requirements
             if not check_whatsapp_requirements():
                 logger.warning("WhatsApp: Node.js not installed or bridge not configured")
                 return None
             return WhatsAppAdapter(config)
-        
+
         elif platform == Platform.SLACK:
             from gateway.platforms.slack import SlackAdapter, check_slack_requirements
             if not check_slack_requirements():
@@ -2330,7 +2311,10 @@ class GatewayRunner:
             return WeixinAdapter(config)
 
         elif platform == Platform.MATTERMOST:
-            from gateway.platforms.mattermost import MattermostAdapter, check_mattermost_requirements
+            from gateway.platforms.mattermost import (
+                MattermostAdapter,
+                check_mattermost_requirements,
+            )
             if not check_mattermost_requirements():
                 logger.warning("Mattermost: MATTERMOST_TOKEN or MATTERMOST_URL not set, or aiohttp missing")
                 return None
@@ -2360,7 +2344,10 @@ class GatewayRunner:
             return adapter
 
         elif platform == Platform.BLUEBUBBLES:
-            from gateway.platforms.bluebubbles import BlueBubblesAdapter, check_bluebubbles_requirements
+            from gateway.platforms.bluebubbles import (
+                BlueBubblesAdapter,
+                check_bluebubbles_requirements,
+            )
             if not check_bluebubbles_requirements():
                 logger.warning("BlueBubbles: aiohttp/httpx missing or BLUEBUBBLES_SERVER_URL/BLUEBUBBLES_PASSWORD not configured")
                 return None
@@ -2378,7 +2365,10 @@ class GatewayRunner:
     def _is_user_authorized(self, source: SessionSource) -> bool:
         """
         Check if a user is authorized to use the bot.
-        
+
+        Compatibility wrapper for gateway.authz.is_user_authorized.
+        Platform map coverage includes EMAIL_ALLOWED_USERS and EMAIL_ALLOW_ALL_USERS.
+
         Checks in order:
         1. Per-platform allow-all flag (e.g., DISCORD_ALLOW_ALL_USERS=true)
         2. Environment variable allowlists (TELEGRAM_ALLOWED_USERS, etc.)
@@ -2386,112 +2376,17 @@ class GatewayRunner:
         4. Global allow-all (GATEWAY_ALLOW_ALL_USERS=true)
         5. Default: deny
         """
-        # Home Assistant events are system-generated (state changes), not
-        # user-initiated messages.  The HASS_TOKEN already authenticates the
-        # connection, so HA events are always authorized.
-        # Webhook events are authenticated via HMAC signature validation in
-        # the adapter itself — no user allowlist applies.
-        if source.platform in (Platform.HOMEASSISTANT, Platform.WEBHOOK):
-            return True
+        return is_user_authorized(
+            source,
+            pairing_store=self.pairing_store,
+            spark_home=_spark_home,
+        )
 
-        user_id = source.user_id
-        if not user_id:
-            return False
-
-        platform_env_map = {
-            Platform.TELEGRAM: "TELEGRAM_ALLOWED_USERS",
-            Platform.DISCORD: "DISCORD_ALLOWED_USERS",
-            Platform.WHATSAPP: "WHATSAPP_ALLOWED_USERS",
-            Platform.SLACK: "SLACK_ALLOWED_USERS",
-            Platform.SIGNAL: "SIGNAL_ALLOWED_USERS",
-            Platform.EMAIL: "EMAIL_ALLOWED_USERS",
-            Platform.SMS: "SMS_ALLOWED_USERS",
-            Platform.MATTERMOST: "MATTERMOST_ALLOWED_USERS",
-            Platform.MATRIX: "MATRIX_ALLOWED_USERS",
-            Platform.DINGTALK: "DINGTALK_ALLOWED_USERS",
-            Platform.FEISHU: "FEISHU_ALLOWED_USERS",
-            Platform.WECOM: "WECOM_ALLOWED_USERS",
-            Platform.WECOM_CALLBACK: "WECOM_CALLBACK_ALLOWED_USERS",
-            Platform.WEIXIN: "WEIXIN_ALLOWED_USERS",
-            Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
-            Platform.QQBOT: "QQ_ALLOWED_USERS",
-        }
-        platform_allow_all_map = {
-            Platform.TELEGRAM: "TELEGRAM_ALLOW_ALL_USERS",
-            Platform.DISCORD: "DISCORD_ALLOW_ALL_USERS",
-            Platform.WHATSAPP: "WHATSAPP_ALLOW_ALL_USERS",
-            Platform.SLACK: "SLACK_ALLOW_ALL_USERS",
-            Platform.SIGNAL: "SIGNAL_ALLOW_ALL_USERS",
-            Platform.EMAIL: "EMAIL_ALLOW_ALL_USERS",
-            Platform.SMS: "SMS_ALLOW_ALL_USERS",
-            Platform.MATTERMOST: "MATTERMOST_ALLOW_ALL_USERS",
-            Platform.MATRIX: "MATRIX_ALLOW_ALL_USERS",
-            Platform.DINGTALK: "DINGTALK_ALLOW_ALL_USERS",
-            Platform.FEISHU: "FEISHU_ALLOW_ALL_USERS",
-            Platform.WECOM: "WECOM_ALLOW_ALL_USERS",
-            Platform.WECOM_CALLBACK: "WECOM_CALLBACK_ALLOW_ALL_USERS",
-            Platform.WEIXIN: "WEIXIN_ALLOW_ALL_USERS",
-            Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOW_ALL_USERS",
-            Platform.QQBOT: "QQ_ALLOW_ALL_USERS",
-        }
-
-        # Per-platform allow-all flag (e.g., DISCORD_ALLOW_ALL_USERS=true)
-        platform_allow_all_var = platform_allow_all_map.get(source.platform, "")
-        if platform_allow_all_var and os.getenv(platform_allow_all_var, "").lower() in ("true", "1", "yes"):
-            return True
-
-        # Check pairing store (always checked, regardless of allowlists)
-        platform_name = source.platform.value if source.platform else ""
-        if self.pairing_store.is_approved(platform_name, user_id):
-            return True
-
-        # Check platform-specific and global allowlists
-        platform_allowlist = os.getenv(platform_env_map.get(source.platform, ""), "").strip()
-        global_allowlist = os.getenv("GATEWAY_ALLOWED_USERS", "").strip()
-
-        if not platform_allowlist and not global_allowlist:
-            # No allowlists configured -- check global allow-all flag
-            return os.getenv("GATEWAY_ALLOW_ALL_USERS", "").lower() in ("true", "1", "yes")
-
-        # Check if user is in any allowlist
-        allowed_ids = set()
-        if platform_allowlist:
-            allowed_ids.update(uid.strip() for uid in platform_allowlist.split(",") if uid.strip())
-        if global_allowlist:
-            allowed_ids.update(uid.strip() for uid in global_allowlist.split(",") if uid.strip())
-
-        # "*" in any allowlist means allow everyone (consistent with
-        # SIGNAL_GROUP_ALLOWED_USERS precedent)
-        if "*" in allowed_ids:
-            return True
-
-        check_ids = {user_id}
-        if "@" in user_id:
-            check_ids.add(user_id.split("@")[0])
-
-        # WhatsApp: resolve phone↔LID aliases from bridge session mapping files
-        if source.platform == Platform.WHATSAPP:
-            normalized_allowed_ids = set()
-            for allowed_id in allowed_ids:
-                normalized_allowed_ids.update(_expand_whatsapp_auth_aliases(allowed_id))
-            if normalized_allowed_ids:
-                allowed_ids = normalized_allowed_ids
-
-            check_ids.update(_expand_whatsapp_auth_aliases(user_id))
-            normalized_user_id = _normalize_whatsapp_identifier(user_id)
-            if normalized_user_id:
-                check_ids.add(normalized_user_id)
-
-        return bool(check_ids & allowed_ids)
-
-    def _get_unauthorized_dm_behavior(self, platform: Optional[Platform]) -> str:
+    def _get_unauthorized_dm_behavior(self, platform: Platform | None) -> str:
         """Return how unauthorized DMs should be handled for a platform."""
-        config = getattr(self, "config", None)
-        if config and hasattr(config, "get_unauthorized_dm_behavior"):
-            return config.get_unauthorized_dm_behavior(platform)
-        return "pair"
-    
-    async def _handle_message(self, event: MessageEvent) -> Optional[str]:
+        return get_unauthorized_dm_behavior(getattr(self, "config", None), platform)
+
+    async def _handle_message(self, event: MessageEvent) -> str | None:
         """
         Handle an incoming message from any platform.
         
@@ -2503,6 +2398,9 @@ class GatewayRunner:
         5. Build context for agent
         6. Run agent conversation
         7. Return response
+
+        Compatibility note: known commands such as "reasoning", "title", and
+        "update" are dispatched through gateway.commands.
         """
         source = event.source
 
@@ -2514,52 +2412,16 @@ class GatewayRunner:
         except Exception:
             pass
 
-        # Internal events (e.g. background-process completion notifications)
-        # are system-generated and must skip user authorization.
-        if getattr(event, "internal", False):
-            pass
-        elif source.user_id is None:
-            # Messages with no user identity (Telegram service messages,
-            # channel forwards, anonymous admin actions) cannot be
-            # authorized — drop silently instead of triggering the pairing
-            # flow with a None user_id.
-            logger.debug("Ignoring message with no user_id from %s", source.platform.value)
+        if not await check_inbound_authorization(
+            event,
+            is_authorized=self._is_user_authorized,
+            get_dm_behavior=self._get_unauthorized_dm_behavior,
+            pairing_store=getattr(self, "pairing_store", None),
+            adapters=getattr(self, "adapters", {}),
+            logger=logger,
+        ):
             return None
-        elif not self._is_user_authorized(source):
-            logger.warning("Unauthorized user: %s (%s) on %s", source.user_id, source.user_name, source.platform.value)
-            # In DMs: offer pairing code. In groups: silently ignore.
-            if source.chat_type == "dm" and self._get_unauthorized_dm_behavior(source.platform) == "pair":
-                platform_name = source.platform.value if source.platform else "unknown"
-                # Rate-limit ALL pairing responses (code or rejection) to
-                # prevent spamming the user with repeated messages when
-                # multiple DMs arrive in quick succession.
-                if self.pairing_store._is_rate_limited(platform_name, source.user_id):
-                    return None
-                code = self.pairing_store.generate_code(
-                    platform_name, source.user_id, source.user_name or ""
-                )
-                if code:
-                    adapter = self.adapters.get(source.platform)
-                    if adapter:
-                        await adapter.send(
-                            source.chat_id,
-                            f"Hi~ I don't recognize you yet!\n\n"
-                            f"Here's your pairing code: `{code}`\n\n"
-                            f"Ask the bot owner to run:\n"
-                            f"`spark pairing approve {platform_name} {code}`"
-                        )
-                else:
-                    adapter = self.adapters.get(source.platform)
-                    if adapter:
-                        await adapter.send(
-                            source.chat_id,
-                            "Too many pairing requests right now~ "
-                            "Please try again later!"
-                        )
-                    # Record rate limit so subsequent messages are silently ignored
-                    self.pairing_store._record_rate_limit(platform_name, source.user_id)
-            return None
-        
+
         # Intercept messages that are responses to a pending /update prompt.
         # The update process (detached) wrote .update_prompt.json; the watcher
         # forwarded it to the user; now the user's reply goes back via
@@ -2706,7 +2568,8 @@ class GatewayRunner:
                     return "Usage: /queue <prompt>"
                 adapter = self.adapters.get(source.platform)
                 if adapter:
-                    from gateway.platforms.base import MessageEvent as _ME, MessageType as _MT
+                    from gateway.platforms.base import MessageEvent as _ME
+                    from gateway.platforms.base import MessageType as _MT
                     queued_event = _ME(
                         text=queued_text,
                         message_type=_MT.TEXT,
@@ -2774,213 +2637,17 @@ class GatewayRunner:
 
         # Check for commands
         command = event.get_command()
-        
-        # Emit command:* hook for any recognized slash command.
-        # GATEWAY_KNOWN_COMMANDS is derived from the central COMMAND_REGISTRY
-        # in spark_cli/commands.py — no hardcoded set to maintain here.
-        from spark_cli.commands import GATEWAY_KNOWN_COMMANDS, resolve_command as _resolve_cmd
-        if command and command in GATEWAY_KNOWN_COMMANDS:
-            await self.hooks.emit(f"command:{command}", {
-                "platform": source.platform.value if source.platform else "",
-                "user_id": source.user_id,
-                "command": command,
-                "args": event.get_command_args().strip(),
-            })
 
-        # Resolve aliases to canonical name so dispatch only checks canonicals.
-        _cmd_def = _resolve_cmd(command) if command else None
-        canonical = _cmd_def.name if _cmd_def else command
+        from gateway.commands import dispatch_gateway_command
 
-        if canonical == "new":
-            return await self._handle_reset_command(event)
-        
-        if canonical == "help":
-            return await self._handle_help_command(event)
-
-        if canonical == "commands":
-            return await self._handle_commands_command(event)
-        
-        if canonical == "profile":
-            return await self._handle_profile_command(event)
-
-        if canonical == "status":
-            return await self._handle_status_command(event)
-
-        if canonical == "restart":
-            return await self._handle_restart_command(event)
-        
-        if canonical == "stop":
-            return await self._handle_stop_command(event)
-        
-        if canonical == "reasoning":
-            return await self._handle_reasoning_command(event)
-
-        if canonical == "fast":
-            return await self._handle_fast_command(event)
-
-        if canonical == "verbose":
-            return await self._handle_verbose_command(event)
-
-        if canonical == "yolo":
-            return await self._handle_yolo_command(event)
-
-        if canonical == "model":
-            return await self._handle_model_command(event)
-
-        if canonical == "provider":
-            return await self._handle_provider_command(event)
-        
-        if canonical == "personality":
-            return await self._handle_personality_command(event)
-
-        if canonical == "plan":
-            try:
-                from agent.skill_commands import build_plan_path, build_skill_invocation_message
-
-                user_instruction = event.get_command_args().strip()
-                plan_path = build_plan_path(user_instruction)
-                event.text = build_skill_invocation_message(
-                    "/plan",
-                    user_instruction,
-                    task_id=_quick_key,
-                    runtime_note=(
-                        "Save the markdown plan with write_file to this exact relative path "
-                        f"inside the active workspace/backend cwd: {plan_path}"
-                    ),
-                )
-                if not event.text:
-                    return "Failed to load the bundled /plan skill."
-                canonical = None
-            except Exception as e:
-                logger.exception("Failed to prepare /plan command")
-                return f"Failed to enter plan mode: {e}"
-        
-        if canonical == "retry":
-            return await self._handle_retry_command(event)
-        
-        if canonical == "undo":
-            return await self._handle_undo_command(event)
-        
-        if canonical == "sethome":
-            return await self._handle_set_home_command(event)
-
-        if canonical == "compress":
-            return await self._handle_compress_command(event)
-
-        if canonical == "usage":
-            return await self._handle_usage_command(event)
-
-        if canonical == "insights":
-            return await self._handle_insights_command(event)
-
-        if canonical == "kanban":
-            return await self._handle_kanban_command(event)
-
-        if canonical == "reload-mcp":
-            return await self._handle_reload_mcp_command(event)
-
-        if canonical == "approve":
-            return await self._handle_approve_command(event)
-
-        if canonical == "deny":
-            return await self._handle_deny_command(event)
-
-        if canonical == "update":
-            return await self._handle_update_command(event)
-
-        if canonical == "debug":
-            return await self._handle_debug_command(event)
-
-        if canonical == "feedback":
-            return await self._handle_feedback_command(event)
-
-        if canonical == "title":
-            return await self._handle_title_command(event)
-
-        if canonical == "resume":
-            return await self._handle_resume_command(event)
-
-        if canonical == "branch":
-            return await self._handle_branch_command(event)
-
-        if canonical == "rollback":
-            return await self._handle_rollback_command(event)
-
-        if canonical == "background":
-            return await self._handle_background_command(event)
-
-        if canonical == "btw":
-            return await self._handle_btw_command(event)
-
-        if canonical == "voice":
-            return await self._handle_voice_command(event)
-
-        if canonical == "dream":
-            return await self._handle_dream_command(event)
-
-        if canonical == "learnings":
-            return await self._handle_learnings_command(event)
-
-        if canonical == "goal":
-            return await self._handle_goal_command(event)
-
-        if canonical == "reset-skills":
-            args_text = event.get_command_args().strip().lower()
-            if args_text != "confirm":
-                return (
-                    "⚠️ This will remove all hub-installed and custom skills, "
-                    "restoring Spark's bundled defaults.\n"
-                    "Send `/reset-skills confirm` to proceed."
-                )
-            try:
-                from tools.skills_sync import reset_skills
-                result = reset_skills()
-                lines = ["Skills reset complete."]
-                if result["removed"]:
-                    lines.append(f"− Removed: {', '.join(result['removed'])}")
-                else:
-                    lines.append("(no custom or hub-installed skills to remove)")
-                if result["restored"]:
-                    lines.append(f"✓ Restored: {', '.join(result['restored'])} bundled skills")
-                if result["errors"]:
-                    lines.extend(f"! {e}" for e in result["errors"])
-                return "\n".join(lines)
-            except Exception as e:
-                logger.exception("reset-skills failed")
-                return f"Reset failed: {e}"
-
-        if canonical == "history":
-            return await self._handle_history_command(event)
-
-        if canonical == "memory":
-            return await self._handle_memory_gateway_command(event)
-
-        if canonical == "sessions":
-            return await self._handle_sessions_gateway_command(event)
-
-        if canonical == "config":
-            return await self._handle_config_command(event)
-
-        if canonical == "tools":
-            return await self._handle_tools_gateway_command(event)
-
-        if canonical == "toolsets":
-            return await self._handle_toolsets_command(event)
-
-        if canonical == "skills":
-            return await self._handle_skills_gateway_command(event)
-
-        if canonical == "cron":
-            return await self._handle_cron_gateway_command(event)
-
-        if canonical == "plugins":
-            return await self._handle_plugins_command(event)
-
-        if canonical == "files":
-            return await self._handle_files_gateway_command(event)
-
-        if canonical == "save":
-            return await self._handle_save_command(event)
+        command_handled, command_response = await dispatch_gateway_command(
+            self,
+            event,
+            source,
+            _quick_key,
+        )
+        if command_handled:
+            return command_response
 
         if self._draining:
             return f"⏳ Gateway is {self._status_action_gerund()} and is not accepting new work right now."
@@ -3012,7 +2679,7 @@ class GatewayRunner:
                                 raw = raw[:_MAX_OUTPUT_BYTES] + b"\n[output truncated]"
                             output = raw.decode(errors="replace").strip()
                             return output if output else "Command returned no output."
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             return "Quick command timed out (30s)."
                         except Exception as e:
                             return f"Quick command error: {e}"
@@ -3057,8 +2724,8 @@ class GatewayRunner:
         if command:
             try:
                 from agent.skill_commands import (
-                    get_skill_commands,
                     build_skill_invocation_message,
+                    get_skill_commands,
                     resolve_skill_command_key,
                 )
                 skill_cmds = get_skill_commands()
@@ -3098,7 +2765,9 @@ class GatewayRunner:
                     # Normalize to hyphenated form before checking known
                     # built-ins (command may be an alias target set by the
                     # quick-command block above, so _cmd_def can be stale).
-                    if command.replace("_", "-") not in GATEWAY_KNOWN_COMMANDS:
+                    from gateway.commands import is_known_gateway_command
+
+                    if not is_known_gateway_command(command):
                         logger.warning(
                             "Unrecognized slash command /%s from %s — "
                             "replying with unknown-command notice",
@@ -3112,7 +2781,7 @@ class GatewayRunner:
                         )
             except Exception as e:
                 logger.debug("Skill command check failed (non-fatal): %s", e)
-        
+
         # Pending exec approvals are handled by /approve and /deny commands above.
         # No bare text matching — "yes" in normal conversation must not trigger
         # execution of a dangerous command.
@@ -3144,7 +2813,7 @@ class GatewayRunner:
         event: MessageEvent,
         source: SessionSource,
         history: list[dict[str, Any]],
-    ) -> Optional[str]:
+    ) -> str | None:
         """Prepare inbound event text for the agent.
 
         Keep the normal inbound path and the queued follow-up path on the same
@@ -3308,7 +2977,7 @@ class GatewayRunner:
         # Get or create session
         session_entry = self.session_store.get_or_create_session(source)
         session_key = session_entry.session_key
-        
+
         # Emit session:start for new or auto-reset sessions
         _is_new_session = (
             session_entry.created_at == session_entry.updated_at
@@ -3321,13 +2990,13 @@ class GatewayRunner:
                 "session_id": session_entry.session_id,
                 "session_key": session_key,
             })
-        
+
         # Build session context
         context = build_session_context(source, self.config, session_entry)
-        
+
         # Set session context variables for tools (task-local, concurrency-safe)
         _session_env_tokens = self._set_session_env(context)
-        
+
         # Read privacy.redact_pii from config (re-read per message)
         _redact_pii = False
         try:
@@ -3340,7 +3009,7 @@ class GatewayRunner:
 
         # Build the context prompt to inject
         context_prompt = build_session_context_prompt(context, redact_pii=_redact_pii)
-        
+
         # If the previous session expired and was auto-reset, prepend a notice
         # so the agent knows this is a fresh conversation (not an intentional /reset).
         if getattr(session_entry, 'was_auto_reset', False):
@@ -3413,7 +3082,7 @@ class GatewayRunner:
         if _is_new_session and _auto:
             _skill_names = [_auto] if isinstance(_auto, str) else list(_auto)
             try:
-                from agent.skill_commands import _load_skill_payload, _build_skill_message
+                from agent.skill_commands import _build_skill_message, _load_skill_payload
                 _combined_parts: list[str] = []
                 _loaded_names: list[str] = []
                 for _sname in _skill_names:
@@ -3443,251 +3112,16 @@ class GatewayRunner:
 
         # Load conversation history from transcript
         history = self.session_store.load_transcript(session_entry.session_id)
-        
-        # -----------------------------------------------------------------
-        # Session hygiene: auto-compress pathologically large transcripts
-        #
-        # Long-lived gateway sessions can accumulate enough history that
-        # every new message rehydrates an oversized transcript, causing
-        # repeated truncation/context failures.  Detect this early and
-        # compress proactively — before the agent even starts.  (#628)
-        #
-        # Token source priority:
-        # 1. Actual API-reported prompt_tokens from the last turn
-        #    (stored in session_entry.last_prompt_tokens)
-        # 2. Rough char-based estimate (str(msg)//4). Overestimates
-        #    by 30-50% on code/JSON-heavy sessions, but that just
-        #    means hygiene fires a bit early — safe and harmless.
-        # -----------------------------------------------------------------
-        if history and len(history) >= 4:
-            from agent.model_metadata import (
-                estimate_messages_tokens_rough,
-                get_model_context_length,
-            )
 
-            # Read model + compression config from config.yaml.
-            # NOTE: hygiene threshold is intentionally HIGHER than the agent's
-            # own compressor (0.85 vs 0.50).  Hygiene is a safety net for
-            # sessions that grew too large between turns — it fires pre-agent
-            # to prevent API failures.  The agent's own compressor handles
-            # normal context management during its tool loop with accurate
-            # real token counts.  Having hygiene at 0.50 caused premature
-            # compression on every turn in long gateway sessions.
-            _hyg_model = "anthropic/claude-sonnet-4.6"
-            _hyg_threshold_pct = 0.85
-            _hyg_compression_enabled = True
-            _hyg_config_context_length = None
-            _hyg_provider = None
-            _hyg_base_url = None
-            _hyg_api_key = None
-            _hyg_data = {}
-            try:
-                _hyg_cfg_path = _spark_home / "config.yaml"
-                if _hyg_cfg_path.exists():
-                    import yaml as _hyg_yaml
-                    with open(_hyg_cfg_path, encoding="utf-8") as _hyg_f:
-                        _hyg_data = _hyg_yaml.safe_load(_hyg_f) or {}
-
-                    # Resolve model name (same logic as run_sync)
-                    _model_cfg = _hyg_data.get("model", {})
-                    if isinstance(_model_cfg, str):
-                        _hyg_model = _model_cfg
-                    elif isinstance(_model_cfg, dict):
-                        _hyg_model = _model_cfg.get("default") or _model_cfg.get("model") or _hyg_model
-                        # Read explicit context_length override from model config
-                        # (same as run_agent.py lines 995-1005)
-                        _raw_ctx = _model_cfg.get("context_length")
-                        if _raw_ctx is not None:
-                            try:
-                                _hyg_config_context_length = int(_raw_ctx)
-                            except (TypeError, ValueError):
-                                pass
-                        # Read provider for accurate context detection
-                        _hyg_provider = _model_cfg.get("provider") or None
-                        _hyg_base_url = _model_cfg.get("base_url") or None
-
-                    # Read compression settings — only use enabled flag.
-                    # The threshold is intentionally separate from the agent's
-                    # compression.threshold (hygiene runs higher).
-                    _comp_cfg = _hyg_data.get("compression", {})
-                    if isinstance(_comp_cfg, dict):
-                        _hyg_compression_enabled = str(
-                            _comp_cfg.get("enabled", True)
-                        ).lower() in ("true", "1", "yes")
-
-                try:
-                    _hyg_model, _hyg_runtime = self._resolve_session_agent_runtime(
-                        source=source,
-                        session_key=session_key,
-                        user_config=_hyg_data if isinstance(_hyg_data, dict) else None,
-                    )
-                    _hyg_provider = _hyg_runtime.get("provider") or _hyg_provider
-                    _hyg_base_url = _hyg_runtime.get("base_url") or _hyg_base_url
-                    _hyg_api_key = _hyg_runtime.get("api_key") or _hyg_api_key
-                except Exception:
-                    pass
-
-                # Check custom_providers per-model context_length
-                # (same fallback as run_agent.py lines 1171-1189).
-                # Must run after runtime resolution so _hyg_base_url is set.
-                if _hyg_config_context_length is None and _hyg_base_url:
-                    try:
-                        try:
-                            from spark_cli.config import get_compatible_custom_providers as _gw_gcp
-                            _hyg_custom_providers = _gw_gcp(_hyg_data)
-                        except Exception:
-                            _hyg_custom_providers = _hyg_data.get("custom_providers")
-                            if not isinstance(_hyg_custom_providers, list):
-                                _hyg_custom_providers = []
-                        for _cp in _hyg_custom_providers:
-                            if not isinstance(_cp, dict):
-                                continue
-                            _cp_url = (_cp.get("base_url") or "").rstrip("/")
-                            if _cp_url and _cp_url == _hyg_base_url.rstrip("/"):
-                                _cp_models = _cp.get("models", {})
-                                if isinstance(_cp_models, dict):
-                                    _cp_model_cfg = _cp_models.get(_hyg_model, {})
-                                    if isinstance(_cp_model_cfg, dict):
-                                        _cp_ctx = _cp_model_cfg.get("context_length")
-                                        if _cp_ctx is not None:
-                                            _hyg_config_context_length = int(_cp_ctx)
-                                break
-                    except (TypeError, ValueError):
-                        pass
-            except Exception:
-                pass
-
-            if _hyg_compression_enabled:
-                _hyg_context_length = get_model_context_length(
-                    _hyg_model,
-                    base_url=_hyg_base_url or "",
-                    api_key=_hyg_api_key or "",
-                    config_context_length=_hyg_config_context_length,
-                    provider=_hyg_provider or "",
-                )
-                _compress_token_threshold = int(
-                    _hyg_context_length * _hyg_threshold_pct
-                )
-                _warn_token_threshold = int(_hyg_context_length * 0.95)
-
-                _msg_count = len(history)
-
-                # Prefer actual API-reported tokens from the last turn
-                # (stored in session entry) over the rough char-based estimate.
-                _stored_tokens = session_entry.last_prompt_tokens
-                if _stored_tokens > 0:
-                    _approx_tokens = _stored_tokens
-                    _token_source = "actual"
-                else:
-                    _approx_tokens = estimate_messages_tokens_rough(history)
-                    _token_source = "estimated"
-                    # Note: rough estimates overestimate by 30-50% for code/JSON-heavy
-                    # sessions, but that just means hygiene fires a bit early — which
-                    # is safe and harmless.  The 85% threshold already provides ample
-                    # headroom (agent's own compressor runs at 50%).  A previous 1.4x
-                    # multiplier tried to compensate by inflating the threshold, but
-                    # 85% * 1.4 = 119% of context — which exceeds the model's limit
-                    # and prevented hygiene from ever firing for ~200K models (GLM-5).
-
-                # Hard safety valve: force compression if message count is
-                # extreme, regardless of token estimates.  This breaks the
-                # death spiral where API disconnects prevent token data
-                # collection, which prevents compression, which causes more
-                # disconnects.  400 messages is well above normal sessions
-                # but catches runaway growth before it becomes unrecoverable.
-                # (#2153)
-                _HARD_MSG_LIMIT = 400
-                _needs_compress = (
-                    _approx_tokens >= _compress_token_threshold
-                    or _msg_count >= _HARD_MSG_LIMIT
-                )
-
-                if _needs_compress:
-                    logger.info(
-                        "Session hygiene: %s messages, ~%s tokens (%s) — auto-compressing "
-                        "(threshold: %s%% of %s = %s tokens)",
-                        _msg_count, f"{_approx_tokens:,}", _token_source,
-                        int(_hyg_threshold_pct * 100),
-                        f"{_hyg_context_length:,}",
-                        f"{_compress_token_threshold:,}",
-                    )
-
-                    _hyg_meta = BasePlatformAdapter.source_metadata(source)
-
-                    try:
-                        from core.run_agent import AIAgent
-
-                        _hyg_model, _hyg_runtime = self._resolve_session_agent_runtime(
-                            source=source,
-                            session_key=session_key,
-                            user_config=_hyg_data if isinstance(_hyg_data, dict) else None,
-                        )
-                        if _hyg_runtime.get("api_key"):
-                            _hyg_msgs = [
-                                {"role": m.get("role"), "content": m.get("content")}
-                                for m in history
-                                if m.get("role") in ("user", "assistant")
-                                and m.get("content")
-                            ]
-
-                            if len(_hyg_msgs) >= 4:
-                                _hyg_agent = AIAgent(
-                                    **_hyg_runtime,
-                                    model=_hyg_model,
-                                    max_iterations=4,
-                                    quiet_mode=True,
-                                    enabled_toolsets=["memory"],
-                                    session_id=session_entry.session_id,
-                                )
-                                _hyg_agent._print_fn = lambda *a, **kw: None
-
-                                loop = asyncio.get_event_loop()
-                                _compressed, _ = await loop.run_in_executor(
-                                    None,
-                                    lambda: _hyg_agent._compress_context(
-                                        _hyg_msgs, "",
-                                        approx_tokens=_approx_tokens,
-                                    ),
-                                )
-
-                                # _compress_context ends the old session and creates
-                                # a new session_id.  Write compressed messages into
-                                # the NEW session so the old transcript stays intact
-                                # and searchable via session_search.
-                                _hyg_new_sid = _hyg_agent.session_id
-                                if _hyg_new_sid != session_entry.session_id:
-                                    session_entry.session_id = _hyg_new_sid
-                                    self.session_store._save()
-
-                                self.session_store.rewrite_transcript(
-                                    session_entry.session_id, _compressed
-                                )
-                                # Reset stored token count — transcript was rewritten
-                                session_entry.last_prompt_tokens = 0
-                                history = _compressed
-                                _new_count = len(_compressed)
-                                _new_tokens = estimate_messages_tokens_rough(
-                                    _compressed
-                                )
-
-                                logger.info(
-                                    "Session hygiene: compressed %s → %s msgs, "
-                                    "~%s → ~%s tokens",
-                                    _msg_count, _new_count,
-                                    f"{_approx_tokens:,}", f"{_new_tokens:,}",
-                                )
-
-                                if _new_tokens >= _warn_token_threshold:
-                                    logger.warning(
-                                        "Session hygiene: still ~%s tokens after "
-                                        "compression",
-                                        f"{_new_tokens:,}",
-                                    )
-
-                    except Exception as e:
-                        logger.warning(
-                            "Session hygiene auto-compress failed: %s", e
-                        )
+        history = await run_session_hygiene(
+            self,
+            source=source,
+            session_key=session_key,
+            session_entry=session_entry,
+            history=history,
+            spark_home=_spark_home,
+            logger=logger,
+        )
 
         # First-message onboarding -- only on the very first interaction ever
         if not history and not self.session_store.has_any_sessions():
@@ -3696,7 +3130,7 @@ class GatewayRunner:
                 "Briefly introduce yourself and mention that /help shows available commands. "
                 "Keep the introduction concise -- one or two sentences max.]"
             )
-        
+
         # One-time prompt if no home channel is set for this platform
         # Skip for webhooks - they deliver directly to configured targets (github_comment, etc.)
         if not history and source.platform and source.platform != Platform.LOCAL and source.platform != Platform.WEBHOOK:
@@ -3713,7 +3147,7 @@ class GatewayRunner:
                         f"Type /sethome to make this chat your home channel, "
                         f"or ignore to skip."
                     )
-        
+
         # -----------------------------------------------------------------
         # Voice channel awareness — inject current voice channel state
         # into context so the agent knows who is in the channel and who
@@ -3848,7 +3282,7 @@ class GatewayRunner:
                 **hook_ctx,
                 "response": (response or "")[:500],
             })
-            
+
             # Check for pending process watchers (check_interval on background processes)
             try:
                 from tools.process_registry import process_registry
@@ -3887,7 +3321,7 @@ class GatewayRunner:
             # the time we reach here the approval has already been resolved.  The
             # old post-loop pop_pending + approval_hint code was removed in favour
             # of the blocking approach that mirrors CLI's synchronous input().
-            
+
             # Save the full conversation to the transcript, including tool calls.
             # This preserves the complete agent loop (tool_calls, tool results,
             # intermediate reasoning) so sessions can be resumed with full context
@@ -3909,7 +3343,7 @@ class GatewayRunner:
                 )
 
             ts = datetime.now().isoformat()
-            
+
             # If this is a fresh session (no history), write the full tool
             # definitions as the first entry so the transcript is self-describing
             # -- the same list of dicts sent as tools=[...] in the API request.
@@ -3927,7 +3361,7 @@ class GatewayRunner:
                         "timestamp": ts,
                     }
                 )
-            
+
             # Find only the NEW messages from this turn (skip history we loaded).
             # Use the filtered history length (history_offset) that was actually
             # passed to the agent, not len(history) which includes session_meta
@@ -3935,7 +3369,7 @@ class GatewayRunner:
             if not agent_failed_early:
                 history_len = agent_result.get("history_offset", len(history))
                 new_messages = agent_messages[history_len:] if len(agent_messages) > history_len else []
-                
+
                 # If no new messages found (edge case), fall back to simple user/assistant
                 if not new_messages:
                     self.session_store.append_to_transcript(
@@ -3963,7 +3397,7 @@ class GatewayRunner:
                             session_entry.session_id, entry,
                             skip_db=agent_persisted,
                         )
-            
+
             # Token counts and model are now persisted by the agent directly.
             # Keep only last_prompt_tokens here for context-window tracking and
             # compression decisions.
@@ -3998,7 +3432,7 @@ class GatewayRunner:
                 return None
 
             return response
-            
+
         except Exception as e:
             # Stop typing indicator on error too
             try:
@@ -4057,7 +3491,7 @@ class GatewayRunner:
         finally:
             # Restore session context variables to their pre-handler state
             self._clear_session_env(_session_env_tokens)
-    
+
     def _format_session_info(self) -> str:
         """Resolve current model config and return a formatted info block.
 
@@ -4065,7 +3499,7 @@ class GatewayRunner:
         users can immediately see if context detection went wrong (e.g.
         local models falling to the 128K default).
         """
-        from agent.model_metadata import get_model_context_length, DEFAULT_FALLBACK_CONTEXT
+        from agent.model_metadata import DEFAULT_FALLBACK_CONTEXT, get_model_context_length
 
         model = _resolve_gateway_model()
         config_context_length = None
@@ -4140,10 +3574,10 @@ class GatewayRunner:
     async def _handle_reset_command(self, event: MessageEvent) -> str:
         """Handle /new or /reset command."""
         source = event.source
-        
+
         # Get existing session key
         session_key = self._session_key_for_source(source)
-        
+
         # Flush memories in the background (fire-and-forget) so the user
         # gets the "Session reset!" response immediately.
         try:
@@ -4246,11 +3680,12 @@ class GatewayRunner:
         if session_info:
             return f"{header}\n\n{session_info}{_tip_line}"
         return f"{header}{_tip_line}"
-    
+
     async def _handle_profile_command(self, event: MessageEvent) -> str:
         """Handle /profile — show active profile name and home directory."""
-        from core.spark_constants import get_spark_home, display_spark_home
         from pathlib import Path
+
+        from core.spark_constants import display_spark_home, get_spark_home
 
         home = get_spark_home()
         display = display_spark_home()
@@ -4312,7 +3747,7 @@ class GatewayRunner:
         ])
 
         return "\n".join(lines)
-    
+
     async def _handle_stop_command(self, event: MessageEvent) -> str:
         """Handle /stop command - interrupt a running agent.
 
@@ -4458,8 +3893,8 @@ class GatewayRunner:
         if page != requested_page:
             lines.append(f"_(Requested page {requested_page} was out of range, showing page {page}.)_")
         return "\n".join(lines)
-    
-    async def _handle_model_command(self, event: MessageEvent) -> Optional[str]:
+
+    async def _handle_model_command(self, event: MessageEvent) -> str | None:
         """Handle /model command — switch the universal model config.
 
         Supports:
@@ -4469,11 +3904,14 @@ class GatewayRunner:
           /model <name> --provider <provider> — switch provider + model
           /model --provider <provider>        — switch to provider, auto-detect model
         """
-        from spark_cli.model_switch import (
-            switch_model as _switch_model, parse_model_flags,
-            list_authenticated_providers,
-        )
         from spark_cli.model_config import read_global_model_config, write_model_switch_result
+        from spark_cli.model_switch import (
+            list_authenticated_providers,
+            parse_model_flags,
+        )
+        from spark_cli.model_switch import (
+            switch_model as _switch_model,
+        )
         from spark_cli.providers import get_label
 
         raw_args = event.get_command_args().strip()
@@ -4676,10 +4114,11 @@ class GatewayRunner:
     async def _handle_provider_command(self, event: MessageEvent) -> str:
         """Handle /provider command - show available providers."""
         import yaml
+
         from spark_cli.models import (
+            _PROVIDER_LABELS,
             list_available_providers,
             normalize_provider,
-            _PROVIDER_LABELS,
         )
 
         # Resolve current provider from config
@@ -4729,7 +4168,7 @@ class GatewayRunner:
         lines.append("Switch: `/model provider:model-name`")
         lines.append("Setup: `spark setup`")
         return "\n".join(lines)
-    
+
     async def _handle_personality_command(self, event: MessageEvent) -> str:
         """Handle /personality command - list or set a personality."""
         import yaml
@@ -4739,7 +4178,7 @@ class GatewayRunner:
 
         try:
             if config_path.exists():
-                with open(config_path, 'r', encoding="utf-8") as f:
+                with open(config_path, encoding="utf-8") as f:
                     config = yaml.safe_load(f) or {}
                 personalities = config.get("agent", {}).get("personalities", {})
             else:
@@ -4803,13 +4242,13 @@ class GatewayRunner:
 
         available = "`none`, " + ", ".join(f"`{n}`" for n in personalities)
         return f"Unknown personality: `{args}`\n\nAvailable: {available}"
-    
+
     async def _handle_retry_command(self, event: MessageEvent) -> str:
         """Handle /retry command - re-send the last user message."""
         source = event.source
         session_entry = self.session_store.get_or_create_session(source)
         history = self.session_store.load_transcript(session_entry.session_id)
-        
+
         # Find the last user message
         last_user_msg = None
         last_user_idx = None
@@ -4818,16 +4257,16 @@ class GatewayRunner:
                 last_user_msg = history[i].get("content", "")
                 last_user_idx = i
                 break
-        
+
         if not last_user_msg:
             return "No previous message to retry."
-        
+
         # Truncate history to before the last user message and persist
         truncated = history[:last_user_idx]
         self.session_store.rewrite_transcript(session_entry.session_id, truncated)
         # Reset stored token count — transcript was truncated
         session_entry.last_prompt_tokens = 0
-        
+
         # Re-send by creating a fake text event with the old message
         retry_event = MessageEvent(
             text=last_user_msg,
@@ -4835,44 +4274,44 @@ class GatewayRunner:
             source=source,
             raw_message=event.raw_message,
         )
-        
+
         # Let the normal message handler process it
         return await self._handle_message(retry_event)
-    
+
     async def _handle_undo_command(self, event: MessageEvent) -> str:
         """Handle /undo command - remove the last user/assistant exchange."""
         source = event.source
         session_entry = self.session_store.get_or_create_session(source)
         history = self.session_store.load_transcript(session_entry.session_id)
-        
+
         # Find the last user message and remove everything from it onward
         last_user_idx = None
         for i in range(len(history) - 1, -1, -1):
             if history[i].get("role") == "user":
                 last_user_idx = i
                 break
-        
+
         if last_user_idx is None:
             return "Nothing to undo."
-        
+
         removed_msg = history[last_user_idx].get("content", "")
         removed_count = len(history) - last_user_idx
         self.session_store.rewrite_transcript(session_entry.session_id, history[:last_user_idx])
         # Reset stored token count — transcript was truncated
         session_entry.last_prompt_tokens = 0
-        
+
         preview = removed_msg[:40] + "..." if len(removed_msg) > 40 else removed_msg
         return f"↩️ Undid {removed_count} message(s).\nRemoved: \"{preview}\""
-    
+
     async def _handle_set_home_command(self, event: MessageEvent) -> str:
         """Handle /sethome command -- set the current chat as the platform's home channel."""
         source = event.source
         platform_name = source.platform.value if source.platform else "unknown"
         chat_id = source.chat_id
         chat_name = source.chat_name or chat_id
-        
+
         env_key = f"{platform_name.upper()}_HOME_CHANNEL"
-        
+
         # Save to config.yaml
         try:
             import yaml
@@ -4887,14 +4326,14 @@ class GatewayRunner:
             os.environ[env_key] = str(chat_id)
         except Exception as e:
             return f"Failed to save home channel: {e}"
-        
+
         return (
             f"✅ Home channel set to **{chat_name}** (ID: {chat_id}).\n"
             f"Cron jobs and cross-platform messages will be delivered here."
         )
-    
+
     @staticmethod
-    def _get_guild_id(event: MessageEvent) -> Optional[int]:
+    def _get_guild_id(event: MessageEvent) -> int | None:
         """Extract Discord guild_id from the raw message object."""
         raw = getattr(event, "raw_message", None)
         if raw is None:
@@ -5186,7 +4625,7 @@ class GatewayRunner:
         audio_path = None
         actual_path = None
         try:
-            from tools.tts_tool import text_to_speech_tool, _strip_markdown_for_tts
+            from tools.tts_tool import _strip_markdown_for_tts, text_to_speech_tool
 
             tts_text = _strip_markdown_for_tts(text[:4000])
             if not tts_text:
@@ -5395,8 +4834,9 @@ class GatewayRunner:
     async def _handle_config_command(self, event: MessageEvent) -> str:
         """Handle /config — show current configuration."""
         try:
-            from spark_cli.config import load_config
             import yaml
+
+            from spark_cli.config import load_config
             cfg = load_config()
             if hasattr(cfg, "_data"):
                 data = cfg._data
@@ -5431,9 +4871,11 @@ class GatewayRunner:
             if not names:
                 return f"Usage: `/tools {subcommand} <name> [name …]`"
             try:
+                import io
+                import sys
                 from argparse import Namespace
+
                 from spark_cli.tools_config import tools_disable_enable_command
-                import io, sys
                 buf = io.StringIO()
                 old_stdout = sys.stdout
                 sys.stdout = buf
@@ -5467,6 +4909,7 @@ class GatewayRunner:
         """Handle /toolsets — list available toolsets."""
         try:
             from tools.toolsets import get_all_toolsets, get_toolset_info
+
             from spark_cli.config import load_config
             from spark_cli.tools_config import _get_platform_tools
             cfg = load_config()
@@ -5526,8 +4969,9 @@ class GatewayRunner:
     async def _handle_cron_gateway_command(self, event: MessageEvent) -> str:
         """Handle /cron [list] — list scheduled tasks."""
         try:
-            from tools.cronjob_tools import cronjob as cronjob_tool
             import json
+
+            from tools.cronjob_tools import cronjob as cronjob_tool
             result = json.loads(cronjob_tool(action="list"))
             jobs = result.get("jobs", []) if isinstance(result, dict) else []
             if not jobs:
@@ -5573,8 +5017,8 @@ class GatewayRunner:
 
     async def _handle_files_gateway_command(self, event: MessageEvent) -> str:
         """Handle /files — list workspace files."""
-        import os
         import glob
+        import os
         try:
             cwd = os.environ.get("TERMINAL_CWD", os.getcwd())
             files = sorted(glob.glob("**/*", recursive=True, root_dir=cwd))
@@ -5597,6 +5041,7 @@ class GatewayRunner:
         """Handle /save — save conversation transcript to a file."""
         import json
         from datetime import datetime
+
         from core.spark_constants import get_spark_home
         source = event.source
         session_entry = self.session_store.get_or_create_session(source)
@@ -6131,6 +5576,7 @@ class GatewayRunner:
     async def _handle_goal_command(self, event: MessageEvent) -> str:
         """Handle /goal — durable cross-session objective tracking via Kanban board."""
         import re as _re
+
         from core import goal as goal_mod
 
         args = event.get_command_args().strip()
@@ -6307,6 +5753,7 @@ class GatewayRunner:
     async def _handle_fast_command(self, event: MessageEvent) -> str:
         """Handle /fast — mirror the CLI Priority Processing toggle in gateway chats."""
         import yaml
+
         from spark_cli.models import model_supports_fast_mode
 
         args = event.get_command_args().strip().lower()
@@ -6467,9 +5914,9 @@ class GatewayRunner:
         focus_topic = (event.get_command_args() or "").strip() or None
 
         try:
-            from core.run_agent import AIAgent
             from agent.manual_compression_feedback import summarize_manual_compression
             from agent.model_metadata import estimate_messages_tokens_rough
+            from core.run_agent import AIAgent
 
             session_key = self._session_key_for_source(source)
             model, runtime_kwargs = self._resolve_session_agent_runtime(
@@ -6880,8 +6327,8 @@ class GatewayRunner:
                     i += 1
 
         try:
-            from core.spark_state import SessionDB
             from agent.insights import InsightsEngine
+            from core.spark_state import SessionDB
 
             loop = _asyncio.get_event_loop()
 
@@ -6971,7 +6418,7 @@ class GatewayRunner:
         """Handle /reload-mcp command -- disconnect and reconnect all MCP servers."""
         loop = asyncio.get_event_loop()
         try:
-            from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools, _servers, _lock
+            from tools.mcp_tool import _lock, _servers, discover_mcp_tools, shutdown_mcp_servers
 
             # Capture old server names before shutdown
             with _lock:
@@ -7040,7 +6487,7 @@ class GatewayRunner:
 
     _APPROVAL_TIMEOUT_SECONDS = 300  # 5 minutes
 
-    async def _handle_approve_command(self, event: MessageEvent) -> Optional[str]:
+    async def _handle_approve_command(self, event: MessageEvent) -> str | None:
         """Handle /approve command — unblock waiting agent thread(s).
 
         The agent thread(s) are blocked inside tools/approval.py waiting for
@@ -7064,7 +6511,8 @@ class GatewayRunner:
         session_key = self._session_key_for_source(source)
 
         from tools.approval import (
-            resolve_gateway_approval, has_blocking_approval,
+            has_blocking_approval,
+            resolve_gateway_approval,
         )
 
         if not has_blocking_approval(session_key):
@@ -7113,7 +6561,8 @@ class GatewayRunner:
         session_key = self._session_key_for_source(source)
 
         from tools.approval import (
-            resolve_gateway_approval, has_blocking_approval,
+            has_blocking_approval,
+            resolve_gateway_approval,
         )
 
         if not has_blocking_approval(session_key):
@@ -7150,6 +6599,7 @@ class GatewayRunner:
     async def _handle_feedback_command(self, event: MessageEvent) -> str:
         """Handle /feedback — accept inline note and POST to n8n webhook."""
         import shlex
+
         import httpx
 
         AREAS = ["Workspace", "Tasks", "Chat", "Cron", "Skills", "Settings"]
@@ -7209,8 +6659,11 @@ class GatewayRunner:
     async def _handle_debug_command(self, event: MessageEvent) -> str:
         """Handle /debug — upload debug report + logs and return paste URLs."""
         import asyncio
+
         from spark_cli.debug import (
-            _capture_dump, collect_debug_report, _read_full_log,
+            _capture_dump,
+            _read_full_log,
+            collect_debug_report,
             upload_to_pastebin,
         )
 
@@ -7273,7 +6726,8 @@ class GatewayRunner:
         import shutil
         import subprocess
         from datetime import datetime
-        from spark_cli.config import is_managed, format_managed_message
+
+        from spark_cli.config import format_managed_message, is_managed
 
         # Block non-messaging platforms (API server, webhooks, ACP)
         platform = event.source.platform
@@ -7476,7 +6930,7 @@ class GatewayRunner:
                     if exit_code == 0:
                         await adapter.send(chat_id, "✅ Spark update finished.")
                     else:
-                        await adapter.send(chat_id, "❌ Spark update failed (exit code {}).".format(exit_code))
+                        await adapter.send(chat_id, f"❌ Spark update failed (exit code {exit_code}).")
                     logger.info("Update finished (exit=%s), notified %s", exit_code, session_key)
                 except Exception as e:
                     logger.warning("Update final notification failed: %s", e)
@@ -7721,7 +7175,7 @@ class GatewayRunner:
         """Restore session context variables to their pre-handler values."""
         from gateway.session_context import clear_session_vars
         clear_session_vars(tokens)
-    
+
     async def _enrich_message_with_vision(
         self,
         user_text: str,
@@ -7743,8 +7197,9 @@ class GatewayRunner:
         Returns:
             The enriched message string with vision descriptions prepended.
         """
-        from tools.vision_tools import vision_analyze_tool
         import json as _json
+
+        from tools.vision_tools import vision_analyze_tool
 
         analysis_prompt = (
             "Describe everything visible in this image in thorough detail. "
@@ -7818,8 +7273,9 @@ class GatewayRunner:
                 return f"{disabled_note}\n\n{user_text}"
             return disabled_note
 
-        from tools.transcription_tools import transcribe_audio
         import asyncio
+
+        from tools.transcription_tools import transcribe_audio
 
         enriched_parts = []
         for path in audio_paths:
@@ -7978,9 +7434,9 @@ class GatewayRunner:
                             break
                     if adapter and chat_id:
                         try:
+                            from gateway.config import Platform
                             from gateway.platforms.base import MessageEvent, MessageType
                             from gateway.session import SessionSource
-                            from gateway.config import Platform
                             _platform_enum = Platform(platform_name)
                             _source = SessionSource(
                                 platform=_platform_enum,
@@ -8067,7 +7523,8 @@ class GatewayRunner:
         reused — preserving the frozen system prompt and tool schemas for
         prompt cache hits.
         """
-        import hashlib, json as _j
+        import hashlib
+        import json as _j
 
         # Fingerprint the FULL credential string instead of using a short
         # prefix. OAuth/JWT-style tokens frequently share a common prefix
@@ -8119,7 +7576,7 @@ class GatewayRunner:
         session_id: str,
         session_key: str = None,
         _interrupt_depth: int = 0,
-        event_message_id: Optional[str] = None,
+        event_message_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Run the agent with the given message and context.
@@ -8133,9 +7590,10 @@ class GatewayRunner:
         This is run in a thread pool to not block the event loop.
         Supports interruption via new messages.
         """
-        from core.run_agent import AIAgent
         import queue
-        
+
+        from core.run_agent import AIAgent
+
         user_config = _load_gateway_config()
         self._refresh_live_config_state(user_config)
         platform_key = _platform_config_key(source.platform)
@@ -8181,13 +7639,13 @@ class GatewayRunner:
                 default=True,
             )
         )
-        
+
         # Queue for progress messages (thread-safe)
         progress_queue = queue.Queue() if tool_progress_enabled else None
         last_tool = [None]  # Mutable container for tracking in closure
         last_progress_msg = [None]  # Track last message for dedup
         repeat_count = [0]  # How many times the same message repeated
-        
+
         def progress_callback(event_type: str, tool_name: str = None, preview: str = None, args: dict = None, **kwargs):
             """Callback invoked by agent on tool lifecycle events."""
             if not progress_queue:
@@ -8201,11 +7659,11 @@ class GatewayRunner:
             if progress_mode == "new" and tool_name == last_tool[0]:
                 return
             last_tool[0] = tool_name
-            
+
             # Build progress message with primary argument preview
             from agent.display import get_tool_emoji
             emoji = get_tool_emoji(tool_name, default="⚙️")
-            
+
             # Verbose mode: show detailed arguments, respects tool_preview_length
             if progress_mode == "verbose":
                 if args:
@@ -8225,7 +7683,7 @@ class GatewayRunner:
                     msg = f"{emoji} {tool_name}..."
                 progress_queue.put(msg)
                 return
-            
+
             # "all" / "new" modes: short preview, respects tool_preview_length
             # config (defaults to 40 chars when unset to keep gateway messages
             # compact — unlike CLI spinners, these persist as permanent messages).
@@ -8238,7 +7696,7 @@ class GatewayRunner:
                 msg = f"{emoji} {tool_name}: \"{preview}\""
             else:
                 msg = f"{emoji} {tool_name}..."
-            
+
             # Dedup: collapse consecutive identical progress messages.
             # Common with execute_code where models iterate with the same
             # code (same boilerplate imports → identical previews).
@@ -8250,9 +7708,9 @@ class GatewayRunner:
                 return
             last_progress_msg[0] = msg
             repeat_count[0] = 0
-            
+
             progress_queue.put(msg)
-        
+
         # Background task to send progress messages
         # Accumulates tool lines into a single message that gets edited.
         #
@@ -8388,13 +7846,13 @@ class GatewayRunner:
                 except Exception as e:
                     logger.error("Progress message error: %s", e)
                     await asyncio.sleep(1)
-        
+
         # We need to share the agent instance for interrupt support
         agent_holder = [None]  # Mutable container for the agent instance
         result_holder = [None]  # Mutable container for the result
         tools_holder = [None]   # Mutable container for the tool definitions
         stream_consumer_holder = [None]  # Mutable container for stream consumer
-        
+
         # Bridge sync step_callback → async hooks.emit for agent:step events
         _loop_for_step = asyncio.get_event_loop()
         _hooks_ref = self.hooks
@@ -8459,11 +7917,11 @@ class GatewayRunner:
 
             # Read from env var or use default (same as CLI)
             max_iterations = int(os.getenv("SPARK_MAX_ITERATIONS", "90"))
-            
+
             # Map platform enum to the platform hint key the agent understands.
             # Platform.LOCAL ("local") maps to "cli"; others pass through as-is.
             platform_key = "cli" if source.platform == Platform.LOCAL else source.platform.value
-            
+
             # Combine platform context with user-configured ephemeral system prompt
             combined_ephemeral = context_prompt or ""
             if self._ephemeral_system_prompt:
@@ -8665,7 +8123,7 @@ class GatewayRunner:
             agent_holder[0] = agent
             # Capture the full tool definitions for transcript logging
             tools_holder[0] = agent.tools if hasattr(agent, 'tools') else None
-            
+
             # Convert history to agent format.
             # Two cases:
             #   1. Normal path (from transcript): simple {role, content, timestamp} dicts
@@ -8679,22 +8137,22 @@ class GatewayRunner:
                 role = msg.get("role")
                 if not role:
                     continue
-                
+
                 # Skip metadata entries (tool definitions, session info)
                 # -- these are for transcript logging, not for the LLM
                 if role in ("session_meta",):
                     continue
-                
+
                 # Skip system messages -- the agent rebuilds its own system prompt
                 if role == "system":
                     continue
-                
+
                 # Rich agent messages (tool_calls, tool results) must be passed
                 # through intact so the API sees valid assistant→tool sequences
                 has_tool_calls = "tool_calls" in msg
                 has_tool_call_id = "tool_call_id" in msg
                 is_tool_message = role == "tool"
-                
+
                 if has_tool_calls or has_tool_call_id or is_tool_message:
                     clean_msg = {k: v for k, v in msg.items() if k != "timestamp"}
                     agent_history.append(clean_msg)
@@ -8718,7 +8176,7 @@ class GatewayRunner:
                                 if _rval:
                                     entry[_rkey] = _rval
                         agent_history.append(entry)
-            
+
             # Collect MEDIA paths already in history so we can exclude them
             # from the current turn's extraction. This is compression-safe:
             # even if the message list shrinks, we know which paths are old.
@@ -8731,7 +8189,7 @@ class GatewayRunner:
                             _p = _match.group(1).strip().rstrip('",}')
                             if _p:
                                 _history_media_paths.add(_p)
-            
+
             # Register per-session gateway approval callback so dangerous
             # command approval blocks the agent thread (mirrors CLI input()).
             # The callback bridges sync→async to send the approval request
@@ -8824,7 +8282,7 @@ class GatewayRunner:
             # Signal the stream consumer that the agent is done
             if _stream_consumer is not None:
                 _stream_consumer.finish()
-            
+
             # Return final response, or a message if something went wrong
             final_response = result.get("final_response")
 
@@ -8852,7 +8310,7 @@ class GatewayRunner:
                     "output_tokens": _output_toks,
                     "model": _resolved_model,
                 }
-            
+
             # Scan tool results for MEDIA:<path> tags that need to be delivered
             # as native audio/file attachments.  The TTS tool embeds MEDIA: tags
             # in its JSON response, but the model's final text reply usually
@@ -8876,7 +8334,7 @@ class GatewayRunner:
                                     media_tags.append(f"MEDIA:{path}")
                             if "[[audio_as_voice]]" in content:
                                 has_voice_directive = True
-                
+
                 if media_tags:
                     seen = set()
                     unique_tags = []
@@ -8887,7 +8345,7 @@ class GatewayRunner:
                     if has_voice_directive:
                         unique_tags.insert(0, "[[audio_as_voice]]")
                     final_response = final_response + "\n" + "\n".join(unique_tags)
-            
+
             # Sync session_id: the agent may have created a new session during
             # mid-run context compression (_compress_context splits sessions).
             # If so, update the session store entry so the NEXT message loads
@@ -8943,7 +8401,7 @@ class GatewayRunner:
                 "session_id": effective_session_id,
                 "response_previewed": result.get("response_previewed", False),
             }
-        
+
         # Start progress message sender if enabled
         progress_task = None
         if tool_progress_enabled:
@@ -8962,7 +8420,7 @@ class GatewayRunner:
                 await asyncio.sleep(0.05)
 
         stream_task = asyncio.create_task(_start_stream_consumer())
-        
+
         # Track this agent as running for this session (for interrupt support)
         # We do this in a callback after the agent is created
         async def track_agent():
@@ -8973,9 +8431,9 @@ class GatewayRunner:
                 self._running_agents[session_key] = agent_holder[0]
                 if self._draining:
                     self._update_runtime_status("draining")
-        
+
         tracking_task = asyncio.create_task(track_agent())
-        
+
         # Monitor for interrupts from the adapter (new messages arriving).
         # This is the PRIMARY interrupt path for regular text messages —
         # Level 1 (base.py) catches them before _handle_message() is reached,
@@ -9021,7 +8479,7 @@ class GatewayRunner:
                     raise
                 except Exception as _mon_err:
                     logger.debug("monitor_for_interrupt error (will retry): %s", _mon_err)
-        
+
         interrupt_monitor = asyncio.create_task(monitor_for_interrupt())
 
         # Periodic "still working" notifications for long-running tasks.
@@ -9264,7 +8722,7 @@ class GatewayRunner:
             # Check if we were interrupted OR have a queued message (/queue).
             result = result_holder[0]
             adapter = self.adapters.get(source.platform)
-            
+
             # Get pending message from adapter.
             # Use session_key (not source.chat_id) to match adapter's storage keys.
             pending_event = None
@@ -9341,7 +8799,7 @@ class GatewayRunner:
                     if _sc and stream_task:
                         try:
                             await asyncio.wait_for(stream_task, timeout=5.0)
-                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                        except (TimeoutError, asyncio.CancelledError):
                             stream_task.cancel()
                             try:
                                 await stream_task
@@ -9410,13 +8868,13 @@ class GatewayRunner:
             if stream_task:
                 try:
                     await asyncio.wait_for(stream_task, timeout=5.0)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
+                except (TimeoutError, asyncio.CancelledError):
                     stream_task.cancel()
                     try:
                         await stream_task
                     except asyncio.CancelledError:
                         pass
-            
+
             # Clean up tracking
             tracking_task.cancel()
             if session_key and session_key in self._running_agents:
@@ -9425,7 +8883,7 @@ class GatewayRunner:
                 self._running_agents_ts.pop(session_key, None)
             if self._draining:
                 self._update_runtime_status("draining")
-            
+
             # Wait for cancelled tasks
             for task in [progress_task, interrupt_monitor, tracking_task, _notify_task]:
                 if task:
@@ -9450,69 +8908,25 @@ class GatewayRunner:
                 )
             ):
                 response["already_sent"] = True
-        
+
         return response
 
 
 def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, interval: int = 60):
-    """
-    Background thread that ticks the cron scheduler at a regular interval.
-    
-    Runs inside the gateway process so cronjobs fire automatically without
-    needing a separate `spark cron daemon` or system cron entry.
-
-    When ``adapters`` and ``loop`` are provided, passes them through to the
-    cron delivery path so live adapters can be used for E2EE rooms.
-
-    Also refreshes the channel directory every 5 minutes and prunes the
-    image/audio/document cache once per hour.
-    """
-    from cron.scheduler import tick as cron_tick
-    from gateway.platforms.base import cleanup_image_cache, cleanup_document_cache
-
-    IMAGE_CACHE_EVERY = 60   # ticks — once per hour at default 60s interval
-    CHANNEL_DIR_EVERY = 5    # ticks — every 5 minutes
-
-    logger.info("Cron ticker started (interval=%ds)", interval)
-    tick_count = 0
-    while not stop_event.is_set():
-        try:
-            cron_tick(verbose=False, adapters=adapters, loop=loop)
-        except Exception as e:
-            logger.debug("Cron tick error: %s", e)
-
-        tick_count += 1
-
-        if tick_count % CHANNEL_DIR_EVERY == 0 and adapters:
-            try:
-                from gateway.channel_directory import build_channel_directory
-                build_channel_directory(adapters)
-            except Exception as e:
-                logger.debug("Channel directory refresh error: %s", e)
-
-        if tick_count % IMAGE_CACHE_EVERY == 0:
-            try:
-                removed = cleanup_image_cache(max_age_hours=24)
-                if removed:
-                    logger.info("Image cache cleanup: removed %d stale file(s)", removed)
-            except Exception as e:
-                logger.debug("Image cache cleanup error: %s", e)
-            try:
-                removed = cleanup_document_cache(max_age_hours=24)
-                if removed:
-                    logger.info("Document cache cleanup: removed %d stale file(s)", removed)
-            except Exception as e:
-                logger.debug("Document cache cleanup error: %s", e)
-
-        stop_event.wait(timeout=interval)
-    logger.info("Cron ticker stopped")
+    """Compatibility wrapper for gateway.cron_tick.start_cron_ticker."""
+    return start_cron_ticker(
+        stop_event,
+        adapters=adapters,
+        loop=loop,
+        interval=interval,
+    )
 
 
 async def start_gateway(
-    config: Optional[GatewayConfig] = None,
+    config: GatewayConfig | None = None,
     replace: bool = False,
-    verbosity: Optional[int] = 0,
-    on_runner: Optional[Callable[["GatewayRunner"], None]] = None,
+    verbosity: int | None = 0,
+    on_runner: Callable[["GatewayRunner"], None] | None = None,
 ) -> bool:
     """
     Start the gateway and run until interrupted.
@@ -9533,6 +8947,7 @@ async def start_gateway(
     # setups (each profile using a distinct SPARK_HOME) will naturally
     # allow concurrent instances without tripping this guard.
     import time as _time
+
     from gateway.status import get_running_pid, remove_pid_file, terminate_pid
     existing_pid = get_running_pid()
     if existing_pid is not None and existing_pid != os.getpid():
@@ -9641,7 +9056,7 @@ async def start_gateway(
 
     def restart_signal_handler():
         runner.request_restart(detached=False, via_service=True)
-    
+
     loop = asyncio.get_event_loop()
     if threading.current_thread() is threading.main_thread():
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -9656,7 +9071,7 @@ async def start_gateway(
                 pass
     else:
         logger.info("Skipping signal handlers (not running in main thread).")
-    
+
     # Start the gateway
     success = await runner.start()
     if not success:
@@ -9665,25 +9080,21 @@ async def start_gateway(
         if runner.exit_reason:
             logger.error("Gateway exiting cleanly: %s", runner.exit_reason)
         return True
-    
+
     # Write PID file so CLI can detect gateway is running
     import atexit
-    from gateway.status import write_pid_file, remove_pid_file
+
+    from gateway.status import remove_pid_file, write_pid_file
     write_pid_file()
     atexit.register(remove_pid_file)
-    
+
     # Start background cron ticker so scheduled jobs fire automatically.
     # Pass the event loop so cron delivery can use live adapters (E2EE support).
-    cron_stop = threading.Event()
-    cron_thread = threading.Thread(
-        target=_start_cron_ticker,
-        args=(cron_stop,),
-        kwargs={"adapters": runner.adapters, "loop": asyncio.get_running_loop()},
-        daemon=True,
-        name="cron-ticker",
+    cron_stop, cron_thread = start_cron_thread(
+        adapters=runner.adapters,
+        loop=asyncio.get_running_loop(),
     )
-    cron_thread.start()
-    
+
     # Wait for shutdown
     await runner.wait_for_shutdown()
 
@@ -9691,7 +9102,7 @@ async def start_gateway(
         if runner.exit_reason:
             logger.error("Gateway exiting with failure: %s", runner.exit_reason)
         return False
-    
+
     # Stop cron ticker cleanly
     cron_stop.set()
     cron_thread.join(timeout=5)
@@ -9712,20 +9123,20 @@ async def start_gateway(
 def main():
     """CLI entry point for the gateway."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Spark Gateway - Multi-platform messaging")
     parser.add_argument("--config", "-c", help="Path to gateway config file")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-    
+
     args = parser.parse_args()
-    
+
     config = None
     if args.config:
         import json
         with open(args.config, encoding="utf-8") as f:
             data = json.load(f)
             config = GatewayConfig.from_dict(data)
-    
+
     # Run the gateway - exit with code 1 if no platforms connected,
     # so systemd Restart=on-failure will retry on transient errors (e.g. DNS)
     success = asyncio.run(start_gateway(config))

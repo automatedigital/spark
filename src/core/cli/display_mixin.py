@@ -15,6 +15,9 @@ from typing import Any
 
 from rich.markup import escape as _escape
 
+# Defined in core/cli/__init__.py before this module is imported, so these
+# resolve at import time without a circular dependency.
+from core.cli import ChatConsole, _skill_commands  # noqa: E402
 from core.cli.attachments import (
     _IMAGE_EXTENSIONS,
     _resolve_attachment_path,
@@ -27,10 +30,6 @@ from core.model_tools import get_tool_definitions, get_toolset_for_tool
 from core.spark_constants import display_spark_home, get_spark_home
 from core.spark_constants import is_termux as _is_termux_environment
 from core.toolsets import get_all_toolsets, get_toolset_info
-
-# Defined in core/cli/__init__.py before this module is imported, so these
-# resolve at import time without a circular dependency.
-from core.cli import ChatConsole, _skill_commands  # noqa: E402
 
 
 class _DisplayCommandsMixin:
@@ -156,13 +155,13 @@ class _DisplayCommandsMixin:
             /snapshot restore <id>     - restore state from snapshot
             /snapshot prune [N]        - prune to N snapshots (default 20)
         """
+        from core.spark_constants import display_spark_home
         from spark_cli.backup import (
             create_quick_snapshot,
             list_quick_snapshots,
-            restore_quick_snapshot,
             prune_quick_snapshots,
+            restore_quick_snapshot,
         )
-        from core.spark_constants import display_spark_home
 
         parts = command.split()
         subcmd = parts[1].lower() if len(parts) > 1 else "list"
@@ -335,6 +334,7 @@ class _DisplayCommandsMixin:
         """
         import asyncio as _asyncio
         import json as _json
+
         from tools.vision_tools import vision_analyze_tool
 
         analysis_prompt = (
@@ -636,6 +636,7 @@ class _DisplayCommandsMixin:
         """
         import shlex
         from argparse import Namespace
+
         from spark_cli.tools_config import tools_disable_enable_command
 
         try:
@@ -671,8 +672,8 @@ class _DisplayCommandsMixin:
         )
 
         # Reset session so the new tool config is picked up from a clean state
-        from spark_cli.tools_config import _get_platform_tools
         from spark_cli.config import load_config
+        from spark_cli.tools_config import _get_platform_tools
 
         self.enabled_toolsets = _get_platform_tools(load_config(), "cli")
         self.new_session()
@@ -715,7 +716,7 @@ class _DisplayCommandsMixin:
 
     def _handle_profile_command(self):
         """Display active profile name and home directory."""
-        from core.spark_constants import get_spark_home, display_spark_home
+        from core.spark_constants import display_spark_home, get_spark_home
 
         home = get_spark_home()
         display = display_spark_home()

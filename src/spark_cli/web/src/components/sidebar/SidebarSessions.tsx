@@ -1,6 +1,6 @@
 /**
  * Global-sidebar session navigator: search, PINNED section and SESSIONS
- * grouped by workspace project. Hermes-style layout; backed by the shared
+ * grouped by project. Hermes-style layout; backed by the shared
  * session store.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -458,7 +458,7 @@ export function SidebarSessions({
                 )}
                 <button
                   type="button"
-                  title="New project workspace"
+                  title="New project"
                   className="rounded p-0.5 text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground"
                   onClick={() => setCreatingProject(true)}
                 >
@@ -533,7 +533,7 @@ export function SidebarSessions({
 
           {!collapsedSections.has("sessions") && (
             <>
-              {/* Project workspace groups */}
+              {/* Project groups */}
               {projects.map((project) => (
                 <ProjectGroup
                   key={project.slug}

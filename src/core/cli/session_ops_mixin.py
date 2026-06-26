@@ -24,7 +24,7 @@ class _SessionOpsMixin:
 
         With --publish, opt-in to upload the redacted file to a public GitHub Gist.
         """
-        from core.cli.render import _cprint, _DIM, _RST
+        from core.cli.render import _DIM, _RST, _cprint
         from spark_cli.session_export import export_session_redacted, publish_export
 
         tokens = cmd.strip().split()[1:]  # drop "/export"
@@ -485,7 +485,7 @@ class _SessionOpsMixin:
 
     def _show_gateway_status(self):
         """Show status of the gateway and connected messaging platforms."""
-        from gateway.config import load_gateway_config, Platform
+        from gateway.config import Platform, load_gateway_config
 
         print()
         print("+" + "-" * 60 + "+")

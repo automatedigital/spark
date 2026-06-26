@@ -23,8 +23,9 @@ Header schema (12 headers total):
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional
+from typing import Any
 
 
 @dataclass
@@ -92,7 +93,7 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 def parse_rate_limit_headers(
     headers: Mapping[str, str],
     provider: str = "",
-) -> Optional[RateLimitState]:
+) -> RateLimitState | None:
     """Parse x-ratelimit-* headers into a RateLimitState.
 
     Returns None if no rate limit headers are present.

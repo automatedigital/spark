@@ -31,7 +31,7 @@ const SHORTCUTS = [
     ],
   },
   {
-    context: "Workspace panel",
+    context: "Project panel",
     items: [
       { keys: ["⇧", "⌘", "P"], description: "Open Preview" },
       { keys: ["⌃", "`"], description: "Open Terminal" },

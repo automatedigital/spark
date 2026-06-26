@@ -30,10 +30,9 @@ import mimetypes
 import os
 import re
 import time
-from pathlib import Path
-from typing import Any, Dict, Optional, Set
-
 from html import escape as _html_escape
+from pathlib import Path
+from typing import Any
 
 try:
     from mautrix.types import (
@@ -103,6 +102,7 @@ MAX_MESSAGE_LENGTH = 4000
 # Store directory for E2EE keys and sync state.
 # Uses get_spark_home() so each profile gets its own Matrix store.
 from core.spark_constants import get_spark_dir as _get_spark_dir
+
 _STORE_DIR = _get_spark_dir("platforms/matrix/store", "matrix/store")
 _CRYPTO_DB_PATH = _STORE_DIR / "crypto.db"
 
@@ -227,14 +227,14 @@ class MatrixAdapter(BasePlatformAdapter):
 
         self._client: Any = None  # mautrix.client.Client
         self._crypto_db: Any = None  # mautrix.util.async_db.Database
-        self._sync_task: Optional[asyncio.Task] = None
+        self._sync_task: asyncio.Task | None = None
         self._closing = False
         self._startup_ts: float = 0.0
 
         # Cache: room_id → bool (is DM)
-        self._dm_rooms: Dict[str, bool] = {}
+        self._dm_rooms: dict[str, bool] = {}
         # Set of room IDs we've joined
-        self._joined_rooms: Set[str] = set()
+        self._joined_rooms: set[str] = set()
         # Event deduplication (bounded deque keeps newest entries)
         from collections import deque
         self._processed_events: deque = deque(maxlen=1000)
@@ -250,7 +250,7 @@ class MatrixAdapter(BasePlatformAdapter):
         # Mention/thread gating — parsed once from env vars.
         self._require_mention: bool = os.getenv("MATRIX_REQUIRE_MENTION", "true").lower() not in ("false", "0", "no")
         free_rooms_raw = os.getenv("MATRIX_FREE_RESPONSE_ROOMS", "")
-        self._free_rooms: Set[str] = {r.strip() for r in free_rooms_raw.split(",") if r.strip()}
+        self._free_rooms: set[str] = {r.strip() for r in free_rooms_raw.split(",") if r.strip()}
         self._auto_thread: bool = os.getenv("MATRIX_AUTO_THREAD", "true").lower() in ("true", "1", "yes")
         self._dm_mention_threads: bool = os.getenv("MATRIX_DM_MENTION_THREADS", "false").lower() in ("true", "1", "yes")
 
@@ -264,8 +264,8 @@ class MatrixAdapter(BasePlatformAdapter):
         # Matrix clients split long messages around 4000 chars.
         self._text_batch_delay_seconds = float(os.getenv("SPARK_MATRIX_TEXT_BATCH_DELAY_SECONDS", "0.6"))
         self._text_batch_split_delay_seconds = float(os.getenv("SPARK_MATRIX_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0"))
-        self._pending_text_batches: Dict[str, MessageEvent] = {}
-        self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_text_batches: dict[str, MessageEvent] = {}
+        self._pending_text_batch_tasks: dict[str, asyncio.Task] = {}
 
     def _is_duplicate_event(self, event_id) -> bool:
         """Return True if this event was already processed. Tracks the ID otherwise."""
@@ -622,8 +622,8 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a message to a Matrix room."""
 
@@ -635,7 +635,7 @@ class MatrixAdapter(BasePlatformAdapter):
 
         last_event_id = None
         for chunk in chunks:
-            msg_content: Dict[str, Any] = {
+            msg_content: dict[str, Any] = {
                 "msgtype": "m.text",
                 "body": chunk,
             }
@@ -698,7 +698,7 @@ class MatrixAdapter(BasePlatformAdapter):
 
         return SendResult(success=True, message_id=last_event_id)
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Return room name and type (dm/group)."""
         name = chat_id
         chat_type = "dm" if await self._is_dm_room(chat_id) else "group"
@@ -720,7 +720,7 @@ class MatrixAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     async def send_typing(
-        self, chat_id: str, metadata: Optional[Dict[str, Any]] = None
+        self, chat_id: str, metadata: dict[str, Any] | None = None
     ) -> None:
         """Send a typing indicator."""
         if self._client:
@@ -735,7 +735,7 @@ class MatrixAdapter(BasePlatformAdapter):
         """Edit an existing message (via m.replace)."""
 
         formatted = self.format_message(content)
-        msg_content: Dict[str, Any] = {
+        msg_content: dict[str, Any] = {
             "msgtype": "m.text",
             "body": f"* {formatted}",
             "m.new_content": {
@@ -767,9 +767,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Download an image URL and upload it to Matrix."""
         from tools.url_safety import is_safe_url
@@ -805,9 +805,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Upload a local image file to Matrix."""
         return await self._send_local_file(chat_id, image_path, "m.image", caption, reply_to, metadata=metadata)
@@ -816,10 +816,10 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Upload a local file as a document."""
         return await self._send_local_file(chat_id, file_path, "m.file", caption, reply_to, file_name, metadata)
@@ -828,9 +828,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Upload an audio file as a voice message (MSC3245 native voice)."""
         return await self._send_local_file(
@@ -842,9 +842,9 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Upload a video file."""
         return await self._send_local_file(chat_id, video_path, "m.video", caption, reply_to, metadata=metadata)
@@ -866,9 +866,9 @@ class MatrixAdapter(BasePlatformAdapter):
         filename: str,
         content_type: str,
         msgtype: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         is_voice: bool = False,
     ) -> SendResult:
         """Upload bytes to Matrix and send as a media message."""
@@ -885,7 +885,7 @@ class MatrixAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(exc))
 
         # Build media message content.
-        msg_content: Dict[str, Any] = {
+        msg_content: dict[str, Any] = {
             "msgtype": msgtype,
             "body": caption or filename,
             "url": str(mxc_url),
@@ -925,10 +925,10 @@ class MatrixAdapter(BasePlatformAdapter):
         room_id: str,
         file_path: str,
         msgtype: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        file_name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        file_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
         is_voice: bool = False,
     ) -> SendResult:
         """Read a local file and upload it."""
@@ -1130,7 +1130,7 @@ class MatrixAdapter(BasePlatformAdapter):
         body: str,
         source_content: dict,
         relates_to: dict,
-    ) -> Optional[tuple]:
+    ) -> tuple | None:
         """Shared mention/thread/DM gating for text and media handlers.
 
         Returns (body, is_dm, chat_type, thread_id, display_name, source)
@@ -1423,7 +1423,7 @@ class MatrixAdapter(BasePlatformAdapter):
 
     async def _send_reaction(
         self, room_id: str, event_id: str, emoji: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send an emoji reaction to a message in a room.
         Returns the reaction event_id on success, None on failure.
         """
@@ -1629,10 +1629,10 @@ class MatrixAdapter(BasePlatformAdapter):
         self,
         name: str = "",
         topic: str = "",
-        invite: Optional[list] = None,
+        invite: list | None = None,
         is_direct: bool = False,
         preset: str = "private_chat",
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create a new Matrix room."""
         if not self._client:
             return None
@@ -1710,7 +1710,7 @@ class MatrixAdapter(BasePlatformAdapter):
         if not self._client or not text:
             return SendResult(success=False, error="No client or empty text")
 
-        msg_content: Dict[str, Any] = {"msgtype": msgtype, "body": text}
+        msg_content: dict[str, Any] = {"msgtype": msgtype, "body": text}
         html = self._markdown_to_html(text)
         if html and html != text:
             msg_content["format"] = "org.matrix.custom.html"
@@ -1748,7 +1748,7 @@ class MatrixAdapter(BasePlatformAdapter):
         if not self._client:
             return
 
-        dm_data: Optional[Dict] = None
+        dm_data: dict | None = None
 
         try:
             resp = await self._client.get_account_data("m.direct")
@@ -1762,7 +1762,7 @@ class MatrixAdapter(BasePlatformAdapter):
         if dm_data is None:
             return
 
-        dm_room_ids: Set[str] = set()
+        dm_room_ids: set[str] = set()
         for user_id, rooms in dm_data.items():
             if isinstance(rooms, list):
                 dm_room_ids.update(str(r) for r in rooms)
@@ -1779,8 +1779,8 @@ class MatrixAdapter(BasePlatformAdapter):
     def _is_bot_mentioned(
         self,
         body: str,
-        formatted_body: Optional[str] = None,
-        mention_user_ids: Optional[list] = None,
+        formatted_body: str | None = None,
+        mention_user_ids: list | None = None,
     ) -> bool:
         """Return True if the bot is mentioned in the message.
 
@@ -1917,10 +1917,7 @@ class MatrixAdapter(BasePlatformAdapter):
         result = re.sub(
             r"\[([^\]]+)\]\(([^)]+)\)",
             lambda m: _protect_html(
-                '<a href="{}">{}</a>'.format(
-                    MatrixAdapter._sanitize_link_url(m.group(2)),
-                    _html_escape(m.group(1)),
-                )
+                f'<a href="{MatrixAdapter._sanitize_link_url(m.group(2))}">{_html_escape(m.group(1))}</a>'
             ),
             result,
         )

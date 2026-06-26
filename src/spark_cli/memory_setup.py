@@ -14,7 +14,6 @@ from pathlib import Path
 
 from core.spark_constants import get_spark_home
 
-
 # ---------------------------------------------------------------------------
 # Curses-based interactive picker (same pattern as spark tools)
 # ---------------------------------------------------------------------------

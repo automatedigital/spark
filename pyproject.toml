@@ -53,6 +53,8 @@ dev = [
   # Lint + type checking — pinned so CI and local dev stay in sync
   "ruff>=0.9.0,<1",
   "mypy>=1.13.0,<2",
+  "types-PyYAML>=6.0.12,<7",
+  "types-requests>=2.33.0,<3",
   # Desktop app: freeze the Python backend into a sidecar binary
   "pyinstaller>=6.0,<7",
 ]

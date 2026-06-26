@@ -23,6 +23,7 @@ import threading
 logger = logging.getLogger("hooks.boot-md")
 
 from core.spark_constants import get_spark_home
+
 SPARK_HOME = get_spark_home()
 BOOT_FILE = SPARK_HOME / "BOOT.md"
 

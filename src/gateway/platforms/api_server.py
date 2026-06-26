@@ -25,12 +25,12 @@ import hmac
 import json
 import logging
 import os
-import socket as _socket
 import re
+import socket as _socket
 import sqlite3
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 try:
     from aiohttp import web
@@ -82,7 +82,7 @@ def _normalize_chat_content(
         return content[:MAX_NORMALIZED_TEXT_LENGTH] if len(content) > MAX_NORMALIZED_TEXT_LENGTH else content
 
     if isinstance(content, list):
-        parts: List[str] = []
+        parts: list[str] = []
         items = content[:MAX_CONTENT_LIST_SIZE] if len(content) > MAX_CONTENT_LIST_SIZE else content
         for item in items:
             if isinstance(item, str):
@@ -161,7 +161,7 @@ class ResponseStore:
         )
         self._conn.commit()
 
-    def get(self, response_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, response_id: str) -> dict[str, Any] | None:
         """Retrieve a stored response by ID (updates access time for LRU)."""
         row = self._conn.execute(
             "SELECT data FROM responses WHERE response_id = ?", (response_id,)
@@ -176,7 +176,7 @@ class ResponseStore:
         self._conn.commit()
         return json.loads(row[0])
 
-    def put(self, response_id: str, data: Dict[str, Any]) -> None:
+    def put(self, response_id: str, data: dict[str, Any]) -> None:
         """Store a response, evicting the oldest if at capacity."""
         import time
         self._conn.execute(
@@ -201,7 +201,7 @@ class ResponseStore:
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def get_conversation(self, name: str) -> Optional[str]:
+    def get_conversation(self, name: str) -> str | None:
         """Get the latest response_id for a conversation name."""
         row = self._conn.execute(
             "SELECT response_id FROM conversations WHERE name = ?", (name,)
@@ -263,7 +263,7 @@ else:
     cors_middleware = None  # type: ignore[assignment]
 
 
-def _openai_error(message: str, err_type: str = "invalid_request_error", param: str = None, code: str = None) -> Dict[str, Any]:
+def _openai_error(message: str, err_type: str = "invalid_request_error", param: str = None, code: str = None) -> dict[str, Any]:
     """OpenAI-style error envelope."""
     return {
         "error": {
@@ -341,14 +341,14 @@ class _IdempotencyCache:
 _idem_cache = _IdempotencyCache()
 
 
-def _make_request_fingerprint(body: Dict[str, Any], keys: List[str]) -> str:
+def _make_request_fingerprint(body: dict[str, Any], keys: list[str]) -> str:
     from hashlib import sha256
     subset = {k: body.get(k) for k in keys}
     return sha256(repr(subset).encode("utf-8")).hexdigest()
 
 
 def _derive_chat_session_id(
-    system_prompt: Optional[str],
+    system_prompt: str | None,
     first_user_message: str,
 ) -> str:
     """Derive a stable session ID from the conversation's first user message.
@@ -385,15 +385,15 @@ class APIServerAdapter(BasePlatformAdapter):
         self._model_name: str = self._resolve_model_name(
             extra.get("model_name", os.getenv("API_SERVER_MODEL_NAME", "")),
         )
-        self._app: Optional["web.Application"] = None
-        self._runner: Optional["web.AppRunner"] = None
-        self._site: Optional["web.TCPSite"] = None
+        self._app: web.Application | None = None
+        self._runner: web.AppRunner | None = None
+        self._site: web.TCPSite | None = None
         self._response_store = ResponseStore()
         # Active run streams: run_id -> asyncio.Queue of SSE event dicts
-        self._run_streams: Dict[str, "asyncio.Queue[Optional[Dict]]"] = {}
+        self._run_streams: dict[str, asyncio.Queue[dict | None]] = {}
         # Creation timestamps for orphaned-run TTL sweep
-        self._run_streams_created: Dict[str, float] = {}
-        self._session_db: Optional[Any] = None  # Lazy-init SessionDB for session continuity
+        self._run_streams_created: dict[str, float] = {}
+        self._session_db: Any | None = None  # Lazy-init SessionDB for session continuity
 
     @staticmethod
     def _parse_cors_origins(value: Any) -> tuple[str, ...]:
@@ -430,7 +430,7 @@ class APIServerAdapter(BasePlatformAdapter):
             pass
         return "spark-agent"
 
-    def _cors_headers_for_origin(self, origin: str) -> Optional[Dict[str, str]]:
+    def _cors_headers_for_origin(self, origin: str) -> dict[str, str] | None:
         """Return CORS headers for an allowed browser origin."""
         if not origin or not self._cors_origins:
             return None
@@ -510,8 +510,8 @@ class APIServerAdapter(BasePlatformAdapter):
 
     def _create_agent(
         self,
-        ephemeral_system_prompt: Optional[str] = None,
-        session_id: Optional[str] = None,
+        ephemeral_system_prompt: str | None = None,
+        session_id: str | None = None,
         stream_delta_callback=None,
         tool_progress_callback=None,
     ) -> Any:
@@ -524,7 +524,11 @@ class APIServerAdapter(BasePlatformAdapter):
         gateway platforms), falling back to the spark-api-server default.
         """
         from core.run_agent import AIAgent
-        from gateway.run import _resolve_runtime_agent_kwargs, _resolve_gateway_model, _load_gateway_config
+        from gateway.run import (
+            _load_gateway_config,
+            _resolve_gateway_model,
+            _resolve_runtime_agent_kwargs,
+        )
         from spark_cli.tools_config import _get_platform_tools
 
         runtime_kwargs = _resolve_runtime_agent_kwargs()
@@ -609,7 +613,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
         # Extract system message (becomes ephemeral system prompt layered ON TOP of core)
         system_prompt = None
-        conversation_messages: List[Dict[str, str]] = []
+        conversation_messages: list[dict[str, str]] = []
 
         for msg in messages:
             role = msg.get("role", "")
@@ -977,7 +981,7 @@ class APIServerAdapter(BasePlatformAdapter):
             # No error if conversation doesn't exist yet — it's a new conversation
 
         # Normalize input to message list
-        input_messages: List[Dict[str, str]] = []
+        input_messages: list[dict[str, str]] = []
         if isinstance(raw_input, str):
             input_messages = [{"role": "user", "content": raw_input}]
         elif isinstance(raw_input, list):
@@ -995,7 +999,7 @@ class APIServerAdapter(BasePlatformAdapter):
         # This lets stateless clients supply their own history instead of
         # relying on server-side response chaining via previous_response_id.
         # Precedence: explicit conversation_history > previous_response_id.
-        conversation_history: List[Dict[str, str]] = []
+        conversation_history: list[dict[str, str]] = []
         raw_history = body.get("conversation_history")
         if raw_history:
             if not isinstance(raw_history, list):
@@ -1161,14 +1165,28 @@ class APIServerAdapter(BasePlatformAdapter):
     _CRON_AVAILABLE = False
     try:
         from cron.jobs import (
-            list_jobs as _cron_list,
-            get_job as _cron_get,
             create_job as _cron_create,
-            update_job as _cron_update,
-            remove_job as _cron_remove,
+        )
+        from cron.jobs import (
+            get_job as _cron_get,
+        )
+        from cron.jobs import (
+            list_jobs as _cron_list,
+        )
+        from cron.jobs import (
             pause_job as _cron_pause,
+        )
+        from cron.jobs import (
+            remove_job as _cron_remove,
+        )
+        from cron.jobs import (
             resume_job as _cron_resume,
+        )
+        from cron.jobs import (
             trigger_job as _cron_trigger,
+        )
+        from cron.jobs import (
+            update_job as _cron_update,
         )
         # Wrap as staticmethod to prevent descriptor binding — these are plain
         # module functions, not instance methods.  Without this, self._cron_*()
@@ -1405,7 +1423,7 @@ class APIServerAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_output_items(result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_output_items(result: dict[str, Any]) -> list[dict[str, Any]]:
         """
         Build the full output item array from the agent's messages.
 
@@ -1414,7 +1432,7 @@ class APIServerAdapter(BasePlatformAdapter):
         - ``function_call_output`` items for each tool-role message
         - a final ``message`` item with the assistant's text reply
         """
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         messages = result.get("messages", [])
 
         for msg in messages:
@@ -1459,12 +1477,12 @@ class APIServerAdapter(BasePlatformAdapter):
     async def _run_agent(
         self,
         user_message: str,
-        conversation_history: List[Dict[str, str]],
-        ephemeral_system_prompt: Optional[str] = None,
-        session_id: Optional[str] = None,
+        conversation_history: list[dict[str, str]],
+        ephemeral_system_prompt: str | None = None,
+        session_id: str | None = None,
         stream_delta_callback=None,
         tool_progress_callback=None,
-        agent_ref: Optional[list] = None,
+        agent_ref: list | None = None,
     ) -> tuple:
         """
         Create an agent and run a conversation in a thread executor.
@@ -1511,7 +1529,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
     def _make_run_event_callback(self, run_id: str, loop: "asyncio.AbstractEventLoop"):
         """Return a tool_progress_callback that pushes structured events to the run's SSE queue."""
-        def _push(event: Dict[str, Any]) -> None:
+        def _push(event: dict[str, Any]) -> None:
             q = self._run_streams.get(run_id)
             if q is None:
                 return
@@ -1578,14 +1596,14 @@ class APIServerAdapter(BasePlatformAdapter):
 
         run_id = f"run_{uuid.uuid4().hex}"
         loop = asyncio.get_running_loop()
-        q: "asyncio.Queue[Optional[Dict]]" = asyncio.Queue()
+        q: asyncio.Queue[dict | None] = asyncio.Queue()
         self._run_streams[run_id] = q
         self._run_streams_created[run_id] = time.time()
 
         event_cb = self._make_run_event_callback(run_id, loop)
 
         # Also wire stream_delta_callback so message.delta events flow through
-        def _text_cb(delta: Optional[str]) -> None:
+        def _text_cb(delta: str | None) -> None:
             if delta is None:
                 return
             try:
@@ -1603,7 +1621,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
         # Accept explicit conversation_history from the request body.
         # Precedence: explicit conversation_history > previous_response_id.
-        conversation_history: List[Dict[str, str]] = []
+        conversation_history: list[dict[str, str]] = []
         raw_history = body.get("conversation_history")
         if raw_history:
             if not isinstance(raw_history, list):
@@ -1736,7 +1754,7 @@ class APIServerAdapter(BasePlatformAdapter):
             while True:
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=30.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await response.write(b": keepalive\n\n")
                     continue
                 if event is None:
@@ -1886,15 +1904,15 @@ class APIServerAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """
         Not used — HTTP request/response cycle handles delivery directly.
         """
         return SendResult(success=False, error="API server uses HTTP request/response, not send()")
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Return basic info about the API server."""
         return {
             "name": "API Server",

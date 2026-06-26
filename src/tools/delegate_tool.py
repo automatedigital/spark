@@ -18,15 +18,15 @@ never the child's intermediate tool calls or reasoning.
 
 import json
 import logging
+
 logger = logging.getLogger(__name__)
 import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable
 
 from core.toolsets import TOOLSETS
-
 
 # Tools that children must never have access to
 DELEGATE_BLOCKED_TOOLS = frozenset([
@@ -89,9 +89,9 @@ def check_delegate_requirements() -> bool:
 
 def _build_child_system_prompt(
     goal: str,
-    context: Optional[str] = None,
+    context: str | None = None,
     *,
-    workspace_path: Optional[str] = None,
+    workspace_path: str | None = None,
 ) -> str:
     """Build a focused system prompt for a child agent."""
     parts = [
@@ -122,7 +122,7 @@ def _build_child_system_prompt(
     return "\n".join(parts)
 
 
-def _resolve_workspace_hint(parent_agent) -> Optional[str]:
+def _resolve_workspace_hint(parent_agent) -> str | None:
     """Best-effort local workspace hint for child prompts.
 
     We only inject a path when we have a concrete absolute directory. This avoids
@@ -147,7 +147,7 @@ def _resolve_workspace_hint(parent_agent) -> Optional[str]:
     return None
 
 
-def _strip_blocked_tools(toolsets: List[str]) -> List[str]:
+def _strip_blocked_tools(toolsets: list[str]) -> list[str]:
     """Remove toolsets that contain only blocked tools."""
     blocked_toolset_names = {
         "delegation", "clarify", "memory", "code_execution",
@@ -155,7 +155,7 @@ def _strip_blocked_tools(toolsets: List[str]) -> List[str]:
     return [t for t in toolsets if t not in blocked_toolset_names]
 
 
-def _build_child_progress_callback(task_index: int, parent_agent, task_count: int = 1) -> Optional[callable]:
+def _build_child_progress_callback(task_index: int, parent_agent, task_count: int = 1) -> Callable[..., Any] | None:
     """Build a callback that relays child agent tool calls to the parent display.
 
     Two display paths:
@@ -176,7 +176,7 @@ def _build_child_progress_callback(task_index: int, parent_agent, task_count: in
 
     # Gateway: batch tool names, flush periodically
     _BATCH_SIZE = 5
-    _batch: List[str] = []
+    _batch: list[str] = []
 
     def _callback(event_type: str, tool_name: str = None, preview: str = None, args=None, **kwargs):
         # event_type is one of: "tool.started", "tool.completed",
@@ -238,19 +238,19 @@ def _build_child_progress_callback(task_index: int, parent_agent, task_count: in
 def _build_child_agent(
     task_index: int,
     goal: str,
-    context: Optional[str],
-    toolsets: Optional[List[str]],
-    model: Optional[str],
+    context: str | None,
+    toolsets: list[str] | None,
+    model: str | None,
     max_iterations: int,
     parent_agent,
     # Credential overrides from delegation config (provider:model resolution)
-    override_provider: Optional[str] = None,
-    override_base_url: Optional[str] = None,
-    override_api_key: Optional[str] = None,
-    override_api_mode: Optional[str] = None,
+    override_provider: str | None = None,
+    override_base_url: str | None = None,
+    override_api_key: str | None = None,
+    override_api_mode: str | None = None,
     # ACP transport overrides — lets a non-ACP parent spawn ACP child agents
-    override_acp_command: Optional[str] = None,
-    override_acp_args: Optional[List[str]] = None,
+    override_acp_command: str | None = None,
+    override_acp_args: list[str] | None = None,
 ):
     """
     Build a child AIAgent on the main thread (thread-safe construction).
@@ -402,7 +402,7 @@ def _run_single_child(
     child=None,
     parent_agent=None,
     **_kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Run a pre-built child agent. Called from within a thread.
     Returns a structured result dict.
@@ -497,8 +497,8 @@ def _run_single_child(
 
         # Build tool trace from conversation messages (already in memory).
         # Uses tool_call_id to correctly pair parallel tool calls with results.
-        tool_trace: list[Dict[str, Any]] = []
-        trace_by_id: Dict[str, Dict[str, Any]] = {}
+        tool_trace: list[dict[str, Any]] = []
+        trace_by_id: dict[str, dict[str, Any]] = {}
         messages = result.get("messages") or []
         if isinstance(messages, list):
             for msg in messages:
@@ -546,7 +546,7 @@ def _run_single_child(
         _output_tokens = getattr(child, "session_completion_tokens", 0)
         _model = getattr(child, "model", None)
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "task_index": task_index,
             "status": status,
             "summary": summary,
@@ -621,13 +621,13 @@ def _run_single_child(
             logger.debug("Failed to close child agent after delegation")
 
 def delegate_task(
-    goal: Optional[str] = None,
-    context: Optional[str] = None,
-    toolsets: Optional[List[str]] = None,
-    tasks: Optional[List[Dict[str, Any]]] = None,
-    max_iterations: Optional[int] = None,
-    acp_command: Optional[str] = None,
-    acp_args: Optional[List[str]] = None,
+    goal: str | None = None,
+    context: str | None = None,
+    toolsets: list[str] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
+    max_iterations: int | None = None,
+    acp_command: str | None = None,
+    acp_args: list[str] | None = None,
     parent_agent=None,
 ) -> str:
     """
@@ -813,7 +813,7 @@ def delegate_task(
     }, ensure_ascii=False)
 
 
-def _resolve_child_credential_pool(effective_provider: Optional[str], parent_agent):
+def _resolve_child_credential_pool(effective_provider: str | None, parent_agent):
     """Resolve a credential pool for the child agent.
 
     Rules:

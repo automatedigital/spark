@@ -33,9 +33,10 @@ import importlib.util
 import logging
 import sys
 import types
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Union
 
 from core.spark_constants import get_spark_home
 from core.utils import env_var_enabled
@@ -51,7 +52,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-VALID_HOOKS: Set[str] = {
+VALID_HOOKS: set[str] = {
     "pre_tool_call",
     "post_tool_call",
     "pre_llm_call",
@@ -97,11 +98,11 @@ class PluginManifest:
     version: str = ""
     description: str = ""
     author: str = ""
-    requires_env: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
-    provides_tools: List[str] = field(default_factory=list)
-    provides_hooks: List[str] = field(default_factory=list)
+    requires_env: list[Union[str, dict[str, Any]]] = field(default_factory=list)
+    provides_tools: list[str] = field(default_factory=list)
+    provides_hooks: list[str] = field(default_factory=list)
     source: str = ""        # "user", "project", or "entrypoint"
-    path: Optional[str] = None
+    path: str | None = None
 
 
 @dataclass
@@ -109,11 +110,11 @@ class LoadedPlugin:
     """Runtime state for a single loaded plugin."""
 
     manifest: PluginManifest
-    module: Optional[types.ModuleType] = None
-    tools_registered: List[str] = field(default_factory=list)
-    hooks_registered: List[str] = field(default_factory=list)
+    module: types.ModuleType | None = None
+    tools_registered: list[str] = field(default_factory=list)
+    hooks_registered: list[str] = field(default_factory=list)
     enabled: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ class LoadedPlugin:
 class PluginContext:
     """Facade given to plugins so they can register tools and hooks."""
 
-    def __init__(self, manifest: PluginManifest, manager: "PluginManager"):
+    def __init__(self, manifest: PluginManifest, manager: PluginManager):
         self.manifest = manifest
         self._manager = manager
 
@@ -271,10 +272,10 @@ class PluginManager:
     """Central manager that discovers, loads, and invokes plugins."""
 
     def __init__(self) -> None:
-        self._plugins: Dict[str, LoadedPlugin] = {}
-        self._hooks: Dict[str, List[Callable]] = {}
-        self._plugin_tool_names: Set[str] = set()
-        self._cli_commands: Dict[str, dict] = {}
+        self._plugins: dict[str, LoadedPlugin] = {}
+        self._hooks: dict[str, list[Callable]] = {}
+        self._plugin_tool_names: set[str] = set()
+        self._cli_commands: dict[str, dict] = {}
         self._context_engine = None  # Set by a plugin via register_context_engine()
         self._discovered: bool = False
         self._cli_ref = None  # Set by CLI after plugin discovery
@@ -289,7 +290,7 @@ class PluginManager:
             return
         self._discovered = True
 
-        manifests: List[PluginManifest] = []
+        manifests: list[PluginManifest] = []
 
         # 1. User plugins (~/.spark/plugins/)
         user_dir = get_spark_home() / "plugins"
@@ -350,9 +351,9 @@ class PluginManager:
     # Directory scanning
     # -----------------------------------------------------------------------
 
-    def _scan_directory(self, path: Path, source: str) -> List[PluginManifest]:
+    def _scan_directory(self, path: Path, source: str) -> list[PluginManifest]:
         """Read ``plugin.yaml`` manifests from subdirectories of *path*."""
-        manifests: List[PluginManifest] = []
+        manifests: list[PluginManifest] = []
         if not path.is_dir():
             return manifests
 
@@ -392,9 +393,9 @@ class PluginManager:
     # Entry-point scanning
     # -----------------------------------------------------------------------
 
-    def _scan_entry_points(self) -> List[PluginManifest]:
+    def _scan_entry_points(self) -> list[PluginManifest]:
         """Check ``importlib.metadata`` for pip-installed plugins."""
-        manifests: List[PluginManifest] = []
+        manifests: list[PluginManifest] = []
         try:
             eps = importlib.metadata.entry_points()
             # Python 3.12+ returns a SelectableGroups; earlier returns dict
@@ -521,7 +522,7 @@ class PluginManager:
     # Hook invocation
     # -----------------------------------------------------------------------
 
-    def invoke_hook(self, hook_name: str, **kwargs: Any) -> List[Any]:
+    def invoke_hook(self, hook_name: str, **kwargs: Any) -> list[Any]:
         """Call all registered callbacks for *hook_name*.
 
         Each callback is wrapped in its own try/except so a misbehaving
@@ -542,7 +543,7 @@ class PluginManager:
         persisted to session DB.
         """
         callbacks = self._hooks.get(hook_name, [])
-        results: List[Any] = []
+        results: list[Any] = []
         for cb in callbacks:
             try:
                 ret = cb(**kwargs)
@@ -561,9 +562,9 @@ class PluginManager:
     # Introspection
     # -----------------------------------------------------------------------
 
-    def list_plugins(self) -> List[Dict[str, Any]]:
+    def list_plugins(self) -> list[dict[str, Any]]:
         """Return a list of info dicts for all discovered plugins."""
-        result: List[Dict[str, Any]] = []
+        result: list[dict[str, Any]] = []
         for name, loaded in sorted(self._plugins.items()):
             result.append(
                 {
@@ -584,7 +585,7 @@ class PluginManager:
 # Module-level singleton & convenience functions
 # ---------------------------------------------------------------------------
 
-_plugin_manager: Optional[PluginManager] = None
+_plugin_manager: PluginManager | None = None
 
 
 def get_plugin_manager() -> PluginManager:
@@ -600,7 +601,7 @@ def discover_plugins() -> None:
     get_plugin_manager().discover_and_load()
 
 
-def invoke_hook(hook_name: str, **kwargs: Any) -> List[Any]:
+def invoke_hook(hook_name: str, **kwargs: Any) -> list[Any]:
     """Invoke a lifecycle hook on all loaded plugins.
 
     Returns a list of non-``None`` return values from plugin callbacks.
@@ -611,11 +612,11 @@ def invoke_hook(hook_name: str, **kwargs: Any) -> List[Any]:
 
 def get_pre_tool_call_block_message(
     tool_name: str,
-    args: Optional[Dict[str, Any]],
+    args: dict[str, Any] | None,
     task_id: str = "",
     session_id: str = "",
     tool_call_id: str = "",
-) -> Optional[str]:
+) -> str | None:
     """Check ``pre_tool_call`` hooks for a blocking directive.
 
     Plugins that need to enforce policy (rate limiting, security
@@ -653,7 +654,7 @@ def get_plugin_context_engine():
     return get_plugin_manager()._context_engine
 
 
-def get_plugin_toolsets() -> List[tuple]:
+def get_plugin_toolsets() -> list[tuple]:
     """Return plugin toolsets as ``(key, label, description)`` tuples.
 
     Used by the ``spark tools`` TUI so plugin-provided toolsets appear
@@ -669,8 +670,8 @@ def get_plugin_toolsets() -> List[tuple]:
         return []
 
     # Group plugin tool names by their toolset
-    toolset_tools: Dict[str, List[str]] = {}
-    toolset_plugin: Dict[str, LoadedPlugin] = {}
+    toolset_tools: dict[str, list[str]] = {}
+    toolset_plugin: dict[str, LoadedPlugin] = {}
     for tool_name in manager._plugin_tool_names:
         entry = registry.get_entry(tool_name)
         if not entry:

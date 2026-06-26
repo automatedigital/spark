@@ -28,11 +28,11 @@ import { useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
 import { threadTitle } from "@/components/chat/ThreadRow";
 import { TypeOnTitle } from "@/components/chat/TypeOnTitle";
-import { FileTreePane } from "@/components/workspace/FileTreePane";
+import { ProjectFileTreePane } from "@/components/project/ProjectFileTreePane";
 import { getFileCategory } from "@/lib/fileCategory";
-import { WorkspaceTerminalPanel } from "@/components/workspace/WorkspaceTerminalPanel";
-import { WorkspaceChangesPanel } from "@/components/workspace/WorkspaceChangesPanel";
-import { WorkspacePreviewPanel } from "@/components/workspace/WorkspacePreviewPanel";
+import { ProjectTerminalPanel } from "@/components/project/ProjectTerminalPanel";
+import { ProjectChangesPanel } from "@/components/project/ProjectChangesPanel";
+import { ProjectPreviewPanel } from "@/components/project/ProjectPreviewPanel";
 import { previewAutoOpenEnabled } from "@/lib/previewPrefs";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 
@@ -138,7 +138,7 @@ function NewSessionHero({
     }
   };
 
-  // Upload into the shared chat workspace (no project yet on the hero) and
+  // Upload into the shared chat project (no project yet on the hero) and
   // insert @files/<name> references into the draft so the new turn can read
   // them. Mirrors NewThreadCompose.handleUpload.
   const handleUpload = async (files: File[]) => {
@@ -228,14 +228,14 @@ function NewSessionHero({
           onUploadFiles={handleUpload}
           disabled={starting}
           placeholder="Start with a goal"
-          workspaceSlug={projectSlug || undefined}
+          projectSlug={projectSlug || undefined}
         />
       </div>
     </div>
   );
 }
 
-// ── NewThreadCompose (project workspace threads) ──────────────────────────────
+// ── NewThreadCompose (project threads) ────────────────────────────────────────
 
 function NewThreadCompose({
   projectSlug,
@@ -288,7 +288,7 @@ function NewThreadCompose({
         <MessageSquare className="mb-4 h-12 w-12 opacity-20" />
         <p className="text-sm font-medium text-foreground">Start a project conversation</p>
         <p className="mt-1 max-w-sm text-xs opacity-75">
-          Spark has context of the workspace files for this project.
+          Spark has context of the files for this project.
         </p>
       </div>
       <PromptBar
@@ -299,7 +299,7 @@ function NewThreadCompose({
         onStop={() => {}}
         onUploadFiles={handleUpload}
         disabled={starting}
-        workspaceSlug={projectSlug}
+        projectSlug={projectSlug}
       />
     </div>
   );
@@ -625,7 +625,7 @@ function WorkspaceRightPanel({
               <SimpleFileViewer slug={slug} node={selectedFile} />
             </div>
           ) : (
-            <FileTreePane
+            <ProjectFileTreePane
               slug={slug}
               activePath={null}
               onOpenFile={setSelectedFile}
@@ -633,13 +633,13 @@ function WorkspaceRightPanel({
           )}
         </div>
         <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "terminal" && "hidden")}>
-          <WorkspaceTerminalPanel slug={slug} />
+          <ProjectTerminalPanel slug={slug} />
         </div>
         <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "preview" && "hidden")}>
-          <WorkspacePreviewPanel slug={slug} visible={open && activeTab === "preview"} />
+          <ProjectPreviewPanel slug={slug} visible={open && activeTab === "preview"} />
         </div>
         <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "changes" && "hidden")}>
-          <WorkspaceChangesPanel slug={slug} />
+          <ProjectChangesPanel slug={slug} />
         </div>
       </div>
     </div>
@@ -688,7 +688,7 @@ export default function ChatPage() {
     return projects.find((p) => p.slug === composingFor)?.name ?? composingFor;
   }, [composingFor, projects]);
 
-  // Load the per-workspace saved tab when the active workspace changes.
+  // Load the per-project saved tab when the active project changes.
   useEffect(() => {
     if (activeWorkspaceSlug) setRightTab(loadRightTab(activeWorkspaceSlug));
   }, [activeWorkspaceSlug]);
@@ -775,7 +775,7 @@ export default function ChatPage() {
               <ChatPanel
                 sessionId={selectedId}
                 sessionTitle={selectedSession ? threadTitle(selectedSession) : null}
-                workspaceSlug={activeProjectSlug ?? undefined}
+                projectSlug={activeProjectSlug ?? undefined}
                 initialMessage={pendingInitialMessage ?? undefined}
                 onBack={() => selectSession(null)}
                 onSessionCreated={(id) => selectSession(id)}
@@ -788,7 +788,7 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Right panel — only when a workspace thread is selected; hidden on mobile */}
+        {/* Right panel — only when a project thread is selected; hidden on mobile */}
         {activeWorkspaceSlug && (
           <div className="hidden md:flex">
             {rightPanelOpen && <ResizeDivider onDrag={handleRightPanelDrag} />}

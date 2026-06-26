@@ -24,8 +24,9 @@ from typing import Any, Dict, List
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error
-from .store import MemoryStore
+
 from .retrieval import FactRetriever
+from .store import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -223,17 +224,17 @@ class HolographicMemoryProvider(MemoryProvider):
         # The on_session_end hook handles auto-extraction if configured.
         pass
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [FACT_STORE_SCHEMA, FACT_FEEDBACK_SCHEMA]
 
-    def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
+    def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs) -> str:
         if tool_name == "fact_store":
             return self._handle_fact_store(args)
         elif tool_name == "fact_feedback":
             return self._handle_fact_feedback(args)
         return tool_error(f"Unknown tool: {tool_name}")
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         # Auto-extract is ON by default — Spark "gets smarter over time" without
         # the user asking. Runs only at session end (never mid-conversation), so
         # it cannot break prompt caching. Set auto_extract: false to opt out.

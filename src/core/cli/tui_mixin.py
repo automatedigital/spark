@@ -169,8 +169,8 @@ class _TuiMixin:
             return ""
 
         try:
-            import subprocess
             import re
+            import subprocess
 
             result = subprocess.run(
                 [

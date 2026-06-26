@@ -463,7 +463,7 @@ def _collect_gateway_skill_entries(
     max_slots: int,
     reserved_names: set[str],
     desc_limit: int = 100,
-    sanitize_name: "Callable[[str], str] | None" = None,
+    sanitize_name: Callable[[str], str] | None = None,
 ) -> tuple[list[tuple[str, str, str]], int]:
     """Collect plugin + skill entries for a gateway platform.
 
@@ -1001,7 +1001,9 @@ class SlashCommandCompleter(Completer):
         # Config-based direct aliases (preferred — include provider info)
         try:
             from spark_cli.model_switch import (
-                _ensure_direct_aliases, DIRECT_ALIASES, MODEL_ALIASES,
+                DIRECT_ALIASES,
+                MODEL_ALIASES,
+                _ensure_direct_aliases,
             )
             _ensure_direct_aliases()
             for name, da in DIRECT_ALIASES.items():

@@ -36,8 +36,9 @@ import subprocess
 import tempfile
 import threading
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, Any, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ MAX_TEXT_LENGTH = 4000
 # ===========================================================================
 # Config loader -- reads tts: section from ~/.spark/config.yaml
 # ===========================================================================
-def _load_tts_config() -> Dict[str, Any]:
+def _load_tts_config() -> dict[str, Any]:
     """
     Load TTS configuration from ~/.spark/config.yaml.
 
@@ -134,7 +135,7 @@ def _load_tts_config() -> Dict[str, Any]:
         return {}
 
 
-def _get_provider(tts_config: Dict[str, Any]) -> str:
+def _get_provider(tts_config: dict[str, Any]) -> str:
     """Get the configured TTS provider name."""
     return (tts_config.get("provider") or DEFAULT_PROVIDER).lower().strip()
 
@@ -147,7 +148,7 @@ def _has_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
-def _convert_to_opus(mp3_path: str) -> Optional[str]:
+def _convert_to_opus(mp3_path: str) -> str | None:
     """
     Convert an MP3 file to OGG Opus format for Telegram voice bubbles.
 
@@ -168,7 +169,7 @@ def _convert_to_opus(mp3_path: str) -> Optional[str]:
             capture_output=True, timeout=30,
         )
         if result.returncode != 0:
-            logger.warning("ffmpeg conversion failed with return code %d: %s", 
+            logger.warning("ffmpeg conversion failed with return code %d: %s",
                           result.returncode, result.stderr.decode('utf-8', errors='ignore')[:200])
             return None
         if os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 0:
@@ -185,7 +186,7 @@ def _convert_to_opus(mp3_path: str) -> Optional[str]:
 # ===========================================================================
 # Provider: Edge TTS (free)
 # ===========================================================================
-async def _generate_edge_tts(text: str, output_path: str, tts_config: Dict[str, Any]) -> str:
+async def _generate_edge_tts(text: str, output_path: str, tts_config: dict[str, Any]) -> str:
     """
     Generate audio using Edge TTS.
 
@@ -215,7 +216,7 @@ async def _generate_edge_tts(text: str, output_path: str, tts_config: Dict[str, 
 # ===========================================================================
 # Provider: ElevenLabs (premium)
 # ===========================================================================
-def _generate_elevenlabs(text: str, output_path: str, tts_config: Dict[str, Any]) -> str:
+def _generate_elevenlabs(text: str, output_path: str, tts_config: dict[str, Any]) -> str:
     """
     Generate audio using ElevenLabs.
 
@@ -261,7 +262,7 @@ def _generate_elevenlabs(text: str, output_path: str, tts_config: Dict[str, Any]
 # ===========================================================================
 # Provider: OpenAI TTS
 # ===========================================================================
-def _generate_openai_tts(text: str, output_path: str, tts_config: Dict[str, Any]) -> str:
+def _generate_openai_tts(text: str, output_path: str, tts_config: dict[str, Any]) -> str:
     """
     Generate audio using OpenAI TTS.
 
@@ -312,7 +313,7 @@ def _generate_openai_tts(text: str, output_path: str, tts_config: Dict[str, Any]
 # ===========================================================================
 # Provider: MiniMax TTS
 # ===========================================================================
-def _generate_minimax_tts(text: str, output_path: str, tts_config: Dict[str, Any]) -> str:
+def _generate_minimax_tts(text: str, output_path: str, tts_config: dict[str, Any]) -> str:
     """
     Generate audio using MiniMax TTS API.
 
@@ -399,7 +400,7 @@ def _generate_minimax_tts(text: str, output_path: str, tts_config: Dict[str, Any
 # ===========================================================================
 # Provider: Mistral (Voxtral TTS)
 # ===========================================================================
-def _generate_mistral_tts(text: str, output_path: str, tts_config: Dict[str, Any]) -> str:
+def _generate_mistral_tts(text: str, output_path: str, tts_config: dict[str, Any]) -> str:
     """Generate audio using Mistral Voxtral TTS API.
 
     The API returns base64-encoded audio; this function decodes it
@@ -468,7 +469,7 @@ def _default_neutts_ref_text() -> str:
     return str(Path(__file__).parent / "neutts_samples" / "jo.txt")
 
 
-def _generate_neutts(text: str, output_path: str, tts_config: Dict[str, Any]) -> str:
+def _generate_neutts(text: str, output_path: str, tts_config: dict[str, Any]) -> str:
     """Generate speech using the local NeuTTS engine.
 
     Runs synthesis in a subprocess via tools/neutts_synth.py to keep the
@@ -525,7 +526,7 @@ def _generate_neutts(text: str, output_path: str, tts_config: Dict[str, Any]) ->
 # Provider: Piper (local, neural VITS, 44+ languages)
 # ===========================================================================
 
-_piper_voice_cache: Dict[str, Any] = {}
+_piper_voice_cache: dict[str, Any] = {}
 
 
 def _check_piper_available() -> bool:
@@ -585,7 +586,7 @@ def _resolve_piper_voice_path(voice: str, download_dir: Path) -> str:
     return str(cached)
 
 
-def _generate_piper_tts(text: str, output_path: str, tts_config: Dict[str, Any]) -> str:
+def _generate_piper_tts(text: str, output_path: str, tts_config: dict[str, Any]) -> str:
     """Generate speech using the local Piper engine.
 
     Loads the voice model once per process (cached by path) and writes a WAV
@@ -636,7 +637,7 @@ def _generate_piper_tts(text: str, output_path: str, tts_config: Dict[str, Any])
 # ===========================================================================
 def text_to_speech_tool(
     text: str,
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
 ) -> str:
     """
     Convert text to speech audio.
@@ -935,7 +936,7 @@ def stream_tts_to_speaker(
     text_queue: queue.Queue,
     stop_event: threading.Event,
     tts_done_event: threading.Event,
-    display_callback: Optional[Callable[[str], None]] = None,
+    display_callback: Callable[[str], None] | None = None,
 ):
     """Consume text deltas from *text_queue*, buffer them into sentences,
     and stream each sentence through ElevenLabs TTS to the speaker in

@@ -25,7 +25,7 @@ import hmac
 import logging
 import os
 import urllib.parse
-from typing import Any, Dict, Optional
+from typing import Any
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -74,7 +74,7 @@ class SmsAdapter(BasePlatformAdapter):
         self._webhook_host: str = os.getenv("SMS_WEBHOOK_HOST", DEFAULT_WEBHOOK_HOST)
         self._webhook_url: str = os.getenv("SMS_WEBHOOK_URL", "").strip()
         self._runner = None
-        self._http_session: Optional["aiohttp.ClientSession"] = None
+        self._http_session: aiohttp.ClientSession | None = None
 
     def _basic_auth_header(self) -> str:
         """Build HTTP Basic auth header value for Twilio."""
@@ -149,8 +149,8 @@ class SmsAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         import aiohttp
 
@@ -200,7 +200,7 @@ class SmsAdapter(BasePlatformAdapter):
 
         return last_result
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         return {"name": chat_id, "type": "dm"}
 
     # ------------------------------------------------------------------

@@ -15,11 +15,11 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any, Tuple
+from typing import Any
 
 try:
-    from slack_bolt.async_app import AsyncApp
     from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+    from slack_bolt.async_app import AsyncApp
     from slack_sdk.web.async_client import AsyncWebClient
     SLACK_AVAILABLE = True
 except ImportError:
@@ -30,20 +30,20 @@ except ImportError:
 
 import sys
 from pathlib import Path as _Path
+
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
+    SUPPORTED_DOCUMENT_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     SendResult,
-    SUPPORTED_DOCUMENT_TYPES,
-    safe_url_for_log,
     cache_document_from_bytes,
+    safe_url_for_log,
 )
-
+from gateway.platforms.helpers import MessageDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -81,21 +81,21 @@ class SlackAdapter(BasePlatformAdapter):
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.SLACK)
-        self._app: Optional[AsyncApp] = None
-        self._handler: Optional[AsyncSocketModeHandler] = None
-        self._bot_user_id: Optional[str] = None
-        self._user_name_cache: Dict[str, str] = {}  # user_id → display name
-        self._socket_mode_task: Optional[asyncio.Task] = None
+        self._app: AsyncApp | None = None
+        self._handler: AsyncSocketModeHandler | None = None
+        self._bot_user_id: str | None = None
+        self._user_name_cache: dict[str, str] = {}  # user_id → display name
+        self._socket_mode_task: asyncio.Task | None = None
         # Multi-workspace support
-        self._team_clients: Dict[str, AsyncWebClient] = {}   # team_id → WebClient
-        self._team_bot_user_ids: Dict[str, str] = {}          # team_id → bot_user_id
-        self._channel_team: Dict[str, str] = {}                # channel_id → team_id
+        self._team_clients: dict[str, AsyncWebClient] = {}   # team_id → WebClient
+        self._team_bot_user_ids: dict[str, str] = {}          # team_id → bot_user_id
+        self._channel_team: dict[str, str] = {}                # channel_id → team_id
         # Dedup cache: prevents duplicate bot responses when Socket Mode
         # reconnects redeliver events.
         self._dedup = MessageDeduplicator()
         # Track pending approval message_ts → resolved flag to prevent
         # double-clicks on approval buttons.
-        self._approval_resolved: Dict[str, bool] = {}
+        self._approval_resolved: dict[str, bool] = {}
         # Track timestamps of messages sent by the bot so we can respond
         # to thread replies even without an explicit @mention.
         self._bot_message_ts: set = set()
@@ -108,10 +108,10 @@ class SlackAdapter(BasePlatformAdapter):
         # AI Assistant lifecycle events can arrive before/alongside message
         # events, and they carry the user/thread identity needed for stable
         # session + memory scoping.
-        self._assistant_threads: Dict[Tuple[str, str], Dict[str, str]] = {}
+        self._assistant_threads: dict[tuple[str, str], dict[str, str]] = {}
         self._ASSISTANT_THREADS_MAX = 5000
         # Cache for _fetch_thread_context results: cache_key → _ThreadContextCache
-        self._thread_context_cache: Dict[str, _ThreadContextCache] = {}
+        self._thread_context_cache: dict[str, _ThreadContextCache] = {}
         self._THREAD_CACHE_TTL = 60.0
 
     async def connect(self) -> bool:
@@ -253,8 +253,8 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a message to a Slack channel or DM."""
         if not self._app:
@@ -368,9 +368,9 @@ class SlackAdapter(BasePlatformAdapter):
 
     def _resolve_thread_ts(
         self,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str | None:
         """Resolve the correct thread_ts for a Slack API call.
 
         Prefers metadata thread_id (the thread parent's ts, set by the
@@ -398,9 +398,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Upload a local file to Slack."""
         if not self._app:
@@ -599,9 +599,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a local image file to Slack by uploading it."""
         try:
@@ -625,9 +625,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an image to Slack by uploading the URL as a file."""
         if not self._app:
@@ -682,9 +682,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         """Send an audio file to Slack."""
@@ -705,9 +705,9 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a video file to Slack."""
         if not self._app:
@@ -743,10 +743,10 @@ class SlackAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a document/file attachment to Slack."""
         if not self._app:
@@ -780,7 +780,7 @@ class SlackAdapter(BasePlatformAdapter):
                 text = f"{caption}\n{text}"
             return await self.send(chat_id, text, reply_to=reply_to, metadata=metadata)
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Get information about a Slack channel."""
         if not self._app:
             return {"name": chat_id, "type": "unknown"}
@@ -804,13 +804,13 @@ class SlackAdapter(BasePlatformAdapter):
 
     # ----- Internal handlers -----
 
-    def _assistant_thread_key(self, channel_id: str, thread_ts: str) -> Optional[Tuple[str, str]]:
+    def _assistant_thread_key(self, channel_id: str, thread_ts: str) -> tuple[str, str] | None:
         """Return a stable cache key for Slack assistant thread metadata."""
         if not channel_id or not thread_ts:
             return None
         return (str(channel_id), str(thread_ts))
 
-    def _extract_assistant_thread_metadata(self, event: dict) -> Dict[str, str]:
+    def _extract_assistant_thread_metadata(self, event: dict) -> dict[str, str]:
         """Extract Slack Assistant thread identity data from an event payload."""
         assistant_thread = event.get("assistant_thread") or {}
         context = assistant_thread.get("context") or event.get("context") or {}
@@ -849,7 +849,7 @@ class SlackAdapter(BasePlatformAdapter):
             "context_channel_id": str(context_channel_id) if context_channel_id else "",
         }
 
-    def _cache_assistant_thread_metadata(self, metadata: Dict[str, str]) -> None:
+    def _cache_assistant_thread_metadata(self, metadata: dict[str, str]) -> None:
         """Remember assistant thread identity data for later message events."""
         channel_id = metadata.get("channel_id", "")
         thread_ts = metadata.get("thread_ts", "")
@@ -877,7 +877,7 @@ class SlackAdapter(BasePlatformAdapter):
         event: dict,
         channel_id: str = "",
         thread_ts: str = "",
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Load cached assistant-thread metadata that matches the current event."""
         metadata = self._extract_assistant_thread_metadata(event)
         if channel_id and not metadata.get("channel_id"):
@@ -896,7 +896,7 @@ class SlackAdapter(BasePlatformAdapter):
             return merged
         return metadata
 
-    def _seed_assistant_thread_session(self, metadata: Dict[str, str]) -> None:
+    def _seed_assistant_thread_session(self, metadata: dict[str, str]) -> None:
         """Prime the session store so assistant threads get stable user scoping."""
         session_store = getattr(self, "_session_store", None)
         if not session_store:
@@ -1197,7 +1197,7 @@ class SlackAdapter(BasePlatformAdapter):
     async def send_exec_approval(
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a Block Kit approval prompt with interactive buttons.
 
@@ -1256,7 +1256,7 @@ class SlackAdapter(BasePlatformAdapter):
                 },
             ]
 
-            kwargs: Dict[str, Any] = {
+            kwargs: dict[str, Any] = {
                 "channel": chat_id,
                 "text": f"⚠️ Command approval required: {cmd_preview[:100]}",
                 "blocks": blocks,
@@ -1569,6 +1569,7 @@ class SlackAdapter(BasePlatformAdapter):
     async def _download_slack_file(self, url: str, ext: str, audio: bool = False, team_id: str = "") -> str:
         """Download a Slack file using the bot token for auth, with retry."""
         import asyncio
+
         import httpx
 
         bot_token = self._team_clients[team_id].token if team_id and team_id in self._team_clients else self.config.token
@@ -1616,6 +1617,7 @@ class SlackAdapter(BasePlatformAdapter):
     async def _download_slack_file_bytes(self, url: str, team_id: str = "") -> bytes:
         """Download a Slack file and return raw bytes, with retry."""
         import asyncio
+
         import httpx
 
         bot_token = self._team_clients[team_id].token if team_id and team_id in self._team_clients else self.config.token

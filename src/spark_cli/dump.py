@@ -13,8 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from spark_cli.config import get_spark_home, get_env_path, get_project_root, load_config
 from core.spark_constants import display_spark_home
+from spark_cli.config import get_env_path, get_project_root, get_spark_home, load_config
 
 
 def _get_git_commit(project_root: Path) -> str:
@@ -229,7 +229,7 @@ def run_dump(args):
     spark_home = get_spark_home()
 
     try:
-        from spark_cli import __version__, __release_date__
+        from spark_cli import __release_date__, __version__
     except ImportError:
         __version__ = "(unknown)"
         __release_date__ = ""

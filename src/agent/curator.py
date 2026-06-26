@@ -27,9 +27,10 @@ import logging
 import os
 import tempfile
 import threading
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def _skills_dir() -> Path:
 # State persistence
 # ---------------------------------------------------------------------------
 
-def _default_state() -> Dict[str, Any]:
+def _default_state() -> dict[str, Any]:
     return {
         "last_run_at": None,
         "last_run_duration_seconds": None,
@@ -71,7 +72,7 @@ def _default_state() -> Dict[str, Any]:
     }
 
 
-def load_state() -> Dict[str, Any]:
+def load_state() -> dict[str, Any]:
     path = _state_file()
     if not path.exists():
         return _default_state()
@@ -86,7 +87,7 @@ def load_state() -> Dict[str, Any]:
     return _default_state()
 
 
-def save_state(data: Dict[str, Any]) -> None:
+def save_state(data: dict[str, Any]) -> None:
     path = _state_file()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,7 +122,7 @@ def is_paused() -> bool:
 # Config
 # ---------------------------------------------------------------------------
 
-def _load_config() -> Dict[str, Any]:
+def _load_config() -> dict[str, Any]:
     try:
         from spark_cli.config import load_config
         cfg = load_config()
@@ -174,7 +175,7 @@ def get_archive_after_days() -> int:
 _EXCLUDED_DIRS = frozenset({".git", ".github", ".hub", ".archive", "__pycache__"})
 
 
-def _list_agent_created_skills() -> List[Dict[str, Any]]:
+def _list_agent_created_skills() -> list[dict[str, Any]]:
     """Return a list of dicts for every skill under ~/.spark/skills/ that is
     not bundled with the install and not hub-installed.
 
@@ -195,7 +196,7 @@ def _list_agent_created_skills() -> List[Dict[str, Any]]:
     except Exception:
         bundled_names = set()
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for entry in skills_dir.iterdir():
         if not entry.is_dir():
             continue
@@ -259,7 +260,7 @@ def _render_candidate_list() -> str:
 # Idle / interval check
 # ---------------------------------------------------------------------------
 
-def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+def _parse_iso(ts: str | None) -> datetime | None:
     if not ts:
         return None
     try:
@@ -268,7 +269,7 @@ def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def should_run_now(now: Optional[datetime] = None) -> bool:
+def should_run_now(now: datetime | None = None) -> bool:
     """Return True if all conditions are met to run the curator.
 
     On first observation (no prior run), seeds ``last_run_at`` and defers
@@ -284,7 +285,7 @@ def should_run_now(now: Optional[datetime] = None) -> bool:
     last = _parse_iso(state.get("last_run_at"))
 
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     if last is None:
         try:
@@ -298,7 +299,7 @@ def should_run_now(now: Optional[datetime] = None) -> bool:
         return False
 
     if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
+        last = last.replace(tzinfo=UTC)
     interval = timedelta(hours=get_interval_hours())
     return (now - last) >= interval
 
@@ -338,13 +339,13 @@ CURATOR_REVIEW_PROMPT = (
 # LLM review pass
 # ---------------------------------------------------------------------------
 
-def _run_llm_review(prompt: str) -> Dict[str, Any]:
+def _run_llm_review(prompt: str) -> dict[str, Any]:
     """Spawn an AIAgent fork to run the curator review prompt.
 
     Returns a dict with keys: final, summary, error.
     Never raises — callers get a structured failure instead.
     """
-    result: Dict[str, Any] = {"final": "", "summary": "", "error": None}
+    result: dict[str, Any] = {"final": "", "summary": "", "error": None}
     try:
         from core.run_agent import AIAgent
     except Exception as e:
@@ -352,7 +353,7 @@ def _run_llm_review(prompt: str) -> Dict[str, Any]:
         result["summary"] = result["error"]
         return result
 
-    review_agent = None
+    review_agent: Any = None
     try:
         review_agent = AIAgent(
             max_iterations=200,
@@ -391,10 +392,10 @@ def _run_llm_review(prompt: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def run_curator_review(
-    on_summary: Optional[Callable[[str], None]] = None,
+    on_summary: Callable[[str], None] | None = None,
     synchronous: bool = False,
     dry_run: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Execute a single curator review pass.
 
     Steps:
@@ -406,7 +407,7 @@ def run_curator_review(
     *synchronous=True* runs the LLM in the calling thread (default: daemon thread).
     *dry_run=True* instructs the LLM not to mutate skills (report only).
     """
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
 
     state = load_state()
     if not dry_run:
@@ -417,7 +418,7 @@ def run_curator_review(
 
     def _llm_pass():
         candidate_list = _render_candidate_list()
-        llm_meta: Dict[str, Any] = {}
+        llm_meta: dict[str, Any] = {}
 
         if "No agent-created skills" in candidate_list:
             final_summary = "no candidates"
@@ -433,7 +434,7 @@ def run_curator_review(
             llm_meta = _run_llm_review(prompt)
             final_summary = llm_meta.get("summary", "no change")
 
-        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+        elapsed = (datetime.now(UTC) - start).total_seconds()
         state2 = load_state()
         state2["last_run_duration_seconds"] = round(elapsed, 1)
         state2["last_run_summary"] = final_summary
@@ -460,9 +461,9 @@ def run_curator_review(
 
 def maybe_run_curator(
     *,
-    idle_for_seconds: Optional[float] = None,
-    on_summary: Optional[Callable[[str], None]] = None,
-) -> Optional[Dict[str, Any]]:
+    idle_for_seconds: float | None = None,
+    on_summary: Callable[[str], None] | None = None,
+) -> dict[str, Any] | None:
     """Best-effort: run a curator pass if all gates pass. Never raises."""
     try:
         if not should_run_now():

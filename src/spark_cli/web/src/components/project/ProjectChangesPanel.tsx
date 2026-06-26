@@ -127,7 +127,7 @@ const GROUPS: { key: WorkspaceGitFile["status"]; label: string }[] = [
   { key: "deleted", label: "Deleted" },
 ];
 
-export function WorkspaceChangesPanel({ slug }: { slug: string }) {
+export function ProjectChangesPanel({ slug }: { slug: string }) {
   const [status, setStatus] = useState<WorkspaceGitStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const reloadTimerRef = useRef<number | null>(null);

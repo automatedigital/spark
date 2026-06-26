@@ -239,11 +239,11 @@ function FileNodeRow({
   );
 }
 
-// ── FileTreePane ───────────────────────────────────────────────────────────────
+// ── ProjectFileTreePane ───────────────────────────────────────────────────────
 
 const EXPANDED_KEY_PREFIX = "spark-files-expanded:";
 
-export function FileTreePane({
+export function ProjectFileTreePane({
   slug,
   activePath,
   onOpenFile,
@@ -264,7 +264,7 @@ export function FileTreePane({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reloadTimerRef = useRef<number | null>(null);
 
-  // Restore persisted expansion when the workspace changes.
+  // Restore persisted expansion when the project changes.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(EXPANDED_KEY_PREFIX + slug);
@@ -300,7 +300,7 @@ export function FileTreePane({
   useEffect(() => { void loadTree(); }, [loadTree]);
 
   // Live refresh: the agent writes files outside the UI, so reload (debounced)
-  // when a turn finishes or the server signals a workspace file change.
+  // when a turn finishes or the server signals a project file change.
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic !== "chat.turn_done" && env.topic !== "workspace.files.changed") return;
     if (reloadTimerRef.current !== null) window.clearTimeout(reloadTimerRef.current);

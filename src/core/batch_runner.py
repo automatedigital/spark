@@ -24,25 +24,33 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
-from multiprocessing import Pool, Lock
 import traceback
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn, MofNCompleteColumn
+from datetime import datetime
+from multiprocessing import Lock, Pool
+from multiprocessing.synchronize import Lock as LockType
+from pathlib import Path
+from typing import Any
+
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 logger = logging.getLogger(__name__)
 import fire
 
+from core.model_tools import TOOL_TO_TOOLSET_MAP
 from core.run_agent import AIAgent
 from core.toolset_distributions import (
-    list_distributions, 
+    list_distributions,
     sample_toolsets_from_distribution,
-    validate_distribution
+    validate_distribution,
 )
-from core.model_tools import TOOL_TO_TOOLSET_MAP
-
 
 # Global configuration for worker processes
 _WORKER_CONFIG = {}
@@ -57,7 +65,7 @@ ALL_POSSIBLE_TOOLS = set(TOOL_TO_TOOLSET_MAP.keys())
 DEFAULT_TOOL_STATS = {'count': 0, 'success': 0, 'failure': 0}
 
 
-def _normalize_tool_stats(tool_stats: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
+def _normalize_tool_stats(tool_stats: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
     """
     Normalize tool_stats to include all possible tools with consistent schema.
     
@@ -71,23 +79,23 @@ def _normalize_tool_stats(tool_stats: Dict[str, Dict[str, int]]) -> Dict[str, Di
         Dict: Normalized tool statistics with all tools present
     """
     normalized = {}
-    
+
     # Add all possible tools with defaults
     for tool in ALL_POSSIBLE_TOOLS:
         if tool in tool_stats:
             normalized[tool] = tool_stats[tool].copy()
         else:
             normalized[tool] = DEFAULT_TOOL_STATS.copy()
-    
+
     # Also include any unexpected tools (in case new tools are added)
     for tool, stats in tool_stats.items():
         if tool not in normalized:
             normalized[tool] = stats.copy()
-    
+
     return normalized
 
 
-def _normalize_tool_error_counts(tool_error_counts: Dict[str, int]) -> Dict[str, int]:
+def _normalize_tool_error_counts(tool_error_counts: dict[str, int]) -> dict[str, int]:
     """
     Normalize tool_error_counts to include all possible tools.
     
@@ -98,20 +106,20 @@ def _normalize_tool_error_counts(tool_error_counts: Dict[str, int]) -> Dict[str,
         Dict: Normalized error counts with all tools present
     """
     normalized = {}
-    
+
     # Add all possible tools with zero defaults
     for tool in ALL_POSSIBLE_TOOLS:
         normalized[tool] = tool_error_counts.get(tool, 0)
-    
+
     # Also include any unexpected tools
     for tool, count in tool_error_counts.items():
         if tool not in normalized:
             normalized[tool] = count
-    
+
     return normalized
 
 
-def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+def _extract_tool_stats(messages: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
     """
     Extract tool usage statistics from message history.
     
@@ -122,10 +130,10 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
         Dict: Tool statistics with counts and success/failure rates
     """
     tool_stats = {}
-    
+
     # Track tool calls and their results
     tool_calls_map = {}  # Map tool_call_id to tool name
-    
+
     for msg in messages:
         # Track tool calls from assistant messages
         if msg["role"] == "assistant" and "tool_calls" in msg and msg["tool_calls"]:
@@ -133,7 +141,7 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
                 if not tool_call or not isinstance(tool_call, dict): continue
                 tool_name = tool_call["function"]["name"]
                 tool_call_id = tool_call["id"]
-                
+
                 # Initialize stats for this tool if not exists
                 if tool_name not in tool_stats:
                     tool_stats[tool_name] = {
@@ -141,26 +149,26 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
                         "success": 0,
                         "failure": 0
                     }
-                
+
                 tool_stats[tool_name]["count"] += 1
                 tool_calls_map[tool_call_id] = tool_name
-        
+
         # Track tool responses
         elif msg["role"] == "tool":
             tool_call_id = msg.get("tool_call_id", "")
             content = msg.get("content", "")
-            
+
             # Determine if tool call was successful
             is_success = True
             try:
                 # Try to parse as JSON and check for actual error values
                 content_json = json.loads(content) if isinstance(content, str) else content
-                
+
                 if isinstance(content_json, dict):
                     # Check if error field exists AND has a non-null value
                     if "error" in content_json and content_json["error"] is not None:
                         is_success = False
-                    
+
                     # Special handling for terminal tool responses
                     # Terminal wraps its response in a "content" field
                     if "content" in content_json and isinstance(content_json["content"], dict):
@@ -169,11 +177,11 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
                         # Note: non-zero exit codes are not failures - the model can self-correct
                         if inner_content.get("error") is not None:
                             is_success = False
-                    
+
                     # Check for "success": false pattern used by some tools
                     if content_json.get("success") is False:
                         is_success = False
-                        
+
             except (json.JSONDecodeError, ValueError, TypeError):
                 # If not JSON, check if content is empty or explicitly states an error
                 # Note: We avoid simple substring matching to prevent false positives
@@ -182,7 +190,7 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
                 # Only mark as failure if it explicitly starts with "Error:" or "ERROR:"
                 elif content.strip().lower().startswith("error:"):
                     is_success = False
-            
+
             # Update success/failure count
             if tool_call_id in tool_calls_map:
                 tool_name = tool_calls_map[tool_call_id]
@@ -190,11 +198,11 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
                     tool_stats[tool_name]["success"] += 1
                 else:
                     tool_stats[tool_name]["failure"] += 1
-    
+
     return tool_stats
 
 
-def _extract_reasoning_stats(messages: List[Dict[str, Any]]) -> Dict[str, int]:
+def _extract_reasoning_stats(messages: list[dict[str, Any]]) -> dict[str, int]:
     """
     Count how many assistant turns have reasoning vs no reasoning.
     
@@ -209,19 +217,19 @@ def _extract_reasoning_stats(messages: List[Dict[str, Any]]) -> Dict[str, int]:
     """
     total = 0
     with_reasoning = 0
-    
+
     for msg in messages:
         if msg.get("role") != "assistant":
             continue
         total += 1
-        
+
         content = msg.get("content", "") or ""
         has_scratchpad = "<REASONING_SCRATCHPAD>" in content
         has_native_reasoning = bool(msg.get("reasoning", "").strip()) if msg.get("reasoning") else False
-        
+
         if has_scratchpad or has_native_reasoning:
             with_reasoning += 1
-    
+
     return {
         "total_assistant_turns": total,
         "turns_with_reasoning": with_reasoning,
@@ -232,10 +240,10 @@ def _extract_reasoning_stats(messages: List[Dict[str, Any]]) -> Dict[str, int]:
 
 def _process_single_prompt(
     prompt_index: int,
-    prompt_data: Dict[str, Any],
+    prompt_data: dict[str, Any],
     batch_num: int,
-    config: Dict[str, Any]
-) -> Dict[str, Any]:
+    config: dict[str, Any]
+) -> dict[str, Any]:
     """
     Process a single prompt with the agent.
     
@@ -250,7 +258,7 @@ def _process_single_prompt(
     """
     prompt = prompt_data["prompt"]
     task_id = f"task_{prompt_index}"
-    
+
     # Per-prompt container image override: if the dataset row has an 'image' field,
     # register it for this task's sandbox. Works with Docker, Modal, Singularity, and Daytona.
     container_image = prompt_data.get("image") or prompt_data.get("docker_image")
@@ -301,14 +309,14 @@ def _process_single_prompt(
         register_task_env_overrides(task_id, overrides)
         if config.get("verbose"):
             print(f"   Prompt {prompt_index}: Using container image {container_image}")
-    
+
     try:
         # Sample toolsets from distribution for this prompt
         selected_toolsets = sample_toolsets_from_distribution(config["distribution"])
-        
+
         if config.get("verbose"):
             print(f"   Prompt {prompt_index}: Using toolsets {selected_toolsets}")
-        
+
         # Initialize agent with sampled toolsets and log prefix for identification
         log_prefix = f"[B{batch_num}:P{prompt_index}]"
         agent = AIAgent(
@@ -335,20 +343,20 @@ def _process_single_prompt(
 
         # Run the agent with task_id to ensure each task gets its own isolated VM
         result = agent.run_conversation(prompt, task_id=task_id)
-        
+
         # Extract tool usage statistics
         tool_stats = _extract_tool_stats(result["messages"])
-        
+
         # Extract reasoning coverage stats
         reasoning_stats = _extract_reasoning_stats(result["messages"])
-        
+
         # Convert to trajectory format (using existing method)
         trajectory = agent._convert_to_trajectory_format(
             result["messages"],
             prompt,
             result["completed"]
         )
-        
+
         return {
             "success": True,
             "prompt_index": prompt_index,
@@ -365,12 +373,12 @@ def _process_single_prompt(
                 "model": config["model"]
             }
         }
-    
+
     except Exception as e:
         print(f"❌ Error processing prompt {prompt_index}: {e}")
         if config.get("verbose"):
             traceback.print_exc()
-        
+
         return {
             "success": False,
             "prompt_index": prompt_index,
@@ -385,7 +393,7 @@ def _process_single_prompt(
         }
 
 
-def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
+def _process_batch_worker(args: tuple) -> dict[str, Any]:
     """
     Worker function to process a single batch of prompts.
     
@@ -396,19 +404,19 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
         Dict: Batch results with statistics
     """
     batch_num, batch_data, output_dir, completed_prompts_set, config = args
-    
+
     output_dir = Path(output_dir)
     print(f"\n🔄 Batch {batch_num}: Starting ({len(batch_data)} prompts)")
-    
+
     # Output file for this batch
     batch_output_file = output_dir / f"batch_{batch_num}.jsonl"
-    
+
     # Filter out already completed prompts
     prompts_to_process = [
         (idx, data) for idx, data in batch_data
         if idx not in completed_prompts_set
     ]
-    
+
     if not prompts_to_process:
         print(f"✅ Batch {batch_num}: Already completed (skipping)")
         return {
@@ -418,15 +426,15 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
             "tool_stats": {},
             "completed_prompts": []
         }
-    
+
     print(f"   Processing {len(prompts_to_process)} prompts (skipping {len(batch_data) - len(prompts_to_process)} already completed)")
-    
+
     # Initialize aggregated stats for this batch
     batch_tool_stats = {}
     batch_reasoning_stats = {"total_assistant_turns": 0, "turns_with_reasoning": 0, "turns_without_reasoning": 0}
     completed_in_batch = []
     discarded_no_reasoning = 0
-    
+
     # Process each prompt sequentially in this batch
     for prompt_index, prompt_data in prompts_to_process:
         # Process the prompt
@@ -436,7 +444,7 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
             batch_num,
             config
         )
-        
+
         # Save trajectory if successful
         if result["success"] and result["trajectory"]:
             # Discard samples with zero reasoning across all turns
@@ -445,18 +453,18 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
                 print(f"   🚫 Prompt {prompt_index} discarded (no reasoning in any turn)")
                 discarded_no_reasoning += 1
                 continue
-            
+
             # Get and normalize tool stats for consistent schema across all entries
             raw_tool_stats = result.get("tool_stats", {})
             tool_stats = _normalize_tool_stats(raw_tool_stats)
-            
+
             # Create normalized tool_error_counts mapping tool names to their failure counts
             raw_error_counts = {
-                tool_name: stats.get("failure", 0) 
+                tool_name: stats.get("failure", 0)
                 for tool_name, stats in raw_tool_stats.items()
             }
             tool_error_counts = _normalize_tool_error_counts(raw_error_counts)
-            
+
             trajectory_entry = {
                 "prompt_index": prompt_index,
                 "conversations": result["trajectory"],
@@ -468,11 +476,11 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
                 "tool_stats": tool_stats,  # Full stats: {tool: {count, success, failure}} - normalized
                 "tool_error_counts": tool_error_counts  # Simple: {tool: failure_count} - normalized
             }
-            
+
             # Append to batch output file
             with open(batch_output_file, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(trajectory_entry, ensure_ascii=False) + "\n")
-        
+
         # Aggregate tool statistics
         for tool_name, stats in result.get("tool_stats", {}).items():
             if tool_name not in batch_tool_stats:
@@ -481,15 +489,15 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
                     "success": 0,
                     "failure": 0
                 }
-            
+
             batch_tool_stats[tool_name]["count"] += stats["count"]
             batch_tool_stats[tool_name]["success"] += stats["success"]
             batch_tool_stats[tool_name]["failure"] += stats["failure"]
-        
+
         # Aggregate reasoning stats
         for key in batch_reasoning_stats:
             batch_reasoning_stats[key] += result.get("reasoning_stats", {}).get(key, 0)
-        
+
         # Only mark as completed if successfully saved (failed prompts can be retried on resume)
         if result["success"] and result["trajectory"]:
             completed_in_batch.append(prompt_index)
@@ -497,9 +505,9 @@ def _process_batch_worker(args: Tuple) -> Dict[str, Any]:
             print(f"   {status} Prompt {prompt_index} completed")
         else:
             print(f"   ❌ Prompt {prompt_index} failed (will retry on resume)")
-    
+
     print(f"✅ Batch {batch_num}: Completed ({len(prompts_to_process)} prompts processed)")
-    
+
     return {
         "batch_num": batch_num,
         "processed": len(prompts_to_process),
@@ -515,7 +523,7 @@ class BatchRunner:
     """
     Manages batch processing of agent prompts with checkpointing and statistics.
     """
-    
+
     def __init__(
         self,
         dataset_file: str,
@@ -530,13 +538,13 @@ class BatchRunner:
         verbose: bool = False,
         ephemeral_system_prompt: str = None,
         log_prefix_chars: int = 100,
-        providers_allowed: List[str] = None,
-        providers_ignored: List[str] = None,
-        providers_order: List[str] = None,
+        providers_allowed: list[str] = None,
+        providers_ignored: list[str] = None,
+        providers_order: list[str] = None,
         provider_sort: str = None,
         max_tokens: int = None,
-        reasoning_config: Dict[str, Any] = None,
-        prefill_messages: List[Dict[str, Any]] = None,
+        reasoning_config: dict[str, Any] = None,
+        prefill_messages: list[dict[str, Any]] = None,
         max_samples: int = None,
     ):
         """
@@ -584,31 +592,31 @@ class BatchRunner:
         self.reasoning_config = reasoning_config
         self.prefill_messages = prefill_messages
         self.max_samples = max_samples
-        
+
         # Validate distribution
         if not validate_distribution(distribution):
             raise ValueError(f"Unknown distribution: {distribution}. Available: {list(list_distributions().keys())}")
-        
+
         # Setup output directory
         self.output_dir = Path("data") / run_name
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Checkpoint file
         self.checkpoint_file = self.output_dir / "checkpoint.json"
-        
+
         # Statistics file
         self.stats_file = self.output_dir / "statistics.json"
-        
+
         # Load dataset (and optionally truncate to max_samples)
         self.dataset = self._load_dataset()
         if self.max_samples and self.max_samples < len(self.dataset):
             full_count = len(self.dataset)
             self.dataset = self.dataset[:self.max_samples]
             print(f"✂️  Truncated dataset from {full_count} to {self.max_samples} samples (--max_samples)")
-        
+
         # Create batches
         self.batches = self._create_batches()
-        
+
         print("📊 Batch Runner Initialized")
         print(f"   Dataset: {self.dataset_file} ({len(self.dataset)} prompts)")
         print(f"   Batch size: {self.batch_size}")
@@ -620,8 +628,8 @@ class BatchRunner:
         if self.ephemeral_system_prompt:
             prompt_preview = self.ephemeral_system_prompt[:60] + "..." if len(self.ephemeral_system_prompt) > 60 else self.ephemeral_system_prompt
             print(f"   🔒 Ephemeral system prompt: '{prompt_preview}'")
-    
-    def _load_dataset(self) -> List[Dict[str, Any]]:
+
+    def _load_dataset(self) -> list[dict[str, Any]]:
         """
         Load dataset from JSONL file.
         
@@ -630,14 +638,14 @@ class BatchRunner:
         """
         if not self.dataset_file.exists():
             raise FileNotFoundError(f"Dataset file not found: {self.dataset_file}")
-        
+
         dataset = []
-        with open(self.dataset_file, 'r', encoding='utf-8') as f:
+        with open(self.dataset_file, encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 try:
                     entry = json.loads(line)
                     if 'prompt' not in entry:
@@ -647,13 +655,13 @@ class BatchRunner:
                 except json.JSONDecodeError as e:
                     print(f"⚠️  Warning: Invalid JSON on line {line_num}: {e}")
                     continue
-        
+
         if not dataset:
             raise ValueError(f"No valid entries found in dataset file: {self.dataset_file}")
-        
+
         return dataset
-    
-    def _create_batches(self) -> List[List[Tuple[int, Dict[str, Any]]]]:
+
+    def _create_batches(self) -> list[list[tuple[int, dict[str, Any]]]]:
         """
         Split dataset into batches with indices.
         
@@ -664,10 +672,10 @@ class BatchRunner:
         for i in range(0, len(self.dataset), self.batch_size):
             batch = [(idx, entry) for idx, entry in enumerate(self.dataset[i:i + self.batch_size], start=i)]
             batches.append(batch)
-        
+
         return batches
-    
-    def _load_checkpoint(self) -> Dict[str, Any]:
+
+    def _load_checkpoint(self) -> dict[str, Any]:
         """
         Load checkpoint data if it exists.
         
@@ -681,9 +689,9 @@ class BatchRunner:
                 "batch_stats": {},
                 "last_updated": None
             }
-        
+
         try:
-            with open(self.checkpoint_file, 'r', encoding='utf-8') as f:
+            with open(self.checkpoint_file, encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             print(f"⚠️  Warning: Failed to load checkpoint: {e}")
@@ -693,8 +701,8 @@ class BatchRunner:
                 "batch_stats": {},
                 "last_updated": None
             }
-    
-    def _save_checkpoint(self, checkpoint_data: Dict[str, Any], lock: Optional[Lock] = None):
+
+    def _save_checkpoint(self, checkpoint_data: dict[str, Any], lock: LockType | None = None):
         """
         Save checkpoint data.
         
@@ -710,7 +718,7 @@ class BatchRunner:
                 atomic_json_write(self.checkpoint_file, checkpoint_data)
         else:
             atomic_json_write(self.checkpoint_file, checkpoint_data)
-    
+
     def _scan_completed_prompts_by_content(self) -> set:
         """
         Scan all batch files and extract completed prompts by their actual content.
@@ -723,23 +731,23 @@ class BatchRunner:
         """
         completed_prompts = set()
         batch_files = sorted(self.output_dir.glob("batch_*.jsonl"))
-        
+
         if not batch_files:
             return completed_prompts
-        
+
         print(f"📂 Scanning {len(batch_files)} batch files for completed prompts...")
-        
+
         for batch_file in batch_files:
             try:
-                with open(batch_file, 'r', encoding='utf-8') as f:
+                with open(batch_file, encoding='utf-8') as f:
                     for line in f:
                         try:
                             entry = json.loads(line.strip())
-                            
+
                             # Skip failed entries - we want to retry these
                             if entry.get("failed", False):
                                 continue
-                            
+
                             # Extract the human/user prompt from conversations
                             conversations = entry.get("conversations", [])
                             for msg in conversations:
@@ -752,10 +760,10 @@ class BatchRunner:
                             continue
             except Exception as e:
                 print(f"  ⚠️  Warning: Error reading {batch_file.name}: {e}")
-        
+
         return completed_prompts
-    
-    def _filter_dataset_by_completed(self, completed_prompts: set) -> Tuple[List[Dict], List[int]]:
+
+    def _filter_dataset_by_completed(self, completed_prompts: set) -> tuple[list[dict], list[int]]:
         """
         Filter the dataset to exclude prompts that have already been completed.
         
@@ -767,11 +775,11 @@ class BatchRunner:
         """
         filtered_dataset = []
         skipped_indices = []
-        
+
         for idx, entry in enumerate(self.dataset):
             # Extract prompt from the dataset entry
             prompt_text = entry.get("prompt", "").strip()
-            
+
             # Also check conversations format
             if not prompt_text:
                 conversations = entry.get("conversations", [])
@@ -780,15 +788,15 @@ class BatchRunner:
                     if role in ("user", "human"):
                         prompt_text = (msg.get("content") or msg.get("value", "")).strip()
                         break
-            
+
             if prompt_text in completed_prompts:
                 skipped_indices.append(idx)
             else:
                 # Keep original index for tracking
                 filtered_dataset.append((idx, entry))
-        
+
         return filtered_dataset, skipped_indices
-    
+
     def run(self, resume: bool = False):
         """
         Run the batch processing pipeline.
@@ -799,30 +807,30 @@ class BatchRunner:
         print("\n" + "=" * 70)
         print("🚀 Starting Batch Processing")
         print("=" * 70)
-        
+
         # Smart resume: scan batch files by content to find completed prompts
         completed_prompt_texts = set()
         if resume:
             completed_prompt_texts = self._scan_completed_prompts_by_content()
             if completed_prompt_texts:
                 print(f"   Found {len(completed_prompt_texts)} already-completed prompts by content matching")
-        
+
         # Filter dataset to only include unprocessed prompts
         if resume and completed_prompt_texts:
             filtered_entries, skipped_indices = self._filter_dataset_by_completed(completed_prompt_texts)
-            
+
             if not filtered_entries:
                 print("\n✅ All prompts have already been processed!")
                 return
-            
+
             # Recreate batches from filtered entries (keeping original indices for tracking)
             batches_to_process = []
             for i in range(0, len(filtered_entries), self.batch_size):
                 batch = filtered_entries[i:i + self.batch_size]
                 batches_to_process.append(batch)
-            
+
             self.batches = batches_to_process
-            
+
             # Print prominent resume summary
             print("\n" + "=" * 70)
             print("📊 RESUME SUMMARY")
@@ -833,7 +841,7 @@ class BatchRunner:
             print(f"   🎯 RESUMING WITH:          {len(filtered_entries):,} prompts")
             print(f"   New batches created:       {len(batches_to_process)}")
             print("=" * 70 + "\n")
-        
+
         # Load existing checkpoint (so resume doesn't clobber prior progress)
         checkpoint_data = self._load_checkpoint()
         if checkpoint_data.get("run_name") != self.run_name:
@@ -843,7 +851,7 @@ class BatchRunner:
                 "batch_stats": {},
                 "last_updated": None
             }
-        
+
         # Prepare configuration for workers
         config = {
             "distribution": self.distribution,
@@ -862,17 +870,17 @@ class BatchRunner:
             "reasoning_config": self.reasoning_config,
             "prefill_messages": self.prefill_messages,
         }
-        
+
         # For backward compatibility, still track by index (but this is secondary to content matching)
         completed_prompts_set = set(checkpoint_data.get("completed_prompts", []))
-        
+
         # Aggregate statistics across all batches
         total_tool_stats = {}
-        
+
         start_time = time.time()
-        
+
         print(f"\n🔧 Initializing {self.num_workers} worker processes...")
-        
+
         # Checkpoint writes happen in the parent process; keep a lock for safety.
         checkpoint_lock = Lock()
 
@@ -889,10 +897,10 @@ class BatchRunner:
                 )
                 for batch_num, batch_data in enumerate(self.batches)
             ]
-            
+
             print(f"✅ Created {len(tasks)} batch tasks")
             print("🚀 Starting parallel batch processing...\n")
-            
+
             # Use rich Progress for better visual tracking with persistent bottom bar
             # redirect_stdout/stderr lets rich manage all output so progress bar stays clean
             results = []
@@ -911,12 +919,12 @@ class BatchRunner:
                 redirect_stderr=False,
             ) as progress:
                 task = progress.add_task("Processing", total=len(tasks))
-                
+
                 # Temporarily suppress DEBUG logging to avoid bar interference
                 root_logger = logging.getLogger()
                 original_level = root_logger.level
                 root_logger.setLevel(logging.WARNING)
-                
+
                 try:
                     for result in pool.imap_unordered(_process_batch_worker, tasks):
                         results.append(result)
@@ -945,15 +953,15 @@ class BatchRunner:
                     raise
                 finally:
                     root_logger.setLevel(original_level)
-        
+
         # Aggregate all batch statistics and update checkpoint
         all_completed_prompts = list(completed_prompts_set)
         total_reasoning_stats = {"total_assistant_turns": 0, "turns_with_reasoning": 0, "turns_without_reasoning": 0}
-        
+
         for batch_result in results:
             # Add newly completed prompts
             all_completed_prompts.extend(batch_result.get("completed_prompts", []))
-            
+
             # Aggregate tool stats
             for tool_name, stats in batch_result.get("tool_stats", {}).items():
                 if tool_name not in total_tool_stats:
@@ -962,22 +970,22 @@ class BatchRunner:
                         "success": 0,
                         "failure": 0
                     }
-                
+
                 total_tool_stats[tool_name]["count"] += stats["count"]
                 total_tool_stats[tool_name]["success"] += stats["success"]
                 total_tool_stats[tool_name]["failure"] += stats["failure"]
-            
+
             # Aggregate reasoning stats
             for key in total_reasoning_stats:
                 total_reasoning_stats[key] += batch_result.get("reasoning_stats", {}).get(key, 0)
-        
+
         # Save final checkpoint (best-effort; incremental writes already happened)
         try:
             checkpoint_data["completed_prompts"] = all_completed_prompts
             self._save_checkpoint(checkpoint_data, lock=checkpoint_lock)
         except Exception as ckpt_err:
             print(f"âš ï¸  Warning: Failed to save final checkpoint: {ckpt_err}")
-        
+
         # Calculate success rates
         for tool_name in total_tool_stats:
             stats = total_tool_stats[tool_name]
@@ -988,53 +996,53 @@ class BatchRunner:
             else:
                 stats["success_rate"] = 0.0
                 stats["failure_rate"] = 0.0
-        
+
         # Combine ALL batch files in directory into a single trajectories.jsonl file
         # This includes both old batches (from previous runs) and new batches (from resume)
         # Also filter out corrupted entries (where model generated invalid tool names)
         combined_file = self.output_dir / "trajectories.jsonl"
         print(f"\n📦 Combining ALL batch files into {combined_file.name}...")
-        
+
         # Valid tools auto-derived from model_tools.py — no manual updates needed
         VALID_TOOLS = ALL_POSSIBLE_TOOLS
-        
+
         total_entries = 0
         filtered_entries = 0
         batch_files_found = 0
-        
+
         # Find ALL batch files in the output directory (handles resume merging old + new)
         all_batch_files = sorted(self.output_dir.glob("batch_*.jsonl"))
-        
+
         with open(combined_file, 'w', encoding='utf-8') as outfile:
             for batch_file in all_batch_files:
                 batch_files_found += 1
                 batch_num = batch_file.stem.split("_")[1]  # Extract batch number for logging
-                
-                with open(batch_file, 'r', encoding='utf-8') as infile:
+
+                with open(batch_file, encoding='utf-8') as infile:
                     for line in infile:
                         total_entries += 1
                         try:
                             data = json.loads(line)
                             tool_stats = data.get('tool_stats', {})
-                            
+
                             # Check for invalid tool names (model hallucinations)
                             invalid_tools = [k for k in tool_stats if k not in VALID_TOOLS]
-                            
+
                             if invalid_tools:
                                 filtered_entries += 1
                                 invalid_preview = invalid_tools[0][:50] + "..." if len(invalid_tools[0]) > 50 else invalid_tools[0]
                                 print(f"   ⚠️  Filtering corrupted entry (batch {batch_num}): invalid tool '{invalid_preview}'")
                                 continue
-                            
+
                             outfile.write(line)
                         except json.JSONDecodeError:
                             filtered_entries += 1
                             print(f"   ⚠️  Filtering invalid JSON entry (batch {batch_num})")
-        
+
         if filtered_entries > 0:
             print(f"⚠️  Filtered {filtered_entries} corrupted entries out of {total_entries} total")
         print(f"✅ Combined {batch_files_found} batch files into trajectories.jsonl ({total_entries - filtered_entries} entries)")
-        
+
         # Save final statistics
         final_stats = {
             "run_name": self.run_name,
@@ -1048,10 +1056,10 @@ class BatchRunner:
             "tool_statistics": total_tool_stats,
             "reasoning_statistics": total_reasoning_stats,
         }
-        
+
         with open(self.stats_file, 'w', encoding='utf-8') as f:
             json.dump(final_stats, f, indent=2, ensure_ascii=False)
-        
+
         # Print summary
         print("\n" + "=" * 70)
         print("📊 BATCH PROCESSING COMPLETE")
@@ -1062,7 +1070,7 @@ class BatchRunner:
         print(f"⏱️  Total duration: {round(time.time() - start_time, 2)}s")
         print("\n📈 Tool Usage Statistics:")
         print("-" * 70)
-        
+
         if total_tool_stats:
             # Sort by count descending
             sorted_tools = sorted(
@@ -1070,7 +1078,7 @@ class BatchRunner:
                 key=lambda x: x[1]["count"],
                 reverse=True
             )
-            
+
             print(f"{'Tool Name':<25} {'Count':<10} {'Success':<10} {'Failure':<10} {'Success Rate':<12}")
             print("-" * 70)
             for tool_name, stats in sorted_tools:
@@ -1083,10 +1091,10 @@ class BatchRunner:
                 )
         else:
             print("No tool calls were made during this run.")
-        
+
         # Print reasoning coverage stats
         total_discarded = sum(r.get("discarded_no_reasoning", 0) for r in results)
-        
+
         print("\n🧠 Reasoning Coverage:")
         print("-" * 70)
         total_turns = total_reasoning_stats["total_assistant_turns"]
@@ -1102,7 +1110,7 @@ class BatchRunner:
             print("   No assistant turns recorded.")
         if total_discarded > 0:
             print(f"   🚫 Samples discarded (zero reasoning): {total_discarded:,}")
-        
+
         print(f"\n💾 Results saved to: {self.output_dir}")
         print("   - Trajectories: trajectories.jsonl (combined)")
         print("   - Individual batches: batch_*.jsonl (for debugging)")
@@ -1186,38 +1194,39 @@ def main(
     """
     # Handle list distributions
     if list_distributions:
-        from core.toolset_distributions import list_distributions as get_all_dists, print_distribution_info
-        
+        from core.toolset_distributions import list_distributions as get_all_dists
+        from core.toolset_distributions import print_distribution_info
+
         print("📊 Available Toolset Distributions")
         print("=" * 70)
-        
+
         all_dists = get_all_dists()
         for dist_name in sorted(all_dists.keys()):
             print_distribution_info(dist_name)
-        
+
         print("\n💡 Usage:")
         print("  python batch_runner.py --dataset_file=data.jsonl --batch_size=10 \\")
         print("                         --run_name=my_run --distribution=<name>")
         return
-    
+
     # Validate required arguments
     if not dataset_file:
         print("❌ Error: --dataset_file is required")
         return
-    
+
     if not batch_size or batch_size < 1:
         print("❌ Error: --batch_size must be a positive integer")
         return
-    
+
     if not run_name:
         print("❌ Error: --run_name is required")
         return
-    
+
     # Parse provider preferences (comma-separated strings to lists)
     providers_allowed_list = [p.strip() for p in providers_allowed.split(",")] if providers_allowed else None
     providers_ignored_list = [p.strip() for p in providers_ignored.split(",")] if providers_ignored else None
     providers_order_list = [p.strip() for p in providers_order.split(",")] if providers_order else None
-    
+
     # Build reasoning_config from CLI flags
     # --reasoning_disabled takes priority, then --reasoning_effort, then default (medium)
     reasoning_config = None
@@ -1233,12 +1242,12 @@ def main(
             return
         reasoning_config = {"enabled": True, "effort": reasoning_effort}
         print(f"🧠 Reasoning effort: {reasoning_effort}")
-    
+
     # Load prefill messages from JSON file if provided
     prefill_messages = None
     if prefill_messages_file:
         try:
-            with open(prefill_messages_file, 'r', encoding='utf-8') as f:
+            with open(prefill_messages_file, encoding='utf-8') as f:
                 prefill_messages = json.load(f)
             if not isinstance(prefill_messages, list):
                 print("❌ Error: prefill_messages_file must contain a JSON array of messages")
@@ -1247,7 +1256,7 @@ def main(
         except Exception as e:
             print(f"❌ Error loading prefill messages: {e}")
             return
-    
+
     # Initialize and run batch runner
     try:
         runner = BatchRunner(
@@ -1274,7 +1283,7 @@ def main(
         )
 
         runner.run(resume=resume)
-    
+
     except Exception as e:
         print(f"\n❌ Fatal error: {e}")
         if verbose:
@@ -1284,4 +1293,3 @@ def main(
 
 if __name__ == "__main__":
     fire.Fire(main)
-

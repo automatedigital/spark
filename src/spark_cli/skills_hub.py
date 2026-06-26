@@ -13,7 +13,7 @@ handler are thin wrappers that parse args and delegate.
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -77,7 +77,7 @@ def _resolve_short_name(name: str, sources, console: Console) -> str:
     return ""
 
 
-def _format_extra_metadata_lines(extra: Dict[str, Any]) -> list[str]:
+def _format_extra_metadata_lines(extra: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     if not extra:
         return lines
@@ -142,7 +142,7 @@ def _derive_category_from_install_path(install_path: str) -> str:
 
 
 def do_search(query: str, source: str = "all", limit: int = 10,
-              console: Optional[Console] = None) -> None:
+              console: Console | None = None) -> None:
     """Search registries and display results as a Rich table."""
     from tools.skills_hub import GitHubAuth, create_source_router, unified_search
 
@@ -182,13 +182,15 @@ def do_search(query: str, source: str = "all", limit: int = 10,
 
 
 def do_browse(page: int = 1, page_size: int = 20, source: str = "all",
-              console: Optional[Console] = None) -> None:
+              console: Console | None = None) -> None:
     """Browse all available skills across registries, paginated.
 
     Official skills are always shown first, regardless of source filter.
     """
     from tools.skills_hub import (
-        GitHubAuth, create_source_router, parallel_search_sources,
+        GitHubAuth,
+        create_source_router,
+        parallel_search_sources,
     )
 
     # Clamp page_size to safe range
@@ -308,14 +310,18 @@ def do_browse(page: int = 1, page_size: int = 20, source: str = "all",
 
 
 def do_install(identifier: str, category: str = "", force: bool = False,
-               console: Optional[Console] = None, skip_confirm: bool = False,
+               console: Console | None = None, skip_confirm: bool = False,
                invalidate_cache: bool = True) -> None:
     """Fetch, quarantine, scan, confirm, and install a skill."""
+    from tools.skills_guard import format_scan_report, scan_skill, should_allow_install
     from tools.skills_hub import (
-        GitHubAuth, create_source_router, ensure_hub_dirs,
-        quarantine_bundle, install_from_quarantine, HubLockFile,
+        GitHubAuth,
+        HubLockFile,
+        create_source_router,
+        ensure_hub_dirs,
+        install_from_quarantine,
+        quarantine_bundle,
     )
-    from tools.skills_guard import scan_skill, should_allow_install, format_scan_report
 
     c = console or _console
     ensure_hub_dirs()
@@ -465,7 +471,7 @@ def do_install(identifier: str, category: str = "", force: bool = False,
         c.print("[dim]Use /reset to start a new session now, or --now to activate immediately (invalidates prompt cache).[/]\n")
 
 
-def do_inspect(identifier: str, console: Optional[Console] = None) -> None:
+def do_inspect(identifier: str, console: Console | None = None) -> None:
     """Preview a skill's SKILL.md content without installing."""
     from tools.skills_hub import GitHubAuth, create_source_router
 
@@ -515,7 +521,7 @@ def do_inspect(identifier: str, console: Optional[Console] = None) -> None:
     c.print()
 
 
-def do_list(source_filter: str = "all", console: Optional[Console] = None) -> None:
+def do_list(source_filter: str = "all", console: Console | None = None) -> None:
     """List installed skills, distinguishing hub, builtin, and local skills."""
     from tools.skills_hub import HubLockFile, ensure_hub_dirs
     from tools.skills_sync import _read_manifest
@@ -573,7 +579,7 @@ def do_list(source_filter: str = "all", console: Optional[Console] = None) -> No
     )
 
 
-def do_check(name: Optional[str] = None, console: Optional[Console] = None) -> None:
+def do_check(name: str | None = None, console: Console | None = None) -> None:
     """Check hub-installed skills for upstream updates."""
     from tools.skills_hub import check_for_skill_updates
 
@@ -596,7 +602,7 @@ def do_check(name: Optional[str] = None, console: Optional[Console] = None) -> N
     c.print(f"[dim]{update_count} update(s) available across {len(results)} checked skill(s)[/]\n")
 
 
-def do_update(name: Optional[str] = None, console: Optional[Console] = None) -> None:
+def do_update(name: str | None = None, console: Console | None = None) -> None:
     """Update hub-installed skills with upstream changes."""
     from tools.skills_hub import HubLockFile, check_for_skill_updates
 
@@ -616,10 +622,10 @@ def do_update(name: Optional[str] = None, console: Optional[Console] = None) -> 
     c.print(f"[bold green]Updated {len(updates)} skill(s).[/]\n")
 
 
-def do_audit(name: Optional[str] = None, console: Optional[Console] = None) -> None:
+def do_audit(name: str | None = None, console: Console | None = None) -> None:
     """Re-run security scan on installed hub skills."""
-    from tools.skills_hub import HubLockFile, SKILLS_DIR
-    from tools.skills_guard import scan_skill, format_scan_report
+    from tools.skills_guard import format_scan_report, scan_skill
+    from tools.skills_hub import SKILLS_DIR, HubLockFile
 
     c = console or _console
     lock = HubLockFile()
@@ -649,7 +655,7 @@ def do_audit(name: Optional[str] = None, console: Optional[Console] = None) -> N
         c.print()
 
 
-def do_uninstall(name: str, console: Optional[Console] = None,
+def do_uninstall(name: str, console: Console | None = None,
                  skip_confirm: bool = False,
                  invalidate_cache: bool = True) -> None:
     """Remove a hub-installed skill with confirmation."""
@@ -684,7 +690,7 @@ def do_uninstall(name: str, console: Optional[Console] = None,
         c.print(f"[bold red]Error:[/] {msg}\n")
 
 
-def do_tap(action: str, repo: str = "", console: Optional[Console] = None) -> None:
+def do_tap(action: str, repo: str = "", console: Console | None = None) -> None:
     """Manage taps (custom GitHub repo sources)."""
     from tools.skills_hub import TapsManager
 
@@ -728,10 +734,10 @@ def do_tap(action: str, repo: str = "", console: Optional[Console] = None) -> No
 
 
 def do_publish(skill_path: str, target: str = "github", repo: str = "",
-               console: Optional[Console] = None) -> None:
+               console: Console | None = None) -> None:
     """Publish a local skill to a registry (GitHub PR or ClawHub submission)."""
-    from tools.skills_hub import GitHubAuth, SKILLS_DIR
-    from tools.skills_guard import scan_skill, format_scan_report
+    from tools.skills_guard import format_scan_report, scan_skill
+    from tools.skills_hub import SKILLS_DIR, GitHubAuth
 
     c = console or _console
     path = Path(skill_path)
@@ -893,7 +899,7 @@ def _github_publish(skill_path: Path, skill_name: str, target_repo: str,
         return False, f"Network error creating PR: {e}"
 
 
-def do_snapshot_export(output_path: str, console: Optional[Console] = None) -> None:
+def do_snapshot_export(output_path: str, console: Console | None = None) -> None:
     """Export current hub skill configuration to a portable JSON file."""
     from tools.skills_hub import HubLockFile, TapsManager
 
@@ -934,7 +940,7 @@ def do_snapshot_export(output_path: str, console: Optional[Console] = None) -> N
 
 
 def do_snapshot_import(input_path: str, force: bool = False,
-                       console: Optional[Console] = None) -> None:
+                       console: Console | None = None) -> None:
     """Re-install skills from a snapshot file."""
     from tools.skills_hub import TapsManager
 
@@ -1037,7 +1043,7 @@ def skills_command(args) -> None:
 # Slash command entry point (/skills in chat)
 # ---------------------------------------------------------------------------
 
-def handle_skills_slash(cmd: str, console: Optional[Console] = None) -> None:
+def handle_skills_slash(cmd: str, console: Console | None = None) -> None:
     """
     Parse and dispatch `/skills <subcommand> [args]` from the chat interface.
 

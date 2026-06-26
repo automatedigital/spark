@@ -16,15 +16,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from spark_cli.config import get_spark_home, get_config_path, load_config, save_config
 from core.spark_constants import get_optional_skills_dir
+from spark_cli.config import get_config_path, get_spark_home, load_config, save_config
 from spark_cli.setup import (
     Colors,
     color,
+    print_error,
     print_header,
     print_info,
     print_success,
-    print_error,
     prompt_yes_no,
 )
 

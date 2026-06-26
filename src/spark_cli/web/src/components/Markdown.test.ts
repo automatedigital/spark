@@ -192,6 +192,17 @@ describe("Markdown component streaming behavior", () => {
     expect(html).toContain("**bold**");
   });
 
+  it("keeps the streaming caret inline with the current text", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content: "Spark is streaming words",
+      streaming: true,
+    }));
+
+    expect(html).toContain("Spark is streaming words<span");
+    expect(html).toContain("aria-hidden=\"true\"");
+    expect(html).toContain("align-[-0.12em]");
+  });
+
   it("keeps safe mode plain even while streaming", () => {
     const html = renderToStaticMarkup(createElement(Markdown, {
       content: "## Heading\n\nA **bold** line.",

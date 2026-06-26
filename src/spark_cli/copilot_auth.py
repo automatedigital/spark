@@ -25,7 +25,6 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +115,7 @@ def _gh_cli_candidates() -> list[str]:
     return candidates
 
 
-def _try_gh_cli_token() -> Optional[str]:
+def _try_gh_cli_token() -> str | None:
     """Return a token from ``gh auth token`` when the GitHub CLI is available.
 
     When COPILOT_GH_HOST is set, passes ``--hostname`` so gh returns the
@@ -156,7 +155,7 @@ def copilot_device_code_login(
     *,
     host: str = "github.com",
     timeout_seconds: float = 300,
-) -> Optional[str]:
+) -> str | None:
     """Run the GitHub OAuth device code flow for Copilot.
 
     Prints instructions for the user, polls for completion, and returns
@@ -164,8 +163,8 @@ def copilot_device_code_login(
 
     This replicates the flow used by opencode and the Copilot CLI.
     """
-    import urllib.request
     import urllib.parse
+    import urllib.request
 
     domain = host.rstrip("/")
     device_code_url = f"https://{domain}/login/device/code"

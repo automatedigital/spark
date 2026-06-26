@@ -241,7 +241,7 @@ def _ensure_path_within_cwd(path_text: str, cwd: str) -> Path:
 
 
 class _ACPChatCompletions:
-    def __init__(self, client: "CopilotACPClient"):
+    def __init__(self, client: CopilotACPClient):
         self._client = client
 
     def create(self, **kwargs: Any) -> Any:
@@ -249,7 +249,7 @@ class _ACPChatCompletions:
 
 
 class _ACPChatNamespace:
-    def __init__(self, client: "CopilotACPClient"):
+    def __init__(self, client: CopilotACPClient):
         self.completions = _ACPChatCompletions(client)
 
 

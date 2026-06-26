@@ -13,24 +13,24 @@ import logging
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
+from core.spark_constants import display_spark_home
+from spark_cli.colors import Colors, color
 from spark_cli.config import (
+    get_env_value,
+    get_spark_home,  # noqa: F401 — used by test mocks
     load_config,
     save_config,
-    get_env_value,
     save_env_value,
-    get_spark_home,  # noqa: F401 — used by test mocks
 )
-from spark_cli.colors import Colors, color
-from core.spark_constants import display_spark_home
 
 logger = logging.getLogger(__name__)
 
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-_MCP_PRESETS: Dict[str, Dict[str, Any]] = {}
+_MCP_PRESETS: dict[str, dict[str, Any]] = {}
 
 
 # ─── UI Helpers ───────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ def _prompt(question: str, *, password: bool = False, default: str = "") -> str:
 
 # ─── Config Helpers ───────────────────────────────────────────────────────────
 
-def _get_mcp_servers(config: Optional[dict] = None) -> Dict[str, dict]:
+def _get_mcp_servers(config: dict | None = None) -> dict[str, dict]:
     """Return the ``mcp_servers`` dict from config, or empty dict."""
     if config is None:
         config = load_config()
@@ -102,9 +102,9 @@ def _env_key_for_server(name: str) -> str:
     return f"MCP_{name.upper().replace('-', '_')}_API_KEY"
 
 
-def _parse_env_assignments(raw_env: Optional[List[str]]) -> Dict[str, str]:
+def _parse_env_assignments(raw_env: list[str] | None) -> dict[str, str]:
     """Parse ``KEY=VALUE`` strings from CLI args into an env dict."""
-    parsed: Dict[str, str] = {}
+    parsed: dict[str, str] = {}
     for item in raw_env or []:
         text = str(item or "").strip()
         if not text:
@@ -124,12 +124,12 @@ def _parse_env_assignments(raw_env: Optional[List[str]]) -> Dict[str, str]:
 def _apply_mcp_preset(
     name: str,
     *,
-    preset_name: Optional[str],
-    url: Optional[str],
-    command: Optional[str],
-    cmd_args: List[str],
-    server_config: Dict[str, Any],
-) -> tuple[Optional[str], Optional[str], List[str], bool]:
+    preset_name: str | None,
+    url: str | None,
+    command: str | None,
+    cmd_args: list[str],
+    server_config: dict[str, Any],
+) -> tuple[str | None, str | None, list[str], bool]:
     """Apply a known MCP preset when transport details were omitted."""
     if not preset_name:
         return url, command, cmd_args, False
@@ -159,22 +159,22 @@ def _apply_mcp_preset(
 
 def _probe_single_server(
     name: str, config: dict, connect_timeout: float = 30
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Temporarily connect to one MCP server, list its tools, disconnect.
 
     Returns list of ``(tool_name, description)`` tuples.
     Raises on connection failure.
     """
     from tools.mcp_tool import (
+        _connect_server,
         _ensure_mcp_loop,
         _run_on_mcp_loop,
-        _connect_server,
         _stop_mcp_loop,
     )
 
     _ensure_mcp_loop()
 
-    tools_found: List[Tuple[str, str]] = []
+    tools_found: list[tuple[str, str]] = []
 
     async def _probe():
         server = await asyncio.wait_for(
@@ -226,7 +226,7 @@ def cmd_mcp_add(args):
     preset_name = getattr(args, "preset", None)
     raw_env = getattr(args, "env", None)
 
-    server_config: Dict[str, Any] = {}
+    server_config: dict[str, Any] = {}
     try:
         explicit_env = _parse_env_assignments(raw_env)
         url, command, cmd_args, _preset_applied = _apply_mcp_preset(

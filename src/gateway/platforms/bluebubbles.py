@@ -15,7 +15,7 @@ import os
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -26,9 +26,9 @@ from gateway.platforms.base import (
     MessageEvent,
     MessageType,
     SendResult,
-    cache_image_from_bytes,
     cache_audio_from_bytes,
     cache_document_from_bytes,
+    cache_image_from_bytes,
 )
 from gateway.platforms.helpers import strip_markdown
 
@@ -123,11 +123,11 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         if not str(self.webhook_path).startswith("/"):
             self.webhook_path = f"/{self.webhook_path}"
         self.send_read_receipts = bool(extra.get("send_read_receipts", True))
-        self.client: Optional[httpx.AsyncClient] = None
+        self.client: httpx.AsyncClient | None = None
         self._runner = None
-        self._private_api_enabled: Optional[bool] = None
+        self._private_api_enabled: bool | None = None
         self._helper_connected: bool = False
-        self._guid_cache: Dict[str, str] = {}
+        self._guid_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # API helpers
@@ -137,13 +137,13 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         sep = "&" if "?" in path else "?"
         return f"{self.server_url}{path}{sep}password={quote(self.password, safe='')}"
 
-    async def _api_get(self, path: str) -> Dict[str, Any]:
+    async def _api_get(self, path: str) -> dict[str, Any]:
         assert self.client is not None
         res = await self.client.get(self._api_url(path))
         res.raise_for_status()
         return res.json()
 
-    async def _api_post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def _api_post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         assert self.client is not None
         res = await self.client.post(self._api_url(path), json=payload)
         res.raise_for_status()
@@ -319,7 +319,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
     # Chat GUID resolution
     # ------------------------------------------------------------------
 
-    async def _resolve_chat_guid(self, target: str) -> Optional[str]:
+    async def _resolve_chat_guid(self, target: str) -> str | None:
         """Resolve an email/phone to a BlueBubbles chat GUID.
 
         If *target* already contains a semicolon (raw GUID format like
@@ -380,8 +380,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         text = strip_markdown(content or "")
         if not text:
@@ -400,7 +400,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                     success=False,
                     error=f"BlueBubbles chat not found for target: {chat_id}",
                 )
-            payload: Dict[str, Any] = {
+            payload: dict[str, Any] = {
                 "chatGuid": guid,
                 "tempGuid": f"temp-{datetime.utcnow().timestamp()}",
                 "message": chunk,
@@ -428,8 +428,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        filename: Optional[str] = None,
-        caption: Optional[str] = None,
+        filename: str | None = None,
+        caption: str | None = None,
         is_audio_message: bool = False,
     ) -> SendResult:
         """Send a file attachment via BlueBubbles multipart upload."""
@@ -446,7 +446,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         try:
             with open(file_path, "rb") as f:
                 files = {"attachment": (fname, f, "application/octet-stream")}
-                data: Dict[str, str] = {
+                data: dict[str, str] = {
                     "chatGuid": guid,
                     "name": fname,
                     "tempGuid": uuid.uuid4().hex,
@@ -482,9 +482,9 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         try:
             from gateway.platforms.base import cache_image_from_url
@@ -498,8 +498,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._send_attachment(chat_id, image_path, caption=caption)
@@ -508,8 +508,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._send_attachment(
@@ -520,8 +520,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._send_attachment(chat_id, video_path, caption=caption)
@@ -530,9 +530,9 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         return await self._send_attachment(
@@ -543,9 +543,9 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         animation_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         return await self.send_image(
             chat_id, animation_url, caption, reply_to, metadata
@@ -608,9 +608,9 @@ class BlueBubblesAdapter(BasePlatformAdapter):
     # Chat info
     # ------------------------------------------------------------------
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         is_group = ";+;" in (chat_id or "")
-        info: Dict[str, Any] = {
+        info: dict[str, Any] = {
             "name": chat_id,
             "type": "group" if is_group else "dm",
         }
@@ -647,8 +647,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     async def _download_attachment(
-        self, att_guid: str, att_meta: Dict[str, Any]
-    ) -> Optional[str]:
+        self, att_guid: str, att_meta: dict[str, Any]
+    ) -> str | None:
         """Download an attachment from BlueBubbles and cache it locally.
 
         Returns the local file path on success, None on failure.
@@ -711,8 +711,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     def _extract_payload_record(
-        self, payload: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, payload: dict[str, Any]
+    ) -> dict[str, Any] | None:
         data = payload.get("data")
         if isinstance(data, dict):
             return data
@@ -725,7 +725,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
         return payload if isinstance(payload, dict) else None
 
     @staticmethod
-    def _value(*candidates: Any) -> Optional[str]:
+    def _value(*candidates: Any) -> str | None:
         for candidate in candidates:
             if isinstance(candidate, str) and candidate.strip():
                 return candidate.strip()
@@ -794,8 +794,8 @@ class BlueBubblesAdapter(BasePlatformAdapter):
 
         # --- Inbound attachment handling ---
         attachments = record.get("attachments") or []
-        media_urls: List[str] = []
-        media_types: List[str] = []
+        media_urls: list[str] = []
+        media_types: list[str] = []
         msg_type = MessageType.TEXT
 
         for att in attachments:

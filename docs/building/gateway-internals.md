@@ -12,7 +12,11 @@ The gateway is a single long-running process that connects Spark to 14+ messagin
 
 | File | What it does |
 |------|-------------|
-| `gateway/run.py` | `GatewayRunner` — main loop, slash commands, message dispatch (~9,000 lines) |
+| `gateway/run.py` | Import-compatible entrypoint: `GatewayRunner`, `start_gateway()`, and top-level message orchestration |
+| `gateway/commands.py` | Slash-command resolution/dispatch around `spark_cli.commands.resolve_command()` |
+| `gateway/authz.py` | Allowlists, DM pairing checks, and internal-event authorization bypass |
+| `gateway/session_hygiene.py` | Pre-agent transcript compression thresholds and session repair |
+| `gateway/cron_tick.py` | Gateway-owned cron scheduler ticker and maintenance cadence |
 | `gateway/session.py` | `SessionStore` — conversation persistence and session key construction |
 | `gateway/delivery.py` | Outbound message delivery to target platforms/channels |
 | `gateway/pairing.py` | DM pairing flow for user authorization |
@@ -55,8 +59,9 @@ Every inbound message follows these four steps:
    - If the message is `/approve`, `/deny`, or `/stop` — bypass the guard and dispatch inline.
 3. **`GatewayRunner._handle_message()`** takes over:
    - Builds a session key via `_session_key_for_source()`.
-   - Runs authorization checks (see below).
-   - Dispatches slash commands or creates an `AIAgent` to handle the message.
+   - Runs authorization checks through `gateway/authz.py` (see below).
+   - Dispatches slash commands through `gateway/commands.py` or creates an
+     `AIAgent` to handle the message.
 4. **Response** travels back through the platform adapter to the user.
 
 ## Session Keys
@@ -84,7 +89,7 @@ Commands that must reach the runner while an agent is blocked (like `/approve`) 
 
 ## Authorization
 
-Authorization is evaluated in order — first match wins:
+Authorization lives in `gateway/authz.py` and is evaluated in order — first match wins:
 
 1. **Per-platform allow-all** (e.g., `TELEGRAM_ALLOW_ALL_USERS`) — all users on that platform are authorized.
 2. **Platform allowlist** (e.g., `TELEGRAM_ALLOWED_USERS`) — comma-separated user IDs.
@@ -109,7 +114,7 @@ Every slash command runs through the same pipeline:
 
 1. `resolve_command()` (from `spark_cli/commands.py`) maps input to a canonical name — handles aliases and prefix matching.
 2. The canonical name is checked against `GATEWAY_KNOWN_COMMANDS`.
-3. The handler in `_handle_message()` dispatches by canonical name.
+3. `gateway/commands.py` dispatches the canonical name to the runner handler.
 4. Commands gated on config check the `gateway_config_gate` field on `CommandDef`.
 
 Commands that must not run while an agent is processing are rejected early:

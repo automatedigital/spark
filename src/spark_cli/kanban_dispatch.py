@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any
 
 from core import kanban_db as kb
 from spark_cli.config import load_config
@@ -14,12 +14,12 @@ from spark_cli.config import load_config
 _log = logging.getLogger(__name__)
 
 
-def _config() -> Dict[str, Any]:
+def _config() -> dict[str, Any]:
     raw = load_config().get("kanban", {})
     return raw if isinstance(raw, dict) else {}
 
 
-async def run_dispatch_tick(*, max_tasks: int = 3) -> Dict[str, Any]:
+async def run_dispatch_tick(*, max_tasks: int = 3) -> dict[str, Any]:
     """Reclaim stale work, then claim and spawn up to ``max_tasks`` workers."""
     cfg = _config()
     board = str(cfg.get("default_board", "default"))
@@ -29,7 +29,7 @@ async def run_dispatch_tick(*, max_tasks: int = 3) -> Dict[str, Any]:
     kb.reclaim_stale_running(claim_ttl_seconds=claim_ttl, check_pid=True)
 
     claimed = 0
-    task_ids: List[str] = []
+    task_ids: list[str] = []
     ready = kb.list_ready_for_dispatch(board_slug=board)
     seen_assignee: set[str] = set()
 

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +39,12 @@ class SparkOverlay:
     auth_type: str = (
         "api_key"  # api_key | oauth_device_code | oauth_external | external_process
     )
-    extra_env_vars: Tuple[str, ...] = ()  # env vars models.dev doesn't list
+    extra_env_vars: tuple[str, ...] = ()  # env vars models.dev doesn't list
     base_url_override: str = ""  # override if models.dev URL is wrong/missing
     base_url_env_var: str = ""  # env var for user-custom base URL
 
 
-SPARK_OVERLAYS: Dict[str, SparkOverlay] = {
+SPARK_OVERLAYS: dict[str, SparkOverlay] = {
     "openrouter": SparkOverlay(
         transport="openai_chat",
         is_aggregator=True,
@@ -159,7 +159,7 @@ class ProviderDef:
     id: str
     name: str
     transport: str  # openai_chat | anthropic_messages | codex_responses
-    api_key_env_vars: Tuple[str, ...]  # all env vars to check for API key
+    api_key_env_vars: tuple[str, ...]  # all env vars to check for API key
     base_url: str = ""
     base_url_env_var: str = ""
     is_aggregator: bool = False
@@ -172,7 +172,7 @@ class ProviderDef:
 # Maps human-friendly / legacy names to canonical provider IDs.
 # Uses models.dev IDs where possible.
 
-ALIASES: Dict[str, str] = {
+ALIASES: dict[str, str] = {
     # openrouter
     "openai": "openrouter",  # bare "openai" → route through aggregator
     # zai
@@ -244,7 +244,7 @@ ALIASES: Dict[str, str] = {
 # Built dynamically from models.dev + overlays.  Fallback for providers
 # not in the catalog.
 
-_LABEL_OVERRIDES: Dict[str, str] = {
+_LABEL_OVERRIDES: dict[str, str] = {
     "openai-codex": "OpenAI Codex",
     "copilot-acp": "GitHub Copilot ACP",
     "xiaomi": "Xiaomi MiMo",
@@ -255,7 +255,7 @@ _LABEL_OVERRIDES: Dict[str, str] = {
 
 # -- Transport → API mode mapping ---------------------------------------------
 
-TRANSPORT_TO_API_MODE: Dict[str, str] = {
+TRANSPORT_TO_API_MODE: dict[str, str] = {
     "openai_chat": "chat_completions",
     "anthropic_messages": "anthropic_messages",
     "codex_responses": "codex_responses",
@@ -275,7 +275,7 @@ def normalize_provider(name: str) -> str:
     return ALIASES.get(key, key)
 
 
-def get_provider(name: str) -> Optional[ProviderDef]:
+def get_provider(name: str) -> ProviderDef | None:
     """Look up a provider by id or alias, merging all data sources.
 
     Resolution order:
@@ -391,8 +391,8 @@ def determine_api_mode(provider: str, base_url: str = "") -> str:
 
 
 def resolve_user_provider(
-    name: str, user_config: Dict[str, Any]
-) -> Optional[ProviderDef]:
+    name: str, user_config: dict[str, Any]
+) -> ProviderDef | None:
     """Resolve a provider from the user's config.yaml ``providers:`` section.
 
     Args:
@@ -417,7 +417,7 @@ def resolve_user_provider(
     key_env = entry.get("key_env", "") or ""
     transport = entry.get("transport", "openai_chat") or "openai_chat"
 
-    env_vars: List[str] = []
+    env_vars: list[str] = []
     if key_env:
         env_vars.append(key_env)
 
@@ -445,8 +445,8 @@ def custom_provider_slug(display_name: str) -> str:
 
 def resolve_custom_provider(
     name: str,
-    custom_providers: Optional[List[Dict[str, Any]]],
-) -> Optional[ProviderDef]:
+    custom_providers: list[dict[str, Any]] | None,
+) -> ProviderDef | None:
     """Resolve a provider from the user's config.yaml ``custom_providers`` list."""
     if not custom_providers or not isinstance(custom_providers, list):
         return None
@@ -489,9 +489,9 @@ def resolve_custom_provider(
 
 def resolve_provider_full(
     name: str,
-    user_providers: Optional[Dict[str, Any]] = None,
-    custom_providers: Optional[List[Dict[str, Any]]] = None,
-) -> Optional[ProviderDef]:
+    user_providers: dict[str, Any] | None = None,
+    custom_providers: list[dict[str, Any]] | None = None,
+) -> ProviderDef | None:
     """Full resolution chain: built-in → models.dev → user config.
 
     This is the main entry point for --provider flag resolution.

@@ -27,21 +27,23 @@ import copy
 import hashlib
 import json
 import logging
+
 logger = logging.getLogger(__name__)
 import os
 import random
 import re
 import sys
 import tempfile
-import time
 import threading
-from types import SimpleNamespace
+import time
 import uuid
-from typing import List, Dict, Any, Optional
-from openai import OpenAI
-import fire
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Callable, Dict, List, Optional
+
+import fire
+from openai import OpenAI
 
 from core.spark_constants import get_spark_home
 
@@ -62,53 +64,57 @@ else:
 
 
 # Import our tool system
-from core.model_tools import (
-    get_tool_definitions,
-    handle_function_call,
-    check_toolset_requirements,
+from agent.context_compressor import ContextCompressor
+from agent.display import (
+    KawaiiSpinner,
+    _detect_tool_failure,
 )
-from tools.terminal_tool import cleanup_vm, get_active_env, is_persistent_env
-from tools.tool_result_storage import maybe_persist_tool_result, enforce_turn_budget
-from tools.interrupt import set_interrupt as _set_interrupt
-from tools.browser_tool import cleanup_browser
-
-
-from core.spark_constants import OPENROUTER_BASE_URL
+from agent.display import (
+    build_tool_preview as _build_tool_preview,
+)
+from agent.display import (
+    get_cute_tool_message as _get_cute_tool_message_impl,
+)
+from agent.display import (
+    get_tool_emoji as _get_tool_emoji,
+)
+from agent.error_classifier import FailoverReason, classify_api_error
 
 # Agent internals extracted to agent/ package for modularity
 from agent.memory_manager import build_memory_context_block
-from agent.retry_utils import jittered_backoff
-from agent.error_classifier import classify_api_error, FailoverReason
+from agent.model_metadata import (
+    estimate_messages_tokens_rough,
+    estimate_request_tokens_rough,
+    estimate_tokens_rough,
+    fetch_model_metadata,
+    get_next_probe_tier,
+    is_local_endpoint,
+    parse_available_output_tokens_from_error,
+    parse_context_limit_from_error,
+    query_ollama_num_ctx,
+    save_context_length,
+)
+
 # Most prompt-content helpers/constants moved with _build_system_prompt into
 # run_agent/prompt_cache.py (Phase 4). DEFAULT_AGENT_IDENTITY is still used
 # elsewhere in this module (e.g. the codex_responses instructions fallback).
-from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
-from agent.model_metadata import (
-    fetch_model_metadata,
-    estimate_tokens_rough, estimate_messages_tokens_rough, estimate_request_tokens_rough,
-    get_next_probe_tier, parse_context_limit_from_error,
-    parse_available_output_tokens_from_error,
-    save_context_length, is_local_endpoint,
-    query_ollama_num_ctx,
-)
-from agent.context_compressor import ContextCompressor
-from agent.subdirectory_hints import SubdirectoryHintTracker
+from agent.prompt_builder import DEFAULT_AGENT_IDENTITY, DEVELOPER_ROLE_MODELS
 from agent.prompt_caching import apply_anthropic_cache_control
-from agent.prompt_builder import DEVELOPER_ROLE_MODELS
-from agent.usage_pricing import estimate_usage_cost, normalize_usage
-from agent.display import (
-    KawaiiSpinner, build_tool_preview as _build_tool_preview,
-    get_cute_tool_message as _get_cute_tool_message_impl,
-    _detect_tool_failure,
-    get_tool_emoji as _get_tool_emoji,
+from agent.retry_utils import jittered_backoff
+from agent.subdirectory_hints import SubdirectoryHintTracker
+from agent.trajectory import (
+    convert_scratchpad_to_think,
+    has_incomplete_scratchpad,
 )
 from agent.trajectory import (
-    convert_scratchpad_to_think, has_incomplete_scratchpad,
     save_trajectory as _save_trajectory_to_file,
 )
-from core.utils import atomic_json_write, env_var_enabled
-
-
+from agent.usage_pricing import estimate_usage_cost, normalize_usage
+from core.model_tools import (
+    check_toolset_requirements,
+    get_tool_definitions,
+    handle_function_call,
+)
 
 # Crash-safe stdio (_SafeWriter/_install_safe_stdio) and per-agent iteration
 # budgeting (IterationBudget) live in run_agent/stdio.py and
@@ -117,17 +123,6 @@ from core.utils import atomic_json_write, env_var_enabled
 # / `IterationBudget` and the bare-name references below keep resolving. noqa:
 # mid-module placement keeps the names bound before the AIAgent class body.
 from core.run_agent.iteration_budget import IterationBudget as IterationBudget  # noqa: E402,I001
-from core.run_agent.stdio import (  # noqa: E402,I001
-    _SafeWriter as _SafeWriter,
-    _install_safe_stdio as _install_safe_stdio,
-)
-
-# Caching-sensitive system-prompt assembly (ADR-0001 named home). Mixed into
-# AIAgent below; kept in its own module so the prompt-cache invariant has one
-# obvious place to live. noqa: import sits mid-module so the mixin is bound
-# before the AIAgent class statement.
-from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
-
 
 # Tool-batch parallelism heuristics live in run_agent/parallelism.py (Phase 4
 # split). Re-exported (redundant `as` alias to mark intentional re-export) so
@@ -136,18 +131,62 @@ from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
 # mid-module so the names are bound before the AIAgent class uses them.
 from core.run_agent.parallelism import (  # noqa: E402,I001
     _DESTRUCTIVE_PATTERNS as _DESTRUCTIVE_PATTERNS,
+)
+from core.run_agent.parallelism import (
     _MAX_TOOL_WORKERS as _MAX_TOOL_WORKERS,
+)
+from core.run_agent.parallelism import (
     _NEVER_PARALLEL_TOOLS as _NEVER_PARALLEL_TOOLS,
+)
+from core.run_agent.parallelism import (
     _PARALLEL_SAFE_TOOLS as _PARALLEL_SAFE_TOOLS,
+)
+from core.run_agent.parallelism import (
     _PATH_SCOPED_TOOLS as _PATH_SCOPED_TOOLS,
+)
+from core.run_agent.parallelism import (
     _REDIRECT_OVERWRITE as _REDIRECT_OVERWRITE,
+)
+from core.run_agent.parallelism import (
     _extract_parallel_scope_path as _extract_parallel_scope_path,
+)
+from core.run_agent.parallelism import (
     _is_destructive_command as _is_destructive_command,
+)
+from core.run_agent.parallelism import (
     _paths_overlap as _paths_overlap,
+)
+from core.run_agent.parallelism import (
     _should_parallelize_tool_batch as _should_parallelize_tool_batch,
 )
 
+# Persistence and memory-flush helpers.
+from core.run_agent.persistence import _PersistenceMixin  # noqa: E402,I001
 
+# Pure message-history repair helpers live in run_agent/message_state.py.
+# Re-export through AIAgent static methods below for compatibility with tests
+# and downstream monkeypatches.
+from core.run_agent.message_state import (  # noqa: E402,I001
+    VALID_API_ROLES as _MESSAGE_VALID_API_ROLES,
+)
+from core.run_agent.message_state import (
+    get_tool_call_id_static as _get_tool_call_id_static_impl,
+)
+from core.run_agent.message_state import (
+    sanitize_api_messages as _sanitize_api_messages_impl,
+)
+
+# Provider-call and streaming-delivery helpers.
+from core.run_agent.provider_calls import _ProviderCallMixin  # noqa: E402,I001
+
+# Caching-sensitive system-prompt assembly (ADR-0001 named home). Mixed into
+# AIAgent below; kept in its own module so the prompt-cache invariant has one
+# obvious place to live. noqa: import sits mid-module so the mixin is bound
+# before the AIAgent class statement.
+from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
+
+# Tool-loop guardrails and dispatch helpers.
+from core.run_agent.tool_loop import _ToolLoopMixin  # noqa: E402,I001
 
 # Payload sanitization (surrogate + non-ASCII) lives in run_agent/sanitize.py
 # (Phase 4 split). Re-exported here (redundant `as` alias = intentional re-export)
@@ -156,17 +195,37 @@ from core.run_agent.parallelism import (  # noqa: E402,I001
 # mid-module placement is required so the names bind before the AIAgent class.
 from core.run_agent.sanitize import (  # noqa: E402,I001
     _SURROGATE_RE as _SURROGATE_RE,
+)
+from core.run_agent.sanitize import (
     _sanitize_messages_non_ascii as _sanitize_messages_non_ascii,
+)
+from core.run_agent.sanitize import (
     _sanitize_messages_surrogates as _sanitize_messages_surrogates,
+)
+from core.run_agent.sanitize import (
     _sanitize_structure_non_ascii as _sanitize_structure_non_ascii,
+)
+from core.run_agent.sanitize import (
     _sanitize_surrogates as _sanitize_surrogates,
+)
+from core.run_agent.sanitize import (
     _sanitize_tools_non_ascii as _sanitize_tools_non_ascii,
+)
+from core.run_agent.sanitize import (
     _strip_non_ascii as _strip_non_ascii,
 )
-
-
-
-
+from core.run_agent.stdio import (
+    _install_safe_stdio as _install_safe_stdio,
+)
+from core.run_agent.stdio import (  # noqa: E402,I001
+    _SafeWriter as _SafeWriter,
+)
+from core.spark_constants import OPENROUTER_BASE_URL
+from core.utils import atomic_json_write, env_var_enabled
+from tools.browser_tool import cleanup_browser
+from tools.interrupt import set_interrupt as _set_interrupt
+from tools.terminal_tool import cleanup_vm, get_active_env, is_persistent_env
+from tools.tool_result_storage import enforce_turn_budget, maybe_persist_tool_result
 
 # =========================================================================
 # Large tool result handler — save oversized output to temp file
@@ -194,7 +253,7 @@ def _qwen_portal_headers() -> dict:
     }
 
 
-class AIAgent(_PromptCacheMixin):
+class AIAgent(_PersistenceMixin, _ToolLoopMixin, _ProviderCallMixin, _PromptCacheMixin):
     """
     AI Agent with tool calling capabilities.
 
@@ -231,17 +290,17 @@ class AIAgent(_PromptCacheMixin):
         model: str = "",
         max_iterations: int = 90,  # Default tool-calling iterations (shared with subagents)
         tool_delay: float = 1.0,
-        enabled_toolsets: List[str] = None,
-        disabled_toolsets: List[str] = None,
+        enabled_toolsets: list[str] = None,
+        disabled_toolsets: list[str] = None,
         save_trajectories: bool = False,
         verbose_logging: bool = False,
         quiet_mode: bool = False,
         ephemeral_system_prompt: str = None,
         log_prefix_chars: int = 100,
         log_prefix: str = "",
-        providers_allowed: List[str] = None,
-        providers_ignored: List[str] = None,
-        providers_order: List[str] = None,
+        providers_allowed: list[str] = None,
+        providers_ignored: list[str] = None,
+        providers_order: list[str] = None,
         provider_sort: str = None,
         provider_require_parameters: bool = False,
         provider_data_collection: str = None,
@@ -259,10 +318,10 @@ class AIAgent(_PromptCacheMixin):
         status_callback: callable = None,
         session_migrated_callback: callable = None,
         max_tokens: int = None,
-        reasoning_config: Dict[str, Any] = None,
+        reasoning_config: dict[str, Any] = None,
         service_tier: str = None,
-        request_overrides: Dict[str, Any] = None,
-        prefill_messages: List[Dict[str, Any]] = None,
+        request_overrides: dict[str, Any] = None,
+        prefill_messages: list[dict[str, Any]] = None,
         platform: str = None,
         user_id: str = None,
         skip_context_files: bool = False,
@@ -270,7 +329,7 @@ class AIAgent(_PromptCacheMixin):
         session_db=None,
         parent_session_id: str = None,
         iteration_budget: "IterationBudget" = None,
-        fallback_model: Dict[str, Any] = None,
+        fallback_model: dict[str, Any] = None,
         credential_pool=None,
         checkpoints_enabled: bool = False,
         checkpoint_max_snapshots: int = 50,
@@ -420,7 +479,7 @@ class AIAgent(_PromptCacheMixin):
         self.tool_gen_callback = tool_gen_callback
         self.session_migrated_callback = session_migrated_callback
 
-        
+
         # Tool execution state — allows _vprint during tool execution
         # even when stream consumers are registered (no tokens streaming then)
         self._executing_tools = False
@@ -430,12 +489,12 @@ class AIAgent(_PromptCacheMixin):
         self._interrupt_message = None  # Optional message that triggered interrupt
         self._execution_thread_id: int | None = None  # Set at run_conversation() start
         self._client_lock = threading.RLock()
-        
+
         # Subagent delegation state
         self._delegate_depth = 0        # 0 = top-level agent, incremented for children
         self._active_children = []      # Running child AIAgents (for interrupt propagation)
         self._active_children_lock = threading.Lock()
-        
+
         # Store OpenRouter provider preferences
         self.providers_allowed = providers_allowed
         self.providers_ignored = providers_ignored
@@ -447,7 +506,7 @@ class AIAgent(_PromptCacheMixin):
         # Store toolset filtering options
         self.enabled_toolsets = enabled_toolsets
         self.disabled_toolsets = disabled_toolsets
-        
+
         # Model response configuration
         self.max_tokens = max_tokens  # None = use model default
         self.reasoning_config = reasoning_config  # None = use default (medium for OpenRouter)
@@ -455,7 +514,7 @@ class AIAgent(_PromptCacheMixin):
         self.request_overrides = dict(request_overrides or {})
         self.prefill_messages = prefill_messages or []  # Prefilled conversation turns
         self._force_ascii_payload = False
-        
+
         # Anthropic prompt caching: auto-enabled for Claude models via OpenRouter.
         # Reduces input costs by ~75% on multi-turn conversations by caching the
         # conversation prefix. Uses system_and_3 strategy (4 breakpoints).
@@ -464,7 +523,7 @@ class AIAgent(_PromptCacheMixin):
         is_native_anthropic = self.api_mode == "anthropic_messages" and self.provider == "anthropic"
         self._use_prompt_caching = (is_openrouter and is_claude) or is_native_anthropic
         self._cache_ttl = "5m"  # Default 5-minute TTL (1.25x write cost)
-        
+
         # Iteration budget: the LLM is only notified when it actually exhausts
         # the iteration budget (api_call_count >= max_iterations).  At that
         # point we inject ONE message, allow one final API call, and if the
@@ -491,7 +550,7 @@ class AIAgent(_PromptCacheMixin):
 
         # Rate limit tracking — updated from x-ratelimit-* response headers
         # after each API call.  Accessed by /usage slash command.
-        self._rate_limit_state: Optional["RateLimitState"] = None
+        self._rate_limit_state: RateLimitState | None = None
 
         # Centralized logging — agent.log (INFO+) and errors.log (WARNING+)
         # both live under ~/.spark/logs/.  Idempotent, so gateway mode
@@ -516,7 +575,7 @@ class AIAgent(_PromptCacheMixin):
                     'spark_cli',           # CLI helpers
                 ]:
                     logging.getLogger(quiet_logger).setLevel(logging.ERROR)
-        
+
         # Internal stream callback (set during streaming TTS).
         # Initialized here so _vprint can reference it before run_conversation.
         self._stream_callback = None
@@ -538,7 +597,7 @@ class AIAgent(_PromptCacheMixin):
         # Cache anthropic image-to-text fallbacks per image payload/URL so a
         # single tool loop does not repeatedly re-run auxiliary vision on the
         # same image history.
-        self._anthropic_image_fallback_cache: Dict[str, str] = {}
+        self._anthropic_image_fallback_cache: dict[str, str] = {}
 
         # Initialize LLM client via centralized provider router.
         # The router handles auth resolution, base URL, headers, and
@@ -627,7 +686,7 @@ class AIAgent(_PromptCacheMixin):
                             "X-OpenRouter-Categories": "productivity,cli-agent",
                         },
                     }
-            
+
             self._client_kwargs = client_kwargs  # stored for rebuilding after interrupt
 
             # Enable fine-grained tool streaming for Claude on OpenRouter.
@@ -664,7 +723,7 @@ class AIAgent(_PromptCacheMixin):
                         print(f"⚠️  Warning: API key appears invalid or missing (got: '{key_used[:20] if key_used else 'none'}...')")
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
-        
+
         # Provider fallback chain — ordered list of backup providers tried
         # when the primary is exhausted (rate-limit, overload, connection
         # failure).  Supports both legacy single-dict ``fallback_model`` and
@@ -696,7 +755,7 @@ class AIAgent(_PromptCacheMixin):
             disabled_toolsets=disabled_toolsets,
             quiet_mode=self.quiet_mode,
         )
-        
+
         # Show tool configuration and store valid tool names for validation
         self.valid_tool_names = set()
         if self.tools:
@@ -704,7 +763,7 @@ class AIAgent(_PromptCacheMixin):
             tool_names = sorted(self.valid_tool_names)
             if not self.quiet_mode:
                 print(f"🛠️  Loaded {len(self.tools)} tools: {', '.join(tool_names)}")
-                
+
                 # Show filtering info if applied
                 if enabled_toolsets:
                     print(f"   ✅ Enabled toolsets: {', '.join(enabled_toolsets)}")
@@ -712,28 +771,28 @@ class AIAgent(_PromptCacheMixin):
                     print(f"   ❌ Disabled toolsets: {', '.join(disabled_toolsets)}")
         elif not self.quiet_mode:
             print("🛠️  No tools loaded (all tools filtered out or unavailable)")
-        
+
         # Check tool requirements
         if self.tools and not self.quiet_mode:
             requirements = check_toolset_requirements()
             missing_reqs = [name for name, available in requirements.items() if not available]
             if missing_reqs:
                 print(f"⚠️  Some tools may not work due to missing requirements: {missing_reqs}")
-        
+
         # Show trajectory saving status
         if self.save_trajectories and not self.quiet_mode:
             print("📝 Trajectory saving enabled")
-        
+
         # Show ephemeral system prompt status
         if self.ephemeral_system_prompt and not self.quiet_mode:
             prompt_preview = self.ephemeral_system_prompt[:60] + "..." if len(self.ephemeral_system_prompt) > 60 else self.ephemeral_system_prompt
             print(f"🔒 Ephemeral system prompt: '{prompt_preview}' (not saved to trajectories)")
-        
+
         # Show prompt caching status
         if self._use_prompt_caching and not self.quiet_mode:
             source = "native Anthropic" if is_native_anthropic else "Claude via OpenRouter"
             print(f"💾 Prompt caching: ENABLED ({source}, {self._cache_ttl} TTL)")
-        
+
         # Session logging setup - auto-save conversation trajectories for debugging
         self.session_start = datetime.now()
         if session_id:
@@ -744,26 +803,26 @@ class AIAgent(_PromptCacheMixin):
             timestamp_str = self.session_start.strftime("%Y%m%d_%H%M%S")
             short_uuid = uuid.uuid4().hex[:6]
             self.session_id = f"{timestamp_str}_{short_uuid}"
-        
+
         # Session logs go into ~/.spark/sessions/ alongside gateway sessions
         spark_home = get_spark_home()
         self.logs_dir = spark_home / "sessions"
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.session_log_file = self.logs_dir / f"session_{self.session_id}.json"
-        
+
         # Track conversation messages for session logging
-        self._session_messages: List[Dict[str, Any]] = []
-        
+        self._session_messages: list[dict[str, Any]] = []
+
         # Cached system prompt -- built once per session, only rebuilt on compression
-        self._cached_system_prompt: Optional[str] = None
-        
+        self._cached_system_prompt: str | None = None
+
         # Filesystem checkpoint manager (transparent — not a tool)
         from tools.checkpoint_manager import CheckpointManager
         self._checkpoint_mgr = CheckpointManager(
             enabled=checkpoints_enabled,
             max_snapshots=checkpoint_max_snapshots,
         )
-        
+
         # SQLite session store (optional -- provided by CLI or gateway)
         self._session_db = session_db
         self._parent_session_id = parent_session_id
@@ -792,11 +851,11 @@ class AIAgent(_PromptCacheMixin):
                 logger.warning(
                     "Session DB create_session failed (session_search still available): %s", e
                 )
-        
+
         # In-memory todo list for task planning (one per agent/session)
         from tools.todo_tool import TodoStore
         self._todo_store = TodoStore()
-        
+
         # Load config once for memory, skills, and compression sections
         try:
             from spark_cli.config import load_config as _load_agent_config
@@ -828,7 +887,7 @@ class AIAgent(_PromptCacheMixin):
                     self._memory_store.load_from_disk()
             except Exception:
                 pass  # Memory is optional -- don't break agent init
-        
+
 
 
         # Memory provider plugin (external — one at a time, alongside built-in)
@@ -851,7 +910,8 @@ class AIAgent(_PromptCacheMixin):
                             _mem_provider_name = "honcho"
                             # Persist so this only auto-migrates once
                             try:
-                                from spark_cli.config import load_config as _lc, save_config as _sc
+                                from spark_cli.config import load_config as _lc
+                                from spark_cli.config import save_config as _sc
                                 _cfg = _lc()
                                 _cfg.setdefault("memory", {})["provider"] = "honcho"
                                 _sc(_cfg)
@@ -973,7 +1033,7 @@ class AIAgent(_PromptCacheMixin):
                                 except (TypeError, ValueError):
                                     pass
                     break
-        
+
         # Select context engine: config-driven (like memory providers).
         # 1. Check config.yaml context.engine setting
         # 2. Check plugins/context_engine/<name>/ directory (repo-shipped)
@@ -1104,7 +1164,7 @@ class AIAgent(_PromptCacheMixin):
         self.session_estimated_cost_usd = 0.0
         self.session_cost_status = "unknown"
         self.session_cost_source = "none"
-        
+
         # ── Ollama num_ctx injection ──
         # Ollama defaults to 2048 context regardless of the model's capabilities.
         # When running against an Ollama server, detect the model's max context
@@ -1205,14 +1265,14 @@ class AIAgent(_PromptCacheMixin):
         self.session_estimated_cost_usd = 0.0
         self.session_cost_status = "unknown"
         self.session_cost_source = "none"
-        
+
         # Turn counter (added after reset_session_state was first written — #2635)
         self._user_turn_count = 0
 
         # Context engine reset (works for both built-in compressor and plugins)
         if hasattr(self, "context_compressor") and self.context_compressor:
             self.context_compressor.on_session_reset()
-    
+
     def switch_model(self, new_model, new_provider, api_key='', base_url='', api_mode=''):
         """Switch the model/provider in-place for a live agent.
 
@@ -1228,6 +1288,7 @@ class AIAgent(_PromptCacheMixin):
         turn-scoped).
         """
         import logging
+
         from spark_cli.providers import determine_api_mode
 
         # ── Determine api_mode if not provided ──
@@ -1248,9 +1309,9 @@ class AIAgent(_PromptCacheMixin):
         # ── Build new client ──
         if api_mode == "anthropic_messages":
             from agent.anthropic_adapter import (
+                _is_oauth_token,
                 build_anthropic_client,
                 resolve_anthropic_token,
-                _is_oauth_token,
             )
             # Only fall back to ANTHROPIC_TOKEN when the provider is actually Anthropic.
             # Other anthropic_messages providers (MiniMax, Alibaba, etc.) must use their own
@@ -1436,7 +1497,7 @@ class AIAgent(_PromptCacheMixin):
             except Exception:
                 logger.debug("status_callback error in _emit_status", exc_info=True)
 
-    def _current_main_runtime(self) -> Dict[str, str]:
+    def _current_main_runtime(self) -> dict[str, str]:
         """Return the live main runtime for session-scoped auxiliary routing."""
         return {
             "model": getattr(self, "model", "") or "",
@@ -1571,32 +1632,6 @@ class AIAgent(_PromptCacheMixin):
         """Return True when the base URL targets OpenRouter."""
         return "openrouter" in self._base_url_lower
 
-    @staticmethod
-    def _model_requires_responses_api(model: str) -> bool:
-        """Return True for models that require the Responses API path.
-
-        GPT-5.x models are rejected on /v1/chat/completions by both
-        OpenAI and OpenRouter (error: ``unsupported_api_for_model``).
-        Detect these so the correct api_mode is set regardless of
-        which provider is serving the model.
-        """
-        m = model.lower()
-        # Strip vendor prefix (e.g. "openai/gpt-5.4" → "gpt-5.4")
-        if "/" in m:
-            m = m.rsplit("/", 1)[-1]
-        return m.startswith("gpt-5")
-
-    def _max_tokens_param(self, value: int) -> dict:
-        """Return the correct max tokens kwarg for the current provider.
-        
-        OpenAI's newer models (gpt-4o, o-series, gpt-5+) require
-        'max_completion_tokens'. OpenRouter, local models, and older
-        OpenAI models use 'max_tokens'.
-        """
-        if self._is_direct_openai_url():
-            return {"max_completion_tokens": value}
-        return {"max_tokens": value}
-
     def _has_content_after_think_block(self, content: str) -> bool:
         """
         Check if content has actual text after any reasoning/thinking blocks.
@@ -1619,7 +1654,7 @@ class AIAgent(_PromptCacheMixin):
 
         # Check if there's any non-whitespace content remaining
         return bool(cleaned.strip())
-    
+
     def _strip_think_blocks(self, content: str) -> str:
         """Remove reasoning/thinking blocks from content, returning only visible text."""
         if not content:
@@ -1638,7 +1673,7 @@ class AIAgent(_PromptCacheMixin):
         self,
         user_message: str,
         assistant_content: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
     ) -> bool:
         """Detect a planning/ack message that should continue instead of ending the turn."""
         if any(isinstance(msg, dict) and msg.get("role") == "tool" for msg in messages):
@@ -1737,9 +1772,9 @@ class AIAgent(_PromptCacheMixin):
             marker in assistant_text for marker in workspace_markers
         )
         return (user_targets_workspace or assistant_targets_workspace) and assistant_mentions_action
-    
-    
-    def _extract_reasoning(self, assistant_message) -> Optional[str]:
+
+
+    def _extract_reasoning(self, assistant_message) -> str | None:
         """
         Extract reasoning/thinking content from an assistant message.
         
@@ -1755,17 +1790,17 @@ class AIAgent(_PromptCacheMixin):
             Combined reasoning text, or None if no reasoning found
         """
         reasoning_parts = []
-        
+
         # Check direct reasoning field
         if hasattr(assistant_message, 'reasoning') and assistant_message.reasoning:
             reasoning_parts.append(assistant_message.reasoning)
-        
+
         # Check reasoning_content field (alternative name used by some providers)
         if hasattr(assistant_message, 'reasoning_content') and assistant_message.reasoning_content:
             # Don't duplicate if same as reasoning
             if assistant_message.reasoning_content not in reasoning_parts:
                 reasoning_parts.append(assistant_message.reasoning_content)
-        
+
         # Check reasoning_details array (OpenRouter unified format)
         # Format: [{"type": "reasoning.summary", "summary": "...", ...}, ...]
         if hasattr(assistant_message, 'reasoning_details') and assistant_message.reasoning_details:
@@ -1799,11 +1834,11 @@ class AIAgent(_PromptCacheMixin):
                     cleaned = block.strip()
                     if cleaned and cleaned not in reasoning_parts:
                         reasoning_parts.append(cleaned)
-        
+
         # Combine all reasoning parts
         if reasoning_parts:
             return "\n\n".join(reasoning_parts)
-        
+
         return None
 
     def _cleanup_task_resources(self, task_id: str) -> None:
@@ -1876,7 +1911,7 @@ class AIAgent(_PromptCacheMixin):
 
     def _spawn_background_review(
         self,
-        messages_snapshot: List[Dict],
+        messages_snapshot: list[dict],
         review_memory: bool = False,
         review_skills: bool = False,
     ) -> None:
@@ -1898,7 +1933,8 @@ class AIAgent(_PromptCacheMixin):
             prompt = self._SKILL_REVIEW_PROMPT
 
         def _run_review():
-            import contextlib, os as _os
+            import contextlib
+            import os as _os
             review_agent = None
             try:
                 with open(_os.devnull, "w") as _devnull, \
@@ -1975,7 +2011,7 @@ class AIAgent(_PromptCacheMixin):
         t = threading.Thread(target=_run_review, daemon=True, name="bg-review")
         t.start()
 
-    def _apply_persist_user_message_override(self, messages: List[Dict]) -> None:
+    def _apply_persist_user_message_override(self, messages: list[dict]) -> None:
         """Rewrite the current-turn user message before persistence/return.
 
         Some call paths need an API-only user-message variant without letting
@@ -1993,7 +2029,7 @@ class AIAgent(_PromptCacheMixin):
             if isinstance(msg, dict) and msg.get("role") == "user":
                 msg["content"] = override
 
-    def _persist_session(self, messages: List[Dict], conversation_history: List[Dict] = None):
+    def _persist_session(self, messages: list[dict], conversation_history: list[dict] = None):
         """Save session state to both JSON log and SQLite on any exit path.
 
         Ensures conversations are never lost, even on errors or early returns.
@@ -2006,7 +2042,7 @@ class AIAgent(_PromptCacheMixin):
         self._save_session_log(messages)
         self._flush_messages_to_session_db(messages, conversation_history)
 
-    def _flush_messages_to_session_db(self, messages: List[Dict], conversation_history: List[Dict] = None):
+    def _flush_messages_to_session_db(self, messages: list[dict], conversation_history: list[dict] = None):
         """Persist any un-flushed messages to the SQLite session store.
 
         Uses _last_flushed_db_idx to track which messages have already been
@@ -2056,7 +2092,7 @@ class AIAgent(_PromptCacheMixin):
         except Exception as e:
             logger.warning("Session DB append_message failed: %s", e)
 
-    def _get_messages_up_to_last_assistant(self, messages: List[Dict]) -> List[Dict]:
+    def _get_messages_up_to_last_assistant(self, messages: list[dict]) -> list[dict]:
         """
         Get messages up to (but not including) the last assistant turn.
         
@@ -2072,21 +2108,21 @@ class AIAgent(_PromptCacheMixin):
         """
         if not messages:
             return []
-        
+
         # Find the index of the last assistant message
         last_assistant_idx = None
         for i in range(len(messages) - 1, -1, -1):
             if messages[i].get("role") == "assistant":
                 last_assistant_idx = i
                 break
-        
+
         if last_assistant_idx is None:
             # No assistant message found, return all messages
             return messages.copy()
-        
+
         # Return everything up to (not including) the last assistant message
         return messages[:last_assistant_idx]
-    
+
     def _format_tools_for_system_message(self) -> str:
         """
         Format tool definitions for the system message in the trajectory format.
@@ -2096,7 +2132,7 @@ class AIAgent(_PromptCacheMixin):
         """
         if not self.tools:
             return "[]"
-        
+
         # Convert tool definitions to the format expected in trajectories
         formatted_tools = []
         for tool in self.tools:
@@ -2108,10 +2144,10 @@ class AIAgent(_PromptCacheMixin):
                 "required": None  # Match the format in the example
             }
             formatted_tools.append(formatted_tool)
-        
+
         return json.dumps(formatted_tools, ensure_ascii=False)
-    
-    def _convert_to_trajectory_format(self, messages: List[Dict[str, Any]], user_query: str, completed: bool) -> List[Dict[str, Any]]:
+
+    def _convert_to_trajectory_format(self, messages: list[dict[str, Any]], user_query: str, completed: bool) -> list[dict[str, Any]]:
         """
         Convert internal message format to trajectory format for saving.
         
@@ -2124,7 +2160,7 @@ class AIAgent(_PromptCacheMixin):
             List[Dict]: Messages in trajectory format
         """
         trajectory = []
-        
+
         # Add system message with tool definitions
         system_msg = (
             "You are a function calling AI model. You are provided with function signatures within <tools> </tools> XML tags. "
@@ -2139,42 +2175,42 @@ class AIAgent(_PromptCacheMixin):
             "Each function call should be enclosed within <tool_call> </tool_call> XML tags.\n"
             "Example:\n<tool_call>\n{'name': <function-name>,'arguments': <args-dict>}\n</tool_call>"
         )
-        
+
         trajectory.append({
             "from": "system",
             "value": system_msg
         })
-        
+
         # Add the actual user prompt (from the dataset) as the first human message
         trajectory.append({
             "from": "human",
             "value": user_query
         })
-        
+
         # Skip the first message (the user query) since we already added it above.
         # Prefill messages are injected at API-call time only (not in the messages
         # list), so no offset adjustment is needed here.
         i = 1
-        
+
         while i < len(messages):
             msg = messages[i]
-            
+
             if msg["role"] == "assistant":
                 # Check if this message has tool calls
                 if "tool_calls" in msg and msg["tool_calls"]:
                     # Format assistant message with tool calls
                     # Add <think> tags around reasoning for trajectory storage
                     content = ""
-                    
+
                     # Prepend reasoning in <think> tags if available (native thinking tokens)
                     if msg.get("reasoning") and msg["reasoning"].strip():
                         content = f"<think>\n{msg['reasoning']}\n</think>\n"
-                    
+
                     if msg.get("content") and msg["content"].strip():
                         # Convert any <REASONING_SCRATCHPAD> tags to <think> tags
                         # (used when native thinking is disabled and model reasons via XML)
                         content += convert_scratchpad_to_think(msg["content"]) + "\n"
-                    
+
                     # Add tool calls wrapped in XML tags
                     for tool_call in msg["tool_calls"]:
                         if not tool_call or not isinstance(tool_call, dict): continue
@@ -2187,23 +2223,23 @@ class AIAgent(_PromptCacheMixin):
                             # but if it does, log warning and use empty dict
                             logging.warning(f"Unexpected invalid JSON in trajectory conversion: {tool_call['function']['arguments'][:100]}")
                             arguments = {}
-                        
+
                         tool_call_json = {
                             "name": tool_call["function"]["name"],
                             "arguments": arguments
                         }
                         content += f"<tool_call>\n{json.dumps(tool_call_json, ensure_ascii=False)}\n</tool_call>\n"
-                    
+
                     # Ensure every gpt turn has a <think> block (empty if no reasoning)
                     # so the format is consistent for training data
                     if "<think>" not in content:
                         content = "<think>\n</think>\n" + content
-                    
+
                     trajectory.append({
                         "from": "gpt",
                         "value": content.rstrip()
                     })
-                    
+
                     # Collect all subsequent tool responses
                     tool_responses = []
                     j = i + 1
@@ -2211,7 +2247,7 @@ class AIAgent(_PromptCacheMixin):
                         tool_msg = messages[j]
                         # Format tool response with XML tags
                         tool_response = "<tool_response>\n"
-                        
+
                         # Try to parse tool content as JSON if it looks like JSON
                         tool_content = tool_msg["content"]
                         try:
@@ -2219,7 +2255,7 @@ class AIAgent(_PromptCacheMixin):
                                 tool_content = json.loads(tool_content)
                         except (json.JSONDecodeError, AttributeError):
                             pass  # Keep as string if not valid JSON
-                        
+
                         tool_index = len(tool_responses)
                         tool_name = (
                             msg["tool_calls"][tool_index]["function"]["name"]
@@ -2234,7 +2270,7 @@ class AIAgent(_PromptCacheMixin):
                         tool_response += "\n</tool_response>"
                         tool_responses.append(tool_response)
                         j += 1
-                    
+
                     # Add all tool responses as a single message
                     if tool_responses:
                         trajectory.append({
@@ -2242,41 +2278,41 @@ class AIAgent(_PromptCacheMixin):
                             "value": "\n".join(tool_responses)
                         })
                         i = j - 1  # Skip the tool messages we just processed
-                
+
                 else:
                     # Regular assistant message without tool calls
                     # Add <think> tags around reasoning for trajectory storage
                     content = ""
-                    
+
                     # Prepend reasoning in <think> tags if available (native thinking tokens)
                     if msg.get("reasoning") and msg["reasoning"].strip():
                         content = f"<think>\n{msg['reasoning']}\n</think>\n"
-                    
+
                     # Convert any <REASONING_SCRATCHPAD> tags to <think> tags
                     # (used when native thinking is disabled and model reasons via XML)
                     raw_content = msg["content"] or ""
                     content += convert_scratchpad_to_think(raw_content)
-                    
+
                     # Ensure every gpt turn has a <think> block (empty if no reasoning)
                     if "<think>" not in content:
                         content = "<think>\n</think>\n" + content
-                    
+
                     trajectory.append({
                         "from": "gpt",
                         "value": content.strip()
                     })
-            
+
             elif msg["role"] == "user":
                 trajectory.append({
                     "from": "human",
                     "value": msg["content"]
                 })
-            
+
             i += 1
-        
+
         return trajectory
-    
-    def _save_trajectory(self, messages: List[Dict[str, Any]], user_query: str, completed: bool):
+
+    def _save_trajectory(self, messages: list[dict[str, Any]], user_query: str, completed: bool):
         """
         Save conversation trajectory to JSONL file.
         
@@ -2287,10 +2323,10 @@ class AIAgent(_PromptCacheMixin):
         """
         if not self.save_trajectories:
             return
-        
+
         trajectory = self._convert_to_trajectory_format(messages, user_query, completed)
         _save_trajectory_to_file(trajectory, self.model, completed)
-    
+
     @staticmethod
     def _summarize_api_error(error: Exception) -> str:
         """Extract a human-readable one-liner from an API error.
@@ -2332,7 +2368,7 @@ class AIAgent(_PromptCacheMixin):
         prefix = f"HTTP {status_code}: " if status_code else ""
         return f"{prefix}{raw[:500]}"
 
-    def _mask_api_key_for_logs(self, key: Optional[str]) -> Optional[str]:
+    def _mask_api_key_for_logs(self, key: str | None) -> str | None:
         if not key:
             return None
         if len(key) <= 12:
@@ -2351,24 +2387,24 @@ class AIAgent(_PromptCacheMixin):
         """
         if not error_msg:
             return "Unknown error"
-            
+
         # Remove HTML content (common with CloudFlare and gateway error pages)
         if error_msg.strip().startswith('<!DOCTYPE html') or '<html' in error_msg:
             return "Service temporarily unavailable (HTML error page returned)"
-            
+
         # Remove newlines and excessive whitespace
         cleaned = ' '.join(error_msg.split())
-        
+
         # Truncate if too long
         if len(cleaned) > 150:
             cleaned = cleaned[:150] + "..."
-            
+
         return cleaned
 
     @staticmethod
-    def _extract_api_error_context(error: Exception) -> Dict[str, Any]:
+    def _extract_api_error_context(error: Exception) -> dict[str, Any]:
         """Extract structured rate-limit details from provider errors."""
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
 
         body = getattr(error, "body", None)
         payload = None
@@ -2430,7 +2466,7 @@ class AIAgent(_PromptCacheMixin):
 
         return context
 
-    def _usage_summary_for_api_request_hook(self, response: Any) -> Optional[Dict[str, Any]]:
+    def _usage_summary_for_api_request_hook(self, response: Any) -> dict[str, Any] | None:
         """Token buckets for ``post_api_request`` plugins (no raw ``response`` object)."""
         if response is None:
             return None
@@ -2448,11 +2484,11 @@ class AIAgent(_PromptCacheMixin):
 
     def _dump_api_request_debug(
         self,
-        api_kwargs: Dict[str, Any],
+        api_kwargs: dict[str, Any],
         *,
         reason: str,
-        error: Optional[Exception] = None,
-    ) -> Optional[Path]:
+        error: Exception | None = None,
+    ) -> Path | None:
         """
         Dump a debug-friendly HTTP request record for the active inference API.
 
@@ -2471,7 +2507,7 @@ class AIAgent(_PromptCacheMixin):
             except Exception as e:
                 logger.debug("Could not extract API key for debug dump: %s", e)
 
-            dump_payload: Dict[str, Any] = {
+            dump_payload: dict[str, Any] = {
                 "timestamp": datetime.now().isoformat(),
                 "session_id": self.session_id,
                 "reason": reason,
@@ -2487,7 +2523,7 @@ class AIAgent(_PromptCacheMixin):
             }
 
             if error is not None:
-                error_info: Dict[str, Any] = {
+                error_info: dict[str, Any] = {
                     "type": type(error).__name__,
                     "message": str(error),
                 }
@@ -2538,7 +2574,7 @@ class AIAgent(_PromptCacheMixin):
         content = re.sub(r'(</think>)\n+', r'\1\n', content)
         return content.strip()
 
-    def _save_session_log(self, messages: List[Dict[str, Any]] = None):
+    def _save_session_log(self, messages: list[dict[str, Any]] = None):
         """
         Save the full raw session to a JSON file.
 
@@ -2603,7 +2639,7 @@ class AIAgent(_PromptCacheMixin):
         except Exception as e:
             if self.verbose_logging:
                 logging.warning(f"Failed to save session log: {e}")
-    
+
     def interrupt(self, message: str = None) -> None:
         """
         Request the agent to interrupt its current tool-calling loop.
@@ -2644,7 +2680,7 @@ class AIAgent(_PromptCacheMixin):
                 logger.debug("Failed to propagate interrupt to child agent: %s", e)
         if not self.quiet_mode:
             print("\n⚡ Interrupt requested" + (f": '{message[:40]}...'" if message and len(message) > 40 else f": '{message}'" if message else ""))
-    
+
     def clear_interrupt(self) -> None:
         """Clear any pending interrupt request and the per-thread tool interrupt signal."""
         self._interrupt_requested = False
@@ -2723,7 +2759,7 @@ class AIAgent(_PromptCacheMixin):
                 )
             except Exception:
                 pass
-    
+
     def close(self) -> None:
         """Release all resources held by this agent instance.
 
@@ -2782,7 +2818,7 @@ class AIAgent(_PromptCacheMixin):
         except Exception:
             pass
 
-    def _hydrate_todo_store(self, history: List[Dict[str, Any]]) -> None:
+    def _hydrate_todo_store(self, history: list[dict[str, Any]]) -> None:
         """
         Recover todo state from conversation history.
         
@@ -2806,14 +2842,14 @@ class AIAgent(_PromptCacheMixin):
                     break
             except (json.JSONDecodeError, TypeError):
                 continue
-        
+
         if last_todo_response:
             # Replay the items into the store (replace mode)
             self._todo_store.write(last_todo_response, merge=False)
             if not self.quiet_mode:
                 self._vprint(f"{self.log_prefix}📋 Restored {len(last_todo_response)} todo item(s) from history")
         _set_interrupt(False)
-    
+
     @property
     def is_interrupted(self) -> bool:
         """Check if an interrupt has been requested."""
@@ -2837,131 +2873,13 @@ class AIAgent(_PromptCacheMixin):
 
     @staticmethod
     def _get_tool_call_id_static(tc) -> str:
-        """Extract call ID from a tool_call entry (dict or object)."""
-        if isinstance(tc, dict):
-            return tc.get("id", "") or ""
-        return getattr(tc, "id", "") or ""
+        return _get_tool_call_id_static_impl(tc)
 
-    _VALID_API_ROLES = frozenset({"system", "user", "assistant", "tool", "function", "developer"})
+    _VALID_API_ROLES = _MESSAGE_VALID_API_ROLES
 
     @staticmethod
-    def _sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Fix orphaned tool_call / tool_result pairs before every LLM call.
-
-        Runs unconditionally — not gated on whether the context compressor
-        is present — so orphans from session loading or manual message
-        manipulation are always caught.
-        """
-        # --- Role allowlist: drop messages with roles the API won't accept ---
-        filtered = []
-        for msg in messages:
-            role = msg.get("role")
-            if role not in AIAgent._VALID_API_ROLES:
-                logger.debug(
-                    "Pre-call sanitizer: dropping message with invalid role %r",
-                    role,
-                )
-                continue
-            filtered.append(msg)
-        messages = filtered
-
-        surviving_call_ids: set = set()
-        for msg in messages:
-            if msg.get("role") == "assistant":
-                for tc in msg.get("tool_calls") or []:
-                    cid = AIAgent._get_tool_call_id_static(tc)
-                    if cid:
-                        surviving_call_ids.add(cid)
-
-        result_call_ids: set = set()
-        for msg in messages:
-            if msg.get("role") == "tool":
-                cid = msg.get("tool_call_id")
-                if cid:
-                    result_call_ids.add(cid)
-
-        # 1. Drop tool results with no matching assistant call
-        orphaned_results = result_call_ids - surviving_call_ids
-        if orphaned_results:
-            messages = [
-                m for m in messages
-                if not (m.get("role") == "tool" and m.get("tool_call_id") in orphaned_results)
-            ]
-            logger.debug(
-                "Pre-call sanitizer: removed %d orphaned tool result(s)",
-                len(orphaned_results),
-            )
-
-        # 2. Inject stub results for calls whose result was dropped
-        missing_results = surviving_call_ids - result_call_ids
-        if missing_results:
-            patched: List[Dict[str, Any]] = []
-            for msg in messages:
-                patched.append(msg)
-                if msg.get("role") == "assistant":
-                    for tc in msg.get("tool_calls") or []:
-                        cid = AIAgent._get_tool_call_id_static(tc)
-                        if cid in missing_results:
-                            patched.append({
-                                "role": "tool",
-                                "content": "[Result unavailable — see context summary above]",
-                                "tool_call_id": cid,
-                            })
-            messages = patched
-            logger.debug(
-                "Pre-call sanitizer: added %d stub tool result(s)",
-                len(missing_results),
-            )
-        return messages
-
-    @staticmethod
-    def _cap_delegate_task_calls(tool_calls: list) -> list:
-        """Truncate excess delegate_task calls to max_concurrent_children.
-
-        The delegate_tool caps the task list inside a single call, but the
-        model can emit multiple separate delegate_task tool_calls in one
-        turn.  This truncates the excess, preserving all non-delegate calls.
-
-        Returns the original list if no truncation was needed.
-        """
-        from tools.delegate_tool import _get_max_concurrent_children
-        max_children = _get_max_concurrent_children()
-        delegate_count = sum(1 for tc in tool_calls if tc.function.name == "delegate_task")
-        if delegate_count <= max_children:
-            return tool_calls
-        kept_delegates = 0
-        truncated = []
-        for tc in tool_calls:
-            if tc.function.name == "delegate_task":
-                if kept_delegates < max_children:
-                    truncated.append(tc)
-                    kept_delegates += 1
-            else:
-                truncated.append(tc)
-        logger.warning(
-            "Truncated %d excess delegate_task call(s) to enforce "
-            "max_concurrent_children=%d limit",
-            delegate_count - max_children, max_children,
-        )
-        return truncated
-
-    @staticmethod
-    def _deduplicate_tool_calls(tool_calls: list) -> list:
-        """Remove duplicate (tool_name, arguments) pairs within a single turn.
-
-        Only the first occurrence of each unique pair is kept.
-        Returns the original list if no duplicates were found.
-        """
-        seen: set = set()
-        unique: list = []
-        for tc in tool_calls:
-            key = (tc.function.name, tc.function.arguments)
-            if key not in seen:
-                seen.add(key)
-                unique.append(tc)
-            else:
-                logger.warning("Removed duplicate tool call: %s", tc.function.name)
-        return unique if len(unique) < len(tool_calls) else tool_calls
+    def _sanitize_api_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _sanitize_api_messages_impl(messages)
 
     def _repair_tool_call(self, tool_name: str) -> str | None:
         """Attempt to repair a mismatched tool name before aborting.
@@ -2993,13 +2911,13 @@ class AIAgent(_PromptCacheMixin):
 
     # _invalidate_system_prompt lives in the _PromptCacheMixin (run_agent/prompt_cache.py).
 
-    def _responses_tools(self, tools: Optional[List[Dict[str, Any]]] = None) -> Optional[List[Dict[str, Any]]]:
+    def _responses_tools(self, tools: list[dict[str, Any]] | None = None) -> list[dict[str, Any]] | None:
         """Convert chat-completions tool schemas to Responses function-tool schemas."""
         source_tools = tools if tools is not None else self.tools
         if not source_tools:
             return None
 
-        converted: List[Dict[str, Any]] = []
+        converted: list[dict[str, Any]] = []
         for item in source_tools:
             fn = item.get("function", {}) if isinstance(item, dict) else {}
             name = fn.get("name")
@@ -3028,7 +2946,7 @@ class AIAgent(_PromptCacheMixin):
         return f"call_{digest}"
 
     @staticmethod
-    def _split_responses_tool_id(raw_id: Any) -> tuple[Optional[str], Optional[str]]:
+    def _split_responses_tool_id(raw_id: Any) -> tuple[str | None, str | None]:
         """Split a stored tool id into (call_id, response_item_id)."""
         if not isinstance(raw_id, str):
             return None, None
@@ -3047,7 +2965,7 @@ class AIAgent(_PromptCacheMixin):
     def _derive_responses_function_call_id(
         self,
         call_id: str,
-        response_item_id: Optional[str] = None,
+        response_item_id: str | None = None,
     ) -> str:
         """Build a valid Responses `function_call.id` (must start with `fc_`)."""
         if isinstance(response_item_id, str):
@@ -3073,9 +2991,9 @@ class AIAgent(_PromptCacheMixin):
         digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:24]
         return f"fc_{digest}"
 
-    def _chat_messages_to_responses_input(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _chat_messages_to_responses_input(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Convert internal chat-style messages to Responses input items."""
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         seen_item_ids: set = set()
 
         for msg in messages:
@@ -3177,11 +3095,11 @@ class AIAgent(_PromptCacheMixin):
 
         return items
 
-    def _preflight_codex_input_items(self, raw_items: Any) -> List[Dict[str, Any]]:
+    def _preflight_codex_input_items(self, raw_items: Any) -> list[dict[str, Any]]:
         if not isinstance(raw_items, list):
             raise ValueError("Codex Responses input must be a list of input items.")
 
-        normalized: List[Dict[str, Any]] = []
+        normalized: list[dict[str, Any]] = []
         seen_ids: set = set()
         for idx, item in enumerate(raw_items):
             if not isinstance(item, dict):
@@ -3273,7 +3191,7 @@ class AIAgent(_PromptCacheMixin):
         api_kwargs: Any,
         *,
         allow_stream: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if not isinstance(api_kwargs, dict):
             raise ValueError("Codex Responses request must be a dict.")
 
@@ -3344,7 +3262,7 @@ class AIAgent(_PromptCacheMixin):
             "reasoning", "include", "max_output_tokens", "temperature",
             "tool_choice", "parallel_tool_calls", "prompt_cache_key", "service_tier",
         }
-        normalized: Dict[str, Any] = {
+        normalized: dict[str, Any] = {
             "model": model,
             "instructions": instructions,
             "input": normalized_input,
@@ -3402,7 +3320,7 @@ class AIAgent(_PromptCacheMixin):
         if not isinstance(content, list):
             return ""
 
-        chunks: List[str] = []
+        chunks: list[str] = []
         for part in content:
             ptype = getattr(part, "type", None)
             if ptype not in {"output_text", "text"}:
@@ -3416,7 +3334,7 @@ class AIAgent(_PromptCacheMixin):
         """Extract a compact reasoning text from a Responses reasoning item."""
         summary = getattr(item, "summary", None)
         if isinstance(summary, list):
-            chunks: List[str] = []
+            chunks: list[str] = []
             for part in summary:
                 text = getattr(part, "text", None)
                 if isinstance(text, str) and text:
@@ -3463,10 +3381,10 @@ class AIAgent(_PromptCacheMixin):
                 error_msg = str(error_obj) if error_obj else f"Responses API returned status '{response_status}'"
             raise RuntimeError(error_msg)
 
-        content_parts: List[str] = []
-        reasoning_parts: List[str] = []
-        reasoning_items_raw: List[Dict[str, Any]] = []
-        tool_calls: List[Any] = []
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        reasoning_items_raw: list[dict[str, Any]] = []
+        tool_calls: list[Any] = []
         has_incomplete_items = response_status in {"queued", "in_progress", "incomplete"}
         saw_commentary_phase = False
         saw_final_answer_phase = False
@@ -4165,7 +4083,7 @@ class AIAgent(_PromptCacheMixin):
             return False
 
         try:
-            from agent.anthropic_adapter import resolve_anthropic_token, build_anthropic_client
+            from agent.anthropic_adapter import build_anthropic_client, resolve_anthropic_token
 
             new_token = resolve_anthropic_token()
         except Exception as exc:
@@ -4217,7 +4135,7 @@ class AIAgent(_PromptCacheMixin):
         runtime_base = getattr(entry, "runtime_base_url", None) or getattr(entry, "base_url", None) or self.base_url
 
         if self.api_mode == "anthropic_messages":
-            from agent.anthropic_adapter import build_anthropic_client, _is_oauth_token
+            from agent.anthropic_adapter import _is_oauth_token, build_anthropic_client
 
             try:
                 self._anthropic_client.close()
@@ -4242,10 +4160,10 @@ class AIAgent(_PromptCacheMixin):
     def _recover_with_credential_pool(
         self,
         *,
-        status_code: Optional[int],
+        status_code: int | None,
         has_retried_429: bool,
-        classified_reason: Optional[FailoverReason] = None,
-        error_context: Optional[Dict[str, Any]] = None,
+        classified_reason: FailoverReason | None = None,
+        error_context: dict[str, Any] | None = None,
     ) -> tuple[bool, bool]:
         """Attempt credential recovery via pool rotation.
 
@@ -4524,100 +4442,6 @@ class AIAgent(_PromptCacheMixin):
         return result["response"]
 
     # ── Unified streaming API call ─────────────────────────────────────────
-
-    def _reset_stream_delivery_tracking(self) -> None:
-        """Reset tracking for text delivered during the current model response."""
-        self._current_streamed_assistant_text = ""
-
-    def _record_streamed_assistant_text(self, text: str) -> None:
-        """Accumulate visible assistant text emitted through stream callbacks."""
-        if isinstance(text, str) and text:
-            self._current_streamed_assistant_text = (
-                getattr(self, "_current_streamed_assistant_text", "") + text
-            )
-
-    @staticmethod
-    def _normalize_interim_visible_text(text: str) -> str:
-        if not isinstance(text, str):
-            return ""
-        return re.sub(r"\s+", " ", text).strip()
-
-    def _interim_content_was_streamed(self, content: str) -> bool:
-        visible_content = self._normalize_interim_visible_text(
-            self._strip_think_blocks(content or "")
-        )
-        if not visible_content:
-            return False
-        streamed = self._normalize_interim_visible_text(
-            self._strip_think_blocks(getattr(self, "_current_streamed_assistant_text", "") or "")
-        )
-        return bool(streamed) and streamed == visible_content
-
-    def _emit_interim_assistant_message(self, assistant_msg: Dict[str, Any]) -> None:
-        """Surface a real mid-turn assistant commentary message to the UI layer."""
-        cb = getattr(self, "interim_assistant_callback", None)
-        if cb is None or not isinstance(assistant_msg, dict):
-            return
-        content = assistant_msg.get("content")
-        visible = self._strip_think_blocks(content or "").strip()
-        if not visible or visible == "(empty)":
-            return
-        already_streamed = self._interim_content_was_streamed(visible)
-        try:
-            cb(visible, already_streamed=already_streamed)
-        except Exception:
-            logger.debug("interim_assistant_callback error", exc_info=True)
-
-    def _fire_stream_delta(self, text: str) -> None:
-        """Fire all registered stream delta callbacks (display + TTS)."""
-        # If a tool iteration set the break flag, prepend a single paragraph
-        # break before the first real text delta.  This prevents the original
-        # problem (text concatenation across tool boundaries) without stacking
-        # blank lines when multiple tool iterations run back-to-back.
-        if getattr(self, "_stream_needs_break", False) and text and text.strip():
-            self._stream_needs_break = False
-            text = "\n\n" + text
-        callbacks = [cb for cb in (self.stream_delta_callback, self._stream_callback) if cb is not None]
-        delivered = False
-        for cb in callbacks:
-            try:
-                cb(text)
-                delivered = True
-            except Exception:
-                pass
-        if delivered:
-            self._record_streamed_assistant_text(text)
-
-    def _fire_reasoning_delta(self, text: str) -> None:
-        """Fire reasoning callback if registered."""
-        cb = self.reasoning_callback
-        if cb is not None:
-            try:
-                cb(text)
-            except Exception:
-                pass
-
-    def _fire_tool_gen_started(self, tool_name: str) -> None:
-        """Notify display layer that the model is generating tool call arguments.
-
-        Fires once per tool name when the streaming response begins producing
-        tool_call / tool_use tokens.  Gives the TUI a chance to show a spinner
-        or status line so the user isn't staring at a frozen screen while a
-        large tool payload (e.g. a 45 KB write_file) is being generated.
-        """
-        cb = self.tool_gen_callback
-        if cb is not None:
-            try:
-                cb(tool_name)
-            except Exception:
-                pass
-
-    def _has_stream_consumers(self) -> bool:
-        """Return True if any streaming consumer is registered."""
-        return (
-            self.stream_delta_callback is not None
-            or getattr(self, "_stream_callback", None) is not None
-        )
 
     def _interruptible_streaming_api_call(
         self, api_kwargs: dict, *, on_first_delta: callable = None
@@ -5266,7 +5090,11 @@ class AIAgent(_PromptCacheMixin):
 
             if fb_api_mode == "anthropic_messages":
                 # Build native Anthropic client instead of using OpenAI client
-                from agent.anthropic_adapter import build_anthropic_client, resolve_anthropic_token, _is_oauth_token
+                from agent.anthropic_adapter import (
+                    _is_oauth_token,
+                    build_anthropic_client,
+                    resolve_anthropic_token,
+                )
                 effective_key = (fb_client.api_key or resolve_anthropic_token() or "") if fb_provider == "anthropic" else (fb_client.api_key or "")
                 self.api_key = effective_key
                 self._anthropic_api_key = effective_key
@@ -5494,7 +5322,7 @@ class AIAgent(_PromptCacheMixin):
         return False
 
     @staticmethod
-    def _materialize_data_url_for_vision(image_url: str) -> tuple[str, Optional[Path]]:
+    def _materialize_data_url_for_vision(image_url: str) -> tuple[str, Path | None]:
         header, _, data = str(image_url or "").partition(",")
         mime = "image/jpeg"
         if header.startswith("data:"):
@@ -5531,7 +5359,7 @@ class AIAgent(_PromptCacheMixin):
         )
 
         vision_source = str(image_url or "")
-        cleanup_path: Optional[Path] = None
+        cleanup_path: Path | None = None
         if vision_source.startswith("data:"):
             vision_source, cleanup_path = self._materialize_data_url_for_vision(vision_source)
 
@@ -5569,8 +5397,8 @@ class AIAgent(_PromptCacheMixin):
         if not self._content_has_image_parts(content):
             return content
 
-        text_parts: List[str] = []
-        image_notes: List[str] = []
+        text_parts: list[str] = []
+        image_notes: list[str] = []
         for part in content:
             if isinstance(part, str):
                 if part.strip():
@@ -6203,167 +6031,6 @@ class AIAgent(_PromptCacheMixin):
         """
         return self.api_mode != "codex_responses"
 
-    def flush_memories(self, messages: list = None, min_turns: int = None):
-        """Give the model one turn to persist memories before context is lost.
-
-        Called before compression, session reset, or CLI exit. Injects a flush
-        message, makes one API call, executes any memory tool calls, then
-        strips all flush artifacts from the message list.
-
-        Args:
-            messages: The current conversation messages. If None, uses
-                      self._session_messages (last run_conversation state).
-            min_turns: Minimum user turns required to trigger the flush.
-                       None = use config value (flush_min_turns).
-                       0 = always flush (used for compression).
-        """
-        if self._memory_flush_min_turns == 0 and min_turns is None:
-            return
-        if "memory" not in self.valid_tool_names or not self._memory_store:
-            return
-        effective_min = min_turns if min_turns is not None else self._memory_flush_min_turns
-        if self._user_turn_count < effective_min:
-            return
-
-        if messages is None:
-            messages = getattr(self, '_session_messages', None)
-        if not messages or len(messages) < 3:
-            return
-
-        flush_content = (
-            "[System: The session is being compressed. "
-            "Save anything worth remembering — prioritize user preferences, "
-            "corrections, and recurring patterns over task-specific details.]"
-        )
-        _sentinel = f"__flush_{id(self)}_{time.monotonic()}"
-        flush_msg = {"role": "user", "content": flush_content, "_flush_sentinel": _sentinel}
-        messages.append(flush_msg)
-
-        try:
-            # Build API messages for the flush call
-            _needs_sanitize = self._should_sanitize_tool_calls()
-            api_messages = []
-            for msg in messages:
-                api_msg = msg.copy()
-                if msg.get("role") == "assistant":
-                    reasoning = msg.get("reasoning")
-                    if reasoning:
-                        api_msg["reasoning_content"] = reasoning
-                api_msg.pop("reasoning", None)
-                api_msg.pop("finish_reason", None)
-                api_msg.pop("_flush_sentinel", None)
-                api_msg.pop("_thinking_prefill", None)
-                if _needs_sanitize:
-                    self._sanitize_tool_calls_for_strict_api(api_msg)
-                api_messages.append(api_msg)
-
-            if self._cached_system_prompt:
-                api_messages = [{"role": "system", "content": self._cached_system_prompt}] + api_messages
-
-            # Make one API call with only the memory tool available
-            memory_tool_def = None
-            for t in (self.tools or []):
-                if t.get("function", {}).get("name") == "memory":
-                    memory_tool_def = t
-                    break
-
-            if not memory_tool_def:
-                messages.pop()  # remove flush msg
-                return
-
-            # Use auxiliary client for the flush call when available --
-            # it's cheaper and avoids Codex Responses API incompatibility.
-            from agent.auxiliary_client import call_llm as _call_llm
-            _aux_available = True
-            try:
-                response = _call_llm(
-                    task="flush_memories",
-                    messages=api_messages,
-                    tools=[memory_tool_def],
-                    temperature=0.3,
-                    max_tokens=5120,
-                    # timeout resolved from auxiliary.flush_memories.timeout config
-                )
-            except RuntimeError:
-                _aux_available = False
-                response = None
-
-            if not _aux_available and self.api_mode == "codex_responses":
-                # No auxiliary client -- use the Codex Responses path directly
-                codex_kwargs = self._build_api_kwargs(api_messages)
-                codex_kwargs["tools"] = self._responses_tools([memory_tool_def])
-                codex_kwargs["temperature"] = 0.3
-                if "max_output_tokens" in codex_kwargs:
-                    codex_kwargs["max_output_tokens"] = 5120
-                response = self._run_codex_stream(codex_kwargs)
-            elif not _aux_available and self.api_mode == "anthropic_messages":
-                # Native Anthropic — use the Anthropic client directly
-                from agent.anthropic_adapter import build_anthropic_kwargs as _build_ant_kwargs
-                ant_kwargs = _build_ant_kwargs(
-                    model=self.model, messages=api_messages,
-                    tools=[memory_tool_def], max_tokens=5120,
-                    reasoning_config=None,
-                    preserve_dots=self._anthropic_preserve_dots(),
-                )
-                response = self._anthropic_messages_create(ant_kwargs)
-            elif not _aux_available:
-                api_kwargs = {
-                    "model": self.model,
-                    "messages": api_messages,
-                    "tools": [memory_tool_def],
-                    "temperature": 0.3,
-                    **self._max_tokens_param(5120),
-                }
-                from agent.auxiliary_client import _get_task_timeout
-                response = self._ensure_primary_openai_client(reason="flush_memories").chat.completions.create(
-                    **api_kwargs, timeout=_get_task_timeout("flush_memories")
-                )
-
-            # Extract tool calls from the response, handling all API formats
-            tool_calls = []
-            if self.api_mode == "codex_responses" and not _aux_available:
-                assistant_msg, _ = self._normalize_codex_response(response)
-                if assistant_msg and assistant_msg.tool_calls:
-                    tool_calls = assistant_msg.tool_calls
-            elif self.api_mode == "anthropic_messages" and not _aux_available:
-                from agent.anthropic_adapter import normalize_anthropic_response as _nar_flush
-                _flush_msg, _ = _nar_flush(response, strip_tool_prefix=self._is_anthropic_oauth)
-                if _flush_msg and _flush_msg.tool_calls:
-                    tool_calls = _flush_msg.tool_calls
-            elif hasattr(response, "choices") and response.choices:
-                assistant_message = response.choices[0].message
-                if assistant_message.tool_calls:
-                    tool_calls = assistant_message.tool_calls
-
-            for tc in tool_calls:
-                if tc.function.name == "memory":
-                    try:
-                        args = json.loads(tc.function.arguments)
-                        flush_target = args.get("target", "memory")
-                        from tools.memory_tool import memory_tool as _memory_tool
-                        _memory_tool(
-                            action=args.get("action"),
-                            target=flush_target,
-                            content=args.get("content"),
-                            old_text=args.get("old_text"),
-                            store=self._memory_store,
-                        )
-                        if not self.quiet_mode:
-                            print(f"  🧠 Memory flush: saved to {args.get('target', 'memory')}")
-                    except Exception as e:
-                        logger.debug("Memory flush tool call failed: %s", e)
-        except Exception as e:
-            logger.debug("Memory flush API call failed: %s", e)
-        finally:
-            # Strip flush artifacts: remove everything from the flush message onward.
-            # Use sentinel marker instead of identity check for robustness.
-            while messages and messages[-1].get("_flush_sentinel") != _sentinel:
-                messages.pop()
-                if not messages:
-                    break
-            if messages and messages[-1].get("_flush_sentinel") == _sentinel:
-                messages.pop()
-
     def _compress_context(self, messages: list, system_message: str, *, approx_tokens: int = None, task_id: str = "default", focus_topic: str = None) -> tuple:
         """Compress conversation context and split the session in SQLite.
 
@@ -6484,169 +6151,6 @@ class AIAgent(_PromptCacheMixin):
             f"{_compressed_est:,}",
         )
         return compressed, new_system_prompt
-
-    def _execute_tool_calls(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
-        """Execute tool calls from the assistant message and append results to messages.
-
-        Dispatches to concurrent execution only for batches that look
-        independent: read-only tools may always share the parallel path, while
-        file reads/writes may do so only when their target paths do not overlap.
-        """
-        tool_calls = assistant_message.tool_calls
-
-        # Allow _vprint during tool execution even with stream consumers
-        self._executing_tools = True
-        try:
-            if not _should_parallelize_tool_batch(tool_calls):
-                return self._execute_tool_calls_sequential(
-                    assistant_message, messages, effective_task_id, api_call_count
-                )
-
-            return self._execute_tool_calls_concurrent(
-                assistant_message, messages, effective_task_id, api_call_count
-            )
-        finally:
-            self._executing_tools = False
-
-    def _on_tool_dispatched(self, function_name: str) -> None:
-        """Hook fired once a tool finishes dispatching.
-
-        Currently used by ``browser_open`` to swap the slimmed default tool
-        set for the full browser toolset for the remainder of the session.
-        Safe to call after every tool — it's a no-op unless activation state
-        has actually changed since the last refresh.
-        """
-        if function_name != "browser_open":
-            return
-        try:
-            from tools.browser_tool import _browser_session_active
-        except Exception:
-            return
-        if not _browser_session_active:
-            return
-        # Cheap idempotency check: only rebuild self.tools if a browser
-        # sub-tool isn't already present.
-        if any(t.get("function", {}).get("name") == "browser_snapshot" for t in (self.tools or [])):
-            return
-        try:
-            refreshed = get_tool_definitions(
-                enabled_toolsets=self.enabled_toolsets,
-                disabled_toolsets=self.disabled_toolsets,
-                quiet_mode=True,
-            )
-        except Exception:
-            return
-        self.tools = refreshed
-        self.valid_tool_names = {t["function"]["name"] for t in refreshed}
-
-    def _inject_working_dir(self, function_name: str, function_args: dict) -> dict:
-        """Prepend self.working_dir to relative paths in tool args for workspace sessions."""
-        wd = self.working_dir
-        if not wd:
-            return function_args
-        if function_name == "terminal":
-            if not function_args.get("workdir"):
-                return {**function_args, "workdir": wd}
-        elif function_name == "search_files":
-            path = function_args.get("path", ".")
-            if not os.path.isabs(str(path)):
-                return {**function_args, "path": os.path.normpath(os.path.join(wd, path))}
-        elif function_name in ("read_file", "write_file", "patch"):
-            path = function_args.get("path", "")
-            if path and not os.path.isabs(str(path)):
-                return {**function_args, "path": os.path.normpath(os.path.join(wd, path))}
-        return function_args
-
-    def _invoke_tool(self, function_name: str, function_args: dict, effective_task_id: str,
-                     tool_call_id: Optional[str] = None) -> str:
-        """Invoke a single tool and return the result string. No display logic.
-
-        Handles both agent-level tools (todo, memory, etc.) and registry-dispatched
-        tools. Used by the concurrent execution path; the sequential path retains
-        its own inline invocation for backward-compatible display handling.
-        """
-        function_args = self._inject_working_dir(function_name, function_args)
-        # Check plugin hooks for a block directive before executing anything.
-        block_message: Optional[str] = None
-        try:
-            from spark_cli.plugins import get_pre_tool_call_block_message
-            block_message = get_pre_tool_call_block_message(
-                function_name, function_args, task_id=effective_task_id or "",
-            )
-        except Exception:
-            pass
-        if block_message is not None:
-            return json.dumps({"error": block_message}, ensure_ascii=False)
-
-        try:
-            if function_name == "todo":
-                from tools.todo_tool import todo_tool as _todo_tool
-                return _todo_tool(
-                    todos=function_args.get("todos"),
-                    merge=function_args.get("merge", False),
-                    store=self._todo_store,
-                )
-            elif function_name == "session_search":
-                if not self._session_db:
-                    return json.dumps({"success": False, "error": "Session database not available."})
-                from tools.session_search_tool import session_search as _session_search
-                return _session_search(
-                    query=function_args.get("query", ""),
-                    role_filter=function_args.get("role_filter"),
-                    limit=function_args.get("limit", 3),
-                    db=self._session_db,
-                    current_session_id=self.session_id,
-                )
-            elif function_name == "memory":
-                target = function_args.get("target", "memory")
-                from tools.memory_tool import memory_tool as _memory_tool
-                result = _memory_tool(
-                    action=function_args.get("action"),
-                    target=target,
-                    content=function_args.get("content"),
-                    old_text=function_args.get("old_text"),
-                    store=self._memory_store,
-                )
-                # Bridge: notify external memory provider of built-in memory writes
-                if self._memory_manager and function_args.get("action") in ("add", "replace"):
-                    try:
-                        self._memory_manager.on_memory_write(
-                            function_args.get("action", ""),
-                            target,
-                            function_args.get("content", ""),
-                        )
-                    except Exception:
-                        pass
-                return result
-            elif self._memory_manager and self._memory_manager.has_tool(function_name):
-                return self._memory_manager.handle_tool_call(function_name, function_args)
-            elif function_name == "clarify":
-                from tools.clarify_tool import clarify_tool as _clarify_tool
-                return _clarify_tool(
-                    question=function_args.get("question", ""),
-                    choices=function_args.get("choices"),
-                    callback=self.clarify_callback,
-                )
-            elif function_name == "delegate_task":
-                from tools.delegate_tool import delegate_task as _delegate_task
-                return _delegate_task(
-                    goal=function_args.get("goal"),
-                    context=function_args.get("context"),
-                    toolsets=function_args.get("toolsets"),
-                    tasks=function_args.get("tasks"),
-                    max_iterations=function_args.get("max_iterations"),
-                    parent_agent=self,
-                )
-            else:
-                return handle_function_call(
-                    function_name, function_args, effective_task_id,
-                    tool_call_id=tool_call_id,
-                    session_id=self.session_id or "",
-                    enabled_tools=list(self.valid_tool_names) if self.valid_tool_names else None,
-                    skip_pre_tool_call_hook=True,
-                )
-        finally:
-            self._on_tool_dispatched(function_name)
 
     def _execute_tool_calls_concurrent(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
         """Execute multiple tool calls concurrently using a thread pool.
@@ -6889,7 +6393,7 @@ class AIAgent(_PromptCacheMixin):
             function_args = self._inject_working_dir(function_name, function_args)
 
             # Check plugin hooks for a block directive before executing.
-            _block_msg: Optional[str] = None
+            _block_msg: str | None = None
             try:
                 from spark_cli.plugins import get_pre_tool_call_block_message
                 _block_msg = get_pre_tool_call_block_message(
@@ -7369,7 +6873,8 @@ class AIAgent(_PromptCacheMixin):
                     summary_kwargs["extra_body"] = summary_extra_body
 
                 if self.api_mode == "anthropic_messages":
-                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak, normalize_anthropic_response as _nar
+                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak
+                    from agent.anthropic_adapter import normalize_anthropic_response as _nar
                     _ant_kw = _bak(model=self.model, messages=api_messages, tools=None,
                                    max_tokens=self.max_tokens, reasoning_config=self.reasoning_config,
                                    is_oauth=self._is_anthropic_oauth,
@@ -7401,7 +6906,8 @@ class AIAgent(_PromptCacheMixin):
                     retry_msg, _ = self._normalize_codex_response(retry_response)
                     final_response = (retry_msg.content or "").strip() if retry_msg else ""
                 elif self.api_mode == "anthropic_messages":
-                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak2, normalize_anthropic_response as _nar2
+                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak2
+                    from agent.anthropic_adapter import normalize_anthropic_response as _nar2
                     _ant_kw2 = _bak2(model=self.model, messages=api_messages, tools=None,
                                     is_oauth=self._is_anthropic_oauth,
                                     max_tokens=self.max_tokens, reasoning_config=self.reasoning_config,
@@ -7446,11 +6952,11 @@ class AIAgent(_PromptCacheMixin):
         self,
         user_message: str,
         system_message: str = None,
-        conversation_history: List[Dict[str, Any]] = None,
+        conversation_history: list[dict[str, Any]] = None,
         task_id: str = None,
-        stream_callback: Optional[callable] = None,
-        persist_user_message: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        stream_callback: Callable[..., Any] | None = None,
+        persist_user_message: str | None = None,
+    ) -> dict[str, Any]:
         """
         Run a complete conversation with tool calling until completion.
 
@@ -7501,7 +7007,7 @@ class AIAgent(_PromptCacheMixin):
         self._persist_user_message_override = persist_user_message
         # Generate unique task_id if not provided to isolate VMs between concurrent tasks
         effective_task_id = task_id or str(uuid.uuid4())
-        
+
         # Reset retry counters and iteration budget at the start of each turn
         # so subagent usage from a previous turn doesn't eat into the next one.
         self._invalid_tool_retries = 0
@@ -7563,12 +7069,12 @@ class AIAgent(_PromptCacheMixin):
         prior_history = conversation_history if conversation_history is not None else self._session_messages
         if prior_history and not self._todo_store.has_items():
             self._hydrate_todo_store(prior_history)
-        
+
         # Prefill messages (few-shot priming) are injected at API-call time only,
         # never stored in the messages list. This keeps them ephemeral: they won't
         # be saved to session DB, session logs, or batch trajectories, but they're
         # automatically re-applied on every API call (including session continuations).
-        
+
         # Track user turns for memory flush and periodic nudge logic
         self._user_turn_count += 1
 
@@ -7592,10 +7098,10 @@ class AIAgent(_PromptCacheMixin):
         messages.append(user_msg)
         current_turn_user_idx = len(messages) - 1
         self._persist_user_message_idx = current_turn_user_idx
-        
+
         if not self.quiet_mode:
             self._safe_print(f"💬 Starting conversation: '{user_message[:60]}{'...' if len(user_message) > 60 else ''}'")
-        
+
         # ── System prompt (cached per session for prefix caching) ──
         # Built once on first call, reused for all subsequent calls.
         # Only rebuilt after context compression events (which invalidate
@@ -7753,7 +7259,7 @@ class AIAgent(_PromptCacheMixin):
         truncated_response_prefix = ""
         compression_attempts = 0
         _turn_exit_reason = "unknown"  # Diagnostic: why the loop ended
-        
+
         # Record the execution thread so interrupt()/clear_interrupt() can
         # scope the tool-level interrupt signal to THIS agent's thread only.
         # Must be set before clear_interrupt() which uses it.
@@ -7794,7 +7300,7 @@ class AIAgent(_PromptCacheMixin):
                 if not self.quiet_mode:
                     self._safe_print("\n⚡ Breaking out of tool loop due to interrupt...")
                 break
-            
+
             api_call_count += 1
             self._api_call_count = api_call_count
             self._touch_activity(f"starting API call #{api_call_count}")
@@ -7842,7 +7348,7 @@ class AIAgent(_PromptCacheMixin):
             if (self._skill_nudge_interval > 0
                     and "skill_manage" in self.valid_tool_names):
                 self._iters_since_skill += 1
-            
+
             # Prepare messages for API call
             # If we have an ephemeral system prompt, prepend it to the messages
             # Note: Reasoning is embedded in content via <think> tags for trajectory storage.
@@ -7964,10 +7470,10 @@ class AIAgent(_PromptCacheMixin):
             # Calculate approximate request size for logging
             total_chars = sum(len(str(msg)) for msg in api_messages)
             approx_tokens = estimate_messages_tokens_rough(api_messages)
-            
+
             # Thinking spinner for quiet mode (animated during API call)
             thinking_spinner = None
-            
+
             if not self.quiet_mode:
                 self._vprint(f"\n{self.log_prefix}🔄 Making API call #{api_call_count}/{self.max_iterations}...")
                 self._vprint(f"{self.log_prefix}   📊 Request size: {len(api_messages)} messages, ~{approx_tokens:,} tokens (~{total_chars:,} chars)")
@@ -7986,13 +7492,13 @@ class AIAgent(_PromptCacheMixin):
                     spinner_type = random.choice(['brain', 'sparkle', 'pulse', 'moon', 'star'])
                     thinking_spinner = KawaiiSpinner(f"{face} {verb}...", spinner_type=spinner_type, print_fn=self._print_fn)
                     thinking_spinner.start()
-            
+
             # Log request details if verbose
             if self.verbose_logging:
                 logging.debug(f"API Request - Model: {self.model}, Messages: {len(messages)}, Tools: {len(self.tools) if self.tools else 0}")
                 logging.debug(f"Last message role: {messages[-1]['role'] if messages else 'none'}")
                 logging.debug(f"Total message size: ~{approx_tokens:,} tokens")
-            
+
             api_start_time = time.time()
             retry_count = 0
             max_retries = 3
@@ -8081,9 +7587,9 @@ class AIAgent(_PromptCacheMixin):
                         )
                     else:
                         response = self._interruptible_api_call(api_kwargs)
-                    
+
                     api_duration = time.time() - api_start_time
-                    
+
                     # Stop thinking spinner silently -- the response box or tool
                     # execution messages that follow are more informative.
                     if thinking_spinner:
@@ -8091,15 +7597,15 @@ class AIAgent(_PromptCacheMixin):
                         thinking_spinner = None
                     if self.thinking_callback:
                         self.thinking_callback("")
-                    
+
                     if not self.quiet_mode:
                         self._vprint(f"{self.log_prefix}⏱️  API call completed in {api_duration:.2f}s")
-                    
+
                     if self.verbose_logging:
                         # Log response with provider info if available
                         resp_model = getattr(response, 'model', 'N/A') if response else 'N/A'
                         logging.debug(f"API Response received - Model: {resp_model}, Usage: {response.usage if hasattr(response, 'usage') else 'N/A'}")
-                    
+
                     # Validate response shape before proceeding
                     response_invalid = False
                     error_details = []
@@ -8166,11 +7672,11 @@ class AIAgent(_PromptCacheMixin):
                             thinking_spinner = None
                         if self.thinking_callback:
                             self.thinking_callback("")
-                        
+
                         # Invalid response — could be rate limiting, provider timeout,
                         # upstream server error, or malformed response.
                         retry_count += 1
-                        
+
                         # Eager fallback: empty/malformed responses are a common
                         # rate-limit symptom.  Switch to fallback immediately
                         # rather than retrying with extended backoff.
@@ -8192,18 +7698,18 @@ class AIAgent(_PromptCacheMixin):
                                 provider_name = response.error.metadata.get('provider_name', 'Unknown')
                         elif response and hasattr(response, 'message') and response.message:
                             error_msg = str(response.message)
-                        
+
                         # Try to get provider from model field (OpenRouter often returns actual model used)
                         if provider_name == "Unknown" and response and hasattr(response, 'model') and response.model:
                             provider_name = f"model={response.model}"
-                        
+
                         # Check for x-openrouter-provider or similar metadata
                         if provider_name == "Unknown" and response:
                             # Log all response attributes for debugging
                             resp_attrs = {k: str(v)[:100] for k, v in vars(response).items() if not k.startswith('_')}
                             if self.verbose_logging:
                                 logging.debug(f"Response attributes for invalid response: {resp_attrs}")
-                        
+
                         # Extract error code from response for contextual diagnostics
                         _resp_error_code = None
                         if response and hasattr(response, 'error') and response.error:
@@ -8242,7 +7748,7 @@ class AIAgent(_PromptCacheMixin):
                         cleaned_provider_error = self._clean_error_message(error_msg)
                         self._vprint(f"{self.log_prefix}   📝 Provider message: {cleaned_provider_error}", force=True)
                         self._vprint(f"{self.log_prefix}   ⏱️  {_failure_hint}", force=True)
-                        
+
                         if retry_count >= max_retries:
                             # Try fallback before giving up
                             self._emit_status(f"⚠️ Max retries ({max_retries}) for invalid responses — trying fallback...")
@@ -8261,12 +7767,12 @@ class AIAgent(_PromptCacheMixin):
                                 "error": f"Invalid API response after {max_retries} retries: {_failure_hint}",
                                 "failed": True  # Mark as failure for filtering
                             }
-                        
+
                         # Backoff before retry — jittered exponential: 5s base, 120s cap
                         wait_time = jittered_backoff(retry_count, base_delay=5.0, max_delay=120.0)
                         self._vprint(f"{self.log_prefix}⏳ Retrying in {wait_time:.1f}s ({_failure_hint})...", force=True)
                         logging.warning(f"Invalid API response (retry {retry_count}/{max_retries}): {', '.join(error_details)} | Provider: {provider_name}")
-                        
+
                         # Sleep in small increments to stay responsive to interrupts
                         sleep_end = time.time() + wait_time
                         _backoff_touch_counter = 0
@@ -8487,7 +7993,7 @@ class AIAgent(_PromptCacheMixin):
                                 "failed": True,
                                 "error": "First response truncated due to output length limit"
                             }
-                    
+
                     # Track actual token usage from response for context management
                     if hasattr(response, 'usage') and response.usage:
                         canonical_usage = normalize_usage(
@@ -8577,10 +8083,10 @@ class AIAgent(_PromptCacheMixin):
                                 )
                             except Exception:
                                 pass  # never block the agent loop
-                        
+
                         if self.verbose_logging:
                             logging.debug(f"Token usage: prompt={usage_dict['prompt_tokens']:,}, completion={usage_dict['completion_tokens']:,}, total={usage_dict['total_tokens']:,}")
-                        
+
                         # Log cache hit stats when caching may be active.
                         # Use canonical_usage which already normalises all providers
                         # (Anthropic, Codex, OpenRouter Claude + non-Claude).
@@ -8590,7 +8096,7 @@ class AIAgent(_PromptCacheMixin):
                             hit_pct = (canonical_usage.cache_read_tokens / prompt * 100) if prompt > 0 else 0
                             if not self.quiet_mode:
                                 self._vprint(f"{self.log_prefix}   💾 Cache: {canonical_usage.cache_read_tokens:,}/{prompt:,} tokens ({hit_pct:.0f}% hit, {canonical_usage.cache_write_tokens:,} written)")
-                    
+
                     has_retried_429 = False  # Reset on success
                     self._consecutive_auth_refreshes = 0  # Reset auth-refresh budget on success
                     self._touch_activity(f"API call #{api_call_count} completed")
@@ -8789,7 +8295,7 @@ class AIAgent(_PromptCacheMixin):
                     self._touch_activity(
                         f"API error recovery (attempt {retry_count}/{max_retries})"
                     )
-                    
+
                     error_type = type(api_error).__name__
                     error_msg = str(api_error).lower()
                     _error_summary = self._summarize_api_error(api_error)
@@ -8873,7 +8379,7 @@ class AIAgent(_PromptCacheMixin):
                             "completed": False,
                             "interrupted": True,
                         }
-                    
+
                     # Check for 413 payload-too-large BEFORE generic 4xx handler.
                     # A 413 is a payload-size error — the correct response is to
                     # compress history and retry, not abort immediately.
@@ -9359,7 +8865,7 @@ class AIAgent(_PromptCacheMixin):
                                 f"error retry backoff ({retry_count}/{max_retries}), "
                                 f"{int(sleep_end - time.time())}s remaining"
                             )
-            
+
             # If the API call was interrupted, skip response processing
             if interrupted:
                 _turn_exit_reason = "interrupted_during_api_call"
@@ -9397,7 +8903,7 @@ class AIAgent(_PromptCacheMixin):
                     )
                 else:
                     assistant_message = response.choices[0].message
-                
+
                 # Normalize content to string — some OpenAI-compatible servers
                 # (llama-server, etc.) return content as a dict or list instead
                 # of a plain string, which crashes downstream .strip() calls.
@@ -9472,14 +8978,14 @@ class AIAgent(_PromptCacheMixin):
                             self.tool_progress_callback("reasoning.available", "_thinking", _think_text[:500], None)
                         except Exception:
                             pass
-                
+
                 # Check for incomplete <REASONING_SCRATCHPAD> (opened but never closed)
                 # This means the model ran out of output tokens mid-reasoning — retry up to 2 times
                 if has_incomplete_scratchpad(assistant_message.content or ""):
                     self._incomplete_scratchpad_retries += 1
-                    
+
                     self._vprint(f"{self.log_prefix}⚠️  Incomplete <REASONING_SCRATCHPAD> detected (opened but never closed)")
-                    
+
                     if self._incomplete_scratchpad_retries <= 2:
                         self._vprint(f"{self.log_prefix}🔄 Retrying API call ({self._incomplete_scratchpad_retries}/2)...")
                         # Don't add the broken message, just retry
@@ -9488,11 +8994,11 @@ class AIAgent(_PromptCacheMixin):
                         # Max retries - discard this turn and save as partial
                         self._vprint(f"{self.log_prefix}❌ Max retries (2) for incomplete scratchpad. Saving as partial.", force=True)
                         self._incomplete_scratchpad_retries = 0
-                        
+
                         rolled_back_messages = self._get_messages_up_to_last_assistant(messages)
                         self._cleanup_task_resources(effective_task_id)
                         self._persist_session(messages, conversation_history)
-                        
+
                         return {
                             "final_response": None,
                             "messages": rolled_back_messages,
@@ -9501,7 +9007,7 @@ class AIAgent(_PromptCacheMixin):
                             "partial": True,
                             "error": "Incomplete REASONING_SCRATCHPAD after 2 retries"
                         }
-                
+
                 # Reset incomplete scratchpad counter on clean response
                 self._incomplete_scratchpad_retries = 0
 
@@ -9585,16 +9091,16 @@ class AIAgent(_PromptCacheMixin):
                     }
                 elif hasattr(self, "_codex_incomplete_retries"):
                     self._codex_incomplete_retries = 0
-                
+
                 # Check for tool calls
                 if assistant_message.tool_calls:
                     if not self.quiet_mode:
                         self._vprint(f"{self.log_prefix}🔧 Processing {len(assistant_message.tool_calls)} tool call(s)...")
-                    
+
                     if self.verbose_logging:
                         for tc in assistant_message.tool_calls:
                             logging.debug(f"Tool call: {tc.function.name} with args: {tc.function.arguments[:200]}...")
-                    
+
                     # Validate tool call names - detect model hallucinations
                     # Repair mismatched tool names before validating
                     for tc in assistant_message.tool_calls:
@@ -9645,7 +9151,7 @@ class AIAgent(_PromptCacheMixin):
                         continue
                     # Reset retry counter on successful tool call validation
                     self._invalid_tool_retries = 0
-                    
+
                     # Validate tool call arguments are valid JSON
                     # Handle empty strings as empty objects (common model quirk)
                     invalid_json_args = []
@@ -9665,7 +9171,7 @@ class AIAgent(_PromptCacheMixin):
                             json.loads(args)
                         except json.JSONDecodeError as e:
                             invalid_json_args.append((tc.function.name, str(e)))
-                    
+
                     if invalid_json_args:
                         # Check if the invalid JSON is due to truncation rather
                         # than a model formatting mistake.  Routers sometimes
@@ -9711,11 +9217,11 @@ class AIAgent(_PromptCacheMixin):
                             # Using tool results (not user messages) preserves role alternation.
                             self._vprint(f"{self.log_prefix}⚠️  Injecting recovery tool results for invalid JSON...")
                             self._invalid_json_retries = 0  # Reset for next attempt
-                            
+
                             # Append the assistant message with its (broken) tool_calls
                             recovery_assistant = self._build_assistant_message(assistant_message, finish_reason)
                             messages.append(recovery_assistant)
-                            
+
                             # Respond with tool error results for each tool call
                             invalid_names = {name for name, _ in invalid_json_args}
                             for tc in assistant_message.tool_calls:
@@ -9734,7 +9240,7 @@ class AIAgent(_PromptCacheMixin):
                                     "content": tool_result,
                                 })
                             continue
-                    
+
                     # Reset retry counter on successful JSON validation
                     self._invalid_json_retries = 0
 
@@ -9747,7 +9253,7 @@ class AIAgent(_PromptCacheMixin):
                     )
 
                     assistant_msg = self._build_assistant_message(assistant_message, finish_reason)
-                    
+
                     # If this turn has both content AND tool_calls, capture the content
                     # as a fallback final response. Common pattern: model delivers its
                     # answer and calls memory/skill tools as a side-effect in the same
@@ -9773,7 +9279,7 @@ class AIAgent(_PromptCacheMixin):
                             clean = self._strip_think_blocks(turn_content).strip()
                             if clean:
                                 self._vprint(f"  ┊ 💬 {clean}")
-                    
+
                     # Pop thinking-only prefill message(s) before appending
                     # (tool-call path — same rationale as the final-response path).
                     _had_prefill = False
@@ -9907,7 +9413,7 @@ class AIAgent(_PromptCacheMixin):
                     _tc_names = {tc.function.name for tc in assistant_message.tool_calls}
                     if _tc_names == {"execute_code"}:
                         self.iteration_budget.refund()
-                    
+
                     # Use real token counts from the API response to decide
                     # compression.  prompt_tokens + completion_tokens is the
                     # actual context size the provider reported plus the
@@ -9974,18 +9480,18 @@ class AIAgent(_PromptCacheMixin):
                         # _flush_messages_to_session_db writes compressed messages
                         # to the new session (see preflight compression comment).
                         conversation_history = None
-                    
+
                     # Save session log incrementally (so progress is visible even if interrupted)
                     self._session_messages = messages
                     self._save_session_log(messages)
-                    
+
                     # Continue loop for next response
                     continue
-                
+
                 else:
                     # No tool calls - this is the final response
                     final_response = assistant_message.content or ""
-                    
+
                     # Check if response only has think block with no actual content after it
                     if not self._has_content_after_think_block(final_response):
                         # ── Partial stream recovery ─────────────────────
@@ -10164,7 +9670,7 @@ class AIAgent(_PromptCacheMixin):
 
                         final_response = "(empty)"
                         break
-                    
+
                     # Reset retry counter/signature on successful content
                     self._empty_content_retries = 0
                     self._thinking_prefill_retries = 0
@@ -10203,10 +9709,10 @@ class AIAgent(_PromptCacheMixin):
                         final_response = truncated_response_prefix + final_response
                         truncated_response_prefix = ""
                         length_continue_retries = 0
-                    
+
                     # Strip <think> blocks from user-facing response (keep raw in messages for trajectory)
                     final_response = self._strip_think_blocks(final_response).strip()
-                    
+
                     final_msg = self._build_assistant_message(assistant_message, finish_reason)
 
                     # Pop thinking-only prefill message(s) before appending
@@ -10221,21 +9727,21 @@ class AIAgent(_PromptCacheMixin):
                         messages.pop()
 
                     messages.append(final_msg)
-                    
+
                     _turn_exit_reason = f"text_response(finish_reason={finish_reason})"
                     if not self.quiet_mode:
                         self._safe_print(f"🎉 Conversation completed after {api_call_count} OpenAI-compatible API call(s)")
                     break
-                
+
             except Exception as e:
                 error_msg = f"Error during OpenAI-compatible API call #{api_call_count}: {str(e)}"
                 try:
                     print(f"❌ {error_msg}")
                 except (OSError, ValueError):
                     logger.error(error_msg)
-                
+
                 logger.debug("Outer loop error in API call #%d", api_call_count, exc_info=True)
-                
+
                 # If an assistant message with tool_calls was already appended,
                 # the API expects a role="tool" result for every tool_call_id.
                 # Fill in error results for any that weren't answered yet.
@@ -10261,7 +9767,7 @@ class AIAgent(_PromptCacheMixin):
                                 }
                                 messages.append(err_msg)
                     break
-                
+
                 # Non-tool errors don't need a synthetic message injected.
                 # The error is already printed to the user (line above), and
                 # the retry loop continues.  Injecting a fake user/assistant
@@ -10276,7 +9782,7 @@ class AIAgent(_PromptCacheMixin):
                     # session resume (avoids consecutive user messages).
                     messages.append({"role": "assistant", "content": final_response})
                     break
-        
+
         if final_response is None and (
             api_call_count >= self.max_iterations
             or self.iteration_budget.remaining <= 0
@@ -10295,7 +9801,7 @@ class AIAgent(_PromptCacheMixin):
                     "— requesting summary..."
                 )
             final_response = self._handle_max_iterations(messages, api_call_count)
-        
+
         # Determine if conversation completed successfully
         completed = (
             final_response is not None
@@ -10410,11 +9916,11 @@ class AIAgent(_PromptCacheMixin):
             "cost_source": self.session_cost_source,
         }
         self._response_was_previewed = False
-        
+
         # Include interrupt message if one triggered the interrupt
         if interrupted and self._interrupt_message:
             result["interrupt_message"] = self._interrupt_message
-        
+
         # Clear interrupt state after handling
         self.clear_interrupt()
 
@@ -10486,7 +9992,7 @@ class AIAgent(_PromptCacheMixin):
 
         return result
 
-    def chat(self, message: str, stream_callback: Optional[callable] = None) -> str:
+    def chat(self, message: str, stream_callback: Callable[..., Any] | None = None) -> str:
         """
         Simple chat interface that returns just the final response.
 
@@ -10539,25 +10045,29 @@ def main(
     """
     print("🤖 AI Agent with Tool Calling")
     print("=" * 50)
-    
+
     # Handle tool listing
     if list_tools:
-        from core.model_tools import get_all_tool_names, get_toolset_for_tool, get_available_toolsets
+        from core.model_tools import (
+            get_all_tool_names,
+            get_available_toolsets,
+            get_toolset_for_tool,
+        )
         from core.toolsets import get_all_toolsets, get_toolset_info
-        
+
         print("📋 Available Tools & Toolsets:")
         print("-" * 50)
-        
+
         # Show new toolsets system
         print("\n🎯 Predefined Toolsets (New System):")
         print("-" * 40)
         all_toolsets = get_all_toolsets()
-        
+
         # Group by category
         basic_toolsets = []
         composite_toolsets = []
         scenario_toolsets = []
-        
+
         for name, toolset in all_toolsets.items():
             info = get_toolset_info(name)
             if info:
@@ -10568,14 +10078,14 @@ def main(
                     composite_toolsets.append(entry)
                 else:
                     scenario_toolsets.append(entry)
-        
+
         # Print basic toolsets
         print("\n📌 Basic Toolsets:")
         for name, info in basic_toolsets:
             tools_str = ', '.join(info['resolved_tools']) if info['resolved_tools'] else 'none'
             print(f"  • {name:15} - {info['description']}")
             print(f"    Tools: {tools_str}")
-        
+
         # Print composite toolsets
         print("\n📂 Composite Toolsets (built from other toolsets):")
         for name, info in composite_toolsets:
@@ -10583,14 +10093,14 @@ def main(
             print(f"  • {name:15} - {info['description']}")
             print(f"    Includes: {includes_str}")
             print(f"    Total tools: {info['tool_count']}")
-        
+
         # Print scenario-specific toolsets
         print("\n🎭 Scenario-Specific Toolsets:")
         for name, info in scenario_toolsets:
             print(f"  • {name:20} - {info['description']}")
             print(f"    Total tools: {info['tool_count']}")
-        
-        
+
+
         # Show legacy toolset compatibility
         print("\n📦 Legacy Toolsets (for backward compatibility):")
         legacy_toolsets = get_available_toolsets()
@@ -10599,14 +10109,14 @@ def main(
             print(f"  {status} {name}: {info['description']}")
             if not info["available"]:
                 print(f"    Requirements: {', '.join(info['requirements'])}")
-        
+
         # Show individual tools
         all_tools = get_all_tool_names()
         print(f"\n🔧 Individual Tools ({len(all_tools)} available):")
         for tool_name in sorted(all_tools):
             toolset = get_toolset_for_tool(tool_name)
             print(f"  📌 {tool_name} (from {toolset})")
-        
+
         print("\n💡 Usage Examples:")
         print("  # Use predefined toolsets")
         print("  python run_agent.py --enabled_toolsets=research --query='search for Python news'")
@@ -10622,24 +10132,24 @@ def main(
         print("  # Run with trajectory saving enabled")
         print("  python run_agent.py --save_trajectories --query='your question here'")
         return
-    
+
     # Parse toolset selection arguments
     enabled_toolsets_list = None
     disabled_toolsets_list = None
-    
+
     if enabled_toolsets:
         enabled_toolsets_list = [t.strip() for t in enabled_toolsets.split(",")]
         print(f"🎯 Enabled toolsets: {enabled_toolsets_list}")
-    
+
     if disabled_toolsets:
         disabled_toolsets_list = [t.strip() for t in disabled_toolsets.split(",")]
         print(f"🚫 Disabled toolsets: {disabled_toolsets_list}")
-    
+
     if save_trajectories:
         print("💾 Trajectory saving: ENABLED")
         print("   - Successful conversations → trajectory_samples.jsonl")
         print("   - Failed conversations → failed_trajectories.jsonl")
-    
+
     # Initialize agent with provided parameters
     try:
         agent = AIAgent(
@@ -10656,7 +10166,7 @@ def main(
     except RuntimeError as e:
         print(f"❌ Failed to initialize agent: {e}")
         return
-    
+
     # Use provided query or default to Python 3.13 example
     if query is None:
         user_query = (
@@ -10665,37 +10175,37 @@ def main(
         )
     else:
         user_query = query
-    
+
     print(f"\n📝 User Query: {user_query}")
     print("\n" + "=" * 50)
-    
+
     # Run conversation
     result = agent.run_conversation(user_query)
-    
+
     print("\n" + "=" * 50)
     print("📋 CONVERSATION SUMMARY")
     print("=" * 50)
     print(f"✅ Completed: {result['completed']}")
     print(f"📞 API Calls: {result['api_calls']}")
     print(f"💬 Messages: {len(result['messages'])}")
-    
+
     if result['final_response']:
         print("\n🎯 FINAL RESPONSE:")
         print("-" * 30)
         print(result['final_response'])
-    
+
     # Save sample trajectory to UUID-named file if requested
     if save_sample:
         sample_id = str(uuid.uuid4())[:8]
         sample_filename = f"sample_{sample_id}.json"
-        
+
         # Convert messages to trajectory format (same as batch_runner)
         trajectory = agent._convert_to_trajectory_format(
-            result['messages'], 
-            user_query, 
+            result['messages'],
+            user_query,
             result['completed']
         )
-        
+
         entry = {
             "conversations": trajectory,
             "timestamp": datetime.now().isoformat(),
@@ -10703,7 +10213,7 @@ def main(
             "completed": result['completed'],
             "query": user_query
         }
-        
+
         try:
             with open(sample_filename, "w", encoding="utf-8") as f:
                 # Pretty-print JSON with indent for readability
@@ -10711,7 +10221,7 @@ def main(
             print(f"\n💾 Sample trajectory saved to: {sample_filename}")
         except Exception as e:
             print(f"\n⚠️ Failed to save sample: {e}")
-    
+
     print("\n👋 Agent execution completed!")
 
 

@@ -21,10 +21,11 @@ import re
 import sqlite3
 import threading
 import time
-from pathlib import Path
-from core.spark_constants import get_spark_home
-from typing import Any, TypeVar
 from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TypeVar
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 

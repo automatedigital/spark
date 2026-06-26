@@ -17,6 +17,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+
 from core.spark_constants import get_spark_home
 
 
@@ -69,6 +70,7 @@ def main() -> None:
         sys.path.insert(0, project_root)
 
     import acp
+
     from .server import SparkACPAgent
 
     agent = SparkACPAgent()

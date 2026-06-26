@@ -10,16 +10,16 @@ Use this page to get your bearings in the Spark codebase. Each section links to 
 
 ## What Runs What
 
-Every entry point — the CLI, the messaging gateway, the ACP editor server, batch jobs — feeds into one class: `AIAgent` in `run_agent.py`. Platform differences live at the edges, not in the core.
+Every entry point — the CLI, the messaging gateway, the ACP editor server, batch jobs — feeds into one class: `AIAgent` from the `core/run_agent/` package. Platform differences live at the edges, not in the core.
 
 ```text
                         Entry Points
-  CLI (cli.py)    Gateway (gateway/run.py)    ACP (acp_adapter/)
+  CLI (core/cli/) Gateway (gateway/run.py)    ACP (acp_adapter/)
   Batch Runner    API Server                  Python Library
 
                        ↓ all routes through ↓
 
-                     AIAgent (run_agent.py)
+                     AIAgent (core/run_agent/)
 
    Prompt          Provider       Tool
    Builder         Resolution     Dispatch
@@ -44,8 +44,14 @@ Every entry point — the CLI, the messaging gateway, the ACP editor server, bat
 
 ```text
 spark-agent/
- run_agent.py              # AIAgent - core conversation loop (~10,700 lines)
- cli.py                    # SparkCLI - interactive terminal UI (~10,000 lines)
+ core/run_agent/           # AIAgent facade plus extracted loop helpers
+   __init__.py             # Public AIAgent class and core orchestration
+   message_state.py        # API message repair and tool-pair sanitization
+   persistence.py          # Memory flush and persistence-adjacent helpers
+   provider_calls.py       # Provider request helpers and stream delivery callbacks
+   prompt_cache.py         # Caching-sensitive system prompt assembly
+   tool_loop.py            # Tool-loop guardrails and dispatch helpers
+ core/cli/                 # SparkCLI - interactive terminal UI and concern mixins
  model_tools.py            # Tool discovery, schema collection, dispatch
  toolsets.py               # Tool groupings and platform presets
  spark_state.py           # SQLite session/state database with FTS5
@@ -101,7 +107,11 @@ spark-agent/
     environments/         # Terminal backends (local, docker, ssh, modal, daytona, singularity)
 
  gateway/                  # Messaging platform gateway
-    run.py                # GatewayRunner - message dispatch (~9,000 lines)
+    run.py                # Import-compatible GatewayRunner/start_gateway entrypoint
+    commands.py           # Slash-command resolution/dispatch
+    authz.py              # Allowlists, pairing, internal-event auth bypass
+    session_hygiene.py    # Pre-agent transcript compression thresholds
+    cron_tick.py          # Gateway-owned cron scheduler ticker
     session.py            # SessionStore - conversation persistence
     delivery.py           # Outbound message delivery
     pairing.py            # DM pairing authorization
@@ -181,7 +191,7 @@ Start here, then follow the chain that matches what you're building:
 
 ### Agent Loop
 
-`AIAgent` in `run_agent.py` is the synchronous orchestration engine. It handles provider selection, prompt construction, tool execution, retries, fallback, callbacks, compression, and persistence. Three API modes support different provider backends.
+`AIAgent` in `core/run_agent/__init__.py` is the synchronous orchestration facade. Provider-call helpers, tool-loop guardrails, persistence helpers, prompt-cache assembly, and message-state repair now live in sibling modules under `core/run_agent/`, while the import namespace remains `from core.run_agent import AIAgent`.
 
 → [Agent Loop Internals](./agent-loop.md)
 
@@ -213,7 +223,7 @@ SQLite-based session storage with FTS5 full-text search. Sessions have lineage t
 
 ### Messaging Gateway
 
-Long-running process with 18 platform adapters, unified session routing, user authorization (allowlists + DM pairing), slash command dispatch, hook system, cron ticking, and background maintenance.
+Long-running process with 18 platform adapters, unified session routing, user authorization (`gateway/authz.py`), slash command dispatch (`gateway/commands.py`), hook system, cron ticking (`gateway/cron_tick.py`), and background maintenance.
 
 → [Gateway Internals](./gateway-internals.md)
 
@@ -261,7 +271,7 @@ tools/*.py  (each calls registry.register() at import time)
        ↓
 model_tools.py  (imports tools/registry + triggers tool discovery)
        ↓
-run_agent.py, cli.py, batch_runner.py, environments/
+core/run_agent/, core/cli/, batch_runner.py, environments/
 ```
 
 Tool registration happens at import time, before any agent instance is created. Adding a new tool requires an import in `model_tools.py`'s `_discover_tools()` list.

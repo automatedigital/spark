@@ -15,8 +15,7 @@ Design:
 """
 
 import json
-from typing import Dict, Any, List, Optional
-
+from typing import Any
 
 # Valid status values for todo items
 VALID_STATUSES = {"pending", "in_progress", "completed", "cancelled"}
@@ -33,9 +32,9 @@ class TodoStore:
     """
 
     def __init__(self):
-        self._items: List[Dict[str, str]] = []
+        self._items: list[dict[str, str]] = []
 
-    def write(self, todos: List[Dict[str, Any]], merge: bool = False) -> List[Dict[str, str]]:
+    def write(self, todos: list[dict[str, Any]], merge: bool = False) -> list[dict[str, str]]:
         """
         Write todos. Returns the full current list after writing.
 
@@ -79,7 +78,7 @@ class TodoStore:
             self._items = rebuilt
         return self.read()
 
-    def read(self) -> List[Dict[str, str]]:
+    def read(self) -> list[dict[str, str]]:
         """Return a copy of the current list."""
         return [item.copy() for item in self._items]
 
@@ -87,7 +86,7 @@ class TodoStore:
         """Check if there are any items in the list."""
         return bool(self._items)
 
-    def format_for_injection(self) -> Optional[str]:
+    def format_for_injection(self) -> str | None:
         """
         Render the todo list for post-compression injection.
 
@@ -122,7 +121,7 @@ class TodoStore:
         return "\n".join(lines)
 
     @staticmethod
-    def _validate(item: Dict[str, Any]) -> Dict[str, str]:
+    def _validate(item: dict[str, Any]) -> dict[str, str]:
         """
         Validate and normalize a todo item.
 
@@ -144,9 +143,9 @@ class TodoStore:
         return {"id": item_id, "content": content, "status": status}
 
     @staticmethod
-    def _dedupe_by_id(todos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _dedupe_by_id(todos: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Collapse duplicate ids, keeping the last occurrence in its position."""
-        last_index: Dict[str, int] = {}
+        last_index: dict[str, int] = {}
         for i, item in enumerate(todos):
             item_id = str(item.get("id", "")).strip() or "?"
             last_index[item_id] = i
@@ -154,9 +153,9 @@ class TodoStore:
 
 
 def todo_tool(
-    todos: Optional[List[Dict[str, Any]]] = None,
+    todos: list[dict[str, Any]] | None = None,
     merge: bool = False,
-    store: Optional[TodoStore] = None,
+    store: TodoStore | None = None,
 ) -> str:
     """
     Single entry point for the todo tool. Reads or writes depending on params.

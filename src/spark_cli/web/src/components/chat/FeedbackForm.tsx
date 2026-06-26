@@ -2,7 +2,7 @@ import { useState } from "react";
 import { MessageSquare, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const AREAS = ["Workspace", "Tasks", "Chat", "Cron", "Skills", "Settings"] as const;
+const AREAS = ["Projects", "Tasks", "Chat", "Cron", "Skills", "Settings"] as const;
 type Area = (typeof AREAS)[number];
 
 interface FeedbackFormProps {

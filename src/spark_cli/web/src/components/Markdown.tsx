@@ -85,6 +85,12 @@ export const Markdown = memo(function Markdown({
         className="w-full min-w-0 max-w-full whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground"
       >
         {content}
+        {streaming ? (
+          <span
+            aria-hidden="true"
+            className="ml-0.5 inline-block h-[1.05em] w-0.5 animate-pulse bg-success align-[-0.12em]"
+          />
+        ) : null}
       </div>
     );
   }

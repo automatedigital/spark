@@ -7,12 +7,11 @@ skills_hub, cronjob_tools, and credential_files.
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def validate_within_dir(path: Path, root: Path) -> Optional[str]:
+def validate_within_dir(path: Path, root: Path) -> str | None:
     """Ensure *path* resolves to a location within *root*.
 
     Returns an error message string if validation fails, or ``None`` if the

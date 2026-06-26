@@ -33,7 +33,7 @@ function buildTerminalTheme() {
   };
 }
 
-export function WorkspaceTerminalPanel({ slug }: { slug: string }) {
+export function ProjectTerminalPanel({ slug }: { slug: string }) {
   const { theme } = useWebUITheme();
   const terminalHostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -113,7 +113,7 @@ export function WorkspaceTerminalPanel({ slug }: { slug: string }) {
       shellRunIdRef.current = null;
       setShellRunId(null);
       setShellStatus("connecting");
-      term.writeln("\x1b[2mStarting workspace shell...\x1b[0m");
+      term.writeln("\x1b[2mStarting project shell...\x1b[0m");
       void api.runWorkspaceTerminalCommand(slug).then((run) => {
         if (cancelled) return;
         setShellRunId(run.run_id);

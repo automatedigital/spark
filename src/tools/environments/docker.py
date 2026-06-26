@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import sys
 import uuid
-from typing import Optional
 
 from tools.environments.base import BaseEnvironment, _popen_bash
 from tools.environments.local import _SPARK_PROVIDER_ENV_BLOCKLIST
@@ -29,7 +28,7 @@ _DOCKER_SEARCH_PATHS = [
     "/Applications/Docker.app/Contents/Resources/bin/docker",
 ]
 
-_docker_executable: Optional[str] = None  # resolved once, cached
+_docker_executable: str | None = None  # resolved once, cached
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -98,7 +97,7 @@ def _load_spark_env_vars() -> dict[str, str]:
         return {}
 
 
-def find_docker() -> Optional[str]:
+def find_docker() -> str | None:
     """Locate the docker CLI binary.
 
     Checks ``shutil.which`` first (respects PATH), then probes well-known
@@ -145,7 +144,7 @@ _SECURITY_ARGS = [
 ]
 
 
-_storage_opt_ok: Optional[bool] = None  # cached result across instances
+_storage_opt_ok: bool | None = None  # cached result across instances
 
 
 def _ensure_docker_available() -> None:
@@ -250,7 +249,7 @@ class DockerEnvironment(BaseEnvironment):
         self._task_id = task_id
         self._forward_env = _normalize_forward_env_names(forward_env)
         self._env = _normalize_env_dict(env)
-        self._container_id: Optional[str] = None
+        self._container_id: str | None = None
         logger.info(f"DockerEnvironment volumes: {volumes}")
         # Ensure volumes is a list (config.yaml could be malformed)
         if volumes is not None and not isinstance(volumes, list):
@@ -309,8 +308,8 @@ class DockerEnvironment(BaseEnvironment):
         if auto_mount_cwd and host_cwd and not os.path.isdir(host_cwd_abs):
             logger.debug(f"Skipping docker cwd mount: host_cwd is not a valid directory: {host_cwd}")
 
-        self._workspace_dir: Optional[str] = None
-        self._home_dir: Optional[str] = None
+        self._workspace_dir: str | None = None
+        self._home_dir: str | None = None
         writable_args = []
         if self._persistent:
             sandbox = get_sandbox_dir() / "docker" / task_id
@@ -345,9 +344,9 @@ class DockerEnvironment(BaseEnvironment):
         # Read-only so the container can authenticate but not modify host creds.
         try:
             from tools.credential_files import (
+                get_cache_directory_mounts,
                 get_credential_file_mounts,
                 get_skills_directory_mount,
-                get_cache_directory_mounts,
             )
 
             for mount_entry in get_credential_file_mounts():

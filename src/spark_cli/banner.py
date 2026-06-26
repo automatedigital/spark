@@ -9,13 +9,12 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from core.spark_constants import get_spark_home
-from typing import Dict, List, Optional
-
-from rich.console import Console
 
 from prompt_toolkit import print_formatted_text as _pt_print
 from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
+from rich.console import Console
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,8 @@ def _skin_branding(key: str, fallback: str) -> str:
 # ASCII Art & Branding
 # =========================================================================
 
-from spark_cli import __version__ as VERSION, __release_date__ as RELEASE_DATE
+from spark_cli import __release_date__ as RELEASE_DATE
+from spark_cli import __version__ as VERSION
 
 SPARK_AGENT_LOGO = """[bold #FFD700]███████╗██████╗  █████╗ ██████╗ ██╗  ██╗        █████╗  ██████╗ ███████╗███╗   ██╗████████╗[/]
 [bold #FFD700]██╔════╝██╔══██╗██╔══██╗██╔══██╗██║ ██╔╝       ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝[/]
@@ -102,7 +102,7 @@ SPARK_WORDMARK = r"""[bold #FFD700]  ____                  _   [/]
 # =========================================================================
 
 
-def get_available_skills() -> Dict[str, List[str]]:
+def get_available_skills() -> dict[str, list[str]]:
     """Return skills grouped by category, filtered by platform and disabled state.
 
     Delegates to ``_find_all_skills()`` from ``tools/skills_tool`` which already
@@ -116,7 +116,7 @@ def get_available_skills() -> Dict[str, List[str]]:
     except Exception:
         return {}
 
-    skills_by_category: Dict[str, List[str]] = {}
+    skills_by_category: dict[str, list[str]] = {}
     for skill in all_skills:
         category = skill.get("category") or "general"
         skills_by_category.setdefault(category, []).append(skill["name"])
@@ -131,7 +131,7 @@ def get_available_skills() -> Dict[str, List[str]]:
 _UPDATE_CHECK_CACHE_SECONDS = 6 * 3600
 
 
-def check_for_updates() -> Optional[int]:
+def check_for_updates() -> int | None:
     """Check how many commits behind origin/main the local repo is.
 
     Does a ``git fetch`` at most once every 6 hours (cached to
@@ -194,7 +194,7 @@ def check_for_updates() -> Optional[int]:
     return behind
 
 
-def _resolve_repo_dir() -> Optional[Path]:
+def _resolve_repo_dir() -> Path | None:
     """Return the active Spark git checkout, or None if this isn't a git install."""
     spark_home = get_spark_home()
     repo_dir = spark_home / "spark-agent"
@@ -203,7 +203,7 @@ def _resolve_repo_dir() -> Optional[Path]:
     return repo_dir if (repo_dir / ".git").exists() else None
 
 
-def _git_short_hash(repo_dir: Path, rev: str) -> Optional[str]:
+def _git_short_hash(repo_dir: Path, rev: str) -> str | None:
     """Resolve a git revision to an 8-character short hash."""
     try:
         result = subprocess.run(
@@ -221,7 +221,7 @@ def _git_short_hash(repo_dir: Path, rev: str) -> Optional[str]:
     return value or None
 
 
-def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
+def get_git_banner_state(repo_dir: Path | None = None) -> dict | None:
     """Return upstream/local git hashes for the startup banner."""
     repo_dir = repo_dir or _resolve_repo_dir()
     if repo_dir is None:
@@ -271,7 +271,7 @@ def format_banner_version_label() -> str:
 # Non-blocking update check
 # =========================================================================
 
-_update_result: Optional[int] = None
+_update_result: int | None = None
 _update_check_done = threading.Event()
 
 
@@ -287,7 +287,7 @@ def prefetch_update_check():
     t.start()
 
 
-def get_update_result(timeout: float = 0.5) -> Optional[int]:
+def get_update_result(timeout: float = 0.5) -> int | None:
     """Get result of prefetched check. Returns None if not ready."""
     _update_check_done.wait(timeout=timeout)
     return _update_result
@@ -326,8 +326,8 @@ def build_welcome_banner(
     console: Console,
     model: str,
     cwd: str,
-    tools: List[dict] = None,
-    enabled_toolsets: List[str] = None,
+    tools: list[dict] = None,
+    enabled_toolsets: list[str] = None,
     session_id: str = None,
     get_toolset_for_tool=None,
     context_length: int = None,

@@ -183,7 +183,8 @@ data_dir = Path("~/.spark/my-provider").expanduser()
 
 ## Test Your Plugin
 
-Use `MemoryManager` directly — see `tests/agent/test_memory_plugin_e2e.py` for the full E2E pattern:
+Use `MemoryManager` directly — see `tests/agent/test_memory_provider.py` and
+`tests/plugins/memory/` for the full E2E pattern:
 
 ```python
 from agent.memory_manager import MemoryManager

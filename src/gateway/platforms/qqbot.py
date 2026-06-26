@@ -39,9 +39,9 @@ import mimetypes
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 try:
@@ -122,7 +122,7 @@ def check_qq_requirements() -> bool:
     return AIOHTTP_AVAILABLE and HTTPX_AVAILABLE
 
 
-def _coerce_list(value: Any) -> List[str]:
+def _coerce_list(value: Any) -> list[str]:
     """Coerce config values into a trimmed string list."""
     if value is None:
         return []
@@ -167,27 +167,27 @@ class QQAdapter(BasePlatformAdapter):
         self._group_allow_from = _coerce_list(extra.get("group_allow_from") or extra.get("groupAllowFrom"))
 
         # Connection state
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._http_client: Optional[httpx.AsyncClient] = None
-        self._listen_task: Optional[asyncio.Task] = None
-        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._session: aiohttp.ClientSession | None = None
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._http_client: httpx.AsyncClient | None = None
+        self._listen_task: asyncio.Task | None = None
+        self._heartbeat_task: asyncio.Task | None = None
         self._heartbeat_interval: float = 30.0  # seconds, updated by Hello
-        self._session_id: Optional[str] = None
-        self._last_seq: Optional[int] = None
-        self._chat_type_map: Dict[str, str] = {}  # chat_id → "c2c"|"group"|"guild"|"dm"
+        self._session_id: str | None = None
+        self._last_seq: int | None = None
+        self._chat_type_map: dict[str, str] = {}  # chat_id → "c2c"|"group"|"guild"|"dm"
 
         # Request/response correlation
-        self._pending_responses: Dict[str, asyncio.Future] = {}
-        self._seen_messages: Dict[str, float] = {}
+        self._pending_responses: dict[str, asyncio.Future] = {}
+        self._seen_messages: dict[str, float] = {}
 
         # Token cache
-        self._access_token: Optional[str] = None
+        self._access_token: str | None = None
         self._token_expires_at: float = 0.0
         self._token_lock = asyncio.Lock()
 
         # Upload cache: content_hash -> {file_info, file_uuid, expires_at}
-        self._upload_cache: Dict[str, Dict[str, Any]] = {}
+        self._upload_cache: dict[str, dict[str, Any]] = {}
 
     # ------------------------------------------------------------------
     # Properties
@@ -607,7 +607,7 @@ class QQAdapter(BasePlatformAdapter):
         except RuntimeError:
             return None
 
-    def _dispatch_payload(self, payload: Dict[str, Any]) -> None:
+    def _dispatch_payload(self, payload: dict[str, Any]) -> None:
         """Route inbound WebSocket payloads (dispatch synchronously, spawn async handlers)."""
         op = payload.get("op")
         t = payload.get("t")
@@ -663,7 +663,7 @@ class QQAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_json(raw: Any) -> Optional[Dict[str, Any]]:
+    def _parse_json(raw: Any) -> dict[str, Any] | None:
         try:
             payload = json.loads(raw)
         except Exception:
@@ -708,7 +708,7 @@ class QQAdapter(BasePlatformAdapter):
             await self._handle_dm_message(d, msg_id, content, author, timestamp)
 
     async def _handle_c2c_message(
-        self, d: Dict[str, Any], msg_id: str, content: str, author: Dict[str, Any], timestamp: str
+        self, d: dict[str, Any], msg_id: str, content: str, author: dict[str, Any], timestamp: str
     ) -> None:
         """Handle a C2C (private) message event."""
         user_openid = str(author.get("user_openid", ""))
@@ -770,7 +770,7 @@ class QQAdapter(BasePlatformAdapter):
         await self.handle_message(event)
 
     async def _handle_group_message(
-        self, d: Dict[str, Any], msg_id: str, content: str, author: Dict[str, Any], timestamp: str
+        self, d: dict[str, Any], msg_id: str, content: str, author: dict[str, Any], timestamp: str
     ) -> None:
         """Handle a group @-message event."""
         group_openid = str(d.get("group_openid", ""))
@@ -815,7 +815,7 @@ class QQAdapter(BasePlatformAdapter):
         await self.handle_message(event)
 
     async def _handle_guild_message(
-        self, d: Dict[str, Any], msg_id: str, content: str, author: Dict[str, Any], timestamp: str
+        self, d: dict[str, Any], msg_id: str, content: str, author: dict[str, Any], timestamp: str
     ) -> None:
         """Handle a guild/channel message event."""
         channel_id = str(d.get("channel_id", ""))
@@ -860,7 +860,7 @@ class QQAdapter(BasePlatformAdapter):
         await self.handle_message(event)
 
     async def _handle_dm_message(
-        self, d: Dict[str, Any], msg_id: str, content: str, author: Dict[str, Any], timestamp: str
+        self, d: dict[str, Any], msg_id: str, content: str, author: dict[str, Any], timestamp: str
     ) -> None:
         """Handle a guild DM message event."""
         guild_id = str(d.get("guild_id", ""))
@@ -926,7 +926,7 @@ class QQAdapter(BasePlatformAdapter):
 
     async def _process_attachments(
         self, attachments: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Process inbound attachments (all message types).
 
         Mirrors OpenClaw's ``processAttachments`` — handles images, voice, and
@@ -942,10 +942,10 @@ class QQAdapter(BasePlatformAdapter):
             return {"image_urls": [], "image_media_types": [],
                     "voice_transcripts": [], "attachment_info": ""}
 
-        image_urls: List[str] = []
-        image_media_types: List[str] = []
-        voice_transcripts: List[str] = []
-        other_attachments: List[str] = []
+        image_urls: list[str] = []
+        image_media_types: list[str] = []
+        voice_transcripts: list[str] = []
+        other_attachments: list[str] = []
 
         for att in attachments:
             if not isinstance(att, dict):
@@ -1015,7 +1015,7 @@ class QQAdapter(BasePlatformAdapter):
             "attachment_info": attachment_info,
         }
 
-    async def _download_and_cache(self, url: str, content_type: str) -> Optional[str]:
+    async def _download_and_cache(self, url: str, content_type: str) -> str | None:
         """Download a URL and cache it locally."""
         from tools.url_safety import is_safe_url
         if not is_safe_url(url):
@@ -1057,7 +1057,7 @@ class QQAdapter(BasePlatformAdapter):
             return True
         return False
 
-    def _qq_media_headers(self) -> Dict[str, str]:
+    def _qq_media_headers(self) -> dict[str, str]:
         """Return Authorization headers for QQ multimedia CDN downloads.
 
         QQ's multimedia URLs (multimedia.nt.qq.com.cn) require the bot's
@@ -1074,9 +1074,9 @@ class QQAdapter(BasePlatformAdapter):
         content_type: str,
         filename: str,
         *,
-        asr_refer_text: Optional[str] = None,
-        voice_wav_url: Optional[str] = None,
-    ) -> Optional[str]:
+        asr_refer_text: str | None = None,
+        voice_wav_url: str | None = None,
+    ) -> str | None:
         """Download a voice attachment, convert to wav, and transcribe.
 
         Priority:
@@ -1151,11 +1151,11 @@ class QQAdapter(BasePlatformAdapter):
             else:
                 logger.warning("[QQ] STT: ASR returned empty transcript")
             return transcript
-        except (httpx.HTTPStatusError, httpx.TransportError, IOError) as exc:
+        except (OSError, httpx.HTTPStatusError, httpx.TransportError) as exc:
             logger.warning("[QQ] STT failed for voice attachment: %s: %s", type(exc).__name__, exc)
             return None
 
-    async def _convert_audio_to_wav_file(self, audio_data: bytes, filename: str) -> Optional[str]:
+    async def _convert_audio_to_wav_file(self, audio_data: bytes, filename: str) -> str | None:
         """Convert audio bytes to a temp .wav file using pilk (SILK) or ffmpeg.
 
         QQ voice messages are typically SILK format which ffmpeg cannot decode.
@@ -1220,7 +1220,7 @@ class QQAdapter(BasePlatformAdapter):
         return data[:4] == b"#!SILK" or data[:2] == b"\x02!" or data[:9] == b"#!SILK_V3"
 
     @staticmethod
-    async def _convert_silk_to_wav(src_path: str, wav_path: str) -> Optional[str]:
+    async def _convert_silk_to_wav(src_path: str, wav_path: str) -> str | None:
         """Convert audio file to WAV using the pilk library.
 
         Tries the file as-is first, then as .silk if the extension differs.
@@ -1263,7 +1263,7 @@ class QQAdapter(BasePlatformAdapter):
         return None
 
     @staticmethod
-    async def _convert_raw_to_wav(audio_data: bytes, wav_path: str) -> Optional[str]:
+    async def _convert_raw_to_wav(audio_data: bytes, wav_path: str) -> str | None:
         """Last resort: try writing audio data as raw PCM 16-bit mono 16kHz WAV.
 
         This will produce garbage if the data isn't raw PCM, but at least
@@ -1282,7 +1282,7 @@ class QQAdapter(BasePlatformAdapter):
             return None
 
     @staticmethod
-    async def _convert_ffmpeg_to_wav(src_path: str, wav_path: str) -> Optional[str]:
+    async def _convert_ffmpeg_to_wav(src_path: str, wav_path: str) -> str | None:
         """Convert audio file to WAV using ffmpeg."""
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -1296,7 +1296,7 @@ class QQAdapter(BasePlatformAdapter):
                 logger.warning("[QQ] ffmpeg failed for %s: %s",
                             Path(src_path).name, stderr[:200].decode(errors="replace"))
                 return None
-        except (asyncio.TimeoutError, FileNotFoundError) as exc:
+        except (TimeoutError, FileNotFoundError) as exc:
             logger.warning("[QQ] ffmpeg conversion error: %s", exc)
             return None
 
@@ -1307,7 +1307,7 @@ class QQAdapter(BasePlatformAdapter):
                     Path(src_path).name, Path(wav_path).stat().st_size)
         return wav_path
 
-    def _resolve_stt_config(self) -> Optional[Dict[str, str]]:
+    def _resolve_stt_config(self) -> dict[str, str] | None:
         """Resolve STT backend configuration from config/environment.
 
         Priority:
@@ -1362,7 +1362,7 @@ class QQAdapter(BasePlatformAdapter):
 
         return None
 
-    async def _call_stt(self, wav_path: str) -> Optional[str]:
+    async def _call_stt(self, wav_path: str) -> str | None:
         """Call an OpenAI-compatible STT API to transcribe a wav file.
 
         Uses the provider configured in ``channels.qqbot.stt`` config,
@@ -1400,12 +1400,12 @@ class QQAdapter(BasePlatformAdapter):
             if text.strip():
                 return text.strip()
             return None
-        except (httpx.HTTPStatusError, IOError) as exc:
+        except (OSError, httpx.HTTPStatusError) as exc:
             logger.warning("[QQ] STT API call failed (model=%s, base=%s): %s",
                            model, base_url[:50], exc)
             return None
 
-    async def _convert_audio_to_wav(self, audio_data: bytes, source_url: str) -> Optional[str]:
+    async def _convert_audio_to_wav(self, audio_data: bytes, source_url: str) -> str | None:
         """Convert audio bytes to .wav using pilk (SILK) or ffmpeg, caching the result."""
         import tempfile
 
@@ -1455,9 +1455,9 @@ class QQAdapter(BasePlatformAdapter):
         self,
         method: str,
         path: str,
-        body: Optional[Dict[str, Any]] = None,
+        body: dict[str, Any] | None = None,
         timeout: float = DEFAULT_API_TIMEOUT,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Make an authenticated REST API request to QQ Bot API."""
         if not self._http_client:
             raise RuntimeError("HTTP client not initialized — not connected?")
@@ -1491,15 +1491,15 @@ class QQAdapter(BasePlatformAdapter):
         target_type: str,
         target_id: str,
         file_type: int,
-        url: Optional[str] = None,
-        file_data: Optional[str] = None,
+        url: str | None = None,
+        file_data: str | None = None,
         srv_send_msg: bool = False,
-        file_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        file_name: str | None = None,
+    ) -> dict[str, Any]:
         """Upload media and return file_info."""
         path = f"/v2/users/{target_id}/files" if target_type == "c2c" else f"/v2/groups/{target_id}/files"
 
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "file_type": file_type,
             "srv_send_msg": srv_send_msg,
         }
@@ -1529,8 +1529,8 @@ class QQAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a text or markdown message to a QQ user or group.
 
@@ -1558,10 +1558,10 @@ class QQAdapter(BasePlatformAdapter):
         return last_result
 
     async def _send_chunk(
-        self, chat_id: str, content: str, reply_to: Optional[str] = None,
+        self, chat_id: str, content: str, reply_to: str | None = None,
     ) -> SendResult:
         """Send a single chunk with retry + exponential backoff."""
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         chat_type = self._guess_chat_type(chat_id)
 
         for attempt in range(3):
@@ -1594,7 +1594,7 @@ class QQAdapter(BasePlatformAdapter):
         return SendResult(success=False, error=error_msg, retryable=retryable)
 
     async def _send_c2c_text(
-        self, openid: str, content: str, reply_to: Optional[str] = None
+        self, openid: str, content: str, reply_to: str | None = None
     ) -> SendResult:
         """Send text to a C2C user via REST API."""
         msg_seq = self._next_msg_seq(reply_to or openid)
@@ -1607,7 +1607,7 @@ class QQAdapter(BasePlatformAdapter):
         return SendResult(success=True, message_id=msg_id, raw_response=data)
 
     async def _send_group_text(
-        self, group_openid: str, content: str, reply_to: Optional[str] = None
+        self, group_openid: str, content: str, reply_to: str | None = None
     ) -> SendResult:
         """Send text to a group via REST API."""
         msg_seq = self._next_msg_seq(reply_to or group_openid)
@@ -1620,10 +1620,10 @@ class QQAdapter(BasePlatformAdapter):
         return SendResult(success=True, message_id=msg_id, raw_response=data)
 
     async def _send_guild_text(
-        self, channel_id: str, content: str, reply_to: Optional[str] = None
+        self, channel_id: str, content: str, reply_to: str | None = None
     ) -> SendResult:
         """Send text to a guild channel via REST API."""
-        body: Dict[str, Any] = {"content": content[:self.MAX_MESSAGE_LENGTH]}
+        body: dict[str, Any] = {"content": content[:self.MAX_MESSAGE_LENGTH]}
         if reply_to:
             body["msg_id"] = reply_to
 
@@ -1631,12 +1631,12 @@ class QQAdapter(BasePlatformAdapter):
         msg_id = str(data.get("id", uuid.uuid4().hex[:12]))
         return SendResult(success=True, message_id=msg_id, raw_response=data)
 
-    def _build_text_body(self, content: str, reply_to: Optional[str] = None) -> Dict[str, Any]:
+    def _build_text_body(self, content: str, reply_to: str | None = None) -> dict[str, Any]:
         """Build the message body for C2C/group text sending."""
         msg_seq = self._next_msg_seq(reply_to or "default")
 
         if self._markdown_support:
-            body: Dict[str, Any] = {
+            body: dict[str, Any] = {
                 "markdown": {"content": content[:self.MAX_MESSAGE_LENGTH]},
                 "msg_type": MSG_TYPE_MARKDOWN,
                 "msg_seq": msg_seq,
@@ -1663,9 +1663,9 @@ class QQAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an image natively via QQ Bot API upload."""
         del metadata
@@ -1683,8 +1683,8 @@ class QQAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a local image file natively."""
@@ -1695,8 +1695,8 @@ class QQAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a voice message natively."""
@@ -1707,8 +1707,8 @@ class QQAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a video natively."""
@@ -1719,9 +1719,9 @@ class QQAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """Send a file/document natively."""
@@ -1735,9 +1735,9 @@ class QQAdapter(BasePlatformAdapter):
         media_source: str,
         file_type: int,
         kind: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        file_name: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        file_name: str | None = None,
     ) -> SendResult:
         """Upload media and send as a native message."""
         if not self.is_connected:
@@ -1771,7 +1771,7 @@ class QQAdapter(BasePlatformAdapter):
 
             # Send media message
             msg_seq = self._next_msg_seq(chat_id)
-            body: Dict[str, Any] = {
+            body: dict[str, Any] = {
                 "msg_type": MSG_TYPE_MEDIA,
                 "media": {"file_info": file_info},
                 "msg_seq": msg_seq,
@@ -1796,8 +1796,8 @@ class QQAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(exc))
 
     async def _load_media(
-        self, source: str, file_name: Optional[str] = None
-    ) -> Tuple[str, str, str]:
+        self, source: str, file_name: str | None = None
+    ) -> tuple[str, str, str]:
         """Load media from URL or local path. Returns (base64_or_url, content_type, filename)."""
         source = str(source).strip()
         if not source:
@@ -1876,7 +1876,7 @@ class QQAdapter(BasePlatformAdapter):
     # Chat info
     # ------------------------------------------------------------------
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Return chat info based on chat type heuristics."""
         chat_type = self._guess_chat_type(chat_id)
         return {
@@ -1921,7 +1921,7 @@ class QQAdapter(BasePlatformAdapter):
         return True
 
     @staticmethod
-    def _entry_matches(entries: List[str], target: str) -> bool:
+    def _entry_matches(entries: list[str], target: str) -> bool:
         normalized_target = str(target).strip().lower()
         for entry in entries:
             normalized = str(entry).strip().lower()
@@ -1936,16 +1936,16 @@ class QQAdapter(BasePlatformAdapter):
         This handles both formats gracefully.
         """
         if not raw:
-            return datetime.now(tz=timezone.utc)
+            return datetime.now(tz=UTC)
         try:
             return datetime.fromisoformat(raw)
         except (ValueError, TypeError):
             pass
         try:
-            return datetime.fromtimestamp(int(raw) / 1000, tz=timezone.utc)
+            return datetime.fromtimestamp(int(raw) / 1000, tz=UTC)
         except (ValueError, TypeError):
             pass
-        return datetime.now(tz=timezone.utc)
+        return datetime.now(tz=UTC)
 
     def _is_duplicate(self, msg_id: str) -> bool:
         now = time.time()

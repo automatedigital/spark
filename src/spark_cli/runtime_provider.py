@@ -5,39 +5,170 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, field
+from typing import Any, TypedDict
 
-logger = logging.getLogger(__name__)
-
-from spark_cli import auth as auth_mod
 from agent.credential_pool import (
     CredentialPool,
     PooledCredential,
     get_custom_provider_pool_key,
     load_pool,
 )
+from core.spark_constants import OPENROUTER_BASE_URL
+from spark_cli import auth as auth_mod
 from spark_cli.auth import (
-    AuthError,
     DEFAULT_CODEX_BASE_URL,
     DEFAULT_QWEN_BASE_URL,
     PROVIDER_REGISTRY,
+    AuthError,
     format_auth_error,
-    resolve_provider,
-    resolve_codex_runtime_credentials,
-    resolve_qwen_runtime_credentials,
-    resolve_api_key_provider_credentials,
-    resolve_external_process_provider_credentials,
     has_usable_secret,
+    resolve_api_key_provider_credentials,
+    resolve_codex_runtime_credentials,
+    resolve_external_process_provider_credentials,
+    resolve_provider,
+    resolve_qwen_runtime_credentials,
 )
 from spark_cli.config import get_compatible_custom_providers, load_config
-from core.spark_constants import OPENROUTER_BASE_URL
+from spark_cli.model_config import ApiMode
+
+logger = logging.getLogger(__name__)
+
+
+class RuntimeProviderResolution(TypedDict, total=False):
+    """Resolved credentials and transport details used to construct an agent client."""
+
+    provider: Any
+    api_mode: Any
+    base_url: Any
+    api_key: Any
+    source: Any
+    credential_pool: Any
+    requested_provider: Any
+    model: Any
+    last_refresh: Any
+    auth_file: Any
+    codex_home: Any
+    expires_at_ms: Any
+    command: Any
+    args: Any
+    timeout_policy: Any
+    request_overrides: Any
+
+
+@dataclass(frozen=True)
+class RuntimeProviderRecord(Mapping[str, Any]):
+    """Typed provider runtime boundary shared by CLI, gateway, cron, and web."""
+
+    provider: str = ""
+    model: str = ""
+    api_mode: ApiMode | str = "chat_completions"
+    base_url: str = ""
+    api_key: str = ""
+    source: str = ""
+    credential_source: str = ""
+    requested_provider: str = ""
+    timeout_policy: dict[str, Any] = field(default_factory=dict)
+    request_overrides: dict[str, Any] = field(default_factory=dict)
+    credential_pool: Any = None
+    last_refresh: Any = None
+    auth_file: Any = None
+    codex_home: Any = None
+    expires_at_ms: Any = None
+    command: Any = None
+    args: Any = None
+
+    def to_runtime_kwargs(self) -> RuntimeProviderResolution:
+        """Return the legacy dict shape expected by current agent constructors."""
+        result: RuntimeProviderResolution = {
+            "provider": self.provider,
+            "api_mode": self.api_mode,
+            "base_url": self.base_url,
+            "api_key": self.api_key,
+            "source": self.source or self.credential_source,
+            "requested_provider": self.requested_provider,
+        }
+        if self.model:
+            result["model"] = self.model
+        if self.credential_pool is not None:
+            result["credential_pool"] = self.credential_pool
+        if self.last_refresh is not None:
+            result["last_refresh"] = self.last_refresh
+        if self.auth_file is not None:
+            result["auth_file"] = self.auth_file
+        if self.codex_home is not None:
+            result["codex_home"] = self.codex_home
+        if self.expires_at_ms is not None:
+            result["expires_at_ms"] = self.expires_at_ms
+        if self.command is not None:
+            result["command"] = self.command
+        if self.args is not None:
+            result["args"] = self.args
+        if self.timeout_policy:
+            result["timeout_policy"] = self.timeout_policy
+        if self.request_overrides:
+            result["request_overrides"] = self.request_overrides
+        return result
+
+    def __getitem__(self, key: str) -> Any:
+        return dict(self.to_runtime_kwargs())[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.to_runtime_kwargs())
+
+    def __len__(self) -> int:
+        return len(self.to_runtime_kwargs())
+
+    def __contains__(self, key: object) -> bool:
+        return key in self.to_runtime_kwargs()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_runtime_kwargs().get(key, default)
+
+    def keys(self):
+        return self.to_runtime_kwargs().keys()
+
+    def items(self):
+        return self.to_runtime_kwargs().items()
+
+    def values(self):
+        return self.to_runtime_kwargs().values()
+
+
+def runtime_record_from_mapping(
+    mapping: RuntimeProviderResolution | dict[str, Any],
+) -> RuntimeProviderRecord:
+    """Coerce the current loose runtime dict into a typed record."""
+    source = str(mapping.get("source") or mapping.get("credential_source") or "")
+    timeout_policy = mapping.get("timeout_policy")
+    request_overrides = mapping.get("request_overrides")
+    return RuntimeProviderRecord(
+        provider=str(mapping.get("provider") or ""),
+        model=str(mapping.get("model") or ""),
+        api_mode=str(mapping.get("api_mode") or "chat_completions"),
+        base_url=str(mapping.get("base_url") or ""),
+        api_key=str(mapping.get("api_key") or ""),
+        source=source,
+        credential_source=source,
+        requested_provider=str(mapping.get("requested_provider") or ""),
+        timeout_policy=dict(timeout_policy) if isinstance(timeout_policy, dict) else {},
+        request_overrides=dict(request_overrides) if isinstance(request_overrides, dict) else {},
+        credential_pool=mapping.get("credential_pool"),
+        last_refresh=mapping.get("last_refresh"),
+        auth_file=mapping.get("auth_file"),
+        codex_home=mapping.get("codex_home"),
+        expires_at_ms=mapping.get("expires_at_ms"),
+        command=mapping.get("command"),
+        args=mapping.get("args"),
+    )
 
 
 def _normalize_custom_provider_name(value: str) -> str:
     return value.strip().lower().replace(" ", "-")
 
 
-def _detect_api_mode_for_url(base_url: str) -> Optional[str]:
+def _detect_api_mode_for_url(base_url: str) -> str | None:
     """Auto-detect api_mode from the resolved base URL.
 
     Direct api.openai.com endpoints need the Responses API for GPT-5.x
@@ -71,7 +202,7 @@ def _auto_detect_local_model(base_url: str) -> str:
     return ""
 
 
-def _get_model_config() -> Dict[str, Any]:
+def _get_model_config() -> dict[str, Any]:
     config = load_config()
     model_cfg = config.get("model")
     if isinstance(model_cfg, dict):
@@ -94,7 +225,7 @@ def _get_model_config() -> Dict[str, Any]:
 
 
 def _provider_supports_explicit_api_mode(
-    provider: Optional[str], configured_provider: Optional[str] = None
+    provider: str | None, configured_provider: str | None = None
 ) -> bool:
     """Check whether a persisted api_mode should be honored for a given provider.
 
@@ -114,7 +245,7 @@ def _provider_supports_explicit_api_mode(
     return normalized_configured == normalized_provider
 
 
-def _copilot_runtime_api_mode(model_cfg: Dict[str, Any], api_key: str) -> str:
+def _copilot_runtime_api_mode(model_cfg: dict[str, Any], api_key: str) -> str:
     configured_provider = str(model_cfg.get("provider") or "").strip().lower()
     configured_mode = _parse_api_mode(model_cfg.get("api_mode"))
     if configured_mode and _provider_supports_explicit_api_mode(
@@ -137,7 +268,7 @@ def _copilot_runtime_api_mode(model_cfg: Dict[str, Any], api_key: str) -> str:
 _VALID_API_MODES = {"chat_completions", "codex_responses", "anthropic_messages"}
 
 
-def _parse_api_mode(raw: Any) -> Optional[str]:
+def _parse_api_mode(raw: Any) -> str | None:
     """Validate an api_mode value from config. Returns None if invalid."""
     if isinstance(raw, str):
         normalized = raw.strip().lower()
@@ -151,9 +282,9 @@ def _resolve_runtime_from_pool_entry(
     provider: str,
     entry: PooledCredential,
     requested_provider: str,
-    model_cfg: Optional[Dict[str, Any]] = None,
-    pool: Optional[CredentialPool] = None,
-) -> Dict[str, Any]:
+    model_cfg: dict[str, Any] | None = None,
+    pool: CredentialPool | None = None,
+) -> dict[str, Any]:
     model_cfg = model_cfg or _get_model_config()
     base_url = (
         getattr(entry, "runtime_base_url", None)
@@ -227,7 +358,7 @@ def _resolve_runtime_from_pool_entry(
     }
 
 
-def resolve_requested_provider(requested: Optional[str] = None) -> str:
+def resolve_requested_provider(requested: str | None = None) -> str:
     """Resolve provider request from explicit arg, config, then env."""
 
     def _normalize_deprecated_provider(value: str) -> str:
@@ -253,8 +384,8 @@ def resolve_requested_provider(requested: Optional[str] = None) -> str:
 def _try_resolve_from_custom_pool(
     base_url: str,
     provider_label: str,
-    api_mode_override: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    api_mode_override: str | None = None,
+) -> dict[str, Any] | None:
     """Check if a credential pool exists for a custom endpoint and return a runtime dict if so."""
     pool_key = get_custom_provider_pool_key(base_url)
     if not pool_key:
@@ -285,7 +416,7 @@ def _try_resolve_from_custom_pool(
         return None
 
 
-def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, Any]]:
+def _get_named_custom_provider(requested_provider: str) -> dict[str, Any] | None:
     requested_norm = _normalize_custom_provider_name(requested_provider or "")
     if not requested_norm or requested_norm == "custom":
         return None
@@ -415,9 +546,9 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
 def _resolve_named_custom_runtime(
     *,
     requested_provider: str,
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> dict[str, Any] | None:
     custom_provider = _get_named_custom_provider(requested_provider)
     if not custom_provider:
         return None
@@ -471,9 +602,9 @@ def _resolve_named_custom_runtime(
 def _resolve_openrouter_runtime(
     *,
     requested_provider: str,
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Dict[str, Any]:
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> dict[str, Any]:
     model_cfg = _get_model_config()
     cfg_base_url = (
         model_cfg.get("base_url") if isinstance(model_cfg.get("base_url"), str) else ""
@@ -579,10 +710,10 @@ def _resolve_explicit_runtime(
     *,
     provider: str,
     requested_provider: str,
-    model_cfg: Dict[str, Any],
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    model_cfg: dict[str, Any],
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> dict[str, Any] | None:
     explicit_api_key = str(explicit_api_key or "").strip()
     explicit_base_url = str(explicit_base_url or "").strip().rstrip("/")
     if not explicit_api_key and not explicit_base_url:
@@ -678,10 +809,10 @@ def _resolve_explicit_runtime(
 
 def resolve_runtime_provider(
     *,
-    requested: Optional[str] = None,
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Dict[str, Any]:
+    requested: str | None = None,
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> RuntimeProviderRecord:
     """Resolve runtime provider credentials for agent execution."""
     requested_provider = resolve_requested_provider(requested)
 
@@ -692,7 +823,7 @@ def resolve_runtime_provider(
     )
     if custom_runtime:
         custom_runtime["requested_provider"] = requested_provider
-        return custom_runtime
+        return runtime_record_from_mapping(custom_runtime)
 
     provider = resolve_provider(
         requested_provider,
@@ -708,7 +839,7 @@ def resolve_runtime_provider(
         explicit_base_url=explicit_base_url,
     )
     if explicit_runtime:
-        return explicit_runtime
+        return runtime_record_from_mapping(explicit_runtime)
 
     should_use_pool = provider != "openrouter"
     if provider == "openrouter":
@@ -740,26 +871,30 @@ def resolve_runtime_provider(
                 entry, "access_token", ""
             )
         if entry is not None and pool_api_key:
-            return _resolve_runtime_from_pool_entry(
-                provider=provider,
-                entry=entry,
-                requested_provider=requested_provider,
-                model_cfg=model_cfg,
-                pool=pool,
+            return runtime_record_from_mapping(
+                _resolve_runtime_from_pool_entry(
+                    provider=provider,
+                    entry=entry,
+                    requested_provider=requested_provider,
+                    model_cfg=model_cfg,
+                    pool=pool,
+                )
             )
 
     if provider == "openai-codex":
         try:
             creds = resolve_codex_runtime_credentials()
-            return {
-                "provider": "openai-codex",
-                "api_mode": "codex_responses",
-                "base_url": creds.get("base_url", "").rstrip("/"),
-                "api_key": creds.get("api_key", ""),
-                "source": creds.get("source", "spark-auth-store"),
-                "last_refresh": creds.get("last_refresh"),
-                "requested_provider": requested_provider,
-            }
+            return runtime_record_from_mapping(
+                {
+                    "provider": "openai-codex",
+                    "api_mode": "codex_responses",
+                    "base_url": creds.get("base_url", "").rstrip("/"),
+                    "api_key": creds.get("api_key", ""),
+                    "source": creds.get("source", "spark-auth-store"),
+                    "last_refresh": creds.get("last_refresh"),
+                    "requested_provider": requested_provider,
+                }
+            )
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -773,15 +908,17 @@ def resolve_runtime_provider(
     if provider == "qwen-oauth":
         try:
             creds = resolve_qwen_runtime_credentials()
-            return {
-                "provider": "qwen-oauth",
-                "api_mode": "chat_completions",
-                "base_url": creds.get("base_url", "").rstrip("/"),
-                "api_key": creds.get("api_key", ""),
-                "source": creds.get("source", "qwen-cli"),
-                "expires_at_ms": creds.get("expires_at_ms"),
-                "requested_provider": requested_provider,
-            }
+            return runtime_record_from_mapping(
+                {
+                    "provider": "qwen-oauth",
+                    "api_mode": "chat_completions",
+                    "base_url": creds.get("base_url", "").rstrip("/"),
+                    "api_key": creds.get("api_key", ""),
+                    "source": creds.get("source", "qwen-cli"),
+                    "expires_at_ms": creds.get("expires_at_ms"),
+                    "requested_provider": requested_provider,
+                }
+            )
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -791,16 +928,18 @@ def resolve_runtime_provider(
 
     if provider == "copilot-acp":
         creds = resolve_external_process_provider_credentials(provider)
-        return {
-            "provider": "copilot-acp",
-            "api_mode": "chat_completions",
-            "base_url": creds.get("base_url", "").rstrip("/"),
-            "api_key": creds.get("api_key", ""),
-            "command": creds.get("command", ""),
-            "args": list(creds.get("args") or []),
-            "source": creds.get("source", "process"),
-            "requested_provider": requested_provider,
-        }
+        return runtime_record_from_mapping(
+            {
+                "provider": "copilot-acp",
+                "api_mode": "chat_completions",
+                "base_url": creds.get("base_url", "").rstrip("/"),
+                "api_key": creds.get("api_key", ""),
+                "command": creds.get("command", ""),
+                "args": list(creds.get("args") or []),
+                "source": creds.get("source", "process"),
+                "requested_provider": requested_provider,
+            }
+        )
 
     # Anthropic (native Messages API)
     if provider == "anthropic":
@@ -820,14 +959,16 @@ def resolve_runtime_provider(
         if cfg_provider == "anthropic":
             cfg_base_url = (model_cfg.get("base_url") or "").strip().rstrip("/")
         base_url = cfg_base_url or "https://api.anthropic.com"
-        return {
-            "provider": "anthropic",
-            "api_mode": "anthropic_messages",
-            "base_url": base_url,
-            "api_key": token,
-            "source": "env",
-            "requested_provider": requested_provider,
-        }
+        return runtime_record_from_mapping(
+            {
+                "provider": "anthropic",
+                "api_mode": "anthropic_messages",
+                "base_url": base_url,
+                "api_key": token,
+                "source": "env",
+                "requested_provider": requested_provider,
+            }
+        )
 
     # Ollama local provider — no API key required
     if provider == "ollama":
@@ -837,14 +978,16 @@ def resolve_runtime_provider(
             cfg_base_url = (model_cfg.get("base_url") or "").strip().rstrip("/")
         env_url = os.getenv("OLLAMA_BASE_URL", "").strip().rstrip("/")
         base_url = cfg_base_url or env_url or "http://localhost:11434/v1"
-        return {
-            "provider": "ollama",
-            "api_mode": "chat_completions",
-            "base_url": base_url,
-            "api_key": "no-key-required",
-            "source": "config" if cfg_base_url else ("env" if env_url else "default"),
-            "requested_provider": requested_provider,
-        }
+        return runtime_record_from_mapping(
+            {
+                "provider": "ollama",
+                "api_mode": "chat_completions",
+                "base_url": base_url,
+                "api_key": "no-key-required",
+                "source": "config" if cfg_base_url else ("env" if env_url else "default"),
+                "requested_provider": requested_provider,
+            }
+        )
 
     # API-key providers (z.ai/GLM, Kimi, MiniMax, MiniMax-CN)
     pconfig = PROVIDER_REGISTRY.get(provider)
@@ -886,14 +1029,16 @@ def resolve_runtime_provider(
             "opencode-go",
         ):
             base_url = re.sub(r"/v1/?$", "", base_url)
-        return {
-            "provider": provider,
-            "api_mode": api_mode,
-            "base_url": base_url,
-            "api_key": creds.get("api_key", ""),
-            "source": creds.get("source", "env"),
-            "requested_provider": requested_provider,
-        }
+        return runtime_record_from_mapping(
+            {
+                "provider": provider,
+                "api_mode": api_mode,
+                "base_url": base_url,
+                "api_key": creds.get("api_key", ""),
+                "source": creds.get("source", "env"),
+                "requested_provider": requested_provider,
+            }
+        )
 
     runtime = _resolve_openrouter_runtime(
         requested_provider=requested_provider,
@@ -901,7 +1046,7 @@ def resolve_runtime_provider(
         explicit_base_url=explicit_base_url,
     )
     runtime["requested_provider"] = requested_provider
-    return runtime
+    return runtime_record_from_mapping(runtime)
 
 
 def format_runtime_provider_error(error: Exception) -> str:

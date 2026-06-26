@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
-from plugins.memory.honcho.client import resolve_active_host, resolve_config_path, HOST
+from plugins.memory.honcho.client import HOST, resolve_active_host, resolve_config_path
 
 
 def clone_honcho_for_profile(profile_name: str) -> bool:
@@ -471,7 +471,11 @@ def cmd_setup(args) -> None:
     # --- Test connection ---
     print("  Testing connection... ", end="", flush=True)
     try:
-        from plugins.memory.honcho.client import HonchoClientConfig, get_honcho_client, reset_honcho_client
+        from plugins.memory.honcho.client import (
+            HonchoClientConfig,
+            get_honcho_client,
+            reset_honcho_client,
+        )
         reset_honcho_client()
         hcfg = HonchoClientConfig.from_global_config(host=_host_key())
         get_honcho_client(hcfg)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from tools.registry import registry
 
@@ -20,7 +20,7 @@ def _kanban_available() -> bool:
     return bool(os.getenv("SPARK_KANBAN_TASK"))
 
 
-def kanban_show(task_id: Optional[str] = None, **kw: Any) -> str:
+def kanban_show(task_id: str | None = None, **kw: Any) -> str:
     from core import kanban_db as kb
 
     tid = task_id or os.getenv("SPARK_KANBAN_TASK")
@@ -44,7 +44,7 @@ def kanban_heartbeat(note: str = "", **kw: Any) -> str:
 
 def kanban_complete(
     summary: str = "",
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
     result: str = "",
 ) -> str:
     from core import kanban_db as kb
@@ -81,7 +81,7 @@ def kanban_create_tool(
     title: str,
     assignee: str,
     body: str = "",
-    parents: Optional[List[str]] = None,
+    parents: list[str] | None = None,
     tenant: str = "",
     priority: int = 0,
     **kw: Any,

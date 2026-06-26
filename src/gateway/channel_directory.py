@@ -9,10 +9,10 @@ action="list" and for resolving human-friendly channel names to numeric IDs.
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from spark_cli.config import get_spark_home
 from core.utils import atomic_json_write
+from spark_cli.config import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def _normalize_channel_query(value: str) -> str:
     return value.lstrip("#").strip().lower()
 
 
-def _channel_target_name(platform_name: str, channel: Dict[str, Any]) -> str:
+def _channel_target_name(platform_name: str, channel: dict[str, Any]) -> str:
     """Return the human-facing target label shown to users for a channel entry."""
     name = channel["name"]
     if platform_name == "discord" and channel.get("guild"):
@@ -33,7 +33,7 @@ def _channel_target_name(platform_name: str, channel: Dict[str, Any]) -> str:
     return name
 
 
-def _session_entry_id(origin: Dict[str, Any]) -> Optional[str]:
+def _session_entry_id(origin: dict[str, Any]) -> str | None:
     chat_id = origin.get("chat_id")
     if not chat_id:
         return None
@@ -43,7 +43,7 @@ def _session_entry_id(origin: Dict[str, Any]) -> Optional[str]:
     return str(chat_id)
 
 
-def _session_entry_name(origin: Dict[str, Any]) -> str:
+def _session_entry_name(origin: dict[str, Any]) -> str:
     base_name = origin.get("chat_name") or origin.get("user_name") or str(origin.get("chat_id"))
     thread_id = origin.get("thread_id")
     if not thread_id:
@@ -57,7 +57,7 @@ def _session_entry_name(origin: Dict[str, Any]) -> str:
 # Build / refresh
 # ---------------------------------------------------------------------------
 
-def build_channel_directory(adapters: Dict[Any, Any]) -> Dict[str, Any]:
+def build_channel_directory(adapters: dict[Any, Any]) -> dict[str, Any]:
     """
     Build a channel directory from connected platform adapters and session data.
 
@@ -65,7 +65,7 @@ def build_channel_directory(adapters: Dict[Any, Any]) -> Dict[str, Any]:
     """
     from gateway.config import Platform
 
-    platforms: Dict[str, List[Dict[str, str]]] = {}
+    platforms: dict[str, list[dict[str, str]]] = {}
 
     for platform, adapter in adapters.items():
         try:
@@ -99,7 +99,7 @@ def build_channel_directory(adapters: Dict[Any, Any]) -> Dict[str, Any]:
     return directory
 
 
-def _build_discord(adapter) -> List[Dict[str, str]]:
+def _build_discord(adapter) -> list[dict[str, str]]:
     """Enumerate all text channels the Discord bot can see."""
     channels = []
     client = getattr(adapter, "_client", None)
@@ -127,7 +127,7 @@ def _build_discord(adapter) -> List[Dict[str, str]]:
     return channels
 
 
-def _build_slack(adapter) -> List[Dict[str, str]]:
+def _build_slack(adapter) -> list[dict[str, str]]:
     """List Slack channels the bot has joined."""
     # Slack adapter may expose a web client
     client = getattr(adapter, "_app", None) or getattr(adapter, "_client", None)
@@ -144,7 +144,7 @@ def _build_slack(adapter) -> List[Dict[str, str]]:
     return _build_from_sessions("slack")
 
 
-def _build_from_sessions(platform_name: str) -> List[Dict[str, str]]:
+def _build_from_sessions(platform_name: str) -> list[dict[str, str]]:
     """Pull known channels/contacts from sessions.json origin data."""
     sessions_path = get_spark_home() / "sessions" / "sessions.json"
     if not sessions_path.exists():
@@ -180,7 +180,7 @@ def _build_from_sessions(platform_name: str) -> List[Dict[str, str]]:
 # Read / resolve
 # ---------------------------------------------------------------------------
 
-def load_directory() -> Dict[str, Any]:
+def load_directory() -> dict[str, Any]:
     """Load the cached channel directory from disk."""
     if not DIRECTORY_PATH.exists():
         return {"updated_at": None, "platforms": {}}
@@ -191,7 +191,7 @@ def load_directory() -> Dict[str, Any]:
         return {"updated_at": None, "platforms": {}}
 
 
-def resolve_channel_name(platform_name: str, name: str) -> Optional[str]:
+def resolve_channel_name(platform_name: str, name: str) -> str | None:
     """
     Resolve a human-friendly channel name to a numeric ID.
 
@@ -246,8 +246,8 @@ def format_directory_for_display() -> str:
 
         # Group Discord channels by guild
         if plat_name == "discord":
-            guilds: Dict[str, List] = {}
-            dms: List = []
+            guilds: dict[str, list] = {}
+            dms: list = []
             for ch in channels:
                 guild = ch.get("guild")
                 if guild:

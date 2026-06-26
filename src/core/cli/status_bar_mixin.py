@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import shutil
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from agent.usage_pricing import format_duration_compact, format_token_count_compact
 from spark_cli.banner import _format_context_length
@@ -38,7 +38,7 @@ class _StatusBarMixin:
         effort = str(rc.get("effort", "medium"))
         return {"medium": "med", "minimal": "min"}.get(effort, effort)
 
-    def _status_bar_context_style(self, percent_used: Optional[int]) -> str:
+    def _status_bar_context_style(self, percent_used: int | None) -> str:
         if percent_used is None:
             return "class:status-bar-dim"
         if percent_used >= 95:
@@ -49,12 +49,12 @@ class _StatusBarMixin:
             return "class:status-bar-warn"
         return "class:status-bar-good"
 
-    def _build_context_bar(self, percent_used: Optional[int], width: int = 10) -> str:
+    def _build_context_bar(self, percent_used: int | None, width: int = 10) -> str:
         safe_percent = max(0, min(100, percent_used or 0))
         filled = round((safe_percent / 100) * width)
         return f"[{('#' * filled) + ('-' * max(0, width - filled))}]"
 
-    def _get_status_bar_snapshot(self) -> Dict[str, Any]:
+    def _get_status_bar_snapshot(self) -> dict[str, Any]:
         # Prefer the agent's model name - it updates on fallback.
         # self.model reflects the originally configured model and never
         # changes mid-session, so the TUI would show a stale name after
@@ -191,13 +191,13 @@ class _StatusBarMixin:
         except Exception:
             return shutil.get_terminal_size(default).columns
 
-    def _use_minimal_tui_chrome(self, width: Optional[int] = None) -> bool:
+    def _use_minimal_tui_chrome(self, width: int | None = None) -> bool:
         """Hide low-value chrome on narrow/mobile terminals to preserve rows."""
         if width is None:
             width = self._get_tui_terminal_width()
         return width < 64
 
-    def _tui_input_rule_height(self, position: str, width: Optional[int] = None) -> int:
+    def _tui_input_rule_height(self, position: str, width: int | None = None) -> int:
         """Return the visible height for the top/bottom input separator rules."""
         if position not in {"top", "bottom"}:
             raise ValueError(f"Unknown input rule position: {position}")
@@ -205,19 +205,19 @@ class _StatusBarMixin:
             return 1
         return 0 if self._use_minimal_tui_chrome(width=width) else 1
 
-    def _agent_spacer_height(self, width: Optional[int] = None) -> int:
+    def _agent_spacer_height(self, width: int | None = None) -> int:
         """Return the spacer height shown above the status bar while the agent runs."""
         if not getattr(self, "_agent_running", False):
             return 0
         return 0 if self._use_minimal_tui_chrome(width=width) else 1
 
-    def _spinner_widget_height(self, width: Optional[int] = None) -> int:
+    def _spinner_widget_height(self, width: int | None = None) -> int:
         """Return the visible height for the spinner/status text line above the status bar."""
         if not getattr(self, "_spinner_text", ""):
             return 0
         return 0 if self._use_minimal_tui_chrome(width=width) else 1
 
-    def _get_voice_status_fragments(self, width: Optional[int] = None):
+    def _get_voice_status_fragments(self, width: int | None = None):
         """Return the voice status bar fragments for the interactive TUI."""
         width = width or self._get_tui_terminal_width()
         compact = self._use_minimal_tui_chrome(width=width)
@@ -235,7 +235,7 @@ class _StatusBarMixin:
         cont = " | Continuous" if self._voice_continuous else ""
         return [("class:voice-status", f" Voice mode{tts}{cont}  -  Ctrl+B to record ")]
 
-    def _build_status_bar_text(self, width: Optional[int] = None) -> str:
+    def _build_status_bar_text(self, width: int | None = None) -> str:
         """Return a compact one-line session status string for the TUI footer."""
         try:
             snapshot = self._get_status_bar_snapshot()

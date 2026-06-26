@@ -18,10 +18,11 @@ import os
 import signal
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
 from core.spark_constants import get_spark_home
-from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def _get_lock_dir() -> Path:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def terminate_pid(pid: int, *, force: bool = False) -> None:
@@ -91,7 +92,7 @@ def _get_scope_lock_path(scope: str, identity: str) -> Path:
     return _get_lock_dir() / f"{scope}-{_scope_hash(identity)}.lock"
 
 
-def _get_process_start_time(pid: int) -> Optional[int]:
+def _get_process_start_time(pid: int) -> int | None:
     """Return the kernel start time for a process when available."""
     stat_path = Path(f"/proc/{pid}/stat")
     try:
@@ -101,7 +102,7 @@ def _get_process_start_time(pid: int) -> Optional[int]:
         return None
 
 
-def _read_process_cmdline(pid: int) -> Optional[str]:
+def _read_process_cmdline(pid: int) -> str | None:
     """Return the process command line as a space-separated string."""
     cmdline_path = Path(f"/proc/{pid}/cmdline")
     try:
@@ -182,7 +183,7 @@ def _build_runtime_status_record() -> dict[str, Any]:
     return payload
 
 
-def _read_json_file(path: Path) -> Optional[dict[str, Any]]:
+def _read_json_file(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     try:
@@ -203,7 +204,7 @@ def _write_json_file(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload))
 
 
-def _read_pid_record() -> Optional[dict]:
+def _read_pid_record() -> dict | None:
     pid_path = _get_pid_path()
     if not pid_path.exists():
         return None
@@ -275,7 +276,7 @@ def write_runtime_status(
     _write_json_file(path, payload)
 
 
-def read_runtime_status() -> Optional[dict[str, Any]]:
+def read_runtime_status() -> dict[str, Any] | None:
     """Read the persisted gateway runtime health/status information."""
     return _read_json_file(_get_runtime_status_path())
 
@@ -288,7 +289,7 @@ def remove_pid_file() -> None:
         logger.debug("Failed to remove PID file", exc_info=True)
 
 
-def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[dict[str, Any]]]:
+def acquire_scoped_lock(scope: str, identity: str, metadata: dict[str, Any] | None = None) -> tuple[bool, dict[str, Any] | None]:
     """Acquire a machine-local lock keyed by scope + identity.
 
     Used to prevent multiple local gateways from using the same external identity
@@ -412,7 +413,7 @@ def release_all_scoped_locks() -> int:
     return removed
 
 
-def get_running_pid() -> Optional[int]:
+def get_running_pid() -> int | None:
     """Return the PID of a running gateway instance, or ``None``.
 
     Checks the PID file and verifies the process is actually alive.

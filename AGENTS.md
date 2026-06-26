@@ -16,6 +16,10 @@ spark-agent/
 │   ├── core/             # Agent runtime
 │   │   ├── run_agent/       # AIAgent class — core conversation loop (__init__.py)
 │   │   │                    #   prompt_cache.py  — caching-sensitive system-prompt build (ADR-0001)
+│   │   │                    #   provider_calls.py — provider request helpers and stream delivery callbacks
+│   │   │                    #   message_state.py — API message repair and tool-pair sanitization
+│   │   │                    #   tool_loop.py — tool-loop guardrails and dispatch helpers
+│   │   │                    #   persistence.py — memory flush and persistence-adjacent helpers
 │   │   │                    #   parallelism.py / sanitize.py / stdio.py / iteration_budget.py — leaf helpers
 │   │   ├── cli/             # SparkCLI (prompt_toolkit) — __init__.py + concern mixins
 │   │   │                    #   (commands_mixin, display_mixin, streaming_mixin, voice_mixin,
@@ -77,7 +81,11 @@ spark-agent/
 │   │   ├── image_generation_tool.py # Image generation
 │   │   └── environments/     # Terminal backends (local, docker, ssh, modal, daytona, singularity)
 │   ├── gateway/          # Messaging platform gateway
-│   │   ├── run.py            # Main loop, slash commands, message dispatch
+│   │   ├── run.py            # Import-compatible GatewayRunner/start_gateway entrypoint
+│   │   ├── commands.py       # Slash-command resolution/dispatch helpers
+│   │   ├── authz.py          # Allowlists, pairing, internal-event auth bypass
+│   │   ├── session_hygiene.py # Pre-agent transcript compression thresholds
+│   │   ├── cron_tick.py      # Gateway-owned cron scheduler ticker
 │   │   ├── session.py        # SessionStore — conversation persistence
 │   │   ├── hooks.py          # Event hooks system
 │   │   └── platforms/        # Adapters: telegram, discord, slack, whatsapp, signal,
@@ -207,10 +215,9 @@ CommandDef("mycommand", "Description of what it does", "Session",
 elif canonical == "mycommand":
     self._handle_mycommand(cmd_original)
 ```
-3. If the command is available in the gateway, add a handler in `src/gateway/run.py`:
+3. If the command is available in the gateway, add a mapping in `src/gateway/commands.py` to a `GatewayRunner` handler:
 ```python
-if canonical == "mycommand":
-    return await self._handle_mycommand(event)
+_HANDLER_BY_COMMAND["mycommand"] = "_handle_mycommand"
 ```
 4. For persistent settings, use `save_config_value()` from `core/cli/config_state.py`
 

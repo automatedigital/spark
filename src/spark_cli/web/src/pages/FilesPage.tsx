@@ -162,7 +162,7 @@ function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string
         className={cn("shrink-0 hover:text-foreground transition", isRoot && "text-foreground font-medium")}
         onClick={() => onNavigate(ROOT_PATH)}
       >
-        Workspace
+        Files
       </button>
       {parts.map((part, i) => {
         const segPath = parts.slice(0, i + 1).join("/");

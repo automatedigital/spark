@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -21,54 +21,54 @@ class TaskCreateBody(BaseModel):
     title: str
     body: str = ""
     board: str = "default"
-    assignee: Optional[str] = None
-    tenant: Optional[str] = None
+    assignee: str | None = None
+    tenant: str | None = None
     priority: int = 0
-    parents: List[str] = Field(default_factory=list)
-    idempotency_key: Optional[str] = None
+    parents: list[str] = Field(default_factory=list)
+    idempotency_key: str | None = None
     workspace_kind: str = "scratch"
-    workspace_path: Optional[str] = None
-    skills: List[str] = Field(default_factory=list)
+    workspace_path: str | None = None
+    skills: list[str] = Field(default_factory=list)
     triage: bool = False
     max_runtime_seconds: int = 0
 
 
 class TaskPatchBody(BaseModel):
-    status: Optional[str] = None
-    title: Optional[str] = None
-    body: Optional[str] = None
-    assignee: Optional[str] = None
-    priority: Optional[int] = None
-    tenant: Optional[str] = None
-    result: Optional[str] = None
-    in_triage: Optional[bool] = None
-    workspace_path: Optional[str] = None
+    status: str | None = None
+    title: str | None = None
+    body: str | None = None
+    assignee: str | None = None
+    priority: int | None = None
+    tenant: str | None = None
+    result: str | None = None
+    in_triage: bool | None = None
+    workspace_path: str | None = None
 
 
 class BulkPatchBody(BaseModel):
-    ids: List[str]
-    status: Optional[str] = None
-    assignee: Optional[str] = None
-    priority: Optional[int] = None
+    ids: list[str]
+    status: str | None = None
+    assignee: str | None = None
+    priority: int | None = None
 
 
 class BulkPatchResponse(BaseModel):
     ok: bool
-    errors: Dict[str, str] = Field(default_factory=dict)
+    errors: dict[str, str] = Field(default_factory=dict)
 
 
 class DispatchResponse(BaseModel):
-    ok: Optional[bool] = None
-    claimed: Optional[int] = None
-    task_ids: Optional[List[str]] = None
-    dry_run: Optional[bool] = None
-    ready: Optional[List[str]] = None
-    blocked_by_assignee: Optional[List[str]] = None
+    ok: bool | None = None
+    claimed: int | None = None
+    task_ids: list[str] | None = None
+    dry_run: bool | None = None
+    ready: list[str] | None = None
+    blocked_by_assignee: list[str] | None = None
 
 
 class CommentBody(BaseModel):
     body: str
-    author: Optional[str] = None
+    author: str | None = None
 
 
 class LinkBody(BaseModel):
@@ -78,7 +78,7 @@ class LinkBody(BaseModel):
 
 class CompleteBody(BaseModel):
     summary: str = ""
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     result: str = ""
 
 
@@ -89,10 +89,10 @@ class BlockBody(BaseModel):
 @router.get("/board")
 async def board(
     board: str = "default",
-    tenant: Optional[str] = None,
-    assignee: Optional[str] = None,
+    tenant: str | None = None,
+    assignee: str | None = None,
     archived: bool = False,
-    q: Optional[str] = None,
+    q: str | None = None,
 ):
     try:
         return kb.get_board(
@@ -174,7 +174,7 @@ async def task_delete(task_id: str):
 
 @router.post("/tasks/bulk", response_model=BulkPatchResponse)
 async def task_bulk(body: BulkPatchBody):
-    fields: Dict[str, Any] = {
+    fields: dict[str, Any] = {
         "status": body.status,
         "assignee": body.assignee,
         "priority": body.priority,

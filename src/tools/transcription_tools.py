@@ -30,7 +30,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 from urllib.parse import urljoin
 
 from core.utils import is_truthy_value
@@ -83,8 +83,8 @@ OPENAI_MODELS = {"whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"}
 GROQ_MODELS = {"whisper-large-v3", "whisper-large-v3-turbo", "distil-whisper-large-v3-en"}
 
 # Singleton for the local model — loaded once, reused across calls
-_local_model: Optional[object] = None
-_local_model_name: Optional[str] = None
+_local_model: object | None = None
+_local_model_name: str | None = None
 
 # ---------------------------------------------------------------------------
 # Config helpers
@@ -101,7 +101,7 @@ def _load_stt_config() -> dict:
         return {}
 
 
-def is_stt_enabled(stt_config: Optional[dict] = None) -> bool:
+def is_stt_enabled(stt_config: dict | None = None) -> bool:
     """Return whether STT is enabled in config."""
     if stt_config is None:
         stt_config = _load_stt_config()
@@ -118,7 +118,7 @@ def _has_openai_audio_backend() -> bool:
         return False
 
 
-def _find_binary(binary_name: str) -> Optional[str]:
+def _find_binary(binary_name: str) -> str | None:
     """Find a local binary, checking common Homebrew/local prefixes as well as PATH."""
     for directory in COMMON_LOCAL_BIN_DIRS:
         candidate = Path(directory) / binary_name
@@ -127,15 +127,15 @@ def _find_binary(binary_name: str) -> Optional[str]:
     return shutil.which(binary_name)
 
 
-def _find_ffmpeg_binary() -> Optional[str]:
+def _find_ffmpeg_binary() -> str | None:
     return _find_binary("ffmpeg")
 
 
-def _find_whisper_binary() -> Optional[str]:
+def _find_whisper_binary() -> str | None:
     return _find_binary("whisper")
 
 
-def _get_local_command_template() -> Optional[str]:
+def _get_local_command_template() -> str | None:
     configured = os.getenv(LOCAL_STT_COMMAND_ENV, "").strip()
     if configured:
         return configured
@@ -154,7 +154,7 @@ def _has_local_command() -> bool:
     return _get_local_command_template() is not None
 
 
-def _normalize_local_command_model(model_name: Optional[str]) -> str:
+def _normalize_local_command_model(model_name: str | None) -> str:
     if not model_name or model_name in OPENAI_MODELS or model_name in GROQ_MODELS:
         return DEFAULT_LOCAL_MODEL
     return model_name
@@ -247,7 +247,7 @@ def _get_provider(stt_config: dict) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _validate_audio_file(file_path: str) -> Optional[Dict[str, Any]]:
+def _validate_audio_file(file_path: str) -> dict[str, Any] | None:
     """Validate the audio file.  Returns an error dict or None if OK."""
     audio_path = Path(file_path)
 
@@ -279,7 +279,7 @@ def _validate_audio_file(file_path: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_local(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_local(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using faster-whisper (local, free)."""
     global _local_model, _local_model_name
 
@@ -319,7 +319,7 @@ def _transcribe_local(file_path: str, model_name: str) -> Dict[str, Any]:
         return {"success": False, "transcript": "", "error": f"Local transcription failed: {e}"}
 
 
-def _prepare_local_audio(file_path: str, work_dir: str) -> tuple[Optional[str], Optional[str]]:
+def _prepare_local_audio(file_path: str, work_dir: str) -> tuple[str | None, str | None]:
     """Normalize audio for local CLI STT when needed."""
     audio_path = Path(file_path)
     if audio_path.suffix.lower() in LOCAL_NATIVE_AUDIO_FORMATS:
@@ -341,7 +341,7 @@ def _prepare_local_audio(file_path: str, work_dir: str) -> tuple[Optional[str], 
         return None, f"Failed to convert audio for local STT: {details}"
 
 
-def _transcribe_local_command(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_local_command(file_path: str, model_name: str) -> dict[str, Any]:
     """Run the configured local STT command template and read back a .txt transcript."""
     command_template = _get_local_command_template()
     if not command_template:
@@ -411,7 +411,7 @@ def _transcribe_local_command(file_path: str, model_name: str) -> Dict[str, Any]
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_groq(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_groq(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using Groq Whisper API (free tier available)."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -426,7 +426,7 @@ def _transcribe_groq(file_path: str, model_name: str) -> Dict[str, Any]:
         model_name = DEFAULT_GROQ_STT_MODEL
 
     try:
-        from openai import OpenAI, APIError, APIConnectionError, APITimeoutError
+        from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
         client = OpenAI(api_key=api_key, base_url=GROQ_BASE_URL, timeout=30, max_retries=0)
         try:
             with open(file_path, "rb") as audio_file:
@@ -463,7 +463,7 @@ def _transcribe_groq(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_openai(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_openai(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using OpenAI Whisper API (paid)."""
     try:
         api_key, base_url = _resolve_openai_audio_client_config()
@@ -483,7 +483,7 @@ def _transcribe_openai(file_path: str, model_name: str) -> Dict[str, Any]:
         model_name = DEFAULT_STT_MODEL
 
     try:
-        from openai import OpenAI, APIError, APIConnectionError, APITimeoutError
+        from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
         client = OpenAI(api_key=api_key, base_url=base_url, timeout=30, max_retries=0)
         try:
             with open(file_path, "rb") as audio_file:
@@ -520,7 +520,7 @@ def _transcribe_openai(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_mistral(file_path: str, model_name: str) -> Dict[str, Any]:
+def _transcribe_mistral(file_path: str, model_name: str) -> dict[str, Any]:
     """Transcribe using Mistral Voxtral Transcribe API.
 
     Uses the ``mistralai`` Python SDK to call ``/v1/audio/transcriptions``.
@@ -559,7 +559,7 @@ def _transcribe_mistral(file_path: str, model_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def transcribe_audio(file_path: str, model: Optional[str] = None) -> Dict[str, Any]:
+def transcribe_audio(file_path: str, model: str | None = None) -> dict[str, Any]:
     """
     Transcribe an audio file using the configured STT provider.
 
@@ -662,7 +662,7 @@ def _extract_transcript_text(transcription: Any) -> str:
         return transcription.strip()
 
     if hasattr(transcription, "text"):
-        value = getattr(transcription, "text")
+        value = transcription.text
         if isinstance(value, str):
             return value.strip()
 

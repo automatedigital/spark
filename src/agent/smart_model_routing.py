@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from core.utils import is_truthy_value
 
@@ -59,7 +59,7 @@ def _coerce_int(value: Any, default: int) -> int:
         return default
 
 
-def choose_cheap_model_route(user_message: str, routing_config: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def choose_cheap_model_route(user_message: str, routing_config: dict[str, Any] | None) -> dict[str, Any] | None:
     """Return the configured cheap-model route when a message looks simple.
 
     Conservative by design: if the message has signs of code/tool/debugging/
@@ -107,7 +107,7 @@ def choose_cheap_model_route(user_message: str, routing_config: Optional[Dict[st
     return route
 
 
-def resolve_turn_route(user_message: str, routing_config: Optional[Dict[str, Any]], primary: Dict[str, Any]) -> Dict[str, Any]:
+def resolve_turn_route(user_message: str, routing_config: dict[str, Any] | None, primary: dict[str, Any]) -> dict[str, Any]:
     """Resolve the effective model/runtime for one turn.
 
     Returns a dict with model/runtime/signature/label fields.

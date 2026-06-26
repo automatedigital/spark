@@ -6,11 +6,12 @@ import asyncio
 import logging
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Deque, Optional
+from typing import Any
 
 import acp
 from acp.schema import (
     AgentCapabilities,
+    AudioContentBlock,
     AuthenticateResponse,
     AvailableCommand,
     AvailableCommandsUpdate,
@@ -18,7 +19,6 @@ from acp.schema import (
     EmbeddedResourceContentBlock,
     ForkSessionResponse,
     ImageContentBlock,
-    AudioContentBlock,
     Implementation,
     InitializeResponse,
     ListSessionsResponse,
@@ -28,16 +28,16 @@ from acp.schema import (
     McpServerStdio,
     NewSessionResponse,
     PromptResponse,
+    ResourceContentBlock,
     ResumeSessionResponse,
+    SessionCapabilities,
+    SessionForkCapabilities,
+    SessionInfo,
+    SessionListCapabilities,
+    SessionResumeCapabilities,
     SetSessionConfigOptionResponse,
     SetSessionModelResponse,
     SetSessionModeResponse,
-    ResourceContentBlock,
-    SessionCapabilities,
-    SessionForkCapabilities,
-    SessionListCapabilities,
-    SessionResumeCapabilities,
-    SessionInfo,
     TextContentBlock,
     UnstructuredCommandInput,
     Usage,
@@ -138,7 +138,7 @@ class SparkACPAgent(acp.Agent):
     def __init__(self, session_manager: SessionManager | None = None):
         super().__init__()
         self.session_manager = session_manager or SessionManager()
-        self._conn: Optional[acp.Client] = None
+        self._conn: acp.Client | None = None
 
     # ---- Connection lifecycle -----------------------------------------------
 
@@ -388,7 +388,7 @@ class SparkACPAgent(acp.Agent):
         if state.cancel_event:
             state.cancel_event.clear()
 
-        tool_call_ids: dict[str, Deque[str]] = defaultdict(deque)
+        tool_call_ids: dict[str, deque[str]] = defaultdict(deque)
         previous_approval_cb = None
 
         if conn:
@@ -562,7 +562,7 @@ class SparkACPAgent(acp.Agent):
 
         # Auto-detect provider for the requested model
         try:
-            from spark_cli.models import parse_model_input, detect_provider_for_model
+            from spark_cli.models import detect_provider_for_model, parse_model_input
             target_provider, new_model = parse_model_input(new_model, current_provider)
             if target_provider == current_provider:
                 detected = detect_provider_for_model(new_model, current_provider)
@@ -704,7 +704,7 @@ class SparkACPAgent(acp.Agent):
         if state is None:
             logger.warning("Session %s: mode switch requested for missing session", session_id)
             return None
-        setattr(state, "mode", mode_id)
+        state.mode = mode_id
         self.session_manager.save_session(session_id)
         logger.info("Session %s: mode switched to %s", session_id, mode_id)
         return SetSessionModeResponse()
@@ -722,7 +722,7 @@ class SparkACPAgent(acp.Agent):
         if not isinstance(options, dict):
             options = {}
         options[str(config_id)] = value
-        setattr(state, "config_options", options)
+        state.config_options = options
         self.session_manager.save_session(session_id)
         logger.info("Session %s: config option %s updated", session_id, config_id)
         return SetSessionConfigOptionResponse(config_options=[])

@@ -13,7 +13,7 @@ import sys
 import types
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -21,7 +21,12 @@ from agent.model_metadata import estimate_messages_tokens_rough
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, MessageEvent, SendResult
 from gateway.session import SessionEntry, SessionSource
-
+from gateway.session_hygiene import (
+    HYGIENE_HARD_MESSAGE_LIMIT,
+    compression_threshold,
+    needs_hygiene_compression,
+    warning_threshold,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -100,6 +105,10 @@ class TestSessionHygieneThresholds:
 
         needs_compress = approx_tokens >= compress_token_threshold
         assert not needs_compress
+
+    def test_extracted_threshold_matches_gateway_policy(self):
+        assert compression_threshold(200_000) == 170_000
+        assert warning_threshold(200_000) == 190_000
 
     def test_large_token_count_triggers(self):
         """High token count should trigger compression when exceeding model threshold."""
@@ -192,6 +201,13 @@ class TestSessionHygieneThresholds:
         # Even with enormous content, < 4 messages should be skipped
         # (the gateway code checks `len(history) >= 4` before evaluating)
         assert len(history) < 4
+
+    def test_hard_message_limit_triggers_even_under_token_threshold(self):
+        assert needs_hygiene_compression(
+            message_count=HYGIENE_HARD_MESSAGE_LIMIT,
+            token_count=100,
+            context_length=200_000,
+        )
 
 
 class TestSessionHygieneWarnThreshold:

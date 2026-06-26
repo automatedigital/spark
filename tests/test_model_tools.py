@@ -3,17 +3,16 @@
 import json
 from unittest.mock import call, patch
 
-import pytest
-
 from core.model_tools import (
-    handle_function_call,
-    get_all_tool_names,
-    get_toolset_for_tool,
     _AGENT_LOOP_TOOLS,
     _LEGACY_TOOLSET_MAP,
     TOOL_TO_TOOLSET_MAP,
+    get_all_tool_names,
+    get_tool_definitions,
+    get_toolset_for_tool,
+    handle_function_call,
 )
-
+from core.toolsets import resolve_toolset
 
 # =========================================================================
 # handle_function_call
@@ -222,3 +221,70 @@ class TestBackwardCompat:
     def test_tool_to_toolset_map(self):
         assert isinstance(TOOL_TO_TOOLSET_MAP, dict)
         assert len(TOOL_TO_TOOLSET_MAP) > 0
+
+
+# =========================================================================
+# Tool manifest contract
+# =========================================================================
+
+class TestToolManifestContract:
+    def test_spark_cli_toolset_names_are_registered(self):
+        """The default Spark toolset should only reference registered or loop-owned tools."""
+        missing = [
+            name
+            for name in resolve_toolset("spark-cli")
+            if name not in TOOL_TO_TOOLSET_MAP and name not in _AGENT_LOOP_TOOLS
+        ]
+        assert missing == []
+
+    def test_tool_definitions_are_returned_in_stable_name_order(self):
+        """Schema order is prompt-sensitive, so registry sorting is intentional."""
+        tools = get_tool_definitions(enabled_toolsets=["file"], quiet_mode=True)
+        assert [tool["function"]["name"] for tool in tools] == [
+            "patch",
+            "read_file",
+            "search_files",
+            "write_file",
+        ]
+
+    def test_browser_schema_omits_web_tool_hint_when_web_tools_unavailable(self):
+        fake_browser_schema = {
+            "name": "browser_navigate",
+            "description": (
+                "Navigate somewhere. For simple information retrieval, "
+                "prefer web_search or web_extract (faster, cheaper)."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        }
+
+        with patch(
+            "core.model_tools.registry.get_definitions",
+            return_value=[{"type": "function", "function": fake_browser_schema}],
+        ):
+            tools = get_tool_definitions(enabled_toolsets=["browser"], quiet_mode=True)
+
+        desc = tools[0]["function"]["description"]
+        assert "web_search" not in desc
+        assert "web_extract" not in desc
+
+    def test_execute_code_schema_omits_unavailable_sandbox_tools(self):
+        """Final model-facing schemas must not advertise disabled helper tools."""
+        tools = get_tool_definitions(
+            enabled_toolsets=["code_execution"],
+            quiet_mode=True,
+        )
+        schemas = {tool["function"]["name"]: tool["function"] for tool in tools}
+
+        assert set(schemas) == {"execute_code"}
+
+        schema_text = json.dumps(schemas["execute_code"])
+        for unavailable_tool in (
+            "web_search(",
+            "web_extract(",
+            "read_file(",
+            "write_file(",
+            "search_files(",
+            "patch(",
+            "terminal(",
+        ):
+            assert unavailable_tool not in schema_text

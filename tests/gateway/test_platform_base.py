@@ -1,16 +1,20 @@
 """Tests for gateway/platforms/base.py — MessageEvent, media extraction, message truncation."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+import pytest
+
+from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
-    BasePlatformAdapter,
     GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE,
+    BasePlatformAdapter,
     MessageEvent,
     MessageType,
+    SendResult,
+    _prefix_within_utf16_limit,
     safe_url_for_log,
     utf16_len,
-    _prefix_within_utf16_limit,
 )
 
 
@@ -19,6 +23,136 @@ class TestSecretCaptureGuidance:
         message = GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE
         assert "local cli" in message.lower()
         assert "~/.spark/.env" in message
+
+
+class ConformanceAdapter(BasePlatformAdapter):
+    """Small concrete adapter used to pin the shared platform contract."""
+
+    def __init__(self):
+        super().__init__(PlatformConfig(enabled=True, token="token"), Platform.TELEGRAM)
+        self.sent: list[tuple[str, str, str | None, dict | None]] = []
+
+    async def connect(self) -> bool:
+        if not self._acquire_platform_lock(
+            "telegram-bot-token",
+            self.config.token or "",
+            "Telegram bot token",
+        ):
+            return False
+        self._mark_connected()
+        return True
+
+    async def disconnect(self) -> None:
+        self._release_platform_lock()
+        self._mark_disconnected()
+
+    async def send(self, chat_id, content, reply_to=None, metadata=None):
+        self.sent.append((chat_id, content, reply_to, metadata))
+        if content == "fail":
+            return SendResult(success=False, error="delivery failed", retryable=True)
+        return SendResult(success=True, message_id="sent-1")
+
+    async def get_chat_info(self, chat_id):
+        return {"id": chat_id}
+
+
+class TestAdapterConformance:
+    @pytest.mark.asyncio
+    async def test_connect_disconnect_use_token_lock_and_runtime_state(self):
+        adapter = ConformanceAdapter()
+        write_status = Mock()
+        release_lock = Mock()
+
+        with patch("gateway.status.acquire_scoped_lock", return_value=(True, None)) as acquire_lock, \
+             patch("gateway.status.release_scoped_lock", release_lock), \
+             patch("gateway.status.write_runtime_status", write_status):
+            assert await adapter.connect() is True
+            assert adapter.is_connected is True
+            acquire_lock.assert_called_once_with(
+                "telegram-bot-token",
+                "token",
+                metadata={"platform": "telegram"},
+            )
+            assert write_status.call_args_list[-1].kwargs["platform_state"] == "connected"
+
+            await adapter.disconnect()
+
+        release_lock.assert_called_once_with("telegram-bot-token", "token")
+        assert adapter.is_connected is False
+        assert write_status.call_args_list[-1].kwargs["platform_state"] == "disconnected"
+
+    @pytest.mark.asyncio
+    async def test_lock_conflict_sets_non_retryable_fatal_error(self):
+        adapter = ConformanceAdapter()
+        existing = {"pid": 12345}
+
+        with patch("gateway.status.acquire_scoped_lock", return_value=(False, existing)), \
+             patch("gateway.status.write_runtime_status"):
+            assert await adapter.connect() is False
+
+        assert adapter.is_connected is False
+        assert adapter.has_fatal_error is True
+        assert adapter.fatal_error_code == "telegram-bot-token_lock"
+        assert adapter.fatal_error_retryable is False
+        assert "already in use" in (adapter.fatal_error_message or "")
+
+    @pytest.mark.asyncio
+    async def test_native_media_fallbacks_preserve_delivery_errors(self):
+        adapter = ConformanceAdapter()
+
+        image_result = await adapter.send_image(
+            chat_id="chat-1",
+            image_url="https://example.test/image.png",
+            caption="fail",
+            reply_to="msg-1",
+            metadata={"thread": "t1"},
+        )
+        animation_result = await adapter.send_animation(
+            chat_id="chat-2",
+            animation_url="https://example.test/anim.gif",
+            caption="look",
+        )
+
+        assert image_result.success is True
+        assert adapter.sent[0] == (
+            "chat-1",
+            "fail\nhttps://example.test/image.png",
+            "msg-1",
+            {"thread": "t1"},
+        )
+        assert animation_result.success is True
+        assert adapter.sent[1][1] == "look\nhttps://example.test/anim.gif"
+
+        failed = await adapter.send(chat_id="chat-3", content="fail")
+        assert failed.success is False
+        assert failed.retryable is True
+        assert failed.error == "delivery failed"
+
+    def test_media_only_placeholder_preserves_message_kind(self):
+        from gateway.run import _build_media_placeholder
+
+        image_event = MessageEvent(
+            text="",
+            message_type=MessageType.PHOTO,
+            media_urls=["/tmp/image.png"],
+            media_types=["image/png"],
+        )
+        audio_event = MessageEvent(
+            text="",
+            message_type=MessageType.AUDIO,
+            media_urls=["/tmp/audio.ogg"],
+            media_types=["audio/ogg"],
+        )
+        file_event = MessageEvent(
+            text="",
+            message_type=MessageType.DOCUMENT,
+            media_urls=["/tmp/report.pdf"],
+            media_types=["application/pdf"],
+        )
+
+        assert _build_media_placeholder(image_event) == "[User sent an image: /tmp/image.png]"
+        assert _build_media_placeholder(audio_event) == "[User sent audio: /tmp/audio.ogg]"
+        assert _build_media_placeholder(file_event) == "[User sent a file: /tmp/report.pdf]"
 
 
 class TestSafeUrlForLog:
@@ -581,4 +715,3 @@ class TestTruncateMessageUtf16:
             assert fence_count % 2 == 0, (
                 f"Chunk {i} has unbalanced fences ({fence_count})"
             )
-

@@ -125,14 +125,14 @@ class HonchoMemoryProvider(MemoryProvider):
         self._session_key = ""
         self._prefetch_result = ""
         self._prefetch_lock = threading.Lock()
-        self._prefetch_thread: Optional[threading.Thread] = None
-        self._sync_thread: Optional[threading.Thread] = None
+        self._prefetch_thread: threading.Thread | None = None
+        self._sync_thread: threading.Thread | None = None
 
         # B1: recall_mode — set during initialize from config
         self._recall_mode = "hybrid"  # "context", "tools", or "hybrid"
 
         # B4: First-turn context baking
-        self._first_turn_context: Optional[str] = None
+        self._first_turn_context: str | None = None
         self._first_turn_lock = threading.Lock()
 
         # B5: Cost-awareness turn counting and cadence
@@ -140,14 +140,14 @@ class HonchoMemoryProvider(MemoryProvider):
         self._injection_frequency = "every-turn"  # or "first-turn"
         self._context_cadence = 1   # minimum turns between context API calls
         self._dialectic_cadence = 1  # minimum turns between dialectic API calls
-        self._reasoning_level_cap: Optional[str] = None  # "minimal", "low", "mid", "high"
+        self._reasoning_level_cap: str | None = None  # "minimal", "low", "mid", "high"
         self._last_context_turn = -999
         self._last_dialectic_turn = -999
 
         # Port #1957: lazy session init for tools-only mode
         self._session_initialized = False
-        self._lazy_init_kwargs: Optional[dict] = None
-        self._lazy_init_session_id: Optional[str] = None
+        self._lazy_init_kwargs: dict | None = None
+        self._lazy_init_session_id: str | None = None
 
         # Port #4053: cron guard — when True, plugin is fully inactive
         self._cron_skipped = False
@@ -189,6 +189,7 @@ class HonchoMemoryProvider(MemoryProvider):
     def post_setup(self, spark_home: str, config: dict) -> None:
         """Run the full Honcho setup wizard after provider selection."""
         import types
+
         from plugins.memory.honcho.cli import cmd_setup
         cmd_setup(types.SimpleNamespace())
 
@@ -619,7 +620,7 @@ class HonchoMemoryProvider(MemoryProvider):
         t = threading.Thread(target=_write, daemon=True, name="honcho-memwrite")
         t.start()
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         """Flush all pending messages to Honcho on session end."""
         if self._cron_skipped:
             return
@@ -633,7 +634,7 @@ class HonchoMemoryProvider(MemoryProvider):
         except Exception as e:
             logger.debug("Honcho session-end flush failed: %s", e)
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         """Return tool schemas, respecting recall_mode.
 
         B1: context-only mode hides all tools.

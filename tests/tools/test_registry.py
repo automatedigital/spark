@@ -45,6 +45,35 @@ class TestRegisterAndDispatch:
         result = json.loads(reg.dispatch("echo", {"msg": "hi"}))
         assert result == {"msg": "hi"}
 
+    def test_dispatch_accepts_dict_handler_result(self):
+        reg = ToolRegistry()
+
+        def dict_handler(args, **kw):
+            return {"ok": True, "args": args}
+
+        reg.register(
+            name="dict_result",
+            toolset="core",
+            schema=_make_schema("dict_result"),
+            handler=dict_handler,
+        )
+
+        result = json.loads(reg.dispatch("dict_result", {"value": 1}))
+        assert result == {"ok": True, "args": {"value": 1}}
+
+    def test_dispatch_rejects_plain_string_handler_result(self):
+        reg = ToolRegistry()
+        reg.register(
+            name="plain_text",
+            toolset="core",
+            schema=_make_schema("plain_text"),
+            handler=lambda args, **kw: "not json",
+        )
+
+        result = json.loads(reg.dispatch("plain_text", {}))
+        assert result["error"] == "Tool handler returned a non-JSON string result"
+        assert result["tool"] == "plain_text"
+
 
 class TestGetDefinitions:
     def test_returns_openai_format(self):
@@ -284,6 +313,43 @@ class TestCheckFnExceptionHandling:
         available, unavailable = reg.check_tool_availability()
         assert "works" in available
         assert any(u["name"] == "crashes" for u in unavailable)
+
+
+class TestRegistryHealthReport:
+    def test_health_report_lists_missing_env_vars_and_import_errors(self, monkeypatch):
+        monkeypatch.delenv("MISSING_TOOL_KEY", raising=False)
+        reg = ToolRegistry()
+        reg.register(
+            name="ready",
+            toolset="core",
+            schema=_make_schema("ready"),
+            handler=_dummy_handler,
+            check_fn=lambda: True,
+        )
+        reg.register(
+            name="needs_key",
+            toolset="external",
+            schema=_make_schema("needs_key"),
+            handler=_dummy_handler,
+            check_fn=lambda: False,
+            requires_env=["MISSING_TOOL_KEY"],
+        )
+        reg.register(
+            name="missing_sdk",
+            toolset="external",
+            schema=_make_schema("missing_sdk"),
+            handler=_dummy_handler,
+            check_fn=lambda: (_ for _ in ()).throw(ImportError("no sdk")),
+        )
+
+        report = reg.get_health_report()
+        available = {item["name"]: item for item in report["available"]}
+        unavailable = {item["name"]: item for item in report["unavailable"]}
+
+        assert "ready" in available
+        assert unavailable["needs_key"]["missing_env_vars"] == ["MISSING_TOOL_KEY"]
+        assert unavailable["missing_sdk"]["error_type"] == "ImportError"
+        assert unavailable["missing_sdk"]["error"] == "no sdk"
 
 
 class TestEmojiMetadata:

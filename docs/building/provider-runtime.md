@@ -149,7 +149,7 @@ Both `provider` and `model` must be non-empty or fallback is disabled.
 - **Cron jobs** (`cron/`) — run with a fixed provider, no fallback
 - **Auxiliary tasks** — use their own independent provider auto-detection chain
 
-See `tests/test_fallback_model.py` for comprehensive tests covering all supported providers, one-shot semantics, and edge cases.
+See `tests/run_agent/test_fallback_model.py` for comprehensive tests covering all supported providers, one-shot semantics, and edge cases.
 
 ## Related Docs
 

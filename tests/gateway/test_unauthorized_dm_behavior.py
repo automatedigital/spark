@@ -4,6 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import gateway.run as gateway_run
+from gateway.authz import (
+    PLATFORM_ALLOW_ALL_ENV,
+    PLATFORM_ALLOWED_USERS_ENV,
+    is_user_authorized,
+)
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent
 from gateway.session import SessionSource
@@ -34,6 +39,10 @@ def _clear_auth_env(monkeypatch) -> None:
         "DINGTALK_ALLOW_ALL_USERS", "FEISHU_ALLOW_ALL_USERS", "WECOM_ALLOW_ALL_USERS",
         "GATEWAY_ALLOW_ALL_USERS",
     ):
+        monkeypatch.delenv(key, raising=False)
+    for key in PLATFORM_ALLOWED_USERS_ENV.values():
+        monkeypatch.delenv(key, raising=False)
+    for key in PLATFORM_ALLOW_ALL_ENV.values():
         monkeypatch.delenv(key, raising=False)
 
 
@@ -128,6 +137,56 @@ def test_star_wildcard_works_for_any_platform(monkeypatch):
         chat_type="dm",
     )
     assert runner._is_user_authorized(source) is True
+
+
+@pytest.mark.parametrize("platform,env_var", sorted(
+    PLATFORM_ALLOWED_USERS_ENV.items(),
+    key=lambda item: item[0].value,
+))
+def test_authz_platform_allowlist_authorizes_matching_user(monkeypatch, tmp_path, platform, env_var):
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv(env_var, "user-123")
+    pairing_store = MagicMock()
+    pairing_store.is_approved.return_value = False
+
+    source = SessionSource(
+        platform=platform,
+        user_id="user-123",
+        chat_id="chat-123",
+        user_name="tester",
+        chat_type="dm",
+    )
+
+    assert is_user_authorized(
+        source,
+        pairing_store=pairing_store,
+        spark_home=tmp_path,
+    ) is True
+
+
+@pytest.mark.parametrize("platform,env_var", sorted(
+    PLATFORM_ALLOW_ALL_ENV.items(),
+    key=lambda item: item[0].value,
+))
+def test_authz_platform_allow_all_authorizes_any_user(monkeypatch, tmp_path, platform, env_var):
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv(env_var, "true")
+    pairing_store = MagicMock()
+    pairing_store.is_approved.return_value = False
+
+    source = SessionSource(
+        platform=platform,
+        user_id="stranger",
+        chat_id="chat-123",
+        user_name="tester",
+        chat_type="dm",
+    )
+
+    assert is_user_authorized(
+        source,
+        pairing_store=pairing_store,
+        spark_home=tmp_path,
+    ) is True
 
 
 @pytest.mark.asyncio

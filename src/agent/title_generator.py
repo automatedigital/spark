@@ -6,7 +6,7 @@ adds latency to the user-facing reply.
 
 import logging
 import threading
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from agent.auxiliary_client import call_llm
 
@@ -19,7 +19,7 @@ _TITLE_PROMPT = (
 )
 
 
-def generate_title(user_message: str, assistant_response: str, timeout: float = 30.0) -> Optional[str]:
+def generate_title(user_message: str, assistant_response: str, timeout: float = 30.0) -> str | None:
     """Generate a session title from the first exchange.
 
     Uses the auxiliary LLM client (cheapest/fastest available model).
@@ -61,7 +61,7 @@ def auto_title_session(
     session_id: str,
     user_message: str,
     assistant_response: str,
-    on_titled: Optional[Callable[[str], None]] = None,
+    on_titled: Callable[[str], None] | None = None,
 ) -> None:
     """Generate and set a session title if one doesn't already exist.
 
@@ -109,7 +109,7 @@ def maybe_auto_title(
     user_message: str,
     assistant_response: str,
     conversation_history: list,
-    on_titled: Optional[Callable[[str], None]] = None,
+    on_titled: Callable[[str], None] | None = None,
 ) -> None:
     """Fire-and-forget title generation after the first exchange.
 

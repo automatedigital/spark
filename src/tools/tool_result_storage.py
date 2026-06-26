@@ -28,9 +28,9 @@ import shlex
 import uuid
 
 from tools.budget_config import (
+    DEFAULT_BUDGET,
     DEFAULT_PREVIEW_SIZE_CHARS,
     BudgetConfig,
-    DEFAULT_BUDGET,
 )
 
 logger = logging.getLogger(__name__)

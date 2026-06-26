@@ -36,7 +36,7 @@ registry.register(
 )
 ```
 
-Each call creates a `ToolEntry` stored in the singleton `ToolRegistry._tools` dict, keyed by tool name. If two tools share a name, the later registration wins and a warning is logged.
+Each call creates a typed `ToolEntry` stored in the singleton `ToolRegistry._tools` dict, keyed by tool name. If two tools share a name, the later registration wins and a warning is logged. Handlers are expected to return JSON strings; `registry.dispatch()` also accepts structured `dict`/`list` results and serializes them, but plain non-JSON strings are converted into a `tool_error` payload so the model always receives parseable JSON.
 
 ### Discovery: `_discover_tools()`
 
@@ -103,6 +103,7 @@ Key behaviors:
 - Check results are **cached per-call** — shared `check_fn` references only run once.
 - Exceptions in `check_fn()` are treated as "unavailable" — fail-safe by default.
 - `is_toolset_available()` checks whether a toolset's `check_fn` passes, used for UI display and toolset resolution.
+- `registry.get_health_report()` reports each registered tool's availability, declared missing env vars, and `check_fn` exception type/message for diagnostics and tests.
 
 ## Toolset resolution
 
@@ -134,7 +135,7 @@ When the model returns a `tool_call`, the flow is:
 ```
 Model response with tool_call
     ↓
-run_agent.py agent loop
+core/run_agent/ agent loop
     ↓
 model_tools.handle_function_call(name, args, task_id, user_task)
     ↓

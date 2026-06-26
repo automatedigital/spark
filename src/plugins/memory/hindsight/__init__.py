@@ -23,8 +23,7 @@ import json
 import logging
 import os
 import threading
-
-from core.spark_constants import get_spark_home
+from datetime import UTC
 from typing import Any, Dict, List
 
 from agent.memory_provider import MemoryProvider
@@ -261,13 +260,12 @@ class HindsightMemoryProvider(MemoryProvider):
     def post_setup(self, spark_home: str, config: dict) -> None:
         """Custom setup wizard — installs only the deps needed for the selected mode."""
         import getpass
-        import subprocess
         import shutil
+        import subprocess
         import sys
         from pathlib import Path
 
         from spark_cli.config import save_config
-
         from spark_cli.memory_setup import _curses_select
 
         print("\n  Configuring Hindsight memory:\n")
@@ -472,12 +470,15 @@ class HindsightMemoryProvider(MemoryProvider):
         # Check client version and auto-upgrade if needed
         try:
             from importlib.metadata import version as pkg_version
+
             from packaging.version import Version
             installed = pkg_version("hindsight-client")
             if Version(installed) < Version(_MIN_CLIENT_VERSION):
                 logger.warning("hindsight-client %s is outdated (need >=%s), attempting upgrade...",
                                installed, _MIN_CLIENT_VERSION)
-                import shutil, subprocess, sys
+                import shutil
+                import subprocess
+                import sys
                 uv_path = shutil.which("uv")
                 if uv_path:
                     try:
@@ -722,7 +723,7 @@ class HindsightMemoryProvider(MemoryProvider):
             return
 
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         messages = [
             {"role": "user", "content": user_content, "timestamp": now},
@@ -771,7 +772,7 @@ class HindsightMemoryProvider(MemoryProvider):
         self._sync_thread = threading.Thread(target=_sync, daemon=True, name="hindsight-sync")
         self._sync_thread.start()
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         if self._memory_mode == "context":
             return []
         return [RETAIN_SCHEMA, RECALL_SCHEMA, REFLECT_SCHEMA]

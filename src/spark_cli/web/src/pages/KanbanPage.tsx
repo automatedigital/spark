@@ -423,10 +423,10 @@ export default function KanbanPage() {
     const project = workspaceProjects.find((p) => p.path === workspacePath);
     if (project) {
       const res = await api.uploadWorkspaceFiles(project.slug, files, "files");
-      return { count: res.saved.length, where: `workspace/${project.slug}/files` };
+      return { count: res.saved.length, where: `${project.name} project files` };
     }
     const res = await api.uploadChatFiles(files);
-    return { count: res.saved.length, where: `workspace/files` };
+    return { count: res.saved.length, where: "chat files" };
   };
 
   const onUploadToTask = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -436,7 +436,7 @@ export default function KanbanPage() {
     setUploadingTask(true);
     try {
       const { count, where } = await uploadFilesForPath(files, detail.workspace_path ?? null);
-      showToast(`Uploaded ${count} file${count === 1 ? "" : "s"} to ${where}/`, "success");
+      showToast(`Uploaded ${count} file${count === 1 ? "" : "s"} to ${where}`, "success");
     } catch (err2) {
       setErr(err2 instanceof Error ? err2.message : String(err2));
     } finally {
@@ -452,7 +452,7 @@ export default function KanbanPage() {
     try {
       const project = workspaceProjects.find((p) => p.slug === newWorkspaceSlug);
       const { count, where } = await uploadFilesForPath(files, project?.path ?? null);
-      showToast(`Uploaded ${count} file${count === 1 ? "" : "s"} to ${where}/`, "success");
+      showToast(`Uploaded ${count} file${count === 1 ? "" : "s"} to ${where}`, "success");
     } catch (err2) {
       setErr(err2 instanceof Error ? err2.message : String(err2));
     } finally {
@@ -768,7 +768,7 @@ export default function KanbanPage() {
                 />
               </label>
               <label className="flex flex-col col-span-2 gap-1">
-                <span className="uppercase tracking-wider opacity-70">Workspace Project</span>
+                <span className="uppercase tracking-wider opacity-70">Project</span>
                 <select
                   key={`workspace-${detail.id}-${String(detail.workspace_path ?? "")}`}
                   className="border border-border bg-background px-2 py-1"
@@ -808,8 +808,8 @@ export default function KanbanPage() {
                 {(() => {
                   const proj = workspaceProjects.find((p) => p.path === detail.workspace_path);
                   return proj
-                    ? `→ workspace/${proj.slug}/files/`
-                    : "→ workspace/files/";
+                    ? `→ ${proj.name} project files`
+                    : "→ chat files";
                 })()}
               </span>
             </div>

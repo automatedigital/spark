@@ -14,7 +14,7 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +64,11 @@ class ClassifiedError:
     """Structured classification of an API error with recovery hints."""
 
     reason: FailoverReason
-    status_code: Optional[int] = None
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    status_code: int | None = None
+    provider: str | None = None
+    model: str | None = None
     message: str = ""
-    error_context: Dict[str, Any] = field(default_factory=dict)
+    error_context: dict[str, Any] = field(default_factory=dict)
 
     # Recovery action hints — the retry loop checks these instead of
     # re-classifying the error itself.
@@ -81,6 +81,33 @@ class ClassifiedError:
     def is_auth(self) -> bool:
         return self.reason in (FailoverReason.auth, FailoverReason.auth_permanent)
 
+
+def make_classified_error(
+    reason: FailoverReason,
+    *,
+    status_code: int | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    message: str = "",
+    error_context: dict[str, Any] | None = None,
+    retryable: bool = True,
+    should_compress: bool = False,
+    should_rotate_credential: bool = False,
+    should_fallback: bool = False,
+) -> ClassifiedError:
+    """Build a classified error without unstructured dict splats."""
+    return ClassifiedError(
+        reason=reason,
+        status_code=status_code,
+        provider=provider,
+        model=model,
+        message=message,
+        error_context=error_context or {},
+        retryable=retryable,
+        should_compress=should_compress,
+        should_rotate_credential=should_rotate_credential,
+        should_fallback=should_fallback,
+    )
 
 
 # ── Provider-specific patterns ──────────────────────────────────────────
@@ -308,16 +335,27 @@ def classify_api_error(
     provider_lower = (provider or "").strip().lower()
     model_lower = (model or "").strip().lower()
 
-    def _result(reason: FailoverReason, **overrides) -> ClassifiedError:
-        defaults = {
-            "reason": reason,
-            "status_code": status_code,
-            "provider": provider,
-            "model": model,
-            "message": _extract_message(error, body),
-        }
-        defaults.update(overrides)
-        return ClassifiedError(**defaults)
+    def _result(
+        reason: FailoverReason,
+        *,
+        error_context: dict[str, Any] | None = None,
+        retryable: bool = True,
+        should_compress: bool = False,
+        should_rotate_credential: bool = False,
+        should_fallback: bool = False,
+    ) -> ClassifiedError:
+        return make_classified_error(
+            reason,
+            status_code=status_code,
+            provider=provider,
+            model=model,
+            message=_extract_message(error, body),
+            error_context=error_context,
+            retryable=retryable,
+            should_compress=should_compress,
+            should_rotate_credential=should_rotate_credential,
+            should_fallback=should_fallback,
+        )
 
     # ── 1. Provider-specific patterns (highest priority) ────────────
 
@@ -420,7 +458,7 @@ def _classify_by_status(
     context_length: int,
     num_messages: int = 0,
     result_fn,
-) -> Optional[ClassifiedError]:
+) -> ClassifiedError | None:
     """Classify based on HTTP status code with message-aware refinement."""
 
     if status_code == 401:
@@ -623,7 +661,7 @@ def _classify_400(
 
 def _classify_by_error_code(
     error_code: str, error_msg: str, result_fn,
-) -> Optional[ClassifiedError]:
+) -> ClassifiedError | None:
     """Classify by structured error codes from the response body."""
     code_lower = error_code.lower()
 
@@ -668,7 +706,7 @@ def _classify_by_message(
     approx_tokens: int,
     context_length: int,
     result_fn,
-) -> Optional[ClassifiedError]:
+) -> ClassifiedError | None:
     """Classify based on error message patterns when no status code is available."""
 
     # Payload-too-large patterns (from message text when no status_code)
@@ -752,7 +790,7 @@ def _classify_by_message(
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
-def _extract_status_code(error: Exception) -> Optional[int]:
+def _extract_status_code(error: Exception) -> int | None:
     """Walk the error and its cause chain to find an HTTP status code."""
     current = error
     for _ in range(5):  # Max depth to prevent infinite loops

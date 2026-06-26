@@ -24,7 +24,7 @@ class _VoiceMixin:
         """Start capturing audio from the microphone."""
         if getattr(self, "_should_exit", False):
             return
-        from tools.voice_mode import create_audio_recorder, check_voice_requirements
+        from tools.voice_mode import check_voice_requirements, create_audio_recorder
 
         reqs = check_voice_requirements()
         if not reqs["audio_available"]:
@@ -236,9 +236,10 @@ class _VoiceMixin:
             return
         self._voice_tts_done.clear()
         try:
+            import re
+
             from tools.tts_tool import text_to_speech_tool
             from tools.voice_mode import play_audio_file
-            import re
 
             # Strip markdown and non-speech content for cleaner TTS
             tts_text = text[:4000] if len(text) > 4000 else text

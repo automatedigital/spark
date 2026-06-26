@@ -10,11 +10,11 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_skill_commands: Dict[str, Dict[str, Any]] = {}
+_skill_commands: dict[str, dict[str, Any]] = {}
 _PLAN_SLUG_RE = re.compile(r"[^a-z0-9]+")
 # Patterns for sanitizing skill names into clean hyphen-separated slugs.
 _SKILL_INVALID_CHARS = re.compile(r"[^a-z0-9-]")
@@ -197,7 +197,7 @@ def _build_skill_message(
     return "\n".join(parts)
 
 
-def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
+def scan_skill_commands() -> dict[str, dict[str, Any]]:
     """Scan ~/.spark/skills/ and return a mapping of /command -> skill info.
 
     Returns:
@@ -206,8 +206,13 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
     global _skill_commands
     _skill_commands = {}
     try:
-        from tools.skills_tool import SKILLS_DIR, _parse_frontmatter, skill_matches_platform, _get_disabled_skill_names
         from agent.skill_utils import get_external_skills_dirs
+        from tools.skills_tool import (
+            SKILLS_DIR,
+            _get_disabled_skill_names,
+            _parse_frontmatter,
+            skill_matches_platform,
+        )
         disabled = _get_disabled_skill_names()
         seen_names: set = set()
 
@@ -263,14 +268,14 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
     return _skill_commands
 
 
-def get_skill_commands() -> Dict[str, Dict[str, Any]]:
+def get_skill_commands() -> dict[str, dict[str, Any]]:
     """Return the current skill commands mapping (scan first if empty)."""
     if not _skill_commands:
         scan_skill_commands()
     return _skill_commands
 
 
-def resolve_skill_command_key(command: str) -> Optional[str]:
+def resolve_skill_command_key(command: str) -> str | None:
     """Resolve a user-typed /command to its canonical skill_cmds key.
 
     Skills are always stored with hyphens — ``scan_skill_commands`` normalizes
@@ -294,7 +299,7 @@ def build_skill_invocation_message(
     user_instruction: str = "",
     task_id: str | None = None,
     runtime_note: str = "",
-) -> Optional[str]:
+) -> str | None:
     """Build the user message content for a skill slash command invocation.
 
     Args:

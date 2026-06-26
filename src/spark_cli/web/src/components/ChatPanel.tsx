@@ -19,6 +19,12 @@ import {
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api } from "@/lib/api";
 import type { SessionMessage } from "@/lib/api";
+import { shouldPollBackendActiveTurn, streamingRecoveryDecision } from "@/lib/chatRecovery";
+import {
+  collapseChatMessagesForVirtualizer,
+  estimateChatRowSize,
+  type CollapsedChatItem,
+} from "@/lib/chatListVirtualization";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -88,7 +94,7 @@ interface ChatPanelProps {
   onSessionUpdated?: (id: string) => void;
   sessionTitle?: string | null;
   initialMessage?: string;
-  workspaceSlug?: string;
+  projectSlug?: string;
   className?: string;
 }
 
@@ -256,14 +262,6 @@ type ApprovalMsg = Extract<ChatMessage, { role: "approval" }>;
 type NoteMsg = Extract<ChatMessage, { role: "note" }>;
 type FeedbackFormMsg = Extract<ChatMessage, { role: "feedback_form" }>;
 
-function toolDurationSeconds(msg: ToolMsg): number | undefined {
-  if (typeof msg.durationSeconds === "number") return Math.max(0, msg.durationSeconds);
-  if (typeof msg.startedAt === "number" && typeof msg.endedAt === "number") {
-    return Math.max(0, msg.endedAt - msg.startedAt);
-  }
-  return undefined;
-}
-
 const MODE_SHORT: Record<string, string> = {
   path_only: "path", excerpt: "excerpt", summary: "summary", full: "full", search: "search",
 };
@@ -367,9 +365,6 @@ const AssistantRow = memo(function AssistantRow({
             <span className="text-xs">Thinking…</span>
           </span>
         )}
-        {msg.streaming && msg.content ? (
-          <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-success align-middle" />
-        ) : null}
         {!msg.streaming && msg.content && onPromoteToBrief && (
           <div className="absolute -top-2 right-0 opacity-0 group-hover/amsg:opacity-100 transition-opacity">
             <Button
@@ -482,7 +477,7 @@ export function ChatPanel({
   onSessionCreated,
   onSessionUpdated,
   initialMessage,
-  workspaceSlug,
+  projectSlug,
   className,
 }: ChatPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -1173,32 +1168,24 @@ export function ChatPanel({
     if (!streaming) return;
     lastEventAtRef.current = Date.now();
     if (!lastTokenAtRef.current) lastTokenAtRef.current = Date.now();
-    const STALL_MS = 3_000;
     const interval = setInterval(() => {
       if (!streamingRef.current) return;
       const now = Date.now();
       const elapsed = now - lastEventAtRef.current;
       const tokenElapsed = now - (lastTokenAtRef.current || lastEventAtRef.current);
-      if (elapsed >= 30_000) {
-        setStatusLabel("Reconnecting…");
-      } else if (elapsed >= 12_000) {
-        setStatusLabel("Still waiting for backend…");
-      } else if (tokenElapsed >= 12_000) {
-        setStatusLabel("Waiting for provider response…");
-      } else if (elapsed >= STALL_MS) {
-        setStatusLabel((prev) => prev ?? "Still working…");
-      }
-      if (elapsed >= STALL_MS || tokenElapsed >= 12_000) {
+      const decision = streamingRecoveryDecision(elapsed, tokenElapsed, statusLabel);
+      if (decision.statusLabel) setStatusLabel(decision.statusLabel);
+      if (decision.shouldResync) {
         void resyncTurnState();
       }
     }, 2_000);
     return () => clearInterval(interval);
-  }, [streaming, resyncTurnState]);
+  }, [streaming, resyncTurnState, statusLabel]);
 
   // If a missed event or app resume leaves the local UI idle while the backend
   // still has an active turn, restore the working controls from turn-status.
   useEffect(() => {
-    if (!activeSessionId || streaming) return;
+    if (!shouldPollBackendActiveTurn(activeSessionId, streaming)) return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -1392,15 +1379,15 @@ export function ChatPanel({
   }, []);
 
   const uploadFiles = useCallback(async (files: File[]) => {
-    const res = workspaceSlug
-      ? await api.uploadWorkspaceFiles(workspaceSlug, files, "files")
+    const res = projectSlug
+      ? await api.uploadWorkspaceFiles(projectSlug, files, "files")
       : await api.uploadChatFiles(files);
     for (const f of res.saved) {
       const path = "path" in f ? (f as { path: string }).path : `files/${f.filename}`;
       const sizeBytes = "size" in f ? (f as { size?: number }).size ?? 0 : 0;
       setContextItems((prev) => [...prev, makeFileContextItem(path, sizeBytes)]);
     }
-  }, [workspaceSlug]);
+  }, [projectSlug]);
 
   const attachPath = useCallback((path: string, sizeBytes = 0) => {
     setContextItems((prev) => {
@@ -1474,7 +1461,7 @@ export function ChatPanel({
       const res = await fetch("/api/summarize-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: item.source_path, workspace_slug: workspaceSlug }),
+        body: JSON.stringify({ path: item.source_path, workspace_slug: projectSlug }),
       });
       if (!res.ok) return;
       const { summary } = await res.json() as { summary: string };
@@ -1483,7 +1470,7 @@ export function ChatPanel({
     } catch {
       // silently ignore — user can retry
     }
-  }, [contextItems, workspaceSlug, updateContextMode]);
+  }, [contextItems, projectSlug, updateContextMode]);
 
   const handlePromoteToBrief = useCallback((text: string) => {
     if (!activeSessionId) return;
@@ -1599,46 +1586,10 @@ export function ChatPanel({
 
   // Collapse consecutive same-name tool calls and append a typing indicator
   // synthetic entry when streaming has started but no assistant token arrived yet.
-  type CollapsedItem = { msg: ChatMessage; repeatCount: number; id: string } | { msg: null; id: "typing" };
-  const collapsedMessages = useMemo<CollapsedItem[]>(() => {
-    const collapsed: CollapsedItem[] = [];
-    for (const msg of chatMessages) {
-      const prev = collapsed[collapsed.length - 1];
-      if (
-        msg.role === "tool" &&
-        prev && prev.msg !== null && prev.msg.role === "tool" &&
-        msg.name === (prev.msg as Extract<ChatMessage, { role: "tool" }>).name
-      ) {
-        const previousTool = prev.msg as ToolMsg;
-        const previousDuration = toolDurationSeconds(previousTool);
-        const currentDuration = toolDurationSeconds(msg);
-        const combinedDuration =
-          previousDuration !== undefined || currentDuration !== undefined
-            ? (previousDuration ?? 0) + (currentDuration ?? 0)
-            : undefined;
-        collapsed[collapsed.length - 1] = {
-          msg: {
-            ...msg,
-            startedAt: previousTool.startedAt ?? msg.startedAt,
-            durationSeconds: combinedDuration,
-          },
-          repeatCount: (prev as { msg: ChatMessage; repeatCount: number; id: string }).repeatCount + 1,
-          id: prev.id,
-        };
-      } else {
-        collapsed.push({ msg, repeatCount: 0, id: msg.id });
-      }
-    }
-    // Append typing indicator if streaming but last message isn't an active assistant bubble
-    if (streaming) {
-      const last = chatMessages[chatMessages.length - 1];
-      const isAlreadyStreamingAssistant = last?.role === "assistant" && (last.streaming || !last.content);
-      if (!isAlreadyStreamingAssistant) {
-        collapsed.push({ msg: null, id: "typing" } as CollapsedItem);
-      }
-    }
-    return collapsed;
-  }, [chatMessages, streaming]);
+  const collapsedMessages = useMemo<CollapsedChatItem<ChatMessage>[]>(
+    () => collapseChatMessagesForVirtualizer(chatMessages, streaming),
+    [chatMessages, streaming],
+  );
 
   const streamingAssistantChars = useMemo(() => {
     for (let i = chatMessages.length - 1; i >= 0; i--) {
@@ -1648,28 +1599,10 @@ export function ChatPanel({
     return 0;
   }, [chatMessages]);
 
-  const estimateRowSize = useCallback((index: number) => {
-    const item = collapsedMessages[index];
-    if (!item || item.msg === null) return 56;
-    switch (item.msg.role) {
-      case "user":
-        return 72;
-      case "assistant":
-        return Math.min(900, Math.max(96, Math.ceil(item.msg.content.length / 95) * 22 + 48));
-      case "tool":
-        return 44;
-      case "reasoning":
-        return 44;
-      case "approval":
-        return 160;
-      case "feedback_form":
-        return 280;
-      case "note":
-        return 32;
-      default:
-        return 80;
-    }
-  }, [collapsedMessages]);
+  const estimateRowSize = useCallback(
+    (index: number) => estimateChatRowSize(collapsedMessages[index]),
+    [collapsedMessages],
+  );
 
   const virtualizer = useVirtualizer({
     count: collapsedMessages.length,
@@ -2030,7 +1963,7 @@ export function ChatPanel({
         onRemoveContextItem={removeContextItem}
         onUpdateContextMode={updateContextMode}
         disabled={!!editingUser}
-        workspaceSlug={workspaceSlug}
+        projectSlug={projectSlug}
         contextItems={contextItems}
         sessionId={activeSessionId}
       />

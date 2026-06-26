@@ -5,12 +5,12 @@ import type { FileListEntry } from "@/lib/api";
 
 interface AtFileMenuProps {
   query: string;          // text typed after @, e.g. "src/comp" or ""
-  workspaceSlug?: string; // present when in workspace context
+  projectSlug?: string;   // present when in project context
   onSelect: (path: string, isDir: boolean) => void;
   onClose: () => void;
 }
 
-export function AtFileMenu({ query, workspaceSlug, onSelect, onClose }: AtFileMenuProps) {
+export function AtFileMenu({ query, projectSlug, onSelect, onClose }: AtFileMenuProps) {
   const [entries, setEntries] = useState<FileListEntry[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -23,15 +23,15 @@ export function AtFileMenu({ query, workspaceSlug, onSelect, onClose }: AtFileMe
   useEffect(() => {
     const timer = setTimeout(() => {
       const controller = new AbortController();
-      if (workspaceSlug) {
-        api.listWorkspaceDir(workspaceSlug, dirPath).then((r) => setEntries(r.entries)).catch(() => {});
+      if (projectSlug) {
+        api.listWorkspaceDir(projectSlug, dirPath).then((r) => setEntries(r.entries)).catch(() => {});
       } else {
         api.listChatFiles(dirPath).then((r) => setEntries(r.entries)).catch(() => {});
       }
       return () => controller.abort();
     }, 200);
     return () => clearTimeout(timer);
-  }, [workspaceSlug, dirPath]);
+  }, [projectSlug, dirPath]);
 
   const filtered = entries.filter(
     (e) => !nameFilter || e.name.toLowerCase().startsWith(nameFilter.toLowerCase()),

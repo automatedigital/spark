@@ -11,10 +11,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_home
-
 
 # ---------------------------------------------------------------------------
 # Paste services — try paste.rs first, dpaste.com as fallback.
@@ -112,7 +110,7 @@ def upload_to_pastebin(content: str, expiry_days: int = 7) -> str:
 # Log file reading
 # ---------------------------------------------------------------------------
 
-def _resolve_log_path(log_name: str) -> Optional[Path]:
+def _resolve_log_path(log_name: str) -> Path | None:
     """Find the log file for *log_name*, falling back to the .1 rotation.
 
     Returns the path if found, or None.
@@ -151,7 +149,7 @@ def _read_log_tail(log_name: str, num_lines: int) -> str:
         return f"(error reading: {exc})"
 
 
-def _read_full_log(log_name: str, max_bytes: int = _MAX_LOG_BYTES) -> Optional[str]:
+def _read_full_log(log_name: str, max_bytes: int = _MAX_LOG_BYTES) -> str | None:
     """Read a log file for standalone upload.
 
     Returns the file content (last *max_bytes* if truncated), or None if the

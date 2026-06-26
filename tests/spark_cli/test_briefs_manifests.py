@@ -102,3 +102,21 @@ def test_manifest_api_returns_empty_for_unknown(client):
     r = client.get("/api/workspace/projects/unknown-slug/manifest")
     assert r.status_code == 200
     assert r.json()["data"] == {}
+
+
+def test_project_manifest_canonical_route_matches_workspace_compat(client):
+    canonical = client.put("/api/projects/demo/manifest", json={"data": {"notes": "canonical"}})
+    compat = client.get("/api/workspace/projects/demo/manifest")
+
+    assert canonical.status_code == 200
+    assert canonical.json()["workspace_slug"] == "demo"
+    assert compat.json()["data"] == {"notes": "canonical"}
+
+
+def test_project_compat_routes_are_registered_on_project_router(client):
+    import spark_cli.web_server as web_server
+
+    paths = {getattr(route, "path", "") for route in web_server.project_compat_router.routes}
+
+    assert "/api/projects/{slug}/manifest" in paths
+    assert "/api/workspace/projects/{slug}/manifest" in paths

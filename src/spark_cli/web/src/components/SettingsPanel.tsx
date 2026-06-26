@@ -871,7 +871,7 @@ const SECTION_GROUPS: SectionDef[][] = [
     { id: "model", label: "Model", icon: Cpu, component: ModelSection },
     { id: "chat", label: "Chat", icon: MessageCircle, component: ChatSection },
     { id: "appearance", label: "Appearance", icon: Palette, component: AppearancePage },
-    { id: "workspace", label: "Workspace", icon: Monitor, component: WorkspaceSection },
+    { id: "workspace", label: "Project", icon: Monitor, component: WorkspaceSection },
     { id: "safety", label: "Safety", icon: Shield, component: SafetySection },
     { id: "memory", label: "Memory & Context", icon: Brain, component: MemoryContextSection },
     { id: "voice", label: "Voice", icon: Mic, component: VoiceSection },

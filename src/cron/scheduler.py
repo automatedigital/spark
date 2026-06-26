@@ -33,8 +33,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.spark_constants import get_spark_home
-from spark_cli.config import load_config
 from core.spark_time import now as _spark_now
+from spark_cli.config import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def _build_known_delivery_platforms() -> frozenset:
 
 _KNOWN_DELIVERY_PLATFORMS = _build_known_delivery_platforms()
 
-from cron.jobs import get_due_jobs, mark_job_run, save_job_output, advance_next_run
+from cron.jobs import advance_next_run, get_due_jobs, mark_job_run, save_job_output
 
 # Sentinel: when a cron agent has nothing new to report, it can start its
 # response with this marker to suppress delivery.  Output is still saved
@@ -323,7 +323,7 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> str | 
             job["id"], platform_name, chat_id, thread_id,
         )
 
-    from gateway.config import load_gateway_config, Platform
+    from gateway.config import Platform, load_gateway_config
 
     platform_map = {p.value: p for p in Platform}
     platform = platform_map.get(platform_name.lower())
@@ -644,7 +644,7 @@ def _setup_job_environment(job: dict) -> dict:
             pfpath = _spark_home / pfpath
         if pfpath.exists():
             try:
-                with open(pfpath, "r", encoding="utf-8") as _pf:
+                with open(pfpath, encoding="utf-8") as _pf:
                     prefill_messages = _json.load(_pf)
                 if not isinstance(prefill_messages, list):
                     prefill_messages = None
@@ -676,9 +676,9 @@ def _setup_job_environment(job: dict) -> dict:
 
 def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session_id: str):
     """Resolve provider/model routing and construct the AIAgent for a cron job."""
-    from core.run_agent import AIAgent
-    from spark_cli.runtime_provider import resolve_runtime_provider, format_runtime_provider_error
     from agent.smart_model_routing import resolve_turn_route
+    from core.run_agent import AIAgent
+    from spark_cli.runtime_provider import format_runtime_provider_error, resolve_runtime_provider
 
     job_id = job["id"]
     model = env["model"]
@@ -911,7 +911,7 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         elif msvcrt:
             msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
-    except (OSError, IOError):
+    except OSError:
         logger.debug("Tick skipped — another instance holds the lock")
         if lock_fd is not None:
             lock_fd.close()
@@ -989,7 +989,7 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
         elif msvcrt:
             try:
                 msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
-            except (OSError, IOError):
+            except OSError:
                 pass
         lock_fd.close()
 

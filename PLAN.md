@@ -1,200 +1,424 @@
-# Stabilize Desktop Chat Streaming and Issue Capture
+# Improve Spark Codebase Maintainability, Reliability, and Product Coherence
 
 ## Goal
 
-Fix the desktop/web chat reliability regressions reported on 2026-06-24 before adding the new `/issue` workflow.
+Make Spark easier to change without losing the product qualities that matter most:
+prompt caching remains stable, profiles stay isolated, Chat remains responsive,
+tools stay predictable, and contributors can find the right code path quickly.
 
-The main product outcome is simple: while Spark is working, the UI must always look alive, remain editable, expose a reliable stop control, avoid render freezes on long markdown, and recover truthfully from backend stalls, retries, interrupts, and EventSource drops.
+This plan intentionally replaces the completed tactical chat-streaming plan that
+is still recoverable from git history. The new focus is broader codebase
+improvement, not a single incident.
 
-## Evidence to Preserve
+## Recommended Strategy
 
-- Issue 01 screenshot: `screenshots/240626/Issue 01 - Screenshot 2026-06-24 at 08.54.14.png`
-- Issue 01 logs: `references/logs/Issue 01 - Logs 240626.md`
-- Issue 02 screenshot: `screenshots/240626/Issue 02 - Screenshot 2026-06-24 at 09.22.10.png`
-- Issue 02 logs: `references/logs/Issue 02 - Logs 240626.md`
-- Issue 03 screenshot: `screenshots/240626/Issue 03 - Screenshot 2026-06-24 at 10.08.29.png`
-- Issue 04 screenshot: `screenshots/240626/Issue 04 - Screenshot 2026-06-24 at 10.09.45.png`
-- Issue 04a screenshot: `screenshots/240626/Issue 04a - Screenshot 2026-06-24 at 10.10.34.png`
-- Issue 04 logs: `references/logs/Issue 04 - Logs 240626.md`
-- Issue 05 screenshot: `screenshots/240626/Issue 05 - Screenshot 2026-06-24 at 10.11.49.png`
-- Issue 05a screenshot: `screenshots/240626/Issue 05a - Screenshot 2026-06-24 at 10.14.39.png`
+Start with stabilization and navigability, then extract architecture. The codebase
+already has many features and tests; the highest leverage is to make change safer:
+establish quality ratchets, align product language, split the largest orchestration
+files behind compatibility boundaries, and keep docs/graph context current as the
+shape changes.
 
-## Code Areas
+The main bet: do not attempt a big-bang rewrite. Build thin seams around existing
+behavior, pin invariants with tests, move code in small vertical slices, and keep
+public behavior compatible until each migration is proven.
 
-- Web chat shell: `src/spark_cli/web/src/components/ChatPanel.tsx`
-- Composer and stop/redirect controls: `src/spark_cli/web/src/components/chat/PromptBar.tsx`
-- Markdown rendering: `src/spark_cli/web/src/components/Markdown.tsx`
-- Markdown parsing helpers: `src/spark_cli/web/src/components/markdownParse.ts`
-- Render-health safe mode: `src/spark_cli/web/src/lib/renderHealth.ts`
-- Frontend API client: `src/spark_cli/web/src/lib/api.ts`
-- Web conversation endpoints and SSE events: `src/spark_cli/web_server.py`
-- Agent interruption: `src/core/run_agent/`, `src/tools/interrupt.py`
-- Slash command registry: `src/spark_cli/commands.py`
-- Skill slash command bridge: `src/agent/skill_commands.py`
-- Existing GitHub issue skill/template: `skills/github/github-issues/`
+## Current Baseline
 
-## External References
+Collected on 2026-06-25 from local source and existing docs/graph.
 
-- React memoization and render caching: https://react.dev/reference/react/useMemo
-- Long task detection: https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver
-- Long task timing threshold and semantics: https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongTaskTiming
-- TanStack Virtual chat guidance for streaming, dynamic rows, and bottom anchoring: https://tanstack.com/virtual/latest/docs/chat
-- TanStack Virtual dynamic measurement API: https://tanstack.com/virtual/latest/docs/api/virtualizer
+- `src/core/run_agent/__init__.py`: 10,719 lines. The `run_agent.py` split began,
+  but `AIAgent` still carries most of the loop.
+- `src/gateway/run.py`: 9,737 lines. Gateway orchestration, session hygiene,
+  command handling, cron ticking, adapter setup, and delivery logic still share
+  one file.
+- `src/spark_cli/main.py`: 7,713 lines. CLI entrypoint, model flows, update logic,
+  auth/login, profile commands, and service management are still concentrated.
+- `src/spark_cli/web_server.py`: 7,277 lines. Dashboard auth, settings, OAuth,
+  sessions, chat, cron, workspace/project APIs, and static mounting share one
+  FastAPI module.
+- Frontend hotspots: `src/spark_cli/web/src/lib/api.ts` has 2,494 lines and
+  `src/spark_cli/web/src/components/ChatPanel.tsx` has 2,039 lines.
+- `ruff check src/ --statistics --exit-zero`: 7,049 findings, 6,030 auto-fixable.
+  The biggest buckets are whitespace, old typing syntax, unsorted imports, and
+  deprecated imports.
+- `mypy src/agent/ src/spark_cli/`: 464 errors. Most are concentrated in
+  `agent/auxiliary_client.py`, `spark_cli/web_server.py`,
+  `agent/error_classifier.py`, `spark_cli/config.py`, `agent/insights.py`, and
+  `agent/anthropic_adapter.py`.
+- The glossary says **Workspace** is deprecated in favor of **Chat** and
+  **Project**, but workspace naming still appears in 119 source/test/doc files.
+- Local Tauri build outputs under `src/spark_cli/web/src-tauri/target/` and
+  `src/spark_cli/web/src-tauri/resources/` are ignored and not tracked, but they
+  are large enough to pollute local audits if commands do not exclude them.
+- Only one GitHub Actions workflow is present: web supply-chain lockfile checking.
+  There is no broad CI gate for Python tests, ruff, mypy ratchets, or frontend tests
+  visible in `.github/workflows/`.
 
-## Working Hypotheses
+## Non-Goals
 
-- Issues 02, 03, and part of 05 are likely render-pressure bugs: long assistant responses, tables, code fences, or tool output trigger repeated parsing, highlighting, measurement, or virtualizer work during streaming.
-- Issues 01, 04, and part of 05 are likely state-truth bugs: the frontend can locally believe a turn stopped while the backend is still active, or can miss the authoritative `chat.turn_done`/interrupt state during SSE gaps, backend retries, overloads, or session migration.
-- The logs show real long backend turns, retries, overloads, and interrupted API calls. The UI must distinguish "backend is slow but alive" from "frontend is frozen" and must not mark work as done until backend turn state confirms it.
+- Do not rewrite the agent loop, gateway, or dashboard from scratch.
+- Do not change prompt caching semantics while moving code.
+- Do not change active toolsets mid-conversation.
+- Do not break existing `/api/workspace/...` clients while renaming internals to
+  Project/Chat language.
+- Do not make all of `mypy` strict in one pass.
+- Do not land broad formatting churn mixed with behavior changes.
+- Do not add new product surfaces while core reliability and naming are being
+  cleaned up.
 
-## Phase 0 - Reproduce and Baseline
+## Invariants To Protect
 
-- [x] Inspect every 2026-06-24 screenshot and write a short note for each: visible UI state, whether stop button is present, whether text input is editable, whether the assistant bubble is streaming, and whether formatting is broken.
-- [x] Summarize the referenced logs into `references/logs/Issue 240626 analysis.md`, including timestamps for long API calls, overload retries, `interrupted_during_api_call`, and turn completion.
-- [x] Reproduce in desktop dev mode with a long markdown-heavy response, a long tool-heavy response, and a response interrupted by typing a new message mid-stream.
-- [x] Capture baseline browser performance evidence: count long tasks, measure token-to-paint delay, and note when safe mode turns on.
-- [x] Confirm whether these issues reproduce in browser dashboard, Tauri desktop, or only remote dashboard mode.
-- [x] Record exact commands used for reproduction in this plan before changing behavior.
+- Prompt caching: byte-exact cached prompt behavior must remain stable unless a
+  dedicated ADR and migration test approve a change.
+- Profile isolation: all state paths use `get_spark_home()`; user-facing text uses
+  `display_spark_home()`.
+- Public command compatibility: aliases, help, Telegram/Slack command maps, and
+  autocomplete continue to derive from `COMMAND_REGISTRY`.
+- Tool availability honesty: schemas only reference tools that are actually
+  available for the current toolset/platform.
+- Interruptibility: terminal commands, tool calls, API calls, gateway delivery, and
+  web turns remain cancellable.
+- User-visible Chat truth: the UI does not claim a turn is done until backend turn
+  state agrees.
 
-### Reproduction and Verification Commands Used
+## Phase 0 - Confirm Direction And Freeze Baselines
 
-- `cd src/spark_cli/web && npm run test -- --run`
-- `.venv/bin/python -m pytest tests/spark_cli/test_web_server_events.py -q`
-- `.venv/bin/python /Users/joe/.agents/skills/webapp-testing/scripts/with_server.py --help`
-- `RUN_LIVE_SPARK_WEBUI=0 .venv/bin/python /Users/joe/.agents/skills/webapp-testing/scripts/with_server.py --server "PYTHONPATH=src SPARK_WEB_MAX_ITERATIONS=8 .venv/bin/python -c \"from spark_cli.web_server import start_server; start_server(host='127.0.0.1', port=9119, open_browser=False)\"" --port 9119 --server "cd src/spark_cli/web && SPARK_API_TARGET=http://127.0.0.1:9119 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort" --port 5173 --timeout 90 -- node tmp_webui_smoke.cjs`
+- [x] Confirm the first strategic priority: stabilization/navigability before new
+  feature work.
+- [x] Commit or intentionally preserve the current empty `PLAN.md` replacement so
+  later diffs are clean.
+- [x] Save baseline command outputs under a lightweight docs or references note:
+  file-size hotspots, `ruff` statistics, `mypy` error counts by file, and current
+  test command health.
+- [x] Add a short "refactor safety checklist" to this plan and reuse it for every
+  phase.
+- [x] Create a tracking issue or local checklist for each phase so tactical PRs stay
+  small.
+- [x] Decide whether tracked `src/spark_cli/web_dist/` assets should remain in git.
+  Recommended answer: keep them for packaging if needed, but exclude them from
+  code-audit scripts and graph/search defaults.
 
-## Phase 1 - Make Turn State Authoritative
+## Phase 1 - Quality Ratchet Before Architecture Work
 
-- [x] Replace the bare `_web_streaming: set[str]` usage in `src/spark_cli/web_server.py` with a small active-turn state record keyed by resolved session id: `started_at`, `last_event_at`, `status`, `interrupt_requested`, `active_agent_session_id`, and `phase`.
-- [x] Register active-turn state before `/api/conversations`, `/api/conversations/{session_id}/messages`, retry, and workspace conversation endpoints return, not only after the background task starts.
-- [x] Clear active-turn state only in the task `finally` block after persistence, session update emission, queue close, and `chat.turn_done` publication have all happened.
-- [x] Extend `/api/conversations/{session_id}/turn-status` to return resolved session id, latest descendant id, `turn_active`, current status text, `started_at`, `last_event_at`, and `interrupt_requested`.
-- [x] Update `api.getTurnStatus()` types in `src/spark_cli/web/src/lib/api.ts`.
-- [x] Make `/api/conversations/{session_id}/interrupt` resolve aliases/latest descendants before looking up the agent, so stop works after context compression/session migration.
-- [x] Change interrupt UX semantics so `chat.interrupted` or `interrupt_requested` means "stopping/redirecting", not "the turn is fully done"; only `chat.turn_done` or `turn-status.turn_active === false` should clear streaming UI.
-- [x] Add a regression test that an interrupt request leaves the turn active until the background agent task exits.
-- [x] Add a regression test that `turn-status` returns active immediately after a web message endpoint accepts a turn.
-- [x] Add a regression test that interrupt works when the requested session id resolves to a compressed/latest descendant session id.
+### Ruff
 
-## Phase 2 - Fix Stop, Redirect, and "Still Working" UX
+- [x] Run `source venv/bin/activate && ruff check src/ --fix` in a dedicated
+  mechanical PR for safe auto-fixes only.
+- [x] Review any unsafe fixes separately; do not batch them with behavior changes.
+- [x] Add or update CI so `ruff check src/` must pass for changed Python files.
+- [x] Add a repository-local audit command that excludes ignored generated Tauri
+  output and tracked frontend bundles when measuring source hotspots.
 
-- [x] In `ChatPanel.tsx`, introduce explicit frontend turn substates: `idle`, `starting`, `streaming`, `stalled`, `stopping`, and `redirecting`.
-- [x] Keep `PromptBar` editable while streaming, but make Enter behavior explicit: no text means stop remains available; text means redirect is available; stop remains visible either way.
-- [x] Ensure the stop button is visible whenever frontend streaming is true or backend `turn-status.turn_active` is true, even if the last visible message is a tool row, note row, or empty typing row.
-- [x] On stop click, optimistically switch to `stopping`, keep the stop control disabled or guarded against duplicate clicks, and poll `turn-status` until the backend confirms inactive.
-- [x] On redirect submit, append a visible redirected user row and keep the turn state as `redirecting` until the backend confirms whether the redirect became the next turn.
-- [x] Audit `sendMessage()` so typing mid-answer never clears the input before the redirect request has been accepted or safely queued.
-- [x] Make the stall watchdog escalate status text over time: `Still working...`, then `Still waiting for backend...`, then `Reconnecting...` if EventSource has dropped.
-- [x] Use `chat.status` events to surface backend retry/overload/waiting states when available.
-- [x] Add a pure state-transition helper for chat turn state and test it with Vitest instead of burying every transition directly in React component state.
-- [x] Add tests for these transitions: token received, tool start/end, interrupt requested, turn done after interrupt, SSE reconnect while active, SSE reconnect after missed `turn_done`, and session migration.
+### Mypy
 
-## Phase 3 - Harden Markdown Rendering
+- [x] Add missing stubs where low-risk, especially `types-PyYAML` and
+  `types-requests`, if dependency policy allows.
+- [x] Create a mypy baseline report by file and error code.
+- [x] Gate a first strict subset: small, central modules with few errors.
+- [x] For large error clusters, set per-module budgets and require that every PR
+  touching a module does not increase its error count.
+- [x] Start with high-signal typed contracts around provider/runtime resolution,
+  config normalization, and web chat/session DTOs.
 
-- [x] Add markdown parser tests for partial fenced code blocks, unclosed fences, huge paragraphs, huge tables, nested emphasis, bare URLs, media links, task lists, and malformed markdown.
-- [x] Add a streaming performance fixture that appends tokens to a 10k, 50k, and 100k character assistant message and asserts parsing work stays bounded.
-- [x] In `Markdown.tsx`, apply the soft render cap during streaming too. Long streaming messages should render a bounded parsed tail plus plain text for the rest, or switch to safe plain text until final.
-- [x] Avoid reparsing the entire stable prefix on every token. Cache committed parsed blocks by stable boundary and only parse newly committed text plus the current live tail.
-- [x] Audit `parseInline()` and table parsing in `markdownParse.ts` for regex backtracking and unbounded per-token work; replace any risky regex path with linear scanning or hard caps.
-- [x] Cap table rendering during streaming: limit rows/cells parsed live, then render the full table only after the block is stable and below a size threshold.
-- [x] Keep syntax highlighting disabled while code blocks are live and enforce the existing size cap after completion.
-- [x] Make safe mode reversible and visible: when long tasks trigger safe mode, show a compact inline notice with a "render markdown" retry option after the turn finishes.
-- [x] Persist render-health details per session so a reopened problematic thread starts safe and explains why.
-- [x] Add tests to `src/spark_cli/web/src/components/Markdown.test.ts` covering safe-mode fallback, streaming cap behavior, and final rich rendering after streaming completes.
+### Tests And CI
 
-### 2026-06-25 Web Markdown Freeze Follow-Up
+- [x] Add a Python CI workflow with at least:
+  `python -m pytest tests/ -m "not slow and not integration" -q`,
+  `ruff check src/`, and the current mypy ratchet command.
+- [x] Add a frontend CI workflow for `npm ci`, `npm run test`, `npm run lint`, and
+  `npm run build` in `src/spark_cli/web`.
+- [x] Keep full-suite local verification as the pre-push bar, but use smaller CI
+  gates to keep feedback fast.
+- [x] Add a test selector note for rapid iteration: agent loop, gateway, web server,
+  frontend, tools, profiles, and prompt caching.
 
-- [x] Confirmed the reproduction is present in the browser web UI, not only the macOS shell: the long markdown prompt stalled mid-response with the textarea/stop state still active.
-- [x] Tightened streaming Markdown rendering so active assistant messages stay on a safe plain-text path instead of reparsing/re-highlighting the whole Markdown document on every token.
-- [x] Removed the completed-message hidden-middle fallback entirely. Oversized completed messages now show the full text plainly if they ever reach the renderer; no chat content is replaced with a hidden-character notice.
-- [x] Added a backend artifact boundary for oversized assistant output: long report/document responses are written intact to `workspace/chat-artifacts/<session>/...md`, while chat stores a short card linking to the file.
-- [x] Added cleanup so the internal long-document delivery instruction never leaks into persisted user-visible chat history.
-- [x] Throttled chat token flushes to an 80 ms cadence while preserving immediate flushes before tool rows, interruptions, and turn completion.
-- [x] Added Markdown tests for bounded huge streaming blocks and bounded huge completed messages.
-- [x] Fixed the deeper Codex watchdog bug: long Codex streams now refresh provider-progress on each stream event, so the outer web watchdog no longer kills a healthy stream after 60s just because the final response has not returned.
-- [x] Verified through the patched web API with the long markdown prompt: session `20260625_135310_02700f31` streamed past 7 minutes and ~58k chars, then stopped only after an explicit interrupt.
-- [x] Verified the no-hidden-content artifact path in a real browser against isolated FastAPI + Vite dev servers: a seeded 40,027-character markdown response rendered as a short `Open the markdown file` card, the linked file returned the full content, and the DOM did not contain `hidden for render performance`.
+## Phase 2 - Align Product Language: Chat, Project, Artifact
 
-## Phase 4 - Stabilize Virtualized Chat Rows
+The glossary deprecates **Workspace** as a user-facing concept. The code still has
+`workspace_routes.py`, `/api/workspace/...`, `WorkspacePreviewPanel`, and many tests
+using workspace language.
 
-- [x] Review TanStack Virtual usage in `ChatPanel.tsx` for streaming rows with dynamic heights.
-- [x] Use stable message ids for virtual row keys so row identity does not drift when tool rows collapse or earlier history prepends.
-- [x] Throttle measuring the live assistant row and skip measurement for unchanged committed rows.
-- [x] Preserve bottom anchoring while streaming without forcing a smooth scroll on every token.
-- [x] Verify prepending earlier history does not jump the current viewport.
-- [x] Add a stress test or manual QA script for rapid token updates, tall code blocks, large tool results, and repeated collapsed tool rows.
+Recommended migration: keep `/api/workspace/...` as a compatibility API while
+renaming internal concepts and UI text toward **Project** and **Chat**.
 
-## Phase 5 - Backend Progress and Error Transparency
+- [x] Inventory each workspace reference and classify it:
+  public compatibility route, internal implementation name, UI copy, docs, tests,
+  migration/OpenClaw legacy, or unrelated Google Workspace.
+- [x] Update user-facing docs and UI text first where compatibility risk is low.
+- [x] Introduce a `project_routes.py` or project service layer that owns the
+  canonical names while `workspace_routes.py` delegates for backwards
+  compatibility.
+- [x] Rename frontend components where low-risk:
+  `WorkspacePreviewPanel` to `ProjectPreviewPanel`,
+  `WorkspaceTerminalPanel` to `ProjectTerminalPanel`, etc.
+- [x] Keep compatibility tests for `/api/workspace/...` routes until a deliberate
+  API deprecation window exists.
+- [x] Add tests that public API responses do not accidentally reintroduce deprecated
+  user-facing language where the product should say Project or Chat.
+- [x] Update `CONTEXT.md` only if a new domain term is resolved. Do not use it as a
+  refactor scratchpad.
 
-- [x] Emit `chat.status` for long backend gaps: API call started, retry scheduled, tool running longer than threshold, waiting for approval, context compression, and interrupt requested.
-- [x] Include retry/error summaries in status events without exposing secrets or huge payloads.
-- [x] Ensure `chat.turn_done` payload includes `final_assistant_present`, `interrupted`, token stats, and any backend error class.
-- [x] In the frontend, display backend overload/API retry notes as status, not as final assistant content.
-- [x] If a turn ends with no assistant content and no intentional interrupt, show a recoverable error note with retry guidance.
-- [x] Add tests that backend exceptions still publish `chat.turn_done` and clear active-turn state.
+## Phase 3 - Split The Dashboard Backend Into Routers And Services
 
-## Phase 6 - Manual QA Matrix
+`src/spark_cli/web_server.py` is the best next extraction target after quality
+ratchets because it is large, user-facing, and already organized into conceptual
+regions.
 
-- [x] Long markdown response: headings, bullets, tables, code fences, and links stream without UI freeze.
-- [x] Huge tool output response: tool rows collapse, full-result fetch still works, and scrolling stays responsive.
-- [x] Type while assistant is mid-answer: redirect is visible, old turn stops, new instruction is handled once.
-- [x] Press stop while a tool is running: UI says stopping, backend interrupt is requested, final state clears only when backend is inactive.
-- [x] Simulate dropped SSE: close/reopen EventSource or throttle network; UI recovers from `turn-status`.
-- [x] Simulate backend overload/retry: status shows retry/waiting and does not look finished.
-- [x] Context compression/session migration during a turn: events follow the new session id and stop still works.
-- [x] Restart desktop while a prior session has a recent active-looking turn: history and turn-status reconcile cleanly.
+Target shape:
 
-## Phase 7 - Add `/issue` Skill
+- `spark_cli/web_app.py`: FastAPI app construction, middleware, lifespan, SPA mount.
+- `spark_cli/web/events.py`: SSE bus, event queues, event drop accounting.
+- `spark_cli/web/chat_routes.py`: conversation create/send/retry/interrupt/stream.
+- `spark_cli/web/chat_service.py`: active turn state, agent lifecycle, persistence.
+- `spark_cli/web/config_routes.py`: config/env/model settings endpoints.
+- `spark_cli/web/oauth_routes.py`: OAuth/session/device flows.
+- `spark_cli/web/admin_routes.py`: gateway control, update actions, diagnostics.
+- `spark_cli/web/project_routes.py`: project files, previews, manifests, terminal.
+- `spark_cli/web/schemas.py`: Pydantic request/response models.
 
-- [x] Create a built-in skill named `issue` so `/issue` appears through `scan_skill_commands()` and the web `/api/commands` skill list.
-- [x] Place the skill under an appropriate skill category, likely `skills/github/issue/SKILL.md`, and make its frontmatter name exactly `issue`.
-- [x] Have the skill collect: user description, current session id, recent redacted logs, relevant screenshots/files, Spark version/git SHA, OS/platform, active profile, web/desktop mode, and reproduction steps.
-- [x] Reuse `skills/github/github-issues/templates/bug-report.md` or add a focused template for Spark product bugs.
-- [x] Require the agent to show the exact GitHub issue title, body, labels, and attachments/references before creating the issue.
-- [x] Use the existing GitHub issue workflow (`gh issue create` first, REST fallback if needed) rather than adding a new tool unless the existing skill cannot attach the required evidence.
-- [x] Add guidance for screenshots referenced by `@path` and for logs under `references/logs/`.
-- [x] Add redaction rules: never include API keys, bearer tokens, dashboard tokens, full home-directory secrets, or unrelated session content.
-- [x] Add a happy-path test that the skill is discoverable as `/issue` in CLI skill commands.
-- [x] Add a web command-list test that installed skills include `/issue` in `/api/commands`.
-- [x] Add a dry-run/manual QA step: invoke `/issue` with the 2026-06-24 screenshots and logs, verify the drafted issue is detailed, redacted, and asks for approval before submission.
+Steps:
+
+- [x] Add route-level tests that capture current behavior before moving code.
+- [x] Extract Pydantic models and pure helpers first; no route behavior changes.
+- [x] Extract SSE/event bus behind a tiny interface and update tests to use it.
+- [x] Extract active web turn state into a service with direct unit tests.
+- [x] Move config/env/model endpoints into a router.
+- [x] Move OAuth endpoints into a router.
+- [x] Move conversation endpoints into a router.
+- [x] Move project/workspace compatibility endpoints behind the naming plan from
+  Phase 2.
+- [x] Keep `web_server.py` as the import-compatible app entry until downstream
+  scripts and docs are updated.
+- [x] After each extraction, run:
+  `source venv/bin/activate && python -m pytest tests/spark_cli/test_web_server.py tests/spark_cli/test_web_server_events.py -q`
+  plus relevant frontend tests if API contracts changed.
+
+## Phase 4 - Finish The `AIAgent` Decomposition Without Breaking Caching
+
+ADR-0001 already says the `run_agent` split must preserve byte-exact cache
+behavior. Continue that spirit: move behavior only behind golden tests.
+
+Target shape:
+
+- `core/run_agent/__init__.py`: public `AIAgent` facade and constructor.
+- `core/run_agent/conversation_loop.py`: main iteration loop and loop decisions.
+- `core/run_agent/provider_calls.py`: interruptible API call lifecycle and streaming
+  adapters.
+- `core/run_agent/tool_loop.py`: tool-call execution, ordering, parallelism, and
+  agent-level tool interception.
+- `core/run_agent/message_state.py`: message alternation, sanitization, tool-pair
+  repair, history snapshots.
+- `core/run_agent/persistence.py`: session persistence, memory flushing, trajectory
+  saving.
+- `core/run_agent/fallbacks.py`: provider fallback and retry policy integration.
+
+Steps:
+
+- [x] Confirm or add a golden test that serializes provider request payloads,
+  system prompt blocks, cache-control positions, tool schema order, and ephemeral
+  layers.
+- [x] Add targeted tests around message alternation and tool pair repair before
+  moving that code.
+- [x] Extract pure message helpers first.
+- [x] Extract provider-call helpers second, keeping streaming callback behavior
+  byte-for-byte equivalent where possible.
+- [x] Extract tool-loop behavior third, preserving parallel result ordering and
+  interactive-tool sequencing.
+- [x] Extract persistence/memory flush behavior last, because it is cross-cutting.
+- [x] Update architecture docs immediately after each extraction so the maps do not
+  point contributors at stale `run_agent.py` paths.
+- [x] Run focused verification after each slice:
+  `source venv/bin/activate && python -m pytest tests/run_agent/ tests/tools/test_interrupt.py -q`.
+
+## Phase 5 - Split Gateway Runtime Around Stable Adapter Contracts
+
+`src/gateway/run.py` is a second orchestration hotspot. It should become a thin
+runner around explicit services, while platform adapters keep their existing
+behavior.
+
+Target shape:
+
+- `gateway/runner.py`: `GatewayRunner` lifecycle and top-level orchestration.
+- `gateway/commands.py`: slash command resolution and handlers.
+- `gateway/session_hygiene.py`: compression thresholds and session repair.
+- `gateway/authz.py`: allowlists, pairing, and internal-event bypass rules.
+- `gateway/delivery_runtime.py`: outbound delivery and formatting.
+- `gateway/cron_tick.py`: scheduler tick ownership.
+- `gateway/adapter_registry.py`: adapter creation and token lock enforcement.
+
+Steps:
+
+- [x] Add platform adapter conformance tests for connect/start/stop/disconnect,
+  token locks, message normalization, media placeholders, and delivery errors.
+- [x] Extract slash-command handling into a module that still consumes
+  `spark_cli.commands.resolve_command()`.
+- [x] Extract authorization and pairing checks with tests for each platform class.
+- [x] Extract session hygiene and preserve context-compression thresholds.
+- [x] Extract cron tick ownership without changing the 60-second gateway tick.
+- [x] Keep `gateway/run.py` as the import-compatible entrypoint until docs and
+  service commands move.
+- [x] Run:
+  `source venv/bin/activate && python -m pytest tests/gateway/ -q`.
+
+## Phase 6 - Type Provider And Model Runtime Boundaries
+
+The mypy baseline points at provider/model code as a concentrated risk area:
+`agent/auxiliary_client.py`, `agent/anthropic_adapter.py`,
+`agent/error_classifier.py`, `agent/model_metadata.py`, `spark_cli/auth.py`, and
+`spark_cli/config.py`.
+
+Recommended direction: define typed DTOs at the boundaries, not throughout every
+provider implementation at once.
+
+- [x] Create typed provider runtime records for provider id, model id, API mode,
+  base URL, credential source, timeout policy, and request overrides.
+- [x] Make `resolve_runtime_provider()` return one typed object instead of loose
+  dicts where practical.
+- [x] Make auxiliary client fallback decisions consume typed provider records.
+- [x] Normalize error classification into typed constructors rather than
+  unstructured `dict[str, object]` splats.
+- [x] Add tests for 401/403 credential refresh, 429/5xx fallback, timeout handling,
+  and provider-specific API mode selection.
+- [x] Use these typed seams to reduce mypy errors in the high-risk files without
+  broad rewrites.
+
+## Phase 7 - Harden Tool Runtime And Toolset Contracts
+
+The tool system is powerful and extensible; the improvement target is predictable
+availability and safer cross-tool guidance.
+
+- [x] Add a tool manifest snapshot test for core tool names, toolsets, and schema
+  ordering.
+- [x] Add tests that optional SDK import failures disable only the relevant tool.
+- [x] Add tests that schema post-processing never mentions unavailable tools.
+- [x] Add a small typed wrapper for `ToolEntry` handler signatures and check
+  handler return values are JSON strings in tests.
+- [x] Add a registry health command or test helper that reports unavailable tools
+  with their missing env vars or import errors.
+- [x] Review large tool files (`browser_tool.py`, `web_tools.py`, `mcp_tool.py`,
+  `terminal_tool.py`) for extraction only after registry contracts are pinned.
+
+Review decision:
+
+- `browser_tool.py` (3,002 lines): extract session lifecycle/cleanup and backend
+  health first; leave action handlers and registry schemas in place until the
+  lifecycle module has direct tests.
+- `web_tools.py` (2,378 lines): extract backend client/config resolution before
+  summarization or extraction flow; this keeps availability checks and provider
+  errors isolated.
+- `mcp_tool.py` (2,264 lines): extract MCP loop/server task lifecycle before tool
+  schema conversion; dynamic registry behavior should stay behind the Phase 7
+  registry contracts.
+- `terminal_tool.py` (1,722 lines): extract env config/session lifecycle before
+  command execution; approval and sudo behavior should remain in the public tool
+  path until narrower golden tests cover it.
+
+## Phase 8 - Split Frontend Data Layer And Chat State
+
+Frontend hotspots are `api.ts` and `ChatPanel.tsx`. The recent streaming fixes made
+state truth much better; now the improvement is keeping that behavior testable.
+
+Target shape:
+
+- `src/lib/api/`: grouped clients for sessions, chat, config, projects, tools,
+  cron, OAuth, and admin actions.
+- `src/lib/events/`: typed SSE subscription and reconnection logic.
+- `src/lib/chatTurnState.ts`: already-pure or extracted turn state reducer.
+- `src/components/chat/`: presentational message list, composer, status row,
+  virtualizer integration, and tool rows.
+- `src/pages/ChatPage.tsx`: page composition only.
+
+Steps:
+
+- [x] Split `api.ts` into domain clients while preserving exported compatibility
+  names until all callers move.
+  - [x] First safe slice: moved model endpoints into `src/lib/api/model.ts` while
+    preserving `api.getModelStatus()` and related compatibility methods.
+  - [x] Moved session/chat, config/env, cron, skills/tools, OAuth, admin, and
+    project/workspace endpoints into `src/lib/api/*` clients while preserving
+    existing `api.*` method names.
+- [x] Extract event subscription/recovery logic with tests for dropped SSE,
+  missed `turn_done`, and backend-active polling.
+- [x] Keep streaming markdown and virtualizer stress tests as permanent guards.
+- [x] Rename workspace-facing components according to Phase 2.
+- [x] Add a Playwright smoke for the core Chat loop if the existing tooling is
+  acceptable in CI.
+- [x] Run `cd src/spark_cli/web && npm run test && npm run lint && npm run build`.
+
+## Phase 9 - Keep Documentation And Graph Context Honest
+
+Several docs still mention old file shapes such as `run_agent.py` and `cli.py`.
+Because agents and contributors rely on these maps, stale architecture docs become
+real engineering drag.
+
+- [x] Update `docs/building/architecture.md` after each extraction.
+- [x] Update `docs/building/agent-loop.md` to describe the current
+  `core/run_agent/` package rather than the old monolith path.
+- [x] Update `docs/building/context-compression-and-caching.md` when compression
+  ownership moves.
+- [x] Update `docs/building/tools-runtime.md` if registry/toolset contracts change.
+- [x] Add a lightweight docs freshness check: docs should not point to deleted or
+  renamed source files.
+- [x] Run `graphify update .` after code changes so graphify-backed exploration
+  remains useful.
+- [x] Create ADRs only for hard-to-reverse trade-offs. Likely ADR candidates:
+  internal Project naming with `/api/workspace` compatibility, provider runtime
+  typed contracts, and web backend router boundaries.
+
+## Refactor Safety Checklist
+
+Use this before merging any phase slice.
+
+- [x] Is the change behavior-preserving, or does it clearly say what behavior
+  changes?
+- [x] Are prompt-caching-sensitive payloads covered if `AIAgent` changed?
+- [x] Are profile paths still resolved through `get_spark_home()` and
+  `display_spark_home()`?
+- [x] Are command aliases/help/autocomplete/gateway menus still registry-derived?
+- [x] Are public API routes backwards compatible or explicitly covered by a
+  migration/deprecation note?
+- [x] Are tests focused on the moved behavior, not just import success?
+- [x] Did docs and graphify context get updated when architecture changed?
+- [x] Did generated artifacts stay out of source diffs unless intentionally
+  required for packaging?
+
+## Suggested Milestone Order
+
+1. Phase 0: confirm direction and save baselines.
+2. Phase 1: quality ratchets and CI.
+3. Phase 2: naming inventory and low-risk Chat/Project language cleanup.
+4. Phase 3: web backend extraction, starting with events and active turn service.
+5. Phase 4: finish `AIAgent` decomposition under cache golden tests.
+6. Phase 6: provider/model typed contracts, because this helps both agent and web
+   backend reliability.
+7. Phase 5: gateway extraction once command/provider contracts are clearer.
+8. Phase 8: frontend data/chat state split.
+9. Phase 9: documentation and graph upkeep throughout, not at the end.
 
 ## Verification Commands
 
-- [x] `source venv/bin/activate`
-- [x] `python -m pytest tests/ -m "not slow and not integration" -q`
-- [x] `python -m pytest tests/run_agent/ tests/tools/test_interrupt.py -q`
-- [x] `python -m pytest tests/spark_cli/ tests/cli/ -q`
-- [x] `cd src/spark_cli/web && npm run test`
-- [x] `cd src/spark_cli/web && npm run lint`
-- [x] `cd src/spark_cli/web && npm run build`
-- [x] `ruff check src/`
-- [x] `mypy src/agent/ src/spark_cli/`
+Run narrow commands during each phase, and the full suite before pushing.
 
-### Verification Results
+```bash
+source venv/bin/activate
+ruff check src/
+mypy src/agent/ src/spark_cli/
+python -m pytest tests/ -m "not slow and not integration" -q
+python -m pytest tests/run_agent/ tests/tools/test_interrupt.py -q
+python -m pytest tests/spark_cli/ tests/cli/ -q
+python -m pytest tests/gateway/ -q
+cd src/spark_cli/web && npm run test
+cd src/spark_cli/web && npm run lint
+cd src/spark_cli/web && npm run build
+graphify update .
+python scripts/check_docs_source_links.py
+```
 
-- `python -m pytest tests/ -m "not slow and not integration" -q`: 11737 passed, 151 skipped.
-- `python -m pytest tests/run_agent/ tests/tools/test_interrupt.py -q`: 763 passed, 6 skipped.
-- `python -m pytest tests/spark_cli/ tests/cli/ -q`: run; combined collection currently exposes unrelated isolation failures in env-loader/CLI reload/prompt-toolkit stdout tests. The directly failing files pass when isolated: `python -m pytest tests/spark_cli/test_env_loader.py tests/cli/test_resume_display.py tests/cli/test_tool_progress_scrollback.py tests/cli/test_quick_commands.py -q -n0` => 60 passed.
-- Web UI rerun after implementation: `npm run test -- --run` => 59 passed; `npm run lint` passed with existing warnings; `npm run build` passed.
-- Web UI smoke against local FastAPI + Vite dev servers passed: composer rendered, stop/redirect controls appeared during active backend turns, and no console/page/request errors were observed.
-- 2026-06-25 provider-stall regression: reproduced a partial-answer wait on session `20260625_095303_24237586`; backend was in a non-streaming provider call for 300s after visible partial text. Added active stream snapshots, web non-streaming provider wait heartbeats, and a 60s default web stale-call timeout.
-- Targeted regression rerun: `python -m pytest tests/spark_cli/test_web_server_events.py tests/run_agent/test_openai_client_lifecycle.py tests/run_agent/test_interrupt_propagation.py -q` => 50 passed.
-- Targeted Playwright smoke rerun with a fake 18s provider stall passed: partial streamed text remained visible during the stall and final text appeared after completion.
-- 2026-06-25 browser-dashboard provider-stall regression: reproduced in web UI on session `20260625_114931_d9c0d685`; backend entered repeated 60s non-streaming provider waits and eventually persisted an assistant error while the UI showed the local streamed draft. Added a web-specific stale non-streaming guard so the turn ends after the first stale timeout, and made `ChatPanel` prefer persisted assistant history on `turn_done`/inactive resync so saved errors replace stale streaming drafts.
-- Targeted rerun after the web provider-stall fix: `python -m pytest tests/run_agent/test_openai_client_lifecycle.py tests/spark_cli/test_web_server_events.py -q` => 44 passed; `npm run test -- --run` => 59 passed; `npm run lint` => 0 errors, 6 existing warnings; `npm run build` passed.
-- Targeted Playwright smoke with a fake partial stream followed by backend error passed: saved error replaced the draft, stop disappeared, composer was enabled, and no console/page/request errors were observed.
-- Live web UI `/help` smoke against the restarted patched backend passed: assistant help rendered, composer was enabled, and no failed browser responses were observed.
-- 2026-06-25 macOS rebuild after provider-stall fix completed: `Spark.app` was signed, `Spark.dmg` was notarized and stapled, `/api/commands` returned 145 commands including `/issue`, and a packaged-app `/help` chat completed with an assistant message in session `20260625_113908_1fc23a9f`.
-- macOS app build completed: `Spark.app` was code-signed, `Spark.dmg` was notarized and stapled, `xcrun stapler validate` passed, `hdiutil verify` passed, and a launched `Spark.app` responded on `http://127.0.0.1:9119/api/commands`.
-- `ruff check src/`: run; fails on existing repo-wide lint debt outside this change set.
-- `mypy src/agent/ src/spark_cli/`: run; fails on existing repo-wide typing debt outside this change set.
+## Current Open Decision
 
-## Definition of Done
+Decision 1: The first milestone is stabilization/navigability before new feature
+work.
 
-- [x] All five reported issues have a clear root-cause note or an evidence-backed explanation in the implementation PR.
-- [x] The stop button is always visible and functional while any backend turn is active.
-- [x] Typing during a response either redirects cleanly or remains queued visibly; it never makes the UI look finished while work continues.
-- [x] Long markdown responses stay responsive in desktop and browser dashboard.
-- [x] Backend overloads, retries, and long-running tools produce visible status updates.
-- [x] The app recovers from missed SSE events by polling authoritative turn state.
-- [x] `/issue` can draft a detailed, redacted GitHub issue with logs and screenshots, and it asks for approval before submitting.
+Rationale: Spark already has a lot of product surface area; the best compounding
+improvement is to make future changes cheaper and safer before adding more
+surface area.

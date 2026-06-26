@@ -29,7 +29,7 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 _CUA_BINARY = os.environ.get("SPARK_CUA_DRIVER_BIN", "cua-driver")
 
 
-def _resolve_cua_binary() -> Optional[str]:
+def _resolve_cua_binary() -> str | None:
     """Return executable path for cua-driver, or None."""
     import platform
 
@@ -131,20 +131,20 @@ class CaptureResult:
     mode: str                          # "som" | "vision"
     width: int
     height: int
-    png_b64: Optional[str]             # base64-encoded screenshot (may be None for som)
-    elements: List[Dict]               # AX-tree element dicts from cua-driver
-    app: Optional[str]
-    window_title: Optional[str]
-    pid: Optional[int] = None
-    window_id: Optional[int] = None
-    tree_markdown: Optional[str] = None
+    png_b64: str | None             # base64-encoded screenshot (may be None for som)
+    elements: list[dict]               # AX-tree element dicts from cua-driver
+    app: str | None
+    window_title: str | None
+    pid: int | None = None
+    window_id: int | None = None
+    tree_markdown: str | None = None
 
 
 @dataclass
 class ActionResult:
     success: bool
     message: str
-    data: Optional[Dict] = None
+    data: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +161,8 @@ class _AsyncBridge:
     """
 
     def __init__(self):
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
         self._started = threading.Event()
 
     def start(self) -> None:
@@ -206,7 +206,7 @@ class _CuaDriverSession:
     """
 
     def __init__(self):
-        self._process: Optional[subprocess.Popen] = None
+        self._process: subprocess.Popen | None = None
         self._lock = asyncio.Lock()
         self._request_id = 0
 
@@ -234,7 +234,7 @@ class _CuaDriverSession:
             self._terminate_process()
             raise
 
-    async def _send_request(self, method: str, params: Dict) -> Dict:
+    async def _send_request(self, method: str, params: dict) -> dict:
         self._request_id += 1
         req_id = self._request_id
         msg = json.dumps({
@@ -265,15 +265,15 @@ class _CuaDriverSession:
     async def _send_request_with_timeout(
         self,
         method: str,
-        params: Dict,
+        params: dict,
         timeout: float = _CALL_TIMEOUT,
-    ) -> Dict:
+    ) -> dict:
         try:
             return await asyncio.wait_for(
                 self._send_request(method, params),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise TimeoutError(_cua_timeout_message()) from e
 
     def _terminate_process(self) -> None:
@@ -290,7 +290,7 @@ class _CuaDriverSession:
             except Exception:
                 pass
 
-    async def call_tool(self, name: str, args: Dict) -> Dict[str, Any]:
+    async def call_tool(self, name: str, args: dict) -> dict[str, Any]:
         """Call a cua-driver MCP tool and return a normalised result dict.
 
         Returns:
@@ -363,9 +363,9 @@ class CuaDriverBackend:
     """
 
     def __init__(self):
-        self._active_pid: Optional[int] = None
-        self._active_window_id: Optional[int] = None
-        self._active_app: Optional[str] = None
+        self._active_pid: int | None = None
+        self._active_window_id: int | None = None
+        self._active_app: str | None = None
         self._last_elements: list[dict] = []
         self._last_capture_size: tuple[int, int] = (0, 0)
         self._last_window_origin: tuple[float, float] | None = None
@@ -374,7 +374,7 @@ class CuaDriverBackend:
     # Capture (window selection + screenshot)
     # ------------------------------------------------------------------
 
-    def capture(self, mode: str = "som", app: Optional[str] = None) -> CaptureResult:
+    def capture(self, mode: str = "som", app: str | None = None) -> CaptureResult:
         """Capture the target window.  Sets the sticky window context.
 
         Args:
@@ -384,7 +384,7 @@ class CuaDriverBackend:
         """
         return _bridge.run(self._capture_async(mode=mode, app=app))
 
-    async def _capture_async(self, mode: str, app: Optional[str]) -> CaptureResult:
+    async def _capture_async(self, mode: str, app: str | None) -> CaptureResult:
         if app:
             # Select window by app name
             windows_result = await _session.call_tool("list_windows", {})
@@ -420,7 +420,7 @@ class CuaDriverBackend:
                 "for example app='Notion'."
             )
 
-        capture_args: Dict[str, Any] = {}
+        capture_args: dict[str, Any] = {}
         if self._active_pid is not None:
             capture_args["pid"] = self._active_pid
         if self._active_window_id is not None:
@@ -470,13 +470,13 @@ class CuaDriverBackend:
 
     def click(
         self,
-        element: Optional[int] = None,
-        x: Optional[float] = None,
-        y: Optional[float] = None,
+        element: int | None = None,
+        x: float | None = None,
+        y: float | None = None,
         button: str = "left",
         click_count: int = 1,
     ) -> ActionResult:
-        args: Dict[str, Any] = {
+        args: dict[str, Any] = {
             "pid": self._active_pid,
             "window_id": self._active_window_id,
             "element_index": element,
@@ -527,9 +527,9 @@ class CuaDriverBackend:
         self,
         direction: str,
         amount: float,
-        element: Optional[int] = None,
-        x: Optional[float] = None,
-        y: Optional[float] = None,
+        element: int | None = None,
+        x: float | None = None,
+        y: float | None = None,
     ) -> ActionResult:
         result = _bridge.run(self._action_async("scroll", {
             "pid": self._active_pid,
@@ -673,10 +673,10 @@ class CuaDriverBackend:
     # List apps
     # ------------------------------------------------------------------
 
-    def list_apps(self) -> List[str]:
+    def list_apps(self) -> list[str]:
         return _bridge.run(self._list_apps_async())
 
-    async def _list_apps_async(self) -> List[str]:
+    async def _list_apps_async(self) -> list[str]:
         result = await _session.call_tool("list_windows", {})
         if result["isError"]:
             return []
@@ -692,7 +692,7 @@ class CuaDriverBackend:
     # Generic action helper
     # ------------------------------------------------------------------
 
-    async def _action_async(self, tool_name: str, args: Dict) -> ActionResult:
+    async def _action_async(self, tool_name: str, args: dict) -> ActionResult:
         # Strip None values — cua-driver rejects unknown null fields
         clean_args = {k: v for k, v in args.items() if v is not None}
         result = await _session.call_tool(tool_name, clean_args)
@@ -706,7 +706,7 @@ class CuaDriverBackend:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _parse_windows(result: Dict) -> List[Dict]:
+def _parse_windows(result: dict) -> list[dict]:
     """Extract window list from a call_tool result."""
     structured = result.get("structuredContent")
     if isinstance(structured, list):
@@ -794,7 +794,7 @@ def _window_origin(
     return x, y
 
 
-def _parse_launch_windows(result: Dict) -> List[Dict]:
+def _parse_launch_windows(result: dict) -> list[dict]:
     """Extract windows returned by launch_app."""
     structured = result.get("structuredContent")
     if isinstance(structured, dict):
@@ -809,15 +809,15 @@ def _parse_launch_windows(result: Dict) -> List[Dict]:
     return []
 
 
-def _window_app(window: Dict) -> str:
+def _window_app(window: dict) -> str:
     return str(window.get("app") or window.get("app_name") or window.get("name") or "")
 
 
-def _window_id(window: Dict) -> Optional[int]:
+def _window_id(window: dict) -> int | None:
     return window.get("window_id") or window.get("windowId")
 
 
-def _valid_window_target(window: Dict) -> bool:
+def _valid_window_target(window: dict) -> bool:
     return window.get("pid") is not None and _window_id(window) is not None
 
 
@@ -828,7 +828,7 @@ def _normalize_app_query(app: str) -> str:
     return app.strip()
 
 
-def _app_match_score(window: Dict, app: str) -> Optional[tuple[int, int]]:
+def _app_match_score(window: dict, app: str) -> tuple[int, int] | None:
     query = _normalize_app_query(app).lower()
     name = _normalize_app_query(_window_app(window)).lower()
     if not query or not name:
@@ -842,7 +842,7 @@ def _app_match_score(window: Dict, app: str) -> Optional[tuple[int, int]]:
     return None
 
 
-def _parse_key_combo(keys: str) -> List[str]:
+def _parse_key_combo(keys: str) -> list[str]:
     aliases = {
         "command": "cmd",
         "control": "ctrl",
@@ -857,7 +857,7 @@ def _parse_key_combo(keys: str) -> List[str]:
     return parts or [keys.strip().lower()]
 
 
-def _parse_elements_from_markdown(markdown: str) -> List[Dict[str, Any]]:
+def _parse_elements_from_markdown(markdown: str) -> list[dict[str, Any]]:
     import re
 
     elements = []
@@ -866,7 +866,7 @@ def _parse_elements_from_markdown(markdown: str) -> List[Dict[str, Any]]:
     return elements
 
 
-def _select_window(windows: List[Dict], app: str) -> Optional[Dict]:
+def _select_window(windows: list[dict], app: str) -> dict | None:
     """Return the best-matching window for *app*.
 
     Matches by case-insensitive substring.  Among matches, prefers the

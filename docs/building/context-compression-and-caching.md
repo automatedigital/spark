@@ -3,7 +3,9 @@
 Long conversations eat context fast. Spark handles this with two independent compression layers and Anthropic prompt caching that cuts input token costs by ~75% on multi-turn sessions.
 
 Source files: `agent/context_engine.py` (ABC), `agent/context_compressor.py` (default engine),
-`agent/prompt_caching.py`, `gateway/run.py` (session hygiene), `run_agent.py` (search for `_compress_context`)
+`agent/prompt_caching.py`, `core/run_agent/prompt_cache.py`,
+`core/run_agent/message_state.py`, `core/run_agent/__init__.py` (in-loop compression),
+and `gateway/session_hygiene.py` (pre-agent gateway safety net).
 
 
 ## Swappable Context Engine
@@ -50,7 +52,7 @@ Two separate systems fire independently at different thresholds:
 
 ### Gateway Session Hygiene (85% threshold)
 
-Lives in `gateway/run.py` (search `Session hygiene: auto-compress`). This is a safety net that runs **before** the agent processes a message. It catches sessions that grew too large between turns — overnight accumulation in Telegram or Discord, for example.
+Lives in `gateway/session_hygiene.py` and is called from the gateway runner before an agent processes a message. This is a safety net for sessions that grew too large between turns — overnight accumulation in Telegram or Discord, for example.
 
 - **Threshold:** Fixed at 85% of model context length
 - **Token source:** Prefers actual API-reported tokens from last turn; falls back to `estimate_messages_tokens_rough`

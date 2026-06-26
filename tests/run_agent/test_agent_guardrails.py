@@ -86,6 +86,73 @@ class TestSanitizeApiMessages:
         assert "c4" in ids
         assert "c5" in ids
 
+    def test_missing_results_are_stubbed_in_assistant_tool_call_order(self):
+        msgs = [
+            {"role": "user", "content": "run checks"},
+            {"role": "assistant", "tool_calls": [
+                assistant_dict_call("c1"),
+                assistant_dict_call("c2"),
+                assistant_dict_call("c3"),
+            ]},
+            tool_result("c1", "first result"),
+        ]
+        out = AIAgent._sanitize_api_messages(msgs)
+        tool_results = [m for m in out if m.get("role") == "tool"]
+
+        assert [m["tool_call_id"] for m in tool_results] == ["c2", "c3", "c1"]
+        assert tool_results[0]["content"] == "[Result unavailable — see context summary above]"
+        assert tool_results[1]["content"] == "[Result unavailable — see context summary above]"
+        assert tool_results[2]["content"] == "first result"
+
+    def test_invalid_interleaved_roles_do_not_break_tool_pair_repair(self):
+        msgs = [
+            {"role": "assistant", "tool_calls": [assistant_dict_call("c1")]},
+            {"role": "session_meta", "content": {"model": "test-model"}},
+            tool_result("c1", "kept"),
+            {"role": "transcript_note", "content": "internal only"},
+            tool_result("orphan", "dropped"),
+        ]
+        out = AIAgent._sanitize_api_messages(msgs)
+
+        assert [m["role"] for m in out] == ["assistant", "tool"]
+        assert out[1]["tool_call_id"] == "c1"
+        assert out[1]["content"] == "kept"
+
+    def test_multiple_tool_groups_repair_independently_without_reordering_groups(self):
+        msgs = [
+            {"role": "user", "content": "step one"},
+            {"role": "assistant", "tool_calls": [
+                assistant_dict_call("first-a"),
+                assistant_dict_call("first-b"),
+            ]},
+            tool_result("first-a"),
+            {"role": "assistant", "content": "between"},
+            {"role": "assistant", "tool_calls": [
+                assistant_dict_call("second-a"),
+                assistant_dict_call("second-b"),
+            ]},
+            tool_result("second-b"),
+            tool_result("orphan"),
+        ]
+        out = AIAgent._sanitize_api_messages(msgs)
+
+        assert [m.get("role") for m in out] == [
+            "user",
+            "assistant",
+            "tool",
+            "tool",
+            "assistant",
+            "assistant",
+            "tool",
+            "tool",
+        ]
+        assert [m.get("tool_call_id") for m in out if m.get("role") == "tool"] == [
+            "first-b",
+            "first-a",
+            "second-a",
+            "second-b",
+        ]
+
     def test_empty_list_is_safe(self):
         assert AIAgent._sanitize_api_messages([]) == []
 

@@ -8,7 +8,23 @@ from one surface are reflected everywhere on the next turn.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, TypedDict
+
+
+ApiMode = Literal["chat_completions", "codex_responses", "anthropic_messages"]
+
+
+class ModelConfigDict(TypedDict, total=False):
+    """Normalized shape of the ``model`` section in config.yaml."""
+
+    default: Any
+    model: Any
+    name: Any
+    provider: Any
+    base_url: Any
+    api_mode: Any
+    api_key: Any
+    api: Any
 
 
 @dataclass(frozen=True)
@@ -19,14 +35,8 @@ class GlobalModelConfig:
     api_mode: str = ""
 
 
-def read_global_model_config(config: dict[str, Any] | None = None) -> GlobalModelConfig:
-    """Return the normalized model selection from config.yaml or a config dict."""
-    if config is None:
-        from spark_cli.config import load_config
-
-        config = load_config()
-
-    model_cfg = config.get("model", "")
+def normalize_global_model_config(model_cfg: object) -> GlobalModelConfig:
+    """Coerce legacy/string model config into Spark's normalized model contract."""
     if isinstance(model_cfg, dict):
         return GlobalModelConfig(
             model=str(model_cfg.get("default") or model_cfg.get("model") or model_cfg.get("name") or ""),
@@ -37,6 +47,16 @@ def read_global_model_config(config: dict[str, Any] | None = None) -> GlobalMode
     if isinstance(model_cfg, str):
         return GlobalModelConfig(model=model_cfg)
     return GlobalModelConfig()
+
+
+def read_global_model_config(config: dict[str, Any] | None = None) -> GlobalModelConfig:
+    """Return the normalized model selection from config.yaml or a config dict."""
+    if config is None:
+        from spark_cli.config import load_config
+
+        config = load_config()
+
+    return normalize_global_model_config(config.get("model", ""))
 
 
 def write_global_model_config(

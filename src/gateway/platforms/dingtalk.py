@@ -22,8 +22,8 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     import dingtalk_stream
@@ -41,13 +41,13 @@ except ImportError:
     httpx = None  # type: ignore[assignment]
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     SendResult,
 )
+from gateway.platforms.helpers import MessageDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +84,13 @@ class DingTalkAdapter(BasePlatformAdapter):
         self._client_secret: str = extra.get("client_secret") or os.getenv("DINGTALK_CLIENT_SECRET", "")
 
         self._stream_client: Any = None
-        self._stream_task: Optional[asyncio.Task] = None
-        self._http_client: Optional["httpx.AsyncClient"] = None
+        self._stream_task: asyncio.Task | None = None
+        self._http_client: httpx.AsyncClient | None = None
 
         # Message deduplication
         self._dedup = MessageDeduplicator(max_size=1000)
         # Map chat_id -> session_webhook for reply routing
-        self._session_webhooks: Dict[str, str] = {}
+        self._session_webhooks: dict[str, str] = {}
 
     # -- Connection lifecycle -----------------------------------------------
 
@@ -219,9 +219,9 @@ class DingTalkAdapter(BasePlatformAdapter):
         # Parse timestamp
         create_at = getattr(message, "create_at", None)
         try:
-            timestamp = datetime.fromtimestamp(int(create_at) / 1000, tz=timezone.utc) if create_at else datetime.now(tz=timezone.utc)
+            timestamp = datetime.fromtimestamp(int(create_at) / 1000, tz=UTC) if create_at else datetime.now(tz=UTC)
         except (ValueError, OSError, TypeError):
-            timestamp = datetime.now(tz=timezone.utc)
+            timestamp = datetime.now(tz=UTC)
 
         event = MessageEvent(
             text=text,
@@ -260,8 +260,8 @@ class DingTalkAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a markdown reply via DingTalk session webhook."""
         metadata = metadata or {}
@@ -296,7 +296,7 @@ class DingTalkAdapter(BasePlatformAdapter):
         """DingTalk does not support typing indicators."""
         pass
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Return basic info about a DingTalk conversation."""
         return {"name": chat_id, "type": "group" if "group" in chat_id.lower() else "dm"}
 

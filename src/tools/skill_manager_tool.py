@@ -39,21 +39,22 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
+
 from core.spark_constants import get_spark_home
-from typing import Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # Import security scanner — agent-created skills get the same scrutiny as
 # community hub installs.
 try:
-    from tools.skills_guard import scan_skill, should_allow_install, format_scan_report
+    from tools.skills_guard import format_scan_report, scan_skill, should_allow_install
     _GUARD_AVAILABLE = True
 except ImportError:
     _GUARD_AVAILABLE = False
 
 
-def _security_scan_skill(skill_dir: Path) -> Optional[str]:
+def _security_scan_skill(skill_dir: Path) -> str | None:
     """Scan a skill directory after write. Returns error string if blocked, else None."""
     if not _GUARD_AVAILABLE:
         return None
@@ -75,7 +76,6 @@ def _security_scan_skill(skill_dir: Path) -> Optional[str]:
 
 import yaml
 
-
 # All skills live in ~/.spark/skills/ (single source of truth)
 SPARK_HOME = get_spark_home()
 SKILLS_DIR = SPARK_HOME / "skills"
@@ -96,7 +96,7 @@ ALLOWED_SUBDIRS = {"references", "templates", "scripts", "assets"}
 # Validation helpers
 # =============================================================================
 
-def _validate_name(name: str) -> Optional[str]:
+def _validate_name(name: str) -> str | None:
     """Validate a skill name. Returns error message or None if valid."""
     if not name:
         return "Skill name is required."
@@ -110,7 +110,7 @@ def _validate_name(name: str) -> Optional[str]:
     return None
 
 
-def _validate_category(category: Optional[str]) -> Optional[str]:
+def _validate_category(category: str | None) -> str | None:
     """Validate an optional category name used as a single directory segment."""
     if category is None:
         return None
@@ -135,7 +135,7 @@ def _validate_category(category: Optional[str]) -> Optional[str]:
     return None
 
 
-def _validate_frontmatter(content: str) -> Optional[str]:
+def _validate_frontmatter(content: str) -> str | None:
     """
     Validate that SKILL.md content has proper frontmatter with required fields.
     Returns error message or None if valid.
@@ -174,7 +174,7 @@ def _validate_frontmatter(content: str) -> Optional[str]:
     return None
 
 
-def _validate_content_size(content: str, label: str = "SKILL.md") -> Optional[str]:
+def _validate_content_size(content: str, label: str = "SKILL.md") -> str | None:
     """Check that content doesn't exceed the character limit for agent writes.
 
     Returns an error message or None if within bounds.
@@ -196,7 +196,7 @@ def _resolve_skill_dir(name: str, category: str = None) -> Path:
     return SKILLS_DIR / name
 
 
-def _find_skill(name: str) -> Optional[Dict[str, Any]]:
+def _find_skill(name: str) -> dict[str, Any] | None:
     """
     Find a skill by name across all skill directories.
 
@@ -214,7 +214,7 @@ def _find_skill(name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _validate_file_path(file_path: str) -> Optional[str]:
+def _validate_file_path(file_path: str) -> str | None:
     """
     Validate a file path for write_file/remove_file.
     Must be under an allowed subdirectory and not escape the skill dir.
@@ -242,7 +242,7 @@ def _validate_file_path(file_path: str) -> Optional[str]:
     return None
 
 
-def _resolve_skill_target(skill_dir: Path, file_path: str) -> Tuple[Optional[Path], Optional[str]]:
+def _resolve_skill_target(skill_dir: Path, file_path: str) -> tuple[Path | None, str | None]:
     """Resolve a supporting-file path and ensure it stays within the skill directory."""
     from tools.path_security import validate_within_dir
 
@@ -289,7 +289,7 @@ def _atomic_write_text(file_path: Path, content: str, encoding: str = "utf-8") -
 # Core actions
 # =============================================================================
 
-def _create_skill(name: str, content: str, category: str = None) -> Dict[str, Any]:
+def _create_skill(name: str, content: str, category: str = None) -> dict[str, Any]:
     """Create a new user skill with SKILL.md content."""
     # Validate name
     err = _validate_name(name)
@@ -341,12 +341,12 @@ def _create_skill(name: str, content: str, category: str = None) -> Dict[str, An
         result["category"] = category
     result["hint"] = (
         "To add reference files, templates, or scripts, use "
-        "skill_manage(action='write_file', name='{}', file_path='references/example.md', file_content='...')".format(name)
+        f"skill_manage(action='write_file', name='{name}', file_path='references/example.md', file_content='...')"
     )
     return result
 
 
-def _edit_skill(name: str, content: str) -> Dict[str, Any]:
+def _edit_skill(name: str, content: str) -> dict[str, Any]:
     """Replace the SKILL.md of any existing skill (full rewrite)."""
     err = _validate_frontmatter(content)
     if err:
@@ -385,7 +385,7 @@ def _patch_skill(
     new_string: str,
     file_path: str = None,
     replace_all: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Targeted find-and-replace within a skill file.
 
     Defaults to SKILL.md. Use file_path to patch a supporting file instead.
@@ -467,7 +467,7 @@ def _patch_skill(
     }
 
 
-def _delete_skill(name: str) -> Dict[str, Any]:
+def _delete_skill(name: str) -> dict[str, Any]:
     """Delete a skill."""
     existing = _find_skill(name)
     if not existing:
@@ -487,7 +487,7 @@ def _delete_skill(name: str) -> Dict[str, Any]:
     }
 
 
-def _write_file(name: str, file_path: str, file_content: str) -> Dict[str, Any]:
+def _write_file(name: str, file_path: str, file_content: str) -> dict[str, Any]:
     """Add or overwrite a supporting file within any skill directory."""
     err = _validate_file_path(file_path)
     if err:
@@ -539,7 +539,7 @@ def _write_file(name: str, file_path: str, file_content: str) -> Dict[str, Any]:
     }
 
 
-def _remove_file(name: str, file_path: str) -> Dict[str, Any]:
+def _remove_file(name: str, file_path: str) -> dict[str, Any]:
     """Remove a supporting file from any skill directory."""
     err = _validate_file_path(file_path)
     if err:
@@ -643,7 +643,7 @@ def skill_manage(
         except Exception:
             pass
         try:
-            from tools.skill_usage import mark_agent_created, bump_patch
+            from tools.skill_usage import bump_patch, mark_agent_created
             if action == "create":
                 mark_agent_created(name)
             elif action in ("patch", "edit"):

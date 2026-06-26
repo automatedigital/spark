@@ -187,19 +187,19 @@ Prompt caching and provider-specific knobs are easy to regress. Only send fields
 
 At minimum, update these test files:
 
-- `tests/test_runtime_provider_resolution.py`
-- `tests/test_cli_provider_resolution.py`
-- `tests/test_cli_model_command.py`
-- `tests/test_setup_model_selection.py`
-- `tests/test_provider_parity.py`
-- `tests/test_run_agent.py`
+- `tests/spark_cli/test_runtime_provider_resolution.py`
+- `tests/cli/test_cli_provider_resolution.py`
+- `tests/spark_cli/test_codex_cli_model_picker.py`
+- `tests/spark_cli/test_setup.py`
+- `tests/run_agent/test_provider_parity.py`
+- `tests/run_agent/test_run_agent.py`
 - `tests/test_<provider>_adapter.py` for a native provider
 
 Run with xdist disabled:
 
 ```bash
 source venv/bin/activate
-python -m pytest tests/test_runtime_provider_resolution.py tests/test_cli_provider_resolution.py tests/test_cli_model_command.py tests/test_setup_model_selection.py -n0 -q
+python -m pytest tests/spark_cli/test_runtime_provider_resolution.py tests/cli/test_cli_provider_resolution.py tests/spark_cli/test_codex_cli_model_picker.py tests/spark_cli/test_setup.py -n0 -q
 ```
 
 ## Step 9: Smoke Test

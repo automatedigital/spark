@@ -25,10 +25,8 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_dir
-
 
 # Unambiguous alphabet -- excludes 0/O, 1/I to prevent confusion
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -149,7 +147,7 @@ class PairingStore:
 
     def generate_code(
         self, platform: str, user_id: str, user_name: str = ""
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Generate a pairing code for a new user.
 
@@ -190,7 +188,7 @@ class PairingStore:
 
             return code
 
-    def approve_code(self, platform: str, code: str) -> Optional[dict]:
+    def approve_code(self, platform: str, code: str) -> dict | None:
         """
         Approve a pairing code. Adds the user to the approved list.
 

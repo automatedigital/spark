@@ -1,16 +1,15 @@
 """Tests for agent.error_classifier — structured API error classification."""
 
-import pytest
 from agent.error_classifier import (
     ClassifiedError,
     FailoverReason,
-    classify_api_error,
-    _extract_status_code,
+    _classify_402,
     _extract_error_body,
     _extract_error_code,
-    _classify_402,
+    _extract_status_code,
+    classify_api_error,
+    make_classified_error,
 )
-
 
 # ── Helper: mock API errors ────────────────────────────────────────────
 
@@ -83,6 +82,29 @@ class TestClassifiedError:
         assert e.should_fallback is False
         assert e.status_code is None
         assert e.message == ""
+
+    def test_typed_constructor_sets_recovery_flags(self):
+        e = make_classified_error(
+            FailoverReason.billing,
+            status_code=402,
+            provider="openrouter",
+            model="anthropic/claude",
+            message="payment required",
+            retryable=False,
+            should_rotate_credential=True,
+            should_fallback=True,
+        )
+
+        assert e == ClassifiedError(
+            reason=FailoverReason.billing,
+            status_code=402,
+            provider="openrouter",
+            model="anthropic/claude",
+            message="payment required",
+            retryable=False,
+            should_rotate_credential=True,
+            should_fallback=True,
+        )
 
 
 # ── Test: Status code extraction ───────────────────────────────────────
@@ -195,6 +217,23 @@ class TestClassify402:
 
 class TestClassifyApiError:
     """End-to-end classification tests."""
+
+    def test_phase6_recovery_contracts_cover_auth_rate_server_and_timeout(self):
+        auth401 = classify_api_error(MockAPIError("Unauthorized", status_code=401))
+        auth403 = classify_api_error(MockAPIError("Forbidden", status_code=403))
+        rate429 = classify_api_error(MockAPIError("Too Many Requests", status_code=429))
+        server500 = classify_api_error(MockAPIError("Internal Server Error", status_code=500))
+        timeout = classify_api_error(TimeoutError("read timed out"))
+
+        assert auth401.should_rotate_credential is True
+        assert auth401.should_fallback is True
+        assert auth403.reason == FailoverReason.auth
+        assert auth403.should_fallback is True
+        assert rate429.reason == FailoverReason.rate_limit
+        assert rate429.should_fallback is True
+        assert server500.reason == FailoverReason.server_error
+        assert server500.retryable is True
+        assert timeout.reason == FailoverReason.timeout
 
     # ── Auth errors ──
 

@@ -6,7 +6,6 @@ without risk of a circular dependency.
 """
 
 import re
-from typing import Optional, Tuple
 
 _TELEGRAM_TOPIC_TARGET_RE = re.compile(r"^\s*(-?\d+)(?::(\d+))?\s*$")
 _FEISHU_TARGET_RE = re.compile(
@@ -20,7 +19,7 @@ _NUMERIC_TOPIC_RE = _TELEGRAM_TOPIC_TARGET_RE
 
 def parse_target_ref(
     platform_name: str, target_ref: str
-) -> Tuple[Optional[str], Optional[str], bool]:
+) -> tuple[str | None, str | None, bool]:
     """Parse a send-message target into (chat_id, thread_id, is_explicit)."""
     if platform_name == "telegram":
         match = _TELEGRAM_TOPIC_TARGET_RE.fullmatch(target_ref)

@@ -16,10 +16,18 @@ Import chain (circular-import safe):
 
 import json
 import logging
+import os
 import threading
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeAlias
 
 logger = logging.getLogger(__name__)
+
+ToolArgs: TypeAlias = dict[str, Any]
+ToolKwargs: TypeAlias = dict[str, Any]
+ToolResult: TypeAlias = str | dict[str, Any] | list[Any]
+ToolHandler: TypeAlias = Callable[..., ToolResult | Awaitable[ToolResult]]
+ToolCheck: TypeAlias = Callable[[], bool]
 
 
 class ToolEntry:
@@ -31,9 +39,21 @@ class ToolEntry:
         "max_result_size_chars", "normalize", "screen",
     )
 
-    def __init__(self, name, toolset, schema, handler, check_fn,
-                 requires_env, is_async, description, emoji,
-                 max_result_size_chars=None, normalize=True, screen=True):
+    def __init__(
+        self,
+        name: str,
+        toolset: str,
+        schema: dict[str, Any],
+        handler: ToolHandler,
+        check_fn: ToolCheck | None,
+        requires_env: list[str],
+        is_async: bool,
+        description: str,
+        emoji: str,
+        max_result_size_chars: int | float | None = None,
+        normalize: bool = True,
+        screen: bool = True,
+    ):
         self.name = name
         self.toolset = toolset
         self.schema = schema
@@ -47,19 +67,23 @@ class ToolEntry:
         self.normalize = normalize
         self.screen = screen
 
+    def call(self, args: ToolArgs, kwargs: ToolKwargs) -> ToolResult | Awaitable[ToolResult]:
+        """Invoke the registered handler through a typed call boundary."""
+        return self.handler(args, **kwargs)
+
 
 class ToolRegistry:
     """Singleton registry that collects tool schemas + handlers from tool files."""
 
     def __init__(self):
         self._tools: dict[str, ToolEntry] = {}
-        self._toolset_checks: dict[str, Callable] = {}
+        self._toolset_checks: dict[str, ToolCheck] = {}
         # MCP dynamic refresh can mutate the registry while other threads are
         # reading tool metadata, so keep mutations serialized and readers on
         # stable snapshots.
         self._lock = threading.RLock()
 
-    def _snapshot_state(self) -> tuple[list[ToolEntry], dict[str, Callable]]:
+    def _snapshot_state(self) -> tuple[list[ToolEntry], dict[str, ToolCheck]]:
         """Return a coherent snapshot of registry entries and toolset checks."""
         with self._lock:
             return list(self._tools.values()), dict(self._toolset_checks)
@@ -68,11 +92,11 @@ class ToolRegistry:
         """Return a stable snapshot of registered tool entries."""
         return self._snapshot_state()[0]
 
-    def _snapshot_toolset_checks(self) -> dict[str, Callable]:
+    def _snapshot_toolset_checks(self) -> dict[str, ToolCheck]:
         """Return a stable snapshot of toolset availability checks."""
         return self._snapshot_state()[1]
 
-    def _evaluate_toolset_check(self, toolset: str, check: Callable | None) -> bool:
+    def _evaluate_toolset_check(self, toolset: str, check: ToolCheck | None) -> bool:
         """Run a toolset check, treating missing or failing checks as unavailable/available."""
         if not check:
             return True
@@ -106,10 +130,10 @@ class ToolRegistry:
         self,
         name: str,
         toolset: str,
-        schema: dict,
-        handler: Callable,
-        check_fn: Callable = None,
-        requires_env: list = None,
+        schema: dict[str, Any],
+        handler: ToolHandler,
+        check_fn: ToolCheck | None = None,
+        requires_env: list[str] | None = None,
         is_async: bool = False,
         description: str = "",
         emoji: str = "",
@@ -199,7 +223,7 @@ class ToolRegistry:
     # Dispatch
     # ------------------------------------------------------------------
 
-    def dispatch(self, name: str, args: dict, **kwargs) -> str:
+    def dispatch(self, name: str, args: ToolArgs, **kwargs) -> str:
         """Execute a tool handler by name.
 
         * Async handlers are bridged automatically via ``_run_async()``.
@@ -214,15 +238,16 @@ class ToolRegistry:
         try:
             if entry.is_async:
                 from core.model_tools import _run_async
-                raw = _run_async(entry.handler(args, **kwargs))
+                raw = _run_async(entry.call(args, kwargs))
             else:
-                raw = entry.handler(args, **kwargs)
+                raw = entry.call(args, kwargs)
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
             logger.exception("Tool %s dispatch error: %s", name, e)
             return json.dumps({"error": f"Tool execution failed: {type(e).__name__}: {e}"})
 
+        raw = _coerce_handler_json_result(name, raw)
         return _post_process(name, entry, raw, args)
 
     # ------------------------------------------------------------------
@@ -349,6 +374,50 @@ class ToolRegistry:
                 })
         return available, unavailable
 
+    def get_health_report(self) -> dict[str, list[dict[str, Any]]]:
+        """Return per-tool availability details for diagnostics and tests."""
+        available: list[dict[str, Any]] = []
+        unavailable: list[dict[str, Any]] = []
+        check_results: dict[ToolCheck, tuple[bool, str | None, str | None]] = {}
+
+        for entry in self._snapshot_entries():
+            missing_env_vars = [
+                env for env in entry.requires_env
+                if not os.getenv(env, "").strip()
+            ]
+            ok = True
+            error_type = None
+            error = None
+            if entry.check_fn:
+                if entry.check_fn not in check_results:
+                    try:
+                        check_results[entry.check_fn] = (
+                            bool(entry.check_fn()),
+                            None,
+                            None,
+                        )
+                    except Exception as exc:
+                        check_results[entry.check_fn] = (
+                            False,
+                            type(exc).__name__,
+                            str(exc),
+                        )
+                ok, error_type, error = check_results[entry.check_fn]
+
+            row = {
+                "name": entry.name,
+                "toolset": entry.toolset,
+                "missing_env_vars": missing_env_vars,
+                "error_type": error_type,
+                "error": error,
+            }
+            if ok:
+                available.append(row)
+            else:
+                unavailable.append(row)
+
+        return {"available": available, "unavailable": unavailable}
+
 
 # Module-level singleton
 registry = ToolRegistry()
@@ -434,6 +503,31 @@ def _argv_from_args(args: dict | None) -> list[str] | None:
     return None
 
 
+def _coerce_handler_json_result(name: str, raw: ToolResult) -> str:
+    """Normalize handler output to a valid JSON string."""
+    if not isinstance(raw, str):
+        try:
+            return json.dumps(raw, ensure_ascii=False)
+        except (TypeError, ValueError):
+            logger.warning("Tool %s returned non-serializable result: %r", name, raw)
+            return tool_error(
+                "Tool handler returned a non-JSON-serializable result",
+                tool=name,
+                result_type=type(raw).__name__,
+            )
+
+    try:
+        json.loads(raw)
+    except (TypeError, ValueError):
+        logger.warning("Tool %s returned a non-JSON string result", name)
+        return tool_error(
+            "Tool handler returned a non-JSON string result",
+            tool=name,
+            result_type=type(raw).__name__,
+        )
+    return raw
+
+
 def _post_process(name: str, entry: "ToolEntry", raw: str, args: dict | None) -> str:
     """Apply compaction + injection screen. Always returns a string."""
     if not isinstance(raw, str):
@@ -461,7 +555,7 @@ def _post_process(name: str, entry: "ToolEntry", raw: str, args: dict | None) ->
 
     if entry.screen and _pipeline_settings.injection_mode != "off":
         try:
-            from tools.injection_guard import screen_tool_output, blocked_stub
+            from tools.injection_guard import blocked_stub, screen_tool_output
             text, decision = screen_tool_output(
                 text, name,
                 block_threshold=_pipeline_settings.block_threshold,

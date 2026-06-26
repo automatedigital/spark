@@ -28,9 +28,9 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def _file_lock():
 # Raw load / save
 # ---------------------------------------------------------------------------
 
-def _load_raw() -> Dict[str, Any]:
+def _load_raw() -> dict[str, Any]:
     path = _sidecar_path()
     if not path.exists():
         return {}
@@ -120,7 +120,7 @@ def _load_raw() -> Dict[str, Any]:
         return {}
 
 
-def _save_raw(data: Dict[str, Any]) -> None:
+def _save_raw(data: dict[str, Any]) -> None:
     path = _sidecar_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,10 +148,10 @@ def _save_raw(data: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
-def _default_record() -> Dict[str, Any]:
+def _default_record() -> dict[str, Any]:
     return {
         "created_by": None,
         "state": STATE_ACTIVE,
@@ -167,7 +167,7 @@ def _default_record() -> Dict[str, Any]:
     }
 
 
-def _ensure_record(data: Dict[str, Any], name: str) -> Dict[str, Any]:
+def _ensure_record(data: dict[str, Any], name: str) -> dict[str, Any]:
     """Return the record for *name*, creating a default one if missing."""
     if name not in data or not isinstance(data[name], dict):
         data[name] = _default_record()
@@ -178,7 +178,7 @@ def _ensure_record(data: Dict[str, Any], name: str) -> Dict[str, Any]:
 # Activity helpers (for curator)
 # ---------------------------------------------------------------------------
 
-def activity_count(record: Dict[str, Any]) -> int:
+def activity_count(record: dict[str, Any]) -> int:
     return (
         int(record.get("use_count") or 0)
         + int(record.get("view_count") or 0)
@@ -186,7 +186,7 @@ def activity_count(record: Dict[str, Any]) -> int:
     )
 
 
-def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+def _parse_iso(ts: str | None) -> datetime | None:
     if not ts:
         return None
     try:
@@ -195,7 +195,7 @@ def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def latest_activity_at(record: Dict[str, Any]) -> Optional[datetime]:
+def latest_activity_at(record: dict[str, Any]) -> datetime | None:
     """Return the most recent activity timestamp (use/view/patch), not created_at."""
     candidates = [
         _parse_iso(record.get("last_used_at")),
@@ -286,7 +286,7 @@ def set_pinned(name: str, pinned: bool) -> None:
         logger.debug("skill_usage.set_pinned failed for %s: %s", name, e)
 
 
-def archive_skill(name: str) -> Tuple[bool, str]:
+def archive_skill(name: str) -> tuple[bool, str]:
     """Shortcut: set state to archived. Returns (ok, message)."""
     try:
         set_state(name, STATE_ARCHIVED)
@@ -299,13 +299,13 @@ def archive_skill(name: str) -> Tuple[bool, str]:
 # Public read API
 # ---------------------------------------------------------------------------
 
-def get_skill_record(name: str) -> Optional[Dict[str, Any]]:
+def get_skill_record(name: str) -> dict[str, Any] | None:
     """Return the usage record for *name*, or None if not tracked."""
     data = _load_raw()
     return data.get(name)
 
 
-def all_records() -> Dict[str, Any]:
+def all_records() -> dict[str, Any]:
     """Return all tracked records as {name: record}."""
     return _load_raw()
 
@@ -318,7 +318,7 @@ def is_agent_created(name: str) -> bool:
     return rec.get("created_by") == "agent"
 
 
-def agent_created_report() -> List[Dict[str, Any]]:
+def agent_created_report() -> list[dict[str, Any]]:
     """Return a list of dicts for all agent-created skills.
 
     Each dict has: name, state, pinned, activity_count, use_count,
@@ -347,7 +347,7 @@ def agent_created_report() -> List[Dict[str, Any]]:
     return sorted(results, key=lambda r: r["name"])
 
 
-def top_skills(limit: int = 20) -> List[Dict[str, Any]]:
+def top_skills(limit: int = 20) -> list[dict[str, Any]]:
     """Return top *limit* skills by total activity, regardless of provenance."""
     data = _load_raw()
     results = []
@@ -369,10 +369,10 @@ def top_skills(limit: int = 20) -> List[Dict[str, Any]]:
     return results[:limit]
 
 
-def lifecycle_counts() -> Dict[str, int]:
+def lifecycle_counts() -> dict[str, int]:
     """Return {active, stale, archived} skill counts for all tracked skills."""
     data = _load_raw()
-    counts: Dict[str, int] = {STATE_ACTIVE: 0, STATE_STALE: 0, STATE_ARCHIVED: 0}
+    counts: dict[str, int] = {STATE_ACTIVE: 0, STATE_STALE: 0, STATE_ARCHIVED: 0}
     for rec in data.values():
         if isinstance(rec, dict):
             state = rec.get("state", STATE_ACTIVE)

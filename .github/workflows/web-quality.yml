@@ -1,0 +1,45 @@
+name: web-quality
+
+on:
+  push:
+    paths:
+      - ".github/workflows/web-quality.yml"
+      - "src/spark_cli/web/**"
+  pull_request:
+    paths:
+      - ".github/workflows/web-quality.yml"
+      - "src/spark_cli/web/**"
+
+defaults:
+  run:
+    working-directory: src/spark_cli/web
+
+jobs:
+  web-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/spark_cli/web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Web tests
+        run: npm run test
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Web Playwright smoke
+        run: npm run test:e2e
+
+      - name: Web lint
+        run: npm run lint
+
+      - name: Web build
+        run: npm run build

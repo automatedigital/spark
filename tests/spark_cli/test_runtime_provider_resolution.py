@@ -1146,6 +1146,22 @@ def test_opencode_go_configured_api_mode_still_overrides_default(monkeypatch):
     assert resolved["api_mode"] == "chat_completions"
 
 
+def test_phase6_provider_specific_api_mode_contract(monkeypatch):
+    """Provider/model-specific routing chooses the expected API transport."""
+    monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "opencode-zen")
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-opencode-zen-key")
+    monkeypatch.delenv("OPENCODE_ZEN_BASE_URL", raising=False)
+
+    monkeypatch.setattr(rp, "_get_model_config", lambda: {"default": "gpt-5.4"})
+    gpt_runtime = rp.resolve_runtime_provider(requested="opencode-zen")
+
+    monkeypatch.setattr(rp, "_get_model_config", lambda: {"default": "claude-sonnet-4-6"})
+    claude_runtime = rp.resolve_runtime_provider(requested="opencode-zen")
+
+    assert gpt_runtime["api_mode"] == "codex_responses"
+    assert claude_runtime["api_mode"] == "anthropic_messages"
+
+
 def test_named_custom_provider_anthropic_api_mode(monkeypatch):
     """Custom providers should accept api_mode: anthropic_messages."""
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "my-anthropic-proxy")

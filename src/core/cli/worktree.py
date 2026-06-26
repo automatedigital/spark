@@ -13,22 +13,21 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def set_active_worktree(info: "Optional[Dict[str, str]]") -> None:
+def set_active_worktree(info: dict[str, str] | None) -> None:
     """Record the active worktree (used by main() after setup)."""
     global _active_worktree
     _active_worktree = info
 
 
 # Tracks the active worktree for cleanup on exit
-_active_worktree: Optional[Dict[str, str]] = None
+_active_worktree: dict[str, str] | None = None
 
 
-def _git_repo_root() -> Optional[str]:
+def _git_repo_root() -> str | None:
     """Return the git repo root for CWD, or None if not in a repo."""
     import subprocess
 
@@ -55,7 +54,7 @@ def _path_is_within_root(path: Path, root: Path) -> bool:
         return False
 
 
-def _setup_worktree(repo_root: str = None) -> Optional[Dict[str, str]]:
+def _setup_worktree(repo_root: str = None) -> dict[str, str] | None:
     """Create an isolated git worktree for this CLI session.
 
     Returns a dict with worktree metadata on success, None on failure.
@@ -166,7 +165,7 @@ def _setup_worktree(repo_root: str = None) -> Optional[Dict[str, str]]:
     return info
 
 
-def _cleanup_worktree(info: Dict[str, str] = None) -> None:
+def _cleanup_worktree(info: dict[str, str] = None) -> None:
     """Remove a worktree and its branch on exit.
 
     Preserves the worktree only if it has unpushed commits (real work

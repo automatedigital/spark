@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _spark_home = get_spark_home()
 
 
-def load_cli_config() -> Dict[str, Any]:
+def load_cli_config() -> dict[str, Any]:
     """
     Load CLI configuration from config files.
 
@@ -153,7 +153,7 @@ def load_cli_config() -> Dict[str, Any]:
     # Load from file if exists
     if config_path.exists():
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 file_config = yaml.safe_load(f) or {}
 
             _file_has_terminal_config = "terminal" in file_config
@@ -395,7 +395,7 @@ def save_config_value(key_path: str, value: any) -> bool:
 
         # Load existing config
         if config_path.exists():
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 config = yaml.safe_load(f) or {}
         else:
             config = {}

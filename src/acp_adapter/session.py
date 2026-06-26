@@ -8,8 +8,6 @@ history.
 """
 from __future__ import annotations
 
-from core.spark_constants import get_spark_home
-
 import copy
 import json
 import logging
@@ -17,7 +15,9 @@ import sys
 import uuid
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class SessionState:
     agent: Any  # AIAgent instance
     cwd: str = "."
     model: str = ""
-    history: List[Dict[str, Any]] = field(default_factory=list)
+    history: list[dict[str, Any]] = field(default_factory=list)
     cancel_event: Any = None  # threading.Event
 
 
@@ -84,7 +84,7 @@ class SessionManager:
             db:            Optional SessionDB instance. When omitted, the default
                            SessionDB (``~/.spark/state.db``) is lazily created.
         """
-        self._sessions: Dict[str, SessionState] = {}
+        self._sessions: dict[str, SessionState] = {}
         self._lock = Lock()
         self._agent_factory = agent_factory
         self._db_instance = db  # None → lazy-init on first use
@@ -111,7 +111,7 @@ class SessionManager:
         logger.info("Created ACP session %s (cwd=%s)", session_id, cwd)
         return state
 
-    def get_session(self, session_id: str) -> Optional[SessionState]:
+    def get_session(self, session_id: str) -> SessionState | None:
         """Return the session for *session_id*, or ``None``.
 
         If the session is not in memory but exists in the database (e.g. after
@@ -133,7 +133,7 @@ class SessionManager:
             _clear_task_cwd(session_id)
         return existed or db_existed
 
-    def fork_session(self, session_id: str, cwd: str = ".") -> Optional[SessionState]:
+    def fork_session(self, session_id: str, cwd: str = ".") -> SessionState | None:
         """Deep-copy a session's history into a new session."""
         import threading
 
@@ -162,7 +162,7 @@ class SessionManager:
         logger.info("Forked ACP session %s -> %s", session_id, new_id)
         return state
 
-    def list_sessions(self) -> List[Dict[str, Any]]:
+    def list_sessions(self) -> list[dict[str, Any]]:
         """Return lightweight info dicts for all sessions (memory + database)."""
         # Collect in-memory sessions first.
         with self._lock:
@@ -205,7 +205,7 @@ class SessionManager:
 
         return results
 
-    def update_cwd(self, session_id: str, cwd: str) -> Optional[SessionState]:
+    def update_cwd(self, session_id: str, cwd: str) -> SessionState | None:
         """Update the working directory for a session and its tool overrides."""
         state = self.get_session(session_id)  # checks DB too
         if state is None:
@@ -330,7 +330,7 @@ class SessionManager:
         except Exception:
             logger.warning("Failed to persist ACP session %s", state.session_id, exc_info=True)
 
-    def _restore(self, session_id: str) -> Optional[SessionState]:
+    def _restore(self, session_id: str) -> SessionState | None:
         """Load a session from the database into memory, recreating the AIAgent."""
         import threading
 

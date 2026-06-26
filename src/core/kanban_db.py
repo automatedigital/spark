@@ -14,9 +14,10 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any
 
 from core.spark_constants import get_spark_home
 
@@ -138,7 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_task_events_id ON task_events(id);
 """
 
 _lock = threading.Lock()
-_initialized: Dict[str, bool] = {}
+_initialized: dict[str, bool] = {}
 
 
 def kanban_db_path() -> Path:
@@ -203,10 +204,10 @@ def _connect() -> Iterator[sqlite3.Connection]:
 def _emit_event(
     conn: sqlite3.Connection,
     *,
-    task_id: Optional[str],
-    run_id: Optional[int],
+    task_id: str | None,
+    run_id: int | None,
     kind: str,
-    payload: Optional[dict] = None,
+    payload: dict | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO task_events (task_id, run_id, kind, payload_json, created_at) "
@@ -259,17 +260,17 @@ def create_task(
     title: str,
     board_slug: str = "default",
     body: str = "",
-    assignee: Optional[str] = None,
-    tenant: Optional[str] = None,
+    assignee: str | None = None,
+    tenant: str | None = None,
     priority: int = 0,
-    parent_ids: Optional[Sequence[str]] = None,
-    idempotency_key: Optional[str] = None,
+    parent_ids: Sequence[str] | None = None,
+    idempotency_key: str | None = None,
     workspace_kind: str = "scratch",
-    workspace_path: Optional[str] = None,
-    skills: Optional[Sequence[str]] = None,
+    workspace_path: str | None = None,
+    skills: Sequence[str] | None = None,
     in_triage: bool = False,
     max_runtime_seconds: int = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Insert a task. Respects idempotency_key: returns existing row if duplicate."""
     skills_json = json.dumps(list(skills or []), ensure_ascii=False)
     now = _now()
@@ -345,13 +346,13 @@ def create_task(
         return dict(row)
 
 
-def get_task(task_id: str) -> Optional[Dict[str, Any]]:
+def get_task(task_id: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(row) if row else None
 
 
-def add_comment(task_id: str, body: str, author: Optional[str] = None) -> int:
+def add_comment(task_id: str, body: str, author: str | None = None) -> int:
     with _connect() as conn:
         if not conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone():
             raise ValueError(f"Task not found: {task_id}")
@@ -425,17 +426,17 @@ def remove_link(parent_id: str, child_id: str) -> bool:
 def patch_task(
     task_id: str,
     *,
-    status: Optional[str] = None,
-    title: Optional[str] = None,
-    body: Optional[str] = None,
-    assignee: Optional[str] = None,
-    priority: Optional[int] = None,
-    tenant: Optional[str] = None,
-    result: Optional[str] = None,
-    in_triage: Optional[bool] = None,
-    workspace_path: Optional[str] = None,
+    status: str | None = None,
+    title: str | None = None,
+    body: str | None = None,
+    assignee: str | None = None,
+    priority: int | None = None,
+    tenant: str | None = None,
+    result: str | None = None,
+    in_triage: bool | None = None,
+    workspace_path: str | None = None,
     workspace_path_set: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
@@ -475,7 +476,7 @@ def patch_task(
             )
 
         sets = ["updated_at = ?"]
-        params: List[Any] = [now]
+        params: list[Any] = [now]
         if title is not None:
             sets.append("title = ?")
             params.append(title)
@@ -544,9 +545,9 @@ def complete_task(
     task_id: str,
     *,
     summary: str = "",
-    metadata: Optional[dict] = None,
+    metadata: dict | None = None,
     result: str = "",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Finish worker execution and move the task to user review."""
     now = _now()
     meta_json = json.dumps(metadata or {}, ensure_ascii=False)
@@ -597,7 +598,7 @@ def mark_task_done(
     *,
     summary: str = "",
     result: str = "",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Mark a reviewed task complete."""
     now = _now()
     with _connect() as conn:
@@ -644,7 +645,7 @@ def mark_task_done(
         return dict(refreshed) if refreshed else None
 
 
-def block_task(task_id: str, reason: str) -> Optional[Dict[str, Any]]:
+def block_task(task_id: str, reason: str) -> dict[str, Any] | None:
     now = _now()
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
@@ -677,7 +678,7 @@ def block_task(task_id: str, reason: str) -> Optional[Dict[str, Any]]:
         return dict(refreshed) if refreshed else None
 
 
-def unblock_task(task_id: str) -> Optional[Dict[str, Any]]:
+def unblock_task(task_id: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row or row["status"] != "blocked":
@@ -696,15 +697,15 @@ def unblock_task(task_id: str) -> Optional[Dict[str, Any]]:
 def get_board(
     *,
     board_slug: str = "default",
-    tenant: Optional[str] = None,
-    assignee: Optional[str] = None,
+    tenant: str | None = None,
+    assignee: str | None = None,
     include_archived: bool = False,
-    search: Optional[str] = None,
-) -> Dict[str, Any]:
+    search: str | None = None,
+) -> dict[str, Any]:
     """Return tasks grouped by status + filter metadata."""
     with _connect() as conn:
         q = "SELECT * FROM tasks WHERE board_slug = ?"
-        params: List[Any] = [board_slug]
+        params: list[Any] = [board_slug]
         if not include_archived:
             q += " AND status != 'archived'"
         if tenant:
@@ -720,7 +721,7 @@ def get_board(
 
         q += " ORDER BY priority DESC, updated_at DESC, created_at ASC"
         rows = conn.execute(q, params).fetchall()
-        by_status: Dict[str, List[Dict[str, Any]]] = {s: [] for s in sorted(KANBAN_STATUSES)}
+        by_status: dict[str, list[dict[str, Any]]] = {s: [] for s in sorted(KANBAN_STATUSES)}
         assignees = set()
         tenants = set()
         for r in rows:
@@ -743,7 +744,7 @@ def get_board(
         }
 
 
-def get_task_detail(task_id: str) -> Optional[Dict[str, Any]]:
+def get_task_detail(task_id: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
@@ -842,7 +843,7 @@ def build_worker_context(
     return "\n".join(lines)
 
 
-def append_events_since(since_id: int = 0, limit: int = 200) -> List[Dict[str, Any]]:
+def append_events_since(since_id: int = 0, limit: int = 200) -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             "SELECT * FROM task_events WHERE id > ? ORDER BY id ASC LIMIT ?",
@@ -856,7 +857,7 @@ def claim_ready_task(
     *,
     profile: str,
     claim_ttl_seconds: int,
-) -> Optional[Tuple[str, int]]:
+) -> tuple[str, int] | None:
     """Atomically claim a ready task. Returns (claim_token, run_id) or None."""
     token = uuid.uuid4().hex
     now = _now()
@@ -949,12 +950,12 @@ def reclaim_stale_running(
     *,
     claim_ttl_seconds: int,
     check_pid: bool = True,
-) -> List[str]:
+) -> list[str]:
     """Return list of task ids reclaimed (ready)."""
     import os as _os
 
     now = _now()
-    reclaimed: List[str] = []
+    reclaimed: list[str] = []
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, current_run_id, claim_expires_at, worker_pid FROM tasks WHERE status = 'running'"
@@ -1015,7 +1016,7 @@ def reclaim_stale_running(
     return reclaimed
 
 
-def list_ready_for_dispatch(board_slug: str = "default") -> List[Dict[str, Any]]:
+def list_ready_for_dispatch(board_slug: str = "default") -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             "SELECT * FROM tasks WHERE board_slug = ? AND status = 'ready' AND assignee IS NOT NULL "
@@ -1029,11 +1030,11 @@ def preview_ready_for_dispatch(
     *,
     board_slug: str = "default",
     max_tasks: int = 3,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return dispatchable ready tasks plus assignees skipped by concurrency limits."""
     ready = list_ready_for_dispatch(board_slug=board_slug)
-    selected: List[str] = []
-    blocked_by_assignee: List[str] = []
+    selected: list[str] = []
+    blocked_by_assignee: list[str] = []
     seen_assignee: set[str] = set()
     for row in ready:
         assignee = row.get("assignee") or ""
@@ -1067,9 +1068,9 @@ def tasks_running_for_assignee(assignee: str, board_slug: str = "default") -> in
         return int(row[0]) if row else 0
 
 
-def bulk_patch(task_ids: Sequence[str], fields: Dict[str, Any]) -> Dict[str, Any]:
+def bulk_patch(task_ids: Sequence[str], fields: dict[str, Any]) -> dict[str, Any]:
     """Apply same patch to many tasks; return per-id errors."""
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
     for tid in task_ids:
         try:
             ft = {k: v for k, v in fields.items() if v is not None and k in (

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 _MEMORY_PLUGINS_DIR = Path(__file__).parent
 
 
-def discover_memory_providers() -> List[Tuple[str, str, bool]]:
+def discover_memory_providers() -> list[tuple[str, str, bool]]:
     """Scan plugins/memory/ for available providers.
 
     Returns list of (name, description, is_available) tuples.
@@ -78,7 +78,7 @@ def discover_memory_providers() -> List[Tuple[str, str, bool]]:
     return results
 
 
-def load_memory_provider(name: str) -> Optional["MemoryProvider"]:
+def load_memory_provider(name: str) -> MemoryProvider | None:
     """Load and return a MemoryProvider instance by name.
 
     Returns None if the provider is not found or fails to load.
@@ -99,7 +99,7 @@ def load_memory_provider(name: str) -> Optional["MemoryProvider"]:
         return None
 
 
-def _load_provider_from_dir(provider_dir: Path) -> Optional["MemoryProvider"]:
+def _load_provider_from_dir(provider_dir: Path) -> MemoryProvider | None:
     """Import a provider module and extract the MemoryProvider instance.
 
     The module must have either:
@@ -219,7 +219,7 @@ class _ProviderCollector:
         pass  # CLI registration happens via discover_plugin_cli_commands()
 
 
-def _get_active_memory_provider() -> Optional[str]:
+def _get_active_memory_provider() -> str | None:
     """Read the active memory provider name from config.yaml.
 
     Returns the provider name (e.g. ``"honcho"``) or None if no
@@ -234,7 +234,7 @@ def _get_active_memory_provider() -> Optional[str]:
         return None
 
 
-def discover_plugin_cli_commands() -> List[dict]:
+def discover_plugin_cli_commands() -> list[dict]:
     """Return CLI commands for the **active** memory plugin only.
 
     Only one memory provider can be active at a time (set via
@@ -251,7 +251,7 @@ def discover_plugin_cli_commands() -> List[dict]:
     full plugin module.  Safe to call during argparse setup before
     any provider is loaded.
     """
-    results: List[dict] = []
+    results: list[dict] = []
     if not _MEMORY_PLUGINS_DIR.is_dir():
         return results
 

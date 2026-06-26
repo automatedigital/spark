@@ -790,6 +790,33 @@ class TestAuxiliaryPoolAwareness:
         assert client is not None
         assert provider == "custom:local"
 
+    def test_auto_resolution_accepts_typed_runtime_record(self):
+        """Auxiliary fallback decisions consume RuntimeProviderRecord mappings."""
+        from spark_cli.runtime_provider import RuntimeProviderRecord
+
+        runtime = RuntimeProviderRecord(
+            provider="custom",
+            model="typed-local-model",
+            base_url="http://localhost:11434/v1",
+            api_key="no-key-required",
+            api_mode="chat_completions",
+        )
+        with patch(
+            "agent.auxiliary_client.resolve_provider_client",
+            return_value=(MagicMock(), "typed-local-model"),
+        ) as mock_resolve:
+            client, model = _resolve_auto(runtime)
+
+        assert client is not None
+        assert model == "typed-local-model"
+        mock_resolve.assert_called_once_with(
+            "custom",
+            "typed-local-model",
+            explicit_base_url="http://localhost:11434/v1",
+            explicit_api_key="no-key-required",
+            api_mode="chat_completions",
+        )
+
     def test_vision_config_google_provider_uses_gemini_credentials(self, monkeypatch):
         config = {
             "auxiliary": {

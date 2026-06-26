@@ -1,0 +1,235 @@
+{
+  "description": "Current mypy debt for src/agent/ and src/spark_cli/, counted by file and mypy error code. Regenerate intentionally with `python scripts/mypy_ratchet.py --update`.",
+  "files": {
+    "src/agent/anthropic_adapter.py": {
+      "arg-type": 7,
+      "assignment": 11,
+      "no-any-return": 5,
+      "var-annotated": 1
+    },
+    "src/agent/auxiliary_client.py": {
+      "arg-type": 72,
+      "assignment": 42,
+      "list-item": 1,
+      "no-any-return": 4,
+      "return-value": 1,
+      "unused-ignore": 1,
+      "var-annotated": 1
+    },
+    "src/agent/context_compressor.py": {
+      "arg-type": 6,
+      "assignment": 7,
+      "no-any-return": 1,
+      "no-redef": 1,
+      "override": 2
+    },
+    "src/agent/copilot_acp_client.py": {
+      "union-attr": 3
+    },
+    "src/agent/credential_pool.py": {
+      "arg-type": 9,
+      "assignment": 1,
+      "no-any-return": 1,
+      "union-attr": 1
+    },
+    "src/agent/display.py": {
+      "arg-type": 1,
+      "assignment": 1,
+      "no-any-return": 3
+    },
+    "src/agent/error_classifier.py": {
+      "no-any-return": 31
+    },
+    "src/agent/insights.py": {
+      "arg-type": 5,
+      "assignment": 11,
+      "return-value": 1,
+      "var-annotated": 8
+    },
+    "src/agent/model_metadata.py": {
+      "no-any-return": 2,
+      "var-annotated": 1
+    },
+    "src/agent/models_dev.py": {
+      "arg-type": 1,
+      "no-any-return": 1
+    },
+    "src/agent/skill_commands.py": {
+      "arg-type": 1
+    },
+    "src/spark_cli/auth.py": {
+      "arg-type": 4,
+      "assignment": 3,
+      "attr-defined": 4,
+      "no-any-return": 5,
+      "return-value": 1
+    },
+    "src/spark_cli/auth_commands.py": {
+      "no-any-return": 2
+    },
+    "src/spark_cli/backup.py": {
+      "assignment": 1
+    },
+    "src/spark_cli/banner.py": {
+      "assignment": 4,
+      "no-any-return": 1
+    },
+    "src/spark_cli/callbacks.py": {
+      "no-any-return": 1,
+      "var-annotated": 2
+    },
+    "src/spark_cli/canvas_routes.py": {
+      "no-any-return": 1
+    },
+    "src/spark_cli/clipboard.py": {
+      "return-value": 1
+    },
+    "src/spark_cli/commands.py": {
+      "misc": 2,
+      "name-defined": 1,
+      "union-attr": 1
+    },
+    "src/spark_cli/config.py": {
+      "assignment": 4,
+      "attr-defined": 7,
+      "call-overload": 9,
+      "dict-item": 1,
+      "index": 2,
+      "no-any-return": 1,
+      "return-value": 1,
+      "var-annotated": 3
+    },
+    "src/spark_cli/connectors_routes.py": {
+      "unused-ignore": 1
+    },
+    "src/spark_cli/copilot_auth.py": {
+      "no-any-return": 1
+    },
+    "src/spark_cli/curses_ui.py": {
+      "no-any-return": 1
+    },
+    "src/spark_cli/debug.py": {
+      "no-any-return": 2
+    },
+    "src/spark_cli/doctor.py": {
+      "misc": 1
+    },
+    "src/spark_cli/env_loader.py": {
+      "arg-type": 1,
+      "call-overload": 1
+    },
+    "src/spark_cli/gateway.py": {
+      "operator": 1
+    },
+    "src/spark_cli/google_connector.py": {
+      "no-any-return": 6
+    },
+    "src/spark_cli/kanban_routes.py": {
+      "operator": 1
+    },
+    "src/spark_cli/logs.py": {
+      "var-annotated": 1
+    },
+    "src/spark_cli/main.py": {
+      "assignment": 1,
+      "no-any-return": 3
+    },
+    "src/spark_cli/mcp_config.py": {
+      "no-any-return": 1
+    },
+    "src/spark_cli/model_switch.py": {
+      "assignment": 5,
+      "str-unpack": 1
+    },
+    "src/spark_cli/models.py": {
+      "return-value": 1
+    },
+    "src/spark_cli/oauth_connectors.py": {
+      "no-any-return": 4
+    },
+    "src/spark_cli/plugins.py": {
+      "arg-type": 4,
+      "assignment": 1,
+      "no-any-return": 1,
+      "unused-ignore": 2
+    },
+    "src/spark_cli/plugins_cmd.py": {
+      "assignment": 2
+    },
+    "src/spark_cli/preview_browser.py": {
+      "no-any-return": 5,
+      "unused-ignore": 1
+    },
+    "src/spark_cli/profiles.py": {
+      "no-any-return": 1
+    },
+    "src/spark_cli/runtime_provider.py": {
+      "assignment": 2,
+      "no-any-return": 1,
+      "union-attr": 3
+    },
+    "src/spark_cli/secret_store.py": {
+      "no-any-return": 1,
+      "unused-ignore": 1
+    },
+    "src/spark_cli/setup.py": {
+      "arg-type": 17,
+      "assignment": 2,
+      "no-redef": 1,
+      "var-annotated": 1
+    },
+    "src/spark_cli/skills_config.py": {
+      "arg-type": 2,
+      "assignment": 1
+    },
+    "src/spark_cli/skills_hub.py": {
+      "var-annotated": 1
+    },
+    "src/spark_cli/skin_engine.py": {
+      "assignment": 1
+    },
+    "src/spark_cli/status.py": {
+      "no-any-return": 1
+    },
+    "src/spark_cli/tools_config.py": {
+      "arg-type": 3,
+      "assignment": 2,
+      "no-any-return": 3
+    },
+    "src/spark_cli/web_embed.py": {
+      "assignment": 1
+    },
+    "src/spark_cli/web_server.py": {
+      "arg-type": 27,
+      "attr-defined": 1,
+      "call-arg": 1,
+      "no-any-return": 5,
+      "truthy-function": 2,
+      "unused-ignore": 1
+    },
+    "src/spark_cli/webhook.py": {
+      "no-any-return": 1
+    },
+    "src/spark_cli/workflow_nodes.py": {
+      "arg-type": 3,
+      "unused-ignore": 2
+    },
+    "src/spark_cli/workspace_routes.py": {
+      "assignment": 2,
+      "no-any-return": 2,
+      "unused-ignore": 2
+    }
+  },
+  "mypy_command": [
+    "--show-error-codes",
+    "--no-error-summary",
+    "--no-pretty",
+    "src/agent/",
+    "src/spark_cli/"
+  ],
+  "strict_targets": [
+    "src/core/run_agent/iteration_budget.py"
+  ],
+  "total_errors": 450,
+  "version": 1
+}

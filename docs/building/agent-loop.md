@@ -6,7 +6,7 @@ description: "Detailed walkthrough of AIAgent execution, API modes, tools, callb
 
 # Agent Loop Internals
 
-`AIAgent` in `run_agent.py` is the engine everything else builds on — roughly 10,700 lines that take a user message and run it all the way through to a final response, handling providers, tools, compression, retries, and subagents along the way.
+`AIAgent` is exported from `core/run_agent/__init__.py`. The facade still owns the synchronous turn orchestration, but several high-risk concerns now live in sibling modules under `core/run_agent/`: prompt-cache assembly, message-state repair, provider-call helpers, tool-loop guardrails, persistence helpers, iteration budgeting, parallelism, and payload sanitization.
 
 ## What `AIAgent` Does
 
@@ -135,7 +135,7 @@ for each tool_call in response.tool_calls:
 
 ### Tools That Bypass the Registry
 
-Some tools need direct access to agent state, so `run_agent.py` intercepts them before `handle_function_call()`:
+Some tools need direct access to agent state, so the `core/run_agent/` tool-loop path intercepts them before `handle_function_call()`:
 
 | Tool | Why it's intercepted |
 |------|-----------------------|
@@ -206,7 +206,14 @@ Auxiliary tasks (vision, compression, web extraction, session search) each have 
 
 | File | Purpose |
 |------|---------|
-| `run_agent.py` | `AIAgent` class — the complete agent loop (~10,700 lines) |
+| `core/run_agent/__init__.py` | `AIAgent` facade and core loop orchestration |
+| `core/run_agent/message_state.py` | API message role filtering, tool-call ID extraction, and tool-result pair repair |
+| `core/run_agent/persistence.py` | Memory flush and persistence-adjacent helpers |
+| `core/run_agent/provider_calls.py` | Provider request helpers and stream-delivery callback state |
+| `core/run_agent/prompt_cache.py` | Caching-sensitive system prompt assembly per ADR-0001 |
+| `core/run_agent/tool_loop.py` | Tool-loop dispatch guardrails, agent-level tool invocation, and working-directory injection |
+| `core/run_agent/parallelism.py` | Tool-call parallelism heuristics and path-scope checks |
+| `core/run_agent/sanitize.py` | Surrogate and non-ASCII payload sanitization |
 | `agent/prompt_builder.py` | System prompt assembly from memory, skills, context files, personality |
 | `agent/context_engine.py` | `ContextEngine` ABC — pluggable context management |
 | `agent/context_compressor.py` | Default engine — lossy summarization algorithm |

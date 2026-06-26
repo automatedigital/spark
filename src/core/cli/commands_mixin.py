@@ -84,6 +84,7 @@ class _CommandHandlersMixin:
     def _handle_cron_command(self, cmd: str):
         """Handle the /cron command to manage scheduled tasks."""
         import shlex
+
         from tools.cronjob_tools import cronjob as cronjob_tool
 
         def _cron_api(**kwargs):
@@ -348,6 +349,7 @@ class _CommandHandlersMixin:
     def _handle_dream_command(self, cmd: str):
         """Handle /dream — reflective consolidation pass over sessions + memory."""
         import shlex
+
         from core import dream as dream_mod
 
         tokens = shlex.split(cmd)
@@ -580,6 +582,7 @@ class _CommandHandlersMixin:
         """Handle /goal — durable cross-session objective tracking via Kanban board."""
         import re as _re
         import shlex
+
         from core import goal as goal_mod
 
         tokens = shlex.split(cmd)
@@ -1175,7 +1178,7 @@ class _CommandHandlersMixin:
                 s.connect(("127.0.0.1", _port))
                 s.close()
                 _already_open = True
-            except (OSError, socket.timeout):
+            except (TimeoutError, OSError):
                 pass
 
             if _already_open:
@@ -1198,7 +1201,7 @@ class _CommandHandlersMixin:
                             s.close()
                             _already_open = True
                             break
-                        except (OSError, socket.timeout):
+                        except (TimeoutError, OSError):
                             _time.sleep(0.5)
                     if _already_open:
                         print(f"   OK: Chrome launched and listening on port {_port}")
@@ -1335,9 +1338,9 @@ class _CommandHandlersMixin:
         """Handle /skin [name] - show or change the display skin."""
         try:
             from spark_cli.skin_engine import (
+                get_active_skin_name,
                 list_skins,
                 set_active_skin,
-                get_active_skin_name,
             )
         except ImportError:
             print("Skin engine not available.")
@@ -1649,8 +1652,8 @@ class _CommandHandlersMixin:
 
         original_count = len(self.conversation_history)
         try:
-            from agent.model_metadata import estimate_messages_tokens_rough
             from agent.manual_compression_feedback import summarize_manual_compression
+            from agent.model_metadata import estimate_messages_tokens_rough
 
             original_history = list(self.conversation_history)
             approx_tokens = estimate_messages_tokens_rough(original_history)
@@ -1730,8 +1733,9 @@ class _CommandHandlersMixin:
 
     def _handle_debug_command(self):
         """Handle /debug - upload debug report + logs and print paste URLs."""
-        from spark_cli.debug import run_debug_share
         from types import SimpleNamespace
+
+        from spark_cli.debug import run_debug_share
 
         args = SimpleNamespace(lines=200, expire=7, local=False)
         run_debug_share(args)

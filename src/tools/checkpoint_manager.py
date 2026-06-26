@@ -25,8 +25,8 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+
 from core.spark_constants import get_spark_home
-from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ _COMMIT_HASH_RE = re.compile(r'^[0-9a-fA-F]{4,64}$')
 # Input validation helpers
 # ---------------------------------------------------------------------------
 
-def _validate_commit_hash(commit_hash: str) -> Optional[str]:
+def _validate_commit_hash(commit_hash: str) -> str | None:
     """Validate a commit hash to prevent git argument injection.
 
     Returns an error string if invalid, None if valid.
@@ -89,7 +89,7 @@ def _validate_commit_hash(commit_hash: str) -> Optional[str]:
     return None
 
 
-def _validate_file_path(file_path: str, working_dir: str) -> Optional[str]:
+def _validate_file_path(file_path: str, working_dir: str) -> str | None:
     """Validate a file path to prevent path traversal outside the working directory.
 
     Returns an error string if invalid, None if valid.
@@ -138,11 +138,11 @@ def _git_env(shadow_repo: Path, working_dir: str) -> dict:
 
 
 def _run_git(
-    args: List[str],
+    args: list[str],
     shadow_repo: Path,
     working_dir: str,
     timeout: int = _GIT_TIMEOUT,
-    allowed_returncodes: Optional[Set[int]] = None,
+    allowed_returncodes: set[int] | None = None,
 ) -> tuple:
     """Run a git command against the shadow repo.  Returns (ok, stdout, stderr).
 
@@ -198,7 +198,7 @@ def _run_git(
         return False, "", str(exc)
 
 
-def _init_shadow_repo(shadow_repo: Path, working_dir: str) -> Optional[str]:
+def _init_shadow_repo(shadow_repo: Path, working_dir: str) -> str | None:
     """Initialise shadow repo if needed.  Returns error string or None."""
     if (shadow_repo / "HEAD").exists():
         return None
@@ -262,8 +262,8 @@ class CheckpointManager:
     def __init__(self, enabled: bool = False, max_snapshots: int = 50):
         self.enabled = enabled
         self.max_snapshots = max_snapshots
-        self._checkpointed_dirs: Set[str] = set()
-        self._git_available: Optional[bool] = None  # lazy probe
+        self._checkpointed_dirs: set[str] = set()
+        self._git_available: bool | None = None  # lazy probe
 
     # ------------------------------------------------------------------
     # Turn lifecycle
@@ -313,7 +313,7 @@ class CheckpointManager:
             logger.debug("Checkpoint failed (non-fatal): %s", e)
             return False
 
-    def list_checkpoints(self, working_dir: str) -> List[Dict]:
+    def list_checkpoints(self, working_dir: str) -> list[dict]:
         """List available checkpoints for a directory.
 
         Returns a list of dicts with keys: hash, short_hash, timestamp, reason,
@@ -358,7 +358,7 @@ class CheckpointManager:
         return results
 
     @staticmethod
-    def _parse_shortstat(stat_line: str, entry: Dict) -> None:
+    def _parse_shortstat(stat_line: str, entry: dict) -> None:
         """Parse git --shortstat output into entry dict."""
         import re
         m = re.search(r'(\d+) file', stat_line)
@@ -371,7 +371,7 @@ class CheckpointManager:
         if m:
             entry["deletions"] = int(m.group(1))
 
-    def diff(self, working_dir: str, commit_hash: str) -> Dict:
+    def diff(self, working_dir: str, commit_hash: str) -> dict:
         """Show diff between a checkpoint and the current working tree.
 
         Returns dict with success, diff text, and stat summary.
@@ -421,7 +421,7 @@ class CheckpointManager:
             "diff": diff_out if ok_diff else "",
         }
 
-    def restore(self, working_dir: str, commit_hash: str, file_path: str = None) -> Dict:
+    def restore(self, working_dir: str, commit_hash: str, file_path: str = None) -> dict:
         """Restore files to a checkpoint state.
 
         Uses ``git checkout <hash> -- .`` (or a specific file) which restores
@@ -592,7 +592,7 @@ class CheckpointManager:
         logger.debug("Checkpoint repo has %d commits (limit %d)", count, self.max_snapshots)
 
 
-def format_checkpoint_list(checkpoints: List[Dict], directory: str) -> str:
+def format_checkpoint_list(checkpoints: list[dict], directory: str) -> str:
     """Format checkpoint list for display to user."""
     if not checkpoints:
         return f"No checkpoints found for {directory}"

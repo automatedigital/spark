@@ -21,7 +21,7 @@ import queue
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("gateway.stream_consumer")
 
@@ -80,8 +80,8 @@ class GatewayStreamConsumer:
         self,
         adapter: Any,
         chat_id: str,
-        config: Optional[StreamConsumerConfig] = None,
-        metadata: Optional[dict] = None,
+        config: StreamConsumerConfig | None = None,
+        metadata: dict | None = None,
     ):
         self.adapter = adapter
         self.chat_id = chat_id
@@ -89,7 +89,7 @@ class GatewayStreamConsumer:
         self.metadata = metadata
         self._queue: queue.Queue = queue.Queue()
         self._accumulated = ""
-        self._message_id: Optional[str] = None
+        self._message_id: str | None = None
         self._already_sent = False
         self._edit_supported = True  # Disabled when progressive edits are no longer usable
         self._last_edit_time = 0.0
@@ -444,7 +444,7 @@ class GatewayStreamConsumer:
         # Strip trailing whitespace/newlines but preserve leading content
         return cleaned.rstrip()
 
-    async def _send_new_chunk(self, text: str, reply_to_id: Optional[str]) -> Optional[str]:
+    async def _send_new_chunk(self, text: str, reply_to_id: str | None) -> str | None:
         """Send a new message chunk, optionally threaded to a previous message.
 
         Returns the message_id so callers can thread subsequent chunks.
@@ -521,7 +521,7 @@ class GatewayStreamConsumer:
         safe_limit = max(500, raw_limit - 100)
         chunks = self._split_text_chunks(continuation, safe_limit)
 
-        last_message_id: Optional[str] = None
+        last_message_id: str | None = None
         last_successful_chunk = ""
         sent_any_chunk = False
         for chunk in chunks:

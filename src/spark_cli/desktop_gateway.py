@@ -22,7 +22,7 @@ import asyncio
 import logging
 import os
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from gateway.run import GatewayRunner
@@ -57,9 +57,9 @@ class DesktopGatewaySupervisor:
     """
 
     def __init__(self) -> None:
-        self._thread: Optional[threading.Thread] = None
-        self._runner: Optional[GatewayRunner] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: threading.Thread | None = None
+        self._runner: GatewayRunner | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._started_by_us = False
         self._lock = threading.Lock()
 

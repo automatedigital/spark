@@ -12,7 +12,6 @@ the full SessionStore machinery.
 import json
 import logging
 from datetime import datetime
-from typing import Optional
 
 from spark_cli.config import get_spark_home
 
@@ -27,7 +26,7 @@ def mirror_to_session(
     chat_id: str,
     message_text: str,
     source_label: str = "cli",
-    thread_id: Optional[str] = None,
+    thread_id: str | None = None,
 ) -> bool:
     """
     Append a delivery-mirror message to the target session's transcript.
@@ -63,7 +62,7 @@ def mirror_to_session(
         return False
 
 
-def _find_session_id(platform: str, chat_id: str, thread_id: Optional[str] = None) -> Optional[str]:
+def _find_session_id(platform: str, chat_id: str, thread_id: str | None = None) -> str | None:
     """
     Find the active session_id for a platform + chat_id pair.
 

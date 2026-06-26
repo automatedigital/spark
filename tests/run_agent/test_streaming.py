@@ -804,7 +804,7 @@ class TestCodexStreamCallbacks:
             response = agent._run_codex_stream({}, client=mock_client)
 
         assert response is fallback_response
-        mock_fallback.assert_called_once_with({}, client=mock_client)
+        mock_fallback.assert_called_once_with({}, client=mock_client, on_progress=None)
 
     def test_codex_create_stream_fallback_refreshes_activity_on_every_event(self):
         from core.run_agent import AIAgent

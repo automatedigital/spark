@@ -175,6 +175,15 @@ class TestEventBus:
 
 
 class TestConversationModels:
+    def test_conversation_routes_are_registered_on_conversation_router(self, web_client):
+        import spark_cli.web_server as web_server
+
+        paths = {getattr(route, "path", "") for route in web_server.conversation_router.routes}
+
+        assert "/api/conversations" in paths
+        assert "/api/conversations/{session_id}/messages" in paths
+        assert "/api/conversations/{session_id}/stream" in paths
+
     def test_get_conversation_models(self, web_client):
         resp = web_client.get("/api/conversations/models")
         assert resp.status_code == 200

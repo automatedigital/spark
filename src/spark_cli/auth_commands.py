@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from getpass import getpass
 import math
 import time
-from types import SimpleNamespace
 import uuid
+from getpass import getpass
+from types import SimpleNamespace
 
+import spark_cli.auth as auth_mod
 from agent.credential_pool import (
     AUTH_TYPE_API_KEY,
     AUTH_TYPE_OAUTH,
@@ -15,9 +16,9 @@ from agent.credential_pool import (
     SOURCE_MANUAL,
     STATUS_EXHAUSTED,
     STRATEGY_FILL_FIRST,
-    STRATEGY_ROUND_ROBIN,
-    STRATEGY_RANDOM,
     STRATEGY_LEAST_USED,
+    STRATEGY_RANDOM,
+    STRATEGY_ROUND_ROBIN,
     PooledCredential,
     _exhausted_until,
     _normalize_custom_pool_name,
@@ -26,10 +27,8 @@ from agent.credential_pool import (
     list_custom_pool_providers,
     load_pool,
 )
-import spark_cli.auth as auth_mod
-from spark_cli.auth import PROVIDER_REGISTRY
 from core.spark_constants import OPENROUTER_BASE_URL
-
+from spark_cli.auth import PROVIDER_REGISTRY
 
 # Providers that support OAuth login in addition to API keys.
 _OAUTH_CAPABLE_PROVIDERS = {"anthropic", "openai-codex", "qwen-oauth"}
@@ -337,9 +336,9 @@ def auth_remove_command(args) -> None:
     # re-seeded on the next load_pool() call.
     elif removed.source == "device_code" and provider == "openai-codex":
         from spark_cli.auth import (
+            _auth_store_lock,
             _load_auth_store,
             _save_auth_store,
-            _auth_store_lock,
         )
 
         with _auth_store_lock():

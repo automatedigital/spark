@@ -137,6 +137,31 @@ _CODEX_GOLDEN = {
     "include": ["reasoning.encrypted_content"],
 }
 
+_ANTHROPIC_EPHEMERAL_GOLDEN = {
+    "model": "claude-sonnet-4-5",
+    "messages": [
+        {"role": "assistant", "content": [
+            {"type": "text", "text": "Ready.", "cache_control": {"type": "ephemeral"}}]},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Use the project instructions.", "cache_control": {"type": "ephemeral"}}]},
+    ],
+    "max_tokens": 64000,
+    "system": [
+        {
+            "type": "text",
+            "text": "You are Spark.\n\nProject-only system layer.",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ],
+    "tools": [
+        {"name": "web_search", "description": "web_search tool",
+         "input_schema": {"type": "object", "properties": {}}},
+        {"name": "terminal", "description": "terminal tool",
+         "input_schema": {"type": "object", "properties": {}}},
+    ],
+    "tool_choice": {"type": "auto"},
+}
+
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -166,6 +191,33 @@ def test_codex_responses_serialization_is_byte_exact():
     )
     kwargs = agent._build_api_kwargs(_CONVERSATION)
     assert _canonical(kwargs) == _canonical(_CODEX_GOLDEN)
+
+
+def test_ephemeral_system_and_prefill_layers_are_serialized_byte_exact():
+    """API-only system additions and prefill messages must keep their request positions."""
+    agent = _make_agent(
+        provider="anthropic",
+        api_mode="anthropic_messages",
+        base_url="https://api.anthropic.com",
+        model="claude-sonnet-4-5",
+    )
+    agent._cached_system_prompt = "You are Spark."
+    agent.ephemeral_system_prompt = "Project-only system layer."
+    agent.prefill_messages = [{"role": "assistant", "content": "Ready."}]
+
+    effective_system = (
+        agent._cached_system_prompt + "\n\n" + agent.ephemeral_system_prompt
+    ).strip()
+    api_messages = [{"role": "system", "content": effective_system}]
+    api_messages.extend(message.copy() for message in agent.prefill_messages)
+    api_messages.append({"role": "user", "content": "Use the project instructions."})
+    cached = apply_anthropic_cache_control(
+        api_messages, cache_ttl=agent._cache_ttl, native_anthropic=True
+    )
+
+    kwargs = agent._build_api_kwargs(cached)
+
+    assert _canonical(kwargs) == _canonical(_ANTHROPIC_EPHEMERAL_GOLDEN)
 
 
 def test_cache_breakpoint_count_never_exceeds_anthropic_max():

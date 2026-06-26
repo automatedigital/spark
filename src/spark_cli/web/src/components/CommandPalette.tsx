@@ -26,7 +26,7 @@ const PAGE_ITEMS = [
   { id: "skillsTools", label: "Skills & Tools", description: "Skills and connectable tools", icon: Blocks },
   { id: "messaging", label: "Messaging", description: "Connect messaging platforms", icon: MessageCircle },
   { id: "chat", label: "Chat", description: "Projects and conversations", icon: MessageSquare },
-  { id: "files", label: "Files", description: "Workspace files", icon: FolderOpen },
+  { id: "files", label: "Files", description: "Project and chat files", icon: FolderOpen },
   { id: "canvas", label: "Canvas", description: "Visual board", icon: Square },
   { id: "kanban", label: "Tasks", description: "Task board", icon: LayoutGrid },
   { id: "cron", label: "Schedule", description: "Scheduled jobs", icon: Clock },

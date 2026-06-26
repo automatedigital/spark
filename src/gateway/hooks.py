@@ -21,12 +21,12 @@ Errors in hooks are caught and logged but never block the main pipeline.
 
 import asyncio
 import importlib.util
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import yaml
 
 from spark_cli.config import get_spark_home
-
 
 HOOKS_DIR = get_spark_home() / "hooks"
 
@@ -43,11 +43,11 @@ class HookRegistry:
 
     def __init__(self):
         # event_type -> [handler_fn, ...]
-        self._handlers: Dict[str, List[Callable]] = {}
-        self._loaded_hooks: List[dict] = []  # metadata for listing
+        self._handlers: dict[str, list[Callable]] = {}
+        self._loaded_hooks: list[dict] = []  # metadata for listing
 
     @property
-    def loaded_hooks(self) -> List[dict]:
+    def loaded_hooks(self) -> list[dict]:
         """Return metadata about all loaded hooks."""
         return list(self._loaded_hooks)
 
@@ -135,7 +135,7 @@ class HookRegistry:
             except Exception as e:
                 print(f"[hooks] Error loading hook {hook_dir.name}: {e}", flush=True)
 
-    async def emit(self, event_type: str, context: Optional[Dict[str, Any]] = None) -> None:
+    async def emit(self, event_type: str, context: dict[str, Any] | None = None) -> None:
         """
         Fire all handlers registered for an event.
 

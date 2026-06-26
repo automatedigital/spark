@@ -9,7 +9,6 @@ import getpass
 
 from spark_cli.colors import Colors, color
 
-
 # ─── Print Helpers ────────────────────────────────────────────────────────────
 
 

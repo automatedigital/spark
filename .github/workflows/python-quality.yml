@@ -1,0 +1,79 @@
+name: python-quality
+
+on:
+  push:
+    paths:
+      - ".github/workflows/python-quality.yml"
+      - "pyproject.toml"
+      - "scripts/mypy_baseline.json"
+      - "scripts/**/*.py"
+      - "src/**/*.py"
+      - "tests/**/*.py"
+  pull_request:
+    paths:
+      - ".github/workflows/python-quality.yml"
+      - "pyproject.toml"
+      - "scripts/mypy_baseline.json"
+      - "scripts/**/*.py"
+      - "src/**/*.py"
+      - "tests/**/*.py"
+
+jobs:
+  python-quality:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: "3.11"
+      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,web,cron,pty,acp]"
+
+      - name: Collect changed Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA:-}"
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            base="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          if [[ -z "$base" ]]; then
+            git ls-files '*.py' > /tmp/python-files.txt
+          else
+            git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.py' > /tmp/python-files.txt
+          fi
+          grep -Ev '^(src/spark_cli/web/src-tauri/(target|resources)/|src/spark_cli/web_dist/)' \
+            /tmp/python-files.txt > /tmp/python-files.filtered.txt || true
+          mv /tmp/python-files.filtered.txt /tmp/python-files.txt
+          if [[ -s /tmp/python-files.txt ]]; then
+            echo "Changed Python files:"
+            cat /tmp/python-files.txt
+          else
+            echo "No changed Python files."
+          fi
+
+      - name: Ruff changed Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -s /tmp/python-files.txt ]]; then
+            xargs python -m ruff check < /tmp/python-files.txt
+          else
+            echo "Skipping ruff: no changed Python files."
+          fi
+
+      - name: Mypy ratchet
+        run: python scripts/mypy_ratchet.py
+
+      - name: Python tests
+        run: python -m pytest tests/ -m "not slow and not integration" -q

@@ -22,24 +22,24 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional
+from typing import NamedTuple
 
-from spark_cli.providers import (
-    custom_provider_slug,
-    determine_api_mode,
-    get_label,
-    is_aggregator,
-    resolve_provider_full,
-)
-from spark_cli.model_normalize import (
-    normalize_model_for_provider,
-)
 from agent.models_dev import (
     ModelCapabilities,
     ModelInfo,
     get_model_capabilities,
     get_model_info,
     list_provider_models,
+)
+from spark_cli.model_normalize import (
+    normalize_model_for_provider,
+)
+from spark_cli.providers import (
+    custom_provider_slug,
+    determine_api_mode,
+    get_label,
+    is_aggregator,
+    resolve_provider_full,
 )
 
 logger = logging.getLogger(__name__)
@@ -191,8 +191,8 @@ class ModelSwitchResult:
     warning_message: str = ""
     provider_label: str = ""
     resolved_via_alias: str = ""
-    capabilities: Optional[ModelCapabilities] = None
-    model_info: Optional[ModelInfo] = None
+    capabilities: ModelCapabilities | None = None
+    model_info: ModelInfo | None = None
     is_global: bool = False
 
 
@@ -257,7 +257,7 @@ def parse_model_flags(raw_args: str) -> tuple[str, str, bool]:
 def resolve_alias(
     raw_input: str,
     current_provider: str,
-) -> Optional[tuple[str, str, str]]:
+) -> tuple[str, str, str] | None:
     """Resolve a short alias against the current provider's catalog.
 
     Looks up *raw_input* in :data:`MODEL_ALIASES`, then searches the
@@ -340,7 +340,7 @@ def get_authenticated_provider_slugs(
 def _resolve_alias_fallback(
     raw_input: str,
     authenticated_providers: list[str] = (),
-) -> Optional[tuple[str, str, str]]:
+) -> tuple[str, str, str] | None:
     """Try to resolve an alias on the user's authenticated providers.
 
     Falls back to ``("openrouter",)`` only when no authenticated
@@ -409,8 +409,8 @@ def switch_model(
     """
     from spark_cli.models import (
         detect_provider_for_model,
-        validate_requested_model,
         opencode_model_api_mode,
+        validate_requested_model,
     )
     from spark_cli.runtime_provider import resolve_runtime_provider
 
@@ -673,7 +673,7 @@ def switch_model(
         new_model = validation["corrected_model"]
 
     # --- OpenCode api_mode override ---
-    if target_provider in {"opencode-zen", "opencode-go", "opencode", "opencode-go"}:
+    if target_provider in {"opencode-zen", "opencode-go", "opencode"}:
         api_mode = opencode_model_api_mode(target_provider, new_model)
 
     # --- Determine api_mode if not already set ---
@@ -722,7 +722,7 @@ def list_authenticated_providers(
     user_providers: dict = None,
     custom_providers: list | None = None,
     max_models: int = 8,
-) -> List[dict]:
+) -> list[dict]:
     """Detect which providers have credentials and list their curated models.
 
     Uses the curated model lists from spark_cli/models.py (OPENROUTER_MODELS,
@@ -741,15 +741,18 @@ def list_authenticated_providers(
     Only includes providers that have API keys set or are user-defined endpoints.
     """
     import os
+
     from agent.models_dev import (
         PROVIDER_TO_MODELS_DEV,
         fetch_models_dev,
+    )
+    from agent.models_dev import (
         get_provider_info as _mdev_pinfo,
     )
     from spark_cli.auth import PROVIDER_REGISTRY
-    from spark_cli.models import OPENROUTER_MODELS, _PROVIDER_MODELS
+    from spark_cli.models import _PROVIDER_MODELS, OPENROUTER_MODELS
 
-    results: List[dict] = []
+    results: list[dict] = []
     seen_slugs: set = set()
 
     data = fetch_models_dev()
@@ -802,8 +805,8 @@ def list_authenticated_providers(
         seen_slugs.add(slug)
 
     # --- 2. Check Spark-only providers (openai-codex, copilot, opencode-go) ---
-    from spark_cli.providers import SPARK_OVERLAYS
     from spark_cli.auth import PROVIDER_REGISTRY as _auth_registry
+    from spark_cli.providers import SPARK_OVERLAYS
 
     # Build reverse mapping: models.dev ID → Spark provider ID.
     # SPARK_OVERLAYS keys may be models.dev IDs (e.g. "github-copilot")
@@ -1018,7 +1021,7 @@ def list_authenticated_providers(
     if custom_providers and isinstance(custom_providers, list):
         from collections import OrderedDict
 
-        groups: "OrderedDict[str, dict]" = OrderedDict()
+        groups: OrderedDict[str, dict] = OrderedDict()
         for entry in custom_providers:
             if not isinstance(entry, dict):
                 continue

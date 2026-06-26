@@ -6,7 +6,6 @@ import ipaddress
 import os
 import secrets
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_home
 
@@ -47,7 +46,7 @@ def get_configured_dashboard_secret() -> str:
     return ""
 
 
-def client_host_is_trusted_local(host: Optional[str]) -> bool:
+def client_host_is_trusted_local(host: str | None) -> bool:
     """True if TCP peer is loopback (safe to skip bearer token)."""
     if not host:
         return False
@@ -61,7 +60,7 @@ def client_host_is_trusted_local(host: Optional[str]) -> bool:
         return host in ("localhost", "::1")
 
 
-def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
+def extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
     parts = authorization.split()
@@ -71,12 +70,12 @@ def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
 
 
 def validate_dashboard_request(
-    client_host: Optional[str],
-    authorization: Optional[str],
+    client_host: str | None,
+    authorization: str | None,
     *,
     require_for_remote: bool,
     secret: str,
-    query_token: Optional[str] = None,
+    query_token: str | None = None,
 ) -> bool:
     """Return True if the request may access protected API routes."""
     if not require_for_remote:

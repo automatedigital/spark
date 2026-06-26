@@ -146,6 +146,7 @@ class _CallbacksMixin:
             return
         if function_name and not function_name.startswith("_"):
             import time as _time
+
             from agent.display import get_tool_emoji
 
             emoji = get_tool_emoji(function_name)

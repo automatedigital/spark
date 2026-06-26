@@ -1,7 +1,6 @@
 """Abstract base class for cloud browser providers."""
 
 from abc import ABC, abstractmethod
-from typing import Dict
 
 
 class CloudBrowserProvider(ABC):
@@ -26,7 +25,7 @@ class CloudBrowserProvider(ABC):
         """
 
     @abstractmethod
-    def create_session(self, task_id: str) -> Dict[str, object]:
+    def create_session(self, task_id: str) -> dict[str, object]:
         """Create a cloud browser session and return session metadata.
 
         Must return a dict with at least::

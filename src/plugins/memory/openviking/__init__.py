@@ -44,7 +44,7 @@ _TIMEOUT = 30.0
 # even if shutdown_memory_provider is never called (e.g. gateway crash,
 # SIGKILL, or exception in _async_flush_memories preventing shutdown).
 # ---------------------------------------------------------------------------
-_last_active_provider: Optional["OpenVikingMemoryProvider"] = None
+_last_active_provider: OpenVikingMemoryProvider | None = None
 
 
 def _atexit_commit_sessions():
@@ -253,15 +253,15 @@ class OpenVikingMemoryProvider(MemoryProvider):
     """Full bidirectional memory via OpenViking context database."""
 
     def __init__(self):
-        self._client: Optional[_VikingClient] = None
+        self._client: _VikingClient | None = None
         self._endpoint = ""
         self._api_key = ""
         self._session_id = ""
         self._turn_count = 0
-        self._sync_thread: Optional[threading.Thread] = None
+        self._sync_thread: threading.Thread | None = None
         self._prefetch_result = ""
         self._prefetch_lock = threading.Lock()
-        self._prefetch_thread: Optional[threading.Thread] = None
+        self._prefetch_thread: threading.Thread | None = None
 
     @property
     def name(self) -> str:
@@ -411,7 +411,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         )
         self._sync_thread.start()
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         """Commit the session to trigger memory extraction.
 
         OpenViking automatically extracts 6 categories of memories:
@@ -457,7 +457,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         t = threading.Thread(target=_write, daemon=True, name="openviking-memwrite")
         t.start()
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [SEARCH_SCHEMA, READ_SCHEMA, BROWSE_SCHEMA, REMEMBER_SCHEMA, ADD_RESOURCE_SCHEMA]
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs) -> str:
@@ -496,7 +496,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         if not query:
             return tool_error("query is required")
 
-        payload: Dict[str, Any] = {"query": query}
+        payload: dict[str, Any] = {"query": query}
         mode = args.get("mode", "auto")
         if mode != "auto":
             payload["mode"] = mode
@@ -609,7 +609,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
         if not url:
             return tool_error("url is required")
 
-        payload: Dict[str, Any] = {"path": url}
+        payload: dict[str, Any] = {"path": url}
         if args.get("reason"):
             payload["reason"] = args["reason"]
 

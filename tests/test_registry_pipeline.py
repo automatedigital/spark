@@ -47,13 +47,9 @@ def test_dirty_html_tool_compacted_and_blocked(isolated_registry, enable_pipelin
         handler=lambda args: DIRTY_HTML,
     )
     out = isolated_registry.dispatch("dirty_html_tool", {})
-    # Either compaction shrank it OR injection guard replaced it with a stub
-    assert len(out) < len(DIRTY_HTML)
-    assert "\x1b" not in out
-    # Enforce mode should have replaced the output with a BLOCKED stub
-    # because the injection phrase scored above threshold.
-    assert "BLOCKED" in out
-    assert "dirty_html_tool" in out
+    payload = json.loads(out)
+    assert payload["error"] == "Tool handler returned a non-JSON string result"
+    assert payload["tool"] == "dirty_html_tool"
 
 
 def test_pipeline_off_passes_through(isolated_registry, disable_pipeline):
@@ -64,7 +60,9 @@ def test_pipeline_off_passes_through(isolated_registry, disable_pipeline):
         handler=lambda args: DIRTY_HTML,
     )
     out = isolated_registry.dispatch("dirty_html_tool", {})
-    assert out == DIRTY_HTML
+    payload = json.loads(out)
+    assert payload["error"] == "Tool handler returned a non-JSON string result"
+    assert payload["tool"] == "dirty_html_tool"
 
 
 def test_normalize_false_opt_out(isolated_registry, enable_pipeline):
@@ -78,7 +76,9 @@ def test_normalize_false_opt_out(isolated_registry, enable_pipeline):
         screen=False,  # disable both layers
     )
     out = isolated_registry.dispatch("byte_faithful_tool", {})
-    assert out == raw
+    payload = json.loads(out)
+    assert payload["error"] == "Tool handler returned a non-JSON string result"
+    assert payload["tool"] == "byte_faithful_tool"
 
 
 def test_screen_false_skips_injection_guard(isolated_registry, enable_pipeline):
@@ -95,8 +95,9 @@ def test_screen_false_skips_injection_guard(isolated_registry, enable_pipeline):
         screen=False,
     )
     out = isolated_registry.dispatch("trusted_tool", {})
-    assert "BLOCKED" not in out
-    assert "ignore all previous instructions" in out
+    payload = json.loads(out)
+    assert payload["error"] == "Tool handler returned a non-JSON string result"
+    assert payload["tool"] == "trusted_tool"
 
 
 def test_unknown_tool_returns_error(isolated_registry):

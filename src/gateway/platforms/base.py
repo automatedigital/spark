@@ -233,19 +233,19 @@ def proxy_kwargs_for_aiohttp(proxy_url: str | None) -> tuple[dict, dict]:
     return {}, {"proxy": proxy_url}
 
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Callable, Awaitable, Tuple
 from enum import Enum
-
+from pathlib import Path
 from pathlib import Path as _Path
+from typing import Any, Optional
+
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
+from core.spark_constants import get_spark_dir
 from gateway.config import Platform, PlatformConfig
 from gateway.session import SessionSource, build_session_key
-from core.spark_constants import get_spark_dir
-
 
 GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE = (
     "Secure secret entry is not supported over messaging. "
@@ -394,8 +394,9 @@ async def cache_image_from_url(url: str, ext: str = ".jpg", retries: int = 2) ->
         raise ValueError(f"Blocked unsafe URL (SSRF protection): {safe_url_for_log(url)}")
 
     import asyncio
-    import httpx
     import logging as _logging
+
+    import httpx
     _log = _logging.getLogger(__name__)
 
     last_exc = None
@@ -513,8 +514,9 @@ async def cache_audio_from_url(url: str, ext: str = ".ogg", retries: int = 2) ->
         raise ValueError(f"Blocked unsafe URL (SSRF protection): {safe_url_for_log(url)}")
 
     import asyncio
-    import httpx
     import logging as _logging
+
+    import httpx
     _log = _logging.getLogger(__name__)
 
     last_exc = None
@@ -665,39 +667,39 @@ class MessageEvent:
     # Message content
     text: str
     message_type: MessageType = MessageType.TEXT
-    
+
     # Source information
     source: SessionSource = None
-    
+
     # Original platform data
     raw_message: Any = None
-    message_id: Optional[str] = None
-    
+    message_id: str | None = None
+
     # Media attachments
     # media_urls: local file paths (for vision tool access)
-    media_urls: List[str] = field(default_factory=list)
-    media_types: List[str] = field(default_factory=list)
-    
+    media_urls: list[str] = field(default_factory=list)
+    media_types: list[str] = field(default_factory=list)
+
     # Reply context
-    reply_to_message_id: Optional[str] = None
-    reply_to_text: Optional[str] = None  # Text of the replied-to message (for context injection)
-    
+    reply_to_message_id: str | None = None
+    reply_to_text: str | None = None  # Text of the replied-to message (for context injection)
+
     # Auto-loaded skill(s) for topic/channel bindings (e.g., Telegram DM Topics,
     # Discord channel_skill_bindings).  A single name or ordered list.
-    auto_skill: Optional[str | list[str]] = None
-    
+    auto_skill: str | list[str] | None = None
+
     # Internal flag — set for synthetic events (e.g. background process
     # completion notifications) that must bypass user authorization checks.
     internal: bool = False
 
     # Timestamps
     timestamp: datetime = field(default_factory=datetime.now)
-    
+
     def is_command(self) -> bool:
         """Check if this is a command message (e.g., /new, /reset)."""
         return self.text.startswith("/")
-    
-    def get_command(self) -> Optional[str]:
+
+    def get_command(self) -> str | None:
         """Extract command name if this is a command message."""
         if not self.is_command():
             return None
@@ -710,7 +712,7 @@ class MessageEvent:
         if raw and "/" in raw:
             return None
         return raw
-    
+
     def get_command_args(self) -> str:
         """Get the arguments after a command."""
         if not self.is_command():
@@ -719,18 +721,18 @@ class MessageEvent:
         return parts[1] if len(parts) > 1 else ""
 
 
-@dataclass 
+@dataclass
 class SendResult:
     """Result of sending a message."""
     success: bool
-    message_id: Optional[str] = None
-    error: Optional[str] = None
+    message_id: str | None = None
+    error: str | None = None
     raw_response: Any = None
     retryable: bool = False  # True for transient connection errors — base will retry automatically
 
 
 def merge_pending_message_event(
-    pending_messages: Dict[str, MessageEvent],
+    pending_messages: dict[str, MessageEvent],
     session_key: str,
     event: MessageEvent,
 ) -> None:
@@ -776,7 +778,7 @@ _RETRYABLE_ERROR_PATTERNS = (
 
 
 # Type for message handlers
-MessageHandler = Callable[[MessageEvent], Awaitable[Optional[str]]]
+MessageHandler = Callable[[MessageEvent], Awaitable[str | None]]
 
 
 class BasePlatformAdapter(ABC):
@@ -789,27 +791,27 @@ class BasePlatformAdapter(ABC):
     - Sending messages/responses
     - Handling media
     """
-    
+
     def __init__(self, config: PlatformConfig, platform: Platform):
         self.config = config
         self.platform = platform
-        self._message_handler: Optional[MessageHandler] = None
+        self._message_handler: MessageHandler | None = None
         self._running = False
-        self._fatal_error_code: Optional[str] = None
-        self._fatal_error_message: Optional[str] = None
+        self._fatal_error_code: str | None = None
+        self._fatal_error_message: str | None = None
         self._fatal_error_retryable = True
-        self._fatal_error_handler: Optional[Callable[["BasePlatformAdapter"], Awaitable[None] | None]] = None
-        
+        self._fatal_error_handler: Callable[[BasePlatformAdapter], Awaitable[None] | None] | None = None
+
         # Track active message handlers per session for interrupt support
         # Key: session_key (e.g., chat_id), Value: (event, asyncio.Event for interrupt)
-        self._active_sessions: Dict[str, asyncio.Event] = {}
-        self._pending_messages: Dict[str, MessageEvent] = {}
+        self._active_sessions: dict[str, asyncio.Event] = {}
+        self._pending_messages: dict[str, MessageEvent] = {}
         # Background message-processing tasks spawned by handle_message().
         # Gateway shutdown cancels these so an old gateway instance doesn't keep
         # working on a task after --replace or manual restarts.
         self._background_tasks: set[asyncio.Task] = set()
         self._expected_cancelled_tasks: set[asyncio.Task] = set()
-        self._busy_session_handler: Optional[Callable[[MessageEvent, str], Awaitable[bool]]] = None
+        self._busy_session_handler: Callable[[MessageEvent, str], Awaitable[bool]] | None = None
         # Chats where auto-TTS on voice input is disabled (set by /voice off)
         self._auto_tts_disabled_chats: set = set()
         # Chats where typing indicator is paused (e.g. during approval waits).
@@ -821,11 +823,11 @@ class BasePlatformAdapter(ABC):
         return self._fatal_error_message is not None
 
     @property
-    def fatal_error_message(self) -> Optional[str]:
+    def fatal_error_message(self) -> str | None:
         return self._fatal_error_message
 
     @property
-    def fatal_error_code(self) -> Optional[str]:
+    def fatal_error_code(self) -> str | None:
         return self._fatal_error_code
 
     @property
@@ -913,12 +915,12 @@ class BasePlatformAdapter(ABC):
     def name(self) -> str:
         """Human-readable name for this adapter."""
         return self.platform.value.title()
-    
+
     @property
     def is_connected(self) -> bool:
         """Check if adapter is currently connected."""
         return self._running
-    
+
     def set_message_handler(self, handler: MessageHandler) -> None:
         """
         Set the handler for incoming messages.
@@ -928,10 +930,10 @@ class BasePlatformAdapter(ABC):
         """
         self._message_handler = handler
 
-    def set_busy_session_handler(self, handler: Optional[Callable[[MessageEvent, str], Awaitable[bool]]]) -> None:
+    def set_busy_session_handler(self, handler: Callable[[MessageEvent, str], Awaitable[bool]] | None) -> None:
         """Set an optional handler for messages arriving during active sessions."""
         self._busy_session_handler = handler
-    
+
     def set_session_store(self, session_store: Any) -> None:
         """
         Set the session store for checking active sessions.
@@ -941,7 +943,7 @@ class BasePlatformAdapter(ABC):
         thread replies without explicit mentions).
         """
         self._session_store = session_store
-    
+
     @abstractmethod
     async def connect(self) -> bool:
         """
@@ -950,19 +952,19 @@ class BasePlatformAdapter(ABC):
         Returns True if connection was successful.
         """
         pass
-    
+
     @abstractmethod
     async def disconnect(self) -> None:
         """Disconnect from the platform."""
         pass
-    
+
     @abstractmethod
     async def send(
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None
     ) -> SendResult:
         """
         Send a message to a chat.
@@ -1007,14 +1009,14 @@ class BasePlatformAdapter(ABC):
         Default is a no-op for platforms with one-shot typing indicators.
         """
         pass
-    
+
     async def send_image(
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """
         Send an image natively via the platform API.
@@ -1026,14 +1028,14 @@ class BasePlatformAdapter(ABC):
         # Fallback: send URL as text (subclasses override for native images)
         text = f"{caption}\n{image_url}" if caption else image_url
         return await self.send(chat_id=chat_id, content=text, reply_to=reply_to, metadata=metadata)
-    
+
     async def send_animation(
         self,
         chat_id: str,
         animation_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """
         Send an animated GIF natively via the platform API.
@@ -1043,7 +1045,7 @@ class BasePlatformAdapter(ABC):
         Default falls back to send_image.
         """
         return await self.send_image(chat_id=chat_id, image_url=animation_url, caption=caption, reply_to=reply_to, metadata=metadata)
-    
+
     @staticmethod
     def _is_animation_url(url: str) -> bool:
         """Check if a URL points to an animated GIF (vs a static image)."""
@@ -1051,7 +1053,7 @@ class BasePlatformAdapter(ABC):
         return lower.endswith('.gif')
 
     @staticmethod
-    def extract_images(content: str) -> Tuple[List[Tuple[str, str]], str]:
+    def extract_images(content: str) -> tuple[list[tuple[str, str]], str]:
         """
         Extract image URLs from markdown and HTML image tags in a response.
         
@@ -1068,7 +1070,7 @@ class BasePlatformAdapter(ABC):
         """
         images = []
         cleaned = content
-        
+
         # Match markdown images: ![alt](url)
         md_pattern = r'!\[([^\]]*)\]\((https?://[^\s\)]+)\)'
         for match in re.finditer(md_pattern, content):
@@ -1078,13 +1080,13 @@ class BasePlatformAdapter(ABC):
             if any(url.lower().endswith(ext) or ext in url.lower() for ext in
                    ['.png', '.jpg', '.jpeg', '.gif', '.webp', 'fal.media', 'fal-cdn', 'replicate.delivery']):
                 images.append((url, alt_text))
-        
+
         # Match HTML img tags: <img src="url"> or <img src="url"></img> or <img src="url"/>
         html_pattern = r'<img\s+src=["\']?(https?://[^\s"\'<>]+)["\']?\s*/?>\s*(?:</img>)?'
         for match in re.finditer(html_pattern, content):
             url = match.group(1)
             images.append((url, ""))
-        
+
         # Remove only the matched image tags from content (not all markdown images)
         if images:
             extracted_urls = {url for url, _ in images}
@@ -1095,15 +1097,15 @@ class BasePlatformAdapter(ABC):
             cleaned = re.sub(html_pattern, _remove_if_extracted, cleaned)
             # Clean up leftover blank lines
             cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
-        
+
         return images, cleaned
-    
+
     async def send_voice(
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """
@@ -1141,8 +1143,8 @@ class BasePlatformAdapter(ABC):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """
@@ -1165,9 +1167,9 @@ class BasePlatformAdapter(ABC):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """
@@ -1190,8 +1192,8 @@ class BasePlatformAdapter(ABC):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
         **kwargs,
     ) -> SendResult:
         """
@@ -1212,7 +1214,7 @@ class BasePlatformAdapter(ABC):
         )
 
     @staticmethod
-    def extract_media(content: str) -> Tuple[List[Tuple[str, bool]], str]:
+    def extract_media(content: str) -> tuple[list[tuple[str, bool]], str]:
         """
         Extract MEDIA:<path> tags and [[audio_as_voice]] directives from response text.
         
@@ -1228,11 +1230,11 @@ class BasePlatformAdapter(ABC):
         """
         media = []
         cleaned = content
-        
+
         # Check for [[audio_as_voice]] directive
         has_voice_tag = "[[audio_as_voice]]" in content
         cleaned = cleaned.replace("[[audio_as_voice]]", "")
-        
+
         # Extract MEDIA:<path> tags, allowing optional whitespace after the colon
         # and quoted/backticked paths for LLM-formatted outputs.
         media_pattern = re.compile(
@@ -1250,11 +1252,11 @@ class BasePlatformAdapter(ABC):
         if media:
             cleaned = media_pattern.sub('', cleaned)
             cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
-        
+
         return media, cleaned
 
     @staticmethod
-    def extract_local_files(content: str) -> Tuple[List[str], str]:
+    def extract_local_files(content: str) -> tuple[list[str], str]:
         """
         Detect bare local file paths in response text for native media delivery.
 
@@ -1385,7 +1387,7 @@ class BasePlatformAdapter(ABC):
             logger.warning("[%s] %s hook failed: %s", self.name, hook_name, e)
 
     @staticmethod
-    def _is_retryable_error(error: Optional[str]) -> bool:
+    def _is_retryable_error(error: str | None) -> bool:
         """Return True if the error string looks like a transient network failure."""
         if not error:
             return False
@@ -1393,7 +1395,7 @@ class BasePlatformAdapter(ABC):
         return any(pat in lowered for pat in _RETRYABLE_ERROR_PATTERNS)
 
     @staticmethod
-    def _is_timeout_error(error: Optional[str]) -> bool:
+    def _is_timeout_error(error: str | None) -> bool:
         """Return True if the error string indicates a read/write timeout.
 
         Timeout errors are NOT retryable and should NOT trigger plain-text
@@ -1408,7 +1410,7 @@ class BasePlatformAdapter(ABC):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
+        reply_to: str | None = None,
         metadata: Any = None,
         max_retries: int = 2,
         base_delay: float = 2.0,
@@ -1487,7 +1489,7 @@ class BasePlatformAdapter(ABC):
         return fallback_result
 
     @staticmethod
-    def _merge_caption(existing_text: Optional[str], new_text: str) -> str:
+    def _merge_caption(existing_text: str | None, new_text: str) -> str:
         """Merge a new caption into existing text, avoiding duplicates.
 
         Uses line-by-line exact match (not substring) to prevent false positives
@@ -1503,9 +1505,9 @@ class BasePlatformAdapter(ABC):
         return existing_text
 
     @staticmethod
-    def source_metadata(source: SessionSource, thread_id: Optional[str] = None) -> Optional[Dict[str, str]]:
+    def source_metadata(source: SessionSource, thread_id: str | None = None) -> dict[str, str] | None:
         """Build platform routing metadata from a session source."""
-        metadata: Dict[str, str] = {}
+        metadata: dict[str, str] = {}
         effective_thread_id = thread_id if thread_id is not None else source.thread_id
         if effective_thread_id:
             metadata["thread_id"] = str(effective_thread_id)
@@ -1523,13 +1525,13 @@ class BasePlatformAdapter(ABC):
         """
         if not self._message_handler:
             return
-        
+
         session_key = build_session_key(
             event.source,
             group_sessions_per_user=self.config.extra.get("group_sessions_per_user", True),
             thread_sessions_per_user=self.config.extra.get("thread_sessions_per_user", False),
         )
-        
+
         # Check if there's already an active handler for this session
         if session_key in self._active_sessions:
             # Certain commands must bypass the active-session guard and be
@@ -1583,7 +1585,7 @@ class BasePlatformAdapter(ABC):
             # Signal the interrupt (the processing task checks this)
             self._active_sessions[session_key].set()
             return  # Don't process now - will be handled after current task finishes
-        
+
         # Mark session as active BEFORE spawning background task to close
         # the race window where a second message arriving before the task
         # starts would also pass the _active_sessions check and spawn a
@@ -1602,7 +1604,7 @@ class BasePlatformAdapter(ABC):
         if hasattr(task, "add_done_callback"):
             task.add_done_callback(self._background_tasks.discard)
             task.add_done_callback(self._expected_cancelled_tasks.discard)
-    
+
     @staticmethod
     def _get_human_delay() -> float:
         """
@@ -1643,17 +1645,17 @@ class BasePlatformAdapter(ABC):
         # Fall back to a new Event only if the entry was removed externally.
         interrupt_event = self._active_sessions.get(session_key) or asyncio.Event()
         self._active_sessions[session_key] = interrupt_event
-        
+
         # Start continuous typing indicator (refreshes every 2 seconds)
         _thread_metadata = self.source_metadata(event.source)
         typing_task = asyncio.create_task(self._keep_typing(event.source.chat_id, metadata=_thread_metadata))
-        
+
         try:
             await self._run_processing_hook("on_processing_start", event)
 
             # Call the handler (this can take a while with tool calls)
             response = await self._message_handler(event)
-            
+
             # Send response if any.  A None/empty response is normal when
             # streaming already delivered the text (already_sent=True) or
             # when the message was queued behind an active agent.  Log at
@@ -1663,7 +1665,7 @@ class BasePlatformAdapter(ABC):
             if response:
                 # Extract MEDIA:<path> tags (from TTS tool) before other processing
                 media_files, response = self.extract_media(response)
-                
+
                 # Extract image URLs and send them as native platform attachments
                 images, text_content = self.extract_images(response)
                 # Strip any remaining internal directives from message body (fixes #1561)
@@ -1677,7 +1679,7 @@ class BasePlatformAdapter(ABC):
                 local_files, text_content = self.extract_local_files(text_content)
                 if local_files:
                     logger.info("[%s] extract_local_files found %d file(s) in response", self.name, len(local_files))
-                
+
                 # Auto-TTS: if voice message, generate audio FIRST (before sending text)
                 # Skipped when the chat has voice mode disabled (/voice off)
                 _tts_path = None
@@ -1686,7 +1688,7 @@ class BasePlatformAdapter(ABC):
                         and not media_files
                         and event.source.chat_id not in self._auto_tts_disabled_chats):
                     try:
-                        from tools.tts_tool import text_to_speech_tool, check_tts_requirements
+                        from tools.tts_tool import check_tts_requirements, text_to_speech_tool
                         if check_tts_requirements():
                             import json as _json
                             speech_text = re.sub(r'[*_`#\[\]()]', '', text_content)[:4000].strip()
@@ -1851,7 +1853,7 @@ class BasePlatformAdapter(ABC):
                 # Process pending message in new background task
                 await self._process_message_background(pending_event, session_key)
                 return  # Already cleaned up
-                
+
         except asyncio.CancelledError:
             current_task = asyncio.current_task()
             outcome = ProcessingOutcome.CANCELLED
@@ -1895,7 +1897,7 @@ class BasePlatformAdapter(ABC):
             # Clean up session tracking
             if session_key in self._active_sessions:
                 del self._active_sessions[session_key]
-    
+
     async def cancel_background_tasks(self) -> None:
         """Cancel any in-flight background message-processing tasks.
 
@@ -1916,23 +1918,23 @@ class BasePlatformAdapter(ABC):
     def has_pending_interrupt(self, session_key: str) -> bool:
         """Check if there's a pending interrupt for a session."""
         return session_key in self._active_sessions and self._active_sessions[session_key].is_set()
-    
-    def get_pending_message(self, session_key: str) -> Optional[MessageEvent]:
+
+    def get_pending_message(self, session_key: str) -> MessageEvent | None:
         """Get and clear any pending message for a session."""
         return self._pending_messages.pop(session_key, None)
-    
+
     def build_source(
         self,
         chat_id: str,
-        chat_name: Optional[str] = None,
+        chat_name: str | None = None,
         chat_type: str = "dm",
-        user_id: Optional[str] = None,
-        user_name: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        direct_messages_topic_id: Optional[str] = None,
-        chat_topic: Optional[str] = None,
-        user_id_alt: Optional[str] = None,
-        chat_id_alt: Optional[str] = None,
+        user_id: str | None = None,
+        user_name: str | None = None,
+        thread_id: str | None = None,
+        direct_messages_topic_id: str | None = None,
+        chat_topic: str | None = None,
+        user_id_alt: str | None = None,
+        chat_id_alt: str | None = None,
     ) -> SessionSource:
         """Helper to build a SessionSource for this platform."""
         # Normalize empty topic to None
@@ -1951,9 +1953,9 @@ class BasePlatformAdapter(ABC):
             user_id_alt=user_id_alt,
             chat_id_alt=chat_id_alt,
         )
-    
+
     @abstractmethod
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """
         Get information about a chat/channel.
         
@@ -1962,7 +1964,7 @@ class BasePlatformAdapter(ABC):
         - type: "dm", "group", "channel"
         """
         pass
-    
+
     def format_message(self, content: str) -> str:
         """
         Format a message for this platform.
@@ -1973,13 +1975,13 @@ class BasePlatformAdapter(ABC):
         Default implementation returns content as-is.
         """
         return content
-    
+
     @staticmethod
     def truncate_message(
         content: str,
         max_length: int = 4096,
         len_fn: Optional["Callable[[str], int]"] = None,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Split a long message into chunks, preserving code block boundaries.
 
@@ -2006,11 +2008,11 @@ class BasePlatformAdapter(ABC):
         INDICATOR_RESERVE = 10   # room for " (XX/XX)"
         FENCE_CLOSE = "\n```"
 
-        chunks: List[str] = []
+        chunks: list[str] = []
         remaining = content
         # When the previous chunk ended mid-code-block, this holds the
         # language tag (possibly "") so we can reopen the fence.
-        carry_lang: Optional[str] = None
+        carry_lang: str | None = None
 
         while remaining:
             # If we're continuing a code block from the previous chunk,

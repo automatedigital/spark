@@ -20,7 +20,7 @@ interface PromptBarProps {
   onRemoveContextItem?: (id: string) => void;
   onUpdateContextMode?: (id: string, mode: import("@/lib/context").InclusionMode) => void;
   disabled?: boolean;
-  workspaceSlug?: string;
+  projectSlug?: string;
   contextItems?: ContextItem[];
   sessionId?: string | null;
   /** Override the idle placeholder text. */
@@ -516,7 +516,7 @@ export function PromptBar({
   onRemoveContextItem,
   onUpdateContextMode,
   disabled,
-  workspaceSlug,
+  projectSlug,
   contextItems = [],
   sessionId,
   placeholder,
@@ -726,7 +726,7 @@ export function PromptBar({
       {showAtMenu && (
         <AtFileMenu
           query={atQuery}
-          workspaceSlug={workspaceSlug}
+          projectSlug={projectSlug}
           onSelect={handleAtSelect}
           onClose={() => setShowAtMenu(false)}
         />
