@@ -337,6 +337,25 @@ class TestConversationControl:
         full_tool_msg = next(m for m in full_resp.json()["messages"] if m["role"] == "tool")
         assert full_tool_msg["content"] == full_output
 
+    def test_session_messages_include_absolute_message_index_when_paginated(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("message_index_session", source="web", model="m1")
+            db.append_message("message_index_session", "user", content="first")
+            db.append_message("message_index_session", "assistant", content="first response")
+            db.append_message("message_index_session", "user", content="retry target")
+            db.append_message("message_index_session", "assistant", content="interrupted response")
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/sessions/message_index_session/messages?limit=2")
+        assert resp.status_code == 200
+        messages = resp.json()["messages"]
+        assert [m["role"] for m in messages] == ["user", "assistant"]
+        assert [m["message_index"] for m in messages] == [2, 3]
+
     def test_conversation_message_rehydrates_stored_web_session(self, web_client, monkeypatch):
         import core.run_agent as run_agent
         import spark_cli.web_server as web_server

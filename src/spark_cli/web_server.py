@@ -3653,16 +3653,20 @@ async def get_session_messages(
         leaf_sid = db.resolve_latest_descendant(sid)
         messages = db.get_messages(leaf_sid)
         total = len(messages)
+        indexed_messages = list(enumerate(messages))
         # Apply pagination: if limit > 0 and/or before_id specified, return a page
         if before_id:
             idx = next((i for i, m in enumerate(messages) if m.get("id") == before_id), None)
             if idx is not None:
-                messages = messages[:idx]
+                indexed_messages = indexed_messages[:idx]
         if limit > 0:
-            messages = messages[-limit:]
+            indexed_messages = indexed_messages[-limit:]
         messages = [
-            _message_for_history_response(m, include_tool_results=include_tool_results)
-            for m in messages
+            _message_for_history_response(
+                {**m, "message_index": message_index},
+                include_tool_results=include_tool_results,
+            )
+            for message_index, m in indexed_messages
         ]
         has_earlier = len(messages) < total
         resp: dict[str, Any] = {

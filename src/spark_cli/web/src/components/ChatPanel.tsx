@@ -114,7 +114,7 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
     if (m.role === "user") {
       // Skip internal system-injected continuation messages (e.g. codex ack loop)
       if ((m.content ?? "").startsWith("[System:")) return;
-      out.push({ id: baseId, role: "user", content: m.content ?? "", sessionIdx: i });
+      out.push({ id: baseId, role: "user", content: m.content ?? "", sessionIdx: m.message_index ?? i });
     } else if (m.role === "assistant") {
       const reasoning = m.reasoning?.trim();
       if (reasoning) {
@@ -1134,12 +1134,13 @@ export function ChatPanel({
                 if (tail.length === 0) return;
                 const tailByContent = new Map(tail.map((m, i) => [
                   m.content ?? "",
-                  resp.messages.indexOf(tail[i]),
+                  m.message_index ?? resp.messages.indexOf(tail[i]),
                 ]));
                 setChatMessages((prev) => {
                   let changed = false;
                   const next = prev.map((m) => {
                     if (m.role !== "user") return m;
+                    if (m.sessionIdx != null) return m;
                     const newIdx = tailByContent.get(m.content);
                     if (newIdx != null && newIdx !== m.sessionIdx) {
                       changed = true;

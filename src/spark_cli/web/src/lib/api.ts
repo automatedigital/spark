@@ -731,6 +731,7 @@ export interface EnvVarInfo {
 
 export interface SessionMessage {
   id?: string;
+  message_index?: number;
   role: "user" | "assistant" | "system" | "tool";
   content: string | null;
   result_preview?: string | null;
