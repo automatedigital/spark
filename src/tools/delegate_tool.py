@@ -25,6 +25,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
+from agent import subagents as subagent_lifecycle
 from core.toolsets import TOOLSETS
 
 
@@ -109,6 +110,9 @@ def _build_child_system_prompt(
         )
     parts.append(
         "\nComplete this task using the tools available to you. "
+        "When you need several independent facts, searches, files, or URLs, issue those independent tool calls in the same assistant turn so Spark can run them in parallel. "
+        "For web research, first batch independent web_search calls, then batch independent web_extract calls for the most relevant URLs. "
+        "Avoid slow LLM page processing unless the task specifically needs a compressed summary of a very long page; prefer fast raw extraction and summarize the evidence yourself. "
         "When finished, provide a clear, concise summary of:\n"
         "- What you did\n"
         "- What you found or accomplished\n"
@@ -155,7 +159,12 @@ def _strip_blocked_tools(toolsets: List[str]) -> List[str]:
     return [t for t in toolsets if t not in blocked_toolset_names]
 
 
-def _build_child_progress_callback(task_index: int, parent_agent, task_count: int = 1) -> Optional[callable]:
+def _build_child_progress_callback(
+    task_index: int,
+    parent_agent,
+    task_count: int = 1,
+    lifecycle_run: Optional[dict[str, Any]] = None,
+) -> Optional[callable]:
     """Build a callback that relays child agent tool calls to the parent display.
 
     Two display paths:
@@ -168,7 +177,17 @@ def _build_child_progress_callback(task_index: int, parent_agent, task_count: in
     spinner = getattr(parent_agent, '_delegate_spinner', None)
     parent_cb = getattr(parent_agent, 'tool_progress_callback', None)
 
-    if not spinner and not parent_cb:
+    parent_attrs = getattr(parent_agent, "__dict__", {})
+    dedicated_lifecycle_cb = (
+        parent_attrs.get("subagent_event_callback")
+        if isinstance(parent_attrs, dict)
+        else None
+    )
+    lifecycle_enabled = lifecycle_run is not None and (
+        parent_cb or dedicated_lifecycle_cb
+    )
+
+    if not spinner and not parent_cb and not lifecycle_enabled:
         return None  # No display → no callback → zero behavior change
 
     # Show 1-indexed prefix only in batch mode (multiple tasks)
@@ -185,6 +204,13 @@ def _build_child_progress_callback(task_index: int, parent_agent, task_count: in
         # "_thinking" / reasoning events
         if event_type in ("_thinking", "reasoning.available"):
             text = preview or tool_name or ""
+            if lifecycle_run is not None:
+                subagent_lifecycle.emit(
+                    parent_agent,
+                    lifecycle_run,
+                    "thinking",
+                    {"text": text},
+                )
             if spinner:
                 short = (text[:55] + "...") if len(text) > 55 else text
                 try:
@@ -196,9 +222,52 @@ def _build_child_progress_callback(task_index: int, parent_agent, task_count: in
 
         # tool.completed — no display needed here (spinner shows on started)
         if event_type == "tool.completed":
+            if lifecycle_run is not None:
+                subagent_lifecycle.emit(
+                    parent_agent,
+                    lifecycle_run,
+                    "tool_completed",
+                    {
+                        "name": tool_name,
+                        "duration": kwargs.get("duration"),
+                        "is_error": kwargs.get("is_error"),
+                        "result_lines": kwargs.get("result_lines"),
+                    },
+                )
             return
 
+        if event_type == "tool.output":
+            if lifecycle_run is not None:
+                subagent_lifecycle.emit(
+                    parent_agent,
+                    lifecycle_run,
+                    "tool_output",
+                    {
+                        "name": tool_name,
+                        "preview": preview,
+                        "text": preview,
+                    },
+                )
+            return
+
+        if event_type not in ("tool.started", "tool.completed", "tool.output", "_thinking", "reasoning.available"):
+            # Backwards compatibility for old direct calls like cb("web_search", "query").
+            if event_type and not str(event_type).startswith("_"):
+                preview = preview if preview is not None else tool_name
+                tool_name = event_type
+                event_type = "tool.started"
+            else:
+                return
+
         # tool.started — display and batch for parent relay
+        if lifecycle_enabled:
+            subagent_lifecycle.emit(
+                parent_agent,
+                lifecycle_run,
+                "tool_started",
+                {"name": tool_name, "preview": preview, "args": args},
+            )
+
         if spinner:
             short = (preview[:35] + "...") if preview and len(preview) > 35 else (preview or "")
             from agent.display import get_tool_emoji
@@ -251,6 +320,8 @@ def _build_child_agent(
     # ACP transport overrides — lets a non-ACP parent spawn ACP child agents
     override_acp_command: Optional[str] = None,
     override_acp_args: Optional[List[str]] = None,
+    lifecycle_run: Optional[dict[str, Any]] = None,
+    task_count: int = 1,
 ):
     """
     Build a child AIAgent on the main thread (thread-safe construction).
@@ -298,7 +369,12 @@ def _build_child_agent(
         parent_api_key = parent_agent._client_kwargs.get("api_key")
 
     # Build progress callback to relay tool calls to parent display
-    child_progress_cb = _build_child_progress_callback(task_index, parent_agent)
+    child_progress_cb = _build_child_progress_callback(
+        task_index,
+        parent_agent,
+        task_count=task_count,
+        lifecycle_run=lifecycle_run,
+    )
 
     # Each subagent gets its own iteration budget capped at max_iterations
     # (configurable via delegation.max_iterations, default 50).  This means
@@ -345,6 +421,13 @@ def _build_child_agent(
     except Exception as exc:
         logger.debug("Could not load delegation reasoning_effort: %s", exc)
 
+    parent_attrs = getattr(parent_agent, "__dict__", {})
+    parent_subagent_event_cb = (
+        parent_attrs.get("subagent_event_callback")
+        if isinstance(parent_attrs, dict)
+        else None
+    )
+
     child = AIAgent(
         base_url=effective_base_url,
         api_key=effective_api_key,
@@ -373,6 +456,7 @@ def _build_child_agent(
         providers_order=parent_agent.providers_order,
         provider_sort=parent_agent.provider_sort,
         tool_progress_callback=child_progress_cb,
+        subagent_event_callback=parent_subagent_event_cb,
         iteration_budget=None,  # fresh budget per subagent
     )
     child._print_fn = getattr(parent_agent, '_print_fn', None)
@@ -401,6 +485,7 @@ def _run_single_child(
     goal: str,
     child=None,
     parent_agent=None,
+    lifecycle_run: Optional[dict[str, Any]] = None,
     **_kwargs,
 ) -> Dict[str, Any]:
     """
@@ -408,6 +493,8 @@ def _run_single_child(
     Returns a structured result dict.
     """
     child_start = time.monotonic()
+    if lifecycle_run is not None:
+        subagent_lifecycle.emit(parent_agent, lifecycle_run, "started", {})
 
     # Get the progress callback from the child agent
     child_progress_cb = getattr(child, 'tool_progress_callback', None)
@@ -563,11 +650,33 @@ def _run_single_child(
         if status == "failed":
             entry["error"] = result.get("error", "Subagent did not produce a response.")
 
+        if lifecycle_run is not None:
+            lifecycle_run.update({
+                "status": status,
+                "summary": summary,
+                "duration_seconds": duration,
+                "exit_reason": exit_reason,
+                "tokens": entry["tokens"],
+                "tool_trace": tool_trace,
+                "model": entry.get("model") or lifecycle_run.get("model"),
+                "error": entry.get("error"),
+            })
+            event_type = "interrupted" if interrupted else ("completed" if status == "completed" else "failed")
+            subagent_lifecycle.emit(parent_agent, lifecycle_run, event_type, {"result": entry})
+
         return entry
 
     except Exception as exc:
         duration = round(time.monotonic() - child_start, 2)
         logging.exception(f"[subagent-{task_index}] failed")
+        if lifecycle_run is not None:
+            lifecycle_run.update({
+                "status": "error",
+                "duration_seconds": duration,
+                "error": str(exc),
+                "exit_reason": "error",
+            })
+            subagent_lifecycle.emit(parent_agent, lifecycle_run, "failed", {"error": str(exc)})
         return {
             "task_index": task_index,
             "status": "error",
@@ -711,6 +820,17 @@ def delegate_task(
     children = []
     try:
         for i, t in enumerate(task_list):
+            lifecycle_run = subagent_lifecycle.make_run_record(
+                parent_session_id=getattr(parent_agent, "session_id", None),
+                child_session_id=None,
+                task_index=i,
+                task_count=n_tasks,
+                task=t["goal"],
+                context=t.get("context") or context,
+                model=creds.get("model") or getattr(parent_agent, "model", None),
+                provider=creds.get("provider") or getattr(parent_agent, "provider", None),
+                toolsets=t.get("toolsets") or toolsets or [],
+            )
             child = _build_child_agent(
                 task_index=i, goal=t["goal"], context=t.get("context"),
                 toolsets=t.get("toolsets") or toolsets, model=creds["model"],
@@ -720,18 +840,26 @@ def delegate_task(
                 override_api_mode=creds["api_mode"],
                 override_acp_command=t.get("acp_command") or acp_command,
                 override_acp_args=t.get("acp_args") or acp_args,
+                lifecycle_run=lifecycle_run,
+                task_count=n_tasks,
             )
+            lifecycle_run["child_session_id"] = getattr(child, "session_id", None)
+            if not lifecycle_run.get("model"):
+                lifecycle_run["model"] = getattr(child, "model", None)
+            if not lifecycle_run.get("provider"):
+                lifecycle_run["provider"] = getattr(child, "provider", None)
+            subagent_lifecycle.emit(parent_agent, lifecycle_run, "created", {})
             # Override with correct parent tool names (before child construction mutated global)
             child._delegate_saved_tool_names = _parent_tool_names
-            children.append((i, t, child))
+            children.append((i, t, child, lifecycle_run))
     finally:
         # Authoritative restore: reset global to parent's tool names after all children built
         _model_tools._last_resolved_tool_names = _parent_tool_names
 
     if n_tasks == 1:
         # Single task -- run directly (no thread pool overhead)
-        _i, _t, child = children[0]
-        result = _run_single_child(0, _t["goal"], child, parent_agent)
+        _i, _t, child, lifecycle_run = children[0]
+        result = _run_single_child(0, _t["goal"], child, parent_agent, lifecycle_run)
         results.append(result)
     else:
         # Batch -- run in parallel with per-task progress lines
@@ -740,13 +868,14 @@ def delegate_task(
 
         with ThreadPoolExecutor(max_workers=max_children) as executor:
             futures = {}
-            for i, t, child in children:
+            for i, t, child, lifecycle_run in children:
                 future = executor.submit(
                     _run_single_child,
                     task_index=i,
                     goal=t["goal"],
                     child=child,
                     parent_agent=parent_agent,
+                    lifecycle_run=lifecycle_run,
                 )
                 futures[future] = i
 

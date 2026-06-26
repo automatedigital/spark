@@ -39,7 +39,31 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
+
+_SUBAGENT_JSON_LIMIT = 24_000
+_SUBAGENT_TEXT_LIMIT = 16_000
+
+
+def _bounded_text(value: Any, max_len: int = _SUBAGENT_TEXT_LIMIT) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if len(text) <= max_len else text[: max_len - 3] + "..."
+
+
+def _bounded_json(value: Any, max_len: int = _SUBAGENT_JSON_LIMIT) -> str:
+    try:
+        text = json.dumps(value if value is not None else {}, default=str, ensure_ascii=False)
+    except Exception:
+        text = json.dumps({"_repr": _bounded_text(value, max_len - 32)}, ensure_ascii=False)
+    if len(text) <= max_len:
+        return text
+    preview_len = max(0, max_len - 80)
+    return json.dumps(
+        {"_truncated": True, "preview": text[:preview_len] + "..."},
+        ensure_ascii=False,
+    )
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -135,6 +159,43 @@ CREATE TABLE IF NOT EXISTS file_summaries (
     created_at REAL NOT NULL,
     PRIMARY KEY (path, size_bytes, mtime)
 );
+
+CREATE TABLE IF NOT EXISTS subagent_runs (
+    id TEXT PRIMARY KEY,
+    parent_session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+    child_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+    task_index INTEGER NOT NULL DEFAULT 0,
+    name TEXT NOT NULL,
+    glyph TEXT,
+    color TEXT,
+    status TEXT NOT NULL DEFAULT 'created',
+    task TEXT,
+    context_preview TEXT,
+    model TEXT,
+    provider TEXT,
+    toolsets_json TEXT,
+    started_at REAL NOT NULL,
+    last_event_at REAL NOT NULL,
+    ended_at REAL,
+    duration_seconds REAL,
+    exit_reason TEXT,
+    summary TEXT,
+    error TEXT,
+    tokens_json TEXT,
+    tool_trace_json TEXT,
+    data_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_subagent_runs_parent ON subagent_runs(parent_session_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_subagent_runs_child ON subagent_runs(child_session_id);
+
+CREATE TABLE IF NOT EXISTS subagent_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subagent_id TEXT NOT NULL REFERENCES subagent_runs(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    data_json TEXT,
+    timestamp REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_subagent_events_run ON subagent_events(subagent_id, timestamp, id);
 """
 
 FTS_SQL = """
@@ -400,6 +461,47 @@ class SessionDB:
                 except Exception:
                     pass
                 cursor.execute("UPDATE schema_version SET version = 8")
+            if current_version < 9:
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS subagent_runs (
+                        id TEXT PRIMARY KEY,
+                        parent_session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+                        child_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+                        task_index INTEGER NOT NULL DEFAULT 0,
+                        name TEXT NOT NULL,
+                        glyph TEXT,
+                        color TEXT,
+                        status TEXT NOT NULL DEFAULT 'created',
+                        task TEXT,
+                        context_preview TEXT,
+                        model TEXT,
+                        provider TEXT,
+                        toolsets_json TEXT,
+                        started_at REAL NOT NULL,
+                        last_event_at REAL NOT NULL,
+                        ended_at REAL,
+                        duration_seconds REAL,
+                        exit_reason TEXT,
+                        summary TEXT,
+                        error TEXT,
+                        tokens_json TEXT,
+                        tool_trace_json TEXT,
+                        data_json TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_subagent_runs_parent ON subagent_runs(parent_session_id, started_at);
+                    CREATE INDEX IF NOT EXISTS idx_subagent_runs_child ON subagent_runs(child_session_id);
+                    CREATE TABLE IF NOT EXISTS subagent_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        subagent_id TEXT NOT NULL REFERENCES subagent_runs(id) ON DELETE CASCADE,
+                        event_type TEXT NOT NULL,
+                        data_json TEXT,
+                        timestamp REAL NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_subagent_events_run ON subagent_events(subagent_id, timestamp, id);
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 9")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -634,7 +736,11 @@ class SessionDB:
                 return current
             with self._lock:
                 cursor = self._conn.execute(
-                    "SELECT id FROM sessions WHERE parent_session_id = ? "
+                    "SELECT s.id FROM sessions s "
+                    "WHERE s.parent_session_id = ? "
+                    "AND NOT EXISTS ("
+                    "    SELECT 1 FROM subagent_runs sr WHERE sr.child_session_id = s.id"
+                    ") "
                     "ORDER BY started_at DESC LIMIT 1",
                     (current,),
                 )
@@ -647,6 +753,66 @@ class SessionDB:
             visited.add(next_id)
             current = next_id
         return current
+
+    def resolve_compression_chain(self, session_id: str) -> list[str]:
+        """Return the ordered compression family containing ``session_id``.
+
+        The web UI may ask for subagent snapshots by the original session id,
+        an intermediate compressed id, or the latest leaf.  Compression creates
+        a linear parent/child chain where the parent row's ``end_reason`` is
+        ``compression``.  User forks are deliberately excluded because their
+        parent rows are not marked as compression rollovers.
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return [session_id]
+
+        root = session_id
+        visited: set[str] = {root}
+        for _ in range(64):
+            with self._lock:
+                is_subagent_child = self._conn.execute(
+                    "SELECT 1 FROM subagent_runs WHERE child_session_id = ? LIMIT 1",
+                    (root,),
+                ).fetchone()
+            if is_subagent_child:
+                break
+            current = self.get_session(root)
+            parent_id = current.get("parent_session_id") if current else None
+            if not parent_id or parent_id in visited:
+                break
+            parent = self.get_session(parent_id)
+            if not parent or parent.get("end_reason") != "compression":
+                break
+            visited.add(parent_id)
+            root = parent_id
+
+        chain = [root]
+        current_id = root
+        visited = {root}
+        for _ in range(64):
+            current = self.get_session(current_id)
+            if not current or current.get("end_reason") != "compression":
+                break
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT s.id FROM sessions s "
+                    "WHERE s.parent_session_id = ? "
+                    "AND NOT EXISTS ("
+                    "    SELECT 1 FROM subagent_runs sr WHERE sr.child_session_id = s.id"
+                    ") "
+                    "ORDER BY started_at DESC LIMIT 1",
+                    (current_id,),
+                ).fetchone()
+            if not row:
+                break
+            next_id = row["id"]
+            if next_id in visited:
+                break
+            visited.add(next_id)
+            chain.append(next_id)
+            current_id = next_id
+        return chain
 
     def resolve_session_id(self, session_id_or_prefix: str) -> str | None:
         """Resolve an exact or uniquely prefixed session ID to the full ID.
@@ -902,6 +1068,164 @@ class SessionDB:
             sessions.append(s)
 
         return sessions
+
+    # =========================================================================
+    # Subagent lifecycle storage
+    # =========================================================================
+
+    @staticmethod
+    def _decode_json_field(value: str | None, fallback: Any) -> Any:
+        if not value:
+            return fallback
+        try:
+            return json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return fallback
+
+    @classmethod
+    def _subagent_row_to_dict(cls, row: sqlite3.Row) -> dict[str, Any]:
+        data = dict(row)
+        data["toolsets"] = cls._decode_json_field(data.pop("toolsets_json", None), [])
+        data["tokens"] = cls._decode_json_field(data.pop("tokens_json", None), {"input": 0, "output": 0})
+        data["tool_trace"] = cls._decode_json_field(data.pop("tool_trace_json", None), [])
+        extra = cls._decode_json_field(data.pop("data_json", None), {})
+        if isinstance(extra, dict):
+            for key, value in extra.items():
+                data.setdefault(key, value)
+        return data
+
+    def create_subagent_run(self, run: dict[str, Any]) -> None:
+        """Insert or update a bounded subagent run snapshot."""
+        now = time.time()
+        payload = dict(run)
+        payload.setdefault("started_at", now)
+        payload.setdefault("last_event_at", now)
+        subagent_id = str(payload.get("id") or payload.get("subagent_id") or "")
+        if not subagent_id:
+            return
+        task_index = payload.get("task_index") or 0
+
+        def _do(conn):
+            conn.execute(
+                """INSERT INTO subagent_runs (
+                    id, parent_session_id, child_session_id, task_index, name, glyph,
+                    color, status, task, context_preview, model, provider,
+                    toolsets_json, started_at, last_event_at, ended_at,
+                    duration_seconds, exit_reason, summary, error, tokens_json,
+                    tool_trace_json, data_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    parent_session_id=COALESCE(excluded.parent_session_id, subagent_runs.parent_session_id),
+                    child_session_id=COALESCE(excluded.child_session_id, subagent_runs.child_session_id),
+                    task_index=excluded.task_index,
+                    name=COALESCE(excluded.name, subagent_runs.name),
+                    glyph=COALESCE(excluded.glyph, subagent_runs.glyph),
+                    color=COALESCE(excluded.color, subagent_runs.color),
+                    status=COALESCE(excluded.status, subagent_runs.status),
+                    task=COALESCE(excluded.task, subagent_runs.task),
+                    context_preview=COALESCE(excluded.context_preview, subagent_runs.context_preview),
+                    model=COALESCE(excluded.model, subagent_runs.model),
+                    provider=COALESCE(excluded.provider, subagent_runs.provider),
+                    toolsets_json=COALESCE(excluded.toolsets_json, subagent_runs.toolsets_json),
+                    last_event_at=excluded.last_event_at,
+                    ended_at=COALESCE(excluded.ended_at, subagent_runs.ended_at),
+                    duration_seconds=COALESCE(excluded.duration_seconds, subagent_runs.duration_seconds),
+                    exit_reason=COALESCE(excluded.exit_reason, subagent_runs.exit_reason),
+                    summary=COALESCE(excluded.summary, subagent_runs.summary),
+                    error=COALESCE(excluded.error, subagent_runs.error),
+                    tokens_json=COALESCE(excluded.tokens_json, subagent_runs.tokens_json),
+                    tool_trace_json=COALESCE(excluded.tool_trace_json, subagent_runs.tool_trace_json),
+                    data_json=COALESCE(excluded.data_json, subagent_runs.data_json)""",
+                (
+                    subagent_id,
+                    payload.get("parent_session_id"),
+                    payload.get("child_session_id"),
+                    task_index,
+                    payload.get("name") or payload.get("display_name") or f"Subagent {task_index + 1}",
+                    payload.get("glyph"),
+                    payload.get("color"),
+                    payload.get("status") or "created",
+                    _bounded_text(payload.get("task")),
+                    _bounded_text(payload.get("context_preview"), 2_000),
+                    payload.get("model"),
+                    payload.get("provider"),
+                    _bounded_json(payload.get("toolsets") or []),
+                    payload.get("started_at") or now,
+                    payload.get("last_event_at") or now,
+                    payload.get("ended_at"),
+                    payload.get("duration_seconds"),
+                    payload.get("exit_reason"),
+                    _bounded_text(payload.get("summary")),
+                    _bounded_text(payload.get("error")),
+                    _bounded_json(payload.get("tokens") or {"input": 0, "output": 0}),
+                    _bounded_json(payload.get("tool_trace") or []),
+                    _bounded_json(payload),
+                ),
+            )
+
+        self._execute_write(_do)
+
+    def update_subagent_run(self, subagent_id: str, updates: dict[str, Any]) -> None:
+        """Update a subagent run snapshot."""
+        current = self.get_subagent_run(subagent_id) or {}
+        merged = {**current, **updates, "id": subagent_id}
+        self.create_subagent_run(merged)
+
+    def append_subagent_event(self, subagent_id: str, event_type: str, data: Any = None) -> int:
+        """Append a bounded event for a subagent run."""
+        data_json = _bounded_json(data or {})
+
+        def _do(conn):
+            cursor = conn.execute(
+                """INSERT INTO subagent_events (subagent_id, event_type, data_json, timestamp)
+                   VALUES (?, ?, ?, ?)""",
+                (subagent_id, event_type, data_json, time.time()),
+            )
+            return cursor.lastrowid
+
+        return self._execute_write(_do)
+
+    def get_subagent_run(self, subagent_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM subagent_runs WHERE id = ?",
+                (subagent_id,),
+            ).fetchone()
+        return self._subagent_row_to_dict(row) if row else None
+
+    def list_subagent_runs(self, parent_session_id: str) -> list[dict[str, Any]]:
+        """List subagent runs linked to a parent session or its compression chain."""
+        try:
+            session_ids = self.resolve_compression_chain(parent_session_id)
+        except Exception:
+            session_ids = [parent_session_id]
+        placeholders = ",".join("?" * len(session_ids))
+        with self._lock:
+            rows = self._conn.execute(
+                f"""SELECT * FROM subagent_runs
+                    WHERE parent_session_id IN ({placeholders})
+                    ORDER BY started_at, task_index""",
+                tuple(session_ids),
+            ).fetchall()
+        return [self._subagent_row_to_dict(row) for row in rows]
+
+    def get_subagent_events(self, subagent_id: str, limit: int = 500) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit or 500), 2000))
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT id, subagent_id, event_type, data_json, timestamp
+                   FROM subagent_events
+                   WHERE subagent_id = ?
+                   ORDER BY timestamp, id
+                   LIMIT ?""",
+                (subagent_id, limit),
+            ).fetchall()
+        events = []
+        for row in rows:
+            item = dict(row)
+            item["data"] = self._decode_json_field(item.pop("data_json", None), {})
+            events.append(item)
+        return events
 
     # =========================================================================
     # Message storage
@@ -1255,15 +1579,21 @@ class SessionDB:
     # Utility
     # =========================================================================
 
-    def session_count(self, source: str = None) -> int:
+    def session_count(self, source: str = None, include_children: bool = True) -> int:
         """Count sessions, optionally filtered by source."""
+        where_clauses = []
+        params = []
+        if source:
+            where_clauses.append("source = ?")
+            params.append(source)
+        if not include_children:
+            where_clauses.append("parent_session_id IS NULL")
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         with self._lock:
-            if source:
-                cursor = self._conn.execute(
-                    "SELECT COUNT(*) FROM sessions WHERE source = ?", (source,)
-                )
-            else:
-                cursor = self._conn.execute("SELECT COUNT(*) FROM sessions")
+            cursor = self._conn.execute(
+                f"SELECT COUNT(*) FROM sessions {where_sql}",
+                tuple(params),
+            )
             row = cursor.fetchone()
             return row[0] if row else 0
 

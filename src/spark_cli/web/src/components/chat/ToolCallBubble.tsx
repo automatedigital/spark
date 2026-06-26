@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2, Paperclip, Copy } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2, Paperclip, Copy } from "lucide-react";
 import { detectOutputType } from "@/lib/detectOutputType";
 
 // Detect file paths in tool result text (e.g. "Saved to /path/to/file.py")
@@ -28,6 +28,7 @@ const TOOL_FAMILIES: Record<string, { color: string; icon: typeof Wrench }> = {
   read_memory: { color: "green", icon: Database },
   write_memory: { color: "green", icon: Database },
   search_memory: { color: "green", icon: Database },
+  delegate_task: { color: "blue", icon: Bot },
 };
 
 const COLOR_CLASSES: Record<string, { border: string; bg: string; text: string }> = {
@@ -112,6 +113,11 @@ function getArgPreview(name: string, args: Record<string, unknown>): string | nu
   return null;
 }
 
+function displayToolName(name: string, done?: boolean): string {
+  if (name === "delegate_task") return done ? "sub-agent" : "running sub-agent";
+  return name;
+}
+
 export function ToolCallBubble({
   name,
   args,
@@ -169,6 +175,7 @@ export function ToolCallBubble({
       : null;
 
   const argPreview = getArgPreview(name, args);
+  const visibleName = displayToolName(name, done);
   const resultSize = displayResult ? formatBytes(displayResult.length) : null;
   const isLargeResult = (displayResult?.length ?? 0) > LARGE_RESULT_CHARS || Boolean(resultTruncated);
 
@@ -213,7 +220,7 @@ export function ToolCallBubble({
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
         <Icon className={`h-3.5 w-3.5 shrink-0 ${colors.text}`} />
-        <span className="font-mono font-medium text-foreground">{name}</span>
+        <span className="font-mono font-medium text-foreground">{visibleName}</span>
         {!open && argPreview && (
           <span className="text-muted-foreground/60 truncate flex-1 text-[11px] font-mono">
             {argPreview}

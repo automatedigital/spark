@@ -808,6 +808,9 @@ DEFAULT_CONFIG = {
         # When set, Spark uses this in all user-facing links instead of deriving
         # the address from the bind host.  Leave empty to auto-detect.
         "public_url": "",
+        # Show first-class delegated sub-agents in the chat right sidebar.
+        # Default on for v1, but keep a kill switch while the lifecycle API settles.
+        "subagents_sidebar": True,
     },
     # macOS / desktop app behaviour.
     "desktop": {
@@ -841,7 +844,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 25,
+    "_config_version": 26,
 }
 
 # =============================================================================

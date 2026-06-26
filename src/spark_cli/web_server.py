@@ -111,6 +111,10 @@ _PRIORITY_EVENT_TOPICS = {
     "chat.session_migrated",
     "chat.approval_requested",
     "chat.approval_resolved",
+    "chat.subagent.created",
+    "chat.subagent.completed",
+    "chat.subagent.failed",
+    "chat.subagent.interrupted",
 }
 _DROPPABLE_EVENT_TOPICS = {
     "chat.token",
@@ -118,6 +122,10 @@ _DROPPABLE_EVENT_TOPICS = {
     "chat.reasoning",
     "chat.tool_start",
     "chat.tool_end",
+    "chat.subagent.thinking",
+    "chat.subagent.tool_started",
+    "chat.subagent.tool_output",
+    "chat.subagent.tool_completed",
 }
 _event_drop_counts: dict[str, int] = {}
 
@@ -558,6 +566,138 @@ def _emit_sessions_changed(
     if session is not None:
         payload["session"] = session
     _publish_event("sessions.changed", payload, session_id)
+
+
+def _subagent_event_name(payload: dict[str, Any]) -> str:
+    raw = str(payload.get("event") or payload.get("type") or "status")
+    raw = raw.split(".")[-1]
+    safe = re.sub(r"[^A-Za-z0-9_]+", "_", raw).strip("_").lower()
+    return safe or "status"
+
+
+def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    legacy_run = payload.get("run") if isinstance(payload.get("run"), dict) else {}
+    subagent_id = (
+        payload.get("id")
+        or payload.get("run_id")
+        or legacy_run.get("id")
+        or payload.get("subagent_id")
+        or legacy_run.get("subagent_id")
+    )
+    if not subagent_id:
+        return None
+
+    event_name = _subagent_event_name(payload)
+    status = {
+        "created": "created",
+        "started": "running",
+        "thinking": "running",
+        "tool_started": "running",
+        "tool_output": "running",
+        "tool_completed": "running",
+        "status": event_payload.get("status") or legacy_run.get("status") or "running",
+        "completed": "completed",
+        "failed": "failed",
+        "interrupted": "interrupted",
+    }.get(event_name, legacy_run.get("status") or "running")
+    now = time.time()
+    task_index = payload.get("task_index", legacy_run.get("task_index", 0))
+    run: dict[str, Any] = {
+        **legacy_run,
+        "id": str(subagent_id),
+        "parent_session_id": (
+            event_payload.get("parent_session_id")
+            or legacy_run.get("parent_session_id")
+            or session_id
+        ),
+        "child_session_id": (
+            payload.get("child_session_id")
+            or event_payload.get("child_session_id")
+            or legacy_run.get("child_session_id")
+        ),
+        "task_index": task_index,
+        "name": payload.get("display_name") or legacy_run.get("name"),
+        "status": status,
+        "task": legacy_run.get("task") or payload.get("goal_preview"),
+        "context_preview": legacy_run.get("context_preview"),
+        "model": payload.get("model") or legacy_run.get("model"),
+        "provider": event_payload.get("provider") or legacy_run.get("provider"),
+        "toolsets": event_payload.get("toolsets") or legacy_run.get("toolsets") or [],
+        "last_event_at": now,
+        "summary": event_payload.get("summary") or legacy_run.get("summary"),
+        "error": event_payload.get("error") or legacy_run.get("error"),
+        "exit_reason": event_payload.get("exit_reason") or legacy_run.get("exit_reason"),
+        "tokens": event_payload.get("tokens") or legacy_run.get("tokens"),
+    }
+    if event_payload.get("status"):
+        run["status"] = event_payload.get("status")
+    if event_name in {"completed", "failed", "interrupted"}:
+        run["ended_at"] = now
+        if event_payload.get("duration_seconds") is not None:
+            run["duration_seconds"] = event_payload.get("duration_seconds")
+    return run
+
+
+def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]) -> None:
+    """Persist a subagent lifecycle event and fan it out on chat.subagent.*."""
+    event_name = _subagent_event_name(payload)
+    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    if not event_payload and isinstance(payload.get("data"), dict):
+        event_payload = payload["data"]
+    run_snapshot = None
+    run = _subagent_run_from_event(session_id, payload)
+    if run:
+        try:
+            from core.spark_state import SessionDB
+
+            db = SessionDB()
+            try:
+                db.create_subagent_run(run)
+                db.append_subagent_event(run["id"], event_name, payload)
+                run_snapshot = db.get_subagent_run(run["id"])
+            finally:
+                db.close()
+        except Exception:
+            _log.debug("subagent lifecycle persistence failed", exc_info=True)
+
+    run_data = run_snapshot or run or {}
+    subagent_id = run_data.get("id") if run_data else payload.get("subagent_id")
+    event_text = (
+        event_payload.get("text")
+        or event_payload.get("preview")
+        or event_payload.get("summary")
+        or event_payload.get("error")
+        or event_payload.get("tool")
+        or event_payload.get("line")
+    )
+    event = {
+        "type": event_name,
+        "run_id": subagent_id,
+        "subagent_id": subagent_id,
+        "status": run_data.get("status") if run_data else None,
+        "tool_name": event_payload.get("tool") or event_payload.get("tool_name"),
+        "text": _truncate_str(str(event_text), 2000) if event_text is not None else None,
+        "ts": time.time(),
+        "data": _json_safe(event_payload),
+    }
+
+    _publish_event(
+        f"chat.subagent.{event_name}",
+        {
+            **_json_safe(run_data),
+            "event": event,
+            "event_type": event_name,
+            "id": subagent_id,
+            "run_id": subagent_id,
+            "subagent_id": subagent_id,
+            "subagent": _json_safe(run_data),
+            "events": [event],
+            "transcript": [event],
+            "data": _json_safe(event_payload),
+        },
+        session_id,
+    )
 
 
 @app.get("/api/events")
@@ -1395,6 +1535,9 @@ async def get_status():
             "token_file": str(dashboard_token_path()),
             "require_auth_nonlocal": bool(_dash.get("require_auth_nonlocal", True)),
         },
+        "dashboard_features": {
+            "subagents_sidebar": bool(_dash.get("subagents_sidebar", True)),
+        },
     }
 
 
@@ -1954,9 +2097,9 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
                 source=source,
                 limit=limit,
                 offset=offset,
-                include_children=(source == "web"),
+                include_children=False,
             )
-            total = db.session_count(source=source)
+            total = db.session_count(source=source, include_children=False)
             now = time.time()
             for s in sessions:
                 s["is_active"] = (
@@ -4580,6 +4723,12 @@ def _make_web_chat_callbacks(
         current_session_id[0] = new_id
         publish_status("context_compression", "Context compressed; continuing…", phase="streaming")
 
+    def subagent_event_callback(payload: dict) -> None:
+        if not isinstance(payload, dict):
+            payload = {"event": "status", "payload": {"preview": str(payload)}}
+        _touch_web_turn(current_session_id[0], phase="subagent")
+        _persist_and_publish_subagent_event(current_session_id[0], payload)
+
     return (
         token_callback,
         tool_start_callback,
@@ -4587,6 +4736,7 @@ def _make_web_chat_callbacks(
         reasoning_callback,
         status_callback,
         session_migrated_callback,
+        subagent_event_callback,
     )
 
 
@@ -5437,6 +5587,7 @@ def _new_web_agent(
     reasoning_callback: Any,
     status_callback: Any,
     session_migrated_callback: Any = None,
+    subagent_event_callback: Any = None,
     working_dir: Optional[str] = None,
 ) -> Any:
     from core.run_agent import AIAgent
@@ -5462,6 +5613,7 @@ def _new_web_agent(
         reasoning_callback=reasoning_callback,
         status_callback=status_callback,
         session_migrated_callback=session_migrated_callback,
+        subagent_event_callback=subagent_event_callback,
         quiet_mode=True,
         platform="web",
         session_db=SessionDB(),
@@ -6245,6 +6397,7 @@ async def create_conversation(body: ConversationCreate):
         reasoning_callback,
         status_callback,
         session_migrated_callback,
+        subagent_event_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     if body.model:
@@ -6273,6 +6426,7 @@ async def create_conversation(body: ConversationCreate):
                 reasoning_callback=reasoning_callback,
                 status_callback=status_callback,
                 session_migrated_callback=session_migrated_callback,
+                subagent_event_callback=subagent_event_callback,
             ),
         )
     except (ValueError, Exception) as e:
@@ -6340,6 +6494,211 @@ async def create_conversation(body: ConversationCreate):
     return {"session_id": session_id, "ok": True}
 
 
+@app.get("/api/conversations/{session_id}/subagents")
+async def list_conversation_subagents(session_id: str, limit: int = 50):
+    """Return bounded subagent run snapshots for a conversation."""
+    from core.spark_state import SessionDB
+
+    limit = max(1, min(int(limit or 50), 200))
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        latest_sid = db.resolve_latest_descendant(sid)
+        runs = db.list_subagent_runs(sid)
+        return {
+            "session_id": latest_sid or sid,
+            "requested_session_id": session_id,
+            "subagents": runs[:limit],
+            "total": len(runs),
+            "limit": limit,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/conversations/{session_id}/subagents/{subagent_id}")
+async def get_conversation_subagent(
+    session_id: str,
+    subagent_id: str,
+    event_limit: int = 200,
+):
+    """Return one subagent run plus a bounded ordered event history."""
+    from core.spark_state import SessionDB
+
+    event_limit = max(1, min(int(event_limit or 200), 1000))
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        latest_sid = db.resolve_latest_descendant(sid)
+        allowed_session_ids = set(db.resolve_compression_chain(sid))
+        run = db.get_subagent_run(subagent_id)
+        if not run or run.get("parent_session_id") not in allowed_session_ids:
+            raise HTTPException(status_code=404, detail="Subagent not found")
+        events = db.get_subagent_events(subagent_id, limit=event_limit)
+        run = {**run, "events": events, "transcript": events}
+        return {
+            "session_id": latest_sid or sid,
+            "requested_session_id": session_id,
+            "subagent": run,
+            "events": events,
+            "event_limit": event_limit,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/conversations/{session_id}/subagents/{subagent_id}/messages")
+async def get_conversation_subagent_messages(
+    session_id: str,
+    subagent_id: str,
+    limit: int = 200,
+    include_tool_results: bool = False,
+):
+    """Return bounded child-session messages for a subagent transcript view."""
+    from core.spark_state import SessionDB
+
+    limit = max(1, min(int(limit or 200), 1000))
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        latest_sid = db.resolve_latest_descendant(sid)
+        allowed_session_ids = set(db.resolve_compression_chain(sid))
+        run = db.get_subagent_run(subagent_id)
+        if not run or run.get("parent_session_id") not in allowed_session_ids:
+            raise HTTPException(status_code=404, detail="Subagent not found")
+
+        child_session_id = run.get("child_session_id")
+        if not child_session_id:
+            return {
+                "session_id": latest_sid or sid,
+                "requested_session_id": session_id,
+                "subagent_id": subagent_id,
+                "child_session_id": None,
+                "messages": [],
+                "total": 0,
+                "limit": limit,
+            }
+        if not db.get_session(str(child_session_id)):
+            return {
+                "session_id": latest_sid or sid,
+                "requested_session_id": session_id,
+                "subagent_id": subagent_id,
+                "child_session_id": child_session_id,
+                "messages": [],
+                "total": 0,
+                "limit": limit,
+            }
+
+        all_messages = db.get_messages(str(child_session_id))
+        total = len(all_messages)
+        offset = max(0, total - limit)
+        messages = [
+            {
+                **_message_for_history_response(msg, include_tool_results=include_tool_results),
+                "message_index": offset + idx,
+            }
+            for idx, msg in enumerate(all_messages[offset:])
+        ]
+        return {
+            "session_id": latest_sid or sid,
+            "requested_session_id": session_id,
+            "subagent_id": subagent_id,
+            "child_session_id": child_session_id,
+            "messages": messages,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "include_tool_results": include_tool_results,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/conversations/{session_id}/subagents/{subagent_id}/interrupt")
+async def interrupt_conversation_subagent(
+    session_id: str,
+    subagent_id: str,
+    body: ConversationInterrupt,
+):
+    """Interrupt one live child agent when it is still tracked by the parent turn."""
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        latest_sid = db.resolve_latest_descendant(sid)
+        allowed_session_ids = set(db.resolve_compression_chain(sid))
+        run = db.get_subagent_run(subagent_id)
+        if not run or run.get("parent_session_id") not in allowed_session_ids:
+            raise HTTPException(status_code=404, detail="Subagent not found")
+    finally:
+        db.close()
+
+    agent_session_id, parent_agent = _get_web_agent_for_turn(session_id)
+    if not parent_agent:
+        raise HTTPException(
+            status_code=409,
+            detail="Subagent interrupt is only available while the parent turn is active.",
+        )
+
+    child_session_id = run.get("child_session_id")
+    active_children = list(getattr(parent_agent, "_active_children", []) or [])
+    target_child = None
+    for child in active_children:
+        if child_session_id and getattr(child, "session_id", None) == child_session_id:
+            target_child = child
+            break
+    if target_child is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Subagent is not running in the active parent turn; interrupt the parent conversation instead.",
+        )
+
+    try:
+        target_child.interrupt(body.message)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    status = "stopping"
+    payload = {
+        "schema": "spark.subagent.lifecycle.v1",
+        "type": "subagent.status",
+        "event": "status",
+        "id": subagent_id,
+        "run_id": subagent_id,
+        "subagent_id": subagent_id,
+        "child_session_id": child_session_id,
+        "task_index": run.get("task_index") or 0,
+        "task_number": int(run.get("task_index") or 0) + 1,
+        "task_count": run.get("task_count") or 1,
+        "display_name": run.get("name"),
+        "goal_preview": run.get("task"),
+        "payload": {
+            "parent_session_id": run.get("parent_session_id"),
+            "child_session_id": child_session_id,
+            "status": status,
+            "preview": "Interrupt requested",
+        },
+        "subagent_run": {**run, "status": status},
+    }
+    _persist_and_publish_subagent_event(latest_sid or sid, payload)
+    return {
+        "ok": True,
+        "session_id": agent_session_id or latest_sid or sid,
+        "subagent_id": subagent_id,
+        "child_session_id": child_session_id,
+        "status": status,
+    }
+
+
 @app.post("/api/conversations/{session_id}/messages")
 async def send_conversation_message(session_id: str, body: ConversationMessage):
     """Send a follow-up message to an existing web chat session."""
@@ -6354,6 +6713,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         reasoning_callback,
         status_callback,
         session_migrated_callback,
+        subagent_event_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     from core.spark_state import SessionDB
@@ -6375,6 +6735,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             reasoning_callback,
             status_callback,
             session_migrated_callback,
+            subagent_event_callback,
         ) = _make_web_chat_callbacks(session_id, queue, loop)
         _web_queues[session_id] = queue
         turn_route = _resolve_web_turn_route(body.message)
@@ -6391,6 +6752,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             agent.reasoning_callback = reasoning_callback
             agent.status_callback = status_callback
             agent.session_migrated_callback = session_migrated_callback
+            agent.subagent_event_callback = subagent_event_callback
             agent.request_overrides = turn_route.get("request_overrides")
             conversation_history = None
         else:
@@ -6406,6 +6768,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 reasoning_callback=reasoning_callback,
                 status_callback=status_callback,
                 session_migrated_callback=session_migrated_callback,
+                subagent_event_callback=subagent_event_callback,
             )
         _update_web_session_model(session_id, turn_route["model"])
         try:
@@ -6813,6 +7176,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         reasoning_callback,
         status_callback,
         session_migrated_callback,
+        subagent_event_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
     turn_route = _resolve_web_turn_route(user_msg)
     if agent and _web_agent_signatures.get(agent_session_id or session_id) == turn_route["signature"]:
@@ -6822,6 +7186,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         agent.reasoning_callback = reasoning_callback
         agent.status_callback = status_callback
         agent.session_migrated_callback = session_migrated_callback
+        agent.subagent_event_callback = subagent_event_callback
         agent.request_overrides = turn_route.get("request_overrides")
     else:
         agent = _new_web_agent(
@@ -6836,6 +7201,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             reasoning_callback=reasoning_callback,
             status_callback=status_callback,
             session_migrated_callback=session_migrated_callback,
+            subagent_event_callback=subagent_event_callback,
         )
     _update_web_session_model(session_id, turn_route["model"])
 
@@ -7086,6 +7452,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         reasoning_callback,
         status_callback,
         session_migrated_callback,
+        subagent_event_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     if body.model:
@@ -7129,6 +7496,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             reasoning_callback=reasoning_callback,
             status_callback=status_callback,
             session_migrated_callback=session_migrated_callback,
+            subagent_event_callback=subagent_event_callback,
             working_dir=str(project_dir),
         )
         agent.ephemeral_system_prompt = (

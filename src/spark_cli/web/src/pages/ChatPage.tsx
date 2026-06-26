@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  Bot,
   Copy,
   File,
   FileText,
@@ -35,6 +36,9 @@ import { WorkspaceChangesPanel } from "@/components/workspace/WorkspaceChangesPa
 import { WorkspacePreviewPanel } from "@/components/workspace/WorkspacePreviewPanel";
 import { previewAutoOpenEnabled } from "@/lib/previewPrefs";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
+import { useSubagents } from "@/hooks/useSubagents";
+import { SubagentsPanel } from "@/components/chat/SubagentsPanel";
+import { preserveSelectedSubagentId } from "@/lib/subagents";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -398,7 +402,7 @@ function CopyPathButton({ path }: { path: string }) {
 
 // ── WorkspaceRightPanel ───────────────────────────────────────────────────────
 
-type RightTab = "preview" | "terminal" | "files" | "changes";
+type RightTab = "preview" | "terminal" | "files" | "subagents" | "changes";
 
 type RightTabMeta = {
   id: RightTab;
@@ -412,6 +416,7 @@ const RIGHT_TAB_META: RightTabMeta[] = [
   { id: "preview", label: "Preview", shortcut: "⇧⌘P", Icon: Globe },
   { id: "terminal", label: "Terminal", shortcut: "⌃`", Icon: SquareTerminal },
   { id: "files", label: "Files", shortcut: "⇧⌘F", Icon: FileText },
+  { id: "subagents", label: "Subagents", shortcut: "", Icon: Bot },
   { id: "changes", label: "Changes", shortcut: "⇧⌘D", Icon: GitBranch },
 ];
 
@@ -420,31 +425,72 @@ function rightTabMeta(tab: RightTab): RightTabMeta {
 }
 
 const RIGHT_TAB_KEY_PREFIX = "spark-chat-right-tab:";
+const RIGHT_PANEL_OPEN_KEY_PREFIX = "spark-chat-right-panel-open:";
+const GLOBAL_WORKSPACE_SLUG = "__workspace__";
 
-function loadRightTab(slug: string): RightTab {
-  const saved = localStorage.getItem(RIGHT_TAB_KEY_PREFIX + slug);
+function rightTabKey(slug: string | null, sessionId: string | null) {
+  if (slug) return RIGHT_TAB_KEY_PREFIX + slug;
+  if (sessionId) return `${RIGHT_TAB_KEY_PREFIX}chat:${sessionId}`;
+  return `${RIGHT_TAB_KEY_PREFIX}default`;
+}
+
+function loadRightTab(slug: string | null, sessionId: string | null): RightTab {
+  const saved = localStorage.getItem(rightTabKey(slug, sessionId));
   return RIGHT_TAB_META.some((m) => m.id === saved) ? (saved as RightTab) : "files";
 }
 
-function saveRightTab(slug: string, tab: RightTab) {
-  localStorage.setItem(RIGHT_TAB_KEY_PREFIX + slug, tab);
+function saveRightTab(slug: string | null, sessionId: string | null, tab: RightTab) {
+  localStorage.setItem(rightTabKey(slug, sessionId), tab);
+}
+
+function rightPanelOpenKey(slug: string | null, sessionId: string | null) {
+  if (slug) return `${RIGHT_PANEL_OPEN_KEY_PREFIX}project:${slug}`;
+  if (sessionId) return `${RIGHT_PANEL_OPEN_KEY_PREFIX}chat:${sessionId}`;
+  return `${RIGHT_PANEL_OPEN_KEY_PREFIX}default`;
+}
+
+function loadRightPanelOpen(slug: string | null, sessionId: string | null) {
+  const saved = localStorage.getItem(rightPanelOpenKey(slug, sessionId));
+  if (saved !== null) return saved !== "false";
+  return Boolean(slug);
+}
+
+function saveRightPanelOpen(slug: string | null, sessionId: string | null, open: boolean) {
+  localStorage.setItem(rightPanelOpenKey(slug, sessionId), String(open));
+}
+
+function availableRightTabs(hasWorkspaceScope: boolean, isProject: boolean, hasSession: boolean, subagentsEnabled = true): RightTabMeta[] {
+  return RIGHT_TAB_META.filter((tab) => {
+    if (tab.id === "subagents") return hasSession && subagentsEnabled;
+    if (tab.id === "changes") return isProject;
+    return hasWorkspaceScope;
+  });
 }
 
 // Compact tab switcher: current tab + chevron, dropdown lists every pane with
 // its keyboard shortcut (Claude desktop OPTIONS style).
 function RightPanelSwitcher({
   slug,
+  isProject,
+  hasSession,
   activeTab,
+  subagentCount,
+  subagentsEnabled,
   onSelect,
 }: {
-  slug: string;
+  slug: string | null;
+  isProject: boolean;
+  hasSession: boolean;
   activeTab: RightTab;
+  subagentCount: number;
+  subagentsEnabled: boolean;
   onSelect: (tab: RightTab) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [gitTotals, setGitTotals] = useState<{ adds: number; dels: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const active = rightTabMeta(activeTab);
+  const tabs = availableRightTabs(Boolean(slug), isProject, hasSession, subagentsEnabled);
+  const active = tabs.find((m) => m.id === activeTab) ?? tabs[0] ?? rightTabMeta(activeTab);
 
   useEffect(() => {
     if (!open) return;
@@ -459,11 +505,12 @@ function RightPanelSwitcher({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    if (!slug || !isProject) return;
     void api.getWorkspaceGitStatus(slug)
       .then((s) => { if (!cancelled) setGitTotals(s.is_repo ? { adds: s.total_adds, dels: s.total_dels } : null); })
       .catch(() => { if (!cancelled) setGitTotals(null); });
     return () => { cancelled = true; };
-  }, [open, slug]);
+  }, [isProject, open, slug]);
 
   return (
     <div ref={ref} className="relative">
@@ -483,7 +530,7 @@ function RightPanelSwitcher({
           role="menu"
           className="absolute left-0 top-8 z-30 min-w-[180px] overflow-hidden rounded-md border border-border bg-popover py-1 shadow-lg"
         >
-          {RIGHT_TAB_META.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -498,13 +545,20 @@ function RightPanelSwitcher({
             >
               <tab.Icon className="h-3.5 w-3.5 shrink-0" />
               <span className="flex-1">{tab.label}</span>
+              {tab.id === "subagents" && subagentCount > 0 && (
+                <span className="rounded bg-secondary px-1.5 py-0.5 font-mono-ui text-[10px] text-muted-foreground">
+                  {subagentCount}
+                </span>
+              )}
               {tab.id === "changes" && gitTotals && (gitTotals.adds > 0 || gitTotals.dels > 0) && (
                 <span className="font-mono-ui text-[10px]">
                   <span className="text-emerald-400/80">+{gitTotals.adds}</span>{" "}
                   <span className="text-red-400/80">-{gitTotals.dels}</span>
                 </span>
               )}
-              <span className="font-mono-ui text-[10px] text-muted-foreground/60">{tab.shortcut}</span>
+              {tab.shortcut && (
+                <span className="font-mono-ui text-[10px] text-muted-foreground/60">{tab.shortcut}</span>
+              )}
             </button>
           ))}
         </div>
@@ -515,20 +569,39 @@ function RightPanelSwitcher({
 
 function WorkspaceRightPanel({
   slug,
+  isProject,
+  sessionId,
   open,
   onToggle,
   width,
   activeTab,
+  subagents,
+  selectedSubagentId,
+  subagentsLoading,
+  subagentsError,
+  subagentsEnabled,
   onSelectTab,
+  onSelectSubagent,
+  onCloseSubagentDetail,
 }: {
-  slug: string;
+  slug: string | null;
+  isProject: boolean;
+  sessionId: string | null;
   open: boolean;
   onToggle: () => void;
   width: number;
   activeTab: RightTab;
+  subagents: ReturnType<typeof useSubagents>["subagents"];
+  selectedSubagentId: string | null;
+  subagentsLoading: boolean;
+  subagentsError: string | null;
+  subagentsEnabled: boolean;
   onSelectTab: (tab: RightTab) => void;
+  onSelectSubagent: (id: string) => void;
+  onCloseSubagentDetail: () => void;
 }) {
   const [selectedFile, setSelectedFile] = useState<WorkspaceFileNode | null>(null);
+  const tabs = availableRightTabs(Boolean(slug), isProject, Boolean(sessionId), subagentsEnabled);
 
   // Reset selected file when project changes
   useEffect(() => { setSelectedFile(null); }, [slug]);
@@ -547,9 +620,25 @@ function WorkspaceRightPanel({
       {open ? (
         /* Header: tab switcher + collapse */
         <div className="flex h-8 w-full shrink-0 items-center gap-1 border-b border-border px-1.5">
-          <RightPanelSwitcher slug={slug} activeTab={activeTab} onSelect={onSelectTab} />
+          {tabs.length > 0 ? (
+            <RightPanelSwitcher
+              slug={slug}
+              isProject={isProject}
+              hasSession={Boolean(sessionId)}
+              activeTab={activeTab}
+              subagentCount={subagents.length}
+              subagentsEnabled={subagentsEnabled}
+              onSelect={onSelectTab}
+            />
+          ) : (
+            <div className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-foreground">
+              <Bot className="h-3.5 w-3.5" />
+              Thread
+            </div>
+          )}
           <button
             type="button"
+            aria-label="Collapse panel"
             title="Collapse panel"
             onClick={onToggle}
             className="ml-auto flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition hover:bg-secondary hover:text-foreground"
@@ -569,15 +658,20 @@ function WorkspaceRightPanel({
             <PanelRightOpen className="h-4 w-4" />
           </button>
           <div className="h-px w-4 bg-border" />
-          {RIGHT_TAB_META.map(({ id, label, Icon }) => (
+          {tabs.map(({ id, label, Icon }) => (
             <button
               key={id}
               type="button"
               title={label}
               onClick={() => { onSelectTab(id); onToggle(); }}
-              className={cn("rounded p-1.5 transition", activeTab === id ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
+              className={cn("relative rounded p-1.5 transition", activeTab === id ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
             >
               <Icon className="h-3.5 w-3.5" />
+              {id === "subagents" && subagents.length > 0 && (
+                <span className="absolute -right-1 -top-1 rounded bg-primary px-1 font-mono-ui text-[9px] text-primary-foreground">
+                  {subagents.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -587,7 +681,7 @@ function WorkspaceRightPanel({
           state survive tab switches and collapse; hidden panes are CSS-hidden. */}
       <div className={cn("relative flex w-full min-h-0 flex-1 flex-col overflow-hidden", !open && "hidden")}>
         <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "files" && "hidden")}>
-          {selectedFile ? (
+          {slug && selectedFile ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {/* Back to tree button */}
               <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1">
@@ -605,22 +699,43 @@ function WorkspaceRightPanel({
               </div>
               <SimpleFileViewer slug={slug} node={selectedFile} />
             </div>
-          ) : (
+          ) : slug ? (
             <FileTreePane
               slug={slug}
               activePath={null}
               onOpenFile={setSelectedFile}
             />
+          ) : (
+            <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-muted-foreground">
+              No workspace files for this thread.
+            </div>
           )}
         </div>
-        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "terminal" && "hidden")}>
-          <WorkspaceTerminalPanel slug={slug} />
-        </div>
-        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "preview" && "hidden")}>
-          <WorkspacePreviewPanel slug={slug} visible={open && activeTab === "preview"} />
-        </div>
-        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "changes" && "hidden")}>
-          <WorkspaceChangesPanel slug={slug} />
+        {slug && (
+          <>
+            <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "terminal" && "hidden")}>
+              <WorkspaceTerminalPanel slug={slug} />
+            </div>
+            <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "preview" && "hidden")}>
+              <WorkspacePreviewPanel slug={slug} visible={open && activeTab === "preview"} />
+            </div>
+            {isProject && (
+              <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "changes" && "hidden")}>
+                <WorkspaceChangesPanel slug={slug} />
+              </div>
+            )}
+          </>
+        )}
+        <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", (!subagentsEnabled || activeTab !== "subagents") && "hidden")}>
+          <SubagentsPanel
+            subagents={subagents}
+            selectedId={selectedSubagentId}
+            loading={subagentsLoading}
+            error={subagentsError}
+            sessionId={sessionId}
+            onSelect={onSelectSubagent}
+            onCloseDetail={onCloseSubagentDetail}
+          />
         </div>
       </div>
     </div>
@@ -648,14 +763,26 @@ export default function ChatPage() {
   } = useSessionStore();
 
   // ── Right panel ──
-  const [rightPanelOpen, setRightPanelOpen] = useState(() =>
-    localStorage.getItem("spark-chat-right-panel") !== "false"
-  );
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("files");
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
     const saved = localStorage.getItem("spark-chat-right-panel-width");
     return saved ? Math.max(240, parseInt(saved, 10)) : 320;
   });
+  const [subagentPanelWidth, setSubagentPanelWidth] = useState(() => {
+    const saved = localStorage.getItem("spark-chat-subagents-panel-width");
+    return saved ? Math.max(320, parseInt(saved, 10)) : 420;
+  });
+  const [subagentsSidebarEnabled, setSubagentsSidebarEnabled] = useState(true);
+  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
+  const previousSubagentCountRef = useRef(0);
+  const lastSubagentTriggerRef = useRef<HTMLElement | null>(null);
+  const {
+    subagents,
+    loading: subagentsLoading,
+    error: subagentsError,
+    loadSubagentDetail,
+  } = useSubagents(subagentsSidebarEnabled ? selectedId : null);
 
   // ── Derived ──
   const activeProjectSlug = useMemo(
@@ -663,6 +790,8 @@ export default function ChatPage() {
     [selectedSession],
   );
   const activeWorkspaceSlug = activeProjectSlug ?? composingFor;
+  const rightPanelWorkspaceSlug = activeWorkspaceSlug ?? (selectedId ? GLOBAL_WORKSPACE_SLUG : null);
+  const rightPanelIsProject = Boolean(activeWorkspaceSlug);
 
   const composingProjectName = useMemo(() => {
     if (!composingFor) return null;
@@ -671,21 +800,59 @@ export default function ChatPage() {
 
   // Load the per-workspace saved tab when the active workspace changes.
   useEffect(() => {
-    if (activeWorkspaceSlug) setRightTab(loadRightTab(activeWorkspaceSlug));
-  }, [activeWorkspaceSlug]);
+    setRightTab(loadRightTab(activeWorkspaceSlug, selectedId));
+  }, [activeWorkspaceSlug, selectedId]);
+
+  useEffect(() => {
+    setRightPanelOpen(loadRightPanelOpen(activeWorkspaceSlug, selectedId));
+  }, [activeWorkspaceSlug, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.getStatus()
+      .then((status) => {
+        if (!cancelled) setSubagentsSidebarEnabled(status.dashboard_features?.subagents_sidebar !== false);
+      })
+      .catch(() => {
+        if (!cancelled) setSubagentsSidebarEnabled(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    setSelectedSubagentId(null);
+    previousSubagentCountRef.current = 0;
+  }, [selectedId]);
+
+  useEffect(() => {
+    setSelectedSubagentId((current) => preserveSelectedSubagentId(current, subagents));
+  }, [subagents]);
+
+  useEffect(() => {
+    if (selectedSubagentId) void loadSubagentDetail(selectedSubagentId);
+  }, [selectedSubagentId, loadSubagentDetail]);
+
+  useEffect(() => {
+    const previous = previousSubagentCountRef.current;
+    previousSubagentCountRef.current = subagents.length;
+    if (!selectedId || !subagentsSidebarEnabled || subagents.length === 0 || previous > 0) return;
+    setRightPanelOpen(true);
+    saveRightPanelOpen(activeWorkspaceSlug, selectedId, true);
+    setRightTab("subagents");
+  }, [activeWorkspaceSlug, selectedId, subagents.length, subagentsSidebarEnabled]);
 
   const selectRightTab = useCallback((tab: RightTab) => {
     setRightTab(tab);
-    if (activeWorkspaceSlug) saveRightTab(activeWorkspaceSlug, tab);
-  }, [activeWorkspaceSlug]);
+    saveRightTab(activeWorkspaceSlug, selectedId, tab);
+  }, [activeWorkspaceSlug, selectedId]);
 
   // ── Real-time updates ──
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic !== "workspace.preview.ready") return;
     const data = env.data as { slug?: string; url?: string | null };
-    if (data.slug && data.slug === activeWorkspaceSlug && data.url && previewAutoOpenEnabled()) {
+    if (data.slug && data.slug === rightPanelWorkspaceSlug && data.url && previewAutoOpenEnabled()) {
       setRightPanelOpen(true);
-      localStorage.setItem("spark-chat-right-panel", "true");
+      saveRightPanelOpen(activeWorkspaceSlug, selectedId, true);
       selectRightTab("preview");
     }
   });
@@ -693,38 +860,85 @@ export default function ChatPage() {
   const toggleRightPanel = () => {
     setRightPanelOpen((v) => {
       const next = !v;
-      localStorage.setItem("spark-chat-right-panel", String(next));
+      saveRightPanelOpen(activeWorkspaceSlug, selectedId, next);
       return next;
     });
   };
 
   // Keyboard shortcuts to open/switch panel tabs (mirrors Claude desktop).
   useEffect(() => {
-    if (!activeWorkspaceSlug) return;
+    if (!rightPanelWorkspaceSlug) return;
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       let tab: RightTab | null = null;
       if (mod && e.shiftKey && e.key.toLowerCase() === "p") tab = "preview";
       else if (mod && e.shiftKey && e.key.toLowerCase() === "f") tab = "files";
-      else if (mod && e.shiftKey && e.key.toLowerCase() === "d") tab = "changes";
+      else if (mod && e.shiftKey && e.key.toLowerCase() === "d" && rightPanelIsProject) tab = "changes";
       else if (e.ctrlKey && e.key === "`") tab = "terminal";
       if (!tab) return;
       e.preventDefault();
       setRightPanelOpen(true);
-      localStorage.setItem("spark-chat-right-panel", "true");
+      saveRightPanelOpen(activeWorkspaceSlug, selectedId, true);
       selectRightTab(tab);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeWorkspaceSlug, selectRightTab]);
+  }, [activeWorkspaceSlug, rightPanelIsProject, rightPanelWorkspaceSlug, selectedId, selectRightTab]);
 
   const handleRightPanelDrag = useCallback((delta: number) => {
+    if (rightTab === "subagents") {
+      setSubagentPanelWidth((width) => {
+        const next = Math.max(320, Math.min(760, width - delta));
+        localStorage.setItem("spark-chat-subagents-panel-width", String(next));
+        return next;
+      });
+      return;
+    }
     setRightPanelWidth((width) => {
       const next = Math.max(240, Math.min(720, width - delta));
       localStorage.setItem("spark-chat-right-panel-width", String(next));
       return next;
     });
+  }, [rightTab]);
+
+  const handleSelectSubagent = useCallback((id: string) => {
+    const active = document.activeElement;
+    lastSubagentTriggerRef.current = active instanceof HTMLElement ? active : null;
+    setSelectedSubagentId(id);
   }, []);
+
+  const handleCloseSubagentDetail = useCallback(() => {
+    setSelectedSubagentId(null);
+    window.setTimeout(() => {
+      lastSubagentTriggerRef.current?.focus();
+      lastSubagentTriggerRef.current = null;
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSubagentId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      handleCloseSubagentDetail();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedSubagentId, handleCloseSubagentDetail]);
+
+  const openSubagentsFromHeader = useCallback(() => {
+    if (subagents.length === 0) return;
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      handleSelectSubagent(selectedSubagentId ?? subagents[0].id);
+      return;
+    }
+    setRightPanelOpen(true);
+    saveRightPanelOpen(activeWorkspaceSlug, selectedId, true);
+    selectRightTab("subagents");
+  }, [activeWorkspaceSlug, handleSelectSubagent, selectRightTab, selectedId, selectedSubagentId, subagents]);
+
+  const rightPanelAvailable = Boolean(rightPanelWorkspaceSlug);
+  const activeRightPanelWidth = rightTab === "subagents" ? subagentPanelWidth : rightPanelWidth;
 
   // ── Render ──
   return (
@@ -751,7 +965,21 @@ export default function ChatPage() {
                     className="min-w-0 truncate text-sm font-medium"
                   />
                 </div>
-                <div className="flex shrink-0 items-center gap-2" />
+                <div className="flex shrink-0 items-center gap-2">
+                  {subagentsSidebarEnabled && subagents.length > 0 && !rightPanelOpen && (
+                    <button
+                      type="button"
+                      aria-label={`Show ${subagents.length} subagents`}
+                      onClick={openSubagentsFromHeader}
+                      className="inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                    >
+                      <Bot className="h-3.5 w-3.5" />
+                      <span className="rounded bg-secondary px-1.5 py-0.5 font-mono-ui text-[10px]">
+                        {subagents.length}
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
               <ChatPanel
                 sessionId={selectedId}
@@ -769,17 +997,39 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Right panel — only when a workspace thread is selected; hidden on mobile */}
-        {activeWorkspaceSlug && (
+        {/* Right panel — workspace tools plus session inspectors; hidden on mobile */}
+        {rightPanelAvailable && (
           <div className="hidden md:flex">
             {rightPanelOpen && <ResizeDivider onDrag={handleRightPanelDrag} />}
             <WorkspaceRightPanel
-              slug={activeWorkspaceSlug}
+              slug={rightPanelWorkspaceSlug}
+              isProject={rightPanelIsProject}
+              sessionId={selectedId}
               open={rightPanelOpen}
               onToggle={toggleRightPanel}
-              width={rightPanelWidth}
+              width={activeRightPanelWidth}
               activeTab={rightTab}
+              subagents={subagents}
+              selectedSubagentId={selectedSubagentId}
+              subagentsLoading={subagentsLoading}
+              subagentsError={subagentsError}
+              subagentsEnabled={subagentsSidebarEnabled}
               onSelectTab={selectRightTab}
+              onSelectSubagent={handleSelectSubagent}
+              onCloseSubagentDetail={handleCloseSubagentDetail}
+            />
+          </div>
+        )}
+        {selectedSubagentId && (
+          <div className="fixed inset-0 z-50 flex bg-background md:hidden" role="dialog" aria-modal="true" aria-label="Subagent detail">
+            <SubagentsPanel
+              subagents={subagents}
+              selectedId={selectedSubagentId}
+              loading={subagentsLoading}
+              error={subagentsError}
+              sessionId={selectedId}
+              onSelect={handleSelectSubagent}
+              onCloseDetail={handleCloseSubagentDetail}
             />
           </div>
         )}

@@ -73,6 +73,24 @@ For AI provider setup (OpenRouter, Anthropic, Copilot, custom endpoints, self-ho
 
 ---
 
+## Dashboard
+
+The web dashboard is controlled by the `dashboard` section:
+
+```yaml
+dashboard:
+  enabled_with_gateway: true
+  host: "0.0.0.0"
+  port: 9119
+  require_auth_nonlocal: true
+  public_url: ""
+  subagents_sidebar: true
+```
+
+`dashboard.subagents_sidebar` controls the first-class subagent inspector in chat. When enabled, delegated child agents appear in the right-hand dashboard sidebar under the `Subagents` tab, with live status, task details, tool activity, and the final summary. Set it to `false` to hide the sidebar UI without changing `delegate_task` behavior in CLI, gateway, or the parent agent loop.
+
+---
+
 ## Terminal Backend
 
 Pick where the agent's shell commands actually execute.
