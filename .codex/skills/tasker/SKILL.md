@@ -157,13 +157,17 @@ For selected planned tickets:
    - do not batch checkoffs until the end
 7. Commit intentionally, push, and open a PR.
 8. Write the PR URL to the Notion `PR URL` property.
-9. Merge only when all are true:
+9. Before setting status to `Completed`/`Merged` or moving to another ticket,
+   fetch the Notion page and confirm every checkbox in the implementation
+   checklist, acceptance criteria, and verification sections is checked. Do not
+   leave a completed or merged ticket with unchecked boxes.
+10. Merge only when all are true:
    - requested by the workflow or clearly expected by the user
    - branch is pushed and PR exists
    - checks pass or there are no required checks
    - branch protection/review requirements allow merge
    - no unresolved conflicts
-10. Set status:
+11. Set status:
    - `Completed` when implementation is done and PR is open but not merged
    - `Merged` when merge succeeds
    - keep `In progress` and add blocker details if blocked
