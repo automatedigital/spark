@@ -4,25 +4,62 @@
  * session store.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
+  ArrowLeft,
+  ArrowRight,
+  AppWindow,
+  BookOpen,
+  Brain,
   ChevronDown,
   ChevronRight,
+  Check,
+  Code2,
+  Container,
+  FileText,
+  Film,
   FolderOpen,
+  Github,
+  Globe2,
+  Layers,
   Loader2,
   MessageSquare,
+  MonitorCog,
+  Package,
+  Paintbrush,
+  Palette,
+  PanelsTopLeft,
+  PenTool,
   Pin,
   Plus,
   Search,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  SquareTerminal,
+  SwatchBook,
+  TestTube2,
   Trash2,
+  type LucideIcon,
+  Video,
   X,
 } from "lucide-react";
-import type { SessionInfo, WorkspaceProject } from "@/lib/api";
+import { api } from "@/lib/api";
+import type {
+  PackageManager,
+  ProjectCreateRequest,
+  ProjectTemplatesResponse,
+  ProjectType,
+  SessionInfo,
+  WorkspaceProject,
+} from "@/lib/api";
 import { cn, timeAgo } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { threadTitle } from "@/components/chat/ThreadRow";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
+import { chooseDefaultStarter, toggleProjectWizardValue } from "@/lib/projectWizard";
 
 // ── SessionRow ────────────────────────────────────────────────────────────────
 
@@ -226,16 +263,448 @@ function ProjectGroup({
   );
 }
 
-// ── Project templates ───────────────────────────────────────────────────────────
+// ── Project wizard ─────────────────────────────────────────────────────────────
 
-type TemplateOption = { id: string; label: string; description: string };
+const PROJECT_TYPE_ICONS: Record<ProjectType, LucideIcon> = {
+  blank: FileText,
+  static_website: Globe2,
+  web_application: PanelsTopLeft,
+  design_project: Palette,
+  productivity_workspace: AppWindow,
+  video_project: Video,
+};
 
-const PROJECT_TEMPLATES: TemplateOption[] = [
-  { id: "scratch", label: "Scratch", description: "Empty project" },
-  { id: "static", label: "Static site", description: "HTML + CSS + JS (Tailwind CDN)" },
-  { id: "webapp", label: "Web app", description: "Vite + React + TS + Tailwind" },
-  { id: "productivity", label: "Productivity", description: "Notes + helpful skills guide" },
+const STARTER_ICONS: Record<string, LucideIcon> = {
+  scratch: Sparkles,
+  static: Globe2,
+  webapp: AppWindow,
+  productivity: PanelsTopLeft,
+  astro: Sparkles,
+  eleventy: FileText,
+  nextjs: Code2,
+  sveltekit: Layers,
+  nuxt: Layers,
+  docs_workspace: BookOpen,
+  research_workspace: Brain,
+  knowledge_base: BookOpen,
+  design_system: SwatchBook,
+  brand_kit: Paintbrush,
+  hyperframes: Film,
+  remotion: Video,
+  ffmpeg: SquareTerminal,
+};
+
+const PACKAGE_MANAGER_ICONS: Record<PackageManager, LucideIcon> = {
+  pnpm: Package,
+  npm: Package,
+  yarn: Package,
+  bun: Package,
+};
+
+const DEV_TOOL_OPTIONS = [
+  { id: "eslint", label: "ESLint", icon: ShieldCheck },
+  { id: "prettier", label: "Prettier", icon: Code2 },
+  { id: "husky", label: "Husky", icon: Settings2 },
+  { id: "vscode_config", label: "VS Code", icon: MonitorCog },
 ];
+
+const DESIGN_TOOL_OPTIONS = [
+  { id: "design_tokens", label: "Design Tokens", icon: SwatchBook },
+  { id: "brand_kit", label: "Brand Kit", icon: Paintbrush },
+  { id: "figma_notes", label: "Figma Handoff", icon: PenTool },
+];
+
+const INTEGRATION_OPTIONS = [
+  { id: "docker", label: "Docker", icon: Container },
+  { id: "github_actions", label: "GitHub Actions", icon: Github },
+  { id: "playwright", label: "Playwright", icon: AppWindow },
+  { id: "vitest", label: "Vitest", icon: TestTube2 },
+  { id: "storybook", label: "Storybook", icon: BookOpen },
+];
+
+const DESIGN_INTEGRATION_OPTIONS = [
+  { id: "figma", label: "Figma", icon: PenTool },
+];
+
+function ProjectWizard({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (request: ProjectCreateRequest) => Promise<void>;
+}) {
+  const [templatesData, setTemplatesData] = useState<ProjectTemplatesResponse | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState(0);
+  const [projectName, setProjectName] = useState("");
+  const [projectType, setProjectType] = useState<ProjectType>("blank");
+  const [starterId, setStarterId] = useState("scratch");
+  const [packageManager, setPackageManager] = useState<PackageManager>("pnpm");
+  const [initGit, setInitGit] = useState(true);
+  const [initialCommit, setInitialCommit] = useState(false);
+  const [aiSkillsMode, setAiSkillsMode] = useState<"recommended" | "manual">("recommended");
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [devTools, setDevTools] = useState<string[]>([]);
+  const [integrations, setIntegrations] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoadingTemplates(true);
+    setError(null);
+    api
+      .listProjectTemplates()
+      .then((data) => setTemplatesData(data))
+      .catch((err) => setError(err instanceof Error ? err.message : "Could not load project templates"))
+      .finally(() => setLoadingTemplates(false));
+  }, [open]);
+
+  const projectTypes = templatesData?.project_types ?? [];
+  const starters = useMemo(
+    () => templatesData?.templates.filter((tpl) => tpl.project_type === projectType) ?? [],
+    [templatesData, projectType],
+  );
+  const starter = starters.find((tpl) => tpl.id === starterId) ?? starters[0];
+  const isDesignProject = projectType === "design_project";
+  const devToolOptions = useMemo(
+    () => (isDesignProject ? [...DEV_TOOL_OPTIONS, ...DESIGN_TOOL_OPTIONS] : DEV_TOOL_OPTIONS),
+    [isDesignProject],
+  );
+  const integrationOptions = useMemo(
+    () => (isDesignProject ? [...INTEGRATION_OPTIONS, ...DESIGN_INTEGRATION_OPTIONS] : INTEGRATION_OPTIONS),
+    [isDesignProject],
+  );
+
+  useEffect(() => {
+    if (!starters.length) return;
+    const nextStarter = chooseDefaultStarter(starters);
+    if (!nextStarter) return;
+    setStarterId(nextStarter.id);
+    setPackageManager(nextStarter.default_package_manager ?? "pnpm");
+    setSelectedSkills(nextStarter.recommended_skills);
+  }, [starters]);
+
+  useEffect(() => {
+    const allowedDevTools = new Set(devToolOptions.map((option) => option.id));
+    const allowedIntegrations = new Set(integrationOptions.map((option) => option.id));
+    setDevTools((prev) => prev.filter((tool) => allowedDevTools.has(tool)));
+    setIntegrations((prev) => prev.filter((integration) => allowedIntegrations.has(integration)));
+  }, [devToolOptions, integrationOptions]);
+
+  if (!open) return null;
+
+  const canContinue =
+    (step === 0 && projectName.trim() && projectType) ||
+    (step === 1 && starter?.available) ||
+    step >= 2;
+
+  const resetAndClose = () => {
+    setStep(0);
+    setProjectName("");
+    setProjectType("blank");
+    setStarterId("scratch");
+    setPackageManager("pnpm");
+    setInitGit(true);
+    setInitialCommit(false);
+    setAiSkillsMode("recommended");
+    setSelectedSkills([]);
+    setDevTools([]);
+    setIntegrations([]);
+    setError(null);
+    onClose();
+  };
+
+  const submit = async () => {
+    if (!starter || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onCreate({
+        name: projectName.trim(),
+        project_type: projectType,
+        starter_stack: starter.id,
+        package_manager: starter.package_managers.length ? packageManager : undefined,
+        init_git: initGit,
+        initial_commit: initGit && initialCommit,
+        ai_skills_mode: aiSkillsMode,
+        selected_skills: aiSkillsMode === "recommended" ? starter.recommended_skills : selectedSkills,
+        dev_tools: devTools,
+        integrations,
+      });
+      resetAndClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Create project failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-md border border-border bg-background shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Create Project</h2>
+            <div className="mt-2 flex gap-1">
+              {["Details", "Starter", "Options", "Review"].map((label, index) => (
+                <div
+                  key={label}
+                  className={cn(
+                    "h-1.5 w-14 rounded-full",
+                    index <= step ? "bg-primary" : "bg-muted",
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={resetAndClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {loadingTemplates ? (
+            <div className="flex h-48 items-center justify-center text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading
+            </div>
+          ) : (
+            <>
+              {step === 0 && (
+                <div className="space-y-4">
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Project Name</span>
+                    <Input
+                      autoFocus
+                      value={projectName}
+                      onChange={(e) => setProjectName(e.target.value)}
+                      placeholder="Acme Dashboard"
+                    />
+                  </label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {projectTypes.map((type) => {
+                      const TypeIcon = PROJECT_TYPE_ICONS[type.id] ?? FolderOpen;
+                      return (
+                        <button
+                          key={type.id}
+                          type="button"
+                          onClick={() => setProjectType(type.id)}
+                          className={cn(
+                            "flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm transition",
+                            projectType === type.id
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                          )}
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <TypeIcon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{type.label}</span>
+                          </span>
+                          {projectType === type.id && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {step === 1 && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {starters.map((tpl) => {
+                    const StarterIcon = STARTER_ICONS[tpl.id] ?? FolderOpen;
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        disabled={!tpl.available}
+                        onClick={() => {
+                          setStarterId(tpl.id);
+                          setPackageManager(tpl.default_package_manager ?? "pnpm");
+                          setSelectedSkills(tpl.recommended_skills);
+                        }}
+                        className={cn(
+                          "min-h-24 rounded-md border px-3 py-2 text-left transition",
+                          starterId === tpl.id
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                          !tpl.available && "cursor-not-allowed opacity-45 hover:bg-transparent",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                            <StarterIcon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{tpl.label}</span>
+                          </span>
+                          {tpl.recommended && <Badge variant="secondary">Recommended</Badge>}
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{tpl.description}</p>
+                        {!tpl.available && <p className="mt-2 text-[11px] text-muted-foreground/70">Coming soon</p>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {step === 2 && starter && (
+                <div className="space-y-5">
+                  {starter.package_managers.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">Package Manager</p>
+                      <div className="flex flex-wrap gap-2">
+                        {starter.package_managers.map((pm) => {
+                          const PackageIcon = PACKAGE_MANAGER_ICONS[pm] ?? Package;
+                          return (
+                            <Button
+                              key={pm}
+                              size="sm"
+                              variant={packageManager === pm ? "default" : "outline"}
+                              onClick={() => setPackageManager(pm)}
+                            >
+                              <PackageIcon className="mr-1.5 h-3.5 w-3.5" />
+                              {pm}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={initGit} onChange={(e) => setInitGit(e.target.checked)} />
+                      <Github className="h-4 w-4 text-muted-foreground" />
+                      Initialize Git repository
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={initialCommit}
+                        disabled={!initGit}
+                        onChange={(e) => setInitialCommit(e.target.checked)}
+                      />
+                      <Check className="h-4 w-4" />
+                      Create initial commit
+                    </label>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">AI Skills</p>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant={aiSkillsMode === "recommended" ? "default" : "outline"} onClick={() => setAiSkillsMode("recommended")}>
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        Recommended
+                      </Button>
+                      <Button size="sm" variant={aiSkillsMode === "manual" ? "default" : "outline"} onClick={() => setAiSkillsMode("manual")}>
+                        <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                        Manual
+                      </Button>
+                    </div>
+                    {starter.recommended_skills.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {aiSkillsMode === "recommended"
+                          ? starter.recommended_skills.map((skill) => (
+                              <Badge key={skill} variant="outline">{skill}</Badge>
+                            ))
+                          : starter.recommended_skills.map((skill) => (
+                              <label key={skill} className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSkills.includes(skill)}
+                                  onChange={() => setSelectedSkills((prev) => toggleProjectWizardValue(prev, skill))}
+                                />
+                                {skill}
+                              </label>
+                            ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <OptionGroup title="Development Tools" options={devToolOptions} values={devTools} onToggle={(id) => setDevTools((prev) => toggleProjectWizardValue(prev, id))} />
+                    <OptionGroup title="Integrations" options={integrationOptions} values={integrations} onToggle={(id) => setIntegrations((prev) => toggleProjectWizardValue(prev, id))} />
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && starter && (
+                <div className="space-y-3 text-sm">
+                  <ReviewRow label="Project Name" value={projectName.trim()} />
+                  <ReviewRow label="Project Type" value={projectTypes.find((type) => type.id === projectType)?.label ?? projectType} />
+                  <ReviewRow label="Starter Stack" value={starter.label} />
+                  <ReviewRow label="Package Manager" value={starter.package_managers.length ? packageManager : "None"} />
+                  <ReviewRow label="AI Skills" value={aiSkillsMode === "recommended" ? starter.recommended_skills.join(", ") || "Recommended" : selectedSkills.join(", ") || "Manual"} />
+                  <ReviewRow label="Development Tools" value={devTools.join(", ") || "None"} />
+                  <ReviewRow label="Integrations" value={integrations.join(", ") || "None"} />
+                  <ReviewRow label="Git" value={initGit ? (initialCommit ? "Initialize with initial commit" : "Initialize") : "None"} />
+                </div>
+              )}
+            </>
+          )}
+
+          {error && <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border px-4 py-3">
+          <Button variant="ghost" size="sm" onClick={() => (step === 0 ? resetAndClose() : setStep((s) => s - 1))}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {step === 0 ? "Cancel" : "Back"}
+          </Button>
+          {step < 3 ? (
+            <Button size="sm" disabled={!canContinue || loadingTemplates} onClick={() => setStep((s) => s + 1)}>
+              Next
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <Button size="sm" disabled={saving || !starter?.available} onClick={() => void submit()}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+              Create Project
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function OptionGroup({
+  title,
+  options,
+  values,
+  onToggle,
+}: {
+  title: string;
+  options: { id: string; label: string; icon?: LucideIcon }[];
+  values: string[];
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
+      <div className="space-y-1.5">
+        {options.map((option) => {
+          const OptionIcon = option.icon;
+          return (
+            <label key={option.id} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={values.includes(option.id)} onChange={() => onToggle(option.id)} />
+              {OptionIcon && <OptionIcon className="h-4 w-4 text-muted-foreground" />}
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] gap-3 border-b border-border/60 pb-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-foreground">{value}</span>
+    </div>
+  );
+}
 
 // ── Collapsible section header ──────────────────────────────────────────────────
 
@@ -318,9 +787,6 @@ export function SidebarSessions({
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [creatingProject, setCreatingProject] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
-  const [newProjectTemplate, setNewProjectTemplate] = useState("scratch");
-  const [savingProject, setSavingProject] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
 
   const toggleSection = (section: string) => {
@@ -371,24 +837,16 @@ export function SidebarSessions({
     return map;
   }, [displayedSessions]);
 
-  const handleCreateProject = async () => {
-    const name = newProjectName.trim();
-    if (!name || savingProject) return;
-    setSavingProject(true);
-    try {
-      await createProject(name, newProjectTemplate);
-      setNewProjectName("");
-      setNewProjectTemplate("scratch");
-      setCreatingProject(false);
-    } catch (e) {
-      console.error("Create project failed", e);
-    } finally {
-      setSavingProject(false);
-    }
-  };
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <ProjectWizard
+        open={creatingProject}
+        onClose={() => setCreatingProject(false)}
+        onCreate={async (request) => {
+          await createProject(request);
+        }}
+      />
+
       {/* Search */}
       <div className="shrink-0 px-2 pb-1 pt-2">
         <div className="relative">
@@ -467,69 +925,6 @@ export function SidebarSessions({
               </>
             }
           />
-
-          {!collapsedSections.has("sessions") && creatingProject && (
-            <div className="mx-1.5 mb-2 flex flex-col gap-1.5 rounded-sm border border-border bg-background/60 p-2">
-              <Input
-                autoFocus
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="Project name"
-                className="h-7 text-xs"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleCreateProject();
-                  if (e.key === "Escape") {
-                    setCreatingProject(false);
-                    setNewProjectName("");
-                    setNewProjectTemplate("scratch");
-                  }
-                }}
-              />
-              <div className="grid grid-cols-2 gap-1">
-                {PROJECT_TEMPLATES.map((tpl) => (
-                  <button
-                    key={tpl.id}
-                    type="button"
-                    onClick={() => setNewProjectTemplate(tpl.id)}
-                    title={tpl.description}
-                    className={cn(
-                      "flex flex-col gap-0.5 rounded-sm border px-1.5 py-1 text-left transition",
-                      newProjectTemplate === tpl.id
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-                    )}
-                  >
-                    <span className="text-[11px] font-medium leading-tight">{tpl.label}</span>
-                    <span className="truncate text-[9px] leading-tight text-muted-foreground/60">
-                      {tpl.description}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1">
-                <Button
-                  size="sm"
-                  className="h-6 flex-1 text-xs"
-                  onClick={() => void handleCreateProject()}
-                  disabled={savingProject}
-                >
-                  {savingProject ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0"
-                  onClick={() => {
-                    setCreatingProject(false);
-                    setNewProjectName("");
-                    setNewProjectTemplate("scratch");
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          )}
 
           {!collapsedSections.has("sessions") && (
             <>

@@ -110,6 +110,21 @@ Browse all agent sessions in one place. Each row shows:
 - **Tool calls** — collapsible blocks showing function name and JSON args
 - **Delete** — remove a session entirely
 
+### Workspace Projects — Start From a Guided Scaffold
+
+The sidebar can create project workspaces from a multi-step wizard:
+
+- **Details** — project name and type: Blank, Static Website, Web Application, Design Project, Productivity Workspace, or Video Project
+- **Starter** — starter stacks filtered by project type
+- **Options** — package manager, Git initialization, AI skill preferences, development tools, and integrations
+- **Review** — final summary before the workspace directory is created under Spark's workspace home
+
+Implemented starters are scaffolded immediately. Framework starters such as
+Astro, Eleventy, Next.js, SvelteKit, Nuxt, Design System and Remotion use
+lightweight starter manifests that are ready for dependency installation;
+workspace/design/video starters create organized folders and project-local
+`AGENTS.md` skill guidance.
+
 ### Logs — Live-Tail with Filters
 
 View `agent`, `errors`, and `gateway` log files with:
