@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import urllib.request
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -193,6 +194,113 @@ class TestWebServerEndpoints:
         data = resp.json()
         assert data["models"] == []
         assert data["strict"] is False
+
+    def test_mac_update_installer_script_stages_and_installs_app(self, tmp_path):
+        import spark_cli.web_server as ws
+
+        script = ws._build_mac_update_installer_script(
+            dmg_path=tmp_path / "Spark-1.3.11.dmg",
+            work_dir=tmp_path,
+            log_path=tmp_path / "install.log",
+        )
+
+        assert "/usr/bin/hdiutil attach" in script
+        assert "-mountpoint" in script
+        assert "-name 'Spark.app'" in script
+        assert "CFBundleIdentifier" in script
+        assert "studio.fromtheroot.spark" in script
+        assert "tell application id \"studio.fromtheroot.spark\" to quit" in script
+        assert "/Applications/Spark.app" in script
+        assert "with administrator privileges" in script
+        assert "/usr/bin/open \"$INSTALL_PATH\"" in script
+
+    def test_run_mac_update_downloads_and_starts_detached_installer(self, monkeypatch, tmp_path):
+        import spark_cli.web_server as ws
+
+        work_dir = tmp_path / "spark-update"
+        popen_calls = []
+
+        monkeypatch.setenv("SPARK_DESKTOP", "1")
+        monkeypatch.setattr(
+            ws,
+            "_check_mac_update",
+            lambda force=False: {
+                "download_url": "https://example.com/Spark.dmg",
+                "latest_version": "1.3.11",
+            },
+        )
+        monkeypatch.setattr(ws.tempfile, "mkdtemp", lambda prefix: str(work_dir))
+
+        def fake_urlretrieve(url, dest):
+            Path(dest).parent.mkdir(parents=True, exist_ok=True)
+            Path(dest).write_bytes(b"fake dmg")
+            return dest, None
+
+        class FakePopen:
+            def __init__(self, args, **kwargs):
+                popen_calls.append((args, kwargs))
+
+        monkeypatch.setattr(ws.urllib.request, "urlretrieve", fake_urlretrieve)
+        monkeypatch.setattr(ws.subprocess, "Popen", FakePopen)
+
+        resp = self.client.post("/api/mac/update/run")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["status"] == "installing"
+        assert data["path"].endswith("Spark-1.3.11.dmg")
+        assert data["installer_script"].endswith("install-spark-update.zsh")
+        assert data["log_path"].endswith("install.log")
+        assert popen_calls
+        assert popen_calls[0][0] == ["/bin/zsh", data["installer_script"]]
+        assert popen_calls[0][1]["start_new_session"] is True
+        assert not any(call[0][0] == "open" for call in popen_calls)
+        script = (work_dir / "install-spark-update.zsh").read_text()
+        assert "/usr/bin/hdiutil attach" in script
+        assert "/Applications/Spark.app" in script
+
+    def test_run_mac_update_requires_downloadable_release_asset(self, monkeypatch):
+        import spark_cli.web_server as ws
+
+        monkeypatch.setenv("SPARK_DESKTOP", "1")
+        monkeypatch.setattr(
+            ws,
+            "_check_mac_update",
+            lambda force=False: {"download_url": None, "latest_version": "1.3.11"},
+        )
+
+        resp = self.client.post("/api/mac/update/run")
+
+        assert resp.status_code == 400
+        assert "No downloadable macOS release found" in resp.json()["detail"]
+
+    def test_run_mac_update_reports_download_failure(self, monkeypatch, tmp_path):
+        import spark_cli.web_server as ws
+
+        work_dir = tmp_path / "spark-update"
+
+        monkeypatch.setenv("SPARK_DESKTOP", "1")
+        monkeypatch.setattr(
+            ws,
+            "_check_mac_update",
+            lambda force=False: {
+                "download_url": "https://example.com/Spark.dmg",
+                "latest_version": "1.3.11",
+            },
+        )
+        monkeypatch.setattr(ws.tempfile, "mkdtemp", lambda prefix: str(work_dir))
+        monkeypatch.setattr(
+            ws.urllib.request,
+            "urlretrieve",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("network down")),
+        )
+
+        resp = self.client.post("/api/mac/update/run")
+
+        assert resp.status_code == 500
+        assert "Failed to start macOS update installer" in resp.json()["detail"]
+        assert "network down" in resp.json()["detail"]
 
     def test_oauth_endpoints_accept_dashboard_token(self):
         """OAuth connect/disconnect must accept the dashboard token (not only the

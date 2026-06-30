@@ -21,7 +21,7 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
   const [macReleaseNotes, setMacReleaseNotes] = useState<string | null>(null);
   const [macReleaseUrl, setMacReleaseUrl] = useState<string | null>(null);
   const [macModalOpen, setMacModalOpen] = useState(false);
-  const [macStatus, setMacStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [macStatus, setMacStatus] = useState<"idle" | "running" | "installing" | "failed">("idle");
   const [macError, setMacError] = useState<string | null>(null);
 
   // Check for updates on mount
@@ -143,7 +143,7 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
     setMacError(null);
     try {
       await api.runMacUpdate();
-      setMacStatus("done");
+      setMacStatus("installing");
       setMacUpdateAvailable(false);
     } catch (e) {
       setMacError(e instanceof Error ? e.message : String(e));
@@ -313,7 +313,7 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
               {macStatus === "idle" && (
                 <p className="text-sm text-muted-foreground">
                   A new version of the Spark desktop app is available. Spark will download the latest
-                  installer and open it — drag Spark to your Applications folder to finish, then relaunch.
+                  release, quit the running app, install it into Applications, and relaunch.
                 </p>
               )}
               {macStatus === "idle" && macReleaseNotes && (
@@ -342,9 +342,9 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
                   Downloading the latest installer…
                 </p>
               )}
-              {macStatus === "done" && (
+              {macStatus === "installing" && (
                 <p className="text-sm text-emerald-400">
-                  Installer downloaded and opened. Drag Spark to Applications, then relaunch the app.
+                  Installer started. Spark will quit, replace the app in Applications, and relaunch.
                 </p>
               )}
               {macStatus === "failed" && (
@@ -372,13 +372,13 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
                   </button>
                 </>
               )}
-              {macStatus === "running" && (
+              {(macStatus === "running" || macStatus === "installing") && (
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Downloading…
+                  {macStatus === "running" ? "Downloading…" : "Installing…"}
                 </span>
               )}
-              {(macStatus === "done" || macStatus === "failed") && (
+              {(macStatus === "installing" || macStatus === "failed") && (
                 <button
                   type="button"
                   onClick={() => setMacModalOpen(false)}
