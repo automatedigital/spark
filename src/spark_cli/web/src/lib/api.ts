@@ -671,7 +671,14 @@ export const api = {
       published_at?: string | null;
     }>("/api/mac/update/check"),
   runMacUpdate: () =>
-    fetchJSON<{ ok: boolean; path: string; latest_version: string | null }>("/api/mac/update/run", {
+    fetchJSON<{
+      ok: boolean;
+      path: string;
+      installer_script: string;
+      log_path: string;
+      latest_version: string | null;
+      status: "installing";
+    }>("/api/mac/update/run", {
       method: "POST",
     }),
   setupOnboardingSkills: (mode: "recommended" | "minimal" | "none") =>

@@ -1070,7 +1070,7 @@
     "semantic_hash": "edfcc2673f5999ab37ac7b95aa78d674"
   },
   "src/spark_cli/web/src/components/ChatPanel.tsx": {
-    "mtime": 1782849893.7167704,
+    "mtime": 1782850411.7231083,
     "ast_hash": "4426760cdf72fc24d2bbac1d28d11786",
     "semantic_hash": ""
   },
@@ -1340,13 +1340,13 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/UpdateModalContext.tsx": {
-    "mtime": 1781142947.4988687,
-    "ast_hash": "ab7a04d2b15b24e630d057658ec44db3",
-    "semantic_hash": "ab7a04d2b15b24e630d057658ec44db3"
+    "mtime": 1782852083.0857108,
+    "ast_hash": "67533daeebe7132f0317ab07d1aa77a6",
+    "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/api.ts": {
-    "mtime": 1782846712.9293485,
-    "ast_hash": "acabb12a1b8c379bb824c5d26bcba764",
+    "mtime": 1782852067.1984777,
+    "ast_hash": "51b5be5d38681e1090546c5c828217cd",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/browserCoords.ts": {
@@ -1520,9 +1520,9 @@
     "semantic_hash": "7da88eae80c4098e351a162a5deafad8"
   },
   "src/spark_cli/web/src/pages/UpdatesPage.tsx": {
-    "mtime": 1781142947.5014148,
-    "ast_hash": "a83509282ff53ab06827112323ea85f8",
-    "semantic_hash": "a83509282ff53ab06827112323ea85f8"
+    "mtime": 1782852091.4232874,
+    "ast_hash": "b52aa0990a410f273e6285e9d02a1795",
+    "semantic_hash": ""
   },
   "src/spark_cli/web/src/pages/canvas/Inspector.tsx": {
     "mtime": 1781052264.3857105,
@@ -1595,8 +1595,8 @@
     "semantic_hash": "1e92effe975e204b0b8630303a245ba6"
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1782849406.2424052,
-    "ast_hash": "718cb999b670d561c34a7fcff538fb57",
+    "mtime": 1782854088.6522017,
+    "ast_hash": "a48cf7d3ac422d5fbbfd6d2f1b8861d6",
     "semantic_hash": ""
   },
   "src/spark_cli/webhook.py": {
@@ -5395,8 +5395,8 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server.py": {
-    "mtime": 1782846712.937277,
-    "ast_hash": "6801e1bd42e0581d4121b1e20f5f0a0c",
+    "mtime": 1782852172.0092835,
+    "ast_hash": "55515ed40f27236bce65887b77af05d7",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
@@ -9395,17 +9395,17 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/favicon.png": {
-    "mtime": 1782850124.5833068,
+    "mtime": 1782854133.4834967,
     "ast_hash": "404d206cc280041848bccc555139033a",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/icon_small-dark.png": {
-    "mtime": 1782850124.587219,
+    "mtime": 1782854133.4869928,
     "ast_hash": "ac2c0ffe7ec9edc4cf3a3d6d5196dcda",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/icon_small-light.png": {
-    "mtime": 1782850124.5875518,
+    "mtime": 1782854133.4874864,
     "ast_hash": "d56006c2400add99962cf6798c789268",
     "semantic_hash": ""
   },
@@ -9630,8 +9630,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/index.html": {
-    "mtime": 1782850125.1508658,
-    "ast_hash": "c68b17f0d1c576c012b9089c071b7538",
+    "mtime": 1782854134.0269268,
+    "ast_hash": "06f381b8a9a1f8ce457bc8cf92c2bfe8",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/userBubbleTokens.test.ts": {
@@ -9675,18 +9675,18 @@
     "semantic_hash": ""
   },
   ".codex/skills/tasker/SKILL.md": {
-    "mtime": 1782848802.597842,
-    "ast_hash": "f93c1d88025c045c07a1fda5aa564f7a",
+    "mtime": 1782851167.6037834,
+    "ast_hash": "1acfb84ca6db924670f9c2d62306c631",
     "semantic_hash": ""
   },
-  "src/spark_cli/web_dist/assets/event-BAcE5QhX.js": {
-    "mtime": 1782850125.1508667,
-    "ast_hash": "b1a10bea44c850d60b43547c90c561dc",
+  "src/spark_cli/web_dist/assets/event-BvuOemBO.js": {
+    "mtime": 1782854134.0269732,
+    "ast_hash": "61053b6443439922a63773e7059ca194",
     "semantic_hash": ""
   },
-  "src/spark_cli/web_dist/assets/index-BKJULUNO.js": {
-    "mtime": 1782850125.1517193,
-    "ast_hash": "0a7aefafadf4893bef8db15a1c302e34",
+  "src/spark_cli/web_dist/assets/index-ll-K90-T.js": {
+    "mtime": 1782854134.0274708,
+    "ast_hash": "f096c810e63eb29f83e8b6e2e1b5770c",
     "semantic_hash": ""
   }
 }

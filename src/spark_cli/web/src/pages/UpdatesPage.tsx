@@ -107,7 +107,7 @@ export default function UpdatesPage() {
             macOS App{desktopVersion ? ` · v${desktopVersion}` : ""}
           </div>
           <p className="text-xs text-muted-foreground">
-            Updates the desktop app shell from the latest GitHub release.{" "}
+            Downloads and installs the desktop app shell from the latest GitHub release.{" "}
             {macUpdateAvailable
               ? `Version v${macLatestVersion} is available.`
               : "You're on the latest version."}

@@ -22,6 +22,7 @@ import shutil
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -1570,6 +1571,8 @@ async def check_update_available():
 
 GITHUB_REPO = "automatedigital/spark"
 _mac_update_cache: dict[str, Any] = {"checked_at": 0.0, "result": None}
+MAC_APP_BUNDLE_ID = "studio.fromtheroot.spark"
+MAC_APP_INSTALL_PATH = Path("/Applications/Spark.app")
 
 
 def _is_desktop_app() -> bool:
@@ -1651,6 +1654,119 @@ def _check_mac_update(force: bool = False) -> dict:
     return result
 
 
+def _shell_quote(value: str | Path) -> str:
+    import shlex
+
+    return shlex.quote(str(value))
+
+
+def _build_mac_update_installer_script(
+    *,
+    dmg_path: Path,
+    work_dir: Path,
+    log_path: Path,
+    install_path: Path = MAC_APP_INSTALL_PATH,
+    bundle_id: str = MAC_APP_BUNDLE_ID,
+) -> str:
+    """Build a detached macOS installer script for the downloaded Spark DMG."""
+
+    staged_app = work_dir / "Spark.app"
+    mount_dir = work_dir / "mount"
+    script_path = work_dir / "install-spark-update.zsh"
+    tmp_install_path = install_path.with_name(f"{install_path.name}.tmp")
+    backup_path = install_path.with_name(f"{install_path.name}.previous")
+    privileged_install_cmd = f"{_shell_quote(script_path)} --install-only".replace("\\", "\\\\").replace('"', '\\"')
+
+    return f"""#!/bin/zsh
+set -euo pipefail
+
+DMG={_shell_quote(dmg_path)}
+WORK_DIR={_shell_quote(work_dir)}
+MOUNT_DIR={_shell_quote(mount_dir)}
+STAGED_APP={_shell_quote(staged_app)}
+INSTALL_PATH={_shell_quote(install_path)}
+LOG_PATH={_shell_quote(log_path)}
+BUNDLE_ID={_shell_quote(bundle_id)}
+TMP_INSTALL_PATH={_shell_quote(tmp_install_path)}
+BACKUP_PATH={_shell_quote(backup_path)}
+
+log() {{
+  /bin/mkdir -p "$(/usr/bin/dirname "$LOG_PATH")"
+  /bin/echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_PATH"
+}}
+
+cleanup() {{
+  if /sbin/mount | /usr/bin/grep -q "on $MOUNT_DIR "; then
+    /usr/bin/hdiutil detach "$MOUNT_DIR" -quiet || true
+  fi
+}}
+trap cleanup EXIT
+
+perform_install() {{
+  /bin/rm -rf "$TMP_INSTALL_PATH"
+  /usr/bin/ditto "$STAGED_APP" "$TMP_INSTALL_PATH"
+  /bin/rm -rf "$BACKUP_PATH"
+
+  if [ -d "$INSTALL_PATH" ]; then
+    /bin/mv "$INSTALL_PATH" "$BACKUP_PATH"
+  fi
+
+  if ! /bin/mv "$TMP_INSTALL_PATH" "$INSTALL_PATH"; then
+    log "Replacement move failed; restoring previous app"
+    if [ -d "$BACKUP_PATH" ] && [ ! -d "$INSTALL_PATH" ]; then
+      /bin/mv "$BACKUP_PATH" "$INSTALL_PATH" || true
+    fi
+    return 1
+  fi
+
+  /bin/rm -rf "$BACKUP_PATH"
+}}
+
+if [ "${{1:-}}" = "--install-only" ]; then
+  perform_install >> "$LOG_PATH" 2>&1
+  exit $?
+fi
+
+log "Starting Spark desktop update install"
+/bin/mkdir -p "$MOUNT_DIR"
+/usr/bin/hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT_DIR" "$DMG" >> "$LOG_PATH" 2>&1
+
+SOURCE_APP="$(/usr/bin/find "$MOUNT_DIR" -maxdepth 2 -type d -name 'Spark.app' -print -quit)"
+if [ -z "$SOURCE_APP" ]; then
+  log "No Spark.app found in release DMG"
+  exit 2
+fi
+
+FOUND_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$SOURCE_APP/Contents/Info.plist" 2>/dev/null || true)"
+if [ "$FOUND_BUNDLE_ID" != "$BUNDLE_ID" ]; then
+  log "Unexpected bundle id: $FOUND_BUNDLE_ID"
+  exit 3
+fi
+
+/bin/rm -rf "$STAGED_APP"
+/usr/bin/ditto "$SOURCE_APP" "$STAGED_APP" >> "$LOG_PATH" 2>&1
+cleanup
+
+/usr/bin/osascript -e 'tell application id "{bundle_id}" to quit' >> "$LOG_PATH" 2>&1 || true
+for _ in {{1..30}}; do
+  if ! /usr/bin/pgrep -x Spark >/dev/null 2>&1; then
+    break
+  fi
+  /bin/sleep 1
+done
+
+log "Installing Spark.app into Applications"
+if ! perform_install >> "$LOG_PATH" 2>&1; then
+  log "Direct install failed; requesting administrator privileges"
+  /usr/bin/osascript -e "do shell script \\"{privileged_install_cmd}\\" with administrator privileges" >> "$LOG_PATH" 2>&1
+fi
+
+/usr/bin/xattr -cr "$INSTALL_PATH" >> "$LOG_PATH" 2>&1 || true
+/usr/bin/open "$INSTALL_PATH" >> "$LOG_PATH" 2>&1 || true
+log "Spark desktop update install finished"
+"""
+
+
 @app.get("/api/mac/update/check")
 async def check_mac_update():
     """Check whether a newer macOS desktop app release is available."""
@@ -1667,7 +1783,7 @@ async def check_mac_update():
 
 @app.post("/api/mac/update/run")
 async def run_mac_update():
-    """Download the latest macOS DMG and open it for the user to install."""
+    """Download the latest macOS DMG and start a detached automatic installer."""
     if not _is_desktop_app():
         raise HTTPException(status_code=400, detail="Not running as the macOS desktop app")
     info = await asyncio.to_thread(_check_mac_update, True)
@@ -1675,16 +1791,42 @@ async def run_mac_update():
     if not download_url:
         raise HTTPException(status_code=400, detail="No downloadable macOS release found")
 
-    import tempfile
+    work_dir = Path(tempfile.mkdtemp(prefix="spark-mac-update-"))
+    dest = work_dir / f"Spark-{info.get('latest_version') or 'latest'}.dmg"
+    script_path = work_dir / "install-spark-update.zsh"
+    log_path = work_dir / "install.log"
 
-    dest = Path(tempfile.gettempdir()) / f"Spark-{info.get('latest_version') or 'latest'}.dmg"
-
-    def _download_and_open() -> None:
+    def _download_and_start_installer() -> None:
         urllib.request.urlretrieve(download_url, dest)
-        subprocess.Popen(["open", str(dest)])
+        script_path.write_text(
+            _build_mac_update_installer_script(
+                dmg_path=dest,
+                work_dir=work_dir,
+                log_path=log_path,
+            )
+        )
+        script_path.chmod(0o700)
+        with log_path.open("ab") as log_file:
+            subprocess.Popen(
+                ["/bin/zsh", str(script_path)],
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
 
-    await asyncio.to_thread(_download_and_open)
-    return {"ok": True, "path": str(dest), "latest_version": info.get("latest_version")}
+    try:
+        await asyncio.to_thread(_download_and_start_installer)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to start macOS update installer: {exc}") from exc
+    return {
+        "ok": True,
+        "path": str(dest),
+        "installer_script": str(script_path),
+        "log_path": str(log_path),
+        "latest_version": info.get("latest_version"),
+        "status": "installing",
+    }
 
 
 @app.get("/api/admin/actions")
