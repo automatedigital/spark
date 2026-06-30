@@ -36,9 +36,21 @@ blocked PR or merge action clearly.
 
 Use the exact status options from the fetched database schema.
 
-Preferred status flow:
+Preferred agent-managed status flow:
 
-`Not started` -> `Planned` -> `In progress` -> `Completed` -> `Merged`
+`Not started` -> `Planned` -> `In progress` -> `PR created` -> `Merged`
+
+`Completed` is human-only. Never set a ticket to `Completed`, even when work is
+done and a PR is open. Use `PR created` for an open PR that is ready for human
+review, and `Merged` only after the PR merge succeeds.
+
+The Notion MCP `Status` property is the source of truth. Before reporting,
+choosing, reconciling, or changing a ticket status, fetch the latest page or
+data source through the Notion MCP and read the actual `Status` property. Do not
+infer status from GitHub state, PR merge state, progress logs, screenshots,
+search snippets, local memory, or branch names. If a data-source query is
+rate-limited, fetch exact candidate pages individually or say the queue status
+is not fully verified.
 
 Current Spark Planner schemas may not have `Not started`. If it is absent, ask
 once before planning whether to treat `Planned` tickets without a `# Tasker Plan`
@@ -157,10 +169,10 @@ For selected planned tickets:
    - do not batch checkoffs until the end
 7. Commit intentionally, push, and open a PR.
 8. Write the PR URL to the Notion `PR URL` property.
-9. Before setting status to `Completed`/`Merged` or moving to another ticket,
+9. Before setting status to `PR created`/`Merged` or moving to another ticket,
    fetch the Notion page and confirm every checkbox in the implementation
    checklist, acceptance criteria, and verification sections is checked. Do not
-   leave a completed or merged ticket with unchecked boxes.
+   leave a PR-created or merged ticket with unchecked boxes.
 10. Merge only when all are true:
    - requested by the workflow or clearly expected by the user
    - branch is pushed and PR exists
@@ -168,9 +180,10 @@ For selected planned tickets:
    - branch protection/review requirements allow merge
    - no unresolved conflicts
 11. Set status:
-   - `Completed` when implementation is done and PR is open but not merged
+   - `PR created` when implementation is done and PR is open but not merged
    - `Merged` when merge succeeds
    - keep `In progress` and add blocker details if blocked
+   - never set `Completed`; that status is reserved for human updates only
 
 Do not mark a checkbox complete unless the work and verification for that item
 are actually done.
@@ -192,7 +205,9 @@ Reconcile Notion against GitHub and local repo state:
 
 - If PR URL exists and PR is merged, set status `Merged`.
 - If PR URL exists and PR is open with completed checklist, set status
-  `Completed`.
+  `PR created`.
+- Never set status `Completed`; if a ticket looks complete but should not be
+  merged yet, report that it is ready for human review.
 - If status is `In progress` but no branch/PR/progress exists, flag it in the
   response and ask before changing status.
 - If `Planned` lacks `# Tasker Plan`, flag it as needing `/tasker plan`.
