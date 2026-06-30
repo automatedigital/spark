@@ -1595,8 +1595,8 @@
     "semantic_hash": "1e92effe975e204b0b8630303a245ba6"
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1782846712.937032,
-    "ast_hash": "d2dd7dfb56ed40143a3280a82807ed31",
+    "mtime": 1782849149.1845024,
+    "ast_hash": "718cb999b670d561c34a7fcff538fb57",
     "semantic_hash": ""
   },
   "src/spark_cli/webhook.py": {
@@ -1625,7 +1625,7 @@
     "semantic_hash": "568a8d12d0b10741f0997230cdb80aa9"
   },
   "src/spark_cli/workspace_routes.py": {
-    "mtime": 1782847165.068177,
+    "mtime": 1782848802.6481547,
     "ast_hash": "ba592c479df273f08b6226ce9fe3e428",
     "semantic_hash": ""
   },
@@ -1745,7 +1745,7 @@
     "semantic_hash": "2ac124cd1ea3ed5e14551ecdc8d6fb0b"
   },
   "src/tools/code_execution_tool.py": {
-    "mtime": 1782847275.2479022,
+    "mtime": 1782848802.6483874,
     "ast_hash": "ca5b8c813ce281f4f79a2d8da0b08b79",
     "semantic_hash": ""
   },
@@ -5400,8 +5400,8 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
-    "mtime": 1782488385.533506,
-    "ast_hash": "d98bd85a199f0c81b004cc0461324987",
+    "mtime": 1782849021.8257835,
+    "ast_hash": "b114f8f64451f4dbd9dc2be5e3fca9a2",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_webhook_cli.py": {
@@ -5560,8 +5560,8 @@
     "semantic_hash": ""
   },
   "tests/test_preview_devloop.py": {
-    "mtime": 1782848312.340835,
-    "ast_hash": "b0eb8dad48b1061fe567b6a196ee7edc",
+    "mtime": 1782848802.648564,
+    "ast_hash": "90b1786db5264790c514725b3ad15fb8",
     "semantic_hash": ""
   },
   "tests/test_project_metadata.py": {
@@ -5800,7 +5800,7 @@
     "semantic_hash": ""
   },
   "tests/tools/test_code_execution.py": {
-    "mtime": 1782847287.2227824,
+    "mtime": 1782848802.6487393,
     "ast_hash": "654cf90331a71cbed609633e9a6d1b46",
     "semantic_hash": ""
   },
@@ -9685,7 +9685,7 @@
     "semantic_hash": ""
   },
   ".codex/skills/tasker/SKILL.md": {
-    "mtime": 1782848511.5906734,
+    "mtime": 1782848802.597842,
     "ast_hash": "f93c1d88025c045c07a1fda5aa564f7a",
     "semantic_hash": ""
   }

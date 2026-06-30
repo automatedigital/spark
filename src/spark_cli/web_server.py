@@ -4138,9 +4138,19 @@ async def warm_session_agent(session_id: str):
 
     db = SessionDB()
     try:
+        requested_session_id = session_id
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
+        latest_sid = db.resolve_latest_descendant(sid)
+        if latest_sid != sid:
+            _log.info(
+                "web warm resolved compression descendant requested=%s resolved=%s latest=%s",
+                requested_session_id,
+                sid,
+                latest_sid,
+            )
+            sid = latest_sid
         row = db.get_session(sid)
         if not row:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -6734,9 +6744,19 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     conversation_history: Optional[list[dict[str, Any]]] = None
     db = SessionDB()
     try:
+        requested_session_id = session_id
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
+        latest_sid = db.resolve_latest_descendant(sid)
+        if latest_sid != sid:
+            _log.info(
+                "web follow-up resolved compression descendant requested=%s resolved=%s latest=%s",
+                requested_session_id,
+                sid,
+                latest_sid,
+            )
+            sid = latest_sid
         row = db.get_session(sid)
         if not row:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -6754,9 +6774,22 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         turn_route = _resolve_web_turn_route(body.message)
         agent = _web_agents.get(session_id)
         conversation_history = db.get_messages_as_conversation(session_id)
+        history_count = len(conversation_history)
+        cached_signature_matches = (
+            agent is not None
+            and _web_agent_signatures.get(session_id) == turn_route["signature"]
+        )
+        _log.info(
+            "web follow-up hydrated requested=%s session=%s history_count=%s cached_agent=%s signature_match=%s",
+            requested_session_id,
+            session_id,
+            history_count,
+            bool(agent),
+            cached_signature_matches,
+        )
         if (
             agent
-            and _web_agent_signatures.get(session_id) == turn_route["signature"]
+            and cached_signature_matches
             and _cached_web_agent_matches_history(session_id, agent, conversation_history)
         ):
             agent.stream_delta_callback = token_callback
