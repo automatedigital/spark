@@ -1849,8 +1849,12 @@ export function ChatPanel({
     gap: 12,
   });
 
+  const rowResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const rowResizeRafRef = useRef<number | null>(null);
+
   const measureRowElement = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
+    rowResizeObserverRef.current?.observe(el);
     const index = Number(el.dataset.index);
     const item = collapsedMessages[index];
     if (
@@ -1868,6 +1872,36 @@ export function ChatPanel({
     }
     virtualizer.measureElement(el);
   }, [collapsedMessages, safeMode, streaming, virtualizer]);
+
+  useEffect(() => {
+    const root = messageListRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const measureRenderedRows = () => {
+      if (rowResizeRafRef.current !== null) cancelAnimationFrame(rowResizeRafRef.current);
+      rowResizeRafRef.current = requestAnimationFrame(() => {
+        rowResizeRafRef.current = null;
+        root
+          .querySelectorAll<HTMLDivElement>("[data-index]")
+          .forEach((row) => measureRowElement(row));
+      });
+    };
+    const observer = new ResizeObserver(measureRenderedRows);
+    rowResizeObserverRef.current = observer;
+    root
+      .querySelectorAll<HTMLDivElement>("[data-index]")
+      .forEach((row) => observer.observe(row));
+    measureRenderedRows();
+    return () => {
+      observer.disconnect();
+      if (rowResizeObserverRef.current === observer) {
+        rowResizeObserverRef.current = null;
+      }
+      if (rowResizeRafRef.current !== null) {
+        cancelAnimationFrame(rowResizeRafRef.current);
+        rowResizeRafRef.current = null;
+      }
+    };
+  }, [collapsedMessages, measureRowElement]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
