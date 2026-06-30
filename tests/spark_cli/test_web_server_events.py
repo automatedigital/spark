@@ -1,6 +1,7 @@
 """Tests for web UI SSE event bus and conversation control endpoints."""
 
 import asyncio
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -32,6 +33,15 @@ def web_client(monkeypatch, tmp_path):
     web_server._web_queues.clear()
 
     return TestClient(web_server.app)
+
+
+def _wait_for(predicate, timeout: float = 2.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return bool(predicate())
 
 
 class TestEventBus:
@@ -577,10 +587,11 @@ class TestConversationControl:
 
         captured = {}
 
-        def fake_run(agent, user_message, conversation_history=None):
+        def fake_run(agent, user_message, conversation_history=None, context_items=None):
             captured["agent"] = agent
             captured["user_message"] = user_message
             captured["history"] = conversation_history
+            captured["context_items"] = context_items
 
         monkeypatch.setattr(run_agent, "AIAgent", FakeAgent)
         monkeypatch.setattr(web_server, "_run_web_agent_turn", fake_run)
@@ -590,6 +601,12 @@ class TestConversationControl:
         assert resp.json()["session_id"] == "stored_web"
         assert "stored_web" in web_server._web_agents
         assert web_server._web_agents["stored_web"].model == "test-model"
+        assert _wait_for(lambda: "history" in captured)
+        assert captured["user_message"] == "again"
+        assert captured["history"] == [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+        ]
 
     def test_conversation_message_rehydrates_non_web_session(self, web_client, monkeypatch):
         import core.run_agent as run_agent
@@ -611,10 +628,11 @@ class TestConversationControl:
 
         captured = {}
 
-        def fake_run(agent, user_message, conversation_history=None):
+        def fake_run(agent, user_message, conversation_history=None, context_items=None):
             captured["agent"] = agent
             captured["user_message"] = user_message
             captured["history"] = conversation_history
+            captured["context_items"] = context_items
 
         monkeypatch.setattr(run_agent, "AIAgent", FakeAgent)
         monkeypatch.setattr(web_server, "_run_web_agent_turn", fake_run)
@@ -624,6 +642,69 @@ class TestConversationControl:
         assert resp.json()["session_id"] == "stored_cli"
         assert "stored_cli" in web_server._web_agents
         assert web_server._web_agents["stored_cli"].model == "test-model"
+        assert _wait_for(lambda: "history" in captured)
+        assert captured["user_message"] == "continue"
+        assert captured["history"] == [
+            {"role": "user", "content": "hello from tui"},
+            {"role": "assistant", "content": "hi"},
+        ]
+
+    def test_conversation_message_continues_latest_compressed_leaf(self, web_client, monkeypatch):
+        import core.run_agent as run_agent
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+                self.session_id = kwargs["session_id"]
+
+        db = SessionDB()
+        try:
+            db.create_session("compressed_parent", source="web", model="m1")
+            db.append_message("compressed_parent", "user", content="old fact")
+            db.append_message("compressed_parent", "assistant", content="old answer")
+            db.end_session("compressed_parent", "compression")
+            db.create_session(
+                "compressed_leaf",
+                source="web",
+                model="m1",
+                parent_session_id="compressed_parent",
+            )
+            db.append_message("compressed_leaf", "system", content="summary of old fact")
+            db.append_message("compressed_leaf", "user", content="newer fact")
+            db.append_message("compressed_leaf", "assistant", content="newer answer")
+        finally:
+            db.close()
+
+        captured = {}
+
+        def fake_run(agent, user_message, conversation_history=None, context_items=None):
+            captured["agent"] = agent
+            captured["user_message"] = user_message
+            captured["history"] = conversation_history
+            captured["context_items"] = context_items
+
+        monkeypatch.setattr(run_agent, "AIAgent", FakeAgent)
+        monkeypatch.setattr(web_server, "_run_web_agent_turn", fake_run)
+
+        resp = web_client.post(
+            "/api/conversations/compressed_parent/messages",
+            json={"message": "recall"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["session_id"] == "compressed_leaf"
+        assert "compressed_leaf" in web_server._web_agents
+        assert "compressed_parent" not in web_server._web_agents
+        assert _wait_for(lambda: "history" in captured)
+        assert captured["agent"].session_id == "compressed_leaf"
+        assert captured["user_message"] == "recall"
+        assert captured["history"] == [
+            {"role": "system", "content": "summary of old fact"},
+            {"role": "user", "content": "newer fact"},
+            {"role": "assistant", "content": "newer answer"},
+        ]
 
     def test_web_turn_fallback_persists_missing_messages(self, web_client):
         import spark_cli.web_server as web_server
