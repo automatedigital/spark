@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import platform
+import shutil
 import shlex
 import signal
 import socket
@@ -68,6 +69,40 @@ DEFAULT_TIMEOUT = 300        # 5 minutes
 DEFAULT_MAX_TOOL_CALLS = 50
 MAX_STDOUT_BYTES = 50_000    # 50 KB
 MAX_STDERR_BYTES = 10_000    # 10 KB
+
+
+def _looks_like_server_executable(path: str | None) -> bool:
+    """Return True when a Python candidate is Spark's frozen server binary."""
+    if not path:
+        return False
+    name = os.path.basename(path).lower()
+    return name in {"spark-server", "spark-server.exe"}
+
+
+def _resolve_sandbox_python() -> str:
+    """Resolve a real Python interpreter for local execute_code children.
+
+    In dev, ``sys.executable`` is normally Python. In the desktop app, the
+    frozen sidecar's ``sys.executable`` is the ``spark-server`` binary; invoking
+    that with ``script.py`` starts another server and treats the script name as
+    a port. Prefer a real interpreter and explicitly reject that server binary.
+    """
+    candidates: list[str | None] = [
+        os.getenv("SPARK_SANDBOX_PYTHON"),
+        sys.executable,
+        getattr(sys, "_base_executable", None),
+        shutil.which("python3"),
+        shutil.which("python"),
+    ]
+    for candidate in candidates:
+        if not candidate or _looks_like_server_executable(candidate):
+            continue
+        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise RuntimeError(
+        "execute_code could not find a Python interpreter for the sandbox. "
+        "Set SPARK_SANDBOX_PYTHON to a Python executable."
+    )
 
 
 def check_sandbox_requirements() -> bool:
@@ -1028,8 +1063,9 @@ def execute_code(
         if _profile_home:
             child_env["HOME"] = _profile_home
 
+        sandbox_python = _resolve_sandbox_python()
         proc = subprocess.Popen(
-            [sys.executable, "script.py"],
+            [sandbox_python, "script.py"],
             cwd=tmpdir,
             env=child_env,
             stdout=subprocess.PIPE,

@@ -7,6 +7,9 @@ routes. No real browser or CDP socket is used.
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from spark_cli import preview_agent_browser as pab
@@ -156,3 +159,163 @@ def test_route_detect_servers(client, monkeypatch):
     servers = r.json()["servers"]
     # Deduped by port.
     assert servers == [{"url": "http://127.0.0.1:5173", "port": 5173}]
+
+
+def _preview_action_client(monkeypatch, sync_playwright):
+    fastapi = pytest.importorskip("fastapi")
+    from starlette.testclient import TestClient
+
+    import spark_cli.workspace_routes as wr
+
+    session = {"url": "http://example.test", "logs": []}
+    monkeypatch.setattr(wr, "_get_preview_session_or_404", lambda slug: session)
+    monkeypatch.setattr(
+        wr,
+        "_run_agent_browser",
+        lambda slug, args: {"success": False, "error": "agent-browser missing"},
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "playwright.sync_api",
+        types.SimpleNamespace(sync_playwright=sync_playwright),
+    )
+    app = fastapi.FastAPI()
+    wr.register_workspace_routes(app)
+    return TestClient(app), session
+
+
+def _playwright_with_page(page):
+    class _Browser:
+        def __init__(self):
+            self.closed = False
+
+        def new_page(self, **_kwargs):
+            return page
+
+        def close(self):
+            self.closed = True
+
+    class _Playwright:
+        chromium = types.SimpleNamespace(launch=lambda **_kwargs: _Browser())
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    return _Playwright()
+
+
+def test_preview_evaluate_falls_back_to_playwright_with_source(monkeypatch):
+    class _Page:
+        def on(self, *_args):
+            pass
+
+        def goto(self, *_args, **_kwargs):
+            pass
+
+        def evaluate(self, expression):
+            return f"evaluated:{expression}"
+
+    client, session = _preview_action_client(
+        monkeypatch,
+        lambda: _playwright_with_page(_Page()),
+    )
+
+    resp = client.post(
+        "/api/workspace/projects/proj/preview/evaluate",
+        json={"expression": "document.title"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["source"] == "playwright"
+    assert resp.json()["result"] == "evaluated:document.title"
+    assert any("agent-browser evaluate unavailable" in item["text"] for item in session["logs"])
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "payload", "expected_action"),
+    [
+        (
+            "/api/workspace/projects/proj/preview/type",
+            {"selector": "#name", "text": "Ada"},
+            "type",
+        ),
+        (
+            "/api/workspace/projects/proj/preview/click",
+            {"selector": "#submit"},
+            "click",
+        ),
+    ],
+)
+def test_preview_input_actions_fall_back_to_playwright(
+    monkeypatch,
+    endpoint,
+    payload,
+    expected_action,
+):
+    actions = []
+
+    class _Locator:
+        @property
+        def first(self):
+            return self
+
+        def fill(self, text, **_kwargs):
+            actions.append(("fill", text))
+
+        def click(self, **_kwargs):
+            actions.append(("click", None))
+
+    class _Page:
+        def on(self, *_args):
+            pass
+
+        def goto(self, *_args, **_kwargs):
+            pass
+
+        def locator(self, selector):
+            actions.append(("locator", selector))
+            return _Locator()
+
+    client, session = _preview_action_client(
+        monkeypatch,
+        lambda: _playwright_with_page(_Page()),
+    )
+
+    resp = client.post(endpoint, json=payload)
+
+    assert resp.status_code == 200
+    assert resp.json()["source"] == "playwright"
+    assert resp.json()["action"] == expected_action
+    assert ("locator", payload["selector"]) in actions
+    assert any(
+        f"agent-browser {expected_action} unavailable" in item["text"]
+        for item in session["logs"]
+    )
+    if expected_action == "type":
+        assert ("fill", payload["text"]) in actions
+    else:
+        assert ("click", None) in actions
+
+
+def test_preview_evaluate_error_names_backend(monkeypatch):
+    class _BrokenPlaywright:
+        def __enter__(self):
+            raise AttributeError("'PlaywrightContextManager' object has no attribute '_playwright'")
+
+        def __exit__(self, *_args):
+            return False
+
+    client, _session = _preview_action_client(monkeypatch, lambda: _BrokenPlaywright())
+
+    resp = client.post(
+        "/api/workspace/projects/proj/preview/evaluate",
+        json={"expression": "document.title"},
+    )
+
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "agent-browser backend unavailable: agent-browser missing" in detail
+    assert "playwright backend action failed" in detail

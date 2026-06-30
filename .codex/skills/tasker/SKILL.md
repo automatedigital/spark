@@ -222,6 +222,13 @@ asks.
 - Use `apply_patch` for manual file edits.
 - Run focused tests while iterating; run broader checks before PR/merge when
   practical.
+- Only rebuild the desktop app or create a release when the Notion ticket
+  explicitly has `Rebuild Desktop` checked. Otherwise use code-level tests,
+  web builds, route/API checks, and PR CI for verification. If an existing plan
+  includes packaged-app or release verification while `Rebuild Desktop` is not
+  checked, update that checkbox text to say it was not requested for the ticket
+  and check it only after recording that note. Do not leave stale unchecked
+  packaging/release boxes behind.
 - After modifying code, run `graphify update .` before finishing.
 - Never hardcode `~/.spark`; use `get_spark_home()` and `display_spark_home()`.
 - Do not change toolsets, reload memories, or rebuild system prompts
