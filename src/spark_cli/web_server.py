@@ -4246,6 +4246,19 @@ async def get_logs(
     return {"file": file, "lines": result}
 
 
+@app.get("/api/logs/download")
+async def download_log(file: str = "agent"):
+    from spark_cli.logs import LOG_FILES
+
+    log_name = LOG_FILES.get(file)
+    if not log_name:
+        raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
+    log_path = get_spark_home() / "logs" / log_name
+    if not log_path.exists():
+        raise HTTPException(status_code=404, detail=f"Log file not found: {file}")
+    return FileResponse(log_path, media_type="text/plain", filename=log_name)
+
+
 # ---------------------------------------------------------------------------
 # Cron job management endpoints
 # ---------------------------------------------------------------------------

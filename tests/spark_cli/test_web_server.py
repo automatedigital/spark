@@ -1138,6 +1138,23 @@ class TestNewEndpoints:
         resp = self.client.get("/api/logs?file=nonexistent")
         assert resp.status_code == 400
 
+    def test_download_log_returns_known_log_file(self):
+        from core.spark_constants import get_spark_home
+
+        logs_dir = get_spark_home() / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "agent.log").write_text("hello from logs\n", encoding="utf-8")
+
+        resp = self.client.get("/api/logs/download?file=agent")
+
+        assert resp.status_code == 200
+        assert resp.text == "hello from logs\n"
+        assert "agent.log" in resp.headers["content-disposition"]
+
+    def test_download_log_rejects_unknown_file(self):
+        resp = self.client.get("/api/logs/download?file=../agent")
+        assert resp.status_code == 400
+
     def test_cron_list(self):
         resp = self.client.get("/api/cron/jobs")
         assert resp.status_code == 200

@@ -82,6 +82,14 @@ export function mediaFileUrl(path: string): string {
   return `${getApiBase()}/api/media?${qs}`;
 }
 
+/** Build a protected URL for downloading one of Spark's known log files. */
+export function logsDownloadUrl(file: string): string {
+  const qs = new URLSearchParams({ file });
+  const tok = getDashboardToken();
+  if (tok) qs.set("dashboard_token", tok);
+  return `${getApiBase()}/api/logs/download?${qs}`;
+}
+
 /** Append dashboard auth for EventSource (no custom headers support). */
 export function sseUrl(path: string): string {
   const full = `${getApiBase()}${path}`;
