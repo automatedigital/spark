@@ -245,6 +245,16 @@ asks.
 - Use `apply_patch` for manual file edits.
 - Run focused tests while iterating; run broader checks before PR/merge when
   practical.
+- Treat a checked Notion `Rebuild Desktop` property as explicit confirmation to
+  rebuild and publish the macOS desktop release after the PR is merged to
+  `main`; do not ask for a second release confirmation in that case. The release
+  should use the next desktop patch version unless the ticket specifies another
+  version, for example `1.3.10` -> `desktop-v1.3.11`. Commit any required desktop
+  version bump before building, rebuild from merged `main`, publish the
+  `desktop-v*` GitHub Release asset, and record the release URL in the ticket
+  progress log. Only skip release publication if the build/sign/notarization or
+  GitHub release command fails, and leave the ticket in `Merged` with the
+  blocker logged.
 - Only rebuild the desktop app or create a release when the Notion ticket
   explicitly has `Rebuild Desktop` checked. Otherwise use code-level tests,
   web builds, route/API checks, and PR CI for verification. If an existing plan
