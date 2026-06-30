@@ -148,6 +148,7 @@ export interface Translations {
   logs: {
     title: string;
     autoRefresh: string;
+    download: string;
     file: string;
     level: string;
     component: string;

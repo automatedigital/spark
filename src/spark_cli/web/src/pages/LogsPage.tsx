@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { FileText, RefreshCw } from "lucide-react";
-import { api } from "@/lib/api";
+import { Download, FileText, RefreshCw } from "lucide-react";
+import { api, logsDownloadUrl } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +70,7 @@ export default function LogsPage() {
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { t } = useI18n();
+  const downloadName = `${file}.log`;
 
   const fetchLogs = useCallback(() => {
     setLoading(true);
@@ -105,7 +106,7 @@ export default function LogsPage() {
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-muted-foreground" />
               <CardTitle className="text-base">{t.logs.title}</CardTitle>
@@ -113,7 +114,7 @@ export default function LogsPage() {
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Switch
                   checked={autoRefresh}
@@ -127,6 +128,15 @@ export default function LogsPage() {
                   </Badge>
                 )}
               </div>
+              <a
+                href={logsDownloadUrl(file)}
+                download={downloadName}
+                aria-label={t.logs.download}
+                className="inline-flex h-7 items-center justify-center gap-1 rounded-md border border-border bg-background px-2.5 text-xs font-display font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <Download className="h-3 w-3" />
+                {t.logs.download}
+              </a>
               <Button variant="outline" size="sm" onClick={fetchLogs} className="text-xs h-7">
                 <RefreshCw className="h-3 w-3 mr-1" />
                 {t.common.refresh}

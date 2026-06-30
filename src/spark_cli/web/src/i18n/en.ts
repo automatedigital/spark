@@ -144,6 +144,7 @@ export const en: Translations = {
   logs: {
     title: "Logs",
     autoRefresh: "Auto-refresh",
+    download: "Download Logs",
     file: "File",
     level: "Level",
     component: "Component",
