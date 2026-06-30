@@ -45,6 +45,7 @@ from tools.code_execution_tool import (
     EXECUTE_CODE_SCHEMA,
     _TOOL_DOC_LINES,
     _execute_remote,
+    _resolve_sandbox_python,
 )
 
 
@@ -706,6 +707,33 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
         result = json.loads(execute_code("   \n\t  ", task_id="test"))
         self.assertIn("error", result)
         self.assertIn("No code", result["error"])
+
+    def test_resolve_sandbox_python_skips_frozen_server_binary(self):
+        with patch("tools.code_execution_tool.os.getenv", return_value=None), \
+             patch("tools.code_execution_tool.os.path.exists", return_value=True), \
+             patch("tools.code_execution_tool.os.access", return_value=True), \
+             patch("tools.code_execution_tool.shutil.which", return_value=None), \
+             patch("tools.code_execution_tool.sys.executable", "/Applications/Spark.app/Contents/Resources/spark-server/spark-server"), \
+             patch.object(sys, "_base_executable", "/usr/bin/python3", create=True):
+            self.assertEqual(_resolve_sandbox_python(), "/usr/bin/python3")
+
+    def test_resolve_sandbox_python_prefers_active_python(self):
+        with patch("tools.code_execution_tool.os.getenv", return_value=None), \
+             patch("tools.code_execution_tool.os.path.exists", return_value=True), \
+             patch("tools.code_execution_tool.os.access", return_value=True), \
+             patch("tools.code_execution_tool.shutil.which", return_value="/usr/bin/python3"), \
+             patch("tools.code_execution_tool.sys.executable", "/repo/.venv/bin/python"), \
+             patch.object(sys, "_base_executable", "/usr/bin/python3", create=True):
+            self.assertEqual(_resolve_sandbox_python(), "/repo/.venv/bin/python")
+
+    def test_resolve_sandbox_python_uses_path_python_when_frozen_candidates_bad(self):
+        with patch("tools.code_execution_tool.os.getenv", return_value=None), \
+             patch("tools.code_execution_tool.os.path.exists", return_value=True), \
+             patch("tools.code_execution_tool.os.access", return_value=True), \
+             patch("tools.code_execution_tool.sys.executable", "/Applications/Spark.app/Contents/Resources/spark-server/spark-server"), \
+             patch.object(sys, "_base_executable", "/Applications/Spark.app/Contents/Resources/spark-server/spark-server", create=True), \
+             patch("tools.code_execution_tool.shutil.which", side_effect=lambda name: "/opt/homebrew/bin/python3" if name == "python3" else None):
+            self.assertEqual(_resolve_sandbox_python(), "/opt/homebrew/bin/python3")
 
     @unittest.skipIf(sys.platform == "win32", "UDS not available on Windows")
     def test_none_enabled_tools_uses_all(self):

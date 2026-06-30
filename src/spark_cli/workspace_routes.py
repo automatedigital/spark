@@ -2449,6 +2449,7 @@ def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | 
     elif action == "snapshot":
         agent_args = ["snapshot", "--compact", "--depth", "6"]
 
+    agent_error: str | None = None
     if agent_args:
         agent_result = _run_agent_browser(slug, agent_args)
         if agent_result and agent_result.get("success"):
@@ -2463,12 +2464,17 @@ def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | 
                 "source": "agent-browser",
             }
         if agent_result:
-            _append_preview_log(slug, session, f"agent-browser {action} unavailable: {agent_result.get('error')}", "error")
+            agent_error = str(agent_result.get("error") or "unknown error")
+            _append_preview_log(slug, session, f"agent-browser {action} unavailable: {agent_error}", "error")
     try:
         from playwright.sync_api import sync_playwright  # type: ignore
     except ImportError:
-        raise HTTPException(status_code=501, detail="Playwright is not installed")
+        detail = "playwright backend unavailable: Playwright is not installed"
+        if agent_error:
+            detail = f"agent-browser backend unavailable: {agent_error}; {detail}"
+        raise HTTPException(status_code=501, detail=detail)
     messages: list[dict[str, Any]] = []
+    browser = None
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -2499,12 +2505,28 @@ def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | 
             for msg in messages:
                 _append_preview_log(slug, session, msg["text"], msg["stream"])
             browser.close()
-        return {"slug": slug, "action": action, "result": result, "messages": messages[-100:]}
+            browser = None
+        return {
+            "slug": slug,
+            "action": action,
+            "result": result,
+            "messages": messages[-100:],
+            "source": "playwright",
+        }
     except HTTPException:
         raise
     except Exception as exc:
-        _append_preview_log(slug, session, str(exc), "error")
-        raise HTTPException(status_code=502, detail=f"Browser action failed: {exc}")
+        detail = f"playwright backend action failed: {exc}"
+        if agent_error:
+            detail = f"agent-browser backend unavailable: {agent_error}; {detail}"
+        _append_preview_log(slug, session, detail, "error")
+        raise HTTPException(status_code=502, detail=detail)
+    finally:
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
 
 
 @router.post("/projects/{slug}/preview/click")
