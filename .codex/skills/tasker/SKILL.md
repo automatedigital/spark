@@ -184,6 +184,14 @@ For selected planned tickets:
    - `Merged` when merge succeeds
    - keep `In progress` and add blocker details if blocked
    - never set `Completed`; that status is reserved for human updates only
+12. After a successful merge to `main`, clean up the ticket branch:
+   - switch back to `main` and fast-forward from `origin/main`
+   - delete the local ticket branch with `git branch -d <branch>`
+   - delete the remote ticket branch with `gh pr merge --delete-branch` when
+     merging, or `git push origin --delete <branch>` after confirming the PR is
+     merged
+   - run `git fetch --prune origin`
+   - never delete `main`, the current branch, or any branch that is not merged
 
 Do not mark a checkbox complete unless the work and verification for that item
 are actually done.
