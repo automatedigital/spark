@@ -30,10 +30,13 @@ from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from spark_cli.config import get_spark_home
 from spark_cli.project_templates import (
+    DEFAULT_TEMPLATE,
+    ProjectTemplate,
+    get_template,
     is_valid_template,
     list_templates,
     materialize_template,
@@ -135,7 +138,16 @@ def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = Fa
 
 class ProjectCreate(BaseModel):
     name: str
-    template: str = "scratch"
+    template: str | None = None
+    project_type: str | None = None
+    starter_stack: str | None = None
+    package_manager: str | None = None
+    init_git: bool = False
+    initial_commit: bool = False
+    ai_skills_mode: str = "recommended"
+    selected_skills: list[str] = Field(default_factory=list)
+    dev_tools: list[str] = Field(default_factory=list)
+    integrations: list[str] = Field(default_factory=list)
 
 
 class TerminalRunCreate(BaseModel):
@@ -220,6 +232,292 @@ class StreamRecord(BaseModel):
     interval: float = 0.4
 
 
+_PROJECT_TYPE_LABELS: dict[str, str] = {
+    "blank": "Blank",
+    "static_website": "Static Website",
+    "web_application": "Web Application",
+    "design_project": "Design Project",
+    "productivity_workspace": "Productivity Workspace",
+    "video_project": "Video Project",
+}
+
+
+def _project_template_payload(template: ProjectTemplate) -> dict[str, Any]:
+    return {
+        "id": template.id,
+        "label": template.label,
+        "description": template.description,
+        "project_type": template.project_type,
+        "recommended": template.recommended,
+        "available": template.available,
+        "package_managers": list(template.package_managers),
+        "default_package_manager": template.default_package_manager or None,
+        "supported_options": list(template.supported_options),
+        "recommended_skills": list(template.recommended_skills),
+    }
+
+
+def _project_type_payloads(templates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for template in templates:
+        grouped.setdefault(str(template["project_type"]), []).append(template)
+
+    return [
+        {
+            "id": project_type,
+            "label": label,
+            "starters": grouped.get(project_type, []),
+        }
+        for project_type, label in _PROJECT_TYPE_LABELS.items()
+    ]
+
+
+def _write_if_missing(path: Path, contents: str) -> bool:
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(contents, encoding="utf-8")
+    return True
+
+
+def _is_wizard_payload(body: ProjectCreate) -> bool:
+    return any(
+        (
+            body.project_type,
+            body.starter_stack,
+            body.package_manager,
+            body.init_git,
+            body.initial_commit,
+            body.selected_skills,
+            body.dev_tools,
+            body.integrations,
+            body.ai_skills_mode != "recommended",
+        )
+    )
+
+
+def _apply_project_options(
+    project_path: Path,
+    template_id: str,
+    template: ProjectTemplate,
+    body: ProjectCreate,
+) -> dict[str, Any]:
+    applied: list[str] = []
+    skipped: list[str] = []
+
+    package_manager = body.package_manager or template.default_package_manager or None
+    selected_skills = body.selected_skills if body.ai_skills_mode == "manual" else list(template.recommended_skills)
+    if _is_wizard_payload(body):
+        metadata = {
+            "name": body.name.strip(),
+            "project_type": body.project_type or template.project_type,
+            "starter_stack": template_id,
+            "package_manager": package_manager,
+            "ai_skills_mode": body.ai_skills_mode,
+            "selected_skills": selected_skills,
+            "recommended_skills": list(template.recommended_skills),
+            "dev_tools": body.dev_tools,
+            "integrations": body.integrations,
+        }
+        (project_path / ".spark-project.json").write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        applied.append("project_metadata")
+
+    if selected_skills:
+        agents_path = project_path / "AGENTS.md"
+        if _write_if_missing(agents_path, _project_agents_context(template, selected_skills)):
+            applied.append("ai_skills")
+        else:
+            skipped.append("ai_skills: AGENTS.md already exists")
+
+    dev_tools = {tool.lower() for tool in body.dev_tools}
+    integrations = {integration.lower() for integration in body.integrations}
+
+    if "prettier" in dev_tools:
+        if _write_if_missing(project_path / ".prettierrc", '{\n  "printWidth": 100,\n  "semi": true\n}\n'):
+            applied.append("prettier")
+        else:
+            skipped.append("prettier: already configured")
+
+    if "vscode" in dev_tools or "vscode_config" in dev_tools:
+        settings = '{\n  "editor.formatOnSave": true,\n  "files.trimTrailingWhitespace": true\n}\n'
+        if _write_if_missing(project_path / ".vscode" / "settings.json", settings):
+            applied.append("vscode_config")
+        else:
+            skipped.append("vscode_config: already configured")
+
+    if "design_tokens" in dev_tools:
+        tokens_path = project_path / "design" / "tokens.json"
+        tokens = """{
+  "color": {
+    "canvas": "#f7f3ec",
+    "ink": "#1f2933",
+    "accent": "#146c94",
+    "signal": "#d97706"
+  },
+  "radius": {
+    "sm": "4px",
+    "md": "8px",
+    "lg": "16px"
+  }
+}
+"""
+        if _write_if_missing(tokens_path, tokens):
+            applied.append("design_tokens")
+        else:
+            applied.append("design_tokens")
+
+    if "brand_kit" in dev_tools:
+        brand_notes = """# Brand Kit
+
+## Voice
+
+- Personality:
+- Promise:
+- Proof:
+
+## Visual Direction
+
+- Palette:
+- Type:
+- Imagery:
+"""
+        if _write_if_missing(project_path / "brand" / "kit.md", brand_notes):
+            applied.append("brand_kit")
+        else:
+            skipped.append("brand_kit: already configured")
+
+    if "figma_notes" in dev_tools or "figma" in integrations:
+        figma_notes = """# Figma Handoff Notes
+
+- Source file:
+- Key frames:
+- Components to implement:
+- Tokens to extract:
+- Open questions:
+"""
+        if _write_if_missing(project_path / "design" / "figma-handoff.md", figma_notes):
+            applied.append("figma_notes")
+        else:
+            skipped.append("figma_notes: already configured")
+
+    if "docker" in integrations:
+        dockerfile = "FROM node:22-alpine\nWORKDIR /app\nCOPY . .\nCMD [\"sh\"]\n"
+        if _write_if_missing(project_path / "Dockerfile", dockerfile):
+            applied.append("docker")
+        else:
+            skipped.append("docker: already configured")
+
+    if "github_actions" in integrations:
+        workflow = """name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: ${PACKAGE_MANAGER} install
+      - run: ${PACKAGE_MANAGER} run build --if-present
+      - run: ${PACKAGE_MANAGER} test --if-present
+""".replace("${PACKAGE_MANAGER}", package_manager or "npm")
+        if _write_if_missing(project_path / ".github" / "workflows" / "ci.yml", workflow):
+            applied.append("github_actions")
+        else:
+            skipped.append("github_actions: already configured")
+
+    for option in sorted(
+        (dev_tools | integrations)
+        - {
+            "prettier",
+            "vscode",
+            "vscode_config",
+            "design_tokens",
+            "brand_kit",
+            "figma_notes",
+            "figma",
+            "docker",
+            "github_actions",
+        }
+    ):
+        skipped.append(f"{option}: not supported yet")
+
+    git_result = _maybe_init_git(project_path, body.init_git, body.initial_commit)
+    applied.extend(git_result["applied"])
+    skipped.extend(git_result["skipped"])
+
+    return {"applied_options": applied, "skipped_options": skipped}
+
+
+def _project_agents_context(template: ProjectTemplate, selected_skills: list[str]) -> str:
+    skill_lines = "\n".join(f"- `{skill}`" for skill in selected_skills)
+    return f"""# Project Agent Guidance
+
+This workspace was created from the `{template.id}` starter.
+
+When working in this project, prefer these Spark skills when they match the task:
+
+{skill_lines}
+
+Load a skill before relying on its workflow, and ignore any listed skill that is not installed in this Spark profile.
+"""
+
+
+def _maybe_init_git(project_path: Path, init_git: bool, initial_commit: bool) -> dict[str, list[str]]:
+    applied: list[str] = []
+    skipped: list[str] = []
+    if not init_git and not initial_commit:
+        return {"applied": applied, "skipped": skipped}
+
+    try:
+        subprocess.run(["git", "init"], cwd=project_path, check=True, capture_output=True, text=True)
+        applied.append("init_git")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        skipped.append(f"init_git: {exc}")
+        return {"applied": applied, "skipped": skipped}
+
+    if not initial_commit:
+        return {"applied": applied, "skipped": skipped}
+
+    try:
+        subprocess.run(["git", "add", "."], cwd=project_path, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Spark"],
+            cwd=project_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "spark@example.invalid"],
+            cwd=project_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Initial project scaffold"],
+            cwd=project_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        applied.append("initial_commit")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        skipped.append(f"initial_commit: {exc}")
+
+    return {"applied": applied, "skipped": skipped}
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -253,30 +551,39 @@ def create_project(body: ProjectCreate):
         raise HTTPException(status_code=400, detail=f"Invalid project name: {name!r}")
     if slug == _GLOBAL_WORKSPACE_SLUG:
         raise HTTPException(status_code=400, detail=f"Reserved project name: {slug!r}")
-    if not is_valid_template(body.template):
-        raise HTTPException(status_code=400, detail=f"Unknown template: {body.template!r}")
+    template_id = body.starter_stack or body.template or DEFAULT_TEMPLATE
+    if not is_valid_template(template_id):
+        raise HTTPException(status_code=400, detail=f"Unknown or unavailable template: {template_id!r}")
+    template = get_template(template_id)
+    if template is None:
+        raise HTTPException(status_code=400, detail=f"Unknown template: {template_id!r}")
     root = _workspace_root()
     project_path = root / slug
     if project_path.exists():
         raise HTTPException(status_code=409, detail=f"Project already exists: {slug!r}")
     project_path.mkdir(parents=True)
-    materialize_template(body.template, project_path)
+    written = materialize_template(template_id, project_path)
+    options_result = _apply_project_options(project_path, template_id, template, body)
     return {
         "ok": True,
         "slug": slug,
         "name": slug,
         "path": str(project_path),
-        "template": body.template,
+        "template": template_id,
+        "starter_stack": template_id,
+        "project_type": body.project_type or template.project_type,
+        "package_manager": body.package_manager or template.default_package_manager or None,
+        "written": written,
+        **options_result,
     }
 
 
 @router.get("/project-templates")
 def list_project_templates():
+    templates = [_project_template_payload(t) for t in list_templates()]
     return {
-        "templates": [
-            {"id": t.id, "label": t.label, "description": t.description}
-            for t in list_templates()
-        ]
+        "project_types": _project_type_payloads(templates),
+        "templates": templates,
     }
 
 

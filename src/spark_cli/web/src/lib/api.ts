@@ -745,17 +745,19 @@ export const api = {
     fetchJSON<WorkspaceProjectsResponse>("/api/workspace/projects"),
 
   listProjectTemplates: () =>
-    fetchJSON<{ templates: ProjectTemplate[] }>("/api/workspace/project-templates"),
+    fetchJSON<ProjectTemplatesResponse>("/api/workspace/project-templates"),
 
-  createWorkspaceProject: (name: string, template = "scratch") =>
-    fetchJSON<{ ok: boolean; slug: string; name: string; path: string; template: string }>(
+  createWorkspaceProject: (request: ProjectCreateRequest | string, template = "scratch") => {
+    const body = typeof request === "string" ? { name: request, template } : request;
+    return fetchJSON<{ ok: boolean; slug: string; name: string; path: string; template: string }>(
       "/api/workspace/projects",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, template }),
+        body: JSON.stringify(body),
       },
-    ),
+    );
+  },
 
   deleteWorkspaceProject: (slug: string) =>
     fetchJSON<{ ok: boolean; deleted: string }>(`/api/workspace/projects/${encodeURIComponent(slug)}`, {
@@ -2194,6 +2196,48 @@ export interface ProjectTemplate {
   id: string;
   label: string;
   description: string;
+  project_type: ProjectType;
+  recommended: boolean;
+  available: boolean;
+  package_managers: PackageManager[];
+  default_package_manager: PackageManager | null;
+  supported_options: string[];
+  recommended_skills: string[];
+}
+
+export type ProjectType =
+  | "blank"
+  | "static_website"
+  | "web_application"
+  | "design_project"
+  | "productivity_workspace"
+  | "video_project";
+
+export type PackageManager = "pnpm" | "npm" | "yarn" | "bun";
+
+export interface ProjectTypeGroup {
+  id: ProjectType;
+  label: string;
+  starters: ProjectTemplate[];
+}
+
+export interface ProjectTemplatesResponse {
+  project_types: ProjectTypeGroup[];
+  templates: ProjectTemplate[];
+}
+
+export interface ProjectCreateRequest {
+  name: string;
+  template?: string;
+  project_type?: ProjectType;
+  starter_stack?: string;
+  package_manager?: PackageManager;
+  init_git?: boolean;
+  initial_commit?: boolean;
+  ai_skills_mode?: "recommended" | "manual";
+  selected_skills?: string[];
+  dev_tools?: string[];
+  integrations?: string[];
 }
 
 // ── Canvas types ──────────────────────────────────────────────────────────

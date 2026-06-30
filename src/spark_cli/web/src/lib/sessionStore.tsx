@@ -15,7 +15,7 @@ import {
   useState,
 } from "react";
 import { api } from "@/lib/api";
-import type { SessionInfo, WorkspaceProject } from "@/lib/api";
+import type { ProjectCreateRequest, SessionInfo, WorkspaceProject } from "@/lib/api";
 import {
   addSessionNotification,
   dismissSessionNotification,
@@ -104,7 +104,7 @@ export interface SessionStoreValue {
   // Actions
   deleteSession: (id: string) => Promise<void>;
   deleteProject: (slug: string) => Promise<void>;
-  createProject: (name: string, template?: string) => Promise<string>;
+  createProject: (request: ProjectCreateRequest | string, template?: string) => Promise<string>;
   reloadSessions: () => Promise<void>;
   reloadProjects: () => Promise<void>;
 }
@@ -424,8 +424,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     }
   }, [reloadProjects]);
 
-  const createProject = useCallback(async (name: string, template = "scratch"): Promise<string> => {
-    const res = await api.createWorkspaceProject(name, template);
+  const createProject = useCallback(async (request: ProjectCreateRequest | string, template = "scratch"): Promise<string> => {
+    const res = await api.createWorkspaceProject(request, template);
     await reloadProjects();
     setExpandedProjects((prev) => {
       const next = new Set(prev);
