@@ -141,6 +141,11 @@ from spark_cli.config import (
     save_env_value,
     save_http_api_env_block,
 )
+from spark_cli.onboarding_validation import (
+    normalize_http_base_url,
+    normalize_port,
+    normalize_secret,
+)
 
 
 def print_header(title: str):
@@ -282,6 +287,25 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
         print_error("Please enter 'y' or 'n'")
 
 
+def prompt_validated(
+    question: str,
+    validator,
+    *,
+    default: str = None,
+    password: bool = False,
+    allow_empty: bool = True,
+) -> str:
+    """Prompt until a value passes validation, or return blank when optional."""
+    while True:
+        value = prompt(question, default, password=password)
+        if not value and allow_empty:
+            return ""
+        try:
+            return str(validator(value))
+        except ValueError as exc:
+            print_error(str(exc))
+
+
 def prompt_checklist(
     title: str,
     items: list,
@@ -334,10 +358,13 @@ def _prompt_api_key(var: dict):
         print_info(f"  Get your key at: {var['url']}")
     print()
 
-    if var.get("password"):
-        value = prompt(f"  {var.get('prompt', var['name'])}", password=True)
-    else:
-        value = prompt(f"  {var.get('prompt', var['name'])}")
+    label = var.get("prompt", var["name"])
+    value = prompt_validated(
+        f"  {label}",
+        lambda raw: normalize_secret(raw, field_name=label),
+        password=bool(var.get("password")),
+        allow_empty=True,
+    )
 
     if value:
         save_env_value(var["name"], value)
@@ -763,18 +790,32 @@ def setup_model_provider(config: dict, *, quick: bool = False):
         _vision_idx = prompt_choice("Configure vision:", _vision_choices, 2)
 
         if _vision_idx == 0:  # OpenRouter
-            _or_key = prompt("  OpenRouter API key", password=True).strip()
+            _or_key = prompt_validated(
+                "  OpenRouter API key",
+                lambda raw: normalize_secret(raw, field_name="OpenRouter API key"),
+                password=True,
+                allow_empty=True,
+            )
             if _or_key:
                 save_env_value("OPENROUTER_API_KEY", _or_key)
                 print_success("OpenRouter key saved — vision will use Gemini")
             else:
                 print_info("Skipped — vision won't be available")
         elif _vision_idx == 1:  # OpenAI-compatible endpoint
-            _base_url = prompt("  Base URL (blank for OpenAI)").strip() or "https://api.openai.com/v1"
+            _base_url = prompt_validated(
+                "  Base URL (blank for OpenAI)",
+                lambda raw: normalize_http_base_url(raw, field_name="Vision base URL"),
+                allow_empty=True,
+            ) or "https://api.openai.com/v1"
             _api_key_label = "  API key"
             if "api.openai.com" in _base_url.lower():
                 _api_key_label = "  OpenAI API key"
-            _oai_key = prompt(_api_key_label, password=True).strip()
+            _oai_key = prompt_validated(
+                _api_key_label,
+                lambda raw: normalize_secret(raw, field_name=_api_key_label.strip()),
+                password=True,
+                allow_empty=True,
+            )
             if _oai_key:
                 save_env_value("OPENAI_API_KEY", _oai_key)
                 # Save vision base URL to config (not .env — only secrets go there)
@@ -1262,7 +1303,12 @@ def setup_terminal_backend(config: dict):
 
         # SSH port
         current_port = get_env_value("TERMINAL_SSH_PORT") or "22"
-        port = prompt("  SSH port", current_port)
+        port = prompt_validated(
+            "  SSH port",
+            lambda raw: normalize_port(raw, field_name="SSH port"),
+            default=current_port,
+            allow_empty=True,
+        )
         if port and port != "22":
             save_env_value("TERMINAL_SSH_PORT", port)
 
@@ -2038,7 +2084,11 @@ def _setup_bluebubbles():
     print_info("In BlueBubbles Server → Settings → API, note your Server URL and Password.")
     print()
 
-    server_url = prompt("BlueBubbles server URL (e.g. http://192.168.1.10:1234)")
+    server_url = prompt_validated(
+        "BlueBubbles server URL (e.g. http://192.168.1.10:1234)",
+        lambda raw: normalize_http_base_url(raw, field_name="BlueBubbles server URL"),
+        allow_empty=True,
+    )
     if not server_url:
         print_warning("Server URL is required — skipping BlueBubbles setup")
         return
@@ -2072,13 +2122,14 @@ def _setup_bluebubbles():
     print()
     print_info("Advanced settings (defaults are fine for most setups):")
     if prompt_yes_no("Configure webhook listener settings?", False):
-        webhook_port = prompt("Webhook listener port (default: 8645)")
+        webhook_port = prompt_validated(
+            "Webhook listener port (default: 8645)",
+            lambda raw: normalize_port(raw, field_name="Webhook listener port"),
+            allow_empty=True,
+        )
         if webhook_port:
-            try:
-                save_env_value("BLUEBUBBLES_WEBHOOK_PORT", str(int(webhook_port)))
-                print_success(f"Webhook port set to {webhook_port}")
-            except ValueError:
-                print_warning("Invalid port number, using default 8645")
+            save_env_value("BLUEBUBBLES_WEBHOOK_PORT", webhook_port)
+            print_success(f"Webhook port set to {webhook_port}")
 
     print()
     print_info("Requires the BlueBubbles Private API helper for typing indicators,")
@@ -2112,15 +2163,21 @@ def _setup_webhooks():
     print_info("   Full guide: https://spark.automatedigital.ai/docs/messaging/webhooks/")
     print()
 
-    port = prompt("Webhook port (default 8644)")
+    port = prompt_validated(
+        "Webhook port (default 8644)",
+        lambda raw: normalize_port(raw, field_name="Webhook port"),
+        allow_empty=True,
+    )
     if port:
-        try:
-            save_env_value("WEBHOOK_PORT", str(int(port)))
-            print_success(f"Webhook port set to {port}")
-        except ValueError:
-            print_warning("Invalid port number, using default 8644")
+        save_env_value("WEBHOOK_PORT", port)
+        print_success(f"Webhook port set to {port}")
 
-    secret = prompt("Global HMAC secret (shared across all routes)", password=True)
+    secret = prompt_validated(
+        "Global HMAC secret (shared across all routes)",
+        lambda raw: normalize_secret(raw, field_name="Webhook secret"),
+        password=True,
+        allow_empty=True,
+    )
     if secret:
         save_env_value("WEBHOOK_SECRET", secret)
         print_success("Webhook secret saved")

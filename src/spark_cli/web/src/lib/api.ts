@@ -1,6 +1,7 @@
 import {
   CONNECTION_MODE_KEY,
   REMOTE_BASE_URL_KEY,
+  normalizeBaseUrl,
   parseConnectionMode,
   resolveApiBase,
   type ConnectionMode,
@@ -37,7 +38,7 @@ export function getApiBase(): string {
  */
 export function setRemoteConnection(baseUrl: string, token: string): void {
   localStorage.setItem(CONNECTION_MODE_KEY, "remote");
-  localStorage.setItem(REMOTE_BASE_URL_KEY, baseUrl.replace(/\/+$/, ""));
+  localStorage.setItem(REMOTE_BASE_URL_KEY, normalizeBaseUrl(baseUrl) ?? baseUrl.trim().replace(/\/+$/, ""));
   setDashboardToken(token);
 }
 

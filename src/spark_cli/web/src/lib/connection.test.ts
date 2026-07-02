@@ -35,7 +35,8 @@ describe("isValidBaseUrl / isValidToken", () => {
     expect(isValidBaseUrl("nope")).toBe(false);
   });
   it("validates tokens", () => {
-    expect(isValidToken("abc")).toBe(true);
+    expect(isValidToken("token123")).toBe(true);
+    expect(isValidToken("placeholder")).toBe(false);
     expect(isValidToken("   ")).toBe(false);
     expect(isValidToken("")).toBe(false);
   });
@@ -84,7 +85,7 @@ describe("validateRemoteConnection", () => {
 
   it("rejects invalid url before fetching", async () => {
     const fetchSpy = vi.fn();
-    const r = await validateRemoteConnection("bad", "tok", fetchSpy as unknown as typeof fetch);
+    const r = await validateRemoteConnection("bad", "token123", fetchSpy as unknown as typeof fetch);
     expect(r.ok).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -98,22 +99,22 @@ describe("validateRemoteConnection", () => {
 
   it("probes the right url with a bearer token and succeeds on 200", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(fakeRes(true, 200));
-    const r = await validateRemoteConnection("https://x.com/", "tok", fetchSpy as unknown as typeof fetch);
+    const r = await validateRemoteConnection("https://x.com/", "token123", fetchSpy as unknown as typeof fetch);
     expect(r.ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledWith("https://x.com/api/config", {
-      headers: { Authorization: "Bearer tok" },
+      headers: { Authorization: "Bearer token123" },
     });
   });
 
   it("reports invalid token on 401", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(fakeRes(false, 401));
-    const r = await validateRemoteConnection("https://x.com", "tok", fetchSpy as unknown as typeof fetch);
+    const r = await validateRemoteConnection("https://x.com", "token123", fetchSpy as unknown as typeof fetch);
     expect(r).toMatchObject({ ok: false, status: 401 });
   });
 
   it("reports network errors", async () => {
     const fetchSpy = vi.fn().mockRejectedValue(new Error("boom"));
-    const r = await validateRemoteConnection("https://x.com", "tok", fetchSpy as unknown as typeof fetch);
+    const r = await validateRemoteConnection("https://x.com", "token123", fetchSpy as unknown as typeof fetch);
     expect(r.ok).toBe(false);
     expect(r.error).toContain("boom");
   });
