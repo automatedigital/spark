@@ -10,6 +10,7 @@ import pytest
 
 import spark_cli.doctor as doctor
 import spark_cli.gateway as gateway_cli
+from core.network_tls import CABundleError
 from spark_cli import doctor as doctor_mod
 from spark_cli.doctor import _has_provider_env_config
 from tools.connectors.base import ConnectorState, ConnectorStatus
@@ -69,6 +70,35 @@ class TestDoctorToolAvailabilityOverrides:
 
         assert available == []
         assert unavailable == [honcho_entry]
+
+
+class TestDoctorCABundle:
+    def test_reports_configured_ca_bundle(self, monkeypatch, tmp_path, capsys):
+        bundle = tmp_path / "corp.pem"
+        monkeypatch.setattr(doctor, "validate_ca_bundle", lambda: bundle)
+        monkeypatch.setattr(doctor, "httpx_verify_value", lambda: str(bundle))
+
+        issues = []
+        assert doctor._check_ca_bundle(issues) == str(bundle)
+
+        out = capsys.readouterr().out
+        assert "Custom CA bundle" in out
+        assert str(bundle) in out
+        assert issues == []
+
+    def test_reports_invalid_ca_bundle(self, monkeypatch, capsys):
+        def _raise_invalid():
+            raise CABundleError("network.ca_bundle path does not exist: /nope.pem")
+
+        monkeypatch.setattr(doctor, "validate_ca_bundle", _raise_invalid)
+
+        issues = []
+        assert doctor._check_ca_bundle(issues) is None
+
+        out = capsys.readouterr().out
+        assert "Custom CA bundle" in out
+        assert "does not exist" in out
+        assert issues == ["network.ca_bundle path does not exist: /nope.pem"]
 
 
 class TestHonchoDoctorConfigDetection:

@@ -14,6 +14,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from core.network_tls import CABundleError, httpx_verify_value, validate_ca_bundle
 from core.spark_constants import OPENROUTER_MODELS_URL, display_spark_home
 from core.spark_constants import is_termux as _is_termux
 from spark_cli.colors import Colors, color
@@ -136,6 +137,23 @@ def check_fail(text: str, detail: str = ""):
 
 def check_info(text: str):
     print(f"    {color('→', Colors.CYAN)} {text}")
+
+
+def _check_ca_bundle(issues: list[str]) -> str | None:
+    """Validate network.ca_bundle and return an httpx verify value if usable."""
+    try:
+        bundle_path = validate_ca_bundle()
+    except CABundleError as exc:
+        check_fail("Custom CA bundle", f"({exc})")
+        issues.append(str(exc))
+        return None
+
+    if bundle_path is None:
+        check_ok("Custom CA bundle", "(not configured)")
+        return None
+
+    check_ok("Custom CA bundle", f"({bundle_path})")
+    return httpx_verify_value()
 
 
 def _shorten(text: str, limit: int = 180) -> str:
@@ -1261,6 +1279,8 @@ def run_doctor(args):
     # =========================================================================
     print()
     print(color("◆ API Connectivity", Colors.CYAN, Colors.BOLD))
+    ca_bundle_verify = _check_ca_bundle(issues)
+    httpx_tls_kwargs = {"verify": ca_bundle_verify} if ca_bundle_verify else {}
 
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     if openrouter_key:
@@ -1270,7 +1290,8 @@ def run_doctor(args):
             response = httpx.get(
                 OPENROUTER_MODELS_URL,
                 headers={"Authorization": f"Bearer {openrouter_key}"},
-                timeout=10
+                timeout=10,
+                **httpx_tls_kwargs,
             )
             if response.status_code == 200:
                 print(f"\r  {color('✓', Colors.GREEN)} OpenRouter API                          ")
@@ -1303,7 +1324,8 @@ def run_doctor(args):
             response = httpx.get(
                 "https://api.anthropic.com/v1/models",
                 headers=headers,
-                timeout=10
+                timeout=10,
+                **httpx_tls_kwargs,
             )
             if response.status_code == 200:
                 print(f"\r  {color('✓', Colors.GREEN)} Anthropic API                           ")
@@ -1366,6 +1388,7 @@ def run_doctor(args):
                     _url,
                     headers=_headers,
                     timeout=10,
+                    **httpx_tls_kwargs,
                 )
                 if _resp.status_code == 200:
                     print(f"\r  {color('✓', Colors.GREEN)} {_label}                          ")

@@ -793,6 +793,9 @@ DEFAULT_CONFIG = {
         # Python tries AAAA records first and hangs for the full TCP timeout
         # before falling back to IPv4.  Set to true to skip IPv6 entirely.
         "force_ipv4": False,
+        # Optional PEM bundle of trusted CAs for provider HTTPS calls.
+        # Supports ~ and ${ENV_VAR} expansion.
+        "ca_bundle": "",
     },
     # Config schema version - bump this when adding new required fields
     # Web dashboard (FastAPI + React) — also embeds in gateway when enabled.
@@ -844,7 +847,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 26,
+    "_config_version": 27,
 }
 
 # =============================================================================

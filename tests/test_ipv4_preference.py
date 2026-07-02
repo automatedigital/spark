@@ -112,3 +112,25 @@ class TestConfigDefault:
         from spark_cli.config import DEFAULT_CONFIG
         assert "network" in DEFAULT_CONFIG
         assert DEFAULT_CONFIG["network"]["force_ipv4"] is False
+        assert DEFAULT_CONFIG["network"]["ca_bundle"] == ""
+        assert DEFAULT_CONFIG["_config_version"] >= 27
+
+
+class TestCABundleHelpers:
+    """Tests for network.ca_bundle path resolution."""
+
+    def test_resolve_ca_bundle_expands_env(self, tmp_path, monkeypatch):
+        from core.network_tls import resolve_ca_bundle_path
+
+        bundle = tmp_path / "corp-ca.pem"
+        bundle.write_text("placeholder", encoding="utf-8")
+        monkeypatch.setenv("CORP_CA_BUNDLE", str(bundle))
+
+        assert resolve_ca_bundle_path({"network": {"ca_bundle": "${CORP_CA_BUNDLE}"}}) == bundle
+
+    def test_resolve_ca_bundle_missing_file_raises(self, tmp_path):
+        from core.network_tls import CABundleError, resolve_ca_bundle_path
+
+        missing = tmp_path / "missing.pem"
+        with pytest.raises(CABundleError, match="does not exist"):
+            resolve_ca_bundle_path({"network": {"ca_bundle": str(missing)}})
