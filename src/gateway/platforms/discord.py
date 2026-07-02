@@ -45,7 +45,11 @@ sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 from gateway.config import Platform, PlatformConfig
 import re
 
-from gateway.platforms.helpers import MessageDeduplicator, ThreadParticipationTracker
+from gateway.platforms.helpers import (
+    MessageDeduplicator,
+    TextBatchAggregator,
+    ThreadParticipationTracker,
+)
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -486,8 +490,15 @@ class DiscordAdapter(BasePlatformAdapter):
         self._text_batch_split_delay_seconds = float(
             os.getenv("SPARK_DISCORD_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0")
         )
-        self._pending_text_batches: Dict[str, MessageEvent] = {}
-        self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
+        self._text_batcher = TextBatchAggregator(
+            self.handle_message,
+            batch_delay=self._text_batch_delay_seconds,
+            split_delay=self._text_batch_split_delay_seconds,
+            split_threshold=self._SPLIT_THRESHOLD,
+            log_prefix="Discord",
+        )
+        self._pending_text_batches = self._text_batcher.pending_events
+        self._pending_text_batch_tasks = self._text_batcher.pending_tasks
         self._voice_text_channels: Dict[int, int] = {}  # guild_id -> text_channel_id
         self._voice_sources: Dict[
             int, Dict[str, Any]
@@ -2896,6 +2907,23 @@ class DiscordAdapter(BasePlatformAdapter):
             ),
         )
 
+    def _get_text_batcher(self) -> TextBatchAggregator:
+        batcher = getattr(self, "_text_batcher", None)
+        if batcher is None:
+            batcher = TextBatchAggregator(
+                self.handle_message,
+                batch_delay=getattr(self, "_text_batch_delay_seconds", 0.6),
+                split_delay=getattr(self, "_text_batch_split_delay_seconds", 2.0),
+                split_threshold=self._SPLIT_THRESHOLD,
+                pending=self._pending_text_batches,
+                pending_tasks=self._pending_text_batch_tasks,
+                log_prefix="Discord",
+            )
+            self._text_batcher = batcher
+            self._pending_text_batches = batcher.pending_events
+            self._pending_text_batch_tasks = batcher.pending_tasks
+        return batcher
+
     def _enqueue_text_event(self, event: MessageEvent) -> None:
         """Buffer a text event and reset the flush timer.
 
@@ -2903,28 +2931,7 @@ class DiscordAdapter(BasePlatformAdapter):
         arrive within a few hundred milliseconds.  This merges them into
         a single event before dispatching.
         """
-        key = self._text_batch_key(event)
-        existing = self._pending_text_batches.get(key)
-        chunk_len = len(event.text or "")
-        if existing is None:
-            event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
-            self._pending_text_batches[key] = event
-        else:
-            if event.text:
-                existing.text = (
-                    f"{existing.text}\n{event.text}" if existing.text else event.text
-                )
-            existing._last_chunk_len = chunk_len  # type: ignore[attr-defined]
-            if event.media_urls:
-                existing.media_urls.extend(event.media_urls)
-                existing.media_types.extend(event.media_types)
-
-        prior_task = self._pending_text_batch_tasks.get(key)
-        if prior_task and not prior_task.done():
-            prior_task.cancel()
-        self._pending_text_batch_tasks[key] = asyncio.create_task(
-            self._flush_text_batch(key)
-        )
+        self._get_text_batcher().enqueue(event, self._text_batch_key(event))
 
     async def _flush_text_batch(self, key: str) -> None:
         """Wait for the quiet period then dispatch the aggregated text.
@@ -2932,27 +2939,7 @@ class DiscordAdapter(BasePlatformAdapter):
         Uses a longer delay when the latest chunk is near Discord's 2000-char
         split point, since a continuation chunk is almost certain.
         """
-        current_task = asyncio.current_task()
-        try:
-            pending = self._pending_text_batches.get(key)
-            last_len = getattr(pending, "_last_chunk_len", 0) if pending else 0
-            if last_len >= self._SPLIT_THRESHOLD:
-                delay = self._text_batch_split_delay_seconds
-            else:
-                delay = self._text_batch_delay_seconds
-            await asyncio.sleep(delay)
-            event = self._pending_text_batches.pop(key, None)
-            if not event:
-                return
-            logger.info(
-                "[Discord] Flushing text batch %s (%d chars)",
-                key,
-                len(event.text or ""),
-            )
-            await self.handle_message(event)
-        finally:
-            if self._pending_text_batch_tasks.get(key) is current_task:
-                self._pending_text_batch_tasks.pop(key, None)
+        await self._get_text_batcher().flush(key)
 
 
 # ---------------------------------------------------------------------------

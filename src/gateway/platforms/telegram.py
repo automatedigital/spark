@@ -71,6 +71,7 @@ from gateway.platforms.base import (
     utf16_len,
     _prefix_within_utf16_limit,
 )
+from gateway.platforms.helpers import TextBatchAggregator
 from gateway.platforms.telegram_network import (
     TelegramFallbackTransport,
     discover_fallback_ips,
@@ -158,8 +159,15 @@ class TelegramAdapter(BasePlatformAdapter):
         # messages are aggregated into a single MessageEvent.
         self._text_batch_delay_seconds = float(os.getenv("SPARK_TELEGRAM_TEXT_BATCH_DELAY_SECONDS", "0.6"))
         self._text_batch_split_delay_seconds = float(os.getenv("SPARK_TELEGRAM_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0"))
-        self._pending_text_batches: Dict[str, MessageEvent] = {}
-        self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
+        self._text_batcher = TextBatchAggregator(
+            self.handle_message,
+            batch_delay=self._text_batch_delay_seconds,
+            split_delay=self._text_batch_split_delay_seconds,
+            split_threshold=self._SPLIT_THRESHOLD,
+            log_prefix="Telegram",
+        )
+        self._pending_text_batches = self._text_batcher.pending_events
+        self._pending_text_batch_tasks = self._text_batcher.pending_tasks
         self._polling_error_task: Optional[asyncio.Task] = None
         self._polling_conflict_count: int = 0
         self._polling_network_error_count: int = 0
@@ -2485,6 +2493,23 @@ class TelegramAdapter(BasePlatformAdapter):
             thread_sessions_per_user=self.config.extra.get("thread_sessions_per_user", False),
         )
 
+    def _get_text_batcher(self) -> TextBatchAggregator:
+        batcher = getattr(self, "_text_batcher", None)
+        if batcher is None:
+            batcher = TextBatchAggregator(
+                self.handle_message,
+                batch_delay=getattr(self, "_text_batch_delay_seconds", 0.6),
+                split_delay=getattr(self, "_text_batch_split_delay_seconds", 2.0),
+                split_threshold=self._SPLIT_THRESHOLD,
+                pending=self._pending_text_batches,
+                pending_tasks=self._pending_text_batch_tasks,
+                log_prefix="Telegram",
+            )
+            self._text_batcher = batcher
+            self._pending_text_batches = batcher.pending_events
+            self._pending_text_batch_tasks = batcher.pending_tasks
+        return batcher
+
     def _enqueue_text_event(self, event: MessageEvent) -> None:
         """Buffer a text event and reset the flush timer.
 
@@ -2493,29 +2518,7 @@ class TelegramAdapter(BasePlatformAdapter):
         concatenates them and waits for a short quiet period before
         dispatching the combined message.
         """
-        key = self._text_batch_key(event)
-        existing = self._pending_text_batches.get(key)
-        chunk_len = len(event.text or "")
-        if existing is None:
-            event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
-            self._pending_text_batches[key] = event
-        else:
-            # Append text from the follow-up chunk
-            if event.text:
-                existing.text = f"{existing.text}\n{event.text}" if existing.text else event.text
-            existing._last_chunk_len = chunk_len  # type: ignore[attr-defined]
-            # Merge any media that might be attached
-            if event.media_urls:
-                existing.media_urls.extend(event.media_urls)
-                existing.media_types.extend(event.media_types)
-
-        # Cancel any pending flush and restart the timer
-        prior_task = self._pending_text_batch_tasks.get(key)
-        if prior_task and not prior_task.done():
-            prior_task.cancel()
-        self._pending_text_batch_tasks[key] = asyncio.create_task(
-            self._flush_text_batch(key)
-        )
+        self._get_text_batcher().enqueue(event, self._text_batch_key(event))
 
     async def _flush_text_batch(self, key: str) -> None:
         """Wait for the quiet period then dispatch the aggregated text.
@@ -2523,28 +2526,7 @@ class TelegramAdapter(BasePlatformAdapter):
         Uses a longer delay when the latest chunk is near Telegram's 4096-char
         split point, since a continuation chunk is almost certain.
         """
-        current_task = asyncio.current_task()
-        try:
-            # Adaptive delay: if the latest chunk is near Telegram's 4096-char
-            # split point, a continuation is almost certain — wait longer.
-            pending = self._pending_text_batches.get(key)
-            last_len = getattr(pending, "_last_chunk_len", 0) if pending else 0
-            if last_len >= self._SPLIT_THRESHOLD:
-                delay = self._text_batch_split_delay_seconds
-            else:
-                delay = self._text_batch_delay_seconds
-            await asyncio.sleep(delay)
-            event = self._pending_text_batches.pop(key, None)
-            if not event:
-                return
-            logger.info(
-                "[Telegram] Flushing text batch %s (%d chars)",
-                key, len(event.text or ""),
-            )
-            await self.handle_message(event)
-        finally:
-            if self._pending_text_batch_tasks.get(key) is current_task:
-                self._pending_text_batch_tasks.pop(key, None)
+        await self._get_text_batcher().flush(key)
 
     # ------------------------------------------------------------------
     # Photo batching

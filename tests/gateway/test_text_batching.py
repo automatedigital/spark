@@ -9,14 +9,12 @@ Telegram and Feishu.
 """
 
 import asyncio
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent, MessageType, SessionSource
-
 
 # =====================================================================
 # Helpers
@@ -38,6 +36,121 @@ def _make_event(
 # =====================================================================
 # Discord text batching
 # =====================================================================
+
+class TestTextBatchAggregator:
+    @pytest.mark.asyncio
+    async def test_single_event_flushes_after_delay(self):
+        from gateway.platforms.helpers import TextBatchAggregator
+
+        handler = AsyncMock()
+        batcher = TextBatchAggregator(handler, batch_delay=0.05)
+        event = _make_event("hello", Platform.DISCORD)
+
+        batcher.enqueue(event, "session-a")
+        handler.assert_not_called()
+
+        await asyncio.sleep(0.1)
+
+        handler.assert_called_once_with(event)
+        assert batcher.pending_events == {}
+        assert batcher.pending_tasks == {}
+
+    @pytest.mark.asyncio
+    async def test_rapid_events_merge_and_restart_timer(self):
+        from gateway.platforms.helpers import TextBatchAggregator
+
+        handler = AsyncMock()
+        batcher = TextBatchAggregator(handler, batch_delay=0.08)
+
+        batcher.enqueue(_make_event("first", Platform.DISCORD), "session-a")
+        await asyncio.sleep(0.02)
+        batcher.enqueue(_make_event("second", Platform.DISCORD), "session-a")
+
+        await asyncio.sleep(0.05)
+        handler.assert_not_called()
+
+        await asyncio.sleep(0.06)
+        handler.assert_called_once()
+        assert handler.call_args[0][0].text == "first\nsecond"
+
+    @pytest.mark.asyncio
+    async def test_different_keys_flush_separately(self):
+        from gateway.platforms.helpers import TextBatchAggregator
+
+        handler = AsyncMock()
+        batcher = TextBatchAggregator(handler, batch_delay=0.05)
+
+        batcher.enqueue(_make_event("one", Platform.DISCORD), "session-a")
+        batcher.enqueue(_make_event("two", Platform.DISCORD), "session-b")
+
+        await asyncio.sleep(0.1)
+
+        assert handler.call_count == 2
+        texts = {call.args[0].text for call in handler.call_args_list}
+        assert texts == {"one", "two"}
+
+    @pytest.mark.asyncio
+    async def test_near_limit_chunk_uses_split_delay(self):
+        from gateway.platforms.helpers import TextBatchAggregator
+
+        handler = AsyncMock()
+        batcher = TextBatchAggregator(
+            handler,
+            batch_delay=0.05,
+            split_delay=0.15,
+            split_threshold=10,
+        )
+
+        batcher.enqueue(_make_event("x" * 10, Platform.DISCORD), "session-a")
+
+        await asyncio.sleep(0.08)
+        handler.assert_not_called()
+
+        await asyncio.sleep(0.1)
+        handler.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_merge_preserves_media_lists(self):
+        from gateway.platforms.helpers import TextBatchAggregator
+
+        handler = AsyncMock()
+        batcher = TextBatchAggregator(handler, batch_delay=0.05)
+        first = _make_event("first", Platform.DISCORD)
+        first.media_urls = ["https://example.com/one.png"]
+        first.media_types = ["image"]
+        second = _make_event("second", Platform.DISCORD)
+        second.media_urls = ["https://example.com/two.png"]
+        second.media_types = ["image"]
+
+        batcher.enqueue(first, "session-a")
+        batcher.enqueue(second, "session-a")
+
+        await asyncio.sleep(0.1)
+
+        dispatched = handler.call_args[0][0]
+        assert dispatched.text == "first\nsecond"
+        assert dispatched.media_urls == [
+            "https://example.com/one.png",
+            "https://example.com/two.png",
+        ]
+        assert dispatched.media_types == ["image", "image"]
+
+    @pytest.mark.asyncio
+    async def test_cancel_all_clears_pending_state(self):
+        from gateway.platforms.helpers import TextBatchAggregator
+
+        handler = AsyncMock()
+        batcher = TextBatchAggregator(handler, batch_delay=60)
+        batcher.enqueue(_make_event("hello", Platform.DISCORD), "session-a")
+
+        assert batcher.pending_events
+        assert batcher.pending_tasks
+
+        batcher.cancel_all()
+
+        assert batcher.pending_events == {}
+        assert batcher.pending_tasks == {}
+
 
 def _make_discord_adapter():
     """Create a minimal DiscordAdapter for testing text batching."""
