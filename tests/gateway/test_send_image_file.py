@@ -14,7 +14,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from gateway.config import PlatformConfig
-from gateway.platforms.base import BasePlatformAdapter, SendResult
+from gateway.platforms.base import BasePlatformAdapter
+
+
+class FakeNetworkError(Exception):
+    pass
+
+
+class FakeBadRequest(FakeNetworkError):
+    pass
 
 
 def _run(coro):
@@ -75,9 +83,14 @@ def _ensure_telegram_mock():
     telegram_mod.constants.ChatType.SUPERGROUP = "supergroup"
     telegram_mod.constants.ChatType.CHANNEL = "channel"
     telegram_mod.constants.ChatType.PRIVATE = "private"
+    telegram_error_mod = MagicMock()
+    telegram_error_mod.NetworkError = FakeNetworkError
+    telegram_error_mod.BadRequest = FakeBadRequest
+    telegram_error_mod.TimedOut = type("FakeTimedOut", (FakeNetworkError,), {})
 
     for name in ("telegram", "telegram.ext", "telegram.constants", "telegram.request"):
         sys.modules.setdefault(name, telegram_mod)
+    sys.modules.setdefault("telegram.error", telegram_error_mod)
 
 
 _ensure_telegram_mock()
@@ -166,6 +179,44 @@ class TestTelegramSendImageFile:
 
         call_kwargs = adapter._bot.send_photo.call_args.kwargs
         assert call_kwargs["message_thread_id"] == 789
+
+    def test_caption_format_rejection_retries_plain_caption(self, adapter, tmp_path, monkeypatch):
+        """Caption entity/HTML rejection should retry the native photo with a plain caption."""
+        img = tmp_path / "shot.png"
+        img.write_bytes(b"\x89PNG" + b"\x00" * 50)
+        telegram_error_mod = MagicMock()
+        telegram_error_mod.NetworkError = FakeNetworkError
+        telegram_error_mod.BadRequest = FakeBadRequest
+        telegram_error_mod.TimedOut = type("FakeTimedOut", (FakeNetworkError,), {})
+        monkeypatch.setitem(sys.modules, "telegram.error", telegram_error_mod)
+
+        call_log = []
+
+        async def fake_send_photo(**kwargs):
+            call_log.append(dict(kwargs))
+            if kwargs.get("parse_mode"):
+                raise FakeBadRequest("Can't parse entities: unsupported start tag")
+            msg = MagicMock()
+            msg.message_id = 44
+            return msg
+
+        adapter._bot.send_photo = AsyncMock(side_effect=fake_send_photo)
+
+        result = _run(
+            adapter.send_image_file(
+                chat_id="12345",
+                image_path=str(img),
+                caption="<b>hello</b>",
+                parse_mode="HTML",
+            )
+        )
+
+        assert result.success is True
+        assert result.message_id == "44"
+        assert len(call_log) == 2
+        assert call_log[0]["parse_mode"] == "HTML"
+        assert "parse_mode" not in call_log[1]
+        assert call_log[1]["caption"] == "hello"
 
 
 # ---------------------------------------------------------------------------

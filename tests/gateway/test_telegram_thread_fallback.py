@@ -17,7 +17,6 @@ from types import SimpleNamespace
 import pytest
 
 from gateway.config import PlatformConfig, Platform
-from gateway.platforms.base import SendResult
 
 
 # ── Fake telegram.error hierarchy ──────────────────────────────────────
@@ -64,7 +63,10 @@ def _inject_fake_telegram(monkeypatch):
 
 
 def _make_adapter():
-    from gateway.platforms.telegram import TelegramAdapter
+    import gateway.platforms.telegram as telegram_platform
+
+    telegram_platform.ParseMode = SimpleNamespace(MARKDOWN_V2="MarkdownV2", MARKDOWN="Markdown")
+    TelegramAdapter = telegram_platform.TelegramAdapter
 
     config = PlatformConfig(enabled=True, token="fake-token")
     adapter = object.__new__(TelegramAdapter)
@@ -265,18 +267,23 @@ async def test_thread_fallback_only_fires_once():
 
 
 @pytest.mark.asyncio
-async def test_send_retries_retry_after_errors():
+async def test_send_retries_retry_after_errors(monkeypatch):
     """Telegram flood control should back off and retry instead of failing fast."""
     adapter = _make_adapter()
 
     attempt = [0]
+    sleeps = []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
 
     async def mock_send_message(**kwargs):
         attempt[0] += 1
         if attempt[0] == 1:
-            raise FakeRetryAfter(2)
+            raise FakeRetryAfter(42)
         return SimpleNamespace(message_id=300)
 
+    monkeypatch.setattr("gateway.platforms.telegram.asyncio.sleep", fake_sleep)
     adapter._bot = SimpleNamespace(send_message=mock_send_message)
 
     result = await adapter.send(chat_id="123", content="test message")
@@ -284,3 +291,82 @@ async def test_send_retries_retry_after_errors():
     assert result.success is True
     assert result.message_id == "300"
     assert attempt[0] == 2
+    assert sleeps == [42.0]
+
+
+@pytest.mark.asyncio
+async def test_send_falls_back_to_plain_text_on_entity_rejection():
+    """Formatting/entity BadRequest errors should retry as plain text."""
+    adapter = _make_adapter()
+
+    call_log = []
+
+    async def mock_send_message(**kwargs):
+        call_log.append(dict(kwargs))
+        if kwargs.get("parse_mode"):
+            raise FakeBadRequest("Can't parse entities: can't find end of the entity")
+        return SimpleNamespace(message_id=301)
+
+    adapter._bot = SimpleNamespace(send_message=mock_send_message)
+
+    result = await adapter.send(chat_id="123", content="**bold** and `code`")
+
+    assert result.success is True
+    assert result.message_id == "301"
+    assert len(call_log) == 2
+    assert call_log[0]["parse_mode"] == "MarkdownV2"
+    assert call_log[1]["parse_mode"] is None
+    assert call_log[1]["text"] == "bold and `code`"
+
+
+@pytest.mark.asyncio
+async def test_send_retries_without_reply_on_reply_rejection():
+    """Deleted reply targets should be dropped before retrying delivery."""
+    adapter = _make_adapter()
+
+    call_log = []
+
+    async def mock_send_message(**kwargs):
+        call_log.append(dict(kwargs))
+        if kwargs.get("reply_to_message_id") is not None:
+            raise FakeBadRequest("Message to be replied not found")
+        return SimpleNamespace(message_id=302)
+
+    adapter._bot = SimpleNamespace(send_message=mock_send_message)
+
+    result = await adapter.send(chat_id="123", content="reply fallback", reply_to="99")
+
+    assert result.success is True
+    assert result.message_id == "302"
+    assert len(call_log) == 2
+    assert call_log[0]["reply_to_message_id"] == 99
+    assert call_log[1]["reply_to_message_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_send_helper_retries_without_rejected_quote_parameters():
+    """Rejected native quote metadata should be dropped before retrying delivery."""
+    adapter = _make_adapter()
+
+    call_log = []
+
+    async def mock_send_message(**kwargs):
+        call_log.append(dict(kwargs))
+        if kwargs.get("reply_parameters") is not None:
+            raise FakeBadRequest("Quote is invalid")
+        return SimpleNamespace(message_id=303)
+
+    result = await adapter._send_telegram_request(
+        mock_send_message,
+        {
+            "chat_id": 123,
+            "text": "quote fallback",
+            "reply_parameters": {"quote": "bad quote"},
+        },
+        context="send_message",
+    )
+
+    assert result.message_id == 303
+    assert len(call_log) == 2
+    assert call_log[0]["reply_parameters"] == {"quote": "bad quote"}
+    assert "reply_parameters" not in call_log[1]
