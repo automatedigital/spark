@@ -277,6 +277,46 @@ describe("Markdown component streaming behavior", () => {
     expect(html).not.toContain("## Done");
   });
 
+  it("initializes code and table wrap controls from the global default", () => {
+    const content = [
+      "```ts",
+      "const value = 'a very long line that should wrap when enabled';",
+      "```",
+      "",
+      "| Header | Another header |",
+      "|---|---|",
+      "| a very long cell value | another very long cell value |",
+    ].join("\n");
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content,
+      defaultWrap: true,
+    }));
+
+    expect(html).toContain('aria-label="Disable code word wrap"');
+    expect(html).toContain('aria-label="Disable table word wrap"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("whitespace-pre-wrap");
+    expect(html).toContain("table-fixed");
+  });
+
+  it("keeps code and table overflow scrolling by default", () => {
+    const content = [
+      "```",
+      "long line",
+      "```",
+      "",
+      "| Header |",
+      "|---|",
+      "| cell |",
+    ].join("\n");
+    const html = renderToStaticMarkup(createElement(Markdown, { content }));
+
+    expect(html).toContain('aria-label="Enable code word wrap"');
+    expect(html).toContain('aria-label="Enable table word wrap"');
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain("overflow-x-auto");
+  });
+
   it("defers syntax highlighting for live code and enables it after completion", () => {
     const content = "```js\nconst x = 1;\n```";
     const live = renderToStaticMarkup(createElement(Markdown, { content, streaming: true }));

@@ -67,6 +67,15 @@ const nid = () => `m${++_msgId}`;
 const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
 const STREAM_FLUSH_INTERVAL_MS = 160;
 const STREAM_SNAPSHOT_POLL_MS = 2_000;
+const CHAT_WORD_WRAP_CHANGED_EVENT = "spark:chat-word-wrap-changed";
+const chatWordWrapFromConfig = (config: Record<string, unknown>): boolean => {
+  const display = config.display;
+  return Boolean(
+    display &&
+      typeof display === "object" &&
+      (display as Record<string, unknown>).chat_word_wrap,
+  );
+};
 
 type ChatMessage =
   | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[]; redirect?: boolean }
@@ -417,10 +426,12 @@ const UserRow = memo(function UserRow({
 const AssistantRow = memo(function AssistantRow({
   msg,
   safeMode,
+  defaultWrap,
   onPromoteToBrief,
 }: {
   msg: AssistantMsg;
   safeMode?: boolean;
+  defaultWrap?: boolean;
   onPromoteToBrief?: (text: string) => void;
 }) {
   return (
@@ -428,7 +439,13 @@ const AssistantRow = memo(function AssistantRow({
       <SparkAgentAvatar />
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
-          <Markdown content={msg.content} streaming={msg.streaming} safeMode={safeMode} renderRevision={msg.renderRevision} />
+          <Markdown
+            content={msg.content}
+            streaming={msg.streaming}
+            safeMode={safeMode}
+            renderRevision={msg.renderRevision}
+            defaultWrap={defaultWrap}
+          />
         ) : (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Loader2 className={`h-3 w-3 ${safeMode ? "" : "animate-spin"}`} />
@@ -590,6 +607,7 @@ export function ChatPanel({
   } | null>(null);
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
   const [safeModeNotice, setSafeModeNotice] = useState<string | null>(null);
+  const [chatWordWrap, setChatWordWrap] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
@@ -631,6 +649,26 @@ export function ChatPanel({
   streamingRef.current = streaming;
   turnStateRef.current = turnState;
   safeModeRef.current = safeMode;
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.getConfig()
+      .then((config) => {
+        if (!cancelled) setChatWordWrap(chatWordWrapFromConfig(config));
+      })
+      .catch(() => {});
+    const handleWrapChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ enabled?: unknown }>).detail;
+      if (typeof detail?.enabled === "boolean") {
+        setChatWordWrap(detail.enabled);
+      }
+    };
+    window.addEventListener(CHAT_WORD_WRAP_CHANGED_EVENT, handleWrapChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(CHAT_WORD_WRAP_CHANGED_EVENT, handleWrapChanged);
+    };
+  }, []);
 
   // Desktop (§3.1): reflect agent activity in the menu-bar tray indicator.
   useEffect(() => {
@@ -2288,7 +2326,14 @@ export function ChatPanel({
                 );
               } else if (msg.role === "assistant") {
                 if (!msg.content && !msg.streaming) return null;
-                rowContent = <AssistantRow msg={msg} safeMode={safeMode} onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined} />;
+                rowContent = (
+                  <AssistantRow
+                    msg={msg}
+                    safeMode={safeMode}
+                    defaultWrap={chatWordWrap}
+                    onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined}
+                  />
+                );
               } else if (msg.role === "tool") {
                 rowContent = <ToolRow msg={msg} repeatCount={repeatCount} safeMode={safeMode} onAttachPath={attachPath} onFetchFullResult={fetchFullToolResult} />;
               } else if (msg.role === "reasoning") {
