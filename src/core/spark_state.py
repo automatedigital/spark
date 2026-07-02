@@ -1306,6 +1306,72 @@ class SessionDB:
 
         return self._execute_write(_do)
 
+    def update_message(
+        self,
+        message_id: int,
+        content: str = None,
+        finish_reason: str = None,
+        token_count: int = None,
+        touch_timestamp: bool = False,
+    ) -> bool:
+        """
+        Update fields on an existing message row (streaming checkpointing).
+
+        Does not touch message_count — the row was counted at insert time.
+        Pass finish_reason="" to clear a previously set value (e.g. clearing
+        "interrupted" once the final content lands). Returns True when a row
+        was updated. The messages FTS triggers keep the search index in sync.
+        """
+        sets: list[str] = []
+        params: list[Any] = []
+        if content is not None:
+            sets.append("content = ?")
+            params.append(content)
+        if finish_reason is not None:
+            sets.append("finish_reason = ?")
+            params.append(finish_reason or None)
+        if token_count is not None:
+            sets.append("token_count = ?")
+            params.append(token_count)
+        if touch_timestamp:
+            sets.append("timestamp = ?")
+            params.append(time.time())
+        if not sets:
+            return False
+        params.append(message_id)
+
+        def _do(conn):
+            cursor = conn.execute(
+                f"UPDATE messages SET {', '.join(sets)} WHERE id = ?",
+                params,
+            )
+            return cursor.rowcount > 0
+
+        return self._execute_write(_do)
+
+    def delete_message(self, message_id: int) -> bool:
+        """
+        Delete a single message row and decrement its session's message_count.
+
+        Used to drop a streaming checkpoint row once the agent persisted its
+        own final copy of the same message.
+        """
+
+        def _do(conn):
+            row = conn.execute(
+                "SELECT session_id FROM messages WHERE id = ?", (message_id,)
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+            conn.execute(
+                "UPDATE sessions SET message_count = max(message_count - 1, 0) WHERE id = ?",
+                (row["session_id"] if isinstance(row, sqlite3.Row) else row[0],),
+            )
+            return True
+
+        return self._execute_write(_do)
+
     def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         """Load all messages for a session, ordered by timestamp."""
         with self._lock:

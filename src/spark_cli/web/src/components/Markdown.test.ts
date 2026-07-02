@@ -179,17 +179,16 @@ describe("streaming markdown parser regression coverage", () => {
 });
 
 describe("Markdown component streaming behavior", () => {
-  it("renders active streams as plain text to keep the hot path safe", () => {
+  it("renders active streams as markdown, not plain text", () => {
     const html = renderToStaticMarkup(createElement(Markdown, {
       content: "## Heading\n\nA **bold** line.\n\n- one",
       streaming: true,
     }));
 
-    expect(html).not.toContain("<h2");
-    expect(html).not.toContain("<strong");
-    expect(html).not.toContain("<ul");
-    expect(html).toContain("## Heading");
-    expect(html).toContain("**bold**");
+    expect(html).toContain("<h2");
+    expect(html).toContain("<strong");
+    expect(html).toContain("<ul");
+    expect(html).not.toContain("## Heading");
   });
 
   it("keeps safe mode plain even while streaming", () => {
@@ -205,7 +204,7 @@ describe("Markdown component streaming behavior", () => {
     expect(html).toContain("**bold**");
   });
 
-  it("keeps long active streams plain until completion", () => {
+  it("renders long active streams incrementally as markdown", () => {
     const content = [
       "# Older heading",
       "",
@@ -219,14 +218,14 @@ describe("Markdown component streaming behavior", () => {
       streaming: true,
     }));
 
-    expect(html).toContain("Older heading");
+    expect(html).toContain("<h1");
+    expect(html).toContain("<h2");
+    expect(html).toContain("<strong");
     expect(html).toContain("older stable text");
-    expect(html).toContain("## Fresh tail");
-    expect(html).toContain("**bold** live tail");
-    expect(html).not.toContain("<h2");
+    expect(html).not.toContain("## Fresh tail");
   });
 
-  it("keeps the streaming markdown parse window small for long responses", () => {
+  it("bounds per-flush parse cost to the live tail for long responses", () => {
     const content = [
       "# Head",
       "",
@@ -236,13 +235,60 @@ describe("Markdown component streaming behavior", () => {
       "A **bold** live tail.",
     ].join("\n");
     const segments = buildMarkdownRenderSegments(content, true);
-    const markdownChars = segments
-      .filter((segment) => segment.kind === "markdown")
-      .reduce((sum, segment) => sum + segment.text.length, 0);
+    const liveSegments = segments.filter((segment) => segment.live);
+    const liveChars = liveSegments.reduce((sum, s) => sum + s.text.length, 0);
 
     expect(content.length).toBeGreaterThan(3_000);
-    expect(markdownChars).toBeLessThanOrEqual(900);
-    expect(segments.some((segment) => segment.kind === "plain")).toBe(true);
+    // Exactly one live segment re-parses per flush; everything else is
+    // committed markdown whose stable keys keep memoized renders intact.
+    expect(liveSegments).toHaveLength(1);
+    expect(liveChars).toBeLessThanOrEqual(6_000);
+    // Committed + live reassemble the full content (no fences here, so the
+    // stabilized live text is the raw tail).
+    expect(segments.map((s) => s.text).join("")).toBe(content);
+  });
+
+  it("keeps committed segment keys prefix-stable as the stream grows", () => {
+    const base = [
+      "# Head",
+      "",
+      "committed paragraph\n\n".repeat(300),
+    ].join("\n");
+    const before = buildMarkdownRenderSegments(`${base}partial tail`, true);
+    const after = buildMarkdownRenderSegments(`${base}partial tail grew **longer**`, true);
+
+    const committedBefore = before.filter((s) => !s.live);
+    const committedAfter = after.filter((s) => !s.live);
+    expect(committedAfter.length).toBe(committedBefore.length);
+    committedBefore.forEach((seg, i) => {
+      expect(committedAfter[i].start).toBe(seg.start);
+      expect(committedAfter[i].end).toBe(seg.end);
+      expect(committedAfter[i].text).toBe(seg.text);
+    });
+  });
+
+  it("virtually closes an open fence in the live tail", () => {
+    const content = "intro\n\n```python\ndef f():\n    return 1";
+    const segments = buildMarkdownRenderSegments(content, true);
+    const live = segments.find((s) => s.live);
+    expect(live).toBeDefined();
+    expect(live!.text.endsWith("\n```")).toBe(true);
+    // Offsets still describe the real content, not the stabilized text.
+    expect(live!.end).toBe(content.length);
+
+    const html = renderToStaticMarkup(createElement(Markdown, {
+      content,
+      streaming: true,
+    }));
+    expect(html).toContain("def f()");
+    expect(html).toContain("<pre");
+  });
+
+  it("falls back to the windowed plain tail for very large streams", () => {
+    const content = `# Head\n\n${"huge paragraph\n\n".repeat(2_000)}live tail`;
+    expect(content.length).toBeGreaterThan(20_000);
+    const segments = buildMarkdownRenderSegments(content, true);
+    expect(segments.some((segment) => segment.kind === "plain" && segment.live)).toBe(true);
   });
 
   it("renders large completed markdown in chunks instead of falling back to raw text", () => {
@@ -351,7 +397,7 @@ describe("Markdown component streaming behavior", () => {
     expect(html).toContain("Report saved at ");
   });
 
-  it("keeps large streaming tables plain until completion", () => {
+  it("renders large streaming tables live with row truncation", () => {
     const content = [
       "| a | b |",
       "|---|---|",
@@ -362,10 +408,9 @@ describe("Markdown component streaming behavior", () => {
       streaming: true,
     }));
 
-    expect(html).not.toContain("<table");
-    expect(html).not.toContain("<td>119</td>");
-    expect(html).toContain("| a | b |");
-    expect(html).toContain("| 119 | 120 |");
+    expect(html).toContain("<table");
+    expect(html).toContain("Showing first 80 rows while streaming.");
+    expect(html).not.toContain(">119<");
   });
 });
 

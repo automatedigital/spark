@@ -81,7 +81,10 @@ export const Markdown = memo(function Markdown({
   renderRevision?: number;
   defaultWrap?: boolean;
 }) {
-  if (safeMode || streaming || content.length > LARGE_INLINE_PLAIN_CHARS) {
+  // Safe mode always renders plain; huge committed content also skips parsing.
+  // Streaming content goes through ParsedMarkdown, which windows the work so
+  // markdown renders progressively instead of swapping in at turn end.
+  if (safeMode || (!streaming && content.length > LARGE_INLINE_PLAIN_CHARS)) {
     return (
       <div
         role="article"
