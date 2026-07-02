@@ -1,11 +1,11 @@
 """Tests for tools.env_passthrough — skill and config env var passthrough."""
 
-import os
 import pytest
 import yaml
 
 import tools.env_passthrough as _ep_mod
 from tools.env_passthrough import (
+    build_tool_subprocess_env,
     clear_env_passthrough,
     get_all_passthrough,
     is_env_passthrough,
@@ -109,24 +109,10 @@ class TestConfigPassthrough:
 class TestExecuteCodeIntegration:
     """Verify that the passthrough is checked in execute_code's env filtering."""
 
-    def test_secret_substring_blocked_by_default(self):
-        """TENOR_API_KEY should be blocked without passthrough."""
-        _SAFE_ENV_PREFIXES = ("PATH", "HOME", "USER", "LANG", "LC_", "TERM",
-                              "TMPDIR", "TMP", "TEMP", "SHELL", "LOGNAME",
-                              "XDG_", "PYTHONPATH", "VIRTUAL_ENV", "CONDA")
-        _SECRET_SUBSTRINGS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL",
-                              "PASSWD", "AUTH")
-
+    def test_unknown_secret_blocked_by_default(self):
+        """TENOR_API_KEY should be absent without passthrough."""
         test_env = {"PATH": "/usr/bin", "TENOR_API_KEY": "test123", "HOME": "/home/user"}
-        child_env = {}
-        for k, v in test_env.items():
-            if is_env_passthrough(k):
-                child_env[k] = v
-                continue
-            if any(s in k.upper() for s in _SECRET_SUBSTRINGS):
-                continue
-            if any(k.startswith(p) for p in _SAFE_ENV_PREFIXES):
-                child_env[k] = v
+        child_env = build_tool_subprocess_env(test_env)
 
         assert "PATH" in child_env
         assert "HOME" in child_env
@@ -134,24 +120,10 @@ class TestExecuteCodeIntegration:
 
     def test_passthrough_allows_secret_through(self):
         """TENOR_API_KEY should pass through when registered."""
-        _SAFE_ENV_PREFIXES = ("PATH", "HOME", "USER", "LANG", "LC_", "TERM",
-                              "TMPDIR", "TMP", "TEMP", "SHELL", "LOGNAME",
-                              "XDG_", "PYTHONPATH", "VIRTUAL_ENV", "CONDA")
-        _SECRET_SUBSTRINGS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL",
-                              "PASSWD", "AUTH")
-
         register_env_passthrough(["TENOR_API_KEY"])
 
         test_env = {"PATH": "/usr/bin", "TENOR_API_KEY": "test123", "HOME": "/home/user"}
-        child_env = {}
-        for k, v in test_env.items():
-            if is_env_passthrough(k):
-                child_env[k] = v
-                continue
-            if any(s in k.upper() for s in _SECRET_SUBSTRINGS):
-                continue
-            if any(k.startswith(p) for p in _SAFE_ENV_PREFIXES):
-                child_env[k] = v
+        child_env = build_tool_subprocess_env(test_env)
 
         assert "PATH" in child_env
         assert "HOME" in child_env
@@ -163,7 +135,7 @@ class TestTerminalIntegration:
     """Verify that the passthrough is checked in terminal's env sanitizers."""
 
     def test_blocklisted_var_blocked_by_default(self):
-        from tools.environments.local import _sanitize_subprocess_env, _SPARK_PROVIDER_ENV_BLOCKLIST
+        from tools.environments.local import _SPARK_PROVIDER_ENV_BLOCKLIST, _sanitize_subprocess_env
 
         # Pick a var we know is in the blocklist
         blocked_var = next(iter(_SPARK_PROVIDER_ENV_BLOCKLIST))
@@ -173,7 +145,7 @@ class TestTerminalIntegration:
         assert "PATH" in result
 
     def test_passthrough_allows_blocklisted_var(self):
-        from tools.environments.local import _sanitize_subprocess_env, _SPARK_PROVIDER_ENV_BLOCKLIST
+        from tools.environments.local import _SPARK_PROVIDER_ENV_BLOCKLIST, _sanitize_subprocess_env
 
         blocked_var = next(iter(_SPARK_PROVIDER_ENV_BLOCKLIST))
         register_env_passthrough([blocked_var])
@@ -183,8 +155,15 @@ class TestTerminalIntegration:
         assert blocked_var in result
         assert result[blocked_var] == "secret_value"
 
+    def test_unknown_non_runtime_var_blocked_by_default(self):
+        from tools.environments.local import _sanitize_subprocess_env
+
+        result = _sanitize_subprocess_env({"PATH": "/usr/bin", "MY_CUSTOM_VAR": "hidden"})
+        assert "PATH" in result
+        assert "MY_CUSTOM_VAR" not in result
+
     def test_make_run_env_passthrough(self, monkeypatch):
-        from tools.environments.local import _make_run_env, _SPARK_PROVIDER_ENV_BLOCKLIST
+        from tools.environments.local import _SPARK_PROVIDER_ENV_BLOCKLIST, _make_run_env
 
         blocked_var = next(iter(_SPARK_PROVIDER_ENV_BLOCKLIST))
         monkeypatch.setenv(blocked_var, "secret_value")

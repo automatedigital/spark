@@ -7,6 +7,7 @@ import signal
 import subprocess
 import tempfile
 
+from tools.env_passthrough import build_tool_subprocess_env
 from tools.environments.base import BaseEnvironment, _pipe_stdin
 
 _IS_WINDOWS = platform.system() == "Windows"
@@ -108,34 +109,12 @@ _SPARK_PROVIDER_ENV_BLOCKLIST = _build_provider_env_blocklist()
 
 
 def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = None) -> dict:
-    """Filter Spark-managed secrets from a subprocess environment."""
-    try:
-        from tools.env_passthrough import is_env_passthrough as _is_passthrough
-    except Exception:
-        _is_passthrough = lambda _: False  # noqa: E731
-
-    sanitized: dict[str, str] = {}
-
-    for key, value in (base_env or {}).items():
-        if key.startswith(_SPARK_PROVIDER_ENV_FORCE_PREFIX):
-            continue
-        if key not in _SPARK_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
-            sanitized[key] = value
-
-    for key, value in (extra_env or {}).items():
-        if key.startswith(_SPARK_PROVIDER_ENV_FORCE_PREFIX):
-            real_key = key[len(_SPARK_PROVIDER_ENV_FORCE_PREFIX):]
-            sanitized[real_key] = value
-        elif key not in _SPARK_PROVIDER_ENV_BLOCKLIST or _is_passthrough(key):
-            sanitized[key] = value
-
-    # Per-profile HOME isolation for background processes (same as _make_run_env).
-    from core.spark_constants import get_subprocess_home
-    _profile_home = get_subprocess_home()
-    if _profile_home:
-        sanitized["HOME"] = _profile_home
-
-    return sanitized
+    """Build an allowlisted environment for a local tool subprocess."""
+    return build_tool_subprocess_env(
+        base_env,
+        extra_env,
+        force_prefix=_SPARK_PROVIDER_ENV_FORCE_PREFIX,
+    )
 
 
 def _find_bash() -> str:
@@ -184,31 +163,15 @@ _SANE_PATH = (
 
 
 def _make_run_env(env: dict) -> dict:
-    """Build a run environment with a sane PATH and provider-var stripping."""
-    try:
-        from tools.env_passthrough import is_env_passthrough as _is_passthrough
-    except Exception:
-        _is_passthrough = lambda _: False  # noqa: E731
-
-    merged = dict(os.environ | env)
-    run_env = {}
-    for k, v in merged.items():
-        if k.startswith(_SPARK_PROVIDER_ENV_FORCE_PREFIX):
-            real_key = k[len(_SPARK_PROVIDER_ENV_FORCE_PREFIX):]
-            run_env[real_key] = v
-        elif k not in _SPARK_PROVIDER_ENV_BLOCKLIST or _is_passthrough(k):
-            run_env[k] = v
+    """Build an allowlisted run environment with a sane PATH."""
+    run_env = build_tool_subprocess_env(
+        os.environ,
+        env,
+        force_prefix=_SPARK_PROVIDER_ENV_FORCE_PREFIX,
+    )
     existing_path = run_env.get("PATH", "")
-    if "/usr/bin" not in existing_path.split(":"):
-        run_env["PATH"] = f"{existing_path}:{_SANE_PATH}" if existing_path else _SANE_PATH
-
-    # Per-profile HOME isolation: redirect system tool configs (git, ssh, gh,
-    # npm …) into {SPARK_HOME}/home/ when that directory exists.  Only the
-    # subprocess sees the override — the Python process keeps the real HOME.
-    from core.spark_constants import get_subprocess_home
-    _profile_home = get_subprocess_home()
-    if _profile_home:
-        run_env["HOME"] = _profile_home
+    if "/usr/bin" not in existing_path.split(os.pathsep):
+        run_env["PATH"] = f"{existing_path}{os.pathsep}{_SANE_PATH}" if existing_path else _SANE_PATH
 
     return run_env
 

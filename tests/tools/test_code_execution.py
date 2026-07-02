@@ -12,11 +12,28 @@ Run with:  python -m pytest tests/test_code_execution.py -v
    or:     python tests/test_code_execution.py
 """
 
-import pytest
 # pytestmark removed — tests run fine (61 pass, ~99s)
-
 import json
 import os
+import sys
+import threading
+import unittest
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from tools.code_execution_tool import (
+    _TOOL_DOC_LINES,
+    EXECUTE_CODE_SCHEMA,
+    SANDBOX_ALLOWED_TOOLS,
+    _execute_remote,
+    _resolve_sandbox_python,
+    build_execute_code_schema,
+    check_sandbox_requirements,
+    execute_code,
+    generate_spark_tools_module,
+)
+from tools.env_passthrough import clear_env_passthrough, register_env_passthrough
 
 os.environ["TERMINAL_ENV"] = "local"
 
@@ -30,23 +47,6 @@ def _force_local_terminal(monkeypatch):
     ensures each test starts (and ends) with the correct value.
     """
     monkeypatch.setenv("TERMINAL_ENV", "local")
-import sys
-import time
-import threading
-import unittest
-from unittest.mock import patch, MagicMock
-
-from tools.code_execution_tool import (
-    SANDBOX_ALLOWED_TOOLS,
-    execute_code,
-    generate_spark_tools_module,
-    check_sandbox_requirements,
-    build_execute_code_schema,
-    EXECUTE_CODE_SCHEMA,
-    _TOOL_DOC_LINES,
-    _execute_remote,
-    _resolve_sandbox_python,
-)
 
 
 def _mock_handle_function_call(function_name, function_args, task_id=None, user_task=None):
@@ -166,7 +166,7 @@ class TestExecuteCode(unittest.TestCase):
 
     def _run(self, code, enabled_tools=None):
         """Helper: run code with mocked handle_function_call."""
-        with patch("tools.code_execution_tool._rpc_server_loop") as mock_rpc:
+        with patch("tools.code_execution_tool._rpc_server_loop"):
             # Use real execution but mock the tool dispatcher
             pass
         # Actually run with full integration, mocking at the model_tools level
@@ -387,12 +387,13 @@ class TestStubSchemaDrift(unittest.TestCase):
         """Every user-facing parameter in the real schema must appear in the
         corresponding _TOOL_STUBS entry."""
         import re
+
+        import tools.file_tools  # noqa: F401 - registers read_file, write_file, patch, search_files
+        import tools.web_tools  # noqa: F401 - registers web_search, web_extract
         from tools.code_execution_tool import _TOOL_STUBS
 
         # Import the registry and trigger tool registration
         from tools.registry import registry
-        import tools.file_tools  # noqa: F401 - registers read_file, write_file, patch, search_files
-        import tools.web_tools  # noqa: F401 - registers web_search, web_extract
 
         for tool_name, (func_name, sig, doc, args_expr) in _TOOL_STUBS.items():
             entry = registry._tools.get(tool_name)
@@ -422,6 +423,7 @@ class TestStubSchemaDrift(unittest.TestCase):
         """The args_dict_expr in each stub must include every parameter from
         the signature, so that all params are actually sent over RPC."""
         import re
+
         from tools.code_execution_tool import _TOOL_STUBS
 
         for tool_name, (func_name, sig, doc, args_expr) in _TOOL_STUBS.items():
@@ -642,6 +644,20 @@ class TestEnvVarFiltering(unittest.TestCase):
         self.assertNotIn("MODAL_TOKEN_ID", child_env)
         self.assertNotIn("MODAL_TOKEN_SECRET", child_env)
 
+    def test_credential_paths_excluded(self):
+        child_env = self._get_child_env({
+            "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/gcp.json",
+            "AWS_SHARED_CREDENTIALS_FILE": "/tmp/aws",
+            "AWS_CONFIG_FILE": "/tmp/aws-config",
+            "VERTEX_CREDENTIALS_PATH": "/tmp/vertex.json",
+            "CLAUDE_CONFIG_DIR": "/tmp/claude",
+        })
+        self.assertNotIn("GOOGLE_APPLICATION_CREDENTIALS", child_env)
+        self.assertNotIn("AWS_SHARED_CREDENTIALS_FILE", child_env)
+        self.assertNotIn("AWS_CONFIG_FILE", child_env)
+        self.assertNotIn("VERTEX_CREDENTIALS_PATH", child_env)
+        self.assertNotIn("CLAUDE_CONFIG_DIR", child_env)
+
     def test_password_vars_excluded(self):
         child_env = self._get_child_env({
             "DB_PASSWORD": "hunter2",
@@ -651,6 +667,23 @@ class TestEnvVarFiltering(unittest.TestCase):
         self.assertNotIn("DB_PASSWORD", child_env)
         self.assertNotIn("MY_PASSWD", child_env)
         self.assertNotIn("AUTH_CREDENTIAL", child_env)
+
+    def test_unknown_non_runtime_vars_excluded(self):
+        child_env = self._get_child_env({
+            "MY_CUSTOM_VAR": "hidden",
+            "PROJECT_ACCESS_TOKEN": "secret",
+        })
+        self.assertNotIn("MY_CUSTOM_VAR", child_env)
+        self.assertNotIn("PROJECT_ACCESS_TOKEN", child_env)
+
+    def test_passthrough_var_included(self):
+        try:
+            register_env_passthrough(["TENOR_API_KEY"])
+            child_env = self._get_child_env({"TENOR_API_KEY": "tenor-secret"})
+        finally:
+            clear_env_passthrough()
+
+        self.assertEqual(child_env.get("TENOR_API_KEY"), "tenor-secret")
 
     def test_path_included(self):
         child_env = self._get_child_env()
@@ -667,6 +700,11 @@ class TestEnvVarFiltering(unittest.TestCase):
     def test_pythondontwritebytecode_set(self):
         child_env = self._get_child_env()
         self.assertEqual(child_env.get("PYTHONDONTWRITEBYTECODE"), "1")
+
+    def test_pythonpath_is_controlled(self):
+        child_env = self._get_child_env({"PYTHONPATH": "/tmp/untrusted"})
+        self.assertIn("PYTHONPATH", child_env)
+        self.assertNotIn("/tmp/untrusted", child_env["PYTHONPATH"])
 
     def test_timezone_injected_when_set(self):
         env_backup = os.environ.copy()
