@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Blocks,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   Download,
   FolderOpen,
   LayoutGrid,
   MessageCircle,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Settings,
   Square,
@@ -40,6 +40,12 @@ import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/li
 import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
+import {
+  isEditableShortcutTarget,
+  isSidebarToggleShortcut,
+  readSidebarExpanded,
+  writeSidebarExpanded,
+} from "@/lib/sidebarPrefs";
 
 
 // Primary sections shown after the "New session" action.
@@ -270,8 +276,7 @@ function AppShell() {
     return saved && saved in PAGE_COMPONENTS ? (saved as PageId) : "chat";
   });
   const [navExpanded, setNavExpanded] = useState(() => {
-    const saved = localStorage.getItem("spark-nav-expanded");
-    return saved === null ? true : saved === "true";
+    return readSidebarExpanded();
   });
   const [navHovered, setNavHovered] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -357,9 +362,17 @@ function AppShell() {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setPaletteOpen((o) => !o);
+      } else if (isSidebarToggleShortcut(e)) {
+        if (isEditableShortcutTarget(e.target)) return;
+        e.preventDefault();
+        setNavExpanded((expanded) => {
+          const next = !expanded;
+          writeSidebarExpanded(next);
+          setNavHovered(false);
+          return next;
+        });
       } else if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag !== "INPUT" && tag !== "TEXTAREA" && !(e.target as HTMLElement).isContentEditable) {
+        if (!isEditableShortcutTarget(e.target)) {
           setShortcutsOpen((o) => !o);
         }
       }
@@ -431,7 +444,7 @@ function AppShell() {
   const toggleNav = (value: boolean) => {
     setNavExpanded(value);
     setNavHovered(false);
-    localStorage.setItem("spark-nav-expanded", String(value));
+    writeSidebarExpanded(value);
   };
 
   useEffect(() => {
@@ -657,11 +670,11 @@ function AppShell() {
             <button
               type="button"
               className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/7 hover:text-foreground"
-              title={navExpanded ? "Collapse navigation" : "Expand navigation"}
-              aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
+              title={navExpanded ? "Collapse sidebar (⌘\\)" : "Expand sidebar (⌘\\)"}
+              aria-label={navExpanded ? "Collapse sidebar" : "Expand sidebar"}
               onClick={() => toggleNav(!navExpanded)}
             >
-              {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              {navExpanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
             </button>
           </div>
           <nav className={`flex shrink-0 flex-col gap-1 px-2 pt-3 ${sidebarOpen ? "items-stretch" : "items-center"}`}>

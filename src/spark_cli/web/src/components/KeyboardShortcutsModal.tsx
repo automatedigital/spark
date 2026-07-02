@@ -12,6 +12,7 @@ const SHORTCUTS = [
     context: "Global",
     items: [
       { keys: ["⌘", "K"], description: "Open command palette" },
+      { keys: ["⌘", "\\"], description: "Toggle sidebar" },
       { keys: ["?"], description: "Show keyboard shortcuts" },
     ],
   },
@@ -28,6 +29,7 @@ const SHORTCUTS = [
     context: "Navigation",
     items: [
       { keys: ["⌘", "K"], description: "Navigate pages via command palette" },
+      { keys: ["⌘", "\\"], description: "Collapse or expand sidebar" },
     ],
   },
   {
