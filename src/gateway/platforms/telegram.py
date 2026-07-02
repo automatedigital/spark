@@ -8,6 +8,7 @@ Uses python-telegram-bot library for:
 """
 
 import asyncio
+import html
 import json
 import logging
 import os
@@ -100,6 +101,8 @@ def _strip_mdv2(text: str) -> str:
     """
     # Remove escape backslashes before special characters
     cleaned = re.sub(r'\\([_*\[\]()~`>#\+\-=|{}.!\\])', r'\1', text)
+    # Remove raw double-marker bold that can arrive in captions/options.
+    cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', cleaned)
     # Remove MarkdownV2 bold markers that format_message converted from **bold**
     cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)
     # Remove MarkdownV2 italic markers that format_message converted from *italic*
@@ -110,6 +113,13 @@ def _strip_mdv2(text: str) -> str:
     # Remove MarkdownV2 spoiler markers (||text|| → text)
     cleaned = re.sub(r'\|\|([^|]+)\|\|', r'\1', cleaned)
     return cleaned
+
+
+def _plain_telegram_text(text: str) -> str:
+    """Best-effort plain text for Telegram formatting fallbacks."""
+    cleaned = _strip_mdv2(text)
+    cleaned = re.sub(r"</?[^>]+>", "", cleaned)
+    return html.unescape(cleaned)
 
 
 class TelegramAdapter(BasePlatformAdapter):
@@ -798,6 +808,217 @@ class TelegramAdapter(BasePlatformAdapter):
         return kwargs
 
     @staticmethod
+    def _telegram_error_types() -> tuple[Any, Any, Any]:
+        """Return Telegram exception classes, tolerating test/no-dependency environments."""
+        try:
+            from telegram.error import NetworkError as _NetErr
+        except ImportError:
+            _NetErr = OSError  # type: ignore[misc,assignment]
+
+        try:
+            from telegram.error import BadRequest as _BadReq
+        except ImportError:
+            _BadReq = None  # type: ignore[assignment,misc]
+
+        try:
+            from telegram.error import TimedOut as _TimedOut
+        except (ImportError, AttributeError):
+            _TimedOut = None  # type: ignore[assignment,misc]
+
+        return _NetErr, _BadReq, _TimedOut
+
+    @staticmethod
+    def _telegram_retry_after(error: Exception) -> Optional[float]:
+        retry_after = getattr(error, "retry_after", None)
+        if retry_after is not None:
+            try:
+                return float(retry_after)
+            except (TypeError, ValueError):
+                return 1.0
+
+        match = re.search(r"retry after\s+(\d+(?:\.\d+)?)", str(error), re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+        return None
+
+    @staticmethod
+    def _looks_like_format_rejection(error: Exception) -> bool:
+        err_lower = str(error).lower()
+        return any(
+            marker in err_lower
+            for marker in (
+                "can't parse entities",
+                "can't find end of",
+                "caption entities",
+                "entity",
+                "entities",
+                "markdown",
+                "parse",
+                "unsupported start tag",
+            )
+        )
+
+    @staticmethod
+    def _clear_bad_request_routing(
+        error: Exception,
+        kwargs: Dict[str, Any],
+        *,
+        adapter_name: str,
+    ) -> bool:
+        """Drop rejected Telegram routing metadata in-place and report if changed."""
+        err_lower = str(error).lower()
+        if "thread not found" in err_lower and kwargs.get("message_thread_id") is not None:
+            logger.warning(
+                "[%s] Thread %s not found, retrying without message_thread_id",
+                adapter_name,
+                kwargs["message_thread_id"],
+            )
+            kwargs["message_thread_id"] = None
+            return True
+
+        reply_rejected = any(
+            marker in err_lower
+            for marker in (
+                "message to be replied not found",
+                "message to reply not found",
+                "replied message not found",
+                "reply message not found",
+                "reply parameters are invalid",
+                "quote not found",
+                "quote is invalid",
+                "quoted message not found",
+            )
+        )
+        if reply_rejected:
+            changed = False
+            if kwargs.get("reply_to_message_id") is not None:
+                kwargs["reply_to_message_id"] = None
+                changed = True
+            if kwargs.get("reply_parameters") is not None:
+                kwargs.pop("reply_parameters", None)
+                changed = True
+            if changed:
+                logger.warning(
+                    "[%s] Reply/quote target rejected, retrying without reply metadata: %s",
+                    adapter_name,
+                    error,
+                )
+                return True
+        return False
+
+    async def _send_telegram_request(
+        self,
+        send_call: Any,
+        kwargs: Dict[str, Any],
+        *,
+        plain_fallback_kwargs: Optional[Dict[str, Any]] = None,
+        reset_streams: Optional[List[Any]] = None,
+        context: str = "send",
+    ) -> Any:
+        """Send a Telegram request with Telegram-specific delivery fallbacks."""
+        _NetErr, _BadReq, _TimedOut = self._telegram_error_types()
+        current_kwargs = dict(kwargs)
+        used_plain_fallback = False
+
+        for send_attempt in range(3):
+            if reset_streams:
+                for stream in reset_streams:
+                    try:
+                        stream.seek(0)
+                    except Exception:
+                        pass
+            try:
+                return await send_call(**current_kwargs)
+            except Exception as send_err:
+                if _TimedOut and isinstance(send_err, _TimedOut):
+                    raise
+
+                is_bad_request = bool(_BadReq and isinstance(send_err, _BadReq))
+                if is_bad_request:
+                    if (
+                        plain_fallback_kwargs is not None
+                        and not used_plain_fallback
+                        and self._looks_like_format_rejection(send_err)
+                    ):
+                        logger.warning(
+                            "[%s] Telegram %s formatting rejected, retrying plain fallback: %s",
+                            self.name,
+                            context,
+                            send_err,
+                        )
+                        current_kwargs = dict(plain_fallback_kwargs)
+                        used_plain_fallback = True
+                        continue
+                    if self._clear_bad_request_routing(
+                        send_err,
+                        current_kwargs,
+                        adapter_name=self.name,
+                    ):
+                        if plain_fallback_kwargs is not None:
+                            plain_fallback_kwargs = dict(plain_fallback_kwargs)
+                            plain_fallback_kwargs["message_thread_id"] = current_kwargs.get("message_thread_id")
+                            if current_kwargs.get("reply_to_message_id") is None:
+                                plain_fallback_kwargs["reply_to_message_id"] = None
+                            if "reply_parameters" not in current_kwargs:
+                                plain_fallback_kwargs.pop("reply_parameters", None)
+                        continue
+                    raise
+
+                retry_after = self._telegram_retry_after(send_err)
+                if retry_after is not None:
+                    if send_attempt < 2:
+                        logger.warning(
+                            "[%s] Telegram flood control on %s (attempt %d/3), retrying in %.1fs: %s",
+                            self.name,
+                            context,
+                            send_attempt + 1,
+                            retry_after,
+                            send_err,
+                        )
+                        await asyncio.sleep(retry_after)
+                        continue
+                    raise
+
+                if isinstance(send_err, _NetErr):
+                    if send_attempt < 2:
+                        wait = 2 ** send_attempt
+                        logger.warning(
+                            "[%s] Network error on %s (attempt %d/3), retrying in %ds: %s",
+                            self.name,
+                            context,
+                            send_attempt + 1,
+                            wait,
+                            send_err,
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+                    raise
+
+                raise
+
+        raise RuntimeError(f"Telegram {context} failed after retries")
+
+    @staticmethod
+    def _telegram_caption_kwargs(
+        caption: Optional[str],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Return rich and plain caption kwargs for Telegram media sends."""
+        truncated = caption[:1024] if caption else None
+        rich: Dict[str, Any] = {"caption": truncated}
+        options = options or {}
+        for key in ("parse_mode", "caption_entities"):
+            if key in options:
+                rich[key] = options[key]
+
+        plain = dict(rich)
+        plain.pop("parse_mode", None)
+        plain.pop("caption_entities", None)
+        if truncated:
+            plain["caption"] = _plain_telegram_text(truncated)
+        return rich, plain
+
+    @staticmethod
     def _telegram_id_to_str(value: Any) -> Optional[str]:
         """Return a Telegram numeric ID as a string, ignoring mock/absent values."""
         if value is None:
@@ -842,110 +1063,31 @@ class TelegramAdapter(BasePlatformAdapter):
             
             message_ids = []
             base_topic_kwargs = self._telegram_topic_kwargs(metadata)
-            
-            try:
-                from telegram.error import NetworkError as _NetErr
-            except ImportError:
-                _NetErr = OSError  # type: ignore[misc,assignment]
-
-            try:
-                from telegram.error import BadRequest as _BadReq
-            except ImportError:
-                _BadReq = None  # type: ignore[assignment,misc]
-
-            try:
-                from telegram.error import TimedOut as _TimedOut
-            except (ImportError, AttributeError):
-                _TimedOut = None  # type: ignore[assignment,misc]
+            _TimedOut = self._telegram_error_types()[2]
 
             for i, chunk in enumerate(chunks):
                 should_thread = self._should_thread_reply(reply_to, i)
                 reply_to_id = int(reply_to) if should_thread else None
                 topic_kwargs = dict(base_topic_kwargs)
 
-                msg = None
-                for _send_attempt in range(3):
-                    try:
-                        # Try Markdown first, fall back to plain text if it fails
-                        try:
-                            msg = await self._bot.send_message(
-                                chat_id=int(chat_id),
-                                text=chunk,
-                                parse_mode=ParseMode.MARKDOWN_V2,
-                                reply_to_message_id=reply_to_id,
-                                **topic_kwargs,
-                            )
-                        except Exception as md_error:
-                            # Markdown parsing failed, try plain text
-                            if "parse" in str(md_error).lower() or "markdown" in str(md_error).lower():
-                                logger.warning("[%s] MarkdownV2 parse failed, falling back to plain text: %s", self.name, md_error)
-                                plain_chunk = _strip_mdv2(chunk)
-                                msg = await self._bot.send_message(
-                                    chat_id=int(chat_id),
-                                    text=plain_chunk,
-                                    parse_mode=None,
-                                    reply_to_message_id=reply_to_id,
-                                    **topic_kwargs,
-                                )
-                            else:
-                                raise
-                        break  # success
-                    except _NetErr as send_err:
-                        # BadRequest is a subclass of NetworkError in
-                        # python-telegram-bot but represents permanent errors
-                        # (not transient network issues). Detect and handle
-                        # specific cases instead of blindly retrying.
-                        if _BadReq and isinstance(send_err, _BadReq):
-                            err_lower = str(send_err).lower()
-                            if "thread not found" in err_lower and topic_kwargs.get("message_thread_id") is not None:
-                                # Thread doesn't exist — retry without
-                                # message_thread_id so the message still
-                                # reaches the chat.
-                                logger.warning(
-                                    "[%s] Thread %s not found, retrying without message_thread_id",
-                                    self.name, topic_kwargs["message_thread_id"],
-                                )
-                                topic_kwargs["message_thread_id"] = None
-                                continue
-                            if "message to be replied not found" in err_lower and reply_to_id is not None:
-                                # Original message was deleted before we
-                                # could reply — clear reply target and retry
-                                # so the response is still delivered.
-                                logger.warning(
-                                    "[%s] Reply target deleted, retrying without reply_to: %s",
-                                    self.name, send_err,
-                                )
-                                reply_to_id = None
-                                continue
-                            # Other BadRequest errors are permanent — don't retry
-                            raise
-                        # TimedOut is also a subclass of NetworkError but
-                        # indicates the request may have reached the server —
-                        # retrying risks duplicate message delivery.
-                        if _TimedOut and isinstance(send_err, _TimedOut):
-                            raise
-                        if _send_attempt < 2:
-                            wait = 2 ** _send_attempt
-                            logger.warning("[%s] Network error on send (attempt %d/3), retrying in %ds: %s",
-                                           self.name, _send_attempt + 1, wait, send_err)
-                            await asyncio.sleep(wait)
-                        else:
-                            raise
-                    except Exception as send_err:
-                        retry_after = getattr(send_err, "retry_after", None)
-                        if retry_after is not None or "retry after" in str(send_err).lower():
-                            if _send_attempt < 2:
-                                wait = float(retry_after) if retry_after is not None else 1.0
-                                logger.warning(
-                                    "[%s] Telegram flood control on send (attempt %d/3), retrying in %.1fs: %s",
-                                    self.name,
-                                    _send_attempt + 1,
-                                    wait,
-                                    send_err,
-                                )
-                                await asyncio.sleep(wait)
-                                continue
-                        raise
+                msg = await self._send_telegram_request(
+                    self._bot.send_message,
+                    {
+                        "chat_id": int(chat_id),
+                        "text": chunk,
+                        "parse_mode": ParseMode.MARKDOWN_V2,
+                        "reply_to_message_id": reply_to_id,
+                        **topic_kwargs,
+                    },
+                    plain_fallback_kwargs={
+                        "chat_id": int(chat_id),
+                        "text": _plain_telegram_text(chunk),
+                        "parse_mode": None,
+                        "reply_to_message_id": reply_to_id,
+                        **topic_kwargs,
+                    },
+                    context="send_message",
+                )
                 message_ids.append(str(msg.message_id))
             
             return SendResult(
@@ -1554,23 +1696,48 @@ class TelegramAdapter(BasePlatformAdapter):
             
             with open(audio_path, "rb") as audio_file:
                 topic_kwargs = self._telegram_topic_kwargs(metadata)
+                rich_caption, plain_caption = self._telegram_caption_kwargs(caption, kwargs)
                 # .ogg files -> send as voice (round playable bubble)
                 if audio_path.endswith((".ogg", ".opus")):
-                    msg = await self._bot.send_voice(
-                        chat_id=int(chat_id),
-                        voice=audio_file,
-                        caption=caption[:1024] if caption else None,
-                        reply_to_message_id=int(reply_to) if reply_to else None,
-                        **topic_kwargs,
+                    msg = await self._send_telegram_request(
+                        self._bot.send_voice,
+                        {
+                            "chat_id": int(chat_id),
+                            "voice": audio_file,
+                            "reply_to_message_id": int(reply_to) if reply_to else None,
+                            **rich_caption,
+                            **topic_kwargs,
+                        },
+                        plain_fallback_kwargs={
+                            "chat_id": int(chat_id),
+                            "voice": audio_file,
+                            "reply_to_message_id": int(reply_to) if reply_to else None,
+                            **plain_caption,
+                            **topic_kwargs,
+                        },
+                        reset_streams=[audio_file],
+                        context="send_voice",
                     )
                 else:
                     # .mp3 and others -> send as audio file
-                    msg = await self._bot.send_audio(
-                        chat_id=int(chat_id),
-                        audio=audio_file,
-                        caption=caption[:1024] if caption else None,
-                        reply_to_message_id=int(reply_to) if reply_to else None,
-                        **topic_kwargs,
+                    msg = await self._send_telegram_request(
+                        self._bot.send_audio,
+                        {
+                            "chat_id": int(chat_id),
+                            "audio": audio_file,
+                            "reply_to_message_id": int(reply_to) if reply_to else None,
+                            **rich_caption,
+                            **topic_kwargs,
+                        },
+                        plain_fallback_kwargs={
+                            "chat_id": int(chat_id),
+                            "audio": audio_file,
+                            "reply_to_message_id": int(reply_to) if reply_to else None,
+                            **plain_caption,
+                            **topic_kwargs,
+                        },
+                        reset_streams=[audio_file],
+                        context="send_audio",
                     )
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
@@ -1601,12 +1768,26 @@ class TelegramAdapter(BasePlatformAdapter):
                 return SendResult(success=False, error=f"Image file not found: {image_path}")
 
             with open(image_path, "rb") as image_file:
-                msg = await self._bot.send_photo(
-                    chat_id=int(chat_id),
-                    photo=image_file,
-                    caption=caption[:1024] if caption else None,
-                    reply_to_message_id=int(reply_to) if reply_to else None,
-                    **self._telegram_topic_kwargs(metadata),
+                rich_caption, plain_caption = self._telegram_caption_kwargs(caption, kwargs)
+                topic_kwargs = self._telegram_topic_kwargs(metadata)
+                msg = await self._send_telegram_request(
+                    self._bot.send_photo,
+                    {
+                        "chat_id": int(chat_id),
+                        "photo": image_file,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **rich_caption,
+                        **topic_kwargs,
+                    },
+                    plain_fallback_kwargs={
+                        "chat_id": int(chat_id),
+                        "photo": image_file,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **plain_caption,
+                        **topic_kwargs,
+                    },
+                    reset_streams=[image_file],
+                    context="send_photo",
                 )
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
@@ -1639,13 +1820,28 @@ class TelegramAdapter(BasePlatformAdapter):
             display_name = file_name or os.path.basename(file_path)
 
             with open(file_path, "rb") as f:
-                msg = await self._bot.send_document(
-                    chat_id=int(chat_id),
-                    document=f,
-                    filename=display_name,
-                    caption=caption[:1024] if caption else None,
-                    reply_to_message_id=int(reply_to) if reply_to else None,
-                    **self._telegram_topic_kwargs(metadata),
+                rich_caption, plain_caption = self._telegram_caption_kwargs(caption, kwargs)
+                topic_kwargs = self._telegram_topic_kwargs(metadata)
+                msg = await self._send_telegram_request(
+                    self._bot.send_document,
+                    {
+                        "chat_id": int(chat_id),
+                        "document": f,
+                        "filename": display_name,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **rich_caption,
+                        **topic_kwargs,
+                    },
+                    plain_fallback_kwargs={
+                        "chat_id": int(chat_id),
+                        "document": f,
+                        "filename": display_name,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **plain_caption,
+                        **topic_kwargs,
+                    },
+                    reset_streams=[f],
+                    context="send_document",
                 )
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
@@ -1670,12 +1866,26 @@ class TelegramAdapter(BasePlatformAdapter):
                 return SendResult(success=False, error=f"Video file not found: {video_path}")
 
             with open(video_path, "rb") as f:
-                msg = await self._bot.send_video(
-                    chat_id=int(chat_id),
-                    video=f,
-                    caption=caption[:1024] if caption else None,
-                    reply_to_message_id=int(reply_to) if reply_to else None,
-                    **self._telegram_topic_kwargs(metadata),
+                rich_caption, plain_caption = self._telegram_caption_kwargs(caption, kwargs)
+                topic_kwargs = self._telegram_topic_kwargs(metadata)
+                msg = await self._send_telegram_request(
+                    self._bot.send_video,
+                    {
+                        "chat_id": int(chat_id),
+                        "video": f,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **rich_caption,
+                        **topic_kwargs,
+                    },
+                    plain_fallback_kwargs={
+                        "chat_id": int(chat_id),
+                        "video": f,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **plain_caption,
+                        **topic_kwargs,
+                    },
+                    reset_streams=[f],
+                    context="send_video",
                 )
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
@@ -1704,13 +1914,26 @@ class TelegramAdapter(BasePlatformAdapter):
             return await super().send_image(chat_id, image_url, caption, reply_to, metadata=metadata)
 
         try:
+            rich_caption, plain_caption = self._telegram_caption_kwargs(caption)
+            topic_kwargs = self._telegram_topic_kwargs(metadata)
             # Telegram can send photos directly from URLs (up to ~5MB)
-            msg = await self._bot.send_photo(
-                chat_id=int(chat_id),
-                photo=image_url,
-                caption=caption[:1024] if caption else None,  # Telegram caption limit
-                reply_to_message_id=int(reply_to) if reply_to else None,
-                **self._telegram_topic_kwargs(metadata),
+            msg = await self._send_telegram_request(
+                self._bot.send_photo,
+                {
+                    "chat_id": int(chat_id),
+                    "photo": image_url,
+                    "reply_to_message_id": int(reply_to) if reply_to else None,
+                    **rich_caption,
+                    **topic_kwargs,
+                },
+                plain_fallback_kwargs={
+                    "chat_id": int(chat_id),
+                    "photo": image_url,
+                    "reply_to_message_id": int(reply_to) if reply_to else None,
+                    **plain_caption,
+                    **topic_kwargs,
+                },
+                context="send_photo",
             )
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
@@ -1727,13 +1950,24 @@ class TelegramAdapter(BasePlatformAdapter):
                     resp = await client.get(image_url)
                     resp.raise_for_status()
                     image_data = resp.content
-                
-                msg = await self._bot.send_photo(
-                    chat_id=int(chat_id),
-                    photo=image_data,
-                    caption=caption[:1024] if caption else None,
-                    reply_to_message_id=int(reply_to) if reply_to else None,
-                    **self._telegram_topic_kwargs(metadata),
+
+                msg = await self._send_telegram_request(
+                    self._bot.send_photo,
+                    {
+                        "chat_id": int(chat_id),
+                        "photo": image_data,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **rich_caption,
+                        **topic_kwargs,
+                    },
+                    plain_fallback_kwargs={
+                        "chat_id": int(chat_id),
+                        "photo": image_data,
+                        "reply_to_message_id": int(reply_to) if reply_to else None,
+                        **plain_caption,
+                        **topic_kwargs,
+                    },
+                    context="send_photo_upload",
                 )
                 return SendResult(success=True, message_id=str(msg.message_id))
             except Exception as e2:
@@ -1759,12 +1993,25 @@ class TelegramAdapter(BasePlatformAdapter):
             return SendResult(success=False, error="Not connected")
         
         try:
-            msg = await self._bot.send_animation(
-                chat_id=int(chat_id),
-                animation=animation_url,
-                caption=caption[:1024] if caption else None,
-                reply_to_message_id=int(reply_to) if reply_to else None,
-                **self._telegram_topic_kwargs(metadata),
+            rich_caption, plain_caption = self._telegram_caption_kwargs(caption)
+            topic_kwargs = self._telegram_topic_kwargs(metadata)
+            msg = await self._send_telegram_request(
+                self._bot.send_animation,
+                {
+                    "chat_id": int(chat_id),
+                    "animation": animation_url,
+                    "reply_to_message_id": int(reply_to) if reply_to else None,
+                    **rich_caption,
+                    **topic_kwargs,
+                },
+                plain_fallback_kwargs={
+                    "chat_id": int(chat_id),
+                    "animation": animation_url,
+                    "reply_to_message_id": int(reply_to) if reply_to else None,
+                    **plain_caption,
+                    **topic_kwargs,
+                },
+                context="send_animation",
             )
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:

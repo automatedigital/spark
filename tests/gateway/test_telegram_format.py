@@ -488,6 +488,9 @@ class TestStripMdv2:
     def test_removes_bold_markers(self):
         assert _strip_mdv2("*bold text*") == "bold text"
 
+    def test_removes_raw_double_bold_markers(self):
+        assert _strip_mdv2("**bold text**") == "bold text"
+
     def test_removes_italic_markers(self):
         assert _strip_mdv2("_italic text_") == "italic text"
 

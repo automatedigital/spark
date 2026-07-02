@@ -9,7 +9,6 @@ We mock the telegram module at import time to avoid collection errors.
 """
 
 import asyncio
-import importlib
 import os
 import sys
 from types import SimpleNamespace
@@ -17,13 +16,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from gateway.config import Platform, PlatformConfig
+from gateway.config import PlatformConfig
 from gateway.platforms.base import (
     MessageEvent,
     MessageType,
     SendResult,
-    SUPPORTED_DOCUMENT_TYPES,
 )
+
+
+class FakeNetworkError(Exception):
+    pass
+
+
+class FakeBadRequest(FakeNetworkError):
+    pass
+
+
+class FakeRetryAfter(Exception):
+    def __init__(self, seconds):
+        super().__init__(f"Retry after {seconds}")
+        self.retry_after = seconds
 
 
 # ---------------------------------------------------------------------------
@@ -44,9 +56,14 @@ def _ensure_telegram_mock():
     telegram_mod.constants.ChatType.SUPERGROUP = "supergroup"
     telegram_mod.constants.ChatType.CHANNEL = "channel"
     telegram_mod.constants.ChatType.PRIVATE = "private"
+    telegram_error_mod = MagicMock()
+    telegram_error_mod.NetworkError = FakeNetworkError
+    telegram_error_mod.BadRequest = FakeBadRequest
+    telegram_error_mod.TimedOut = type("FakeTimedOut", (FakeNetworkError,), {})
 
     for name in ("telegram", "telegram.ext", "telegram.constants", "telegram.request"):
         sys.modules.setdefault(name, telegram_mod)
+    sys.modules.setdefault("telegram.error", telegram_error_mod)
 
 
 _ensure_telegram_mock()
@@ -576,6 +593,75 @@ class TestSendDocument:
 
         call_kwargs = connected_adapter._bot.send_document.call_args[1]
         assert call_kwargs["message_thread_id"] == 789
+
+    @pytest.mark.asyncio
+    async def test_send_document_retries_retry_after(self, connected_adapter, tmp_path, monkeypatch):
+        """Native document sends should honor Telegram flood-wait retry_after."""
+        test_file = tmp_path / "report.pdf"
+        test_file.write_bytes(b"%PDF-1.4 data")
+        sleeps = []
+        attempts = []
+
+        async def fake_sleep(seconds):
+            sleeps.append(seconds)
+
+        async def fake_send_document(**kwargs):
+            attempts.append(dict(kwargs))
+            if len(attempts) == 1:
+                raise FakeRetryAfter(17)
+            return SimpleNamespace(message_id=104)
+
+        monkeypatch.setattr("gateway.platforms.telegram.asyncio.sleep", fake_sleep)
+        connected_adapter._bot.send_document = AsyncMock(side_effect=fake_send_document)
+
+        result = await connected_adapter.send_document(
+            chat_id="12345",
+            file_path=str(test_file),
+        )
+
+        assert result.success is True
+        assert result.message_id == "104"
+        assert len(attempts) == 2
+        assert sleeps == [17.0]
+
+    @pytest.mark.asyncio
+    async def test_send_document_caption_format_rejection_retries_plain_caption(
+        self,
+        connected_adapter,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Caption entity rejection should retry the native document with a plain caption."""
+        test_file = tmp_path / "report.pdf"
+        test_file.write_bytes(b"%PDF-1.4 data")
+        telegram_error_mod = MagicMock()
+        telegram_error_mod.NetworkError = FakeNetworkError
+        telegram_error_mod.BadRequest = FakeBadRequest
+        telegram_error_mod.TimedOut = type("FakeTimedOut", (FakeNetworkError,), {})
+        monkeypatch.setitem(sys.modules, "telegram.error", telegram_error_mod)
+        call_log = []
+
+        async def fake_send_document(**kwargs):
+            call_log.append(dict(kwargs))
+            if kwargs.get("caption_entities"):
+                raise FakeBadRequest("Can't parse entities: invalid caption entities")
+            return SimpleNamespace(message_id=105)
+
+        connected_adapter._bot.send_document = AsyncMock(side_effect=fake_send_document)
+
+        result = await connected_adapter.send_document(
+            chat_id="12345",
+            file_path=str(test_file),
+            caption="**report**",
+            caption_entities=[{"type": "bold", "offset": 99, "length": 6}],
+        )
+
+        assert result.success is True
+        assert result.message_id == "105"
+        assert len(call_log) == 2
+        assert call_log[0]["caption_entities"] == [{"type": "bold", "offset": 99, "length": 6}]
+        assert "caption_entities" not in call_log[1]
+        assert call_log[1]["caption"] == "report"
 
 
 class TestTelegramPhotoBatching:
