@@ -83,6 +83,25 @@ const MODEL_PROVIDER_OPTIONS = [
   { value: "custom", label: "Custom" },
 ];
 
+function configProviderOptions(config: Record<string, unknown> | null) {
+  const providers = config?.providers;
+  if (!providers || typeof providers !== "object" || Array.isArray(providers)) {
+    return [];
+  }
+  return Object.entries(providers as Record<string, unknown>)
+    .filter(
+      ([, entry]) => entry && typeof entry === "object" && !Array.isArray(entry),
+    )
+    .map(([key, entry]) => {
+      const provider = entry as Record<string, unknown>;
+      const name =
+        typeof provider.name === "string" && provider.name.trim()
+          ? provider.name.trim()
+          : key;
+      return { value: key, label: name };
+    });
+}
+
 // OAuth-backed providers that can be (re)connected from the dashboard. When one
 // of these is the selected provider, the model editor surfaces an inline
 // connection status + Reconnect button so the user can refresh rotated auth.
@@ -643,12 +662,19 @@ export default function ConfigPage() {
     const fastApiMode = textValue(getNestedValue(config, "smart_model_routing.cheap_model.api_mode"));
     const maxSimpleChars = numberValue(getNestedValue(config, "smart_model_routing.max_simple_chars"), 160);
     const maxSimpleWords = numberValue(getNestedValue(config, "smart_model_routing.max_simple_words"), 28);
+    const customProviderOptions = configProviderOptions(config);
+    const allProviderOptions = [...MODEL_PROVIDER_OPTIONS];
+    for (const option of customProviderOptions) {
+      if (!allProviderOptions.some((existing) => existing.value === option.value)) {
+        allProviderOptions.push(option);
+      }
+    }
     const providerOptions = (currentProvider: string) => {
-      if (!currentProvider || MODEL_PROVIDER_OPTIONS.some((option) => option.value === currentProvider)) {
-        return MODEL_PROVIDER_OPTIONS;
+      if (!currentProvider || allProviderOptions.some((option) => option.value === currentProvider)) {
+        return allProviderOptions;
       }
       return [
-        ...MODEL_PROVIDER_OPTIONS,
+        ...allProviderOptions,
         { value: currentProvider, label: currentProvider },
       ];
     };

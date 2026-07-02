@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -275,13 +275,49 @@ def normalize_provider(name: str) -> str:
     return ALIASES.get(key, key)
 
 
+def _normalize_custom_key(value: str) -> str:
+    """Normalize user-facing provider keys without forcing a ``custom:`` prefix."""
+    return value.strip().lower().replace(" ", "-")
+
+
+def _config_transport(raw: Any) -> str:
+    """Normalize config transport/api_mode values to ProviderDef transport names."""
+    value = str(raw or "").strip().lower()
+    if value in {"anthropic", "anthropic_messages"}:
+        return "anthropic_messages"
+    if value in {"codex", "responses", "codex_responses"}:
+        return "codex_responses"
+    return "openai_chat"
+
+
+def _iter_user_provider_matches(
+    name: str,
+    user_config: Dict[str, Any],
+) -> Iterable[tuple[str, Dict[str, Any]]]:
+    requested = _normalize_custom_key(name)
+    requested_no_custom = requested
+    if requested.startswith("custom:"):
+        requested_no_custom = requested.removeprefix("custom:")
+    for key, entry in user_config.items():
+        if not isinstance(entry, dict):
+            continue
+        key_norm = _normalize_custom_key(str(key))
+        display = str(entry.get("name", "") or "").strip()
+        display_norm = _normalize_custom_key(display) if display else ""
+        candidates = {key_norm, f"custom:{key_norm}"}
+        if display_norm:
+            candidates.update({display_norm, f"custom:{display_norm}"})
+        if requested in candidates or requested_no_custom in {key_norm, display_norm}:
+            yield key_norm, entry
+
+
 def get_provider(name: str) -> Optional[ProviderDef]:
     """Look up a provider by id or alias, merging all data sources.
 
     Resolution order:
       1. Spark overlays (for providers not in models.dev: openai-codex, etc.)
       2. models.dev catalog + Spark overlay
-      3. User-defined providers from config (TODO: Phase 4)
+      3. User-defined providers from config via resolve_provider_full()
 
     Returns a fully-resolved ProviderDef or None.
     """
@@ -405,30 +441,31 @@ def resolve_user_provider(
     if not user_config or not isinstance(user_config, dict):
         return None
 
-    entry = user_config.get(name)
-    if not isinstance(entry, dict):
+    matched = next(_iter_user_provider_matches(name, user_config), None)
+    if matched is None:
         return None
+    provider_key, entry = matched
 
     # Extract fields
-    display_name = entry.get("name", "") or name
+    display_name = entry.get("name", "") or provider_key
     api_url = (
         entry.get("api", "") or entry.get("url", "") or entry.get("base_url", "") or ""
     )
     key_env = entry.get("key_env", "") or ""
-    transport = entry.get("transport", "openai_chat") or "openai_chat"
+    transport = _config_transport(entry.get("transport") or entry.get("api_mode"))
 
     env_vars: List[str] = []
     if key_env:
         env_vars.append(key_env)
 
     return ProviderDef(
-        id=name,
+        id=provider_key,
         name=display_name,
         transport=transport,
         api_key_env_vars=tuple(env_vars),
-        base_url=api_url,
+        base_url=str(api_url or "").strip(),
         is_aggregator=False,
-        auth_type="api_key",
+        auth_type="api_key" if env_vars or entry.get("api_key") else "none",
         source="user-config",
     )
 
@@ -460,6 +497,7 @@ def resolve_custom_provider(
             continue
 
         display_name = (entry.get("name") or "").strip()
+        provider_key = _normalize_custom_key(str(entry.get("provider_key", "") or ""))
         api_url = (
             entry.get("base_url", "")
             or entry.get("url", "")
@@ -470,17 +508,31 @@ def resolve_custom_provider(
             continue
 
         slug = custom_provider_slug(display_name)
-        if requested not in {display_name.lower(), slug}:
+        provider_slug = f"custom:{provider_key}" if provider_key else ""
+        if requested not in {
+            display_name.lower(),
+            slug,
+            provider_key,
+            provider_slug,
+        }:
             continue
 
         return ProviderDef(
-            id=slug,
+            id=provider_key or slug,
             name=display_name,
-            transport="openai_chat",
-            api_key_env_vars=(),
+            transport=_config_transport(entry.get("api_mode") or entry.get("transport")),
+            api_key_env_vars=(
+                (str(entry.get("key_env", "") or "").strip(),)
+                if str(entry.get("key_env", "") or "").strip()
+                else ()
+            ),
             base_url=api_url,
             is_aggregator=False,
-            auth_type="api_key",
+            auth_type=(
+                "api_key"
+                if entry.get("api_key") or entry.get("key_env")
+                else "none"
+            ),
             source="user-config",
         )
 

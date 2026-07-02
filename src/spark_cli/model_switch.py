@@ -978,7 +978,12 @@ def list_authenticated_providers(
             if not isinstance(ep_cfg, dict):
                 continue
             display_name = ep_cfg.get("name", "") or ep_name
-            api_url = ep_cfg.get("api", "") or ep_cfg.get("url", "") or ""
+            api_url = (
+                ep_cfg.get("api", "")
+                or ep_cfg.get("url", "")
+                or ep_cfg.get("base_url", "")
+                or ""
+            )
             default_model = ep_cfg.get("default_model", "")
 
             # Build models list from both default_model and full models array
@@ -1006,6 +1011,11 @@ def list_authenticated_providers(
                     "api_url": api_url,
                 }
             )
+            ep_slug = str(ep_name).strip().lower().replace(" ", "-")
+            seen_slugs.add(ep_slug)
+            display_slug = custom_provider_slug(str(display_name))
+            seen_slugs.add(display_slug)
+            seen_slugs.add(f"custom:{ep_slug}")
 
     # --- 4. Saved custom providers from config ---
     # Each ``custom_providers`` entry represents one model under a named
@@ -1033,16 +1043,32 @@ def list_authenticated_providers(
             if not display_name or not api_url:
                 continue
 
-            slug = custom_provider_slug(display_name)
+            provider_key = (
+                str(entry.get("provider_key", "") or "")
+                .strip()
+                .lower()
+                .replace(" ", "-")
+            )
+            if provider_key and provider_key in seen_slugs:
+                continue
+            slug = provider_key or custom_provider_slug(display_name)
             if slug not in groups:
                 groups[slug] = {
                     "name": display_name,
                     "api_url": api_url,
                     "models": [],
                 }
-            default_model = (entry.get("model") or "").strip()
+            default_model = (
+                entry.get("model") or entry.get("default_model") or ""
+            ).strip()
             if default_model and default_model not in groups[slug]["models"]:
                 groups[slug]["models"].append(default_model)
+            cfg_models = entry.get("models", [])
+            if isinstance(cfg_models, list):
+                for model_id in cfg_models:
+                    model_id = str(model_id or "").strip()
+                    if model_id and model_id not in groups[slug]["models"]:
+                        groups[slug]["models"].append(model_id)
 
         for slug, grp in groups.items():
             if slug in seen_slugs:
