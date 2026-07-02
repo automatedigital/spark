@@ -139,7 +139,7 @@ function maskKey(key: string): string {
 
 /** Merge the chosen provider + default model into the saved config. */
 async function persistModelConfig(
-  provider: ProviderId,
+  provider: string,
   defaultModel: string,
   extra: Record<string, unknown> = {},
 ) {
@@ -156,6 +156,61 @@ async function persistModelConfig(
       // setSmartModel is best-effort; config already holds the model
     }
   }
+}
+
+function customProviderKey(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    const slug = url.hostname
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+    return `custom-${slug || "endpoint"}`;
+  } catch {
+    return "custom-endpoint";
+  }
+}
+
+async function persistCustomProviderConfig(
+  baseUrl: string,
+  modelName: string,
+  apiKeyEnv?: string,
+) {
+  const current = (await api.getConfig()) as Record<string, unknown>;
+  const providers = {
+    ...(((current.providers as Record<string, unknown>) ?? {}) as Record<
+      string,
+      unknown
+    >),
+  };
+  const key = customProviderKey(baseUrl);
+  let host = "endpoint";
+  try {
+    host = new URL(baseUrl).host || host;
+  } catch {
+    /* keep generic host label */
+  }
+  const entry: Record<string, unknown> = {
+    name: `Custom (${host})`,
+    api: baseUrl,
+    transport: "openai_chat",
+    default_model: modelName,
+    models: [modelName],
+  };
+  if (apiKeyEnv) entry.key_env = apiKeyEnv;
+  providers[key] = entry;
+  const model = { ...((current.model as Record<string, unknown>) ?? {}) };
+  model.provider = key;
+  model.model = modelName;
+  delete model.base_url;
+  delete model.api_key;
+  await api.saveConfig({ ...current, providers, model });
+  try {
+    await api.setSmartModel(modelName);
+  } catch {
+    // setSmartModel is best-effort; config already holds the model
+  }
+  return key;
 }
 
 function StepDots({ step }: { step: number }) {
@@ -618,6 +673,10 @@ export function OnboardingWizard({ onComplete }: Props) {
       }
       normalizedBaseUrl = urlCheck.value;
     }
+    if (isCustom && !baseUrl.trim()) {
+      setError("Please enter the endpoint base URL.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -625,9 +684,15 @@ export function OnboardingWizard({ onComplete }: Props) {
         await api.setEnvVar(provider.envVar, key);
       }
       const modelName = modelCheck.value;
-      const extra: Record<string, unknown> = {};
-      if (isCustom) extra.base_url = normalizedBaseUrl;
-      await persistModelConfig(provider.id, modelName, extra);
+      if (isCustom) {
+        await persistCustomProviderConfig(
+          normalizedBaseUrl,
+          modelName,
+          key && provider.envVar ? provider.envVar : undefined,
+        );
+      } else {
+        await persistModelConfig(provider.id, modelName);
+      }
       finish(
         key
           ? `${provider.name} · key ${maskKey(key)}`

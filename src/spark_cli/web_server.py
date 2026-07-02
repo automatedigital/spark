@@ -2796,6 +2796,57 @@ _PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
 _STRICT_MODEL_PROVIDERS = frozenset({"openai-codex", "qwen-oauth"})
 
 
+def _normalize_config_provider_key(value: str) -> str:
+    return str(value or "").strip().lower().replace(" ", "-")
+
+
+def _models_from_provider_config(provider: str) -> tuple[list, str]:
+    """Return ``(models, base_url)`` for a provider defined in config.yaml."""
+    requested = _normalize_config_provider_key(provider)
+    if not requested:
+        return [], ""
+    requested_no_custom = requested
+    if requested.startswith("custom:"):
+        requested_no_custom = requested.removeprefix("custom:")
+    try:
+        cfg = load_config()
+    except Exception:
+        return [], ""
+    providers_cfg = cfg.get("providers")
+    if not isinstance(providers_cfg, dict):
+        return [], ""
+
+    for key, entry in providers_cfg.items():
+        if not isinstance(entry, dict):
+            continue
+        key_norm = _normalize_config_provider_key(str(key))
+        display = _normalize_config_provider_key(str(entry.get("name", "") or ""))
+        candidates = {key_norm, f"custom:{key_norm}"}
+        if display:
+            candidates.update({display, f"custom:{display}"})
+        if (
+            requested not in candidates
+            and requested_no_custom not in {key_norm, display}
+        ):
+            continue
+
+        models: list[str] = []
+        default_model = str(entry.get("default_model", "") or "").strip()
+        if default_model:
+            models.append(default_model)
+        cfg_models = entry.get("models", [])
+        if isinstance(cfg_models, list):
+            for model_id in cfg_models:
+                model_id = str(model_id or "").strip()
+                if model_id and model_id not in models:
+                    models.append(model_id)
+        base_url = str(
+            entry.get("api") or entry.get("url") or entry.get("base_url") or ""
+        ).strip()
+        return models, base_url
+    return [], ""
+
+
 def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, bool]:
     """Resolve the model catalog for ``provider`` (live where possible).
 
@@ -2807,6 +2858,12 @@ def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, b
     """
     provider = (provider or "").strip()
     base_url = (base_url or "").strip()
+
+    config_models, config_base_url = _models_from_provider_config(provider)
+    if config_models:
+        return config_models, False
+    if not base_url and config_base_url:
+        base_url = config_base_url
 
     if provider == "openai-codex":
         try:

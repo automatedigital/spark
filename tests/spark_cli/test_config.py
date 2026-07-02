@@ -23,6 +23,7 @@ from spark_cli.config import (
     save_http_api_env_block,
     sanitize_env_file,
     _sanitize_env_lines,
+    validate_config_structure,
 )
 from spark_cli.default_soul import read_default_soul_md
 
@@ -672,6 +673,49 @@ class TestCustomProviderCompatibility:
         assert len(compatible) == 3
         models = [e.get("model") for e in compatible]
         assert models == ["qwen3-coder", "glm-5.1", "kimi-k2.5"]
+
+    def test_providers_dict_preserves_models_list(self):
+        compatible = get_compatible_custom_providers(
+            {
+                "providers": {
+                    "local-ollama": {
+                        "name": "Local Ollama",
+                        "api": "http://localhost:11434/v1",
+                        "default_model": "llama3",
+                        "models": ["llama3", "qwen3-coder"],
+                    }
+                }
+            }
+        )
+
+        assert compatible == [
+            {
+                "name": "Local Ollama",
+                "base_url": "http://localhost:11434/v1",
+                "provider_key": "local-ollama",
+                "model": "llama3",
+                "models": ["llama3", "qwen3-coder"],
+            }
+        ]
+
+    def test_validate_providers_dict_reports_malformed_entries(self):
+        issues = validate_config_structure(
+            {
+                "providers": {
+                    "bad": {
+                        "key_env": "not valid",
+                        "transport": "soap",
+                        "models": "llama3",
+                    }
+                }
+            }
+        )
+
+        messages = [issue.message for issue in issues]
+        assert any("providers.bad is missing an api/url/base_url endpoint" in m for m in messages)
+        assert any("providers.bad.key_env is not a valid" in m for m in messages)
+        assert any("providers.bad.transport has unsupported value" in m for m in messages)
+        assert any("providers.bad.models should be a list" in m for m in messages)
 
 
 class TestInterimAssistantMessageConfig:

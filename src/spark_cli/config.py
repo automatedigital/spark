@@ -1815,7 +1815,7 @@ def _normalize_custom_provider_entry(
         normalized["model"] = model_name.strip()
 
     models = entry.get("models")
-    if isinstance(models, dict) and models:
+    if isinstance(models, (dict, list)) and models:
         normalized["models"] = models
 
     context_length = entry.get("context_length")
@@ -1935,8 +1935,13 @@ _KNOWN_ROOT_KEYS = {
 _VALID_CUSTOM_PROVIDER_FIELDS = {
     "name",
     "base_url",
+    "url",
+    "api",
     "api_key",
+    "key_env",
     "api_mode",
+    "transport",
+    "default_model",
     "model",
     "models",
     "context_length",
@@ -1945,6 +1950,13 @@ _VALID_CUSTOM_PROVIDER_FIELDS = {
 
 # Fields that look like they should be inside custom_providers, not at root
 _CUSTOM_PROVIDER_LIKE_FIELDS = {"base_url", "api_key", "rate_limit_delay", "api_mode"}
+_VALID_PROVIDER_TRANSPORTS = {
+    "openai_chat",
+    "chat_completions",
+    "anthropic_messages",
+    "codex_responses",
+    "responses",
+}
 
 
 @dataclass
@@ -1979,6 +1991,85 @@ def validate_config_structure(
             ]
 
     issues: List[ConfigIssue] = []
+
+    # ── providers must be a keyed dict of OpenAI-compatible endpoints ─────
+    providers_cfg = config.get("providers")
+    if providers_cfg is not None:
+        if not isinstance(providers_cfg, dict):
+            issues.append(
+                ConfigIssue(
+                    "error",
+                    "providers should be a dict keyed by provider id, "
+                    f"got {type(providers_cfg).__name__}",
+                    "Change to:\n"
+                    "  providers:\n"
+                    "    local-llm:\n"
+                    "      api: http://localhost:11434/v1\n"
+                    "      default_model: llama3",
+                )
+            )
+        else:
+            for provider_key, entry in providers_cfg.items():
+                label = f"providers.{provider_key}"
+                if not isinstance(entry, dict):
+                    issues.append(
+                        ConfigIssue(
+                            "warning",
+                            f"{label} is not a dict (got {type(entry).__name__})",
+                            "Each providers entry should contain at minimum an "
+                            "api/base_url and optional models.",
+                        )
+                    )
+                    continue
+                api_url = (
+                    entry.get("api") or entry.get("url") or entry.get("base_url") or ""
+                )
+                if not isinstance(api_url, str) or not api_url.strip():
+                    issues.append(
+                        ConfigIssue(
+                            "warning",
+                            f"{label} is missing an api/url/base_url endpoint",
+                            "Add an OpenAI-compatible endpoint, e.g. api: http://localhost:11434/v1",
+                        )
+                    )
+                key_env = entry.get("key_env")
+                if key_env is not None and (
+                    not isinstance(key_env, str)
+                    or not _ENV_VAR_NAME_RE.match(key_env.strip())
+                ):
+                    issues.append(
+                        ConfigIssue(
+                            "warning",
+                            f"{label}.key_env is not a valid environment variable name",
+                            "Use only letters, numbers, and underscores, starting with a letter or underscore.",
+                        )
+                    )
+                transport = entry.get("transport", entry.get("api_mode"))
+                if transport is not None:
+                    transport_value = str(transport or "").strip().lower()
+                    if transport_value and transport_value not in _VALID_PROVIDER_TRANSPORTS:
+                        issues.append(
+                            ConfigIssue(
+                                "warning",
+                                f"{label}.transport has unsupported value '{transport}'",
+                                "Use openai_chat, chat_completions, "
+                                "anthropic_messages, or codex_responses.",
+                            )
+                        )
+                models = entry.get("models")
+                if models is not None:
+                    valid_models = isinstance(models, list) and all(
+                        isinstance(m, str) and m.strip() for m in models
+                    )
+                    valid_model_meta = isinstance(models, dict)
+                    if not (valid_models or valid_model_meta):
+                        issues.append(
+                            ConfigIssue(
+                                "warning",
+                                f"{label}.models should be a list of model ids",
+                                "Example: models: [llama3, qwen3-coder]",
+                            )
+                        )
 
     # ── custom_providers must be a list, not a dict ──────────────────────
     cp = config.get("custom_providers")

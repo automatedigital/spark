@@ -243,6 +243,35 @@ class TestWebServerEndpoints:
         assert "http:// or https://" in resp.text
         assert load_config()["model"]["provider"] == "custom"
 
+    def test_available_models_config_defined_provider(self):
+        """Config-defined providers expose their curated model list to the dashboard."""
+        import spark_cli.web_server as ws
+
+        with patch.object(
+            ws,
+            "load_config",
+            return_value={
+                "providers": {
+                    "local-ollama": {
+                        "name": "Local Ollama",
+                        "api": "http://localhost:11434/v1",
+                        "default_model": "llama3",
+                        "models": ["llama3", "qwen3-coder"],
+                    }
+                }
+            },
+        ):
+            resp = self.client.get(
+                "/api/model/available", params={"provider": "local-ollama"}
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provider"] == "local-ollama"
+        assert data["models"] == ["llama3", "qwen3-coder"]
+        assert data["live"] is False
+        assert data["strict"] is False
+
     def test_mac_update_installer_script_stages_and_installs_app(self, tmp_path):
         import spark_cli.web_server as ws
 
