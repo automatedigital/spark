@@ -5,13 +5,16 @@ message deduplication, text batch aggregation, markdown stripping,
 and thread participation tracking.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from gateway.platforms.base import MessageEvent
@@ -39,7 +42,7 @@ class MessageDeduplicator:
     """
 
     def __init__(self, max_size: int = 2000, ttl_seconds: float = 300):
-        self._seen: Dict[str, float] = {}
+        self._seen: dict[str, float] = {}
         self._max_size = max_size
         self._ttl = ttl_seconds
 
@@ -86,24 +89,40 @@ class TextBatchAggregator:
 
     def __init__(
         self,
-        handler,
+        handler: Callable[[MessageEvent], Awaitable[None]],
         *,
         batch_delay: float = 0.6,
         split_delay: float = 2.0,
         split_threshold: int = 4000,
+        pending: dict[str, MessageEvent] | None = None,
+        pending_tasks: dict[str, asyncio.Task] | None = None,
+        log_prefix: str = "TextBatchAggregator",
+        catch_handler_errors: bool = False,
     ):
         self._handler = handler
         self._batch_delay = batch_delay
         self._split_delay = split_delay
         self._split_threshold = split_threshold
-        self._pending: Dict[str, "MessageEvent"] = {}
-        self._pending_tasks: Dict[str, asyncio.Task] = {}
+        self._pending: dict[str, MessageEvent] = pending if pending is not None else {}
+        self._pending_tasks: dict[str, asyncio.Task] = (
+            pending_tasks if pending_tasks is not None else {}
+        )
+        self._log_prefix = log_prefix
+        self._catch_handler_errors = catch_handler_errors
+
+    @property
+    def pending_events(self) -> dict[str, MessageEvent]:
+        return self._pending
+
+    @property
+    def pending_tasks(self) -> dict[str, asyncio.Task]:
+        return self._pending_tasks
 
     def is_enabled(self) -> bool:
         """Return True if batching is active (delay > 0)."""
         return self._batch_delay > 0
 
-    def enqueue(self, event: "MessageEvent", key: str) -> None:
+    def enqueue(self, event: MessageEvent, key: str) -> None:
         """Add *event* to the pending batch for *key*."""
         chunk_len = len(event.text or "")
         existing = self._pending.get(key)
@@ -111,34 +130,52 @@ class TextBatchAggregator:
             event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
             self._pending[key] = event
         else:
-            existing.text = f"{existing.text}\n{event.text}"
+            if event.text:
+                existing.text = (
+                    f"{existing.text}\n{event.text}" if existing.text else event.text
+                )
             existing._last_chunk_len = chunk_len  # type: ignore[attr-defined]
+            if event.media_urls:
+                existing.media_urls.extend(event.media_urls)
+                existing.media_types.extend(event.media_types)
 
         # Cancel prior flush timer, start a new one
         prior = self._pending_tasks.get(key)
         if prior and not prior.done():
             prior.cancel()
-        self._pending_tasks[key] = asyncio.create_task(self._flush(key))
+        self._pending_tasks[key] = asyncio.create_task(self.flush(key))
 
-    async def _flush(self, key: str) -> None:
+    async def flush(self, key: str) -> None:
         """Wait then dispatch the batched event for *key*."""
-        current_task = self._pending_tasks.get(key)
-        pending = self._pending.get(key)
-        last_len = getattr(pending, "_last_chunk_len", 0) if pending else 0
+        current_task = asyncio.current_task()
+        try:
+            pending = self._pending.get(key)
+            last_len = getattr(pending, "_last_chunk_len", 0) if pending else 0
 
-        # Use longer delay when the last chunk looks like a split message
-        delay = self._split_delay if last_len >= self._split_threshold else self._batch_delay
-        await asyncio.sleep(delay)
+            # Use longer delay when the last chunk looks like a split message.
+            delay = (
+                self._split_delay
+                if last_len >= self._split_threshold
+                else self._batch_delay
+            )
+            await asyncio.sleep(delay)
 
-        event = self._pending.pop(key, None)
-        if event:
-            try:
-                await self._handler(event)
-            except Exception:
-                logger.exception("[TextBatchAggregator] Error dispatching batched event for %s", key)
-
-        if self._pending_tasks.get(key) is current_task:
-            self._pending_tasks.pop(key, None)
+            event = self._pending.pop(key, None)
+            if event:
+                if self._catch_handler_errors:
+                    try:
+                        await self._handler(event)
+                    except Exception:
+                        logger.exception(
+                            "[%s] Error dispatching batched event for %s",
+                            self._log_prefix,
+                            key,
+                        )
+                else:
+                    await self._handler(event)
+        finally:
+            if self._pending_tasks.get(key) is current_task:
+                self._pending_tasks.pop(key, None)
 
     def cancel_all(self) -> None:
         """Cancel all pending flush tasks."""
