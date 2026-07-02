@@ -20,6 +20,7 @@ import {
 import hljs from "highlight.js";
 import { api, workspaceRawFileUrl } from "@/lib/api";
 import type { WorkspaceFileNode, WorkspaceProject } from "@/lib/api";
+import { isMiddleClickCloseIntent } from "@/lib/panelTabs";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -481,6 +482,7 @@ function RightPanelSwitcher({
   subagentCount,
   subagentsEnabled,
   onSelect,
+  onCloseActive,
 }: {
   slug: string | null;
   isProject: boolean;
@@ -489,10 +491,12 @@ function RightPanelSwitcher({
   subagentCount: number;
   subagentsEnabled: boolean;
   onSelect: (tab: RightTab) => void;
+  onCloseActive: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [gitTotals, setGitTotals] = useState<{ adds: number; dels: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const suppressNextClickRef = useRef(false);
   const tabs = availableRightTabs(Boolean(slug), isProject, hasSession, subagentsEnabled);
   const active = tabs.find((m) => m.id === activeTab) ?? tabs[0] ?? rightTabMeta(activeTab);
 
@@ -516,13 +520,34 @@ function RightPanelSwitcher({
     return () => { cancelled = true; };
   }, [isProject, open, slug]);
 
+  const closeFromMiddleClick = (event: React.MouseEvent, tab: RightTab) => {
+    if (!isMiddleClickCloseIntent(event.button, tab, activeTab)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    onCloseActive();
+    setOpen(false);
+    return true;
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (suppressNextClickRef.current) {
+            suppressNextClickRef.current = false;
+            return;
+          }
+          setOpen((v) => !v);
+        }}
+        onMouseDown={(event) => {
+          if (!isMiddleClickCloseIntent(event.button, activeTab, activeTab)) return;
+          suppressNextClickRef.current = true;
+          closeFromMiddleClick(event, activeTab);
+        }}
+        onAuxClick={(event) => { closeFromMiddleClick(event, activeTab); }}
         className="flex h-7 items-center gap-1.5 rounded px-2 text-[11px] font-medium text-foreground transition hover:bg-secondary"
       >
         <active.Icon className="h-3.5 w-3.5" />
@@ -539,7 +564,20 @@ function RightPanelSwitcher({
               key={tab.id}
               type="button"
               role="menuitem"
-              onClick={() => { onSelect(tab.id); setOpen(false); }}
+              onClick={() => {
+                if (suppressNextClickRef.current) {
+                  suppressNextClickRef.current = false;
+                  return;
+                }
+                onSelect(tab.id);
+                setOpen(false);
+              }}
+              onMouseDown={(event) => {
+                if (!isMiddleClickCloseIntent(event.button, tab.id, activeTab)) return;
+                suppressNextClickRef.current = true;
+                closeFromMiddleClick(event, tab.id);
+              }}
+              onAuxClick={(event) => { closeFromMiddleClick(event, tab.id); }}
               className={cn(
                 "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] transition",
                 tab.id === activeTab
@@ -605,6 +643,7 @@ function WorkspaceRightPanel({
   onCloseSubagentDetail: () => void;
 }) {
   const [selectedFile, setSelectedFile] = useState<WorkspaceFileNode | null>(null);
+  const suppressRailClickRef = useRef<RightTab | null>(null);
   const tabs = availableRightTabs(Boolean(slug), isProject, Boolean(sessionId), subagentsEnabled);
 
   // Reset selected file when project changes
@@ -633,6 +672,7 @@ function WorkspaceRightPanel({
               subagentCount={subagents.length}
               subagentsEnabled={subagentsEnabled}
               onSelect={onSelectTab}
+              onCloseActive={onToggle}
             />
           ) : (
             <div className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-foreground">
@@ -667,7 +707,27 @@ function WorkspaceRightPanel({
               key={id}
               type="button"
               title={label}
-              onClick={() => { onSelectTab(id); onToggle(); }}
+              onClick={() => {
+                if (suppressRailClickRef.current === id) {
+                  suppressRailClickRef.current = null;
+                  return;
+                }
+                onSelectTab(id);
+                onToggle();
+              }}
+              onMouseDown={(event) => {
+                if (!isMiddleClickCloseIntent(event.button, id, activeTab)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                suppressRailClickRef.current = id;
+                if (open) onToggle();
+              }}
+              onAuxClick={(event) => {
+                if (!isMiddleClickCloseIntent(event.button, id, activeTab)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (open) onToggle();
+              }}
               className={cn("relative rounded p-1.5 transition", activeTab === id ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground")}
             >
               <Icon className="h-3.5 w-3.5" />
