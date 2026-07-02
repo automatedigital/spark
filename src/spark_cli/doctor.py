@@ -5,19 +5,25 @@ Diagnoses issues with Spark Agent setup.
 """
 
 import os
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
-from spark_cli.config import get_project_root, get_spark_home, get_env_path
-from core.spark_constants import display_spark_home
+from dotenv import load_dotenv
+
+from core.spark_constants import OPENROUTER_MODELS_URL, display_spark_home
+from core.spark_constants import is_termux as _is_termux
+from spark_cli.colors import Colors, color
+from spark_cli.config import get_env_path, get_project_root, get_spark_home
 
 PROJECT_ROOT = get_project_root()
 SPARK_HOME = get_spark_home()
 _DHH = display_spark_home()  # user-facing display path (e.g. ~/.spark or ~/.spark/profiles/coder)
 
 # Load environment variables from ~/.spark/.env so API key checks work
-from dotenv import load_dotenv
 _env_path = get_env_path()
 if _env_path.exists():
     try:
@@ -27,8 +33,18 @@ if _env_path.exists():
 # Also try project .env as dev fallback
 load_dotenv(PROJECT_ROOT / ".env", override=False, encoding="utf-8")
 
-from spark_cli.colors import Colors, color
-from core.spark_constants import OPENROUTER_MODELS_URL
+
+@dataclass(frozen=True)
+class DoctorBlocker:
+    """Actionable per-integration finding shown by ``spark doctor``."""
+
+    area: str
+    name: str
+    problem: str
+    fix: str
+
+    def summary(self) -> str:
+        return f"[{self.area}] {self.name}: {self.problem} - {self.fix}"
 
 
 _PROVIDER_ENV_HINTS = (
@@ -52,9 +68,6 @@ _PROVIDER_ENV_HINTS = (
     "OPENCODE_GO_API_KEY",
     "XIAOMI_API_KEY",
 )
-
-
-from core.spark_constants import is_termux as _is_termux
 
 
 def _python_install_cmd() -> str:
@@ -123,6 +136,474 @@ def check_fail(text: str, detail: str = ""):
 
 def check_info(text: str):
     print(f"    {color('→', Colors.CYAN)} {text}")
+
+
+def _shorten(text: str, limit: int = 180) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _load_doctor_config() -> dict[str, Any]:
+    """Load the profile config file without mutating it or requiring setup."""
+    config_path = SPARK_HOME / "config.yaml"
+    if not config_path.exists():
+        return {}
+    try:
+        import yaml
+
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _load_doctor_env() -> dict[str, str]:
+    """Read env values from the process and active profile .env."""
+    values: dict[str, str] = {}
+    env_path = SPARK_HOME / ".env"
+    if env_path.exists():
+        try:
+            for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if not key:
+                    continue
+                values[key] = value.strip().strip("\"'")
+        except Exception:
+            pass
+    values.update(os.environ)
+    return values
+
+
+def _doctor_env_value(key: str, env_values: dict[str, str] | None = None) -> str:
+    values = env_values if env_values is not None else _load_doctor_env()
+    return str(values.get(key) or "").strip()
+
+
+def _is_truthy_config(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _connector_configured_for_doctor(connector: Any, status: Any, env_values: dict[str, str]) -> bool:
+    """Return True when a connector looks intentionally configured by the user."""
+    if getattr(status, "state", None) and str(getattr(status.state, "value", status.state)) == "error":
+        return True
+    extra = getattr(status, "extra", {}) or {}
+    if extra.get("oauth_configured"):
+        return True
+    for name in extra.get("env_vars") or ():
+        if _doctor_env_value(str(name), env_values):
+            return True
+    for path in extra.get("config_paths") or ():
+        try:
+            if Path(str(path)).expanduser().exists():
+                return True
+        except Exception:
+            continue
+    meta = getattr(connector, "read_meta", None)
+    if callable(meta):
+        try:
+            return bool(meta())
+        except Exception:
+            return False
+    return False
+
+
+def _connector_fix(connector: Any, status: Any) -> str:
+    extra = getattr(status, "extra", {}) or {}
+    setup_steps = [str(s) for s in extra.get("setup_steps") or [] if str(s).strip()]
+    if setup_steps:
+        return _shorten(" ".join(setup_steps), 220)
+    primary_env = extra.get("primary_env_var")
+    if primary_env:
+        return f"set {primary_env} in {_DHH}/.env or reconnect from the Connectors tab"
+    cli = extra.get("cli")
+    if cli:
+        return f"install/authenticate `{cli}` and refresh connector status"
+    if getattr(connector, "docs_url", ""):
+        return f"open {connector.docs_url} and complete setup"
+    return "open the Connectors tab or run the relevant setup command"
+
+
+def _collect_connector_blockers(env_values: dict[str, str]) -> list[DoctorBlocker]:
+    blockers: list[DoctorBlocker] = []
+    try:
+        from tools.connectors import list_connectors
+        from tools.connectors.base import ConnectorState
+    except Exception as exc:
+        return [
+            DoctorBlocker(
+                "connector",
+                "registry",
+                f"could not load connector registry: {_shorten(exc)}",
+                "check connector optional dependencies and rerun spark doctor",
+            )
+        ]
+
+    for connector in list_connectors():
+        name = getattr(connector, "name", "") or getattr(connector, "id", "unknown")
+        try:
+            status = connector.status()
+        except Exception as exc:
+            blockers.append(
+                DoctorBlocker(
+                    "connector",
+                    str(name),
+                    f"status probe crashed: {_shorten(exc)}",
+                    "fix the connector status probe or disable the connector",
+                )
+            )
+            continue
+
+        state = getattr(status, "state", None)
+        if state is ConnectorState.CONNECTED:
+            continue
+        if not _connector_configured_for_doctor(connector, status, env_values):
+            continue
+
+        detail = _shorten(getattr(status, "detail", "") or getattr(state, "value", state))
+        if state is ConnectorState.DISCONNECTED:
+            problem = detail or "configured but disconnected"
+        elif state is ConnectorState.NOT_INSTALLED:
+            problem = detail or "required dependency is not installed"
+        else:
+            problem = detail or "status probe reported an error"
+        blockers.append(DoctorBlocker("connector", str(name), problem, _connector_fix(connector, status)))
+    return blockers
+
+
+def _mcp_command_missing(command: str, env: dict[str, str]) -> str | None:
+    command = os.path.expanduser(str(command).strip())
+    if not command:
+        return "empty command"
+    if os.sep in command:
+        return None if os.path.isfile(command) and os.access(command, os.X_OK) else command
+    if shutil.which(command, path=env.get("PATH")):
+        return None
+    return command
+
+
+def _collect_mcp_blockers(config: dict[str, Any]) -> list[DoctorBlocker]:
+    blockers: list[DoctorBlocker] = []
+    servers = config.get("mcp_servers")
+    if not servers:
+        return blockers
+    if not isinstance(servers, dict):
+        return [
+            DoctorBlocker(
+                "mcp",
+                "config",
+                "mcp_servers must be a mapping",
+                f"edit {_DHH}/config.yaml so mcp_servers is a server-name map",
+            )
+        ]
+
+    try:
+        from tools.mcp_tool import _MCP_AVAILABLE, _MCP_HTTP_AVAILABLE
+    except Exception:
+        _MCP_AVAILABLE = False
+        _MCP_HTTP_AVAILABLE = False
+
+    for name, raw_cfg in servers.items():
+        server_name = str(name)
+        if not isinstance(raw_cfg, dict):
+            blockers.append(
+                DoctorBlocker(
+                    "mcp",
+                    server_name,
+                    "server config must be a mapping",
+                    f"edit mcp_servers.{server_name} in {_DHH}/config.yaml",
+                )
+            )
+            continue
+
+        enabled = _is_truthy_config(raw_cfg.get("enabled"), default=True)
+        if not enabled:
+            blockers.append(
+                DoctorBlocker(
+                    "mcp",
+                    server_name,
+                    "disabled in config",
+                    f"set mcp_servers.{server_name}.enabled to true when this server should be available",
+                )
+            )
+            continue
+
+        if not _MCP_AVAILABLE:
+            blockers.append(
+                DoctorBlocker(
+                    "mcp",
+                    server_name,
+                    "MCP SDK is not installed",
+                    "install the optional MCP dependency for this Spark environment",
+                )
+            )
+            continue
+
+        command = raw_cfg.get("command")
+        url = raw_cfg.get("url")
+        if not command and not url:
+            blockers.append(
+                DoctorBlocker(
+                    "mcp",
+                    server_name,
+                    "missing command or url",
+                    f"add mcp_servers.{server_name}.command or .url in {_DHH}/config.yaml",
+                )
+            )
+            continue
+
+        if url and not _MCP_HTTP_AVAILABLE:
+            blockers.append(
+                DoctorBlocker(
+                    "mcp",
+                    server_name,
+                    "HTTP MCP transport is unavailable",
+                    "upgrade/install the MCP SDK with streamable HTTP support",
+                )
+            )
+
+        if command:
+            env = dict(os.environ)
+            user_env = raw_cfg.get("env")
+            if isinstance(user_env, dict):
+                env.update({str(k): str(v) for k, v in user_env.items()})
+            missing = _mcp_command_missing(str(command), env)
+            if missing:
+                fix = f"install `{missing}` or set mcp_servers.{server_name}.command to an absolute executable path"
+                blockers.append(DoctorBlocker("mcp", server_name, f"missing executable `{missing}`", fix))
+    return blockers
+
+
+def _platform_config_value(platform_cfg: Any, env_key: str) -> str:
+    key = env_key.lower()
+    extra = getattr(platform_cfg, "extra", {}) or {}
+    candidates = [
+        key,
+        key.split("_", 1)[-1],
+        key.rsplit("_", 1)[-1],
+        key.replace("_", ""),
+    ]
+    if key.endswith(("bot_token", "access_token", "_token")) and getattr(platform_cfg, "token", None):
+        return str(platform_cfg.token)
+    if key.endswith(("api_key", "auth_token")) and getattr(platform_cfg, "api_key", None):
+        return str(platform_cfg.api_key)
+    for candidate in candidates:
+        if candidate in extra and extra[candidate]:
+            return str(extra[candidate])
+    return ""
+
+
+def _collect_gateway_blockers(env_values: dict[str, str]) -> list[DoctorBlocker]:
+    blockers: list[DoctorBlocker] = []
+    try:
+        from gateway.config import Platform, load_gateway_config
+        from gateway.platform_fields import all_platform_specs
+    except Exception as exc:
+        return [
+            DoctorBlocker(
+                "gateway",
+                "config",
+                f"could not load gateway metadata: {_shorten(exc)}",
+                "check gateway imports and rerun spark doctor",
+            )
+        ]
+
+    try:
+        gateway_config = load_gateway_config()
+    except Exception as exc:
+        return [
+            DoctorBlocker(
+                "gateway",
+                "config",
+                f"could not load gateway config: {_shorten(exc)}",
+                f"fix {_DHH}/config.yaml or {_DHH}/.env",
+            )
+        ]
+
+    for spec in all_platform_specs():
+        try:
+            platform = Platform(spec.id)
+        except Exception:
+            continue
+        platform_cfg = gateway_config.platforms.get(platform)
+        enabled_env = _doctor_env_value(spec.enabled_env, env_values)
+        configured = bool(platform_cfg and platform_cfg.enabled) or _is_truthy_config(enabled_env)
+        if not configured:
+            continue
+        for field in spec.required:
+            env_value = _doctor_env_value(field.key, env_values)
+            cfg_value = _platform_config_value(platform_cfg, field.key) if platform_cfg else ""
+            if env_value or cfg_value:
+                continue
+            blockers.append(
+                DoctorBlocker(
+                    "gateway",
+                    spec.name,
+                    f"missing required {field.key}",
+                    f"run `spark gateway setup` or set {field.key} in {_DHH}/.env",
+                )
+            )
+    return blockers
+
+
+def _configured_disabled_skill_names(config: dict[str, Any]) -> set[str]:
+    skills_cfg = config.get("skills") if isinstance(config.get("skills"), dict) else {}
+    disabled: set[str] = set()
+    raw_disabled = skills_cfg.get("disabled")
+    if isinstance(raw_disabled, str):
+        disabled.add(raw_disabled)
+    elif isinstance(raw_disabled, list):
+        disabled.update(str(item) for item in raw_disabled if str(item).strip())
+    platform_disabled = skills_cfg.get("platform_disabled")
+    if isinstance(platform_disabled, dict):
+        for names in platform_disabled.values():
+            if isinstance(names, str):
+                disabled.add(names)
+            elif isinstance(names, list):
+                disabled.update(str(item) for item in names if str(item).strip())
+    return {name.strip() for name in disabled if name.strip()}
+
+
+def _configured_skill_dirs(config: dict[str, Any]) -> tuple[list[Path], list[DoctorBlocker]]:
+    blockers: list[DoctorBlocker] = []
+    dirs = [SPARK_HOME / "skills"]
+    skills_cfg = config.get("skills") if isinstance(config.get("skills"), dict) else {}
+    external_dirs = skills_cfg.get("external_dirs") if isinstance(skills_cfg, dict) else None
+    if isinstance(external_dirs, str):
+        external_dirs = [external_dirs]
+    if isinstance(external_dirs, list):
+        for raw_dir in external_dirs:
+            expanded = Path(os.path.expandvars(os.path.expanduser(str(raw_dir)))).resolve()
+            if expanded.exists() and expanded.is_dir():
+                dirs.append(expanded)
+            else:
+                blockers.append(
+                    DoctorBlocker(
+                        "skill",
+                        str(raw_dir),
+                        "configured external skill directory is missing",
+                        f"create the directory or remove it from skills.external_dirs in {_DHH}/config.yaml",
+                    )
+                )
+    return dirs, blockers
+
+
+def _collect_skill_blockers(config: dict[str, Any]) -> list[DoctorBlocker]:
+    blockers: list[DoctorBlocker] = []
+    dirs, dir_blockers = _configured_skill_dirs(config)
+    blockers.extend(dir_blockers)
+
+    installed_names: set[str] = set()
+    for skills_dir in dirs:
+        if not skills_dir.exists():
+            continue
+        for skill_md in skills_dir.rglob("SKILL.md"):
+            if any(part in {".git", ".github", ".hub"} for part in skill_md.parts):
+                continue
+            try:
+                content = skill_md.read_text(encoding="utf-8")
+            except Exception as exc:
+                blockers.append(
+                    DoctorBlocker(
+                        "skill",
+                        str(skill_md),
+                        f"unreadable SKILL.md: {_shorten(exc)}",
+                        "fix file permissions or remove the broken skill",
+                    )
+                )
+                continue
+            try:
+                from agent.skill_utils import parse_frontmatter
+
+                frontmatter, _ = parse_frontmatter(content)
+            except Exception as exc:
+                blockers.append(
+                    DoctorBlocker(
+                        "skill",
+                        str(skill_md),
+                        f"invalid frontmatter: {_shorten(exc)}",
+                        "fix the SKILL.md YAML frontmatter",
+                    )
+                )
+                continue
+            name = str(frontmatter.get("name") or skill_md.parent.name).strip()
+            if name:
+                installed_names.add(name)
+
+        for child in skills_dir.iterdir():
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            if (child / "SKILL.md").exists():
+                continue
+            if any(grandchild.is_dir() and (grandchild / "SKILL.md").exists() for grandchild in child.iterdir()):
+                continue
+            if any(child.iterdir()):
+                blockers.append(
+                    DoctorBlocker(
+                        "skill",
+                        child.name,
+                        "skill directory is missing SKILL.md",
+                        f"add {child / 'SKILL.md'} or remove the incomplete skill directory",
+                    )
+                )
+
+    for name in sorted(_configured_disabled_skill_names(config)):
+        if name in installed_names:
+            problem = "disabled in skills config"
+            fix = "run `spark skills` to re-enable it or leave it disabled intentionally"
+        else:
+            problem = "listed in skills config but not installed"
+            fix = f"install the skill or remove `{name}` from {_DHH}/config.yaml"
+        blockers.append(DoctorBlocker("skill", name, problem, fix))
+    return blockers
+
+
+def _collect_integration_blockers() -> list[DoctorBlocker]:
+    config = _load_doctor_config()
+    env_values = _load_doctor_env()
+    blockers: list[DoctorBlocker] = []
+    for collector in (
+        lambda: _collect_connector_blockers(env_values),
+        lambda: _collect_mcp_blockers(config),
+        lambda: _collect_gateway_blockers(env_values),
+        lambda: _collect_skill_blockers(config),
+    ):
+        try:
+            blockers.extend(collector())
+        except Exception as exc:
+            blockers.append(
+                DoctorBlocker(
+                    "doctor",
+                    "integration probe",
+                    f"probe collector failed: {_shorten(exc)}",
+                    "fix the collector error and rerun spark doctor",
+                )
+            )
+    return blockers
+
+
+def _render_integration_blockers(issues: list[str]) -> None:
+    print()
+    print(color("◆ Integration Blockers", Colors.CYAN, Colors.BOLD))
+    blockers = _collect_integration_blockers()
+    if not blockers:
+        check_ok("No configured integration blockers found")
+        return
+    for blocker in blockers:
+        check_warn(f"[{blocker.area}] {blocker.name}: {blocker.problem}", f"- {blocker.fix}")
+        issues.append(blocker.summary())
 
 
 def _check_headless_browser_deps() -> None:
@@ -208,22 +689,22 @@ def run_doctor(args):
     # Doctor runs from the interactive CLI, so CLI-gated tool availability
     # checks (like cronjob management) should see the same context as `spark`.
     os.environ.setdefault("SPARK_INTERACTIVE", "1")
-    
+
     issues = []
     manual_issues = []  # issues that can't be auto-fixed
     fixed_count = 0
-    
+
     print()
     print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
     print(color("│                 🩺 Spark Doctor                        │", Colors.CYAN))
     print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
-    
+
     # =========================================================================
     # Check: Python version
     # =========================================================================
     print()
     print(color("◆ Python Environment", Colors.CYAN, Colors.BOLD))
-    
+
     py_version = sys.version_info
     if py_version >= (3, 11):
         check_ok(f"Python {py_version.major}.{py_version.minor}.{py_version.micro}")
@@ -235,20 +716,20 @@ def run_doctor(args):
     else:
         check_fail(f"Python {py_version.major}.{py_version.minor}.{py_version.micro}", "(3.10+ required)")
         issues.append("Upgrade Python to 3.10+")
-    
+
     # Check if in virtual environment
     in_venv = sys.prefix != sys.base_prefix
     if in_venv:
         check_ok("Virtual environment active")
     else:
         check_warn("Not in virtual environment", "(recommended)")
-    
+
     # =========================================================================
     # Check: Required packages
     # =========================================================================
     print()
     print(color("◆ Required Packages", Colors.CYAN, Colors.BOLD))
-    
+
     required_packages = [
         ("openai", "OpenAI SDK"),
         ("rich", "Rich (terminal UI)"),
@@ -256,13 +737,13 @@ def run_doctor(args):
         ("yaml", "PyYAML"),
         ("httpx", "HTTPX"),
     ]
-    
+
     optional_packages = [
         ("croniter", "Croniter (cron expressions)"),
         ("telegram", "python-telegram-bot"),
         ("discord", "discord.py"),
     ]
-    
+
     for module, name in required_packages:
         try:
             __import__(module)
@@ -270,25 +751,25 @@ def run_doctor(args):
         except ImportError:
             check_fail(name, "(missing)")
             issues.append(f"Install {name}: {_python_install_cmd()} {module}")
-    
+
     for module, name in optional_packages:
         try:
             __import__(module)
             check_ok(name, "(optional)")
         except ImportError:
             check_warn(name, "(optional, not installed)")
-    
+
     # =========================================================================
     # Check: Configuration files
     # =========================================================================
     print()
     print(color("◆ Configuration Files", Colors.CYAN, Colors.BOLD))
-    
+
     # Check ~/.spark/.env (primary location for user config)
     env_path = SPARK_HOME / '.env'
     if env_path.exists():
         check_ok(f"{_DHH}/.env file exists")
-        
+
         # Check for common issues
         content = env_path.read_text()
         if _has_provider_env_config(content):
@@ -312,7 +793,7 @@ def run_doctor(args):
             else:
                 check_info("Run 'spark setup' to create one")
                 issues.append("Run 'spark setup' to create .env")
-    
+
     # Check ~/.spark/config.yaml (primary) or project cli-config.yaml (fallback)
     config_path = SPARK_HOME / 'config.yaml'
     if config_path.exists():
@@ -435,7 +916,7 @@ def run_doctor(args):
     # =========================================================================
     print()
     print(color("◆ Directory Structure", Colors.CYAN, Colors.BOLD))
-    
+
     spark_home = SPARK_HOME
     if spark_home.exists():
         check_ok(f"{_DHH} directory exists")
@@ -446,7 +927,7 @@ def run_doctor(args):
             fixed_count += 1
         else:
             check_warn(f"{_DHH} not found", "(will be created on first use)")
-    
+
     # Check expected subdirectories
     expected_subdirs = ["cron", "sessions", "logs", "skills", "memories", "cache/vision"]
     for subdir_name in expected_subdirs:
@@ -460,15 +941,15 @@ def run_doctor(args):
                 fixed_count += 1
             else:
                 check_warn(f"{_DHH}/{subdir_name}/ not found", "(will be created on first use)")
-    
+
     # Check for SOUL.md persona file
     soul_path = spark_home / "SOUL.md"
     if soul_path.exists():
         content = soul_path.read_text(encoding="utf-8").strip()
         # Check if it has any non-comment, non-heading real content
         real_lines = [
-            l for l in content.splitlines()
-            if l.strip() and not l.strip().startswith(("<!--", "-->", "#"))
+            line for line in content.splitlines()
+            if line.strip() and not line.strip().startswith(("<!--", "-->", "#"))
         ]
         if real_lines:
             check_ok(f"{_DHH}/SOUL.md exists (personalised)")
@@ -490,7 +971,7 @@ def run_doctor(args):
                 )
             check_ok(f"Created {_DHH}/SOUL.md with base identity")
             fixed_count += 1
-    
+
     # Check memory directory
     memories_dir = spark_home / "memories"
     if memories_dir.exists():
@@ -513,7 +994,7 @@ def run_doctor(args):
             memories_dir.mkdir(parents=True, exist_ok=True)
             check_ok(f"Created {_DHH}/memories/")
             fixed_count += 1
-    
+
     # Check SQLite session store
     state_db_path = spark_home / "state.db"
     if state_db_path.exists():
@@ -555,26 +1036,26 @@ def run_doctor(args):
             pass
 
     _check_gateway_service_linger(issues)
-    
+
     # =========================================================================
     # Check: External tools
     # =========================================================================
     print()
     print(color("◆ External Tools", Colors.CYAN, Colors.BOLD))
-    
+
     # Git
     if shutil.which("git"):
         check_ok("git")
     else:
         check_warn("git not found", "(optional)")
-    
+
     # ripgrep (optional, for faster file search)
     if shutil.which("rg"):
         check_ok("ripgrep (rg)", "(faster file search)")
     else:
         check_warn("ripgrep (rg) not found", "(file search uses grep fallback)")
         check_info(f"Install for faster search: {_system_package_install_cmd('ripgrep')}")
-    
+
     # Docker (optional)
     terminal_env = os.getenv("TERMINAL_ENV", "local")
     if terminal_env == "docker":
@@ -600,7 +1081,7 @@ def run_doctor(args):
                 check_info("Docker backend is not available inside Termux (expected on Android)")
             else:
                 check_warn("docker not found", "(optional)")
-    
+
     # SSH (if using ssh backend)
     if terminal_env == "ssh":
         ssh_host = os.getenv("TERMINAL_SSH_HOST")
@@ -623,7 +1104,7 @@ def run_doctor(args):
         else:
             check_fail("TERMINAL_SSH_HOST not set", "(required for TERMINAL_ENV=ssh)")
             issues.append("Set TERMINAL_SSH_HOST in .env")
-    
+
     # Daytona (if using daytona backend)
     if terminal_env == "daytona":
         daytona_key = os.getenv("DAYTONA_API_KEY")
@@ -645,6 +1126,8 @@ def run_doctor(args):
         try:
             from tools.computer_use.cua_backend import (
                 cua_driver_install_command as _cua_install_command,
+            )
+            from tools.computer_use.cua_backend import (
                 is_available as _cua_available,
             )
             _ok = _cua_available()
@@ -737,7 +1220,7 @@ def run_doctor(args):
         else:
             check_warn("Node.js not found", "(optional, needed for browser tools)")
             issues.append("Install Node.js to enable Spark's browser tab")
-    
+
     # npm audit for all Node.js packages
     if shutil.which("npm"):
         npm_dirs = [
@@ -778,7 +1261,7 @@ def run_doctor(args):
     # =========================================================================
     print()
     print(color("◆ API Connectivity", Colors.CYAN, Colors.BOLD))
-    
+
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     if openrouter_key:
         print("  Checking OpenRouter API...", end="", flush=True)
@@ -801,14 +1284,15 @@ def run_doctor(args):
             issues.append("Check network connectivity")
     else:
         check_warn("OpenRouter API", "(not configured)")
-    
+
     from spark_cli.auth import get_anthropic_key
     anthropic_key = get_anthropic_key()
     if anthropic_key:
         print("  Checking Anthropic API...", end="", flush=True)
         try:
             import httpx
-            from agent.anthropic_adapter import _is_oauth_token, _COMMON_BETAS, _OAUTH_ONLY_BETAS
+
+            from agent.anthropic_adapter import _COMMON_BETAS, _OAUTH_ONLY_BETAS, _is_oauth_token
 
             headers = {"anthropic-version": "2023-06-01"}
             if _is_oauth_token(anthropic_key):
@@ -898,7 +1382,7 @@ def run_doctor(args):
     # =========================================================================
     print()
     print(color("◆ Submodules", Colors.CYAN, Colors.BOLD))
-    
+
     # tinker-atropos (RL training backend)
     tinker_dir = PROJECT_ROOT / "tinker-atropos"
     if tinker_dir.exists() and (tinker_dir / "pyproject.toml").exists():
@@ -914,25 +1398,25 @@ def run_doctor(args):
             check_warn("tinker-atropos requires Python 3.11+", f"(current: {py_version.major}.{py_version.minor})")
     else:
         check_warn("tinker-atropos not found", "(run: git submodule update --init --recursive)")
-    
+
     # =========================================================================
     # Check: Tool Availability
     # =========================================================================
     print()
     print(color("◆ Tool Availability", Colors.CYAN, Colors.BOLD))
-    
+
     try:
         # Add project root to path for imports
         sys.path.insert(0, str(PROJECT_ROOT))
-        from core.model_tools import check_tool_availability, TOOLSET_REQUIREMENTS
-        
+        from core.model_tools import TOOLSET_REQUIREMENTS, check_tool_availability
+
         available, unavailable = check_tool_availability()
         available, unavailable = _apply_doctor_tool_availability_overrides(available, unavailable)
-        
+
         for tid in available:
             info = TOOLSET_REQUIREMENTS.get(tid, {})
             check_ok(info.get("name", tid))
-        
+
         for item in unavailable:
             env_vars = item.get("missing_vars") or item.get("env_vars") or []
             if env_vars:
@@ -947,7 +1431,7 @@ def run_doctor(args):
             issues.append("Run 'spark setup' to configure missing API keys for full tool access")
     except Exception as e:
         check_warn("Could not check tool availability", f"({e})")
-    
+
     # =========================================================================
     # Check: Skills Hub
     # =========================================================================
@@ -979,6 +1463,11 @@ def run_doctor(args):
         check_ok("GitHub token configured (authenticated API access)")
     else:
         check_warn("No GITHUB_TOKEN", f"(60 req/hr rate limit — set in {_DHH}/.env for better rates)")
+
+    # =========================================================================
+    # Check: Integration Blockers
+    # =========================================================================
+    _render_integration_blockers(issues)
 
     # =========================================================================
     # Memory Provider (only check the active provider, if any)
@@ -1063,8 +1552,9 @@ def run_doctor(args):
     # Profiles
     # =========================================================================
     try:
-        from spark_cli.profiles import list_profiles, _get_wrapper_dir, profile_exists
         import re as _re
+
+        from spark_cli.profiles import _get_wrapper_dir, list_profiles, profile_exists
 
         named_profiles = [p for p in list_profiles() if not p.is_default]
         if named_profiles:
@@ -1135,5 +1625,5 @@ def run_doctor(args):
     else:
         print(color("─" * 60, Colors.GREEN))
         print(color("  All checks passed! 🎉", Colors.GREEN, Colors.BOLD))
-    
+
     print()

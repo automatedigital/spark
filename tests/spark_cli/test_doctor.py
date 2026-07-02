@@ -12,6 +12,7 @@ import spark_cli.doctor as doctor
 import spark_cli.gateway as gateway_cli
 from spark_cli import doctor as doctor_mod
 from spark_cli.doctor import _has_provider_env_config
+from tools.connectors.base import ConnectorState, ConnectorStatus
 
 
 class TestDoctorPlatformHints:
@@ -193,7 +194,8 @@ class TestDoctorMemoryProviderSection:
         except Exception:
             pass
 
-        import io, contextlib
+        import contextlib
+        import io
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             doctor_mod.run_doctor(Namespace(fix=False))
@@ -288,7 +290,8 @@ def test_run_doctor_termux_does_not_mark_browser_available_without_agent_browser
     except Exception:
         pass
 
-    import io, contextlib
+    import contextlib
+    import io
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         doctor_mod.run_doctor(Namespace(fix=False))
@@ -299,3 +302,121 @@ def test_run_doctor_termux_does_not_mark_browser_available_without_agent_browser
     assert "system dependency not met" in out
     assert "agent-browser is not installed (expected in the tested Termux path)" in out
     assert "npm install -g agent-browser && agent-browser install" in out
+
+
+def test_collect_connector_blockers_reports_configured_error(monkeypatch):
+    class BrokenConnector:
+        id = "notion"
+        name = "Notion"
+        docs_url = "https://example.com/notion"
+
+        def status(self):
+            return ConnectorStatus(
+                state=ConnectorState.ERROR,
+                detail="token revoked",
+                extra={
+                    "primary_env_var": "NOTION_API_KEY",
+                    "env_vars": ["NOTION_API_KEY"],
+                    "setup_steps": ["Set NOTION_API_KEY.", "Share pages with the integration."],
+                },
+            )
+
+        def read_meta(self):
+            return {}
+
+    import tools.connectors
+
+    monkeypatch.setattr(tools.connectors, "list_connectors", lambda: [BrokenConnector()])
+
+    blockers = doctor_mod._collect_connector_blockers({"NOTION_API_KEY": "secret"})
+
+    assert [b.summary() for b in blockers] == [
+        "[connector] Notion: token revoked - Set NOTION_API_KEY. Share pages with the integration."
+    ]
+
+
+def test_collect_mcp_blockers_reports_disabled_missing_command_and_profile_path(monkeypatch, tmp_path):
+    monkeypatch.setattr("tools.mcp_tool._MCP_AVAILABLE", True)
+    monkeypatch.setattr("tools.mcp_tool._MCP_HTTP_AVAILABLE", True)
+    monkeypatch.setattr(doctor_mod, "_DHH", "~/.spark/profiles/coder")
+
+    blockers = doctor_mod._collect_mcp_blockers(
+        {
+            "mcp_servers": {
+                "disabled-one": {"command": "npx", "enabled": False},
+                "missing-transport": {},
+                "missing-executable": {"command": str(tmp_path / "nope")},
+            }
+        }
+    )
+
+    summaries = [b.summary() for b in blockers]
+    assert any("[mcp] disabled-one: disabled in config" in item for item in summaries)
+    assert any(
+        "[mcp] missing-transport: missing command or url - add mcp_servers.missing-transport.command or .url in ~/.spark/profiles/coder/config.yaml"
+        == item
+        for item in summaries
+    )
+    assert any("[mcp] missing-executable: missing executable" in item for item in summaries)
+
+
+def test_collect_gateway_blockers_reports_enabled_platform_missing_required_token(monkeypatch):
+    from gateway.config import GatewayConfig, Platform, PlatformConfig
+
+    config = GatewayConfig(platforms={Platform.TELEGRAM: PlatformConfig(enabled=True)})
+    monkeypatch.setattr("gateway.config.load_gateway_config", lambda: config)
+
+    blockers = doctor_mod._collect_gateway_blockers({})
+
+    assert any(
+        b.area == "gateway"
+        and b.name == "Telegram"
+        and b.problem == "missing required TELEGRAM_BOT_TOKEN"
+        and "spark gateway setup" in b.fix
+        for b in blockers
+    )
+
+
+def test_collect_skill_blockers_reports_missing_skill_md_disabled_skill_and_external_dir(monkeypatch, tmp_path):
+    spark_home = tmp_path / "spark-home"
+    skills_dir = spark_home / "skills"
+    disabled_dir = skills_dir / "disabled-skill"
+    incomplete_dir = skills_dir / "incomplete-skill"
+    disabled_dir.mkdir(parents=True)
+    incomplete_dir.mkdir(parents=True)
+    (disabled_dir / "SKILL.md").write_text(
+        "---\nname: disabled-skill\ndescription: Disabled\n---\n# Disabled\n",
+        encoding="utf-8",
+    )
+    (incomplete_dir / "README.md").write_text("missing skill manifest", encoding="utf-8")
+
+    monkeypatch.setattr(doctor_mod, "SPARK_HOME", spark_home)
+    monkeypatch.setattr(doctor_mod, "_DHH", "~/.spark/profiles/coder")
+
+    blockers = doctor_mod._collect_skill_blockers(
+        {
+            "skills": {
+                "disabled": ["disabled-skill", "missing-skill"],
+                "external_dirs": [str(tmp_path / "missing-external")],
+            }
+        }
+    )
+
+    summaries = [b.summary() for b in blockers]
+    assert any("[skill] disabled-skill: disabled in skills config" in item for item in summaries)
+    assert any("[skill] missing-skill: listed in skills config but not installed" in item for item in summaries)
+    assert any("[skill] incomplete-skill: skill directory is missing SKILL.md" in item for item in summaries)
+    assert any("skills.external_dirs in ~/.spark/profiles/coder/config.yaml" in item for item in summaries)
+
+
+def test_render_integration_blockers_adds_summary_issues(monkeypatch, capsys):
+    blocker = doctor_mod.DoctorBlocker("mcp", "demo", "missing command", "add command")
+    monkeypatch.setattr(doctor_mod, "_collect_integration_blockers", lambda: [blocker])
+
+    issues = []
+    doctor_mod._render_integration_blockers(issues)
+
+    out = capsys.readouterr().out
+    assert "Integration Blockers" in out
+    assert "[mcp] demo: missing command" in out
+    assert issues == ["[mcp] demo: missing command - add command"]
