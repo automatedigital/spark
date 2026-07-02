@@ -153,6 +153,8 @@ class TestScanSkillCommands:
         assert result["/remotion-best-practices"]["name"] == "remotion-best-practices"
         assert "/grill-with-docs" in result
         assert result["/grill-with-docs"]["name"] == "grill-with-docs"
+        assert "/tasker" in result
+        assert result["/tasker"]["name"] == "tasker"
 
 
 class TestResolveSkillCommandKey:

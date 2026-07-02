@@ -267,6 +267,7 @@ class TestSyncSkills:
 
         assert "remotion-best-practices" in result["copied"]
         assert "grill-with-docs" in result["copied"]
+        assert "tasker" in result["copied"]
         assert (
             skills_dir
             / "creative"
@@ -291,6 +292,18 @@ class TestSyncSkills:
             / "software-development"
             / "grill-with-docs"
             / "ADR-FORMAT.md"
+        ).exists()
+        assert (
+            skills_dir
+            / "productivity"
+            / "tasker"
+            / "SKILL.md"
+        ).exists()
+        assert (
+            skills_dir
+            / "productivity"
+            / "tasker"
+            / "USAGE.md"
         ).exists()
 
     def test_taste_is_in_creative_base_skill_set(self, tmp_path):
@@ -326,6 +339,31 @@ class TestSyncSkills:
 
         # Enabled by default (not in the disabled set).
         assert "taste" not in get_disabled_skills({"skills": {}})
+
+    def test_tasker_is_in_productivity_base_skill_set(self, tmp_path):
+        """The Tasker workflow ships as a Productivity base skill."""
+        from spark_cli.skills_config import get_disabled_skills
+
+        bundled = Path(__file__).resolve().parents[2] / "skills"
+        tasker_dir = bundled / "productivity" / "tasker"
+        assert (tasker_dir / "SKILL.md").exists(), "tasker not vendored under skills/productivity/"
+        assert (tasker_dir / "USAGE.md").exists(), "tasker supporting guide missing"
+
+        discovered = dict(
+            (name, path) for name, path in _discover_bundled_skills(bundled)
+        )
+        assert "tasker" in discovered
+        assert discovered["tasker"] == tasker_dir
+
+        skills_dir = tmp_path / "user_skills"
+        manifest_file = skills_dir / ".bundled_manifest"
+        with self._patches(bundled, skills_dir, manifest_file):
+            result = sync_skills(quiet=True)
+
+        assert "tasker" in result["copied"]
+        assert (skills_dir / "productivity" / "tasker" / "SKILL.md").exists()
+        assert (skills_dir / "productivity" / "tasker" / "USAGE.md").exists()
+        assert "tasker" not in get_disabled_skills({"skills": {}})
 
     def test_user_deleted_skill_not_re_added(self, tmp_path):
         """Skill in manifest but not on disk = user deleted it. Don't re-add."""
