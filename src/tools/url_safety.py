@@ -74,7 +74,7 @@ def is_safe_url(url: str) -> bool:
             logger.warning("Blocked request — DNS resolution failed for: %s", hostname)
             return False
 
-        for family, _, _, _, sockaddr in addr_info:
+        for _family, _, _, _, sockaddr in addr_info:
             ip_str = sockaddr[0]
             try:
                 ip = ipaddress.ip_address(ip_str)

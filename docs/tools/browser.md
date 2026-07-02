@@ -155,6 +155,17 @@ A background thread checks every 30 seconds for stale sessions. Emergency cleanu
 The `browser` toolset must be listed in your config's `toolsets` or enabled via `spark config set toolsets '["spark-cli", "browser"]'`.
 :::
 
+### Private Network Guard
+
+Browser navigation and CDP connection URLs block private/internal targets by
+default, including RFC1918 LAN ranges, link-local cloud metadata endpoints,
+CGNAT, and internal metadata hostnames. Spark still allows explicit-port
+loopback URLs such as `http://localhost:5173`, `http://127.0.0.1:3000`, and
+`http://[::1]:8080` so local preview/dev-server workflows keep working.
+
+Set `browser.allow_private_urls: true` only when you intentionally want browser
+automation to reach broader private-network targets.
+
 ## Tools Reference
 
 ### `browser_navigate`

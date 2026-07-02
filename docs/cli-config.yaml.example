@@ -269,6 +269,9 @@ browser:
   # Inactivity timeout in seconds - browser sessions are automatically closed
   # after this period of no activity between agent loops (default: 120 = 2 minutes)
   inactivity_timeout: 120
+  # Allow browser/CDP access to private/internal network targets beyond the
+  # default loopback preview exception (localhost/127.0.0.1/[::1] with a port).
+  allow_private_urls: false
 
 # =============================================================================
 # Context Compression (Auto-shrinks long conversations)

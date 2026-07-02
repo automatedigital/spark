@@ -1,10 +1,7 @@
 """Tests for the Camofox browser backend."""
 
 import json
-import os
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from tools.browser_camofox import (
     camofox_back,
@@ -17,11 +14,9 @@ from tools.browser_camofox import (
     camofox_scroll,
     camofox_snapshot,
     camofox_type,
-    camofox_vision,
     check_camofox_available,
     is_camofox_mode,
 )
-
 
 # ---------------------------------------------------------------------------
 # Configuration detection
@@ -267,9 +262,40 @@ class TestBrowserToolRouting:
             result = json.loads(browser_navigate("https://example.com", task_id="t_route"))
         assert result["success"] is True
 
+    @patch("tools.browser_camofox.requests.post")
+    def test_browser_navigate_blocks_private_before_camofox(self, mock_post, monkeypatch):
+        monkeypatch.setenv("CAMOFOX_URL", "http://localhost:9377")
+
+        import tools.browser_tool as browser_tool
+        from tools.browser_tool import browser_navigate
+
+        monkeypatch.setattr(browser_tool, "_allow_private_urls", lambda: False)
+        monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: False)
+
+        result = json.loads(browser_navigate("http://192.168.1.1/admin", task_id="t_private"))
+
+        assert result["success"] is False
+        assert "private or internal address" in result["error"]
+        mock_post.assert_not_called()
+
+    @patch("tools.browser_camofox.requests.post")
+    def test_browser_navigate_allows_localhost_preview_to_camofox(self, mock_post, monkeypatch):
+        monkeypatch.setenv("CAMOFOX_URL", "http://localhost:9377")
+        mock_post.return_value = _mock_response(json_data={"tabId": "tab_local", "url": "http://localhost:5173"})
+
+        import tools.browser_tool as browser_tool
+        from tools.browser_tool import browser_navigate
+
+        monkeypatch.setattr(browser_tool, "_allow_private_urls", lambda: False)
+        monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: False)
+
+        result = json.loads(browser_navigate("http://localhost:5173", task_id="t_local_preview"))
+
+        assert result["success"] is True
+        mock_post.assert_called()
+
     def test_check_requirements_passes_with_camofox(self, monkeypatch):
         monkeypatch.setenv("CAMOFOX_URL", "http://localhost:9377")
         from tools.browser_tool import check_browser_requirements
         assert check_browser_requirements() is True
-
 
