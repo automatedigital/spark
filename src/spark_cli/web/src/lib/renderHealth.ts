@@ -13,6 +13,16 @@ export interface LongTaskSample {
   duration: number;
 }
 
+export interface StreamRenderSnapshotState {
+  revision: number;
+  textChars: number;
+}
+
+export interface StreamRenderSnapshot {
+  text: string;
+  revision?: number | null;
+}
+
 export function safeModeKey(sessionId: string): string {
   return `${SAFE_MODE_KEY_PREFIX}${sessionId}`;
 }
@@ -62,4 +72,30 @@ export function shouldEnableSafeMode(
 ): boolean {
   const maxDuration = samples.length ? Math.max(...samples.map((sample) => sample.duration)) : 0;
   return (options.streaming && samples.length >= options.triggerCount) || maxDuration >= options.triggerDurationMs;
+}
+
+export function shouldApplyStreamRenderSnapshot(
+  state: StreamRenderSnapshotState,
+  snapshot: StreamRenderSnapshot,
+): boolean {
+  if (!snapshot.text) return false;
+  const revision = typeof snapshot.revision === "number" ? snapshot.revision : null;
+  if (revision !== null && revision > 0) {
+    if (revision < state.revision) return false;
+    if (revision === state.revision && snapshot.text.length <= state.textChars) return false;
+    return true;
+  }
+  if (state.revision > 0 && revision !== null && revision < state.revision) return false;
+  return snapshot.text.length > state.textChars;
+}
+
+export function applyStreamRenderSnapshotState(
+  state: StreamRenderSnapshotState,
+  snapshot: StreamRenderSnapshot,
+): StreamRenderSnapshotState {
+  const revision = typeof snapshot.revision === "number" ? snapshot.revision : 0;
+  return {
+    revision: Math.max(state.revision, revision),
+    textChars: Math.max(state.textChars, snapshot.text.length),
+  };
 }

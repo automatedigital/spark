@@ -6,7 +6,9 @@ import {
   readSafeMode,
   rememberRenderHealth,
   safeModeKey,
+  applyStreamRenderSnapshotState,
   shouldEnableSafeMode,
+  shouldApplyStreamRenderSnapshot,
 } from "./renderHealth";
 
 function installLocalStorage() {
@@ -78,5 +80,30 @@ describe("long-task activation helpers", () => {
     expect(shouldEnableSafeMode(samples, { streaming: true, triggerCount: 4, triggerDurationMs: 250 })).toBe(true);
     expect(shouldEnableSafeMode(samples.slice(0, 3), { streaming: true, triggerCount: 4, triggerDurationMs: 250 })).toBe(false);
     expect(shouldEnableSafeMode([{ start: 1, duration: 300 }], { streaming: false, triggerCount: 4, triggerDurationMs: 250 })).toBe(true);
+  });
+});
+
+describe("stream render snapshot revision gate", () => {
+  it("rejects duplicate and older backend revisions", () => {
+    const state = { revision: 4, textChars: 120 };
+
+    expect(shouldApplyStreamRenderSnapshot(state, { text: "x".repeat(120), revision: 4 })).toBe(false);
+    expect(shouldApplyStreamRenderSnapshot(state, { text: "x".repeat(200), revision: 3 })).toBe(false);
+    expect(shouldApplyStreamRenderSnapshot(state, { text: "x".repeat(121), revision: 4 })).toBe(true);
+    expect(shouldApplyStreamRenderSnapshot(state, { text: "x".repeat(120), revision: 5 })).toBe(true);
+  });
+
+  it("falls back to monotonic text length when snapshots have no revision", () => {
+    const state = { revision: 0, textChars: 20 };
+
+    expect(shouldApplyStreamRenderSnapshot(state, { text: "x".repeat(19) })).toBe(false);
+    expect(shouldApplyStreamRenderSnapshot(state, { text: "x".repeat(21) })).toBe(true);
+  });
+
+  it("updates revision and content length independently", () => {
+    expect(applyStreamRenderSnapshotState(
+      { revision: 7, textChars: 200 },
+      { text: "x".repeat(150), revision: 8 },
+    )).toEqual({ revision: 8, textChars: 200 });
   });
 });

@@ -71,11 +71,13 @@ export const Markdown = memo(function Markdown({
   highlightTerms,
   streaming = false,
   safeMode = false,
+  renderRevision,
 }: {
   content: string;
   highlightTerms?: string[];
   streaming?: boolean;
   safeMode?: boolean;
+  renderRevision?: number;
 }) {
   if (safeMode || streaming || content.length > LARGE_INLINE_PLAIN_CHARS) {
     return (
@@ -89,23 +91,31 @@ export const Markdown = memo(function Markdown({
     );
   }
 
-  return <ParsedMarkdown content={content} highlightTerms={highlightTerms} streaming={streaming} safeMode={safeMode} />;
-});
+  return <ParsedMarkdown content={content} highlightTerms={highlightTerms} streaming={streaming} safeMode={safeMode} renderRevision={renderRevision} />;
+}, (prev, next) => (
+  prev.content === next.content &&
+  prev.streaming === next.streaming &&
+  prev.safeMode === next.safeMode &&
+  prev.renderRevision === next.renderRevision &&
+  termsEqual(prev.highlightTerms, next.highlightTerms)
+));
 
 function ParsedMarkdown({
   content,
   highlightTerms,
   streaming,
   safeMode,
+  renderRevision,
 }: {
   content: string;
   highlightTerms?: string[];
   streaming: boolean;
   safeMode: boolean;
+  renderRevision?: number;
 }) {
   const segments = useMemo(
     () => buildMarkdownRenderSegments(content, streaming),
-    [content, streaming],
+    [content, streaming, renderRevision],
   );
 
   return (
