@@ -15,10 +15,11 @@ import json
 import logging
 import os
 from pathlib import Path
-
-from core.spark_constants import get_spark_home
 from types import SimpleNamespace
 from typing import Any, Optional
+
+from core.network_tls import urllib_request_kwargs
+from core.spark_constants import get_spark_home
 
 try:
     import anthropic as _anthropic_sdk
@@ -295,6 +296,9 @@ def build_anthropic_client(api_key: str, base_url: Optional[str] = None):
         if common_betas:
             kwargs["default_headers"] = {"anthropic-beta": ",".join(common_betas)}
 
+    from core.network_tls import httpx_client_kwargs
+
+    kwargs.update(httpx_client_kwargs())
     return _anthropic_sdk.Anthropic(**kwargs)
 
 
@@ -398,7 +402,7 @@ def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) 
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=10, **urllib_request_kwargs()) as resp:
                 result = json.loads(resp.read().decode())
         except Exception as exc:
             last_error = exc
@@ -706,7 +710,7 @@ def run_spark_oauth_login_pure() -> dict[str, Any] | None:
             method="POST",
         )
 
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, **urllib_request_kwargs()) as resp:
             result = json.loads(resp.read().decode())
     except Exception as e:
         print(f"Token exchange failed: {e}")

@@ -78,6 +78,30 @@ class TestFetchOpenRouterModels:
             ("nvidia/nemotron-3-super-120b-a12b:free", "free"),
         ]
 
+    def test_live_fetch_uses_configured_urllib_context(self, monkeypatch):
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"data":[]}'
+
+        sentinel_context = object()
+        monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
+        with (
+            patch(
+                "spark_cli.models.urllib_request_kwargs",
+                return_value={"context": sentinel_context},
+            ),
+            patch("spark_cli.models.urllib.request.urlopen", return_value=_Resp()) as mock_urlopen,
+        ):
+            fetch_openrouter_models(force_refresh=True)
+
+        assert mock_urlopen.call_args.kwargs["context"] is sentinel_context
+
     def test_falls_back_to_static_snapshot_on_fetch_failure(self, monkeypatch):
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
         with patch("spark_cli.models.urllib.request.urlopen", side_effect=OSError("boom")):

@@ -3656,7 +3656,9 @@ class AIAgent(_PromptCacheMixin):
                 self._client_log_context(),
             )
             return client
-        client = OpenAI(**client_kwargs)
+        from core.network_tls import httpx_client_kwargs
+
+        client = OpenAI(**{**client_kwargs, **httpx_client_kwargs()})
         logger.info(
             "OpenAI client created (%s, shared=%s) %s",
             reason,

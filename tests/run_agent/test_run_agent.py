@@ -142,6 +142,24 @@ def test_aiagent_reuses_existing_errors_log_handler():
             root_logger.addHandler(handler)
 
 
+def test_openai_client_uses_configured_tls_http_client(agent):
+    sentinel_client = object()
+    with (
+        patch("core.run_agent.OpenAI") as mock_openai,
+        patch(
+            "core.network_tls.httpx_client_kwargs",
+            return_value={"http_client": sentinel_client},
+        ),
+    ):
+        agent._create_openai_client(
+            {"api_key": "test-key", "base_url": "https://example.test/v1"},
+            reason="test",
+            shared=True,
+        )
+
+    assert mock_openai.call_args.kwargs["http_client"] is sentinel_client
+
+
 class TestProviderModelNormalization:
     def test_aiagent_strips_matching_native_provider_prefix(self):
         with (
@@ -150,6 +168,7 @@ class TestProviderModelNormalization:
             ),
             patch("core.run_agent.check_toolset_requirements", return_value={}),
             patch("core.run_agent.OpenAI"),
+            patch("spark_cli.auth.detect_zai_endpoint", return_value=None),
         ):
             agent = AIAgent(
                 model="zai/glm-5.1",

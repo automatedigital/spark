@@ -115,6 +115,20 @@ class TestBuildAnthropicClient:
                 "anthropic-beta": "interleaved-thinking-2025-05-14"
             }
 
+    def test_configured_ca_bundle_passes_http_client(self):
+        sentinel_client = object()
+        with (
+            patch("agent.anthropic_adapter._anthropic_sdk") as mock_sdk,
+            patch(
+                "core.network_tls.httpx_client_kwargs",
+                return_value={"http_client": sentinel_client},
+            ),
+        ):
+            build_anthropic_client("sk-ant-api03-something")
+
+        kwargs = mock_sdk.Anthropic.call_args.kwargs
+        assert kwargs["http_client"] is sentinel_client
+
 
 class TestReadClaudeCodeCredentials:
     def test_reads_valid_credentials(self, tmp_path, monkeypatch):
