@@ -12,7 +12,7 @@ import css from "highlight.js/lib/languages/css";
 import markdown from "highlight.js/lib/languages/markdown";
 import rust from "highlight.js/lib/languages/rust";
 import go from "highlight.js/lib/languages/go";
-import { Copy, CheckCheck, X, FileText, ExternalLink, FolderOpen, Loader2 } from "lucide-react";
+import { Copy, CheckCheck, X, FileText, ExternalLink, FolderOpen, Loader2, WrapText } from "lucide-react";
 import { api, mediaFileUrl, openExternal } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
@@ -72,12 +72,14 @@ export const Markdown = memo(function Markdown({
   streaming = false,
   safeMode = false,
   renderRevision,
+  defaultWrap = false,
 }: {
   content: string;
   highlightTerms?: string[];
   streaming?: boolean;
   safeMode?: boolean;
   renderRevision?: number;
+  defaultWrap?: boolean;
 }) {
   if (safeMode || streaming || content.length > LARGE_INLINE_PLAIN_CHARS) {
     return (
@@ -91,12 +93,22 @@ export const Markdown = memo(function Markdown({
     );
   }
 
-  return <ParsedMarkdown content={content} highlightTerms={highlightTerms} streaming={streaming} safeMode={safeMode} renderRevision={renderRevision} />;
+  return (
+    <ParsedMarkdown
+      content={content}
+      highlightTerms={highlightTerms}
+      streaming={streaming}
+      safeMode={safeMode}
+      renderRevision={renderRevision}
+      defaultWrap={defaultWrap}
+    />
+  );
 }, (prev, next) => (
   prev.content === next.content &&
   prev.streaming === next.streaming &&
   prev.safeMode === next.safeMode &&
   prev.renderRevision === next.renderRevision &&
+  prev.defaultWrap === next.defaultWrap &&
   termsEqual(prev.highlightTerms, next.highlightTerms)
 ));
 
@@ -106,12 +118,14 @@ function ParsedMarkdown({
   streaming,
   safeMode,
   renderRevision,
+  defaultWrap,
 }: {
   content: string;
   highlightTerms?: string[];
   streaming: boolean;
   safeMode: boolean;
   renderRevision?: number;
+  defaultWrap: boolean;
 }) {
   const segments = useMemo(
     () => buildMarkdownRenderSegments(content, streaming),
@@ -129,6 +143,7 @@ function ParsedMarkdown({
             segment={segment}
             highlightTerms={safeMode ? undefined : highlightTerms}
             safeMode={safeMode}
+            defaultWrap={defaultWrap}
           />
         )
       ))}
@@ -152,10 +167,12 @@ const MemoMarkdownSegment = memo(function MarkdownSegment({
   segment,
   highlightTerms,
   safeMode,
+  defaultWrap,
 }: {
   segment: MarkdownRenderSegment;
   highlightTerms?: string[];
   safeMode?: boolean;
+  defaultWrap?: boolean;
 }) {
   const blocks = useMemo(() => parseBlocks(segment.text), [segment.text]);
   const total = blocks.length;
@@ -168,6 +185,7 @@ const MemoMarkdownSegment = memo(function MarkdownSegment({
           highlightTerms={safeMode ? undefined : highlightTerms}
           live={segment.live && i === total - 1}
           safeMode={safeMode}
+          defaultWrap={defaultWrap}
         />
       ))}
     </>
@@ -178,19 +196,58 @@ const MemoMarkdownSegment = memo(function MarkdownSegment({
   prev.segment.end === next.segment.end &&
   prev.segment.live === next.segment.live &&
   prev.safeMode === next.safeMode &&
+  prev.defaultWrap === next.defaultWrap &&
   termsEqual(prev.highlightTerms, next.highlightTerms)
 ));
 
-const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live, safeMode }: BlockProps) {
-  return <Block block={block} highlightTerms={highlightTerms} live={live} safeMode={safeMode} />;
+const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live, safeMode, defaultWrap }: BlockProps) {
+  return <Block block={block} highlightTerms={highlightTerms} live={live} safeMode={safeMode} defaultWrap={defaultWrap} />;
 }, blockPropsEqual);
 
 /* ------------------------------------------------------------------ */
 /*  Code block with syntax highlight + copy button                    */
 /* ------------------------------------------------------------------ */
 
-function CodeBlock({ lang, content, live, safeMode }: { lang: string; content: string; live?: boolean; safeMode?: boolean }) {
+function WrapToggleButton({
+  wrapped,
+  onToggle,
+  label,
+}: {
+  wrapped: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={label}
+      aria-pressed={wrapped}
+      className={`inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground ${
+        wrapped ? "bg-foreground/10 text-foreground" : ""
+      }`}
+      title={label}
+    >
+      <WrapText className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
+function CodeBlock({
+  lang,
+  content,
+  live,
+  safeMode,
+  defaultWrap = false,
+}: {
+  lang: string;
+  content: string;
+  live?: boolean;
+  safeMode?: boolean;
+  defaultWrap?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
+  const [wrapped, setWrapped] = useState(defaultWrap);
 
   const highlighted = useMemo(() => {
     // Defer syntax highlighting while the block is still streaming in — hljs is
@@ -220,28 +277,108 @@ function CodeBlock({ lang, content, live, safeMode }: { lang: string; content: s
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
           {lang || "text"}
         </span>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-          title="Copy code"
-        >
-          {copied ? (
-            <CheckCheck className="h-3 w-3 text-success" />
-          ) : (
-            <Copy className="h-3 w-3" />
-          )}
-          <span className="hidden group-hover/code:inline">{copied ? "Copied!" : "Copy"}</span>
-        </button>
+        <span className="flex items-center gap-1">
+          <WrapToggleButton
+            wrapped={wrapped}
+            onToggle={() => setWrapped((value) => !value)}
+            label={wrapped ? "Disable code word wrap" : "Enable code word wrap"}
+          />
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            title="Copy code"
+          >
+            {copied ? (
+              <CheckCheck className="h-3 w-3 text-success" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+            <span className="hidden group-hover/code:inline">{copied ? "Copied!" : "Copy"}</span>
+          </button>
+        </span>
       </div>
       {highlighted ? (
-        <pre className="bg-secondary/40 px-3 py-2.5 text-xs font-mono leading-relaxed overflow-x-auto hljs">
+        <pre className={`bg-secondary/40 px-3 py-2.5 text-xs font-mono leading-relaxed hljs ${
+          wrapped ? "whitespace-pre-wrap break-words overflow-x-hidden" : "overflow-x-auto"
+        }`}>
           <code dangerouslySetInnerHTML={{ __html: highlighted }} />
         </pre>
       ) : (
-        <pre className="bg-secondary/40 px-3 py-2.5 text-xs font-mono leading-relaxed overflow-x-auto">
+        <pre className={`bg-secondary/40 px-3 py-2.5 text-xs font-mono leading-relaxed ${
+          wrapped ? "whitespace-pre-wrap break-words overflow-x-hidden" : "overflow-x-auto"
+        }`}>
           <code>{content}</code>
         </pre>
+      )}
+    </div>
+  );
+}
+
+function TableBlock({
+  headers,
+  rows: rawRows,
+  live,
+  highlightTerms,
+  safeMode,
+  defaultWrap = false,
+}: {
+  headers: string[];
+  rows: string[][];
+  live?: boolean;
+  highlightTerms?: string[];
+  safeMode?: boolean;
+  defaultWrap?: boolean;
+}) {
+  const [wrapped, setWrapped] = useState(defaultWrap);
+  const MAX_LIVE_TABLE_ROWS = 80;
+  const MAX_LIVE_TABLE_CELLS = 8;
+  const rows = live ? rawRows.slice(0, MAX_LIVE_TABLE_ROWS) : rawRows;
+  const visibleHeaders = live ? headers.slice(0, MAX_LIVE_TABLE_CELLS) : headers;
+  const hiddenRows = rawRows.length - rows.length;
+  const renderRow = (row: string[]) => (live ? row.slice(0, MAX_LIVE_TABLE_CELLS) : row);
+  const cellWrapClass = wrapped ? "whitespace-normal break-words align-top" : "whitespace-nowrap";
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border/60">
+      <div className="flex items-center justify-between border-b border-border/40 bg-secondary/80 px-3 py-1">
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+          Table
+        </span>
+        <WrapToggleButton
+          wrapped={wrapped}
+          onToggle={() => setWrapped((value) => !value)}
+          label={wrapped ? "Disable table word wrap" : "Enable table word wrap"}
+        />
+      </div>
+      <div className={wrapped ? "overflow-x-hidden" : "overflow-x-auto"}>
+        <table className={`w-full text-xs border-collapse ${wrapped ? "table-fixed" : ""}`}>
+          <thead>
+            <tr className="bg-secondary/60 border-b border-border/60">
+              {visibleHeaders.map((h, i) => (
+                <th key={i} className={`px-3 py-2 text-left font-semibold text-foreground ${cellWrapClass}`}>
+                  <InlineContent text={h} highlightTerms={highlightTerms} safeMode={safeMode} />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} className={ri % 2 === 0 ? "bg-background" : "bg-secondary/20"}>
+                {renderRow(row).map((cell, ci) => (
+                  <td key={ci} className={`px-3 py-1.5 border-t border-border/30 text-foreground/90 ${cellWrapClass}`}>
+                    <InlineContent text={cell} highlightTerms={highlightTerms} safeMode={safeMode} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hiddenRows > 0 && (
+        <div className="border-t border-border/40 bg-secondary/30 px-3 py-1.5 text-[11px] text-muted-foreground">
+          Showing first {rows.length} rows while streaming.
+        </div>
       )}
     </div>
   );
@@ -251,10 +388,22 @@ function CodeBlock({ lang, content, live, safeMode }: { lang: string; content: s
 /*  Block renderer                                                     */
 /* ------------------------------------------------------------------ */
 
-function Block({ block, highlightTerms, live, safeMode }: { block: BlockNode; highlightTerms?: string[]; live?: boolean; safeMode?: boolean }) {
+function Block({
+  block,
+  highlightTerms,
+  live,
+  safeMode,
+  defaultWrap,
+}: {
+  block: BlockNode;
+  highlightTerms?: string[];
+  live?: boolean;
+  safeMode?: boolean;
+  defaultWrap?: boolean;
+}) {
   switch (block.type) {
     case "code":
-      return <CodeBlock lang={block.lang} content={block.content} live={live} safeMode={safeMode} />;
+      return <CodeBlock lang={block.lang} content={block.content} live={live} safeMode={safeMode} defaultWrap={defaultWrap} />;
 
     case "heading": {
       const Tag = `h${Math.min(block.level, 4)}` as "h1" | "h2" | "h3" | "h4";
@@ -278,45 +427,16 @@ function Block({ block, highlightTerms, live, safeMode }: { block: BlockNode; hi
       );
 
     case "table":
-      {
-        const MAX_LIVE_TABLE_ROWS = 80;
-        const MAX_LIVE_TABLE_CELLS = 8;
-        const rows = live ? block.rows.slice(0, MAX_LIVE_TABLE_ROWS) : block.rows;
-        const headers = live ? block.headers.slice(0, MAX_LIVE_TABLE_CELLS) : block.headers;
-        const hiddenRows = block.rows.length - rows.length;
-        const renderRow = (row: string[]) => (live ? row.slice(0, MAX_LIVE_TABLE_CELLS) : row);
       return (
-        <div className="overflow-x-auto rounded-md border border-border/60">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-secondary/60 border-b border-border/60">
-                {headers.map((h, i) => (
-                  <th key={i} className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">
-                    <InlineContent text={h} highlightTerms={highlightTerms} safeMode={safeMode} />
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, ri) => (
-                <tr key={ri} className={ri % 2 === 0 ? "bg-background" : "bg-secondary/20"}>
-                  {renderRow(row).map((cell, ci) => (
-                    <td key={ci} className="px-3 py-1.5 border-t border-border/30 text-foreground/90">
-                      <InlineContent text={cell} highlightTerms={highlightTerms} safeMode={safeMode} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {hiddenRows > 0 && (
-            <div className="border-t border-border/40 bg-secondary/30 px-3 py-1.5 text-[11px] text-muted-foreground">
-              Showing first {rows.length} rows while streaming.
-            </div>
-          )}
-        </div>
+        <TableBlock
+          headers={block.headers}
+          rows={block.rows}
+          live={live}
+          highlightTerms={highlightTerms}
+          safeMode={safeMode}
+          defaultWrap={defaultWrap}
+        />
       );
-      }
 
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";

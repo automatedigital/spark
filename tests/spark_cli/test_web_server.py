@@ -1012,6 +1012,8 @@ class TestWebServerEndpoints:
         schema = data["fields"]
         assert len(schema) > 100  # Should have 150+ fields
         assert "model" in schema
+        assert schema["display.chat_word_wrap"]["type"] == "boolean"
+        assert schema["display.chat_word_wrap"]["category"] == "display"
         # Verify category_order is a non-empty list
         assert isinstance(data["category_order"], list)
         assert len(data["category_order"]) > 0
@@ -1022,6 +1024,7 @@ class TestWebServerEndpoints:
         assert resp.status_code == 200
         defaults = resp.json()
         assert "model" in defaults
+        assert defaults["display"]["chat_word_wrap"] is False
 
     def test_get_env_vars(self):
         resp = self.client.get("/api/env")
@@ -1260,6 +1263,26 @@ class TestConfigRoundTrip:
 
         # Restore
         web_config["agent"]["max_turns"] = original_turns
+        self.client.put("/api/config", json={"config": web_config})
+
+    def test_edit_chat_word_wrap_persists(self):
+        """Editing the WebUI chat word-wrap default should persist correctly."""
+        from spark_cli.config import load_config
+
+        web_config = self.client.get("/api/config").json()
+        original = web_config.get("display", {}).get("chat_word_wrap", False)
+
+        if "display" not in web_config:
+            web_config["display"] = {}
+        web_config["display"]["chat_word_wrap"] = True
+
+        self.client.put("/api/config", json={"config": web_config})
+
+        after = load_config()
+        assert after.get("display", {}).get("chat_word_wrap") is True
+
+        # Restore
+        web_config["display"]["chat_word_wrap"] = original
         self.client.put("/api/config", json={"config": web_config})
 
     def test_schema_types_match_config_values(self):

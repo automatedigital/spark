@@ -34,6 +34,7 @@ export interface BlockProps {
   highlightTerms?: string[];
   live: boolean;
   safeMode?: boolean;
+  defaultWrap?: boolean;
 }
 
 export interface MarkdownRenderSegment {
@@ -421,6 +422,7 @@ export function blockPropsEqual(prev: BlockProps, next: BlockProps): boolean {
   return (
     prev.live === next.live &&
     prev.safeMode === next.safeMode &&
+    prev.defaultWrap === next.defaultWrap &&
     termsEqual(prev.highlightTerms, next.highlightTerms) &&
     blocksEqual(prev.block, next.block)
   );

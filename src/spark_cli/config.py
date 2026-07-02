@@ -596,6 +596,7 @@ DEFAULT_CONFIG = {
         #   "agent-browser" -> always agent-browser (shares the agent's browser session)
         #   "playwright"    -> always the Playwright StreamedBrowserSession
         "preview_browser_backend": "auto",
+        "chat_word_wrap": False,  # WebUI: default word wrap for chat code blocks and markdown tables
     },
     # Privacy settings
     "privacy": {

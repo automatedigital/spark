@@ -923,6 +923,12 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Input behavior while agent is running",
         "options": ["queue", "interrupt", "block"],
     },
+    "display.chat_word_wrap": {
+        "type": "boolean",
+        "description": "Wrap chat code blocks and markdown tables by default in the WebUI.",
+        "category": "display",
+        "label": "Chat word wrap",
+    },
     "memory.provider": {
         "type": "select",
         "description": "Memory provider plugin",
