@@ -369,14 +369,27 @@ For selected planned tickets (each worker, for its ticket):
    - `Merged` when merge succeeds
    - keep `In progress` and add blocker details if blocked
    - never set `Completed`; that status is reserved for human updates only
-12. After a successful merge to `main`, clean up the ticket branch:
-   - switch back to `main` and fast-forward from `origin/main`
-   - delete the local ticket branch with `git branch -d <branch>`
-   - delete the remote ticket branch with `gh pr merge --delete-branch` when
-     merging, or `git push origin --delete <branch>` after confirming the PR is
-     merged
-   - run `git fetch --prune origin`
-   - never delete `main`, the current branch, or any branch that is not merged
+12. After a successful merge to `main`, tidy the ticket branch and worktree
+    before moving to the next merge:
+   - confirm the PR is merged with `gh pr view <pr> --json state,mergedAt` (do
+     not infer merge success from local `gh pr merge` cleanup errors)
+   - switch the coordinator checkout back to `main` and fast-forward from
+     `origin/main`
+   - remove the ticket worktree with `git worktree remove <path>` once its
+     status is clean; if a stale generated diff blocks removal, preserve the
+     diff first or report it, then remove with `--force` only for that verified
+     merged worktree
+   - delete the local ticket branch after the worktree is gone. Prefer
+     `git branch -d <branch>`, but use `git branch -D <branch>` for verified
+     squash-merged PR branches whose commits are not ancestors of `main`
+   - delete the remote ticket branch. `gh pr merge --delete-branch` is not
+     enough when local worktree cleanup fails; after confirming the PR is
+     merged, run `git push origin --delete <branch>` if the remote ref still
+     exists
+   - run `git fetch --prune origin` and verify `git branch` / `git branch -r`
+     no longer list the merged ticket branch
+   - never delete `main`, the current branch, an unmerged branch, or a branch
+     whose PR state could not be verified as merged
 13. If this is the last selected ticket branch to merge and any completed ticket
     in the run has Notion `Rebuild Desktop` checked, publish the desktop release
     from merged `main` before finishing:
