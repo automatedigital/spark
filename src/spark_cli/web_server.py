@@ -130,6 +130,37 @@ _DROPPABLE_EVENT_TOPICS = {
 }
 _event_drop_counts: dict[str, int] = {}
 
+# strip_ansi handles complete ECMA-48 sequences. Web streaming can occasionally
+# see a split/incomplete sequence, so remove any remaining control prefix too.
+_WEB_ANSI_FRAGMENT_RE = re.compile(
+    r"\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*|\][^\x07\x1b]*|[PX^_][\s\S]*|[\x20-\x2f]*[\x30-\x7e]?|$)"
+    r"|[\x80-\x9f]",
+    re.DOTALL,
+)
+
+
+def _sanitize_web_chat_text(text: str) -> str:
+    """Remove terminal control sequences before text reaches desktop/web chat."""
+    from tools.ansi_strip import strip_ansi
+
+    clean = strip_ansi(text)
+    if not clean:
+        return clean
+    return _WEB_ANSI_FRAGMENT_RE.sub("", clean)
+
+
+def _sanitize_web_chat_value(value: Any) -> Any:
+    """Recursively sanitize strings in chat-bound payload copies."""
+    if isinstance(value, str):
+        return _sanitize_web_chat_text(value)
+    if isinstance(value, list):
+        return [_sanitize_web_chat_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_web_chat_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _sanitize_web_chat_value(item) for key, item in value.items()}
+    return value
+
 
 def _resolve_web_turn_ids(session_id: Optional[str]) -> dict[str, Optional[str]]:
     """Resolve a user-facing session id to the latest active conversation leaf."""
@@ -197,7 +228,7 @@ def _touch_web_turn(
             continue
         turn.last_event_at = time.time()
         if status is not None:
-            turn.status = status
+            turn.status = _sanitize_web_chat_text(status)
         if phase is not None:
             turn.phase = phase
         if interrupt_requested is not None:
@@ -209,6 +240,9 @@ def _touch_web_turn(
 
 def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
     if not session_id or not token:
+        return
+    token = _sanitize_web_chat_text(token)
+    if not token:
         return
     for candidate in _web_turn_candidates(session_id):
         turn = _web_active_turns.get(candidate)
@@ -435,7 +469,7 @@ def _truncate_str(s: Any, max_len: int = 16000) -> str:
 
 
 def _tool_result_preview(result: Any, max_len: int = 2000) -> dict[str, Any]:
-    text = "" if result is None else str(result)
+    text = _sanitize_web_chat_text("" if result is None else str(result))
     return {
         "result_preview": _truncate_str(text, max_len),
         "result_chars": len(text),
@@ -454,13 +488,15 @@ def _message_for_history_response(msg: dict[str, Any], include_tool_results: boo
     make the normal history page carry only a bounded preview.
     """
     out = dict(msg)
+    if "content" in out:
+        out["content"] = _sanitize_web_chat_value(out.get("content"))
     if out.get("role") != "tool" or include_tool_results:
-        return out
+        return _sanitize_web_chat_value(out)
 
     content = out.get("content") or ""
     out.update(_tool_result_preview(content))
     out["content"] = out["result_preview"]
-    return out
+    return _sanitize_web_chat_value(out)
 
 
 def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
@@ -484,6 +520,8 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
     loop = _web_event_loop
     if loop is None:
         return
+    if topic.startswith("chat."):
+        data = _sanitize_web_chat_value(data)
     envelope = {"topic": topic, "session_id": session_id, "ts": time.time(), "data": data}
 
     def _fanout() -> None:
@@ -4186,7 +4224,7 @@ async def get_session_tool_result(session_id: str, tool_call_id: str):
                 return {
                     "session_id": leaf_sid,
                     "tool_call_id": tool_call_id,
-                    "content": msg.get("content") or "",
+                    "content": _sanitize_web_chat_text(str(msg.get("content") or "")),
                     "tool_name": msg.get("tool_name"),
                 }
         raise HTTPException(status_code=404, detail="Tool result not found")
@@ -4819,6 +4857,9 @@ def _make_web_chat_callbacks(
 
     def token_callback(token: Optional[str]) -> None:
         if token is None:
+            return
+        token = _sanitize_web_chat_text(token)
+        if not token:
             return
         _append_web_turn_token(current_session_id[0], token)
         try:
@@ -5839,7 +5880,7 @@ def _maybe_auto_title_web(
 def _extract_final_response(result: Any) -> str:
     if isinstance(result, dict):
         final = result.get("final_response")
-        return final if isinstance(final, str) else ""
+        return _sanitize_web_chat_text(final) if isinstance(final, str) else ""
     return ""
 
 
@@ -6672,13 +6713,13 @@ async def list_conversation_subagents(session_id: str, limit: int = 50):
             raise HTTPException(status_code=404, detail="Session not found")
         latest_sid = db.resolve_latest_descendant(sid)
         runs = db.list_subagent_runs(sid)
-        return {
+        return _sanitize_web_chat_value({
             "session_id": latest_sid or sid,
             "requested_session_id": session_id,
             "subagents": runs[:limit],
             "total": len(runs),
             "limit": limit,
-        }
+        })
     finally:
         db.close()
 
@@ -6705,13 +6746,13 @@ async def get_conversation_subagent(
             raise HTTPException(status_code=404, detail="Subagent not found")
         events = db.get_subagent_events(subagent_id, limit=event_limit)
         run = {**run, "events": events, "transcript": events}
-        return {
+        return _sanitize_web_chat_value({
             "session_id": latest_sid or sid,
             "requested_session_id": session_id,
             "subagent": run,
             "events": events,
             "event_limit": event_limit,
-        }
+        })
     finally:
         db.close()
 
