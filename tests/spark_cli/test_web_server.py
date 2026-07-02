@@ -1400,6 +1400,7 @@ class TestNewEndpoints:
         if skills:
             assert "name" in skills[0]
             assert "enabled" in skills[0]
+        assert any(skill["name"] == "tasker" for skill in skills)
 
     def test_skills_list_includes_disabled_skills(self, monkeypatch):
         import tools.skills_sync as skills_sync

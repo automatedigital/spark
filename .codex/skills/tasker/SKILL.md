@@ -272,15 +272,18 @@ For selected unplanned tickets:
    comments/discussions if available.
 3. Use `graphify query` and targeted `rg`/file reads to identify real code areas,
    tests, and risks.
-4. Append or replace a `# Tasker Plan` section in the page body. Preserve the
+4. If the backend is Notion and the page body does not already start with a
+   relevant image block, prepend a verified `image/*` URL as the first block so
+   Gallery views configured with `page_content_first` render a useful cover.
+5. Append or replace a `# Tasker Plan` section in the page body. Preserve the
    original report, screenshots, logs, and prior notes.
-5. Update properties:
+6. Update properties:
    - `Agent`: include `Codex` unless the ticket clearly belongs elsewhere.
    - `Type`: keep existing type unless clearly missing or wrong.
    - `Priority`: fill only when obvious from impact; otherwise leave unchanged.
    - `Subagents`: set `__YES__` for broad, multi-area work; otherwise `__NO__`.
    - `Status`: set to `Planned`.
-6. Add a progress log entry with the planning date.
+7. Add a progress log entry with the planning date.
 
 ### Plan Template
 
@@ -596,6 +599,11 @@ Finish with a one-line tally: kept N, merged M into K survivors, pruned P.
 ## Notion Update Rules
 
 - Fetch before content updates.
+- Every newly created Notion ticket body must start with a relevant image block
+  for Gallery cover rendering. Before inserting an external image, verify the
+  URL returns HTTP 200 with an `image/*` content type. During `/tasker plan`, if
+  a selected Notion ticket is missing that first image block, prepend one before
+  adding the plan.
 - Use `insert_content` for appending progress log entries.
 - Use `update_content` with exact snippets for checkbox changes.
 - Preserve child pages/databases. Never use `replace_content` if it would delete
