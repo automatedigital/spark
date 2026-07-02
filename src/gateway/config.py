@@ -450,7 +450,7 @@ def load_gateway_config() -> GatewayConfig:
     gateway_json_path = _home / "gateway.json"
     if gateway_json_path.exists():
         try:
-            with open(gateway_json_path, "r", encoding="utf-8") as f:
+            with open(gateway_json_path, encoding="utf-8") as f:
                 gw_data = json.load(f) or {}
             logger.info(
                 "Loaded legacy %s — consider moving settings to config.yaml",

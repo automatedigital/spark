@@ -644,7 +644,7 @@ def _setup_job_environment(job: dict) -> dict:
             pfpath = _spark_home / pfpath
         if pfpath.exists():
             try:
-                with open(pfpath, "r", encoding="utf-8") as _pf:
+                with open(pfpath, encoding="utf-8") as _pf:
                     prefill_messages = _json.load(_pf)
                 if not isinstance(prefill_messages, list):
                     prefill_messages = None

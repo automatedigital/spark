@@ -216,7 +216,7 @@ def get_container_exec_info() -> Optional[dict]:
 
     try:
         info = {}
-        with open(container_mode_file, "r") as f:
+        with open(container_mode_file) as f:
             for line in f:
                 line = line.strip()
                 if "=" in line and not line.startswith("#"):

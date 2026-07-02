@@ -196,7 +196,7 @@ def is_wsl() -> bool:
     if _wsl_detected is not None:
         return _wsl_detected
     try:
-        with open("/proc/version", "r") as f:
+        with open("/proc/version") as f:
             _wsl_detected = "microsoft" in f.read().lower()
     except Exception:
         _wsl_detected = False
@@ -223,7 +223,7 @@ def is_container() -> bool:
         _container_detected = True
         return True
     try:
-        with open("/proc/1/cgroup", "r") as f:
+        with open("/proc/1/cgroup") as f:
             cgroup = f.read()
             if "docker" in cgroup or "podman" in cgroup or "/lxc/" in cgroup:
                 _container_detected = True
@@ -264,7 +264,7 @@ def is_server_environment() -> bool:
 
         _cfg_path = get_config_path()
         if _cfg_path.exists():
-            with open(_cfg_path, "r") as _f:
+            with open(_cfg_path) as _f:
                 _cfg = yaml.safe_load(_f) or {}
             _dash = _cfg.get("dashboard") or {}
             if _dash.get("public_url", "").strip():
@@ -332,7 +332,7 @@ def get_public_base_url(host: str, port: int, scheme: str = "http") -> str:
 
         _cfg_path = get_config_path()
         if _cfg_path.exists():
-            with open(_cfg_path, "r") as _f:
+            with open(_cfg_path) as _f:
                 _cfg = yaml.safe_load(_f) or {}
             _pub = (_cfg.get("dashboard") or {}).get("public_url", "").strip()
             if _pub:
