@@ -34,6 +34,7 @@ import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
+import { TimelineMinimap, buildTimelineMinimapItems, type TimelineSourceItem } from "@/components/chat/TimelineMinimap";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
 import { tokenizeUserBubbleText } from "@/lib/userBubbleTokens";
@@ -49,9 +50,16 @@ import {
   pruneLongTasks,
   readSafeMode,
   rememberRenderHealth,
+  applyStreamRenderSnapshotState,
   shouldEnableSafeMode,
+  shouldApplyStreamRenderSnapshot,
   type LongTaskSample,
 } from "@/lib/renderHealth";
+import {
+  initialChatScrollState,
+  reduceChatScrollState,
+  shouldAutoScrollChat,
+} from "@/lib/chatScrollState";
 import { isTauri } from "@/sidecar";
 
 let _msgId = 0;
@@ -62,7 +70,7 @@ const STREAM_SNAPSHOT_POLL_MS = 2_000;
 
 type ChatMessage =
   | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[]; redirect?: boolean }
-  | { id: string; role: "assistant"; content: string; streaming?: boolean; usage?: { totalTokens: number; costUsd?: number } }
+  | { id: string; role: "assistant"; content: string; streaming?: boolean; renderRevision?: number; usage?: { totalTokens: number; costUsd?: number } }
   | {
       id: string;
       role: "tool";
@@ -420,7 +428,7 @@ const AssistantRow = memo(function AssistantRow({
       <SparkAgentAvatar />
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
-          <Markdown content={msg.content} streaming={msg.streaming} safeMode={safeMode} />
+          <Markdown content={msg.content} streaming={msg.streaming} safeMode={safeMode} renderRevision={msg.renderRevision} />
         ) : (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Loader2 className={`h-3 w-3 ${safeMode ? "" : "animate-spin"}`} />
@@ -616,6 +624,8 @@ export function ChatPanel({
   // Keep the viewport pinned to the live tail while the user is following the
   // stream, but stop auto-scrolling as soon as they deliberately scroll upward.
   const followStreamRef = useRef(true);
+  const scrollStateRef = useRef(initialChatScrollState());
+  const [detachedFromBottom, setDetachedFromBottom] = useState(false);
 
   activeSessionRef.current = activeSessionId;
   streamingRef.current = streaming;
@@ -667,6 +677,8 @@ export function ChatPanel({
     lastTokenAtRef.current = initialMessage ? Date.now() : 0;
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = 0;
+    scrollStateRef.current = initialChatScrollState(initialTranscript.length);
+    setDetachedFromBottom(false);
     activeTurnSessionIdRef.current = null;
     followStreamRef.current = true;
     setEditingUser(null);
@@ -876,20 +888,20 @@ export function ChatPanel({
       const next = [...prev];
       const last = next[next.length - 1];
       if (last?.role === "assistant" && last.streaming) {
-        next[next.length - 1] = { ...last, content: last.content + buffered };
+        const content = last.content + buffered;
+        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, content.length);
+        next[next.length - 1] = { ...last, content, renderRevision: (last.renderRevision ?? 0) + 1 };
       } else {
-        next.push({ id: nid(), role: "assistant", content: buffered, streaming: true });
+        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, buffered.length);
+        next.push({ id: nid(), role: "assistant", content: buffered, streaming: true, renderRevision: 1 });
       }
       return next;
     });
   }, []);
 
   const syncLiveAssistantSnapshot = useCallback((text: string, revision?: number | null) => {
-    if (!text) return false;
-    const normalizedRevision = typeof revision === "number" ? revision : 0;
-    const isNewerRevision = normalizedRevision > streamRevisionRef.current;
-    const isLongerText = text.length > streamTextCharsRef.current;
-    if (!isNewerRevision && !isLongerText) return false;
+    const currentState = { revision: streamRevisionRef.current, textChars: streamTextCharsRef.current };
+    if (!shouldApplyStreamRenderSnapshot(currentState, { text, revision })) return false;
 
     if (flushTimerRef.current !== null) {
       clearTimeout(flushTimerRef.current);
@@ -901,8 +913,9 @@ export function ChatPanel({
     }
     tokenBufferRef.current = "";
 
-    streamRevisionRef.current = Math.max(streamRevisionRef.current, normalizedRevision);
-    streamTextCharsRef.current = Math.max(streamTextCharsRef.current, text.length);
+    const nextState = applyStreamRenderSnapshotState(currentState, { text, revision });
+    streamRevisionRef.current = nextState.revision;
+    streamTextCharsRef.current = nextState.textChars;
     lastTokenAtRef.current = Date.now();
     let applied = false;
     setChatMessages((prev) => {
@@ -911,11 +924,22 @@ export function ChatPanel({
         const msg = next[i];
         if (msg.role !== "assistant") continue;
         if (msg.content === text) return prev;
-        next[i] = { ...msg, content: text, streaming: true };
+        next[i] = {
+          ...msg,
+          content: text,
+          streaming: true,
+          renderRevision: nextState.revision > 0 ? nextState.revision : (msg.renderRevision ?? 0) + 1,
+        };
         applied = true;
         return next;
       }
-      next.push({ id: nid(), role: "assistant", content: text, streaming: true });
+      next.push({
+        id: nid(),
+        role: "assistant",
+        content: text,
+        streaming: true,
+        renderRevision: nextState.revision > 0 ? nextState.revision : 1,
+      });
       applied = true;
       return next;
     });
@@ -1436,6 +1460,11 @@ export function ChatPanel({
     followStreamRef.current = true;
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = 0;
+    scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+      type: "jump-to-bottom",
+      itemCount: chatMessages.length + 1,
+    });
+    setDetachedFromBottom(false);
 
     // Yield to the browser paint cycle so the stop button renders
     // before we block on the API call.
@@ -1520,6 +1549,10 @@ export function ChatPanel({
       followStreamRef.current = true;
       streamRevisionRef.current = 0;
       streamTextCharsRef.current = 0;
+      scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+        type: "jump-to-bottom",
+      });
+      setDetachedFromBottom(false);
       setChatMessages((prev) => {
         const next = [...prev];
         while (next.length > 0) {
@@ -1880,9 +1913,26 @@ export function ChatPanel({
       if (rowResizeRafRef.current !== null) cancelAnimationFrame(rowResizeRafRef.current);
       rowResizeRafRef.current = requestAnimationFrame(() => {
         rowResizeRafRef.current = null;
+        const scrollEl = scrollContainerRef.current;
+        const anchorId = scrollStateRef.current.anchorId;
+        const anchorBefore = anchorId && scrollEl
+          ? Array.from(root.querySelectorAll<HTMLDivElement>("[data-row-id]"))
+              .find((row) => row.dataset.rowId === anchorId)
+              ?.getBoundingClientRect().top ?? null
+          : null;
         root
           .querySelectorAll<HTMLDivElement>("[data-index]")
           .forEach((row) => measureRowElement(row));
+        if (anchorBefore != null && scrollEl && anchorId) {
+          requestAnimationFrame(() => {
+            const anchorAfter = Array.from(root.querySelectorAll<HTMLDivElement>("[data-row-id]"))
+              .find((row) => row.dataset.rowId === anchorId)
+              ?.getBoundingClientRect().top;
+            if (typeof anchorAfter === "number") {
+              scrollEl.scrollTop += anchorAfter - anchorBefore;
+            }
+          });
+        }
       });
     };
     const observer = new ResizeObserver(measureRenderedRows);
@@ -1907,12 +1957,26 @@ export function ChatPanel({
     const el = scrollContainerRef.current;
     if (!el) return;
     const updateFollowState = () => {
-      followStreamRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
+      const firstVisibleIndex = virtualizer.getVirtualItems()[0]?.index;
+      scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+        type: "user-scroll",
+        metrics: {
+          scrollHeight: el.scrollHeight,
+          scrollTop: el.scrollTop,
+          clientHeight: el.clientHeight,
+        },
+        anchorId: firstVisibleIndex == null ? null : collapsedMessages[firstVisibleIndex]?.id ?? null,
+      });
+      followStreamRef.current = scrollStateRef.current.mode === "following";
+      setDetachedFromBottom(
+        scrollStateRef.current.mode === "detached" ||
+        scrollStateRef.current.mode === "pending-new-message",
+      );
     };
     updateFollowState();
     el.addEventListener("scroll", updateFollowState, { passive: true });
     return () => el.removeEventListener("scroll", updateFollowState);
-  }, [activeSessionId]);
+  }, [activeSessionId, collapsedMessages, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
@@ -1923,11 +1987,36 @@ export function ChatPanel({
     const el = scrollContainerRef.current;
     if (!el) return;
     const count = collapsedMessages.length;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     const countChanged = count !== prevCountRef.current;
-    const shouldFollow = streaming && (followStreamRef.current || atBottom);
-    if (countChanged || shouldFollow) {
+    if (countChanged) {
+      scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+        type: "items-changed",
+        itemCount: count,
+      });
       prevCountRef.current = count;
+    }
+    scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+      type: "stream-tick",
+      metrics: {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+      },
+    });
+    const shouldFollow = shouldAutoScrollChat(scrollStateRef.current, {
+      countChanged,
+      streaming,
+      metrics: {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+      },
+    });
+    setDetachedFromBottom(
+      scrollStateRef.current.mode === "detached" ||
+      scrollStateRef.current.mode === "pending-new-message",
+    );
+    if (shouldFollow) {
       if (count > 0) {
         if (autoScrollRafRef.current !== null) cancelAnimationFrame(autoScrollRafRef.current);
         autoScrollRafRef.current = requestAnimationFrame(() => {
@@ -1935,11 +2024,21 @@ export function ChatPanel({
           if (countChanged) {
             virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
             lastAutoScrollAtRef.current = Date.now();
+            scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+              type: "jump-complete",
+              itemCount: count,
+            });
+            setDetachedFromBottom(false);
             return;
           }
           if (Date.now() - lastAutoScrollAtRef.current >= 250) {
             el.scrollTop = el.scrollHeight;
             lastAutoScrollAtRef.current = Date.now();
+            scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+              type: "jump-complete",
+              itemCount: count,
+            });
+            setDetachedFromBottom(false);
           }
         });
       }
@@ -1951,6 +2050,58 @@ export function ChatPanel({
       }
     };
   }, [collapsedMessages.length, streamingAssistantChars, streaming, safeMode, virtualizer]);
+
+  const virtualItems = virtualizer.getVirtualItems();
+  const visibleStartIndex = virtualItems[0]?.index ?? 0;
+  const visibleEndIndex = virtualItems[virtualItems.length - 1]?.index ?? visibleStartIndex;
+  const timelineItems = useMemo(() => {
+    const sources: TimelineSourceItem[] = collapsedMessages.map((item, index) => {
+      if (item.msg === null) {
+        return { id: item.id, index, role: "typing", streaming: true };
+      }
+      const msg = item.msg;
+      if (msg.role === "tool") {
+        return {
+          id: item.id,
+          index,
+          role: "tool",
+          done: msg.done,
+          resultTruncated: msg.resultTruncated,
+          hasError: typeof msg.result === "string" && /\b(error|failed|traceback)\b/i.test(msg.result),
+        };
+      }
+      return {
+        id: item.id,
+        index,
+        role: msg.role === "feedback_form" ? "feedback" : msg.role,
+        streaming: msg.role === "assistant" ? msg.streaming : false,
+      };
+    });
+    return buildTimelineMinimapItems(sources);
+  }, [collapsedMessages]);
+
+  const jumpToIndex = useCallback((index: number, align: "start" | "center" | "end" = "center") => {
+    if (collapsedMessages.length === 0) return;
+    const nextIndex = Math.max(0, Math.min(index, collapsedMessages.length - 1));
+    scrollStateRef.current = align === "end"
+      ? reduceChatScrollState(scrollStateRef.current, { type: "jump-to-bottom", itemCount: collapsedMessages.length })
+      : scrollStateRef.current;
+    virtualizer.scrollToIndex(nextIndex, { align, behavior: safeMode ? "instant" : "smooth" });
+    if (align === "end") {
+      requestAnimationFrame(() => {
+        scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+          type: "jump-complete",
+          itemCount: collapsedMessages.length,
+        });
+        followStreamRef.current = true;
+        setDetachedFromBottom(false);
+      });
+    }
+  }, [collapsedMessages.length, safeMode, virtualizer]);
+
+  const jumpToLatest = useCallback(() => {
+    jumpToIndex(collapsedMessages.length - 1, "end");
+  }, [collapsedMessages.length, jumpToIndex]);
 
   return (
     <div
@@ -2070,20 +2221,21 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-5" ref={scrollContainerRef}>
-        {loadingHistory ? (
-          <div className="flex flex-col gap-4 py-2">
+      <div className="relative min-h-0 flex-1">
+        <div className="h-full overflow-y-auto px-4 py-5 pr-8" ref={scrollContainerRef}>
+          {loadingHistory ? (
+            <div className="flex flex-col gap-4 py-2">
             <MessageRowSkeleton />
             <MessageRowSkeleton />
-          </div>
-        ) : chatMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+            </div>
+          ) : chatMessages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <SparkAgentIcon className="mb-3 h-10 w-10 opacity-30" />
             <p className="text-sm">Start a conversation</p>
             <p className="text-xs mt-1 opacity-60">Type a message below</p>
-          </div>
-        ) : (
-          <>
+            </div>
+          ) : (
+            <>
             {hasEarlier && (
               <div className="flex justify-center pt-1 pb-2">
                 <button
@@ -2107,6 +2259,7 @@ export function ChatPanel({
                   <div
                     key="typing"
                     data-index={vItem.index}
+                    data-row-id="typing"
                     ref={measureRowElement}
                     style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
                   >
@@ -2164,6 +2317,7 @@ export function ChatPanel({
                 <div
                   key={item.id}
                   data-index={vItem.index}
+                  data-row-id={item.id}
                   ref={measureRowElement}
                   style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
                 >
@@ -2172,12 +2326,31 @@ export function ChatPanel({
               );
             })}
             </div>
-          </>
-        )}
-        {error && (
-          <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
-            <p className="text-xs text-destructive">{error}</p>
-          </div>
+            </>
+          )}
+          {error && (
+            <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+              <p className="text-xs text-destructive">{error}</p>
+            </div>
+          )}
+        </div>
+        <TimelineMinimap
+          items={timelineItems}
+          visibleStartIndex={visibleStartIndex}
+          visibleEndIndex={visibleEndIndex}
+          onJumpToIndex={jumpToIndex}
+        />
+        {detachedFromBottom && collapsedMessages.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="absolute bottom-3 right-6 z-30 h-8 w-8 rounded-md bg-background/90 shadow-sm backdrop-blur"
+            title="Jump to latest"
+            onClick={jumpToLatest}
+          >
+            <ChevronDown className="h-4 w-4" />
+          </Button>
         )}
       </div>
 
