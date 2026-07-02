@@ -9209,11 +9209,6 @@
     "ast_hash": "ee34bcca613d5cc0c690a858db4827fe",
     "semantic_hash": ""
   },
-  "src/spark_cli/web_dist/index.html": {
-    "mtime": 1782997783.8088398,
-    "ast_hash": "09ef6f48c2676e5108a6e0347a4883cf",
-    "semantic_hash": ""
-  },
   "src/spark_relay/README.md": {
     "mtime": 1782990128.7270024,
     "ast_hash": "9cfe8c52940a2e0afc8c78a6e27b62f7",
@@ -9724,21 +9719,6 @@
     "ast_hash": "14f521f7c47e85fbd77c74a2c55935c3",
     "semantic_hash": ""
   },
-  "src/spark_cli/web_dist/favicon.png": {
-    "mtime": 1782997783.2691832,
-    "ast_hash": "404d206cc280041848bccc555139033a",
-    "semantic_hash": ""
-  },
-  "src/spark_cli/web_dist/icon_small-dark.png": {
-    "mtime": 1782997783.2730703,
-    "ast_hash": "ac2c0ffe7ec9edc4cf3a3d6d5196dcda",
-    "semantic_hash": ""
-  },
-  "src/spark_cli/web_dist/icon_small-light.png": {
-    "mtime": 1782997783.2735007,
-    "ast_hash": "d56006c2400add99962cf6798c789268",
-    "semantic_hash": ""
-  },
   "src/tools/neutts_samples/jo.wav": {
     "mtime": 1782990128.7380493,
     "ast_hash": "8d12142723c1410344e623a628d2fd45",
@@ -9767,16 +9747,6 @@
   "src/core/network_tls.py": {
     "mtime": 1782997694.1750207,
     "ast_hash": "cd19b6e8c84f5249c8321a1e50ea165d",
-    "semantic_hash": ""
-  },
-  "src/spark_cli/web_dist/assets/event-Cuh7oIna.js": {
-    "mtime": 1782997783.8088613,
-    "ast_hash": "5ee0fc2c66053bab4acae92dee7f8134",
-    "semantic_hash": ""
-  },
-  "src/spark_cli/web_dist/assets/index-Cc7CMNlX.js": {
-    "mtime": 1782997783.809353,
-    "ast_hash": "26fc0203bdd29996357bc87e1a2039b3",
     "semantic_hash": ""
   }
 }
