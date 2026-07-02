@@ -9,6 +9,58 @@ from typing import Any, Dict, List, Optional
 from tools.registry import registry
 
 
+def _session_context_metadata() -> Dict[str, Any]:
+    """Return current gateway session metadata when available."""
+    try:
+        from gateway.session_context import get_session_env
+    except Exception:
+        get_session_env = None  # type: ignore[assignment]
+
+    def _get(name: str) -> str:
+        if get_session_env is not None:
+            return get_session_env(name, "")
+        return os.getenv(name, "")
+
+    platform = _get("SPARK_SESSION_PLATFORM").strip()
+    chat_id = _get("SPARK_SESSION_CHAT_ID").strip()
+    chat_type = _get("SPARK_SESSION_CHAT_TYPE").strip() or "dm"
+    thread_id = _get("SPARK_SESSION_THREAD_ID").strip()
+    user_id = _get("SPARK_SESSION_USER_ID").strip()
+    user_name = _get("SPARK_SESSION_USER_NAME").strip()
+    session_key = _get("SPARK_SESSION_KEY").strip()
+    source: Dict[str, Any] = {}
+    if platform and chat_id:
+        source = {
+            "platform": platform,
+            "chat_id": chat_id,
+            "chat_name": _get("SPARK_SESSION_CHAT_NAME").strip() or None,
+            "chat_type": chat_type,
+            "user_id": user_id or None,
+            "user_name": user_name or None,
+            "thread_id": thread_id or None,
+        }
+    return {
+        "platform": platform or None,
+        "chat_id": chat_id or None,
+        "thread_id": thread_id or None,
+        "chat_type": chat_type,
+        "user_id": user_id or None,
+        "user_name": user_name or None,
+        "session_key": session_key or None,
+        "source": source,
+    }
+
+
+def _kanban_config() -> Dict[str, Any]:
+    try:
+        from spark_cli.config import load_config
+
+        cfg = load_config().get("kanban", {})
+        return cfg if isinstance(cfg, dict) else {}
+    except Exception:
+        return {}
+
+
 def _task_id(args: dict, kw: dict) -> str:
     tid = args.get("task_id") or kw.get("task_id") or os.getenv("SPARK_KANBAN_TASK")
     if not tid:
@@ -52,7 +104,16 @@ def kanban_complete(
     tid = os.getenv("SPARK_KANBAN_TASK")
     if not tid:
         return json.dumps({"error": "No SPARK_KANBAN_TASK"})
-    row = kb.complete_task(tid, summary=summary, metadata=metadata or {}, result=result)
+    meta = _session_context_metadata()
+    row = kb.complete_task(
+        tid,
+        summary=summary,
+        metadata=metadata or {},
+        result=result,
+        actor=meta.get("user_name") or meta.get("user_id") or "worker",
+        origin_session_key=meta.get("session_key"),
+        origin_kind="kanban_tool",
+    )
     if not row:
         return json.dumps({"error": "Task not found"})
     return json.dumps({"ok": True, "task": row}, default=str)
@@ -64,7 +125,14 @@ def kanban_block(reason: str, **kw: Any) -> str:
     tid = os.getenv("SPARK_KANBAN_TASK")
     if not tid:
         return json.dumps({"error": "No SPARK_KANBAN_TASK"})
-    row = kb.block_task(tid, reason)
+    meta = _session_context_metadata()
+    row = kb.block_task(
+        tid,
+        reason,
+        actor=meta.get("user_name") or meta.get("user_id") or "worker",
+        origin_session_key=meta.get("session_key"),
+        origin_kind="kanban_tool",
+    )
     if not row:
         return json.dumps({"error": "Task not found"})
     return json.dumps({"ok": True, "task": row}, default=str)
@@ -73,7 +141,15 @@ def kanban_block(reason: str, **kw: Any) -> str:
 def kanban_comment(task_id: str, body: str, author: str = "worker", **kw: Any) -> str:
     from core import kanban_db as kb
 
-    cid = kb.add_comment(task_id, body, author)
+    meta = _session_context_metadata()
+    cid = kb.add_comment(
+        task_id,
+        body,
+        author,
+        actor=author or meta.get("user_name") or meta.get("user_id") or "worker",
+        origin_session_key=meta.get("session_key"),
+        origin_kind="kanban_tool",
+    )
     return json.dumps({"ok": True, "comment_id": cid})
 
 
@@ -89,6 +165,8 @@ def kanban_create_tool(
     from core import kanban_db as kb
 
     board = os.getenv("SPARK_KANBAN_BOARD", "default")
+    meta = _session_context_metadata()
+    cfg = _kanban_config()
     row = kb.create_task(
         title=title,
         board_slug=board,
@@ -97,6 +175,14 @@ def kanban_create_tool(
         tenant=tenant or None,
         priority=priority,
         parent_ids=parents or [],
+        owner_profile=assignee,
+        owner_platform=meta.get("platform"),
+        owner_channel=meta.get("chat_id"),
+        owner_thread_id=meta.get("thread_id"),
+        creator_session_key=meta.get("session_key"),
+        creator_session_source=meta.get("source") if isinstance(meta.get("source"), dict) else {},
+        notify_on_changes=bool(cfg.get("notify_on_changes", False)),
+        wake_on_changes=bool(cfg.get("wake_creator_on_changes", False)),
     )
     return json.dumps({"ok": True, "task": row}, default=str)
 

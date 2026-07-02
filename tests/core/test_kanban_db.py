@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -117,3 +118,59 @@ def test_preview_ready_for_dispatch_reports_assignee_concurrency():
     assert preview["ready"] == [first["id"], third["id"]]
     assert preview["blocked_by_assignee"] == ["worker-a"]
     assert second["id"] not in preview["ready"]
+
+
+def test_task_notification_metadata_and_events_are_durable():
+    creator_source = {
+        "platform": "telegram",
+        "chat_id": "chat-1",
+        "chat_type": "dm",
+        "user_id": "user-1",
+        "user_name": "Owner",
+    }
+    task = kb.create_task(
+        title="Notify me",
+        assignee="worker-a",
+        owner_profile="owner-profile",
+        owner_platform="telegram",
+        owner_channel="chat-1",
+        creator_session_key="agent:main:telegram:dm:chat-1",
+        creator_session_source=creator_source,
+        notify_on_changes=True,
+        wake_on_changes=True,
+    )
+
+    assert task["owner_profile"] == "owner-profile"
+    assert task["owner_platform"] == "telegram"
+    assert task["notify_on_changes"] == 1
+    assert task["wake_on_changes"] == 1
+
+    kb.patch_task(
+        task["id"],
+        status="ready",
+        actor="Owner",
+        origin_session_key="agent:main:telegram:dm:chat-1",
+        origin_kind="test",
+    )
+    kb.add_comment(
+        task["id"],
+        "Looks good",
+        "Owner",
+        origin_session_key="agent:main:telegram:dm:chat-1",
+        origin_kind="test",
+    )
+
+    events = kb.append_events_since(0)
+    status_event = next(e for e in events if e["kind"] == "status")
+    comment_event = next(e for e in events if e["kind"] == "comment")
+    status_payload = json.loads(status_event["payload_json"])
+    comment_payload = json.loads(comment_event["payload_json"])
+
+    assert status_payload["from"] == "todo"
+    assert status_payload["to"] == "ready"
+    assert status_payload["origin"]["session_key"] == "agent:main:telegram:dm:chat-1"
+    assert status_payload["task"]["owner_channel"] == "chat-1"
+    assert status_payload["task"]["creator_session_key"] == "agent:main:telegram:dm:chat-1"
+    assert json.loads(status_payload["task"]["creator_session_source_json"]) == creator_source
+    assert comment_payload["body"] == "Looks good"
+    assert comment_payload["task"]["notify_on_changes"] is True

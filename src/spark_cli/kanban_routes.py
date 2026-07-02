@@ -29,6 +29,14 @@ class TaskCreateBody(BaseModel):
     workspace_kind: str = "scratch"
     workspace_path: Optional[str] = None
     skills: List[str] = Field(default_factory=list)
+    owner_profile: Optional[str] = None
+    owner_platform: Optional[str] = None
+    owner_channel: Optional[str] = None
+    owner_thread_id: Optional[str] = None
+    creator_session_key: Optional[str] = None
+    creator_session_source: Dict[str, Any] = Field(default_factory=dict)
+    notify_on_changes: bool = False
+    wake_on_changes: bool = False
     triage: bool = False
     max_runtime_seconds: int = 0
 
@@ -43,6 +51,10 @@ class TaskPatchBody(BaseModel):
     result: Optional[str] = None
     in_triage: Optional[bool] = None
     workspace_path: Optional[str] = None
+    actor: Optional[str] = None
+    origin_session_key: Optional[str] = None
+    origin_kind: Optional[str] = None
+    internal_event: bool = False
 
 
 class BulkPatchBody(BaseModel):
@@ -69,6 +81,9 @@ class DispatchResponse(BaseModel):
 class CommentBody(BaseModel):
     body: str
     author: Optional[str] = None
+    origin_session_key: Optional[str] = None
+    origin_kind: Optional[str] = None
+    internal_event: bool = False
 
 
 class LinkBody(BaseModel):
@@ -80,10 +95,18 @@ class CompleteBody(BaseModel):
     summary: str = ""
     metadata: Dict[str, Any] = Field(default_factory=dict)
     result: str = ""
+    actor: Optional[str] = None
+    origin_session_key: Optional[str] = None
+    origin_kind: Optional[str] = None
+    internal_event: bool = False
 
 
 class BlockBody(BaseModel):
     reason: str
+    actor: Optional[str] = None
+    origin_session_key: Optional[str] = None
+    origin_kind: Optional[str] = None
+    internal_event: bool = False
 
 
 @router.get("/board")
@@ -130,6 +153,14 @@ async def task_create(body: TaskCreateBody):
             workspace_kind=body.workspace_kind,
             workspace_path=body.workspace_path,
             skills=body.skills,
+            owner_profile=body.owner_profile,
+            owner_platform=body.owner_platform,
+            owner_channel=body.owner_channel,
+            owner_thread_id=body.owner_thread_id,
+            creator_session_key=body.creator_session_key,
+            creator_session_source=body.creator_session_source,
+            notify_on_changes=body.notify_on_changes,
+            wake_on_changes=body.wake_on_changes,
             in_triage=body.triage,
             max_runtime_seconds=body.max_runtime_seconds,
         )
@@ -157,6 +188,10 @@ async def task_patch(task_id: str, body: TaskPatchBody):
             in_triage=body.in_triage,
             workspace_path=body.workspace_path,
             workspace_path_set="workspace_path" in provided_fields,
+            actor=body.actor,
+            origin_session_key=body.origin_session_key,
+            origin_kind=body.origin_kind,
+            internal_event=body.internal_event,
         )
         if not row:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -185,7 +220,15 @@ async def task_bulk(body: BulkPatchBody):
 @router.post("/tasks/{task_id}/comments")
 async def task_comment(task_id: str, body: CommentBody):
     try:
-        cid = kb.add_comment(task_id, body.body, body.author)
+        cid = kb.add_comment(
+            task_id,
+            body.body,
+            body.author,
+            actor=body.author,
+            origin_session_key=body.origin_session_key,
+            origin_kind=body.origin_kind,
+            internal_event=body.internal_event,
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"ok": True, "id": cid}
@@ -212,7 +255,14 @@ async def link_del(parent_id: str = Query(...), child_id: str = Query(...)):
 @router.post("/tasks/{task_id}/complete")
 async def task_complete(task_id: str, body: CompleteBody):
     row = kb.complete_task(
-        task_id, summary=body.summary, metadata=body.metadata, result=body.result
+        task_id,
+        summary=body.summary,
+        metadata=body.metadata,
+        result=body.result,
+        actor=body.actor,
+        origin_session_key=body.origin_session_key,
+        origin_kind=body.origin_kind,
+        internal_event=body.internal_event,
     )
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -221,7 +271,14 @@ async def task_complete(task_id: str, body: CompleteBody):
 
 @router.post("/tasks/{task_id}/block")
 async def task_block(task_id: str, body: BlockBody):
-    row = kb.block_task(task_id, body.reason)
+    row = kb.block_task(
+        task_id,
+        body.reason,
+        actor=body.actor,
+        origin_session_key=body.origin_session_key,
+        origin_kind=body.origin_kind,
+        internal_event=body.internal_event,
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
     return row

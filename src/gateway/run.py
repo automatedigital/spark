@@ -1844,6 +1844,40 @@ class GatewayRunner:
                 _kt = asyncio.create_task(_kanban_dispatch_loop())
                 self._background_tasks.add(_kt)
                 _kt.add_done_callback(self._background_tasks.discard)
+
+            if (
+                _kcfg.get("workflow_in_gateway", False)
+                or _kcfg.get("notify_on_changes", False)
+                or _kcfg.get("wake_creator_on_changes", False)
+            ):
+                _workflow_interval = max(5, int(_kcfg.get("workflow_interval_seconds", 10)))
+
+                async def _kanban_workflow_loop() -> None:
+                    from gateway.kanban_workflow import run_workflow_tick
+
+                    try:
+                        while self._running:
+                            try:
+                                await run_workflow_tick(
+                                    gateway_config=self.config,
+                                    adapters=self.adapters,
+                                    delivery_router=self.delivery_router,
+                                    kanban_config=_kcfg,
+                                )
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as e:
+                                logger.debug("Kanban workflow tick error: %s", e)
+                            for _ in range(_workflow_interval):
+                                if not self._running:
+                                    return
+                                await asyncio.sleep(1)
+                    except asyncio.CancelledError:
+                        pass
+
+                _kwt = asyncio.create_task(_kanban_workflow_loop())
+                self._background_tasks.add(_kwt)
+                _kwt.add_done_callback(self._background_tasks.discard)
         except Exception as e:
             logger.warning("Embedded dashboard/dispatcher startup skipped: %s", e)
 
@@ -7711,6 +7745,7 @@ class GatewayRunner:
             platform=context.source.platform.value,
             chat_id=context.source.chat_id,
             chat_name=context.source.chat_name or "",
+            chat_type=context.source.chat_type or "",
             thread_id=str(context.source.thread_id) if context.source.thread_id else "",
             user_id=str(context.source.user_id) if context.source.user_id else "",
             user_name=str(context.source.user_name) if context.source.user_name else "",

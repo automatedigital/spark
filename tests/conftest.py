@@ -1,11 +1,8 @@
 """Shared fixtures for the spark-agent test suite."""
 
 import asyncio
-import os
 import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -43,6 +40,7 @@ def _isolate_spark_home(tmp_path, monkeypatch):
     monkeypatch.delenv("SPARK_SESSION_PLATFORM", raising=False)
     monkeypatch.delenv("SPARK_SESSION_CHAT_ID", raising=False)
     monkeypatch.delenv("SPARK_SESSION_CHAT_NAME", raising=False)
+    monkeypatch.delenv("SPARK_SESSION_CHAT_TYPE", raising=False)
     monkeypatch.delenv("SPARK_GATEWAY_SESSION", raising=False)
     # Avoid making real calls during tests if this key is set in the env files
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
