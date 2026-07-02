@@ -13,17 +13,42 @@ Two sources feed the allowlist:
 2. **User config** — ``terminal.env_passthrough`` in config.yaml lets users
    explicitly allowlist vars for non-skill use cases.
 
-Both ``code_execution_tool.py`` and ``tools/environments/local.py`` consult
-:func:`is_env_passthrough` before stripping a variable.
+Both ``code_execution_tool.py`` and ``tools/environments/local.py`` use the
+shared subprocess env builder below so passthrough is explicit and consistent.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+from collections.abc import Iterable
 from contextvars import ContextVar
-from typing import Iterable
 
 logger = logging.getLogger(__name__)
+
+
+_SAFE_SUBPROCESS_ENV_KEYS = frozenset({
+    "COLORTERM",
+    "HOME",
+    "LANG",
+    "LOGNAME",
+    "PATH",
+    "SHELL",
+    "TEMP",
+    "TERM",
+    "TMP",
+    "TMPDIR",
+    "TZ",
+    "USER",
+    "VIRTUAL_ENV",
+    "VIRTUAL_ENV_PROMPT",
+})
+
+_SAFE_SUBPROCESS_ENV_PREFIXES = (
+    "CONDA_",
+    "LC_",
+    "XDG_",
+)
 
 # Session-scoped set of env var names that should pass through to sandboxes.
 # Backed by ContextVar to prevent cross-session data bleed in the gateway pipeline.
@@ -94,8 +119,65 @@ def get_all_passthrough() -> frozenset[str]:
     return frozenset(_get_allowed()) | _load_config_passthrough()
 
 
+def is_safe_subprocess_env_var(var_name: str) -> bool:
+    """Return True when *var_name* is safe to inherit by default.
+
+    This is intentionally an allowlist for model-authored subprocesses. Provider
+    credentials, token variables, credential-file paths, and unknown project
+    variables are excluded unless explicitly registered via env passthrough.
+    """
+    return var_name in _SAFE_SUBPROCESS_ENV_KEYS or var_name.startswith(_SAFE_SUBPROCESS_ENV_PREFIXES)
+
+
+def build_tool_subprocess_env(
+    base_env: dict | None = None,
+    extra_env: dict | None = None,
+    *,
+    force_prefix: str = "_SPARK_FORCE_",
+    include_passthrough: bool = True,
+    profile_home: bool = True,
+) -> dict[str, str]:
+    """Build an allowlisted environment for model-authored tool subprocesses.
+
+    ``base_env`` defaults to the current process environment. Only safe runtime
+    variables and env-passthrough registrations are inherited. ``extra_env``
+    follows the same rule, except names prefixed with ``force_prefix`` are
+    treated as an internal explicit opt-in and injected under the unprefixed
+    name.
+    """
+    result: dict[str, str] = {}
+
+    def _include(key: str, value: object) -> None:
+        if value is None:
+            return
+        if is_safe_subprocess_env_var(key) or (include_passthrough and is_env_passthrough(key)):
+            result[key] = str(value)
+
+    for key, value in (os.environ if base_env is None else base_env).items():
+        if key.startswith(force_prefix):
+            continue
+        _include(key, value)
+
+    for key, value in (extra_env or {}).items():
+        if key.startswith(force_prefix):
+            real_key = key[len(force_prefix):]
+            if real_key:
+                result[real_key] = str(value)
+        else:
+            _include(key, value)
+
+    if profile_home:
+        try:
+            from core.spark_constants import get_subprocess_home
+            profile_home_value = get_subprocess_home()
+        except Exception:
+            profile_home_value = None
+        if profile_home_value:
+            result["HOME"] = profile_home_value
+
+    return result
+
+
 def clear_env_passthrough() -> None:
     """Reset the skill-scoped allowlist (e.g. on session reset)."""
     _get_allowed().clear()
-
-

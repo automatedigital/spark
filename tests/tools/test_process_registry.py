@@ -6,17 +6,17 @@ import signal
 import subprocess
 import sys
 import time
-import pytest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from tools.env_passthrough import clear_env_passthrough, register_env_passthrough
 from tools.environments.local import _SPARK_PROVIDER_ENV_FORCE_PREFIX
 from tools.process_registry import (
-    ProcessRegistry,
-    ProcessSession,
-    MAX_OUTPUT_CHARS,
     FINISHED_TTL_SECONDS,
     MAX_PROCESSES,
+    ProcessRegistry,
+    ProcessSession,
 )
 
 
@@ -323,15 +323,19 @@ class TestSpawnEnvSanitization:
             patch("subprocess.Popen", side_effect=fake_popen), \
             patch("threading.Thread", return_value=fake_thread), \
             patch.object(registry, "_write_checkpoint"):
-            registry.spawn_local(
-                "echo hello",
-                cwd="/tmp",
-                env_vars={
-                    "MY_CUSTOM_VAR": "keep-me",
-                    "TELEGRAM_BOT_TOKEN": "drop-me",
-                    f"{_SPARK_PROVIDER_ENV_FORCE_PREFIX}TELEGRAM_BOT_TOKEN": "forced-bot-token",
-                },
-            )
+            try:
+                register_env_passthrough(["MY_CUSTOM_VAR"])
+                registry.spawn_local(
+                    "echo hello",
+                    cwd="/tmp",
+                    env_vars={
+                        "MY_CUSTOM_VAR": "keep-me",
+                        "TELEGRAM_BOT_TOKEN": "drop-me",
+                        f"{_SPARK_PROVIDER_ENV_FORCE_PREFIX}TELEGRAM_BOT_TOKEN": "forced-bot-token",
+                    },
+                )
+            finally:
+                clear_env_passthrough()
 
         env = captured["env"]
         assert env["MY_CUSTOM_VAR"] == "keep-me"

@@ -1050,8 +1050,8 @@
     "semantic_hash": "b5474754e5a3d18337c026ab07576032"
   },
   "src/spark_cli/web/src-tauri/tauri.conf.json": {
-    "mtime": 1782515107.0252652,
-    "ast_hash": "c3b1733335924ca90591777bb54b0d89",
+    "mtime": 1782855789.6882036,
+    "ast_hash": "a25c5aad20c71cac784409716d9b7e8f",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/App.tsx": {
@@ -1340,12 +1340,12 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/UpdateModalContext.tsx": {
-    "mtime": 1782852083.0857108,
+    "mtime": 1782855590.127424,
     "ast_hash": "67533daeebe7132f0317ab07d1aa77a6",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/api.ts": {
-    "mtime": 1782852067.1984777,
+    "mtime": 1782855590.1276827,
     "ast_hash": "51b5be5d38681e1090546c5c828217cd",
     "semantic_hash": ""
   },
@@ -1520,7 +1520,7 @@
     "semantic_hash": "7da88eae80c4098e351a162a5deafad8"
   },
   "src/spark_cli/web/src/pages/UpdatesPage.tsx": {
-    "mtime": 1782852091.4232874,
+    "mtime": 1782855590.127887,
     "ast_hash": "b52aa0990a410f273e6285e9d02a1795",
     "semantic_hash": ""
   },
@@ -1595,7 +1595,7 @@
     "semantic_hash": "1e92effe975e204b0b8630303a245ba6"
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1782854088.6522017,
+    "mtime": 1782904134.3640933,
     "ast_hash": "a48cf7d3ac422d5fbbfd6d2f1b8861d6",
     "semantic_hash": ""
   },
@@ -1745,8 +1745,8 @@
     "semantic_hash": "2ac124cd1ea3ed5e14551ecdc8d6fb0b"
   },
   "src/tools/code_execution_tool.py": {
-    "mtime": 1782848802.6483874,
-    "ast_hash": "ca5b8c813ce281f4f79a2d8da0b08b79",
+    "mtime": 1782986450.1529918,
+    "ast_hash": "6bbecdca2af47d8066e507eee80797ac",
     "semantic_hash": ""
   },
   "src/tools/computer_use/__init__.py": {
@@ -1815,9 +1815,9 @@
     "semantic_hash": ""
   },
   "src/tools/env_passthrough.py": {
-    "mtime": 1782469525.2106304,
-    "ast_hash": "ee897d5f5050187961063bced9a32ea4",
-    "semantic_hash": "ee897d5f5050187961063bced9a32ea4"
+    "mtime": 1782986469.3634808,
+    "ast_hash": "7565ab7bde9e75d40a0c73a8087273e3",
+    "semantic_hash": ""
   },
   "src/tools/environments/__init__.py": {
     "mtime": 1776172096.0453722,
@@ -1845,9 +1845,9 @@
     "semantic_hash": "78021f8567f65a3ef6b5096e46ec2e46"
   },
   "src/tools/environments/local.py": {
-    "mtime": 1776216139.5353684,
-    "ast_hash": "ac3d1a3ed5a8fa69aa567c2d3c77a9c2",
-    "semantic_hash": "ac3d1a3ed5a8fa69aa567c2d3c77a9c2"
+    "mtime": 1782986431.9914546,
+    "ast_hash": "a8e1f7a5d7b51258b224f5cca073b21b",
+    "semantic_hash": ""
   },
   "src/tools/environments/managed_modal.py": {
     "mtime": 1782469525.2116017,
@@ -5395,7 +5395,7 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server.py": {
-    "mtime": 1782852172.0092835,
+    "mtime": 1782855590.1460817,
     "ast_hash": "55515ed40f27236bce65887b77af05d7",
     "semantic_hash": ""
   },
@@ -5800,8 +5800,8 @@
     "semantic_hash": ""
   },
   "tests/tools/test_code_execution.py": {
-    "mtime": 1782848802.6487393,
-    "ast_hash": "654cf90331a71cbed609633e9a6d1b46",
+    "mtime": 1782986459.6946502,
+    "ast_hash": "0e90e7a4de69c0bbe4e61fec414ce7f4",
     "semantic_hash": ""
   },
   "tests/tools/test_command_guards.py": {
@@ -5865,8 +5865,8 @@
     "semantic_hash": ""
   },
   "tests/tools/test_env_passthrough.py": {
-    "mtime": 1776172427.5595472,
-    "ast_hash": "0870bb8eaa19b224c171767f0363227b",
+    "mtime": 1782986431.9913845,
+    "ast_hash": "ce675a839ed39f69cc1501730d3dee43",
     "semantic_hash": ""
   },
   "tests/tools/test_file_operations.py": {
@@ -5945,8 +5945,8 @@
     "semantic_hash": ""
   },
   "tests/tools/test_local_env_blocklist.py": {
-    "mtime": 1776172517.5429146,
-    "ast_hash": "d1be72f17d44b840aa696643be861e23",
+    "mtime": 1782986431.9915092,
+    "ast_hash": "25094b77bbdb954e42227d8a335d5a76",
     "semantic_hash": ""
   },
   "tests/tools/test_local_tempdir.py": {
@@ -6065,8 +6065,8 @@
     "semantic_hash": ""
   },
   "tests/tools/test_process_registry.py": {
-    "mtime": 1776172427.5641556,
-    "ast_hash": "bd7cf0ea7ada606d8a0d0b742fada608",
+    "mtime": 1782986431.9927087,
+    "ast_hash": "adb44868c91a8d3d1d7cda07a502d714",
     "semantic_hash": ""
   },
   "tests/tools/test_read_loop_detection.py": {
@@ -9395,17 +9395,17 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/favicon.png": {
-    "mtime": 1782854133.4834967,
+    "mtime": 1782855926.966756,
     "ast_hash": "404d206cc280041848bccc555139033a",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/icon_small-dark.png": {
-    "mtime": 1782854133.4869928,
+    "mtime": 1782855926.9703913,
     "ast_hash": "ac2c0ffe7ec9edc4cf3a3d6d5196dcda",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/icon_small-light.png": {
-    "mtime": 1782854133.4874864,
+    "mtime": 1782855926.970798,
     "ast_hash": "d56006c2400add99962cf6798c789268",
     "semantic_hash": ""
   },
@@ -9630,7 +9630,7 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/index.html": {
-    "mtime": 1782854134.0269268,
+    "mtime": 1782855927.5109398,
     "ast_hash": "06f381b8a9a1f8ce457bc8cf92c2bfe8",
     "semantic_hash": ""
   },
@@ -9675,18 +9675,43 @@
     "semantic_hash": ""
   },
   ".codex/skills/tasker/SKILL.md": {
-    "mtime": 1782851167.6037834,
-    "ast_hash": "1acfb84ca6db924670f9c2d62306c631",
+    "mtime": 1782960221.273943,
+    "ast_hash": "0daab4b030fa6dfa85fd235ce8967876",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/assets/event-BvuOemBO.js": {
-    "mtime": 1782854134.0269732,
+    "mtime": 1782855927.5107403,
     "ast_hash": "61053b6443439922a63773e7059ca194",
     "semantic_hash": ""
   },
   "src/spark_cli/web_dist/assets/index-ll-K90-T.js": {
-    "mtime": 1782854134.0274708,
+    "mtime": 1782855927.5113988,
     "ast_hash": "f096c810e63eb29f83e8b6e2e1b5770c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/tasker/SKILL.md": {
+    "mtime": 1782960221.2711205,
+    "ast_hash": "0daab4b030fa6dfa85fd235ce8967876",
+    "semantic_hash": ""
+  },
+  ".agents/skills/tasker/USAGE.md": {
+    "mtime": 1782960606.1571352,
+    "ast_hash": "ba7457b8a41c5ab1e19a1cb78128b212",
+    "semantic_hash": ""
+  },
+  ".claude/skills/tasker/SKILL.md": {
+    "mtime": 1782960216.7412002,
+    "ast_hash": "0daab4b030fa6dfa85fd235ce8967876",
+    "semantic_hash": ""
+  },
+  ".claude/skills/tasker/USAGE.md": {
+    "mtime": 1782960597.465201,
+    "ast_hash": "ba7457b8a41c5ab1e19a1cb78128b212",
+    "semantic_hash": ""
+  },
+  ".codex/skills/tasker/USAGE.md": {
+    "mtime": 1782960606.1598418,
+    "ast_hash": "ba7457b8a41c5ab1e19a1cb78128b212",
     "semantic_hash": ""
   }
 }

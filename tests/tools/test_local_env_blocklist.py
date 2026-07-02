@@ -12,10 +12,11 @@ import os
 import threading
 from unittest.mock import MagicMock, patch
 
+from tools.env_passthrough import clear_env_passthrough, register_env_passthrough
 from tools.environments.local import (
-    LocalEnvironment,
     _SPARK_PROVIDER_ENV_BLOCKLIST,
     _SPARK_PROVIDER_ENV_FORCE_PREFIX,
+    LocalEnvironment,
 )
 
 
@@ -57,7 +58,7 @@ def _run_with_env(extra_os_env=None, self_env=None):
 
 
 class TestProviderEnvBlocklist:
-    """Provider env vars loaded from ~/.spark/.env must not leak."""
+    """Provider env vars loaded from Spark profile .env files must not leak."""
 
     def test_blocked_vars_are_stripped(self):
         """OPENAI_BASE_URL and other provider vars must not appear in subprocess env."""
@@ -137,6 +138,25 @@ class TestProviderEnvBlocklist:
         for var in leaked_vars:
             assert var not in result_env, f"{var} leaked into subprocess env"
 
+    def test_credential_path_vars_are_stripped(self):
+        """Credential-file path vars must not leak into subprocess env."""
+        leaked_vars = {
+            "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/gcp.json",
+            "AWS_SHARED_CREDENTIALS_FILE": "/tmp/aws",
+            "AWS_CONFIG_FILE": "/tmp/aws-config",
+            "VERTEX_CREDENTIALS_PATH": "/tmp/vertex.json",
+            "CLAUDE_CONFIG_DIR": "/tmp/claude",
+        }
+        result_env = _run_with_env(extra_os_env=leaked_vars)
+
+        for var in leaked_vars:
+            assert var not in result_env, f"{var} leaked into subprocess env"
+
+    def test_unknown_non_runtime_vars_are_stripped(self):
+        result_env = _run_with_env(extra_os_env={"PROJECT_ACCESS_TOKEN": "secret"})
+
+        assert "PROJECT_ACCESS_TOKEN" not in result_env
+
     def test_safe_vars_are_preserved(self):
         """Standard env vars (PATH, HOME, USER) must still be passed through."""
         result_env = _run_with_env()
@@ -146,15 +166,23 @@ class TestProviderEnvBlocklist:
         assert "USER" in result_env
         assert "PATH" in result_env
 
-    def test_self_env_blocked_vars_also_stripped(self):
-        """Blocked vars in self.env are stripped; non-blocked vars pass through."""
+    def test_self_env_vars_require_passthrough(self):
+        """Custom self.env vars are stripped unless explicitly passed through."""
         result_env = _run_with_env(self_env={
             "OPENAI_BASE_URL": "http://custom:9999/v1",
             "MY_CUSTOM_VAR": "keep-this",
         })
 
         assert "OPENAI_BASE_URL" not in result_env
-        assert "MY_CUSTOM_VAR" in result_env
+        assert "MY_CUSTOM_VAR" not in result_env
+
+    def test_passthrough_preserves_custom_self_env(self):
+        try:
+            register_env_passthrough(["MY_CUSTOM_VAR"])
+            result_env = _run_with_env(self_env={"MY_CUSTOM_VAR": "keep-this"})
+        finally:
+            clear_env_passthrough()
+
         assert result_env["MY_CUSTOM_VAR"] == "keep-this"
 
 
