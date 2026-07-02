@@ -183,6 +183,65 @@ class TestEventBus:
         finally:
             web_server._clear_web_turn("sess_snapshot")
 
+    def test_token_callback_strips_ansi_from_events_queue_and_snapshot(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            stream_queue: asyncio.Queue = asyncio.Queue()
+            event_queue: asyncio.Queue = asyncio.Queue()
+            web_server._event_subscribers.add(event_queue)
+            try:
+                web_server._mark_web_turn_active("sess_ansi_token")
+                callbacks = web_server._make_web_chat_callbacks("sess_ansi_token", stream_queue, loop)
+                token_callback = callbacks[0]
+                token_callback("\x1b[31mred\x1b[0m")
+                stream_token = await asyncio.wait_for(stream_queue.get(), timeout=2.0)
+                event = await asyncio.wait_for(event_queue.get(), timeout=2.0)
+                return stream_token, event
+            finally:
+                web_server._event_subscribers.discard(event_queue)
+
+        stream_token, event = asyncio.run(run())
+        try:
+            assert stream_token == "red"
+            assert "\x1b[" not in stream_token
+            assert event["topic"] == "chat.token"
+            assert event["data"]["t"] == "red"
+
+            snapshot = web_client.get("/api/conversations/sess_ansi_token/stream-snapshot")
+            assert snapshot.status_code == 200
+            data = snapshot.json()
+            assert data["stream_text"] == "red"
+            assert "\x1b[" not in data["stream_text"]
+        finally:
+            web_server._clear_web_turn("sess_ansi_token")
+
+    def test_tool_callback_strips_ansi_from_preview_payload(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            q: asyncio.Queue = asyncio.Queue()
+            web_server._event_subscribers.add(q)
+            try:
+                callbacks = web_server._make_web_chat_callbacks("sess_ansi_tool", asyncio.Queue(), loop)
+                tool_complete = callbacks[2]
+                tool_complete("tid_color", "terminal", {}, "\x1b[32mok\x1b[0m")
+                items = []
+                while len(items) < 2:
+                    items.append(await asyncio.wait_for(q.get(), timeout=2.0))
+                return items
+            finally:
+                web_server._event_subscribers.discard(q)
+
+        events = asyncio.run(run())
+        end = next(item for item in events if item["topic"] == "chat.tool_end")
+        assert end["data"]["result_preview"] == "ok"
+        assert "\x1b[" not in end["data"]["result_preview"]
+
     def test_subagent_callback_persists_and_publishes_snapshot(self, web_client):
         import spark_cli.web_server as web_server
         from core.spark_state import SessionDB
@@ -217,7 +276,7 @@ class TestEventBus:
                             "parent_session_id": "subagent_parent",
                             "provider": "test-provider",
                             "toolsets": ["terminal"],
-                            "preview": "reading",
+                            "preview": "\x1b[33mreading\x1b[0m",
                         },
                     }
                 )
@@ -230,6 +289,8 @@ class TestEventBus:
         assert env["session_id"] == "subagent_parent"
         assert env["data"]["subagent_id"] == "subagent-1"
         assert env["data"]["subagent"]["status"] == "running"
+        assert env["data"]["event"]["text"] == "reading"
+        assert "\x1b[" not in env["data"]["data"]["preview"]
 
         listing = web_client.get("/api/conversations/subagent_parent/subagents")
         assert listing.status_code == 200
@@ -245,6 +306,7 @@ class TestEventBus:
         assert data["subagent"]["id"] == "subagent-1"
         assert data["events"][0]["event_type"] == "started"
         assert data["events"][0]["data"]["event"] == "started"
+        assert data["events"][0]["data"]["payload"]["preview"] == "reading"
 
     def test_subagent_snapshots_follow_full_compression_chain(self, web_client):
         from core.spark_state import SessionDB
@@ -548,6 +610,41 @@ class TestConversationControl:
         full_tool_msg = next(m for m in full_resp.json()["messages"] if m["role"] == "tool")
         assert full_tool_msg["content"] == full_output
 
+    def test_session_messages_strip_ansi_from_chat_history_payloads(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("ansi_history_session", source="web", model="m1")
+            db.append_message("ansi_history_session", "user", content="hello")
+            db.append_message(
+                "ansi_history_session",
+                "assistant",
+                content="\x1b[35mpurple answer\x1b[0m",
+            )
+            db.append_message(
+                "ansi_history_session",
+                "tool",
+                content="\x1b[32mtool output\x1b[0m",
+                tool_call_id="call_ansi",
+                tool_name="terminal",
+            )
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/sessions/ansi_history_session/messages?include_tool_results=true")
+        assert resp.status_code == 200
+        messages = resp.json()["messages"]
+        assistant_msg = next(m for m in messages if m["role"] == "assistant")
+        tool_msg = next(m for m in messages if m["role"] == "tool")
+        assert assistant_msg["content"] == "purple answer"
+        assert tool_msg["content"] == "tool output"
+        assert "\x1b[" not in str(messages)
+
+        full_result = web_client.get("/api/sessions/ansi_history_session/tool-results/call_ansi")
+        assert full_result.status_code == 200
+        assert full_result.json()["content"] == "tool output"
+
     def test_session_messages_include_absolute_message_index_when_paginated(self, web_client):
         from core.spark_state import SessionDB
 
@@ -732,6 +829,32 @@ class TestConversationControl:
             assert msgs[1]["content"] == "A small deterministic reply."
             assert row["preview"] == "Tell me a joke"
             assert row["message_count"] == 2
+        finally:
+            db2.close()
+
+    def test_web_turn_fallback_strips_ansi_from_assistant_response(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("ansi_fallback_web", source="web", model="m1")
+        finally:
+            db.close()
+
+        web_server._persist_web_turn_if_missing(
+            "ansi_fallback_web",
+            "Run colored output",
+            {"final_response": "\x1b[32mDone\x1b[0m"},
+            before_message_count=0,
+        )
+
+        db2 = SessionDB()
+        try:
+            msgs = db2.get_messages("ansi_fallback_web")
+            assert [m["role"] for m in msgs] == ["user", "assistant"]
+            assert msgs[1]["content"] == "Done"
+            assert "\x1b[" not in msgs[1]["content"]
         finally:
             db2.close()
 
