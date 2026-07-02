@@ -829,6 +829,10 @@ DEFAULT_CONFIG = {
     "kanban": {
         "dispatch_in_gateway": False,
         "dispatch_interval_seconds": 60,
+        "workflow_in_gateway": False,
+        "workflow_interval_seconds": 10,
+        "notify_on_changes": False,
+        "wake_creator_on_changes": False,
         "failure_limit": 5,
         "claim_ttl_seconds": 3600,
         "max_runtime_seconds": 0,
@@ -2575,6 +2579,10 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             config["kanban"] = {
                 "dispatch_in_gateway": False,
                 "dispatch_interval_seconds": 60,
+                "workflow_in_gateway": False,
+                "workflow_interval_seconds": 10,
+                "notify_on_changes": False,
+                "wake_creator_on_changes": False,
                 "failure_limit": 5,
                 "claim_ttl_seconds": 3600,
                 "max_runtime_seconds": 0,
@@ -2585,6 +2593,26 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             save_config(config)
             if not quiet:
                 print("  ✓ Added dashboard.* and kanban.* sections")
+
+    # -- Version 26 -> 27: add Kanban notification/wake workflow defaults --
+    if current_ver < 27:
+        config = read_raw_config()
+        kanban = config.setdefault("kanban", {})
+        changed = False
+        if isinstance(kanban, dict):
+            for key, value in {
+                "workflow_in_gateway": False,
+                "workflow_interval_seconds": 10,
+                "notify_on_changes": False,
+                "wake_creator_on_changes": False,
+            }.items():
+                if key not in kanban:
+                    kanban[key] = value
+                    changed = True
+        if changed:
+            save_config(config)
+            if not quiet:
+                print("  ✓ Added kanban workflow notification/wake defaults")
 
     # ── Version 20 → 21: backfill clarify into explicit CLI platform toolsets ──
     if current_ver < 21:

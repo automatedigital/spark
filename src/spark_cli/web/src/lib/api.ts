@@ -1581,6 +1581,14 @@ export interface KanbanTaskCreate {
   workspace_kind?: string;
   workspace_path?: string | null;
   skills?: string[];
+  owner_profile?: string | null;
+  owner_platform?: string | null;
+  owner_channel?: string | null;
+  owner_thread_id?: string | null;
+  creator_session_key?: string | null;
+  creator_session_source?: Record<string, unknown>;
+  notify_on_changes?: boolean;
+  wake_on_changes?: boolean;
   triage?: boolean;
   max_runtime_seconds?: number;
 }
@@ -1595,6 +1603,10 @@ export interface KanbanTaskPatch {
   result?: string | null;
   in_triage?: boolean | null;
   workspace_path?: string | null;
+  actor?: string | null;
+  origin_session_key?: string | null;
+  origin_kind?: string | null;
+  internal_event?: boolean;
 }
 
 export interface KanbanBulkPatchFields {

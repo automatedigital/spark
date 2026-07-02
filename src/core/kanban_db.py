@@ -82,6 +82,14 @@ CREATE TABLE IF NOT EXISTS tasks (
     workspace_kind TEXT NOT NULL DEFAULT 'scratch',
     workspace_path TEXT,
     skills_json TEXT,
+    owner_profile TEXT,
+    owner_platform TEXT,
+    owner_channel TEXT,
+    owner_thread_id TEXT,
+    creator_session_key TEXT,
+    creator_session_source_json TEXT,
+    notify_on_changes INTEGER NOT NULL DEFAULT 0,
+    wake_on_changes INTEGER NOT NULL DEFAULT 0,
     in_triage INTEGER NOT NULL DEFAULT 0,
     result TEXT,
     created_at REAL NOT NULL,
@@ -97,6 +105,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_slug, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant);
+CREATE INDEX IF NOT EXISTS idx_tasks_owner_profile ON tasks(owner_profile);
 
 CREATE TABLE IF NOT EXISTS task_links (
     parent_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -140,6 +149,17 @@ CREATE INDEX IF NOT EXISTS idx_task_events_id ON task_events(id);
 _lock = threading.Lock()
 _initialized: Dict[str, bool] = {}
 
+_TASK_COLUMN_MIGRATIONS: Tuple[Tuple[str, str], ...] = (
+    ("owner_profile", "TEXT"),
+    ("owner_platform", "TEXT"),
+    ("owner_channel", "TEXT"),
+    ("owner_thread_id", "TEXT"),
+    ("creator_session_key", "TEXT"),
+    ("creator_session_source_json", "TEXT"),
+    ("notify_on_changes", "INTEGER NOT NULL DEFAULT 0"),
+    ("wake_on_changes", "INTEGER NOT NULL DEFAULT 0"),
+)
+
 
 def kanban_db_path() -> Path:
     return get_spark_home() / "kanban.db"
@@ -155,6 +175,16 @@ def _now() -> float:
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA_SQL)
+    existing = {
+        str(row["name"] if isinstance(row, sqlite3.Row) else row[1])
+        for row in conn.execute("PRAGMA table_info(tasks)").fetchall()
+    }
+    for name, ddl in _TASK_COLUMN_MIGRATIONS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE tasks ADD COLUMN {name} {ddl}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_owner_profile ON tasks(owner_profile)"
+    )
     row = conn.execute(
         "SELECT COUNT(*) FROM boards WHERE slug = 'default'"
     ).fetchone()
@@ -221,6 +251,43 @@ def _emit_event(
     )
 
 
+def _event_origin_payload(
+    *,
+    actor: Optional[str] = None,
+    origin_session_key: Optional[str] = None,
+    origin_kind: Optional[str] = None,
+    internal: bool = False,
+) -> Dict[str, Any]:
+    origin: Dict[str, Any] = {}
+    if actor:
+        origin["actor"] = actor
+    if origin_session_key:
+        origin["session_key"] = origin_session_key
+    if origin_kind:
+        origin["kind"] = origin_kind
+    if internal:
+        origin["internal"] = True
+    return origin
+
+
+def _row_notification_payload(row: sqlite3.Row | Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "board_slug": row["board_slug"],
+        "assignee": row["assignee"],
+        "tenant": row["tenant"],
+        "owner_profile": row["owner_profile"],
+        "owner_platform": row["owner_platform"],
+        "owner_channel": row["owner_channel"],
+        "owner_thread_id": row["owner_thread_id"],
+        "creator_session_key": row["creator_session_key"],
+        "creator_session_source_json": row["creator_session_source_json"],
+        "notify_on_changes": bool(row["notify_on_changes"]),
+        "wake_on_changes": bool(row["wake_on_changes"]),
+    }
+
+
 def _all_parents_done(conn: sqlite3.Connection, task_id: str) -> bool:
     parents = conn.execute(
         "SELECT parent_id FROM task_links WHERE child_id = ?", (task_id,)
@@ -267,6 +334,14 @@ def create_task(
     workspace_kind: str = "scratch",
     workspace_path: Optional[str] = None,
     skills: Optional[Sequence[str]] = None,
+    owner_profile: Optional[str] = None,
+    owner_platform: Optional[str] = None,
+    owner_channel: Optional[str] = None,
+    owner_thread_id: Optional[str] = None,
+    creator_session_key: Optional[str] = None,
+    creator_session_source: Optional[Dict[str, Any]] = None,
+    notify_on_changes: bool = False,
+    wake_on_changes: bool = False,
     in_triage: bool = False,
     max_runtime_seconds: int = 0,
 ) -> Dict[str, Any]:
@@ -299,8 +374,10 @@ def create_task(
             "INSERT INTO tasks ("
             "id, board_slug, title, body, status, assignee, tenant, priority, "
             "idempotency_key, workspace_kind, workspace_path, skills_json, "
-            "in_triage, created_at, updated_at, max_runtime_seconds"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "owner_profile, owner_platform, owner_channel, owner_thread_id, "
+            "creator_session_key, creator_session_source_json, notify_on_changes, "
+            "wake_on_changes, in_triage, created_at, updated_at, max_runtime_seconds"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 tid,
                 board_slug,
@@ -314,6 +391,14 @@ def create_task(
                 workspace_kind,
                 workspace_path,
                 skills_json,
+                owner_profile or assignee,
+                owner_platform,
+                owner_channel,
+                owner_thread_id,
+                creator_session_key,
+                json.dumps(creator_session_source or {}, ensure_ascii=False),
+                1 if notify_on_changes else 0,
+                1 if wake_on_changes else 0,
                 1 if in_triage else 0,
                 now,
                 now,
@@ -337,6 +422,15 @@ def create_task(
                 "status": status,
                 "parents": list(parent_ids or []),
                 "tenant": tenant,
+                "task": {
+                    "owner_profile": owner_profile or assignee,
+                    "owner_platform": owner_platform,
+                    "owner_channel": owner_channel,
+                    "owner_thread_id": owner_thread_id,
+                    "creator_session_key": creator_session_key,
+                    "notify_on_changes": bool(notify_on_changes),
+                    "wake_on_changes": bool(wake_on_changes),
+                },
             },
         )
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
@@ -351,17 +445,42 @@ def get_task(task_id: str) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
 
 
-def add_comment(task_id: str, body: str, author: Optional[str] = None) -> int:
+def add_comment(
+    task_id: str,
+    body: str,
+    author: Optional[str] = None,
+    *,
+    actor: Optional[str] = None,
+    origin_session_key: Optional[str] = None,
+    origin_kind: Optional[str] = None,
+    internal_event: bool = False,
+) -> int:
     with _connect() as conn:
-        if not conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone():
+        task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not task:
             raise ValueError(f"Task not found: {task_id}")
+        comment_author = author or actor or "user"
         cur = conn.execute(
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?,?,?,?)",
-            (task_id, author or "user", body, _now()),
+            (task_id, comment_author, body, _now()),
         )
         cid = _insert_row_id(cur)
+        payload: Dict[str, Any] = {
+            "id": cid,
+            "author": comment_author,
+            "body": body,
+            "task": _row_notification_payload(task),
+        }
+        origin = _event_origin_payload(
+            actor=actor or author,
+            origin_session_key=origin_session_key,
+            origin_kind=origin_kind,
+            internal=internal_event,
+        )
+        if origin:
+            payload["origin"] = origin
         _emit_event(
-            conn, task_id=task_id, run_id=None, kind="comment", payload={"id": cid}
+            conn, task_id=task_id, run_id=None, kind="comment", payload=payload
         )
         return cid
 
@@ -435,6 +554,10 @@ def patch_task(
     in_triage: Optional[bool] = None,
     workspace_path: Optional[str] = None,
     workspace_path_set: bool = False,
+    actor: Optional[str] = None,
+    origin_session_key: Optional[str] = None,
+    origin_kind: Optional[str] = None,
+    internal_event: bool = False,
 ) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
@@ -510,12 +633,25 @@ def patch_task(
         )
 
         if status is not None and cur_status != new_status:
+            payload: Dict[str, Any] = {
+                "from": cur_status,
+                "to": new_status,
+                "task": _row_notification_payload(row),
+            }
+            origin = _event_origin_payload(
+                actor=actor,
+                origin_session_key=origin_session_key,
+                origin_kind=origin_kind,
+                internal=internal_event,
+            )
+            if origin:
+                payload["origin"] = origin
             _emit_event(
                 conn,
                 task_id=task_id,
                 run_id=run_id,
                 kind="status",
-                payload={"from": cur_status, "to": new_status},
+                payload=payload,
             )
             if new_status == "done":
                 _promote_child_tasks(conn, task_id)
@@ -546,6 +682,10 @@ def complete_task(
     summary: str = "",
     metadata: Optional[dict] = None,
     result: str = "",
+    actor: Optional[str] = None,
+    origin_session_key: Optional[str] = None,
+    origin_kind: Optional[str] = None,
+    internal_event: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Finish worker execution and move the task to user review."""
     now = _now()
@@ -581,13 +721,22 @@ def complete_task(
             "claim_expires_at = NULL, worker_pid = NULL, result = ?, updated_at = ? WHERE id = ?",
             (result or summary[:500], now, task_id),
         )
-        _emit_event(
-            conn,
-            task_id=task_id,
-            run_id=run_id,
-            kind="completed",
-            payload={"summary": (summary or result)[:400], "status": "user_review"},
+        payload: Dict[str, Any] = {
+            "summary": (summary or result)[:400],
+            "from": row["status"],
+            "to": "user_review",
+            "status": "user_review",
+            "task": _row_notification_payload(row),
+        }
+        origin = _event_origin_payload(
+            actor=actor,
+            origin_session_key=origin_session_key,
+            origin_kind=origin_kind,
+            internal=internal_event,
         )
+        if origin:
+            payload["origin"] = origin
+        _emit_event(conn, task_id=task_id, run_id=run_id, kind="completed", payload=payload)
         refreshed = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(refreshed) if refreshed else None
 
@@ -625,7 +774,11 @@ def mark_task_done(
             task_id=task_id,
             run_id=run_id,
             kind="status",
-            payload={"from": row["status"], "to": "done"},
+            payload={
+                "from": row["status"],
+                "to": "done",
+                "task": _row_notification_payload(row),
+            },
         )
         if summary:
             cid = conn.execute(
@@ -637,14 +790,27 @@ def mark_task_done(
                 task_id=task_id,
                 run_id=None,
                 kind="comment",
-                payload={"id": _insert_row_id(cid)},
+                payload={
+                    "id": _insert_row_id(cid),
+                    "author": "user",
+                    "body": summary,
+                    "task": _row_notification_payload(row),
+                },
             )
         _promote_child_tasks(conn, task_id)
         refreshed = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(refreshed) if refreshed else None
 
 
-def block_task(task_id: str, reason: str) -> Optional[Dict[str, Any]]:
+def block_task(
+    task_id: str,
+    reason: str,
+    *,
+    actor: Optional[str] = None,
+    origin_session_key: Optional[str] = None,
+    origin_kind: Optional[str] = None,
+    internal_event: bool = False,
+) -> Optional[Dict[str, Any]]:
     now = _now()
     with _connect() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
@@ -670,9 +836,21 @@ def block_task(task_id: str, reason: str) -> Optional[Dict[str, Any]]:
             "claim_expires_at = NULL, worker_pid = NULL, updated_at = ? WHERE id = ?",
             (now, task_id),
         )
-        _emit_event(
-            conn, task_id=task_id, run_id=run_id, kind="blocked", payload={"reason": reason}
+        payload = {
+            "reason": reason,
+            "from": row["status"],
+            "to": "blocked",
+            "task": _row_notification_payload(row),
+        }
+        origin = _event_origin_payload(
+            actor=actor,
+            origin_session_key=origin_session_key,
+            origin_kind=origin_kind,
+            internal=internal_event,
         )
+        if origin:
+            payload["origin"] = origin
+        _emit_event(conn, task_id=task_id, run_id=run_id, kind="blocked", payload=payload)
         refreshed = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(refreshed) if refreshed else None
 
@@ -688,7 +866,17 @@ def unblock_task(task_id: str) -> Optional[Dict[str, Any]]:
             "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
             (new_status, now, task_id),
         )
-        _emit_event(conn, task_id=task_id, run_id=None, kind="unblocked", payload={})
+        _emit_event(
+            conn,
+            task_id=task_id,
+            run_id=None,
+            kind="unblocked",
+            payload={
+                "from": row["status"],
+                "to": new_status,
+                "task": _row_notification_payload(row),
+            },
+        )
         refreshed = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(refreshed) if refreshed else None
 
