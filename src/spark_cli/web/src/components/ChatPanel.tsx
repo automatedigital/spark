@@ -24,6 +24,11 @@ import { Markdown } from "@/components/Markdown";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
 import { useEventBus, BUS_RECONNECTED_TOPIC } from "@/hooks/useEventBus";
+import {
+  estimateAssistantRowSize,
+  findLiveRowIndex,
+  shouldSkipRowMeasurement,
+} from "@/lib/rowMeasurement";
 import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
 import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
@@ -1880,6 +1885,8 @@ export function ChatPanel({
     return collapsed;
   }, [chatMessages, streaming]);
 
+  const liveRowIndex = useMemo(() => findLiveRowIndex(collapsedMessages), [collapsedMessages]);
+
   const streamingAssistantChars = useMemo(() => {
     for (let i = chatMessages.length - 1; i >= 0; i--) {
       const msg = chatMessages[i];
@@ -1895,7 +1902,7 @@ export function ChatPanel({
       case "user":
         return 72;
       case "assistant":
-        return Math.min(900, Math.max(96, Math.ceil(item.msg.content.length / 95) * 22 + 48));
+        return estimateAssistantRowSize(item.msg.content);
       case "tool":
         return 44;
       case "reasoning":
@@ -1928,21 +1935,11 @@ export function ChatPanel({
     rowResizeObserverRef.current?.observe(el);
     const index = Number(el.dataset.index);
     const item = collapsedMessages[index];
-    if (
-      safeMode &&
-      item?.msg !== null &&
-      (item?.msg.role === "tool" || item?.msg.role === "reasoning")
-    ) {
-      return;
-    }
-    if (streaming && item?.msg !== null && item?.msg.role === "assistant") {
-      // A streaming assistant row changes height constantly. Measuring it on
-      // every flush can monopolize the main thread; the length-based estimate is
-      // good enough until the turn completes, when normal measurement resumes.
+    if (shouldSkipRowMeasurement(item, index, liveRowIndex, safeMode)) {
       return;
     }
     virtualizer.measureElement(el);
-  }, [collapsedMessages, safeMode, streaming, virtualizer]);
+  }, [collapsedMessages, liveRowIndex, safeMode, virtualizer]);
 
   useEffect(() => {
     const root = messageListRef.current;

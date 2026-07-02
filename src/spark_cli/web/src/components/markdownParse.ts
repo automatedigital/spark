@@ -293,6 +293,25 @@ export function splitStableMarkdownSegments(
   return segments;
 }
 
+/**
+ * Make a streaming tail safe to parse as markdown: an open ``` fence would
+ * otherwise flip the tail between "code block" and "paragraph soup" per token.
+ * Virtually closing the fence keeps an in-progress code block rendering as a
+ * code block. The returned text is display-only — segment offsets keep
+ * referring to the real content.
+ */
+export function stabilizeLiveTail(tail: string): string {
+  let insideFence = false;
+  let lineStart = 0;
+  for (let i = 0; i <= tail.length; i++) {
+    if (i === tail.length || tail[i] === "\n") {
+      if (tail.slice(lineStart, i).startsWith("```")) insideFence = !insideFence;
+      lineStart = i + 1;
+    }
+  }
+  return insideFence ? `${tail}\n\`\`\`` : tail;
+}
+
 export function buildMarkdownRenderSegments(
   content: string,
   streaming: boolean,
@@ -300,16 +319,20 @@ export function buildMarkdownRenderSegments(
     chunkTargetSize?: number;
     chunkMaxSize?: number;
     liveTailSize?: number;
+    liveTailCap?: number;
     streamingHeadSize?: number;
     streamingFullSize?: number;
+    streamingLargeSize?: number;
     plainSegmentSize?: number;
   } = {},
 ): MarkdownRenderSegment[] {
   const chunkTargetSize = options.chunkTargetSize ?? 4_000;
   const chunkMaxSize = options.chunkMaxSize ?? 10_000;
   const liveTailSize = options.liveTailSize ?? 1_600;
+  const liveTailCap = options.liveTailCap ?? 6_000;
   const streamingHeadSize = options.streamingHeadSize ?? 800;
   const streamingFullSize = options.streamingFullSize ?? 800;
+  const streamingLargeSize = options.streamingLargeSize ?? 20_000;
   const plainSegmentSize = options.plainSegmentSize ?? 8_000;
 
   if (!content) return [];
@@ -323,11 +346,41 @@ export function buildMarkdownRenderSegments(
   if (content.length <= streamingFullSize) {
     return [{
       kind: "markdown",
-      text: content,
+      text: stabilizeLiveTail(content),
       start: 0,
       end: content.length,
       live: true,
     }];
+  }
+
+  if (content.length <= streamingLargeSize) {
+    // Incremental streaming render: everything before the last blank line
+    // outside a code fence is committed — chunked into stable markdown
+    // segments that memoize and never re-parse as the tail grows. Only the
+    // trailing partial block re-parses per flush, so streamed markdown looks
+    // final as it arrives and row heights don't jump at turn end.
+    const commitEnd = findStableBoundary(content);
+    const tail = content.slice(commitEnd);
+    if (tail.length <= liveTailCap) {
+      const segments = commitEnd > 0
+        ? splitStableMarkdownSegments(content.slice(0, commitEnd), {
+            targetSize: chunkTargetSize,
+            maxSize: chunkMaxSize,
+          })
+        : [];
+      if (tail) {
+        segments.push({
+          kind: "markdown",
+          text: stabilizeLiveTail(tail),
+          start: commitEnd,
+          end: content.length,
+          live: true,
+        });
+      }
+      return segments;
+    }
+    // Pathological tail (e.g. one giant unclosed block): fall through to the
+    // windowed fallback below rather than re-parsing a huge tail per flush.
   }
 
   const headEnd = Math.min(streamingHeadSize, content.length);

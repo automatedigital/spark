@@ -106,6 +106,15 @@ class WebActiveTurn:
     phase: str
     stream_text: str = ""
     stream_revision: int = 0
+    # Incremental persistence: the user message is written to SQLite at turn
+    # start and the streamed assistant text is checkpointed periodically, so a
+    # crash/quit mid-turn never loses the conversation. Reconciled (deduped
+    # against the agent's own flush) in _persist_web_turn_if_missing.
+    user_message_id: int | None = None
+    assistant_message_id: int | None = None
+    checkpoint_session_id: str | None = None
+    last_checkpoint_at: float = 0.0
+    checkpointed_chars: int = 0
 
 
 _web_active_turns: dict[str, WebActiveTurn] = {}
@@ -257,7 +266,63 @@ def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
         turn.phase = "streaming"
         turn.stream_text += token
         turn.stream_revision += 1
+        _checkpoint_web_turn(candidate, turn)
         return
+
+
+_WEB_TURN_CHECKPOINT_INTERVAL_S = 5.0
+
+
+def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn) -> None:
+    """Persist the streamed assistant text so a mid-turn crash keeps it.
+
+    The first checkpoint inserts an assistant row marked finish_reason
+    "interrupted"; later ones update it in place. If the turn completes
+    normally, _persist_web_turn_if_missing either finalizes this row or
+    deletes it when the agent flushed its own copy.
+    """
+    now = time.time()
+    if now - turn.last_checkpoint_at < _WEB_TURN_CHECKPOINT_INTERVAL_S:
+        return
+    text = turn.stream_text
+    if not text or len(text) <= turn.checkpointed_chars:
+        return
+    turn.last_checkpoint_at = now
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            if turn.assistant_message_id is None:
+                target = turn.active_agent_session_id or session_id
+                turn.checkpoint_session_id = target
+                turn.assistant_message_id = db.append_message(
+                    target, "assistant", content=text, finish_reason="interrupted"
+                )
+            else:
+                db.update_message(turn.assistant_message_id, content=text)
+            turn.checkpointed_chars = len(text)
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("web turn checkpoint failed session=%s", session_id, exc_info=True)
+
+
+def _persist_web_user_message(session_id: str, user_message: str) -> int | None:
+    """Write the user message to SQLite at turn start (not just at turn end)."""
+    if not user_message:
+        return None
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            return db.append_message(session_id, "user", content=user_message)
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("eager user persist failed session=%s", session_id, exc_info=True)
+        return None
 
 
 def _clear_web_turn(session_id: str) -> None:
@@ -6126,12 +6191,19 @@ def _persist_web_turn_if_missing(
     user_message: str,
     result: Any,
     before_message_count: int,
+    eager_user_id: int | None = None,
+    checkpoint_assistant_id: int | None = None,
 ) -> None:
     """Persist any missing pieces of a web turn.
 
     The agent may flush the current user message before the final assistant
     response is available. Treating any new row as a fully persisted turn makes
     the web UI lose the streamed answer when it reloads from SQLite.
+
+    eager_user_id / checkpoint_assistant_id are rows written incrementally
+    while the turn ran (turn-start user persist, streaming checkpoints). They
+    are reconciled here: kept when the agent's own flush is missing, deleted
+    when it would duplicate them.
     """
     try:
         from core.spark_state import SessionDB
@@ -6152,6 +6224,10 @@ def _persist_web_turn_if_missing(
             )
 
             new_messages = messages[before_message_count:]
+            if checkpoint_assistant_id is not None:
+                new_messages = [
+                    m for m in new_messages if m.get("id") != checkpoint_assistant_id
+                ]
             user_messages = [m for m in new_messages if m.get("role") == "user"]
             delivery_instruction_user_messages = [
                 m
@@ -6183,10 +6259,32 @@ def _persist_web_turn_if_missing(
                     _replace_message_content(latest.get("id"), display_response, db)
 
             if not has_user:
-                db.append_message(session_id, "user", content=user_message)
+                if eager_user_id is None:
+                    db.append_message(session_id, "user", content=user_message)
+                # else: the turn-start eager row already persisted it.
+            elif eager_user_id is not None:
+                # The agent flushed its own copy — drop the eager duplicate.
+                db.delete_message(eager_user_id)
+
             if display_response:
-                if not has_assistant:
+                if has_assistant:
+                    if checkpoint_assistant_id is not None:
+                        # The agent flushed its own final assistant message —
+                        # the streaming checkpoint row is now a duplicate.
+                        db.delete_message(checkpoint_assistant_id)
+                elif checkpoint_assistant_id is not None:
+                    # Finalize the checkpoint row in place: full content, clear
+                    # the "interrupted" marker, move it to end-of-turn order.
+                    db.update_message(
+                        checkpoint_assistant_id,
+                        content=display_response,
+                        finish_reason="",
+                        touch_timestamp=True,
+                    )
+                else:
                     db.append_message(session_id, "assistant", content=display_response)
+            # No final response (crash/interrupt): a checkpoint row keeps the
+            # partial streamed text, still marked "interrupted".
         finally:
             db.close()
     except Exception:
@@ -6773,6 +6871,10 @@ async def create_conversation(body: ConversationCreate):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
+        _, _active_turn = _get_web_turn(session_id)
+        eager_user_id = _persist_web_user_message(session_id, message)
+        if _active_turn is not None:
+            _active_turn.user_message_id = eager_user_id
         before_message_count = _session_message_count(session_id)
         result = None
         try:
@@ -6792,7 +6894,11 @@ async def create_conversation(body: ConversationCreate):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            _persist_web_turn_if_missing(session_id, message, result, before_message_count)
+            _persist_web_turn_if_missing(
+                session_id, message, result, before_message_count,
+                eager_user_id=eager_user_id,
+                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
+            )
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -7122,6 +7228,10 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
+        _, _active_turn = _get_web_turn(session_id)
+        eager_user_id = _persist_web_user_message(session_id, message)
+        if _active_turn is not None:
+            _active_turn.user_message_id = eager_user_id
         before_message_count = _session_message_count(session_id)
         result = None
         try:
@@ -7141,7 +7251,11 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            _persist_web_turn_if_missing(session_id, message, result, before_message_count)
+            _persist_web_turn_if_missing(
+                session_id, message, result, before_message_count,
+                eager_user_id=eager_user_id,
+                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
+            )
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -7876,6 +7990,10 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
+        _, _active_turn = _get_web_turn(session_id)
+        eager_user_id = _persist_web_user_message(session_id, raw_message)
+        if _active_turn is not None:
+            _active_turn.user_message_id = eager_user_id
         before_message_count = _session_message_count(session_id)
         result = None
         slash_text = None
@@ -7897,7 +8015,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         finally:
             unregister_gateway_notify(session_id)
             _strip_user_message_prefix(session_id, context_prefix, raw_message)
-            _persist_web_turn_if_missing(session_id, raw_message, result, before_message_count)
+            _persist_web_turn_if_missing(
+                session_id, raw_message, result, before_message_count,
+                eager_user_id=eager_user_id,
+                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
+            )
             _emit_web_session_updated(session_id)
             _maybe_auto_title_web(agent, session_id, raw_message, result)
             try:
