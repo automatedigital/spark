@@ -374,6 +374,10 @@ def _resolve_cdp_override(cdp_url: str) -> str:
         return ""
 
     lowered = raw.lower()
+    if not _browser_private_network_allowed(raw):
+        logger.warning("Blocked CDP endpoint targeting a private/internal address: %s", raw)
+        return ""
+
     if "/devtools/browser/" in lowered:
         return raw
 
@@ -399,6 +403,9 @@ def _resolve_cdp_override(cdp_url: str) -> str:
 
     ws_url = str(payload.get("webSocketDebuggerUrl") or "").strip()
     if ws_url:
+        if not _browser_private_network_allowed(ws_url):
+            logger.warning("Blocked CDP discovery result targeting a private/internal address: %s", ws_url)
+            return ""
         logger.info("Resolved CDP endpoint %s -> %s", raw, ws_url)
         return ws_url
 
@@ -534,6 +541,40 @@ def _allow_private_urls() -> bool:
     except Exception as e:
         logger.debug("Could not read allow_private_urls from config: %s", e)
     return _cached_allow_private_urls
+
+
+def _is_loopback_dev_url(url: str) -> bool:
+    """Return True for explicit-port loopback URLs used by local previews/CDP."""
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        if parsed.scheme.lower() not in {"http", "https", "ws", "wss"}:
+            return False
+        if parsed.port is None:
+            return False
+        hostname = (parsed.hostname or "").strip().lower().rstrip(".")
+        if hostname == "localhost":
+            return True
+        try:
+            import ipaddress
+            return ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            return False
+    except Exception as exc:
+        logger.debug("Loopback dev URL check failed for %s: %s", url, exc)
+        return False
+
+
+def _browser_private_network_allowed(url: str) -> bool:
+    """Return True when browser/CDP may connect to ``url``.
+
+    Private/internal addresses are blocked by default for every browser backend.
+    The one default exception is explicit-port loopback URLs, which are the
+    normal Spark preview/dev-server workflow.  Users can opt into broader
+    private-network access with ``browser.allow_private_urls``.
+    """
+    return _allow_private_urls() or _is_loopback_dev_url(url) or _is_safe_url(url)
 
 
 def _socket_safe_tmpdir() -> str:
@@ -1584,12 +1625,10 @@ def browser_navigate(url: str, task_id: str | None = None) -> str:
                      "Secrets must not be sent in URLs.",
         })
 
-    # SSRF protection — block private/internal addresses before navigating.
-    # Skipped for local backends (Camofox, headless Chromium without a cloud
-    # provider) because the agent already has full local network access via
-    # the terminal tool.  Can also be opted out for cloud mode via
-    # ``browser.allow_private_urls`` in config.
-    if not _is_local_backend() and not _allow_private_urls() and not _is_safe_url(url):
+    # SSRF protection — block private/internal addresses before navigating on
+    # every backend.  ``browser.allow_private_urls`` opts out explicitly, while
+    # explicit-port loopback URLs stay allowed for local preview/dev servers.
+    if not _browser_private_network_allowed(url):
         return json.dumps({
             "success": False,
             "error": "Blocked: URL targets a private or internal address",
@@ -1651,8 +1690,7 @@ def browser_navigate(url: str, task_id: str | None = None) -> str:
         # Post-redirect SSRF check — if the browser followed a redirect to a
         # private/internal address, block the result so the model can't read
         # internal content via subsequent browser_snapshot calls.
-        # Skipped for local backends (same rationale as the pre-nav check).
-        if not _is_local_backend() and not _allow_private_urls() and final_url and final_url != url and not _is_safe_url(final_url):
+        if final_url and final_url != url and not _browser_private_network_allowed(final_url):
             # Navigate away to a blank page to prevent snapshot leaks
             _run_browser_command(effective_task_id, "open", ["about:blank"], timeout=10)
             return json.dumps({

@@ -712,6 +712,7 @@ browser:
   inactivity_timeout: 120        # Seconds before auto-closing idle sessions
   command_timeout: 30            # Per-command wall-clock ceiling (seconds), floored at 5
   record_sessions: false         # Record sessions as WebM to ~/.spark/browser_recordings/
+  allow_private_urls: false      # Allow private/internal browser/CDP targets beyond loopback previews
   camofox:
     managed_persistence: false   # Persist cookies/logins across restarts
 ```
@@ -726,6 +727,14 @@ system libraries), a preflight health check and a consecutive-timeout circuit
 breaker fail fast with an actionable error instead of waiting out repeated
 timeouts. Run `spark doctor` and `agent-browser install --with-deps` to fix a
 headless server.
+
+Browser navigation and CDP endpoints block private/internal network targets by
+default, including RFC1918 LAN ranges, link-local metadata endpoints, CGNAT, and
+internal metadata hostnames. Explicit-port loopback URLs such as
+`http://localhost:5173`, `http://127.0.0.1:3000`, and `http://[::1]:8080`
+remain allowed for local preview/dev-server workflows. Set
+`browser.allow_private_urls: true` only when you intentionally want Spark's
+browser to access broader private-network targets.
 
 See the [Browser feature page](tools/browser.md) for details on Browserbase, Browser Use, and local Chrome CDP setup.
 
