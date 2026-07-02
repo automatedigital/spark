@@ -97,7 +97,7 @@ class CompressionConfig:
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "CompressionConfig":
         """Load configuration from YAML file."""
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path) as f:
             data = yaml.safe_load(f)
         
         config = cls()
@@ -954,7 +954,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         all_entries = []  # List of (file_path, entry_idx, entry)
         
         for file_path in jsonl_files:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 for line_num, line in enumerate(f):
                     line = line.strip()
                     if line:
@@ -1324,7 +1324,7 @@ def main(
         
         # Load entries from the single file
         entries = []
-        with open(input_path, 'r', encoding='utf-8') as f:
+        with open(input_path, encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if line:
@@ -1369,7 +1369,7 @@ def main(
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as out_f:
                 for jsonl_file in sorted(temp_output_dir.glob("*.jsonl")):
-                    with open(jsonl_file, 'r', encoding='utf-8') as in_f:
+                    with open(jsonl_file, encoding='utf-8') as in_f:
                         for line in in_f:
                             out_f.write(line)
             
@@ -1408,7 +1408,7 @@ def main(
                 # Sample from each JSONL file
                 for jsonl_file in sorted(input_path.glob("*.jsonl")):
                     entries = []
-                    with open(jsonl_file, 'r', encoding='utf-8') as f:
+                    with open(jsonl_file, encoding='utf-8') as f:
                         for line in f:
                             line = line.strip()
                             if line:

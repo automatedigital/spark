@@ -169,7 +169,7 @@ def _scan_environments() -> List[EnvironmentInfo]:
             continue
         
         try:
-            with open(py_file, "r") as f:
+            with open(py_file) as f:
                 tree = ast.parse(f.read())
             
             for node in ast.walk(tree):
@@ -1238,7 +1238,7 @@ async def rl_test_inference(
                 # Parse the output JSONL file
                 if output_file.exists():
                     # Read JSONL file (one JSON object per line = one step)
-                    with open(output_file, "r") as f:
+                    with open(output_file) as f:
                         for line in f:
                             line = line.strip()
                             if not line:

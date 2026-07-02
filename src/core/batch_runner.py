@@ -632,7 +632,7 @@ class BatchRunner:
             raise FileNotFoundError(f"Dataset file not found: {self.dataset_file}")
         
         dataset = []
-        with open(self.dataset_file, 'r', encoding='utf-8') as f:
+        with open(self.dataset_file, encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -683,7 +683,7 @@ class BatchRunner:
             }
         
         try:
-            with open(self.checkpoint_file, 'r', encoding='utf-8') as f:
+            with open(self.checkpoint_file, encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             print(f"⚠️  Warning: Failed to load checkpoint: {e}")
@@ -731,7 +731,7 @@ class BatchRunner:
         
         for batch_file in batch_files:
             try:
-                with open(batch_file, 'r', encoding='utf-8') as f:
+                with open(batch_file, encoding='utf-8') as f:
                     for line in f:
                         try:
                             entry = json.loads(line.strip())
@@ -1010,7 +1010,7 @@ class BatchRunner:
                 batch_files_found += 1
                 batch_num = batch_file.stem.split("_")[1]  # Extract batch number for logging
                 
-                with open(batch_file, 'r', encoding='utf-8') as infile:
+                with open(batch_file, encoding='utf-8') as infile:
                     for line in infile:
                         total_entries += 1
                         try:
@@ -1238,7 +1238,7 @@ def main(
     prefill_messages = None
     if prefill_messages_file:
         try:
-            with open(prefill_messages_file, 'r', encoding='utf-8') as f:
+            with open(prefill_messages_file, encoding='utf-8') as f:
                 prefill_messages = json.load(f)
             if not isinstance(prefill_messages, list):
                 print("❌ Error: prefill_messages_file must contain a JSON array of messages")

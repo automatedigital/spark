@@ -102,7 +102,7 @@ uv pip install -e ".[messaging,cron,mcp]"
 
 ```bash
 pip install -e ".[dev]"
-ruff check src/                  # run the linter
+ruff check src/ --select UP015   # run the ratcheted lint gate
 mypy src/agent/ src/spark_cli/   # check types
 python -m pytest tests/ -q       # run tests
 ```

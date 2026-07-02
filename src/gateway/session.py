@@ -561,7 +561,7 @@ class SessionStore:
 
         if sessions_file.exists():
             try:
-                with open(sessions_file, "r", encoding="utf-8") as f:
+                with open(sessions_file, encoding="utf-8") as f:
                     data = json.load(f)
                     for key, entry_data in data.items():
                         try:
@@ -1050,7 +1050,7 @@ class SessionStore:
         transcript_path = self.get_transcript_path(session_id)
         jsonl_messages = []
         if transcript_path.exists():
-            with open(transcript_path, "r", encoding="utf-8") as f:
+            with open(transcript_path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:

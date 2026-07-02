@@ -109,7 +109,7 @@ def detect_audio_environment() -> dict:
     # WSL detection — PulseAudio bridge makes audio work in WSL.
     # Only block if PULSE_SERVER is not configured.
     try:
-        with open('/proc/version', 'r') as f:
+        with open('/proc/version') as f:
             if 'microsoft' in f.read().lower():
                 if os.environ.get('PULSE_SERVER'):
                     notices.append("Running in WSL with PulseAudio bridge")

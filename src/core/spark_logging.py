@@ -439,7 +439,7 @@ def _read_logging_config():
         import yaml
         config_path = get_config_path()
         if config_path.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
             log_cfg = cfg.get("logging", {})
             if isinstance(log_cfg, dict):

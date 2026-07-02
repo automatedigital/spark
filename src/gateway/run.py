@@ -450,7 +450,7 @@ def _load_gateway_config() -> dict:
         config_path = _spark_home / 'config.yaml'
         if config_path.exists():
             import yaml
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, encoding='utf-8') as f:
                 return yaml.safe_load(f) or {}
     except Exception:
         logger.debug("Could not load gateway config from %s", _spark_home / 'config.yaml')
@@ -1123,7 +1123,7 @@ class GatewayRunner:
             logger.warning("Prefill messages file not found: %s", path)
             return []
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = _json.load(f)
             if not isinstance(data, list):
                 logger.warning("Prefill messages file must contain a JSON array: %s", path)
@@ -4739,7 +4739,7 @@ class GatewayRunner:
 
         try:
             if config_path.exists():
-                with open(config_path, 'r', encoding="utf-8") as f:
+                with open(config_path, encoding="utf-8") as f:
                     config = yaml.safe_load(f) or {}
                 personalities = config.get("agent", {}).get("personalities", {})
             else:
