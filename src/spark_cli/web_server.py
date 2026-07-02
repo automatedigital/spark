@@ -54,6 +54,11 @@ from spark_cli.config import (
     check_config_version,
     redact_key,
 )
+from spark_cli.onboarding_validation import (
+    normalize_http_base_url,
+    normalize_model_name,
+    validate_env_assignment,
+)
 from gateway.status import get_running_pid, read_runtime_status
 from spark_cli.dashboard_auth import (
     dashboard_token_path,
@@ -2848,7 +2853,15 @@ def get_available_models(provider: str = "", base_url: str = ""):
                    user may type a custom name (ollama, openrouter, custom).
     """
     provider = (provider or "").strip()
-    models, live = _resolve_provider_models(provider, base_url)
+    normalized_base_url = ""
+    if (base_url or "").strip():
+        try:
+            normalized_base_url = normalize_http_base_url(
+                base_url, field_name="Model base URL"
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    models, live = _resolve_provider_models(provider, normalized_base_url)
     strict = provider in _STRICT_MODEL_PROVIDERS
     return {"provider": provider, "models": models, "live": live, "strict": strict}
 
@@ -2890,9 +2903,10 @@ def set_fast_model(body: Dict[str, Any]):
     try:
         from spark_cli.config import save_config
 
-        new_model = str(body.get("model", "")).strip()
-        if not new_model:
-            return JSONResponse({"error": "model is required"}, status_code=400)
+        try:
+            new_model = normalize_model_name(body.get("model"), field_name="Model name")
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
 
         cfg = load_config()
         if "smart_model_routing" not in cfg or not isinstance(cfg["smart_model_routing"], dict):
@@ -2913,9 +2927,10 @@ def set_smart_model(body: Dict[str, Any]):
     try:
         from spark_cli.config import save_config
 
-        new_model = str(body.get("model", "")).strip()
-        if not new_model:
-            return JSONResponse({"error": "model is required"}, status_code=400)
+        try:
+            new_model = normalize_model_name(body.get("model"), field_name="Model name")
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
 
         cfg = load_config()
         model_cfg = cfg.get("model", "")
@@ -3005,6 +3020,8 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     # Extract and remove model virtual fields before processing model
     model_provider = str(config.pop("model_provider", "") or "").strip()
     model_base_url = str(config.pop("model_base_url", "") or "").strip()
+    if model_base_url:
+        model_base_url = normalize_http_base_url(model_base_url, field_name="Model base URL")
     model_api_mode = str(config.pop("model_api_mode", "") or "").strip()
     ctx_override = config.pop("model_context_length", 0)
     if not isinstance(ctx_override, int):
@@ -3052,14 +3069,35 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+def _validate_config_update_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate onboarding-sensitive fields before saving web config updates."""
+    model = config.get("model")
+    if isinstance(model, dict):
+        for key in ("default", "model", "name"):
+            if model.get(key):
+                model[key] = normalize_model_name(model[key], field_name="Model name")
+        if model.get("base_url"):
+            model["base_url"] = normalize_http_base_url(
+                model["base_url"], field_name="Model base URL"
+            )
+    elif isinstance(model, str) and model.strip():
+        config["model"] = normalize_model_name(model, field_name="Model name")
+    return config
+
+
 @app.put("/api/config")
 async def update_config(body: ConfigUpdate):
     try:
-        save_config(_denormalize_config_from_web(body.config))
+        config = _validate_config_update_from_web(
+            _denormalize_config_from_web(body.config)
+        )
+        save_config(config)
         for sid in list(_web_agents.keys()):
             if not _is_web_turn_active(sid):
                 _close_web_agent(sid)
         return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
         _log.exception("PUT /api/config failed")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -3098,8 +3136,11 @@ async def get_env_vars():
 @app.put("/api/env")
 async def set_env_var(body: EnvVarUpdate):
     try:
-        save_env_value(body.key, body.value)
+        value = validate_env_assignment(body.key, body.value)
+        save_env_value(body.key, value)
         return {"ok": True, "key": body.key}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
         _log.exception("PUT /api/env failed")
         raise HTTPException(status_code=500, detail="Internal server error")

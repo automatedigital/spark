@@ -195,6 +195,54 @@ class TestWebServerEndpoints:
         assert data["models"] == []
         assert data["strict"] is False
 
+    def test_available_models_rejects_malformed_base_url(self):
+        resp = self.client.get(
+            "/api/model/available",
+            params={"provider": "ollama", "base_url": "localhost:11434"},
+        )
+        assert resp.status_code == 400
+        assert "http:// or https://" in resp.text
+
+    def test_set_env_var_rejects_placeholder_api_key(self):
+        from spark_cli.config import load_env
+
+        resp = self.client.put(
+            "/api/env",
+            json={"key": "OPENAI_API_KEY", "value": "placeholder"},
+        )
+        assert resp.status_code == 400
+        assert "placeholder" in resp.text
+        assert "OPENAI_API_KEY" not in load_env()
+
+    def test_set_env_var_rejects_invalid_port(self):
+        from spark_cli.config import load_env
+
+        resp = self.client.put(
+            "/api/env",
+            json={"key": "WEBHOOK_PORT", "value": "22x"},
+        )
+        assert resp.status_code == 400
+        assert "whole number" in resp.text
+        assert "WEBHOOK_PORT" not in load_env()
+
+    def test_put_config_rejects_invalid_model_base_url(self):
+        from spark_cli.config import load_config, save_config
+
+        save_config({"model": {"default": "gpt-4o", "provider": "custom"}})
+        resp = self.client.put(
+            "/api/config",
+            json={
+                "config": {
+                    "model": "gpt-4o",
+                    "model_provider": "custom",
+                    "model_base_url": "ftp://host",
+                }
+            },
+        )
+        assert resp.status_code == 400
+        assert "http:// or https://" in resp.text
+        assert load_config()["model"]["provider"] == "custom"
+
     def test_mac_update_installer_script_stages_and_installs_app(self, tmp_path):
         import spark_cli.web_server as ws
 

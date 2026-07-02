@@ -10,6 +10,8 @@
 // be unit-tested without a DOM or React. The localStorage glue lives in api.ts /
 // the components; here we only own validation + normalization.
 
+import { hasUsableSecret, normalizeHttpBaseUrl } from "./onboardingValidation";
+
 export type ConnectionMode = "local" | "remote";
 
 export const CONNECTION_MODE_KEY = "spark-connection-mode";
@@ -22,20 +24,7 @@ export const REMOTE_BASE_URL_KEY = "spark-remote-base-url";
  * App.tsx auth probe.
  */
 export function normalizeBaseUrl(raw: string): string | null {
-  const trimmed = (raw ?? "").trim();
-  if (!trimmed) return null;
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return null;
-  }
-  // Drop any trailing slash(es) from the full origin+path so callers can
-  // safely append `/api/...`.
-  return (parsed.origin + parsed.pathname).replace(/\/+$/, "");
+  return normalizeHttpBaseUrl(raw);
 }
 
 /** True when the string is a usable http(s) base URL. */
@@ -45,7 +34,7 @@ export function isValidBaseUrl(raw: string): boolean {
 
 /** A dashboard token is acceptable if it's a non-empty trimmed string. */
 export function isValidToken(raw: string): boolean {
-  return typeof raw === "string" && raw.trim().length > 0;
+  return typeof raw === "string" && hasUsableSecret(raw);
 }
 
 /**
@@ -103,7 +92,7 @@ export async function validateRemoteConnection(
 ): Promise<ValidateResult> {
   const base = normalizeBaseUrl(rawUrl);
   if (!base) return { ok: false, error: "Invalid URL" };
-  if (!isValidToken(rawToken)) return { ok: false, error: "Token required" };
+  if (!isValidToken(rawToken)) return { ok: false, error: "Valid token required" };
   try {
     const res = await fetchImpl(probeUrl(base), {
       headers: { Authorization: `Bearer ${rawToken.trim()}` },

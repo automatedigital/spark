@@ -15,6 +15,12 @@ import {
 } from "lucide-react";
 import { api, openExternal, setRemoteConnection, type OAuthStartResponse } from "@/lib/api";
 import { validateRemoteConnection } from "@/lib/connection";
+import {
+  normalizeHttpBaseUrl,
+  validateHttpBaseUrl,
+  validateModelName,
+  validateSecret,
+} from "@/lib/onboardingValidation";
 import { isTauri } from "@/sidecar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -453,15 +459,25 @@ export function OnboardingWizard({ onComplete }: Props) {
   const [remoteError, setRemoteError] = useState<string | null>(null);
 
   const handleRemoteConnect = async () => {
+    const urlCheck = validateHttpBaseUrl(remoteUrl, "Dashboard URL");
+    if (!urlCheck.ok || !urlCheck.value) {
+      setRemoteError(urlCheck.error ?? "Enter a valid dashboard URL.");
+      return;
+    }
+    const tokenCheck = validateSecret(remoteToken, "Access token");
+    if (!tokenCheck.ok || !tokenCheck.value) {
+      setRemoteError(tokenCheck.error ?? "Enter a valid access token.");
+      return;
+    }
     setRemoteBusy(true);
     setRemoteError(null);
     try {
-      const result = await validateRemoteConnection(remoteUrl, remoteToken);
+      const result = await validateRemoteConnection(urlCheck.value, tokenCheck.value);
       if (!result.ok) {
         setRemoteError(result.error ?? "Could not connect");
         return;
       }
-      setRemoteConnection(remoteUrl, remoteToken);
+      setRemoteConnection(urlCheck.value, tokenCheck.value);
       onComplete();
     } catch (e) {
       setRemoteError(`Could not connect: ${e}`);
@@ -491,7 +507,7 @@ export function OnboardingWizard({ onComplete }: Props) {
     setProvider(p);
     setApiKey("");
     setCustomModel("");
-    setBaseUrl("http://localhost:11434");
+    setBaseUrl(p.id === "custom" ? "" : "http://localhost:11434");
     setOllamaModels([]);
     setOllamaModel("");
     setModelsFetched(false);
@@ -502,14 +518,16 @@ export function OnboardingWizard({ onComplete }: Props) {
   // Pull the live model list from the Ollama server at the entered base URL so
   // the user picks a model that actually exists (instead of a hardcoded guess).
   const fetchOllamaModels = async (url: string) => {
-    if (!url.trim()) {
-      setError("Please enter the Ollama base URL.");
+    const urlCheck = validateHttpBaseUrl(url, "Ollama base URL");
+    if (!urlCheck.ok || !urlCheck.value) {
+      setError(urlCheck.error ?? "Please enter a valid Ollama base URL.");
       return;
     }
     setLoadingModels(true);
     setError(null);
     try {
-      const r = await api.getAvailableModels("ollama", url.trim());
+      setBaseUrl(urlCheck.value);
+      const r = await api.getAvailableModels("ollama", urlCheck.value);
       setOllamaModels(r.models);
       setModelsFetched(true);
       // Default to the first model, or keep the current pick if still present.
@@ -542,6 +560,10 @@ export function OnboardingWizard({ onComplete }: Props) {
     setError(null);
     try {
       const name = agentName.trim();
+      if (name.length > 40) {
+        setError("Agent name must be 40 characters or fewer.");
+        return;
+      }
       if (name) {
         const current = (await api.getConfig()) as Record<string, unknown>;
         const agent = { ...((current.agent as Record<string, unknown>) ?? {}) };
@@ -572,27 +594,43 @@ export function OnboardingWizard({ onComplete }: Props) {
   const handleApiKeyContinue = async () => {
     if (!provider) return;
     const isCustom = provider.id === "custom";
-    if (!isCustom && !apiKey.trim()) {
-      setError("Please paste your API key.");
+    const key = apiKey.trim();
+    if (!isCustom || key) {
+      const keyCheck = validateSecret(key, provider.envVar ?? "API key");
+      if (!keyCheck.ok || !keyCheck.value) {
+        setError(keyCheck.error ?? "Please paste a valid API key.");
+        return;
+      }
+    }
+    const modelCheck = isCustom
+      ? validateModelName(customModel, "Model name")
+      : validateModelName(provider.defaultModel, "Model name");
+    if (!modelCheck.ok || !modelCheck.value) {
+      setError(modelCheck.error ?? "Please enter a valid model name.");
       return;
     }
-    if (isCustom && !customModel.trim()) {
-      setError("Please enter a model name.");
-      return;
+    let normalizedBaseUrl = "";
+    if (isCustom) {
+      const urlCheck = validateHttpBaseUrl(baseUrl, "Base URL");
+      if (!urlCheck.ok || !urlCheck.value) {
+        setError(urlCheck.error ?? "Please enter a valid base URL.");
+        return;
+      }
+      normalizedBaseUrl = urlCheck.value;
     }
     setSaving(true);
     setError(null);
     try {
-      if (apiKey.trim() && provider.envVar) {
-        await api.setEnvVar(provider.envVar, apiKey.trim());
+      if (key && provider.envVar) {
+        await api.setEnvVar(provider.envVar, key);
       }
-      const modelName = isCustom ? customModel.trim() : provider.defaultModel;
+      const modelName = modelCheck.value;
       const extra: Record<string, unknown> = {};
-      if (isCustom && baseUrl.trim()) extra.base_url = baseUrl.trim();
+      if (isCustom) extra.base_url = normalizedBaseUrl;
       await persistModelConfig(provider.id, modelName, extra);
       finish(
-        apiKey.trim()
-          ? `${provider.name} · key ${maskKey(apiKey.trim())}`
+        key
+          ? `${provider.name} · key ${maskKey(key)}`
           : `${provider.name} · ${modelName}`,
       );
     } catch (e) {
@@ -604,25 +642,27 @@ export function OnboardingWizard({ onComplete }: Props) {
 
   const handleOllamaContinue = async () => {
     if (!provider) return;
-    if (!baseUrl.trim()) {
-      setError("Please enter the Ollama base URL.");
+    const normalizedBaseUrl = normalizeHttpBaseUrl(baseUrl);
+    if (!normalizedBaseUrl) {
+      setError("Ollama base URL must be a valid HTTP(S) URL.");
       return;
     }
     if (!modelsFetched) {
-      await fetchOllamaModels(baseUrl);
+      await fetchOllamaModels(normalizedBaseUrl);
       return;
     }
-    if (!ollamaModel) {
-      setError("Please select a model.");
+    const modelCheck = validateModelName(ollamaModel, "Ollama model");
+    if (!modelCheck.ok || !modelCheck.value) {
+      setError(modelCheck.error ?? "Please select a valid model.");
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      await persistModelConfig(provider.id, ollamaModel, {
-        base_url: baseUrl.trim(),
+      await persistModelConfig(provider.id, modelCheck.value, {
+        base_url: normalizedBaseUrl,
       });
-      finish(`${provider.name} · ${ollamaModel}`);
+      finish(`${provider.name} · ${modelCheck.value}`);
     } catch (e) {
       setError(`Could not save: ${e}`);
     } finally {
