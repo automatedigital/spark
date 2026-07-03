@@ -1090,6 +1090,77 @@ class TestConversationControl:
 
         assert web_server._cached_web_agent_matches_history("cache_ok", agent, history) is True
 
+    def test_cached_web_agent_followup_does_not_replay_prior_history(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        sid = "cached_cursor_web"
+        db = SessionDB()
+        try:
+            db.create_session(sid, source="web", model="m1")
+            db.append_message(sid, "user", content="hello")
+            db.append_message(sid, "assistant", content="hi")
+            history = db.get_messages_as_conversation(sid)
+        finally:
+            db.close()
+
+        class CachedAgent:
+            session_id = sid
+            model = "test-model"
+
+            def __init__(self, initial_history):
+                self._session_messages = list(initial_history)
+                self.messages = list(initial_history)
+                self._last_flushed_db_idx = 0
+
+            def run_conversation(self, user_message, conversation_history=None):
+                assert conversation_history is None
+                messages = list(self._session_messages)
+                messages.append({"role": "user", "content": user_message})
+                messages.append({"role": "assistant", "content": "second answer"})
+
+                db = SessionDB()
+                try:
+                    for msg in messages[self._last_flushed_db_idx:]:
+                        db.append_message(sid, msg["role"], content=msg["content"])
+                finally:
+                    db.close()
+
+                self._session_messages = messages
+                self.messages = list(messages)
+                self._last_flushed_db_idx = len(messages)
+                return {"final_response": "second answer", "messages": messages}
+
+        agent = CachedAgent(history)
+        web_server._hydrate_web_agent_from_history(agent, history)
+
+        db = SessionDB()
+        try:
+            eager_user_id = db.append_message(sid, "user", content="again")
+            before_message_count = len(db.get_messages(sid))
+        finally:
+            db.close()
+
+        result = agent.run_conversation("again", conversation_history=None)
+        web_server._persist_web_turn_if_missing(
+            sid,
+            "again",
+            result,
+            before_message_count,
+            eager_user_id=eager_user_id,
+        )
+
+        db2 = SessionDB()
+        try:
+            assert [m["content"] for m in db2.get_messages(sid)] == [
+                "hello",
+                "hi",
+                "again",
+                "second answer",
+            ]
+        finally:
+            db2.close()
+
     def test_cached_web_agent_validation_rejects_stale_context(self, web_client):
         import spark_cli.web_server as web_server
         from core.spark_state import SessionDB
