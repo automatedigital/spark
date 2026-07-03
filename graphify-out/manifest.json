@@ -1770,7 +1770,7 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src-tauri/loading/boot.js": {
-    "mtime": 1783046219.8548412,
+    "mtime": 1783046684.8730688,
     "ast_hash": "42333a07651c0717a38e73ff77985a68",
     "semantic_hash": ""
   },
@@ -1785,8 +1785,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src-tauri/tauri.conf.json": {
-    "mtime": 1783038247.0872521,
-    "ast_hash": "b34428b1f6ec3cf8eb3fcecf26449a32",
+    "mtime": 1783046732.2725985,
+    "ast_hash": "141d7f11e48f5c151e50e04ed4b9d6ec",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/App.tsx": {
@@ -9200,7 +9200,7 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src-tauri/loading/index.html": {
-    "mtime": 1783046486.5400414,
+    "mtime": 1783046684.8732204,
     "ast_hash": "a91acaf3a3ff18d418f4c1eb5d5b7d61",
     "semantic_hash": ""
   },
@@ -9810,12 +9810,12 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/loadingAssets.test.ts": {
-    "mtime": 1783046455.0643694,
+    "mtime": 1783046684.8748658,
     "ast_hash": "c79d4b96ab41d322238017043639460f",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src-tauri/loading/spark-logo.png": {
-    "mtime": 1783046433.175228,
+    "mtime": 1783046684.8746557,
     "ast_hash": "ac2c0ffe7ec9edc4cf3a3d6d5196dcda",
     "semantic_hash": ""
   }
