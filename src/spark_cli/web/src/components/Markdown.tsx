@@ -70,6 +70,7 @@ export const Markdown = memo(function Markdown({
   content,
   highlightTerms,
   streaming = false,
+  showStreamingCursor = false,
   safeMode = false,
   renderRevision,
   defaultWrap = false,
@@ -77,6 +78,7 @@ export const Markdown = memo(function Markdown({
   content: string;
   highlightTerms?: string[];
   streaming?: boolean;
+  showStreamingCursor?: boolean;
   safeMode?: boolean;
   renderRevision?: number;
   defaultWrap?: boolean;
@@ -92,6 +94,7 @@ export const Markdown = memo(function Markdown({
         className="w-full min-w-0 max-w-full whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground"
       >
         {content}
+        {showStreamingCursor ? <StreamingCursor /> : null}
       </div>
     );
   }
@@ -101,6 +104,7 @@ export const Markdown = memo(function Markdown({
       content={content}
       highlightTerms={highlightTerms}
       streaming={streaming}
+      showStreamingCursor={showStreamingCursor}
       safeMode={safeMode}
       renderRevision={renderRevision}
       defaultWrap={defaultWrap}
@@ -109,6 +113,7 @@ export const Markdown = memo(function Markdown({
 }, (prev, next) => (
   prev.content === next.content &&
   prev.streaming === next.streaming &&
+  prev.showStreamingCursor === next.showStreamingCursor &&
   prev.safeMode === next.safeMode &&
   prev.renderRevision === next.renderRevision &&
   prev.defaultWrap === next.defaultWrap &&
@@ -119,6 +124,7 @@ function ParsedMarkdown({
   content,
   highlightTerms,
   streaming,
+  showStreamingCursor,
   safeMode,
   renderRevision,
   defaultWrap,
@@ -126,6 +132,7 @@ function ParsedMarkdown({
   content: string;
   highlightTerms?: string[];
   streaming: boolean;
+  showStreamingCursor: boolean;
   safeMode: boolean;
   renderRevision?: number;
   defaultWrap: boolean;
@@ -136,15 +143,20 @@ function ParsedMarkdown({
   );
 
   return (
-    <div className="text-sm text-foreground leading-relaxed space-y-2">
+    <div className="w-full min-w-0 max-w-full text-sm text-foreground leading-relaxed space-y-2">
       {segments.map((segment) => (
         segment.kind === "plain" ? (
-          <MemoPlainSegment key={`${segment.kind}:${segment.start}:${segment.end}`} segment={segment} />
+          <MemoPlainSegment
+            key={`${segment.kind}:${segment.start}:${segment.end}`}
+            segment={segment}
+            showCursor={showStreamingCursor && segment.live}
+          />
         ) : (
           <MemoMarkdownSegment
             key={`${segment.kind}:${segment.start}:${segment.end}`}
             segment={segment}
             highlightTerms={safeMode ? undefined : highlightTerms}
+            showCursor={showStreamingCursor}
             safeMode={safeMode}
             defaultWrap={defaultWrap}
           />
@@ -154,26 +166,36 @@ function ParsedMarkdown({
   );
 }
 
-const MemoPlainSegment = memo(function PlainSegment({ segment }: { segment: MarkdownRenderSegment }) {
+const MemoPlainSegment = memo(function PlainSegment({
+  segment,
+  showCursor,
+}: {
+  segment: MarkdownRenderSegment;
+  showCursor?: boolean;
+}) {
   return (
     <div className="whitespace-pre-wrap break-words text-foreground/90">
       {segment.text}
+      {showCursor ? <StreamingCursor /> : null}
     </div>
   );
 }, (prev, next) => (
   prev.segment.text === next.segment.text &&
   prev.segment.start === next.segment.start &&
-  prev.segment.end === next.segment.end
+  prev.segment.end === next.segment.end &&
+  prev.showCursor === next.showCursor
 ));
 
 const MemoMarkdownSegment = memo(function MarkdownSegment({
   segment,
   highlightTerms,
+  showCursor,
   safeMode,
   defaultWrap,
 }: {
   segment: MarkdownRenderSegment;
   highlightTerms?: string[];
+  showCursor?: boolean;
   safeMode?: boolean;
   defaultWrap?: boolean;
 }) {
@@ -187,6 +209,7 @@ const MemoMarkdownSegment = memo(function MarkdownSegment({
           block={block}
           highlightTerms={safeMode ? undefined : highlightTerms}
           live={segment.live && i === total - 1}
+          showCursor={Boolean(showCursor && segment.live && i === total - 1)}
           safeMode={safeMode}
           defaultWrap={defaultWrap}
         />
@@ -198,13 +221,32 @@ const MemoMarkdownSegment = memo(function MarkdownSegment({
   prev.segment.start === next.segment.start &&
   prev.segment.end === next.segment.end &&
   prev.segment.live === next.segment.live &&
+  prev.showCursor === next.showCursor &&
   prev.safeMode === next.safeMode &&
   prev.defaultWrap === next.defaultWrap &&
   termsEqual(prev.highlightTerms, next.highlightTerms)
 ));
 
-const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live, safeMode, defaultWrap }: BlockProps) {
-  return <Block block={block} highlightTerms={highlightTerms} live={live} safeMode={safeMode} defaultWrap={defaultWrap} />;
+function StreamingCursor() {
+  return (
+    <span
+      aria-hidden="true"
+      className="ml-0.5 inline-block h-[1.05em] w-0.5 animate-pulse bg-success align-[-0.12em]"
+    />
+  );
+}
+
+const MemoBlock = memo(function MemoBlock({ block, highlightTerms, live, showCursor, safeMode, defaultWrap }: BlockProps) {
+  return (
+    <Block
+      block={block}
+      highlightTerms={highlightTerms}
+      live={live}
+      showCursor={showCursor}
+      safeMode={safeMode}
+      defaultWrap={defaultWrap}
+    />
+  );
 }, blockPropsEqual);
 
 /* ------------------------------------------------------------------ */
@@ -240,12 +282,14 @@ function CodeBlock({
   lang,
   content,
   live,
+  showCursor,
   safeMode,
   defaultWrap = false,
 }: {
   lang: string;
   content: string;
   live?: boolean;
+  showCursor?: boolean;
   safeMode?: boolean;
   defaultWrap?: boolean;
 }) {
@@ -311,7 +355,7 @@ function CodeBlock({
         <pre className={`bg-secondary/40 px-3 py-2.5 text-xs font-mono leading-relaxed ${
           wrapped ? "whitespace-pre-wrap break-words overflow-x-hidden" : "overflow-x-auto"
         }`}>
-          <code>{content}</code>
+          <code>{content}{showCursor ? <StreamingCursor /> : null}</code>
         </pre>
       )}
     </div>
@@ -395,18 +439,20 @@ function Block({
   block,
   highlightTerms,
   live,
+  showCursor,
   safeMode,
   defaultWrap,
 }: {
   block: BlockNode;
   highlightTerms?: string[];
   live?: boolean;
+  showCursor?: boolean;
   safeMode?: boolean;
   defaultWrap?: boolean;
 }) {
   switch (block.type) {
     case "code":
-      return <CodeBlock lang={block.lang} content={block.content} live={live} safeMode={safeMode} defaultWrap={defaultWrap} />;
+      return <CodeBlock lang={block.lang} content={block.content} live={live} showCursor={showCursor} safeMode={safeMode} defaultWrap={defaultWrap} />;
 
     case "heading": {
       const Tag = `h${Math.min(block.level, 4)}` as "h1" | "h2" | "h3" | "h4";
@@ -416,7 +462,7 @@ function Block({
         h3: "text-sm font-semibold",
         h4: "text-sm font-medium",
       };
-      return <Tag className={sizes[Tag]}><InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} /></Tag>;
+      return <Tag className={sizes[Tag]}><InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} />{showCursor ? <StreamingCursor /> : null}</Tag>;
     }
 
     case "hr":
@@ -426,6 +472,7 @@ function Block({
       return (
         <blockquote className="border-l-2 border-primary/40 pl-3 text-muted-foreground italic bg-secondary/20 py-1 rounded-r-sm">
           <InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} />
+          {showCursor ? <StreamingCursor /> : null}
         </blockquote>
       );
 
@@ -463,12 +510,13 @@ function Block({
                   </span>
                   <span className={done ? "line-through text-muted-foreground" : ""}>
                     <InlineContent text={taskMatch[2]} highlightTerms={highlightTerms} safeMode={safeMode} />
+                    {showCursor && i === block.items.length - 1 ? <StreamingCursor /> : null}
                   </span>
                 </li>
               );
             }
             return (
-              <li key={i}><InlineContent text={item} highlightTerms={highlightTerms} safeMode={safeMode} /></li>
+              <li key={i}><InlineContent text={item} highlightTerms={highlightTerms} safeMode={safeMode} />{showCursor && i === block.items.length - 1 ? <StreamingCursor /> : null}</li>
             );
           })}
         </Tag>
@@ -476,7 +524,7 @@ function Block({
     }
 
     case "paragraph":
-      return <p><InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} /></p>;
+      return <p><InlineContent text={block.content} highlightTerms={highlightTerms} safeMode={safeMode} />{showCursor ? <StreamingCursor /> : null}</p>;
   }
 }
 

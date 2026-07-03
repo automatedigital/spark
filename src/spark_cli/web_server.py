@@ -117,7 +117,25 @@ class WebActiveTurn:
     checkpointed_chars: int = 0
 
 
+class _WebTurnCallbackContext:
+    """Per-turn callback routing state shared by sync agent worker callbacks."""
+
+    def __init__(self, session_id: str):
+        self._session_id = session_id
+        self._lock = threading.RLock()
+
+    @property
+    def session_id(self) -> str:
+        with self._lock:
+            return self._session_id
+
+    def migrate(self, session_id: str) -> None:
+        with self._lock:
+            self._session_id = session_id
+
+
 _web_active_turns: dict[str, WebActiveTurn] = {}
+_web_turn_lock = threading.RLock()
 
 _EVENT_QUEUE_SIZE = 512
 _PRIORITY_EVENT_TOPICS = {
@@ -222,7 +240,8 @@ def _mark_web_turn_active(
         active_agent_session_id=active_agent_session_id,
         phase=phase,
     )
-    _web_active_turns[key] = turn
+    with _web_turn_lock:
+        _web_active_turns[key] = turn
     return turn
 
 
@@ -236,8 +255,10 @@ def _touch_web_turn(
 ) -> None:
     if not session_id:
         return
-    for candidate in _web_turn_candidates(session_id):
-        turn = _web_active_turns.get(candidate)
+    with _web_turn_lock:
+        candidates = list(_web_turn_candidates(session_id))
+        turns = [(candidate, _web_active_turns.get(candidate)) for candidate in candidates]
+    for _candidate, turn in turns:
         if not turn:
             continue
         turn.last_event_at = time.time()
@@ -258,8 +279,10 @@ def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
     token = _sanitize_web_chat_text(token)
     if not token:
         return
-    for candidate in _web_turn_candidates(session_id):
-        turn = _web_active_turns.get(candidate)
+    with _web_turn_lock:
+        candidates = list(_web_turn_candidates(session_id))
+        turns = [(candidate, _web_active_turns.get(candidate)) for candidate in candidates]
+    for candidate, turn in turns:
         if not turn:
             continue
         turn.last_event_at = time.time()
@@ -270,19 +293,20 @@ def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
         return
 
 
-_WEB_TURN_CHECKPOINT_INTERVAL_S = 5.0
+_WEB_TURN_CHECKPOINT_INTERVAL_S = 0.0
 
 
 def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn) -> None:
     """Persist the streamed assistant text so a mid-turn crash keeps it.
 
     The first checkpoint inserts an assistant row marked finish_reason
-    "interrupted"; later ones update it in place. If the turn completes
+    "interrupted"; later ones update it in place on each received stream
+    chunk. If the turn completes
     normally, _persist_web_turn_if_missing either finalizes this row or
     deletes it when the agent flushed its own copy.
     """
     now = time.time()
-    if now - turn.last_checkpoint_at < _WEB_TURN_CHECKPOINT_INTERVAL_S:
+    if _WEB_TURN_CHECKPOINT_INTERVAL_S > 0 and now - turn.last_checkpoint_at < _WEB_TURN_CHECKPOINT_INTERVAL_S:
         return
     text = turn.stream_text
     if not text or len(text) <= turn.checkpointed_chars:
@@ -326,15 +350,17 @@ def _persist_web_user_message(session_id: str, user_message: str) -> int | None:
 
 
 def _clear_web_turn(session_id: str) -> None:
-    for candidate in _web_turn_candidates(session_id):
-        _web_active_turns.pop(candidate, None)
+    with _web_turn_lock:
+        for candidate in _web_turn_candidates(session_id):
+            _web_active_turns.pop(candidate, None)
 
 
 def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTurn]]:
-    for candidate in _web_turn_candidates(session_id):
-        turn = _web_active_turns.get(candidate)
-        if turn:
-            return candidate, turn
+    with _web_turn_lock:
+        for candidate in _web_turn_candidates(session_id):
+            turn = _web_active_turns.get(candidate)
+            if turn:
+                return candidate, turn
     return None, None
 
 
@@ -591,7 +617,12 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
     if loop is None:
         return
     if topic.startswith("chat."):
+        if not session_id:
+            _record_event_drop(topic, session_id)
+            _log.warning("dropping chat event without session_id topic=%s", topic)
+            return
         data = _sanitize_web_chat_value(data)
+        data = {**data, "session_id": session_id}
     envelope = {"topic": topic, "session_id": session_id, "ts": time.time(), "data": data}
 
     def _fanout() -> None:
@@ -5016,13 +5047,14 @@ def _make_web_chat_callbacks(
     queue: asyncio.Queue,
     loop: asyncio.AbstractEventLoop,
 ):
-    # Mutable holder so the migrate callback can switch the channel that
-    # subsequent events publish on after a compression-driven session split.
-    current_session_id = [session_id]
+    # Per-turn routing state. Compression can migrate a running turn to a new
+    # session id; keeping the mutable pointer inside this object prevents
+    # unrelated turns from sharing callback state.
+    turn_context = _WebTurnCallbackContext(session_id)
     tool_started_monotonic: dict[str, float] = {}
 
     def publish_status(kind: str, message: str, *, phase: Optional[str] = None) -> None:
-        _publish_web_status(current_session_id[0], kind, message, phase=phase)
+        _publish_web_status(turn_context.session_id, kind, message, phase=phase)
 
     def token_callback(token: Optional[str]) -> None:
         if token is None:
@@ -5030,12 +5062,13 @@ def _make_web_chat_callbacks(
         token = _sanitize_web_chat_text(token)
         if not token:
             return
-        _append_web_turn_token(current_session_id[0], token)
+        current_session_id = turn_context.session_id
+        _append_web_turn_token(current_session_id, token)
         try:
             loop.call_soon_threadsafe(queue.put_nowait, token)
         except Exception:
             pass
-        _publish_event("chat.token", {"t": token}, current_session_id[0])
+        _publish_event("chat.token", {"t": token}, current_session_id)
 
     def tool_start_callback(tid: str, name: str, args: Any) -> None:
         started_at = time.time()
@@ -5044,7 +5077,7 @@ def _make_web_chat_callbacks(
         _publish_event(
             "chat.tool_start",
             {"id": tid, "name": name, "args": _json_safe(args), "ts": started_at, "started_at": started_at},
-            current_session_id[0],
+            turn_context.session_id,
         )
 
     def tool_complete_callback(tid: str, name: str, args: Any, result: Any) -> None:
@@ -5063,12 +5096,13 @@ def _make_web_chat_callbacks(
                 "ended_at": ended_at,
                 **({"duration_seconds": duration_seconds} if duration_seconds is not None else {}),
             },
-            current_session_id[0],
+            turn_context.session_id,
         )
 
     def reasoning_callback(text: str) -> None:
-        _touch_web_turn(current_session_id[0], phase="reasoning")
-        _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, current_session_id[0])
+        current_session_id = turn_context.session_id
+        _touch_web_turn(current_session_id, phase="reasoning")
+        _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, current_session_id)
 
     def status_callback(kind: str, message: str) -> None:
         publish_status(kind, message)
@@ -5081,28 +5115,31 @@ def _make_web_chat_callbacks(
         # following event because the filter would no longer match.
         old_key, turn = _get_web_turn(old_id)
         if old_key and turn:
-            _web_active_turns.pop(old_key, None)
             turn.last_event_at = time.time()
             turn.phase = "streaming"
             turn.status = "Context compressed; continuing…"
             turn.active_agent_session_id = new_id
-            _web_active_turns[new_id] = turn
+            with _web_turn_lock:
+                if _web_active_turns.get(old_key) is turn:
+                    _web_active_turns.pop(old_key, None)
+                _web_active_turns[new_id] = turn
         if old_id in _web_agents and new_id not in _web_agents:
             _web_agents[new_id] = _web_agents[old_id]
             _web_agent_signatures[new_id] = _web_agent_signatures.get(old_id)
         _publish_event(
             "chat.session_migrated",
             {"old_session_id": old_id, "new_session_id": new_id, "reason": reason},
-            current_session_id[0],
+            turn_context.session_id,
         )
-        current_session_id[0] = new_id
+        turn_context.migrate(new_id)
         publish_status("context_compression", "Context compressed; continuing…", phase="streaming")
 
     def subagent_event_callback(payload: dict) -> None:
         if not isinstance(payload, dict):
             payload = {"event": "status", "payload": {"preview": str(payload)}}
-        _touch_web_turn(current_session_id[0], phase="subagent")
-        _persist_and_publish_subagent_event(current_session_id[0], payload)
+        current_session_id = turn_context.session_id
+        _touch_web_turn(current_session_id, phase="subagent")
+        _persist_and_publish_subagent_event(current_session_id, payload)
 
     return (
         token_callback,
@@ -5840,6 +5877,16 @@ def _run_web_agent_turn(
         reset_current_session_key(tok)
 
 
+def _final_web_turn_session_id(requested_session_id: str, agent: Any, turn: Optional[WebActiveTurn]) -> str:
+    """Return the concrete session that owns the finished turn."""
+    if turn and turn.active_agent_session_id:
+        return turn.active_agent_session_id
+    agent_session_id = getattr(agent, "session_id", None)
+    if isinstance(agent_session_id, str) and agent_session_id:
+        return agent_session_id
+    return requested_session_id
+
+
 def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
     """Detect usage_limit_reached signals and store them in _codex_usage_limit_hit."""
     global _codex_usage_limit_hit
@@ -6246,6 +6293,20 @@ def _persist_web_turn_if_missing(
                 for m in new_messages
                 if m.get("role") == "assistant" and str(m.get("content") or "").strip()
             ]
+            current_user_index = next(
+                (
+                    idx
+                    for idx, m in enumerate(new_messages)
+                    if m.get("role") == "user" and m.get("content") == user_message
+                ),
+                None,
+            )
+            if current_user_index is not None:
+                assistant_messages = [
+                    m
+                    for m in new_messages[current_user_index + 1 :]
+                    if m.get("role") == "assistant" and str(m.get("content") or "").strip()
+                ]
             has_assistant = bool(assistant_messages)
 
             if display_response and display_response != final_response and assistant_messages:
@@ -6894,16 +6955,20 @@ async def create_conversation(body: ConversationCreate):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
+            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
             _persist_web_turn_if_missing(
-                session_id, message, result, before_message_count,
+                final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(session_id)
-            _maybe_auto_title_web(agent, session_id, message, result)
+            _emit_web_session_updated(final_session_id)
+            _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
-            _clear_web_turn(session_id)
+            _web_queues.pop(session_id, None)
+            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _clear_web_turn(final_session_id)
+            if final_session_id != session_id:
+                _clear_web_turn(session_id)
 
     _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
@@ -7154,6 +7219,8 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         if not row:
             raise HTTPException(status_code=404, detail="Session not found")
         session_id = sid
+        if _is_web_turn_active(session_id):
+            raise HTTPException(status_code=409, detail="A turn is already running.")
         (
             token_callback,
             tool_start_callback,
@@ -7251,16 +7318,20 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
+            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
             _persist_web_turn_if_missing(
-                session_id, message, result, before_message_count,
+                final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(session_id)
-            _maybe_auto_title_web(agent, session_id, message, result)
+            _emit_web_session_updated(final_session_id)
+            _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
-            _clear_web_turn(session_id)
+            _web_queues.pop(session_id, None)
+            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _clear_web_turn(final_session_id)
+            if final_session_id != session_id:
+                _clear_web_turn(session_id)
 
     _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
@@ -7659,6 +7730,8 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _touch_web_turn(session_id, status="Retrying…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
+        _, _active_turn = _get_web_turn(session_id)
+        before_message_count = _session_message_count(session_id)
         result = None
         try:
             _publish_web_status(session_id, "api_call_started", "Retrying model call…", phase="api")
@@ -7672,8 +7745,21 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         finally:
             unregister_gateway_notify(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
-            _clear_web_turn(session_id)
+            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
+            _persist_web_turn_if_missing(
+                final_session_id,
+                user_msg,
+                result,
+                before_message_count,
+                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
+            )
+            _emit_web_session_updated(final_session_id)
+            _maybe_auto_title_web(agent, final_session_id, user_msg, result)
+            _web_queues.pop(session_id, None)
+            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _clear_web_turn(final_session_id)
+            if final_session_id != session_id:
+                _clear_web_turn(session_id)
 
     _mark_web_turn_active(session_id, status="Retrying…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
@@ -7803,7 +7889,8 @@ async def stream_conversation(session_id: str):
         except Exception:
             yield "event: done\ndata: {}\n\n"
         finally:
-            _web_queues.pop(session_id, None)
+            if not _is_web_turn_active(session_id):
+                _web_queues.pop(session_id, None)
 
     return _StreamingResponse(
         event_generator(),
@@ -8015,13 +8102,14 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         finally:
             unregister_gateway_notify(session_id)
             _strip_user_message_prefix(session_id, context_prefix, raw_message)
+            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
             _persist_web_turn_if_missing(
-                session_id, raw_message, result, before_message_count,
+                final_session_id, raw_message, result, before_message_count,
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(session_id)
-            _maybe_auto_title_web(agent, session_id, raw_message, result)
+            _emit_web_session_updated(final_session_id)
+            _maybe_auto_title_web(agent, final_session_id, raw_message, result)
             try:
                 from spark_cli.workspace_routes import start_preview
 
@@ -8029,8 +8117,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             except Exception:
                 _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
             loop.call_soon_threadsafe(queue.put_nowait, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
-            _clear_web_turn(session_id)
+            _web_queues.pop(session_id, None)
+            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _clear_web_turn(final_session_id)
+            if final_session_id != session_id:
+                _clear_web_turn(session_id)
 
     _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
