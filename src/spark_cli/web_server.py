@@ -4570,7 +4570,7 @@ async def warm_session_agent(session_id: str):
         # Load conversation history so the system prompt is built and cached.
         agent = _web_agents.get(sid)
         if agent and conversation_history:
-            agent.messages = list(conversation_history)
+            _hydrate_web_agent_from_history(agent, conversation_history)
 
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, _warm_in_thread)
@@ -6270,7 +6270,14 @@ def _persist_web_turn_if_missing(
                 else ""
             )
 
-            new_messages = messages[before_message_count:]
+            if eager_user_id is not None:
+                new_messages = [
+                    m
+                    for m in messages
+                    if int(m.get("id") or 0) > eager_user_id
+                ]
+            else:
+                new_messages = messages[before_message_count:]
             if checkpoint_assistant_id is not None:
                 new_messages = [
                     m for m in new_messages if m.get("id") != checkpoint_assistant_id
@@ -6395,6 +6402,19 @@ def _agent_history_snapshot(agent: Any) -> list[dict[str, Any]]:
     if isinstance(warm_messages, list) and warm_messages:
         return list(warm_messages)
     return []
+
+
+def _hydrate_web_agent_from_history(agent: Any, conversation_history: list[dict[str, Any]]) -> None:
+    """Align a warmed/cached web agent with history already persisted in SessionDB."""
+    history = list(conversation_history or [])
+    try:
+        agent._session_messages = list(history)
+        # Older warm-session code used ``messages`` as a side channel; keep it in
+        # sync for compatibility with tests/fakes and any in-flight agents.
+        agent.messages = list(history)
+        agent._last_flushed_db_idx = len(history)
+    except Exception:
+        _log.debug("web agent history hydration failed", exc_info=True)
 
 
 def _web_history_flags(session_id: str) -> dict[str, bool]:
@@ -7252,6 +7272,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             and cached_signature_matches
             and _cached_web_agent_matches_history(session_id, agent, conversation_history)
         ):
+            _hydrate_web_agent_from_history(agent, conversation_history)
             agent.stream_delta_callback = token_callback
             agent.tool_start_callback = tool_start_callback
             agent.tool_complete_callback = tool_complete_callback
