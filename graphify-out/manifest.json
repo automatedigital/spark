@@ -1805,8 +1805,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/ChatPanel.tsx": {
-    "mtime": 1783038191.828614,
-    "ast_hash": "daa62258afab7ef608728740640ff182",
+    "mtime": 1783042813.7262037,
+    "ast_hash": "ed1ee7d57f10eaaa94b475897f638f34",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/CodexUsageBadge.tsx": {
@@ -9792,6 +9792,16 @@
   "src/spark_cli/web/src/components/markdownParse.streaming.test.ts": {
     "mtime": 1783038191.8289547,
     "ast_hash": "f73d08ba6117f048283f4abab700ef12",
+    "semantic_hash": ""
+  },
+  "src/spark_cli/web/src/lib/chatTranscriptMerge.test.ts": {
+    "mtime": 1783042813.7264743,
+    "ast_hash": "a84c63f9686bd3a2ffdecc563cba6156",
+    "semantic_hash": ""
+  },
+  "src/spark_cli/web/src/lib/chatTranscriptMerge.ts": {
+    "mtime": 1783042813.725263,
+    "ast_hash": "2878950a5c2ca1f89ae25d972df7a318",
     "semantic_hash": ""
   }
 }
