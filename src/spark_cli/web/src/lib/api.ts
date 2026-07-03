@@ -185,6 +185,7 @@ export const api = {
     const qs = new URLSearchParams();
     if (limit > 0) qs.set("limit", String(limit));
     if (beforeId) qs.set("before_id", beforeId);
+    qs.set("_", String(Date.now()));
     const q = qs.toString();
     return fetchJSON<SessionMessagesResponse>(
       `/api/sessions/${encodeURIComponent(id)}/messages${q ? `?${q}` : ""}`,

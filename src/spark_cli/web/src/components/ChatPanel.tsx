@@ -70,7 +70,7 @@ import { isTauri } from "@/sidecar";
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
 const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
-const STREAM_FLUSH_INTERVAL_MS = 160;
+const STREAM_FLUSH_INTERVAL_MS = 80;
 const STREAM_SNAPSHOT_POLL_MS = 2_000;
 const CHAT_WORD_WRAP_CHANGED_EVENT = "spark:chat-word-wrap-changed";
 const chatWordWrapFromConfig = (config: Record<string, unknown>): boolean => {
@@ -201,6 +201,12 @@ function cacheKey(msg: ChatMessage): string {
   }
 }
 
+function assistantTextChars(messages: ChatMessage[]): number {
+  return messages.reduce((total, msg) => (
+    msg.role === "assistant" && hasText(msg.content) ? total + msg.content.length : total
+  ), 0);
+}
+
 function mergeCachedProgress(mapped: ChatMessage[], cached: ChatMessage[]): ChatMessage[] {
   if (cached.length === 0) return mapped;
   if (mapped.length === 0) return cached;
@@ -232,12 +238,39 @@ function mergeSyncedMessages(
   if (mapped.length === 0 && prev.length > 0) return withForms(prev);
   if (mapped.length === 0 && cachedTurn.length > 0) return withForms(cachedTurn);
 
+  const recoveryAssistantChars = Math.max(assistantTextChars(prev), assistantTextChars(cachedTurn));
+
   if (
     options.preferSyncedAssistants &&
-    mapped.some((m) => m.role === "assistant" && hasText(m.content))
+    mapped.some((m) => m.role === "assistant" && hasText(m.content)) &&
+    assistantTextChars(mapped) >= recoveryAssistantChars
   ) {
     return withForms(mapped);
   }
+
+  const recoveryByAssistantId = new Map(
+    [...prev, ...cachedTurn]
+      .filter((m): m is Extract<ChatMessage, { role: "assistant" }> =>
+        m.role === "assistant" && hasText(m.content),
+      )
+      .map((m) => [m.id, m]),
+  );
+  let preservedLongerAssistant = false;
+  const monotonicMapped = mapped.map((msg) => {
+    if (msg.role !== "assistant" || !hasText(msg.content)) return msg;
+    const recovery = recoveryByAssistantId.get(msg.id);
+    if (
+      recovery &&
+      hasText(recovery.content) &&
+      recovery.content.length > msg.content.length &&
+      recovery.content.startsWith(msg.content)
+    ) {
+      preservedLongerAssistant = true;
+      return { ...recovery, streaming: false };
+    }
+    return msg;
+  });
+  if (preservedLongerAssistant) return withForms(monotonicMapped);
 
   const recoveryMessages = prev.some((m) => m.role === "assistant" && hasText(m.content)) ? prev : cachedTurn;
   const latestLocalAssistant = [...recoveryMessages]
@@ -248,17 +281,17 @@ function mergeSyncedMessages(
   if (!latestLocalAssistant) return withForms(mergeCachedProgress(mapped, cachedTurn));
 
   const mappedAssistantIds = new Set(
-    mapped
+    monotonicMapped
       .filter((m): m is Extract<ChatMessage, { role: "assistant" }> => m.role === "assistant")
       .map((m) => m.id),
   );
-  const mappedAssistantCount = mapped
+  const mappedAssistantCount = monotonicMapped
     .filter((m): m is Extract<ChatMessage, { role: "assistant" }> => m.role === "assistant")
     .filter((m) => hasText(m.content)).length;
   const recoveryAssistantCount = recoveryMessages.filter(
     (m) => m.role === "assistant" && hasText(m.content),
   ).length;
-  if (mappedAssistantIds.has(latestLocalAssistant.id)) return withForms(mapped);
+  if (mappedAssistantIds.has(latestLocalAssistant.id)) return withForms(monotonicMapped);
 
   if (mappedAssistantCount < recoveryAssistantCount) {
     const missingLocalRows = cachedTurn.filter((msg) => {
@@ -266,12 +299,12 @@ function mergeSyncedMessages(
         return hasText(msg.content) && !mappedAssistantIds.has(msg.id);
       }
       if (msg.role === "reasoning") {
-        return !mapped.some((m) => m.role === "reasoning" && m.id === msg.id);
+        return !monotonicMapped.some((m) => m.role === "reasoning" && m.id === msg.id);
       }
       return false;
     });
     return withForms([
-      ...mapped,
+      ...monotonicMapped,
       ...(missingLocalRows.length > 0
         ? missingLocalRows.map((msg) => (
             msg.role === "assistant" ? { ...msg, streaming: false } : msg
@@ -280,7 +313,7 @@ function mergeSyncedMessages(
     ]);
   }
 
-  return withForms(mergeCachedProgress(mapped, cachedTurn));
+  return withForms(mergeCachedProgress(monotonicMapped, cachedTurn));
 }
 
 // ── Memoized row components ───────────────────────────────────────────────────
@@ -442,11 +475,12 @@ const AssistantRow = memo(function AssistantRow({
   return (
     <div className="flex gap-2 group/amsg">
       <SparkAgentAvatar />
-      <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
+      <div className="w-full max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
           <Markdown
             content={msg.content}
             streaming={msg.streaming}
+            showStreamingCursor={msg.streaming}
             safeMode={safeMode}
             renderRevision={msg.renderRevision}
             defaultWrap={defaultWrap}
@@ -457,9 +491,6 @@ const AssistantRow = memo(function AssistantRow({
             <span className="text-xs">Thinking…</span>
           </span>
         )}
-        {msg.streaming && msg.content ? (
-          <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-success align-middle" />
-        ) : null}
         {!msg.streaming && msg.content && onPromoteToBrief && (
           <div className="absolute -top-2 right-0 opacity-0 group-hover/amsg:opacity-100 transition-opacity">
             <Button
@@ -620,6 +651,7 @@ export function ChatPanel({
   const turnStateRef = useRef<ChatTurnState>("idle");
   const safeModeRef = useRef(safeMode);
   const activeTurnSessionIdRef = useRef<string | null>(null);
+  const activeSessionAliasesRef = useRef<Set<string>>(new Set(sessionId ? [sessionId] : []));
   const sessionRecoverySeqRef = useRef(0);
   // Token batching: accumulate tokens and flush once per animation frame
   const tokenBufferRef = useRef("");
@@ -638,7 +670,7 @@ export function ChatPanel({
   const lastTokenAtRef = useRef<number>(0);
   // Guards against overlapping turn-status re-sync polls.
   const resyncInFlightRef = useRef(false);
-  const resyncTurnStateRef = useRef<(() => Promise<void>) | null>(null);
+  const resyncTurnStateRef = useRef<((options?: { allowIdle?: boolean }) => Promise<void>) | null>(null);
   // SSE is the fast path; the backend stream snapshot is the source of truth.
   // Track revisions so recovery polling only repaints when the server advanced.
   const streamRevisionRef = useRef(0);
@@ -651,9 +683,32 @@ export function ChatPanel({
   const [detachedFromBottom, setDetachedFromBottom] = useState(false);
 
   activeSessionRef.current = activeSessionId;
+  if (activeSessionId) activeSessionAliasesRef.current.add(activeSessionId);
   streamingRef.current = streaming;
   turnStateRef.current = turnState;
   safeModeRef.current = safeMode;
+
+  const rememberActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
+    ids.forEach((id) => {
+      if (id) activeSessionAliasesRef.current.add(id);
+    });
+  }, []);
+
+  const resetActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
+    activeSessionAliasesRef.current = new Set(ids.filter((id): id is string => Boolean(id)));
+  }, []);
+
+  const isCurrentSessionResponse = useCallback((
+    recoverySeq: number,
+    ...ids: Array<string | null | undefined>
+  ) => {
+    if (recoverySeq !== sessionRecoverySeqRef.current) return false;
+    const current = activeSessionRef.current;
+    return Boolean(current && (
+      ids.includes(current) ||
+      ids.some((id) => typeof id === "string" && activeSessionAliasesRef.current.has(id))
+    ));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -702,6 +757,7 @@ export function ChatPanel({
     }
     setActiveSessionId(sessionId);
     activeSessionRef.current = sessionId;
+    resetActiveSessionAliases(sessionId);
     const recoverySeq = ++sessionRecoverySeqRef.current;
     const optimistic: ChatMessage[] = initialMessage
       ? [{ id: nid(), role: "user", content: initialMessage }]
@@ -720,7 +776,12 @@ export function ChatPanel({
     lastTokenAtRef.current = initialMessage ? Date.now() : 0;
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = 0;
-    scrollStateRef.current = initialChatScrollState(initialTranscript.length);
+    prevCountRef.current = 0;
+    lastAutoScrollAtRef.current = 0;
+    scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
+      type: "jump-to-bottom",
+      itemCount: initialTranscript.length,
+    });
     setDetachedFromBottom(false);
     activeTurnSessionIdRef.current = null;
     followStreamRef.current = true;
@@ -733,17 +794,20 @@ export function ChatPanel({
     if (sessionId) {
       const selectedSessionId = sessionId;
       void api.getTurnStatus(selectedSessionId).then(async (status) => {
-        const recoveryStillCurrent = (...ids: Array<string | null | undefined>) => {
-          const current = activeSessionRef.current;
-          return recoverySeq === sessionRecoverySeqRef.current && (
-            current === selectedSessionId || ids.some((id) => Boolean(id) && id === current)
-          );
-        };
+        const recoveryStillCurrent = (...ids: Array<string | null | undefined>) => (
+          isCurrentSessionResponse(recoverySeq, selectedSessionId, ...ids)
+        );
         if (!recoveryStillCurrent(
           status.resolved_session_id,
           status.latest_session_id,
           status.active_turn_session_id,
         )) return;
+        rememberActiveSessionAliases(
+          selectedSessionId,
+          status.resolved_session_id,
+          status.latest_session_id,
+          status.active_turn_session_id,
+        );
         activeTurnSessionIdRef.current = status.turn_active
           ? status.active_turn_session_id ?? selectedSessionId
           : null;
@@ -764,6 +828,11 @@ export function ChatPanel({
               snapshot.latest_session_id,
               snapshot.active_turn_session_id,
             )) return;
+            rememberActiveSessionAliases(
+              snapshot.resolved_session_id,
+              snapshot.latest_session_id,
+              snapshot.active_turn_session_id,
+            );
             activeTurnSessionIdRef.current = snapshot.turn_active
               ? snapshot.active_turn_session_id ?? snapshotSessionId
               : null;
@@ -803,6 +872,7 @@ export function ChatPanel({
         /* selected-session turn recovery is best-effort */
       });
       api.getSessionForks(sessionId).then((info) => {
+        if (!isCurrentSessionResponse(recoverySeq, sessionId)) return;
         setForkInfo({
           parentSessionId: info.parent_session_id,
           parentTitle: info.parent_title,
@@ -814,9 +884,11 @@ export function ChatPanel({
       api
         .getSessionMessages(sessionId, HISTORY_PAGE)
         .then((resp) => {
+          if (!isCurrentSessionResponse(recoverySeq, sessionId, resp.session_id)) return;
           // If the requested session was compressed, the backend returns
           // the leaf session_id. Re-pin our refs so streaming events and
           // turn_done re-fetches use the agent's actual current session.
+          rememberActiveSessionAliases(sessionId, resp.session_id);
           if (resp.session_id && resp.session_id !== activeSessionRef.current) {
             activeSessionRef.current = resp.session_id;
             setActiveSessionId(resp.session_id);
@@ -1073,13 +1145,26 @@ export function ChatPanel({
   // we flush + finalize the assistant bubble and reload history so nothing is
   // lost. If it's still running we surface a gentle "still working" status
   // instead of leaving the UI frozen on a stale typing indicator.
-  const resyncTurnState = useCallback(async () => {
+  const resyncTurnState = useCallback(async (options: { allowIdle?: boolean } = {}) => {
     const sid = activeSessionRef.current;
-    if (!sid || !streamingRef.current || resyncInFlightRef.current) return;
+    if (!sid || (!streamingRef.current && !options.allowIdle) || resyncInFlightRef.current) return;
+    const recoverySeq = sessionRecoverySeqRef.current;
     resyncInFlightRef.current = true;
     try {
       const status = await api.getTurnStatus(sid);
-      if (sid !== activeSessionRef.current) return; // session switched mid-poll
+      if (!isCurrentSessionResponse(
+        recoverySeq,
+        sid,
+        status.resolved_session_id,
+        status.latest_session_id,
+        status.active_turn_session_id,
+      )) return;
+      rememberActiveSessionAliases(
+        sid,
+        status.resolved_session_id,
+        status.latest_session_id,
+        status.active_turn_session_id,
+      );
       if (!status.turn_active) {
         activeTurnSessionIdRef.current = null;
         // Turn finished while we weren't listening — finalize from history.
@@ -1089,6 +1174,8 @@ export function ChatPanel({
         setStatusLabel(null);
         try {
           const resp = await api.getSessionMessages(sid, HISTORY_PAGE);
+          if (!isCurrentSessionResponse(recoverySeq, sid, resp.session_id)) return;
+          rememberActiveSessionAliases(sid, resp.session_id);
           const mapped = sessionMessagesToChat(
             resp.messages.filter(
               (m) => m.role === "user" || m.role === "assistant" || m.role === "tool",
@@ -1116,7 +1203,19 @@ export function ChatPanel({
         setStatusLabel((prev) => status.status ?? prev ?? "Still working…");
         try {
           const snapshot = await api.getStreamSnapshot(snapshotSessionId);
-          if (sid !== activeSessionRef.current) return;
+          if (!isCurrentSessionResponse(
+            recoverySeq,
+            sid,
+            snapshot.resolved_session_id,
+            snapshot.latest_session_id,
+            snapshot.active_turn_session_id,
+          )) return;
+          rememberActiveSessionAliases(
+            sid,
+            snapshot.resolved_session_id,
+            snapshot.latest_session_id,
+            snapshot.active_turn_session_id,
+          );
           activeTurnSessionIdRef.current = snapshot.turn_active
             ? snapshot.active_turn_session_id ?? snapshotSessionId
             : null;
@@ -1132,7 +1231,14 @@ export function ChatPanel({
     } finally {
       resyncInFlightRef.current = false;
     }
-  }, [flushPendingStream, finalizeAssistant, setStreaming, syncLiveAssistantSnapshot]);
+  }, [
+    flushPendingStream,
+    finalizeAssistant,
+    setStreaming,
+    syncLiveAssistantSnapshot,
+    isCurrentSessionResponse,
+    rememberActiveSessionAliases,
+  ]);
 
   resyncTurnStateRef.current = resyncTurnState;
 
@@ -1162,11 +1268,11 @@ export function ChatPanel({
     // emitted during the gap (possibly a whole turn_done) may have been missed,
     // so reconcile against the backend's turn-status.
     if (env.topic === BUS_RECONNECTED_TOPIC) {
-      if (streamingRef.current) void resyncTurnState();
+      void resyncTurnState({ allowIdle: true });
       return;
     }
     const sid = env.session_id ?? undefined;
-    if (!sid || sid !== activeSessionRef.current) return;
+    if (!sid || !activeSessionAliasesRef.current.has(sid)) return;
     lastEventAtRef.current = Date.now();
     const data = env.data as Record<string, unknown>;
 
@@ -1253,7 +1359,9 @@ export function ChatPanel({
         );
         break;
       case "chat.session_migrated": {
+        const oldId = String((data as { old_session_id?: string }).old_session_id ?? "");
         const newId = String((data as { new_session_id?: string }).new_session_id ?? "");
+        rememberActiveSessionAliases(oldId, newId);
         setTurnState((prev) => nextChatTurnState(prev, { type: "session_migrated" }));
         if (newId && newId !== activeSessionRef.current) {
           activeSessionRef.current = newId;
@@ -1341,19 +1449,45 @@ export function ChatPanel({
         }
         const cur = activeSessionRef.current;
         if (cur) {
+          const doneSessionId = typeof data.session_id === "string" ? data.session_id : undefined;
+          rememberActiveSessionAliases(cur, sid, doneSessionId);
           onSessionUpdated?.(cur);
+          const finalHistorySessionId = doneSessionId ?? cur;
+          const applyFinalHistory = (resp: Awaited<ReturnType<typeof api.getSessionMessages>>) => {
+            const current = activeSessionRef.current;
+            const aliases = activeSessionAliasesRef.current;
+            const responseSessionId = resp.session_id ?? finalHistorySessionId;
+            if (
+              !current ||
+              (
+                current !== cur &&
+                current !== finalHistorySessionId &&
+                current !== responseSessionId &&
+                !aliases.has(finalHistorySessionId) &&
+                !aliases.has(responseSessionId)
+              )
+            ) return;
+            rememberActiveSessionAliases(cur, finalHistorySessionId, responseSessionId);
+            const mapped = sessionMessagesToChat(
+              resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+            );
+            setChatMessages((prev) => mergeSyncedMessages(
+              mapped,
+              prev,
+              responseSessionId,
+              { preferSyncedAssistants: true },
+            ));
+          };
           void api
-            .getSessionMessages(cur, HISTORY_PAGE)
+            .getSessionMessages(finalHistorySessionId, HISTORY_PAGE)
             .then((resp) => {
-              const mapped = sessionMessagesToChat(
-                resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-              );
-              setChatMessages((prev) => mergeSyncedMessages(
-                mapped,
-                prev,
-                resp.session_id ?? cur,
-                { preferSyncedAssistants: true },
-              ));
+              applyFinalHistory(resp);
+              window.setTimeout(() => {
+                void api
+                  .getSessionMessages(finalHistorySessionId, HISTORY_PAGE)
+                  .then(applyFinalHistory)
+                  .catch(() => {});
+              }, 500);
             })
             .catch(() => {});
           // Sync sessionIdx values on recent user messages for retry/fork.
@@ -1361,8 +1495,21 @@ export function ChatPanel({
           // every turn. Patch sessionIdx in-place rather than replacing the list.
           setTimeout(() => {
             void api
-              .getSessionMessages(cur, 20)
+              .getSessionMessages(finalHistorySessionId, 20)
               .then((resp) => {
+                const current = activeSessionRef.current;
+                const responseSessionId = resp.session_id ?? finalHistorySessionId;
+                if (
+                  !current ||
+                  (
+                    current !== cur &&
+                    current !== finalHistorySessionId &&
+                    current !== responseSessionId &&
+                    !activeSessionAliasesRef.current.has(finalHistorySessionId) &&
+                    !activeSessionAliasesRef.current.has(responseSessionId)
+                  )
+                ) return;
+                rememberActiveSessionAliases(cur, finalHistorySessionId, responseSessionId);
                 const tail = resp.messages.filter((m) => m.role === "user");
                 if (tail.length === 0) return;
                 const tailByContent = new Map(tail.map((m, i) => [
@@ -1432,7 +1579,13 @@ export function ChatPanel({
     const poll = async () => {
       try {
         const status = await api.getTurnStatus(activeSessionId);
-        if (cancelled || activeSessionRef.current !== activeSessionId) return;
+        if (cancelled || !activeSessionAliasesRef.current.has(activeSessionId)) return;
+        rememberActiveSessionAliases(
+          activeSessionId,
+          status.resolved_session_id,
+          status.latest_session_id,
+          status.active_turn_session_id,
+        );
         if (status.turn_active) {
           activeTurnSessionIdRef.current = status.active_turn_session_id ?? activeSessionId;
           lastEventAtRef.current = Date.now();
@@ -1695,11 +1848,14 @@ export function ChatPanel({
   const loadEarlierMessages = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid || loadingEarlier) return;
+    const recoverySeq = sessionRecoverySeqRef.current;
     const firstMsg = chatMessages.find((m) => (m as { sessionIdx?: number }).sessionIdx != null);
     const beforeId = (firstMsg as { id?: string })?.id;
     setLoadingEarlier(true);
     try {
       const resp = await api.getSessionMessages(sid, HISTORY_PAGE, beforeId);
+      if (!isCurrentSessionResponse(recoverySeq, sid, resp.session_id)) return;
+      rememberActiveSessionAliases(sid, resp.session_id);
       const mapped = sessionMessagesToChat(
         resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
       );
@@ -1710,7 +1866,7 @@ export function ChatPanel({
     } finally {
       setLoadingEarlier(false);
     }
-  }, [chatMessages, loadingEarlier, HISTORY_PAGE]);
+  }, [chatMessages, loadingEarlier, HISTORY_PAGE, isCurrentSessionResponse, rememberActiveSessionAliases]);
 
   const summarizeContextItem = useCallback(async (id: string) => {
     const item = contextItems.find((i) => i.id === id);
@@ -1992,6 +2148,7 @@ export function ChatPanel({
     const el = scrollContainerRef.current;
     if (!el) return;
     const updateFollowState = () => {
+      if (loadingHistory || scrollStateRef.current.mode === "jumping-to-bottom") return;
       const firstVisibleIndex = virtualizer.getVirtualItems()[0]?.index;
       scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
         type: "user-scroll",
@@ -2011,7 +2168,7 @@ export function ChatPanel({
     updateFollowState();
     el.addEventListener("scroll", updateFollowState, { passive: true });
     return () => el.removeEventListener("scroll", updateFollowState);
-  }, [activeSessionId, collapsedMessages, virtualizer]);
+  }, [activeSessionId, collapsedMessages, loadingHistory, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
@@ -2084,7 +2241,7 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [collapsedMessages.length, streamingAssistantChars, streaming, safeMode, virtualizer]);
+  }, [activeSessionId, collapsedMessages.length, streamingAssistantChars, streaming, safeMode, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;

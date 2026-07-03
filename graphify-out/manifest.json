@@ -1075,7 +1075,7 @@
     "semantic_hash": ""
   },
   "src/core/spark_state.py": {
-    "mtime": 1783010142.4566114,
+    "mtime": 1783018377.8762193,
     "ast_hash": "71e65168710a3afc6fbe99f172ed90bd",
     "semantic_hash": ""
   },
@@ -1785,8 +1785,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src-tauri/tauri.conf.json": {
-    "mtime": 1783000584.032061,
-    "ast_hash": "5a57815f8e26a7ebb8c7866b46e871d3",
+    "mtime": 1783020471.55444,
+    "ast_hash": "c40ce3da4551ebef2b0b0644149b8a83",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/App.tsx": {
@@ -1805,8 +1805,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/ChatPanel.tsx": {
-    "mtime": 1783010142.4571524,
-    "ast_hash": "004f90aa034e713986c7924f326e7bcd",
+    "mtime": 1783036211.4152124,
+    "ast_hash": "daa62258afab7ef608728740640ff182",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/CodexUsageBadge.tsx": {
@@ -1830,13 +1830,13 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/Markdown.test.ts": {
-    "mtime": 1783010142.4574401,
+    "mtime": 1783018377.8777072,
     "ast_hash": "492394a8467e50020c3c0832b6d26de8",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/Markdown.tsx": {
-    "mtime": 1783010142.4577253,
-    "ast_hash": "b6e25a3bb05ac8b3c505347df47c2e3f",
+    "mtime": 1783036215.162687,
+    "ast_hash": "fd83b7c86569d165ea8e2ba8cdc2895a",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/ModelBadge.tsx": {
@@ -1965,8 +1965,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/markdownParse.ts": {
-    "mtime": 1783010142.457988,
-    "ast_hash": "d6b28229d4f55d374a64b7d93a3d15ef",
+    "mtime": 1783035959.6505587,
+    "ast_hash": "ce40b19edb767e9ccb15f369f5f7f15f",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/sidebar/SidebarSessions.tsx": {
@@ -2105,8 +2105,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/api.ts": {
-    "mtime": 1782999187.0212533,
-    "ast_hash": "f604d1e4be197960d31d9238381c2fa3",
+    "mtime": 1783035413.1465886,
+    "ast_hash": "b5e00e3dba660b37f41d46c77b86d907",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/browserCoords.ts": {
@@ -2465,8 +2465,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1783010142.4589763,
-    "ast_hash": "72cd9738e1e9cdd3e3eceae9148c3550",
+    "mtime": 1783037529.4385247,
+    "ast_hash": "6efce48bd7e975b186ebca107d6b5c2d",
     "semantic_hash": ""
   },
   "src/spark_cli/webhook.py": {
@@ -5135,8 +5135,8 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
-    "mtime": 1782993378.4391046,
-    "ast_hash": "c2fd75b5f6ffb0e1b6298f1da11f3605",
+    "mtime": 1783037090.1911721,
+    "ast_hash": "d01a32e8e2b89f02a4c1dbd5ccfa3e76",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_webhook_cli.py": {
@@ -9735,8 +9735,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatScrollState.test.ts": {
-    "mtime": 1782997307.4129772,
-    "ast_hash": "fe3178aa9e482dcc50b153dbf17ca366",
+    "mtime": 1783037444.4029553,
+    "ast_hash": "9ad9ce1df164eaf20adcf0fb289fc072",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatScrollState.ts": {
@@ -9775,18 +9775,23 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/rowMeasurement.test.ts": {
-    "mtime": 1783010142.4759226,
+    "mtime": 1783018377.8791747,
     "ast_hash": "956439c5aba05819070b1ac09e71bfb9",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/rowMeasurement.ts": {
-    "mtime": 1783010142.4760697,
+    "mtime": 1783018377.879443,
     "ast_hash": "0f644eba7ebf81afeaa7830a7deae764",
     "semantic_hash": ""
   },
   "tests/test_web_turn_persistence.py": {
-    "mtime": 1783010142.4762373,
-    "ast_hash": "daffc2060da1af976ad398b76d4c94f6",
+    "mtime": 1783037398.5394237,
+    "ast_hash": "7337f6e4156329fd5918c16b3ffbf38d",
+    "semantic_hash": ""
+  },
+  "src/spark_cli/web/src/components/markdownParse.streaming.test.ts": {
+    "mtime": 1783034731.7414353,
+    "ast_hash": "f73d08ba6117f048283f4abab700ef12",
     "semantic_hash": ""
   }
 }

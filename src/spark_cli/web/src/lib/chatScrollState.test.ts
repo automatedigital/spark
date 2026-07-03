@@ -61,6 +61,35 @@ describe("chat scroll state", () => {
     expect(state.mode).toBe("following");
   });
 
+  it("resets a newly opened session to bottom-following state", () => {
+    const detached = reduceChatScrollState(initialChatScrollState(10), {
+      type: "user-scroll",
+      metrics: { scrollHeight: 4_000, scrollTop: 400, clientHeight: 700 },
+      anchorId: "old-row",
+    });
+
+    const reset = reduceChatScrollState(detached, { type: "session-reset", itemCount: 42 });
+
+    expect(reset).toEqual({
+      mode: "following",
+      lastItemCount: 42,
+      anchorId: null,
+    });
+    expect(shouldAutoScrollChat(reset, {
+      countChanged: false,
+      streaming: false,
+      metrics: { scrollHeight: 4_000, scrollTop: 0, clientHeight: 700 },
+    })).toBe(false);
+    expect(shouldAutoScrollChat(
+      reduceChatScrollState(reset, { type: "jump-to-bottom", itemCount: 42 }),
+      {
+        countChanged: false,
+        streaming: false,
+        metrics: { scrollHeight: 4_000, scrollTop: 0, clientHeight: 700 },
+      },
+    )).toBe(true);
+  });
+
   it("measures distance from the bottom without returning negative values", () => {
     expect(distanceFromBottom({ scrollHeight: 100, scrollTop: 200, clientHeight: 50 })).toBe(0);
   });

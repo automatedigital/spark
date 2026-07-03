@@ -93,13 +93,9 @@ class TestStreamingCheckpoint:
         assert msgs[0]["content"] == "partial answer "
         assert msgs[0]["finish_reason"] == "interrupted"
 
-        # More tokens arrive; within the interval nothing is written…
+        # More tokens arrive; the same row is updated immediately so a crash
+        # after any streamed chunk leaves the latest visible text recoverable.
         turn.stream_text += "more text"
-        web_server._checkpoint_web_turn(sid, turn)
-        assert db.get_messages(sid)[0]["content"] == "partial answer "
-
-        # …but after the interval the same row is updated in place.
-        turn.last_checkpoint_at = 0.0
         web_server._checkpoint_web_turn(sid, turn)
         msgs = db.get_messages(sid)
         assert len(msgs) == 1
@@ -127,6 +123,72 @@ class TestStreamingCheckpoint:
         roles = [(m["role"], m["content"]) for m in db.get_messages(sid)]
         assert ("user", "please do the thing") in roles
         assert ("assistant", "streamed half an answer") in roles
+
+    def test_crash_checkpoint_stays_with_originating_session(self, db):
+        from spark_cli import web_server
+
+        alpha = _make_session(db, "crash-alpha")
+        bravo = _make_session(db, "crash-bravo")
+        web_server._persist_web_user_message(alpha, "alpha prompt")
+        web_server._persist_web_user_message(bravo, "bravo prompt")
+
+        alpha_turn = web_server.WebActiveTurn(
+            started_at=time.time(),
+            last_event_at=time.time(),
+            status="Running…",
+            interrupt_requested=False,
+            active_agent_session_id=alpha,
+            phase="streaming",
+        )
+        bravo_turn = web_server.WebActiveTurn(
+            started_at=time.time(),
+            last_event_at=time.time(),
+            status="Running…",
+            interrupt_requested=False,
+            active_agent_session_id=bravo,
+            phase="streaming",
+        )
+        alpha_turn.stream_text = "alpha partial"
+        bravo_turn.stream_text = "bravo partial"
+        web_server._checkpoint_web_turn(alpha, alpha_turn)
+        web_server._checkpoint_web_turn(bravo, bravo_turn)
+
+        alpha_rows = [(m["role"], m["content"]) for m in db.get_messages(alpha)]
+        bravo_rows = [(m["role"], m["content"]) for m in db.get_messages(bravo)]
+        assert ("assistant", "alpha partial") in alpha_rows
+        assert ("assistant", "bravo partial") not in alpha_rows
+        assert ("assistant", "bravo partial") in bravo_rows
+        assert ("assistant", "alpha partial") not in bravo_rows
+
+    def test_concurrent_active_turn_tokens_checkpoint_separately(self, db):
+        from spark_cli import web_server
+
+        alpha = _make_session(db, "concurrent-alpha")
+        bravo = _make_session(db, "concurrent-bravo")
+        web_server._persist_web_user_message(alpha, "alpha question")
+        web_server._persist_web_user_message(bravo, "bravo question")
+        web_server._mark_web_turn_active(alpha, active_agent_session_id=alpha)
+        web_server._mark_web_turn_active(bravo, active_agent_session_id=bravo)
+        try:
+            web_server._append_web_turn_token(alpha, "ALPHA-01 ")
+            web_server._append_web_turn_token(bravo, "BRAVO-01 ")
+            web_server._append_web_turn_token(alpha, "ALPHA-02")
+
+            alpha_rows = [
+                (m["role"], m["content"])
+                for m in db.get_messages(alpha)
+                if m["role"] == "assistant"
+            ]
+            bravo_rows = [
+                (m["role"], m["content"])
+                for m in db.get_messages(bravo)
+                if m["role"] == "assistant"
+            ]
+            assert alpha_rows == [("assistant", "ALPHA-01 ALPHA-02")]
+            assert bravo_rows == [("assistant", "BRAVO-01 ")]
+        finally:
+            web_server._clear_web_turn(alpha)
+            web_server._clear_web_turn(bravo)
 
 
 class TestEndOfTurnReconciliation:
@@ -213,3 +275,51 @@ class TestEndOfTurnReconciliation:
         assert assistant[0]["content"] == "partial"
         assert assistant[0]["finish_reason"] == "interrupted"
         assert len([m for m in msgs if m["role"] == "user"]) == 1
+
+    def test_ignores_pre_turn_assistant_summary_when_finalizing_leaf(self, db):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "leaf-with-summary")
+        db.append_message(sid, "system", content="compressed context summary")
+        db.append_message(sid, "assistant", content="summary assistant note")
+        db.append_message(sid, "user", content="current question")
+
+        web_server._persist_web_turn_if_missing(
+            sid,
+            "current question",
+            {"final_response": "current final answer"},
+            before_message_count=0,
+        )
+
+        msgs = db.get_messages(sid)
+        assert [(m["role"], m["content"]) for m in msgs] == [
+            ("system", "compressed context summary"),
+            ("assistant", "summary assistant note"),
+            ("user", "current question"),
+            ("assistant", "current final answer"),
+        ]
+
+    def test_finalizes_checkpoint_after_switch_away_without_agent_flush(self, db):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "switch-away-finalize")
+        eager_id, turn, before = self._start_turn(db, sid)
+
+        # The UI can switch to another session while the worker thread keeps
+        # streaming. If the agent does not write its own final assistant row,
+        # the live checkpoint row must become the final persisted answer.
+        web_server._persist_web_turn_if_missing(
+            sid,
+            "the question",
+            {"final_response": "full answer after user switched away"},
+            before,
+            eager_user_id=eager_id,
+            checkpoint_assistant_id=turn.assistant_message_id,
+        )
+
+        msgs = db.get_messages(sid)
+        assert [(m["role"], m["content"]) for m in msgs] == [
+            ("user", "the question"),
+            ("assistant", "full answer after user switched away"),
+        ]
+        assert msgs[1]["finish_reason"] is None

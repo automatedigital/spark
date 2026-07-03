@@ -183,6 +183,57 @@ class TestEventBus:
         finally:
             web_server._clear_web_turn("sess_snapshot")
 
+    def test_token_callbacks_keep_two_active_sessions_isolated(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            events: asyncio.Queue = asyncio.Queue()
+            web_server._event_subscribers.add(events)
+            try:
+                web_server._mark_web_turn_active("alpha_session")
+                web_server._mark_web_turn_active("bravo_session")
+                alpha_callbacks = web_server._make_web_chat_callbacks(
+                    "alpha_session", asyncio.Queue(), loop
+                )
+                bravo_callbacks = web_server._make_web_chat_callbacks(
+                    "bravo_session", asyncio.Queue(), loop
+                )
+                alpha_token = alpha_callbacks[0]
+                bravo_token = bravo_callbacks[0]
+                alpha_token("ALPHA-01 ")
+                bravo_token("BRAVO-01 ")
+                alpha_token("ALPHA-02")
+
+                items = []
+                while len(items) < 3:
+                    items.append(await asyncio.wait_for(events.get(), timeout=2.0))
+                return items
+            finally:
+                web_server._event_subscribers.discard(events)
+
+        events = asyncio.run(run())
+        try:
+            alpha_snapshot = web_client.get("/api/conversations/alpha_session/stream-snapshot")
+            bravo_snapshot = web_client.get("/api/conversations/bravo_session/stream-snapshot")
+            assert alpha_snapshot.status_code == 200
+            assert bravo_snapshot.status_code == 200
+            assert alpha_snapshot.json()["stream_text"] == "ALPHA-01 ALPHA-02"
+            assert bravo_snapshot.json()["stream_text"] == "BRAVO-01 "
+
+            by_session = {}
+            for event in events:
+                by_session.setdefault(event["session_id"], "")
+                by_session[event["session_id"]] += event["data"]["t"]
+            assert by_session == {
+                "alpha_session": "ALPHA-01 ALPHA-02",
+                "bravo_session": "BRAVO-01 ",
+            }
+        finally:
+            web_server._clear_web_turn("alpha_session")
+            web_server._clear_web_turn("bravo_session")
+
     def test_token_callback_strips_ansi_from_events_queue_and_snapshot(self, web_client):
         import spark_cli.web_server as web_server
 
@@ -1263,9 +1314,62 @@ class TestConversationControl:
         else:
             pytest.fail("completed web turn still reported active")
 
-        assert session_id in web_server._web_queues
+        assert session_id not in web_server._web_queues
         status = web_client.get(f"/api/conversations/{session_id}/turn-status")
         assert status.json()["turn_active"] is False
+
+    def test_conversation_message_rejects_active_resolved_session_before_retargeting_callbacks(self, web_client, monkeypatch):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        class FakeAgent:
+            def __init__(self, session_id):
+                self.session_id = session_id
+                self.stream_delta_callback = "original"
+
+        db = SessionDB()
+        try:
+            db.create_session("active_followup", source="web", model="m1")
+            db.append_message("active_followup", "user", content="hello")
+            db.append_message("active_followup", "assistant", content="hi")
+        finally:
+            db.close()
+
+        agent = FakeAgent("active_followup")
+        web_server._web_agents["active_followup"] = agent
+        web_server._web_agent_signatures["active_followup"] = {
+            "model": "test-model",
+        }
+        web_server._mark_web_turn_active(
+            "active_followup",
+            status="Running…",
+            phase="streaming",
+            active_agent_session_id="active_followup",
+        )
+        monkeypatch.setattr(
+            web_server,
+            "_resolve_web_turn_route",
+            lambda _msg: {
+                "model": "test-model",
+                "runtime": {},
+                "signature": {"model": "test-model"},
+                "request_overrides": None,
+            },
+        )
+
+        try:
+            resp = web_client.post(
+                "/api/conversations/active_followup/messages",
+                json={"message": "second turn"},
+            )
+
+            assert resp.status_code == 409
+            assert agent.stream_delta_callback == "original"
+            assert "active_followup" not in web_server._web_queues
+        finally:
+            web_server._clear_web_turn("active_followup")
+            web_server._web_agents.pop("active_followup", None)
+            web_server._web_agent_signatures.pop("active_followup", None)
 
     def test_turn_status_active_immediately_after_conversation_accepts(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
