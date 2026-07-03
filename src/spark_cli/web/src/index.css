@@ -170,6 +170,62 @@
   --color-popover-foreground: #fff0e6;
 }
 
+@keyframes spark-status-shimmer {
+  0% {
+    opacity: 0;
+    transform: translateX(-125%);
+  }
+  28% {
+    opacity: 0.85;
+  }
+  62% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(125%);
+  }
+}
+
+@keyframes spark-status-breathe {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.spark-status-shimmer::after {
+  animation: spark-status-shimmer 3.4s ease-in-out infinite;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-primary) 0%, transparent) 34%,
+    color-mix(in srgb, var(--color-primary) 24%, transparent) 50%,
+    color-mix(in srgb, var(--color-primary) 0%, transparent) 66%,
+    transparent 100%
+  );
+  content: "";
+  inset: -1px;
+  pointer-events: none;
+  position: absolute;
+  width: 75%;
+}
+
+.spark-status-breathe {
+  animation: spark-status-breathe 3.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spark-status-shimmer::after,
+  .spark-status-breathe {
+    animation: none;
+  }
+}
+
 :root[data-webui-theme="orchid"] {
   --color-background: #160d21;
   --color-foreground: #f7edff;
