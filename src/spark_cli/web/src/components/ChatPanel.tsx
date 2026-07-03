@@ -33,7 +33,7 @@ import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
 import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
 import { FeedbackForm } from "@/components/chat/FeedbackForm";
-import { StatusPill } from "@/components/chat/StatusPill";
+import { MODEL_LOADING_LABEL, StatusPill } from "@/components/chat/StatusPill";
 import { PromptBar } from "@/components/chat/PromptBar";
 import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
@@ -599,7 +599,7 @@ export function ChatPanel({
     // which can be many seconds on a slow model. Cleared below if history shows
     // the turn already finished, and by the chat.turn_done event otherwise.
     setStreaming(!!initialMessage);
-    setStatusLabel(initialMessage ? "Thinking…" : null);
+        setStatusLabel(initialMessage ? MODEL_LOADING_LABEL : null);
     lastTokenAtRef.current = initialMessage ? Date.now() : 0;
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = 0;
@@ -644,7 +644,7 @@ export function ChatPanel({
           interruptRequested: status.interrupt_requested,
         });
         setTurnState(recoveredState);
-        setStatusLabel(status.turn_active ? status.status ?? "Still working…" : null);
+              setStatusLabel(status.turn_active ? status.status ?? MODEL_LOADING_LABEL : null);
         if (status.turn_active) {
           lastEventAtRef.current = Date.now();
           const snapshotSessionId = status.active_turn_session_id ?? selectedSessionId;
@@ -1027,7 +1027,7 @@ export function ChatPanel({
           phase: status.phase,
           interruptRequested: status.interrupt_requested,
         }));
-        setStatusLabel((prev) => status.status ?? prev ?? "Still working…");
+        setStatusLabel((prev) => status.status ?? prev ?? MODEL_LOADING_LABEL);
         try {
           const snapshot = await api.getStreamSnapshot(snapshotSessionId);
           if (!isCurrentSessionResponse(
@@ -1387,9 +1387,9 @@ export function ChatPanel({
       } else if (elapsed >= 12_000) {
         setStatusLabel("Still waiting for backend…");
       } else if (tokenElapsed >= 12_000) {
-        setStatusLabel("Waiting for provider response…");
+        setStatusLabel(MODEL_LOADING_LABEL);
       } else if (elapsed >= STALL_MS) {
-        setStatusLabel((prev) => prev ?? "Still working…");
+        setStatusLabel((prev) => prev ?? MODEL_LOADING_LABEL);
       }
       if (elapsed >= STALL_MS || tokenElapsed >= 12_000) {
         void resyncTurnState();
@@ -1421,7 +1421,7 @@ export function ChatPanel({
             phase: status.phase,
             interruptRequested: status.interrupt_requested,
           }));
-          setStatusLabel(status.status ?? "Still working…");
+          setStatusLabel(status.status ?? MODEL_LOADING_LABEL);
         } else {
           activeTurnSessionIdRef.current = null;
         }
@@ -1479,7 +1479,7 @@ export function ChatPanel({
     }
 
     setTurnState(nextChatTurnState(turnStateRef.current, { type: "submit" }));
-    setStatusLabel("Thinking…");
+    setStatusLabel(MODEL_LOADING_LABEL);
     followStreamRef.current = true;
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = 0;
@@ -1568,7 +1568,7 @@ export function ChatPanel({
     try {
       await api.retryConversation(sid, sessionIdx, edited);
       setStreaming(true);
-      setStatusLabel("Thinking…");
+      setStatusLabel(MODEL_LOADING_LABEL);
       followStreamRef.current = true;
       streamRevisionRef.current = 0;
       streamTextCharsRef.current = 0;

@@ -1805,8 +1805,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/ChatPanel.tsx": {
-    "mtime": 1783042813.7262037,
-    "ast_hash": "ed1ee7d57f10eaaa94b475897f638f34",
+    "mtime": 1783044714.0651581,
+    "ast_hash": "e12a6b696d161e12b07a2678270f72ff",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/CodexUsageBadge.tsx": {
@@ -1935,8 +1935,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/chat/StatusPill.tsx": {
-    "mtime": 1778714158.2053413,
-    "ast_hash": "8fab139cbdbfac20ebead7a397f2f08d",
+    "mtime": 1783045253.47194,
+    "ast_hash": "a152a1f64ca7cafc780e536f91e70ddc",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/chat/SubagentsPanel.tsx": {
@@ -2465,7 +2465,7 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1783041515.1060379,
+    "mtime": 1783043624.5484443,
     "ast_hash": "d91498f4ea39b7ca62439e4f2ea48e55",
     "semantic_hash": ""
   },
@@ -5135,7 +5135,7 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
-    "mtime": 1783041589.760979,
+    "mtime": 1783043624.5487597,
     "ast_hash": "5ad500a9f7d9843227b4b3c06b2f3a3f",
     "semantic_hash": ""
   },
@@ -9795,13 +9795,18 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatTranscriptMerge.test.ts": {
-    "mtime": 1783042813.7264743,
+    "mtime": 1783043624.5403185,
     "ast_hash": "a84c63f9686bd3a2ffdecc563cba6156",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatTranscriptMerge.ts": {
-    "mtime": 1783042813.725263,
+    "mtime": 1783043624.540418,
     "ast_hash": "2878950a5c2ca1f89ae25d972df7a318",
+    "semantic_hash": ""
+  },
+  "src/spark_cli/web/src/components/chat/StatusPill.test.ts": {
+    "mtime": 1783045253.4914103,
+    "ast_hash": "deb4f1409f4ce9a6e3c173d809159dac",
     "semantic_hash": ""
   }
 }
