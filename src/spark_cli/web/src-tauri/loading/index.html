@@ -5,46 +5,212 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Spark</title>
     <style>
-      :root { color-scheme: dark light; }
-      html, body {
+      :root {
+        color-scheme: dark;
+        --bg: #090a0b;
+        --surface: #111315;
+        --border: #24282c;
+        --text: #e7e7e3;
+        --muted: #8d9398;
+        --faint: #565d64;
+        --accent: #19d39c;
+        --accent-soft: rgba(25, 211, 156, 0.16);
+        --danger: #ff6b6b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
         margin: 0;
         height: 100%;
-        background: #0e0e12;
-        color: #e8e8ec;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
       }
-      .wrap {
-        height: 100%;
-        display: flex;
-        flex-direction: column;
+
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+
+      .loader {
+        width: min(320px, calc(100vw - 48px));
+        display: grid;
+        gap: 22px;
+        justify-items: center;
+        text-align: center;
+      }
+
+      .brand {
+        display: inline-flex;
         align-items: center;
-        justify-content: center;
-        gap: 1.25rem;
+        gap: 10px;
       }
+
+      .mark {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+      }
+
       .logo {
-        font-size: 2.25rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
+        width: 26px;
+        height: 26px;
+        display: block;
+        object-fit: contain;
       }
-      .spinner {
-        width: 28px;
-        height: 28px;
-        border: 3px solid rgba(255, 255, 255, 0.15);
-        border-top-color: #ffb02e;
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
+
+      .name {
+        font-size: 22px;
+        font-weight: 650;
+        letter-spacing: 0;
       }
-      .status { font-size: 0.9rem; opacity: 0.6; }
-      .error { color: #ff6b6b; max-width: 28rem; text-align: center; }
-      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .status-panel {
+        width: 100%;
+        display: grid;
+        gap: 10px;
+      }
+
+      .status-row {
+        min-height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .status {
+        min-width: 0;
+        overflow: hidden;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .elapsed {
+        color: var(--faint);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .track {
+        position: relative;
+        height: 5px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #1a1d20;
+      }
+
+      .fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: calc(var(--progress, 8) * 1%);
+        border-radius: inherit;
+        background: var(--accent);
+        transition: width 420ms ease;
+      }
+
+      .track::after {
+        position: absolute;
+        inset: 0;
+        content: "";
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+        transform: translateX(-100%);
+        animation: shimmer 2.8s ease-in-out infinite;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--faint);
+        font-size: 12px;
+      }
+
+      .error-note {
+        display: none;
+        margin: 0;
+        color: var(--danger);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      body[data-state="error"] .status {
+        color: var(--danger);
+      }
+
+      body[data-state="error"] .fill {
+        background: var(--danger);
+      }
+
+      body[data-state="error"] .error-note {
+        display: block;
+      }
+
+      body[data-state="error"] .hint {
+        display: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
+
+      @keyframes shimmer {
+        0%,
+        25% {
+          transform: translateX(-100%);
+        }
+        75%,
+        100% {
+          transform: translateX(100%);
+        }
+      }
     </style>
   </head>
-  <body>
-    <div class="wrap">
-      <div class="logo">Spark</div>
-      <div class="spinner"></div>
-      <div class="status" id="status">Starting backend…</div>
-    </div>
+  <body data-state="starting">
+    <main class="loader" aria-live="polite">
+      <div class="brand" aria-label="Spark">
+        <div class="mark" aria-hidden="true">
+          <img class="logo" src="./spark-logo.png" alt="" draggable="false" />
+        </div>
+        <div class="name">Spark</div>
+      </div>
+
+      <div class="status-panel">
+        <div class="status-row">
+          <div class="status" id="status">Starting Spark...</div>
+          <div class="elapsed" id="elapsed">0s</div>
+        </div>
+        <div
+          class="track"
+          role="progressbar"
+          aria-label="Spark startup progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="fill" id="progress"></div>
+        </div>
+        <p class="hint">Launching the local backend</p>
+        <p class="error-note" id="error-note">
+          Spark could not reach the local backend. Quit and reopen the app.
+        </p>
+      </div>
+    </main>
     <script type="module" src="./boot.js"></script>
   </body>
 </html>
