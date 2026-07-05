@@ -1941,6 +1941,12 @@ export function ChatPanel({
         root
           .querySelectorAll<HTMLDivElement>("[data-index]")
           .forEach((row) => measureRowElement(row));
+        // While a bottom jump is in flight (session open / jump pill), row
+        // measurement grows scrollHeight after the initial scrollToIndex —
+        // re-clamp so the view never lands short of the latest message.
+        if (scrollEl && scrollStateRef.current.mode === "jumping-to-bottom") {
+          scrollEl.scrollTop = scrollEl.scrollHeight;
+        }
         if (anchorBefore != null && scrollEl && anchorId) {
           requestAnimationFrame(() => {
             const anchorAfter = Array.from(root.querySelectorAll<HTMLDivElement>("[data-row-id]"))
@@ -2002,6 +2008,82 @@ export function ChatPanel({
   const prevCountRef = useRef(0);
   const autoScrollRafRef = useRef<number | null>(null);
   const lastAutoScrollAtRef = useRef(0);
+
+  // Re-clamp to the bottom every frame until the virtualizer's measured size
+  // stabilizes. A single scrollToIndex on session open uses estimated row
+  // heights and lands short once rows are actually measured (scrollHeight
+  // grows after the jump fired), so we only complete the jump when a frame
+  // starts with the viewport already at the bottom (i.e. the previous clamp
+  // survived remeasure).
+  const bottomClampRafRef = useRef<number | null>(null);
+  const runBottomClamp = useCallback(() => {
+    if (bottomClampRafRef.current !== null) cancelAnimationFrame(bottomClampRafRef.current);
+    let remaining = 30;
+    let firstFrame = true;
+    const step = () => {
+      bottomClampRafRef.current = requestAnimationFrame(() => {
+        bottomClampRafRef.current = null;
+        const el = scrollContainerRef.current;
+        if (!el || scrollStateRef.current.mode !== "jumping-to-bottom") return;
+        const count = virtualizer.options.count;
+        // Always clamp at least once; only settle when a frame starts with
+        // the viewport already at the bottom (previous clamp survived any
+        // row remeasure).
+        if (!firstFrame) {
+          scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+            type: "jump-settle",
+            itemCount: count,
+            metrics: {
+              scrollHeight: el.scrollHeight,
+              scrollTop: el.scrollTop,
+              clientHeight: el.clientHeight,
+            },
+          });
+          if (scrollStateRef.current.mode !== "jumping-to-bottom") {
+            followStreamRef.current = true;
+            setDetachedFromBottom(false);
+            return;
+          }
+        }
+        firstFrame = false;
+        if (count > 0) {
+          virtualizer.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
+        }
+        el.scrollTop = el.scrollHeight;
+        lastAutoScrollAtRef.current = Date.now();
+        remaining -= 1;
+        if (remaining <= 0) {
+          // Bail out rather than staying stuck in jumping mode forever.
+          scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+            type: "jump-complete",
+            itemCount: count,
+          });
+          followStreamRef.current = true;
+          setDetachedFromBottom(false);
+          return;
+        }
+        step();
+      });
+    };
+    step();
+  }, [virtualizer]);
+
+  useEffect(() => () => {
+    if (bottomClampRafRef.current !== null) {
+      cancelAnimationFrame(bottomClampRafRef.current);
+      bottomClampRafRef.current = null;
+    }
+  }, []);
+
+  // A session open always requests a bottom jump, but when a cached local
+  // transcript already matches the loaded history no items-changed event
+  // fires — so kick the clamp whenever history finishes loading (or the
+  // active session changes) while a jump is still pending.
+  useEffect(() => {
+    if (!loadingHistory && scrollStateRef.current.mode === "jumping-to-bottom") {
+      runBottomClamp();
+    }
+  }, [activeSessionId, loadingHistory, runBottomClamp]);
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -2041,6 +2123,12 @@ export function ChatPanel({
         autoScrollRafRef.current = requestAnimationFrame(() => {
           autoScrollRafRef.current = null;
           if (countChanged) {
+            if (scrollStateRef.current.mode === "jumping-to-bottom") {
+              // Session open / explicit jump: keep clamping until row
+              // measurements settle instead of a single estimated jump.
+              runBottomClamp();
+              return;
+            }
             virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
             lastAutoScrollAtRef.current = Date.now();
             scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
@@ -2107,16 +2195,10 @@ export function ChatPanel({
       : scrollStateRef.current;
     virtualizer.scrollToIndex(nextIndex, { align, behavior: safeMode ? "instant" : "smooth" });
     if (align === "end") {
-      requestAnimationFrame(() => {
-        scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
-          type: "jump-complete",
-          itemCount: collapsedMessages.length,
-        });
-        followStreamRef.current = true;
-        setDetachedFromBottom(false);
-      });
+      // Clamp until row measurements settle so the jump never lands short.
+      runBottomClamp();
     }
-  }, [collapsedMessages.length, safeMode, virtualizer]);
+  }, [collapsedMessages.length, runBottomClamp, safeMode, virtualizer]);
 
   const jumpToLatest = useCallback(() => {
     jumpToIndex(collapsedMessages.length - 1, "end");

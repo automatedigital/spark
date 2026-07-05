@@ -1654,6 +1654,44 @@ OPTIONAL_ENV_VARS = {
     },
 }
 
+# Advisory per-platform enable/disable toggles persisted by the Messaging
+# settings UI (see gateway/platform_fields.py). Registered here so
+# reload_env() tracks them (sync + removal). WHATSAPP_ENABLED,
+# WEBHOOK_ENABLED, and API_SERVER_ENABLED are declared individually above.
+for _flag, _platform_name in (
+    ("TELEGRAM_ENABLED", "Telegram"),
+    ("DISCORD_ENABLED", "Discord"),
+    ("SLACK_ENABLED", "Slack"),
+    ("MATTERMOST_ENABLED", "Mattermost"),
+    ("MATRIX_ENABLED", "Matrix"),
+    ("SIGNAL_ENABLED", "Signal"),
+    ("BLUEBUBBLES_ENABLED", "BlueBubbles (iMessage)"),
+    ("HOMEASSISTANT_ENABLED", "Home Assistant"),
+    ("EMAIL_ENABLED", "Email"),
+    ("SMS_ENABLED", "SMS"),
+    ("DINGTALK_ENABLED", "DingTalk"),
+    ("FEISHU_ENABLED", "Feishu/Lark"),
+    ("WECOM_ENABLED", "WeCom"),
+    ("WECOM_CALLBACK_ENABLED", "WeCom Callback"),
+    ("WEIXIN_ENABLED", "WeChat Official Account"),
+    ("QQBOT_ENABLED", "QQ Bot"),
+):
+    OPTIONAL_ENV_VARS.setdefault(
+        _flag,
+        {
+            "description": (
+                f"Enable/disable the {_platform_name} messaging platform "
+                "(true/false). Auto-managed when credentials are saved in "
+                "Messaging > Settings."
+            ),
+            "prompt": f"Enable {_platform_name} (true/false)",
+            "url": None,
+            "password": False,
+            "category": "messaging",
+            "advanced": True,
+        },
+    )
+
 for _hidden_var in (
     "FIRECRAWL_GATEWAY_URL",
     "TOOL_GATEWAY_DOMAIN",
