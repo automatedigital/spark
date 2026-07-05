@@ -39,6 +39,7 @@ export function reduceChatScrollState(
     | { type: "items-changed"; itemCount: number }
     | { type: "stream-tick"; metrics: ChatScrollMetrics }
     | { type: "jump-to-bottom"; itemCount?: number }
+    | { type: "jump-settle"; metrics: ChatScrollMetrics; itemCount?: number }
     | { type: "jump-complete"; itemCount?: number },
 ): ChatScrollState {
   switch (event.type) {
@@ -70,6 +71,18 @@ export function reduceChatScrollState(
         lastItemCount: event.itemCount ?? state.lastItemCount,
         anchorId: null,
       };
+    case "jump-settle": {
+      // Only complete a jump once the viewport is measurably at the bottom.
+      // Virtualized rows are measured after the first scrollToIndex, growing
+      // scrollHeight; staying in "jumping-to-bottom" lets the caller re-clamp
+      // until the measured size stabilizes.
+      if (state.mode !== "jumping-to-bottom") return state;
+      const settledCount = event.itemCount ?? state.lastItemCount;
+      if (isNearBottom(event.metrics)) {
+        return { mode: "following", lastItemCount: settledCount, anchorId: null };
+      }
+      return { ...state, lastItemCount: settledCount };
+    }
     case "jump-complete":
       return {
         mode: "following",
