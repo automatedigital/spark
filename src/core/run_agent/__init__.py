@@ -181,6 +181,20 @@ from core.run_agent.sanitize import (  # noqa: E402,I001
 _QWEN_CODE_VERSION = "0.14.1"
 
 
+def _stream_event_is_progress(event_type) -> bool:
+    """Return True when a streamed provider event represents real progress.
+
+    Transport keep-alive / ping / heartbeat events (and untyped events) must
+    NOT reset the stale-call watchdog's progress timestamp: a provider can
+    keep the socket warm with pings while never producing content, which
+    would mask a genuine stall indefinitely.
+    """
+    if not event_type:
+        return False
+    _et = str(event_type).lower()
+    return not any(marker in _et for marker in ("ping", "keep_alive", "keep-alive", "heartbeat"))
+
+
 def _qwen_portal_headers() -> dict:
     """Return default HTTP headers required by Qwen Portal API."""
     import platform as _plat
@@ -3921,7 +3935,8 @@ class AIAgent(_PromptCacheMixin):
             try:
                 with active_client.responses.stream(**api_kwargs) as stream:
                     for event in stream:
-                        if on_progress:
+                        _evt_type = getattr(event, "type", "")
+                        if on_progress and _stream_event_is_progress(_evt_type):
                             try:
                                 on_progress()
                             except Exception:
@@ -3929,7 +3944,7 @@ class AIAgent(_PromptCacheMixin):
                         self._touch_activity("receiving stream response")
                         if self._interrupt_requested:
                             break
-                        event_type = getattr(event, "type", "")
+                        event_type = _evt_type
                         # Fire callbacks on text content deltas (suppress during tool calls)
                         if "output_text.delta" in event_type or event_type == "response.output_text.delta":
                             delta_text = getattr(event, "delta", "")
@@ -4067,15 +4082,15 @@ class AIAgent(_PromptCacheMixin):
         collected_text_deltas: list = []
         try:
             for event in stream_or_response:
-                if on_progress:
+                event_type = getattr(event, "type", None)
+                if not event_type and isinstance(event, dict):
+                    event_type = event.get("type")
+                if on_progress and _stream_event_is_progress(event_type):
                     try:
                         on_progress()
                     except Exception:
                         pass
                 self._touch_activity("receiving stream response")
-                event_type = getattr(event, "type", None)
-                if not event_type and isinstance(event, dict):
-                    event_type = event.get("type")
 
                 # Collect output items and text deltas for backfill
                 if event_type == "response.output_item.done":
@@ -4362,10 +4377,15 @@ class AIAgent(_PromptCacheMixin):
         """
         result = {"response": None, "error": None}
         request_client_holder = {"client": None}
-        provider_progress_at = {"t": time.time()}
+        # Use a monotonic clock for all stale-detection math.  time.time()
+        # is wall-clock: a machine sleep/resume makes the "silent elapsed"
+        # jump by the sleep duration, firing the watchdog with absurd
+        # numbers (e.g. "390s elapsed, threshold 60s").  time.monotonic()
+        # never jumps backwards or across system sleeps on this platform.
+        provider_progress_at = {"t": time.monotonic()}
 
         def _mark_provider_progress() -> None:
-            provider_progress_at["t"] = time.time()
+            provider_progress_at["t"] = time.monotonic()
 
         def _call():
             try:
@@ -4423,7 +4443,7 @@ class AIAgent(_PromptCacheMixin):
             else:
                 _stale_timeout = _stale_base
 
-        _call_start = time.time()
+        _call_start = time.monotonic()
         provider_progress_at["t"] = _call_start
         self._touch_activity("waiting for non-streaming API response")
 
@@ -4438,7 +4458,7 @@ class AIAgent(_PromptCacheMixin):
             # Touch activity every ~30s so the gateway's inactivity
             # monitor knows we're alive while waiting for the response.
             if _poll_count % 100 == 0:  # 100 × 0.3s = 30s
-                _elapsed = time.time() - _call_start
+                _elapsed = time.monotonic() - _call_start
                 self._touch_activity(
                     f"waiting for non-streaming response ({int(_elapsed)}s elapsed)"
                 )
@@ -4446,7 +4466,7 @@ class AIAgent(_PromptCacheMixin):
             # Status callbacks drive the web UI.  Emit frequent progress while
             # a non-streaming provider call is pending so a partial answer does
             # not look frozen between response chunks, retries, or stale kills.
-            _now = time.time()
+            _now = time.monotonic()
             _elapsed = _now - _call_start
             _silent_elapsed = _now - provider_progress_at["t"]
             _status_interval = 5.0 if getattr(self, "platform", None) == "web" else 30.0
@@ -8006,6 +8026,7 @@ class AIAgent(_PromptCacheMixin):
             anthropic_auth_retry_attempted=False
             thinking_sig_retry_attempted = False
             has_retried_429 = False
+            web_stale_kill_count = 0
             restart_with_compressed_messages = False
             restart_with_length_continuation = False
 
@@ -8819,14 +8840,22 @@ class AIAgent(_PromptCacheMixin):
                     )
                     if _web_stale_provider:
                         # The web UI has already been showing provider-wait
-                        # heartbeats for this turn. Repeating the same stale
-                        # provider request twice more leaves the browser
-                        # looking frozen for minutes, and usually indicates a
-                        # bad provider/backend path rather than useful work.
-                        max_retries = retry_count
-                        self._emit_status(
-                            "Provider stopped responding; ending this web turn so you can retry."
-                        )
+                        # heartbeats for this turn.  Allow exactly ONE quick
+                        # retry (transient provider hiccups are common), but
+                        # don't repeat the same stale request over and over —
+                        # that leaves the browser looking frozen for minutes
+                        # and usually indicates a bad provider/backend path.
+                        web_stale_kill_count += 1
+                        if web_stale_kill_count >= 2:
+                            max_retries = retry_count
+                            self._emit_status(
+                                "Provider stalled again — ending this web turn. "
+                                "Please send your message again to retry."
+                            )
+                        else:
+                            self._emit_status(
+                                "Provider stopped responding — retrying once..."
+                            )
                     _status_code_str = f" [HTTP {status_code}]" if status_code else ""
                     self._vprint(f"{self.log_prefix}⚠️  API call failed (attempt {retry_count}/{max_retries}): {error_type}{_status_code_str}", force=True)
                     self._vprint(f"{self.log_prefix}   🔌 Provider: {_provider}  Model: {_model}", force=True)
@@ -9326,6 +9355,10 @@ class AIAgent(_PromptCacheMixin):
                                 except (TypeError, ValueError):
                                     pass
                     wait_time = _retry_after if _retry_after else jittered_backoff(retry_count, base_delay=2.0, max_delay=60.0)
+                    if _web_stale_provider:
+                        # The user already sat through the full stale threshold;
+                        # keep the single web-stall retry snappy.
+                        wait_time = min(wait_time, 2)
                     if is_rate_limited:
                         self._emit_status(f"⏱️ Rate limit reached. Waiting {wait_time}s before retry (attempt {retry_count + 1}/{max_retries})...")
                     else:
