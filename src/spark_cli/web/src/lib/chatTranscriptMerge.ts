@@ -84,19 +84,33 @@ export function mergeSyncedMessages(
   mapped: ChatMessage[],
   prev: ChatMessage[],
   sessionId: string | null,
-  options: { preferSyncedAssistants?: boolean } = {},
+  options: { preferSyncedAssistants?: boolean; syncedComplete?: boolean } = {},
 ): ChatMessage[] {
   const forms = prev.filter((m) => m.role === "feedback_form");
   const withForms = (messages: ChatMessage[]) => (
     forms.length > 0 ? [...messages, ...forms] : messages
   );
   const cachedTurn = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
+  const syncedComplete = options.syncedComplete ?? true;
 
   if (mapped.length === 0 && prev.length > 0) return withForms(prev);
   if (mapped.length === 0 && cachedTurn.length > 0) return withForms(cachedTurn);
 
+  if (!syncedComplete) {
+    const base = prev.length >= cachedTurn.length ? prev : cachedTurn;
+    const baseWithoutForms = base.filter((m) => m.role !== "feedback_form");
+    if (baseWithoutForms.length > mapped.length) {
+      const mappedById = new Map(mapped.map((msg) => [msg.id, msg]));
+      const baseIds = new Set(baseWithoutForms.map((msg) => msg.id));
+      const updatedBase = baseWithoutForms.map((msg) => mappedById.get(msg.id) ?? msg);
+      const missingMapped = mapped.filter((msg) => !baseIds.has(msg.id));
+      return withForms([...updatedBase, ...missingMapped]);
+    }
+  }
+
   if (
     options.preferSyncedAssistants &&
+    syncedComplete &&
     mapped.some((m) => m.role === "assistant" && hasText(m.content))
   ) {
     return withForms(mapped);

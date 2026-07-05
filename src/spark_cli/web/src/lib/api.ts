@@ -184,13 +184,23 @@ export const api = {
   getSessionMessages: (id: string, limit = 0, beforeId?: string) => {
     const qs = new URLSearchParams();
     if (limit > 0) qs.set("limit", String(limit));
-    if (beforeId) qs.set("before_id", beforeId);
+    const rawBeforeId = beforeId?.startsWith("db:") ? beforeId.slice(3) : beforeId;
+    if (rawBeforeId) qs.set("before_id", rawBeforeId);
     qs.set("_", String(Date.now()));
     const q = qs.toString();
     return fetchJSON<SessionMessagesResponse>(
       `/api/sessions/${encodeURIComponent(id)}/messages${q ? `?${q}` : ""}`,
     );
   },
+  moveSession: (id: string, source: string | null) =>
+    fetchJSON<{ ok: boolean; session_id: string; source: string | null; session?: SessionInfo }>(
+      `/api/sessions/${encodeURIComponent(id)}/source`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source }),
+      },
+    ),
   warmSession: (id: string) =>
     fetchJSON<{ ok: boolean; warm: boolean }>(`/api/sessions/${encodeURIComponent(id)}/warm`, {
       method: "POST",
@@ -779,6 +789,21 @@ export const api = {
   deleteWorkspaceProject: (slug: string) =>
     fetchJSON<{ ok: boolean; deleted: string }>(`/api/workspace/projects/${encodeURIComponent(slug)}`, {
       method: "DELETE",
+    }),
+
+  renameWorkspaceProject: (slug: string, name: string) =>
+    fetchJSON<{
+      ok: boolean;
+      old_slug: string;
+      slug: string;
+      name: string;
+      path: string;
+      mtime: number;
+      migrated_sessions: number;
+    }>(`/api/workspace/projects/${encodeURIComponent(slug)}/rename-project`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
     }),
 
   getWorkspaceFileTree: (slug: string, showHidden = false) =>

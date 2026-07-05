@@ -30,6 +30,7 @@ import {
   Palette,
   PanelsTopLeft,
   PenTool,
+  Pencil,
   Pin,
   Plus,
   Search,
@@ -61,6 +62,9 @@ import { threadTitle } from "@/components/chat/ThreadRow";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 import { chooseDefaultStarter, toggleProjectWizardValue } from "@/lib/projectWizard";
 
+const SESSION_DRAG_MIME = "application/x-spark-session-id";
+type DropTarget = "pinned" | "chats" | `project:${string}` | null;
+
 // ── SessionRow ────────────────────────────────────────────────────────────────
 
 function SessionRow({
@@ -72,6 +76,8 @@ function SessionRow({
   onOpen,
   onTogglePin,
   onDelete,
+  onDragStart,
+  onDragEnd,
 }: {
   session: SessionInfo;
   active: boolean;
@@ -81,6 +87,8 @@ function SessionRow({
   onOpen: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  onDragStart?: (id: string) => void;
+  onDragEnd?: () => void;
 }) {
   const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
     // Shift-click pins/unpins a chat (hinted in the PINNED empty state).
@@ -95,6 +103,14 @@ function SessionRow({
     <div
       role="button"
       tabIndex={0}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData(SESSION_DRAG_MIME, session.id);
+        e.dataTransfer.setData("text/plain", session.id);
+        onDragStart?.(session.id);
+      }}
+      onDragEnd={() => onDragEnd?.()}
       onClick={handleClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -154,6 +170,13 @@ function ProjectGroup({
   onDelete,
   onNewThread,
   onDeleteProject,
+  onRenameProject,
+  onDragSessionStart,
+  onDragSessionEnd,
+  dragOverTarget,
+  onDragOverProject,
+  onDropOnProject,
+  onClearDragOver,
 }: {
   project: WorkspaceProject;
   threads: SessionInfo[];
@@ -167,22 +190,105 @@ function ProjectGroup({
   onDelete: (id: string) => void;
   onNewThread: (slug: string) => void;
   onDeleteProject: (slug: string) => void;
+  onRenameProject: (slug: string, name: string) => Promise<string>;
+  onDragSessionStart: (id: string) => void;
+  onDragSessionEnd: () => void;
+  dragOverTarget: DropTarget;
+  onDragOverProject: (slug: string, e: React.DragEvent) => void;
+  onDropOnProject: (slug: string, e: React.DragEvent) => void;
+  onClearDragOver: () => void;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(project.name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [savingRename, setSavingRename] = useState(false);
+  const dropActive = dragOverTarget === `project:${project.slug}`;
+
+  const commitRename = async () => {
+    const nextName = renameValue.trim();
+    if (!nextName || nextName === project.name || savingRename) {
+      setRenaming(false);
+      setRenameValue(project.name);
+      setRenameError(null);
+      return;
+    }
+    setSavingRename(true);
+    setRenameError(null);
+    try {
+      await onRenameProject(project.slug, nextName);
+      setRenaming(false);
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : "Rename failed");
+    } finally {
+      setSavingRename(false);
+    }
+  };
 
   return (
     <div>
-      <div className="group flex items-center gap-1.5 rounded-sm px-1.5 py-1 transition hover:bg-secondary/50">
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={onToggle}>
-          <span className="text-muted-foreground/50">
-            {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </span>
-          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300/70" />
-          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground/80">
-            {project.name}
-          </span>
-        </button>
+      <div
+        className={cn(
+          "group flex items-center gap-1.5 rounded-sm px-1.5 py-1 transition hover:bg-secondary/50",
+          dropActive && "bg-primary/10 ring-1 ring-primary/40",
+        )}
+        onDragOver={(e) => onDragOverProject(project.slug, e)}
+        onDragLeave={onClearDragOver}
+        onDrop={(e) => onDropOnProject(project.slug, e)}
+      >
+        {renaming ? (
+          <form
+            className="flex min-w-0 flex-1 items-center gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void commitRename();
+            }}
+          >
+            <Input
+              autoFocus
+              className="h-6 min-w-0 flex-1 px-1.5 text-[12px]"
+              value={renameValue}
+              disabled={savingRename}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setRenaming(false);
+                  setRenameValue(project.name);
+                  setRenameError(null);
+                }
+              }}
+              onBlur={() => {
+                if (!savingRename) void commitRename();
+              }}
+            />
+            {savingRename && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
+          </form>
+        ) : (
+          <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={onToggle}>
+            <span className="text-muted-foreground/50">
+              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </span>
+            <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300/70" />
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground/80">
+              {project.name}
+            </span>
+          </button>
+        )}
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+          <button
+            type="button"
+            title="Rename project"
+            className="rounded p-0.5 text-muted-foreground/60 hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              setRenameValue(project.name);
+              setRenameError(null);
+              setRenaming(true);
+            }}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             title="New thread in this project"
@@ -212,6 +318,9 @@ function ProjectGroup({
           </Badge>
         )}
       </div>
+      {renameError && (
+        <p className="px-2 pb-1 text-[11px] text-destructive">{renameError}</p>
+      )}
 
       {showDeleteConfirm && (
         <div className="mx-1 mb-1 rounded-sm border border-destructive/40 bg-background p-2 text-xs">
@@ -254,6 +363,8 @@ function ProjectGroup({
                 onOpen={() => onOpen(t.id)}
                 onTogglePin={() => onTogglePin(t.id)}
                 onDelete={() => onDelete(t.id)}
+                onDragStart={onDragSessionStart}
+                onDragEnd={onDragSessionEnd}
               />
             ))
           )}
@@ -783,11 +894,16 @@ export function SidebarSessions({
     deleteSession,
     deleteProject,
     createProject,
+    moveSessionToProject,
+    renameProject,
   } = useSessionStore();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
+  const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
+  const [dragOverTarget, setDragOverTarget] = useState<DropTarget>(null);
+  const [dragError, setDragError] = useState<string | null>(null);
 
   const toggleSection = (section: string) => {
     setCollapsedSections((prev) => {
@@ -837,6 +953,51 @@ export function SidebarSessions({
     return map;
   }, [displayedSessions]);
 
+  const draggedSessionFromEvent = (e: React.DragEvent): string => (
+    e.dataTransfer.getData(SESSION_DRAG_MIME) || e.dataTransfer.getData("text/plain")
+  );
+
+  const allowDrop = (target: Exclude<DropTarget, null>, e: React.DragEvent) => {
+    if (!draggingSessionId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverTarget(target);
+  };
+
+  const dropSession = async (target: Exclude<DropTarget, null>, e: React.DragEvent) => {
+    e.preventDefault();
+    const sessionId = draggedSessionFromEvent(e) || draggingSessionId;
+    setDragOverTarget(null);
+    setDraggingSessionId(null);
+    if (!sessionId) return;
+    setDragError(null);
+    try {
+      if (target === "pinned") {
+        if (!pinnedIds.has(sessionId)) togglePin(sessionId);
+        return;
+      }
+      if (target === "chats") {
+        if (pinnedIds.has(sessionId)) togglePin(sessionId);
+        await moveSessionToProject(sessionId, null);
+        return;
+      }
+      const slug = target.slice("project:".length);
+      await moveSessionToProject(sessionId, slug);
+    } catch (err) {
+      setDragError(err instanceof Error ? err.message : "Could not move chat");
+    }
+  };
+
+  const handleDragStart = (id: string) => {
+    setDraggingSessionId(id);
+    setDragError(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingSessionId(null);
+    setDragOverTarget(null);
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ProjectWizard
@@ -876,7 +1037,15 @@ export function SidebarSessions({
       {/* Scrollable list */}
       <div className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1 pb-2">
         {/* PINNED */}
-        <div className="pt-2">
+        <div
+          className={cn(
+            "pt-2",
+            dragOverTarget === "pinned" && "rounded-sm bg-primary/10 ring-1 ring-primary/40",
+          )}
+          onDragOver={(e) => allowDrop("pinned", e)}
+          onDragLeave={() => setDragOverTarget(null)}
+          onDrop={(e) => void dropSession("pinned", e)}
+        >
           <div className="flex items-center gap-1.5 px-2 pb-1">
             <Pin className="h-3 w-3 text-muted-foreground/50" />
             <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
@@ -898,10 +1067,15 @@ export function SidebarSessions({
                 onOpen={() => onOpenSession(s.id)}
                 onTogglePin={() => togglePin(s.id)}
                 onDelete={() => void deleteSession(s.id)}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
               />
             ))
           )}
         </div>
+        {dragError && (
+          <p className="px-2.5 pt-1 text-[11px] text-destructive">{dragError}</p>
+        )}
 
         {/* SESSIONS */}
         <div className="pt-3">
@@ -944,6 +1118,13 @@ export function SidebarSessions({
                   onDelete={(id) => void deleteSession(id)}
                   onNewThread={onNewProjectThread}
                   onDeleteProject={(slug) => void deleteProject(slug)}
+                  onRenameProject={renameProject}
+                  onDragSessionStart={handleDragStart}
+                  onDragSessionEnd={handleDragEnd}
+                  dragOverTarget={dragOverTarget}
+                  onDragOverProject={(slug, e) => allowDrop(`project:${slug}`, e)}
+                  onDropOnProject={(slug, e) => void dropSession(`project:${slug}`, e)}
+                  onClearDragOver={() => setDragOverTarget(null)}
                 />
               ))}
 
@@ -960,25 +1141,39 @@ export function SidebarSessions({
         </div>
 
         {/* CHATS (ungrouped sessions) */}
-        {ungrouped.length > 0 && (
-          <div className="pt-3">
+        {(ungrouped.length > 0 || draggingSessionId) && (
+          <div
+            className={cn(
+              "pt-3",
+              dragOverTarget === "chats" && "rounded-sm bg-primary/10 ring-1 ring-primary/40",
+            )}
+            onDragOver={(e) => allowDrop("chats", e)}
+            onDragLeave={() => setDragOverTarget(null)}
+            onDrop={(e) => void dropSession("chats", e)}
+          >
             <SectionHeader
               label="Chats"
               collapsed={collapsedSections.has("chats")}
               onToggle={() => toggleSection("chats")}
             />
             {!collapsedSections.has("chats") &&
-              ungrouped.map((s) => (
-                <SessionRow
-                  key={s.id}
-                  session={s}
-                  active={selectedId === s.id}
-                  pinned={pinnedIds.has(s.id)}
-                  unread={unreadSessionIds.has(s.id)}
-                  onOpen={() => onOpenSession(s.id)}
-                  onTogglePin={() => togglePin(s.id)}
-                  onDelete={() => void deleteSession(s.id)}
-                />
+              (ungrouped.length > 0 ? (
+                ungrouped.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    active={selectedId === s.id}
+                    pinned={pinnedIds.has(s.id)}
+                    unread={unreadSessionIds.has(s.id)}
+                    onOpen={() => onOpenSession(s.id)}
+                    onTogglePin={() => togglePin(s.id)}
+                    onDelete={() => void deleteSession(s.id)}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  />
+                ))
+              ) : (
+                <p className="px-2.5 pb-1 text-[11px] italic text-muted-foreground/40">Drop here to unfile</p>
               ))}
           </div>
         )}

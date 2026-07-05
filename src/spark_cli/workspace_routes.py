@@ -85,6 +85,17 @@ def _workspace_root() -> Path:
     return root
 
 
+def _slug_from_project_name(name: str) -> str:
+    cleaned = name.strip()
+    slug = re.sub(r"[^a-zA-Z0-9_\-]", "-", cleaned).strip("-") or "project"
+    slug = re.sub(r"-{2,}", "-", slug)
+    if not _SLUG_RE.match(slug):
+        raise HTTPException(status_code=400, detail=f"Invalid project name: {name!r}")
+    if slug == _GLOBAL_WORKSPACE_SLUG:
+        raise HTTPException(status_code=400, detail=f"Reserved project name: {slug!r}")
+    return slug
+
+
 def _project_dir(slug: str) -> Path:
     if not _SLUG_RE.match(slug):
         raise HTTPException(status_code=400, detail=f"Invalid project name: {slug!r}")
@@ -148,6 +159,10 @@ class ProjectCreate(BaseModel):
     selected_skills: list[str] = Field(default_factory=list)
     dev_tools: list[str] = Field(default_factory=list)
     integrations: list[str] = Field(default_factory=list)
+
+
+class ProjectRename(BaseModel):
+    name: str
 
 
 class TerminalRunCreate(BaseModel):
@@ -545,12 +560,7 @@ def list_projects():
 @router.post("/projects")
 def create_project(body: ProjectCreate):
     name = body.name.strip()
-    slug = re.sub(r"[^a-zA-Z0-9_\-]", "-", name).strip("-") or "project"
-    slug = re.sub(r"-{2,}", "-", slug)
-    if not _SLUG_RE.match(slug):
-        raise HTTPException(status_code=400, detail=f"Invalid project name: {name!r}")
-    if slug == _GLOBAL_WORKSPACE_SLUG:
-        raise HTTPException(status_code=400, detail=f"Reserved project name: {slug!r}")
+    slug = _slug_from_project_name(name)
     template_id = body.starter_stack or body.template or DEFAULT_TEMPLATE
     if not is_valid_template(template_id):
         raise HTTPException(status_code=400, detail=f"Unknown or unavailable template: {template_id!r}")
@@ -853,6 +863,64 @@ def make_project_dir(slug: str, path: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(exc))
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "path": path}
+
+
+@router.post("/projects/{slug}/rename-project")
+def rename_project(slug: str, body: ProjectRename):
+    """Rename a project folder and move all of its chat sessions with it."""
+    old_path = _project_dir(slug)
+    new_slug = _slug_from_project_name(body.name)
+    new_path = _workspace_root() / new_slug
+    if new_slug == slug:
+        stat = old_path.stat()
+        return {
+            "ok": True,
+            "old_slug": slug,
+            "slug": slug,
+            "name": slug,
+            "path": str(old_path),
+            "mtime": stat.st_mtime,
+            "migrated_sessions": 0,
+        }
+    if new_path.exists():
+        raise HTTPException(status_code=409, detail=f"Project already exists: {new_slug!r}")
+
+    try:
+        old_path.rename(new_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    migrated = 0
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            migrated = db.migrate_session_source(
+                f"workspace:{slug}",
+                f"workspace:{new_slug}",
+            )
+        finally:
+            db.close()
+    except Exception as exc:
+        try:
+            new_path.rename(old_path)
+        except Exception:
+            _log.exception("Failed to roll back project rename after session migration error")
+        raise HTTPException(status_code=500, detail=f"Session source migration failed: {exc}") from exc
+
+    stat = new_path.stat()
+    payload = {"old_slug": slug, "slug": new_slug, "migrated_sessions": migrated}
+    _publish_workspace_event("workspace.projects.changed", payload)
+    return {
+        "ok": True,
+        "old_slug": slug,
+        "slug": new_slug,
+        "name": new_slug,
+        "path": str(new_path),
+        "mtime": stat.st_mtime,
+        "migrated_sessions": migrated,
+    }
 
 
 @router.post("/projects/{slug}/rename")

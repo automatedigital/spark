@@ -4370,7 +4370,15 @@ async def get_session_messages(
         indexed_messages = list(enumerate(messages))
         # Apply pagination: if limit > 0 and/or before_id specified, return a page
         if before_id:
-            idx = next((i for i, m in enumerate(messages) if m.get("id") == before_id), None)
+            raw_before_id = before_id[3:] if before_id.startswith("db:") else before_id
+            idx = next(
+                (
+                    i
+                    for i, m in enumerate(messages)
+                    if str(m.get("id")) == str(raw_before_id)
+                ),
+                None,
+            )
             if idx is not None:
                 indexed_messages = indexed_messages[:idx]
         if limit > 0:
@@ -4483,6 +4491,50 @@ async def update_session_title(session_id: str, body: dict[str, Any]):
         row = db.get_session(sid)
         _emit_sessions_changed("updated", sid, row)
         return {"ok": True, "session_id": sid, "title": row.get("title") if row else None}
+    finally:
+        db.close()
+
+
+class SessionSourceUpdate(BaseModel):
+    source: Optional[str] = None
+
+
+def _normalize_web_session_source(source: Optional[str]) -> str:
+    raw = (source or "").strip()
+    if raw in {"", "web"}:
+        return "web"
+    if not raw.startswith("workspace:"):
+        raise HTTPException(status_code=400, detail=f"Unsupported session source: {source!r}")
+    slug = raw.split(":", 1)[1].strip()
+    if not re.match(r"^[A-Za-z0-9_-]+$", slug):
+        raise HTTPException(status_code=400, detail=f"Invalid workspace project: {slug!r}")
+    if slug == "__workspace__":
+        raise HTTPException(status_code=400, detail=f"Reserved workspace project: {slug!r}")
+    project_path = (_get_workspace_root() / slug).resolve()
+    try:
+        project_path.relative_to(_get_workspace_root().resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid workspace project: {slug!r}")
+    if not project_path.is_dir():
+        raise HTTPException(status_code=404, detail=f"Workspace project not found: {slug!r}")
+    return f"workspace:{slug}"
+
+
+@app.patch("/api/sessions/{session_id}/source")
+async def update_session_source(session_id: str, body: SessionSourceUpdate):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        source = _normalize_web_session_source(body.source)
+        if not db.update_session_source(sid, source):
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = db.get_session(sid)
+        _emit_sessions_changed("updated", sid, row)
+        return {"ok": True, "session_id": sid, "source": source, "session": row}
     finally:
         db.close()
 

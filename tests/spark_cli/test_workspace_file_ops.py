@@ -96,6 +96,35 @@ def test_rename_conflict_on_existing_dst(client):
     assert res.status_code == 409
 
 
+def test_project_rename_migrates_session_sources(client):
+    _make_project("old-proj")
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("project-chat", source="workspace:old-proj")
+        db.create_session("plain-chat", source="web")
+    finally:
+        db.close()
+
+    res = client.post(
+        "/api/workspace/projects/old-proj/rename-project",
+        json={"name": "new proj"},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["slug"] == "new-proj"
+    assert not (get_spark_home() / "workspace" / "old-proj").exists()
+    assert (get_spark_home() / "workspace" / "new-proj").is_dir()
+
+    db = SessionDB()
+    try:
+        assert db.get_session("project-chat")["source"] == "workspace:new-proj"
+        assert db.get_session("plain-chat")["source"] == "web"
+    finally:
+        db.close()
+
+
 def test_path_traversal_rejected(client):
     _make_project()
     res = client.put("/api/workspace/projects/proj/file?path=../escape.txt", json={"content": "x"})

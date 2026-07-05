@@ -44,6 +44,61 @@ def _wait_for(predicate, timeout: float = 2.0) -> bool:
     return bool(predicate())
 
 
+def test_session_messages_accept_db_prefixed_before_id(web_client):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("history-page", source="web")
+        first = db.append_message("history-page", "user", "one")
+        second = db.append_message("history-page", "assistant", "two")
+        third = db.append_message("history-page", "user", "three")
+    finally:
+        db.close()
+
+    res = web_client.get(f"/api/sessions/history-page/messages?limit=2&before_id=db:{third}")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert [m["id"] for m in body["messages"]] == [first, second]
+    assert body["has_earlier"] is True
+
+
+def test_session_source_patch_moves_chat_between_project_and_chats(web_client):
+    from core.spark_state import SessionDB
+    from spark_cli.config import get_spark_home
+
+    (get_spark_home() / "workspace" / "alpha").mkdir(parents=True)
+    db = SessionDB()
+    try:
+        db.create_session("move-me", source="web")
+    finally:
+        db.close()
+
+    moved = web_client.patch(
+        "/api/sessions/move-me/source",
+        json={"source": "workspace:alpha"},
+    )
+    assert moved.status_code == 200
+    assert moved.json()["source"] == "workspace:alpha"
+
+    db = SessionDB()
+    try:
+        assert db.get_session("move-me")["source"] == "workspace:alpha"
+    finally:
+        db.close()
+
+    unfiled = web_client.patch("/api/sessions/move-me/source", json={"source": None})
+    assert unfiled.status_code == 200
+    assert unfiled.json()["source"] == "web"
+
+    db = SessionDB()
+    try:
+        assert db.get_session("move-me")["source"] == "web"
+    finally:
+        db.close()
+
+
 class TestEventBus:
     def test_publish_event_delivers_to_subscriber(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
