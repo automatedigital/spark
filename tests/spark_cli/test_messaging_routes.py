@@ -212,6 +212,88 @@ def test_bool_values_coerced_to_env_strings(client):
 
 
 # ---------------------------------------------------------------------------
+# Auto-enable on credential save
+# ---------------------------------------------------------------------------
+
+
+def _slack_tokens() -> dict:
+    return {
+        "SLACK_BOT_TOKEN": "xoxb-fake-bot-token-1234",
+        "SLACK_APP_TOKEN": "xapp-fake-app-token-5678",
+    }
+
+
+def test_token_save_auto_enables_platform(client):
+    """Saving credentials without the toggle persists SLACK_ENABLED=true."""
+    resp = client.put(
+        "/api/messaging/platforms/slack",
+        json={"values": _slack_tokens()},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["configured"] is True
+    assert body["enabled"] is True
+    assert "SLACK_ENABLED=true" in _env_file_text()
+
+
+def test_partial_credential_save_does_not_enable(client):
+    resp = client.put(
+        "/api/messaging/platforms/slack",
+        json={"values": {"SLACK_BOT_TOKEN": "xoxb-fake-bot-token-1234"}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["configured"] is False
+    assert "SLACK_ENABLED" not in _env_file_text()
+
+
+def test_token_save_does_not_override_explicit_toggle_off(client):
+    # User explicitly disabled the platform earlier
+    client.put("/api/messaging/platforms/slack", json={"enabled": False})
+    assert "SLACK_ENABLED=false" in _env_file_text()
+
+    resp = client.put(
+        "/api/messaging/platforms/slack",
+        json={"values": _slack_tokens()},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is True
+    assert body["enabled"] is False
+    assert "SLACK_ENABLED=false" in _env_file_text()
+    assert "SLACK_ENABLED=true" not in _env_file_text()
+
+
+def test_explicit_toggle_in_same_request_wins(client):
+    resp = client.put(
+        "/api/messaging/platforms/slack",
+        json={"enabled": False, "values": _slack_tokens()},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["enabled"] is False
+    assert "SLACK_ENABLED=false" in _env_file_text()
+
+
+def test_native_flag_platform_not_auto_enabled_by_value_save(client):
+    # webhook is flag-native: saving a value must not flip WEBHOOK_ENABLED
+    resp = client.put(
+        "/api/messaging/platforms/webhook",
+        json={"values": {"WEBHOOK_PORT": "8644"}},
+    )
+    assert resp.status_code == 200
+    assert "WEBHOOK_ENABLED" not in _env_file_text()
+
+
+def test_enabled_flags_registered_in_optional_env_vars():
+    from gateway.platform_fields import all_platform_specs
+    from spark_cli.config import OPTIONAL_ENV_VARS
+
+    for spec in all_platform_specs():
+        assert spec.enabled_env in OPTIONAL_ENV_VARS or spec.enabled_env in {
+            "WHATSAPP_ENABLED"  # tracked via _EXTRA_ENV_KEYS
+        }, f"{spec.enabled_env} missing from OPTIONAL_ENV_VARS"
+
+
+# ---------------------------------------------------------------------------
 # Restart
 # ---------------------------------------------------------------------------
 

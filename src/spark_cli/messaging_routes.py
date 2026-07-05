@@ -271,6 +271,17 @@ def update_platform(platform_id: str, body: PlatformUpdateRequest) -> dict[str, 
 
     if body.enabled is not None:
         save_env_value(spec.enabled_env, "true" if body.enabled else "false")
+    elif saved and spec.required and not spec.enabled_env_is_native:
+        # Credential save without an explicit toggle: once the platform is
+        # fully configured, persist the advisory enabled flag so the state
+        # survives in .env (e.g. SLACK_ENABLED=true). An explicit user
+        # toggle-off (flag already "false") is never overridden.
+        env_after_save = _load_env_values()
+        if (
+            _is_configured(spec, env_after_save)
+            and _parse_bool(env_after_save.get(spec.enabled_env)) is None
+        ):
+            save_env_value(spec.enabled_env, "true")
 
     restart: dict[str, Any] = {"ok": False, "running": False, "detail": "skipped"}
     try:
