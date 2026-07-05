@@ -12,12 +12,14 @@ from collections.abc import Callable
 from tools.connectors.base import Connector
 from tools.connectors.generic import catalog_factories
 from tools.connectors.google import GoogleWorkspaceConnector
+from tools.connectors.mcp import mcp_factories
 
 # Factories (not instances) so each lookup gets a fresh object and tests can
 # construct connectors with injected runners without mutating shared state.
 _FACTORIES: dict[str, Callable[[], Connector]] = {
     "google": GoogleWorkspaceConnector,
     **catalog_factories(),
+    **mcp_factories(),
 }
 
 # Ordered list of connector ids for stable UI display.
