@@ -125,6 +125,12 @@ export default function ConnectorsPage() {
   const [showGoogleAdvanced, setShowGoogleAdvanced] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showMcpAdd, setShowMcpAdd] = useState(false);
+  const [showMcpAdvanced, setShowMcpAdvanced] = useState(false);
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState<string>("all");
+  const [mcpPending, setMcpPending] = useState<string | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [showSecrets, setShowSecrets] = useState(false);
   const [mcpName, setMcpName] = useState("");
   const [mcpTarget, setMcpTarget] = useState("");
   const [mcpRemovePending, setMcpRemovePending] = useState<string | null>(null);
@@ -347,29 +353,46 @@ export default function ConnectorsPage() {
 
   const handleSaveConnectorSecrets = async () => {
     if (!setupConnector) return;
-    setError(null);
+    setModalError(null);
     setBusy(true);
     try {
       const entries = Object.entries(connectorSecrets)
         .map(([key, value]) => [key, value.trim()] as const)
         .filter(([key, value]) => key && value);
       if (entries.length === 0) {
-        setError("Paste the key or credentials first.");
+        setModalError("Paste the key or credentials first.");
         setBusy(false);
         return;
       }
-      for (const [key, value] of entries) {
-        await api.setEnvVar(key, value);
+      const envVars =
+        setupConnector.env_vars ?? connectorExtra(setupConnector).env_vars ?? [];
+      if (entries.length === 1 && envVars.includes(entries[0][0])) {
+        // Guided single-key flow: the backend persists to the profile .env,
+        // validates the key, and rolls back if it doesn't check out.
+        const res = await api.saveConnectorApiKey(
+          setupConnector.id,
+          entries[0][1],
+          entries[0][0],
+        );
+        if (!res.connected) {
+          setModalError(
+            res.detail ||
+              res.message ||
+              `${setupConnector.name} key did not validate.`,
+          );
+          setBusy(false);
+          return;
+        }
+      } else {
+        for (const [key, value] of entries) {
+          await api.setEnvVar(key, value);
+        }
       }
       setSetupConnector(null);
       setConnectorSecrets({});
       await refresh();
-      const status = await api.getConnectorStatus(setupConnector.id);
-      if (!status.connected) {
-        setError(status.detail || status.status?.detail || `${setupConnector.name} credentials did not validate.`);
-      }
     } catch (e) {
-      setError(`Could not save connector credentials: ${e}`);
+      setModalError(`${e}`.replace(/^Error:\s*/, ""));
     } finally {
       setBusy(false);
     }
@@ -381,6 +404,8 @@ export default function ConnectorsPage() {
       ? extra.env_vars ?? []
       : [connectorPrimaryEnv(connector)].filter(Boolean);
     setConnectorSecrets(Object.fromEntries(keys.map((key) => [key, ""])));
+    setModalError(null);
+    setShowSecrets(false);
     setSetupConnector(connector);
   };
 
@@ -405,11 +430,69 @@ export default function ConnectorsPage() {
     }, 2000);
   }, []);
 
+  // Poll a pending MCP OAuth connect until tokens land (or error/timeout).
+  const startMcpPolling = useCallback((connectorId: string) => {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+    let elapsed = 0;
+    pollRef.current = window.setInterval(async () => {
+      elapsed += 2000;
+      try {
+        const st = await api.getConnectorConnectStatus(connectorId);
+        if (st.connected || st.connect_state === "error" || elapsed >= 300_000) {
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          pollRef.current = null;
+          setBusy(false);
+          setMcpPending(null);
+          if (st.connect_state === "error") {
+            setError(st.connect_error || "MCP authorization failed. Try again.");
+          } else if (!st.connected && elapsed >= 300_000) {
+            setError("Timed out waiting for browser authorization.");
+          }
+          await refresh();
+        }
+      } catch {
+        /* keep polling */
+      }
+    }, 2000);
+  }, [refresh]);
+
   // Single "Connect" affordance: pick the best available method automatically.
   // OAuth redirect/popup where configured → device-flow fallback (GitHub) →
   // token-paste modal as last resort.
   const handleConnectConnector = async (connector: ConnectorStatus) => {
     const extra = connectorExtra(connector);
+    if (connector.kind === "mcp") {
+      // One-click MCP preset: backend writes the server entry and opens the
+      // browser OAuth flow; we poll until tokens are stored.
+      setError(null);
+      setBusy(true);
+      setMcpPending(connector.id);
+      try {
+        const resp = await api.connectConnector(connector.id);
+        if (resp.error) {
+          setError(resp.message || resp.error);
+          setBusy(false);
+          setMcpPending(null);
+          return;
+        }
+        if (resp.connected) {
+          setBusy(false);
+          setMcpPending(null);
+          await refresh();
+          return;
+        }
+        showToast(
+          `Approve ${connector.name} in the browser window Spark just opened.`,
+          "success",
+        );
+        startMcpPolling(connector.id);
+      } catch (e) {
+        setError(`Connect failed: ${e}`);
+        setBusy(false);
+        setMcpPending(null);
+      }
+      return;
+    }
     if ((extra.auth_type === "oauth" || extra.auth_type === "oauth_or_api_key") && extra.oauth_configured) {
       setError(null);
       setBusy(true);
@@ -518,9 +601,36 @@ export default function ConnectorsPage() {
     });
   };
 
-  const apps = connectors.filter((c) => !isCliAgent(c));
+  const matchesSearch = (c: ConnectorStatus) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.description ?? "").toLowerCase().includes(q) ||
+      c.id.toLowerCase().includes(q)
+    );
+  };
+  const matchesKind = (c: ConnectorStatus) =>
+    kindFilter === "all" || (c.kind ?? "api_key") === kindFilter;
+  const apps = connectors.filter(
+    (c) => !isCliAgent(c) && matchesSearch(c) && matchesKind(c),
+  );
   const cliAgents = connectors.filter(isCliAgent);
-  const mcpEntries = Object.entries(mcpServers);
+  const presetServerNames = new Set(
+    connectors
+      .filter((c) => c.kind === "mcp")
+      .map((c) => String(c.status?.extra?.server_name ?? c.id)),
+  );
+  // Only custom servers show in the advanced list — presets are cards above.
+  const mcpEntries = Object.entries(mcpServers).filter(
+    ([name]) => !presetServerNames.has(name),
+  );
+  const KIND_FILTERS: Array<[string, string]> = [
+    ["all", "All"],
+    ["api_key", "API key"],
+    ["mcp", "MCP"],
+    ["oauth", "OAuth"],
+  ];
 
   return (
     <div className="mx-auto max-w-3xl p-6 space-y-6">
@@ -794,11 +904,35 @@ export default function ConnectorsPage() {
         </CardContent>
       </Card>
 
+      {/* ── Search + kind filter ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search connectors…"
+          className="h-9 max-w-xs"
+        />
+        <div className="flex gap-1.5">
+          {KIND_FILTERS.map(([value, label]) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={kindFilter === value ? "default" : "outline"}
+              onClick={() => setKindFilter(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       {/* ── Apps ── */}
       {apps.length === 0 && !loading && (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            No connectable apps found. Refresh, or check that the gateway is running.
+            {search || kindFilter !== "all"
+              ? "No connectors match your search."
+              : "No connectable apps found. Refresh, or check that the gateway is running."}
           </CardContent>
         </Card>
       )}
@@ -820,13 +954,15 @@ export default function ConnectorsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <p className="text-xs text-muted-foreground">
-                {connector.connected && (connector.account || connector.email)
-                  ? `Connected as ${connector.account || connector.email}`
-                  : connector.connected
-                    ? "Connected and ready to use."
-                    : connector.state === "not_installed"
-                      ? "Not set up yet — click Connect and Spark will walk you through it."
-                      : connector.detail || connector.status?.detail || "Click Connect to link this app."}
+                {mcpPending === connector.id
+                  ? "Waiting for browser authorization…"
+                  : connector.connected && (connector.account || connector.email)
+                    ? `Connected as ${connector.account || connector.email}`
+                    : connector.connected
+                      ? "Connected and ready to use."
+                      : connector.state === "not_installed"
+                        ? "Not set up yet — click Connect and Spark will walk you through it."
+                        : connector.detail || connector.status?.detail || "Click Connect to link this app."}
               </p>
 
               <div className="flex flex-wrap gap-2">
@@ -846,7 +982,13 @@ export default function ConnectorsPage() {
                     onClick={() => handleConnectConnector(connector)}
                     disabled={busy}
                   >
-                    <KeyRound className="h-3.5 w-3.5" />
+                    {mcpPending === connector.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : connector.kind === "mcp" ? (
+                      <Server className="h-3.5 w-3.5" />
+                    ) : (
+                      <KeyRound className="h-3.5 w-3.5" />
+                    )}
                     Connect
                   </Button>
                 )}
@@ -1027,22 +1169,33 @@ export default function ConnectorsPage() {
         </Card>
       </div>
 
-      {/* ── MCP servers ── */}
+      {/* ── Advanced: custom MCP servers ── */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Server className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">MCP servers</h2>
-          <span className="text-xs text-muted-foreground">
-            Plug in extra tools from the Model Context Protocol
+        <button
+          className="flex items-center gap-2 text-left text-sm font-semibold text-muted-foreground hover:text-foreground"
+          onClick={() => setShowMcpAdvanced((v) => !v)}
+        >
+          {showMcpAdvanced ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+          <Server className="h-4 w-4" />
+          Advanced — custom MCP servers
+          <span className="text-xs font-normal text-muted-foreground">
+            {mcpEntries.length > 0 ? `${mcpEntries.length} configured` : "for servers not in the catalog"}
           </span>
+        </button>
+        {showMcpAdvanced && (
+        <>
+        <div className="flex items-center">
           <Button
             variant="outline"
             size="sm"
-            className="ml-auto"
             onClick={() => setShowMcpAdd(true)}
           >
             <Plus className="h-3.5 w-3.5" />
-            Add MCP server
+            Add custom MCP server
           </Button>
         </div>
         <Card>
@@ -1073,12 +1226,14 @@ export default function ConnectorsPage() {
             })}
             {mcpEntries.length === 0 && (
               <p className="p-4 text-sm text-muted-foreground">
-                No MCP servers yet — add one to give Spark new tools. Paste a server URL
-                or the command that starts it, and Spark handles the rest.
+                No custom MCP servers. Popular servers are one-click cards above —
+                add a custom one here by URL or launch command.
               </p>
             )}
           </CardContent>
         </Card>
+        </>
+        )}
       </div>
 
       {/* ── Token-paste / credentials modal ── */}
@@ -1102,26 +1257,49 @@ export default function ConnectorsPage() {
               </Button>
             </div>
             <div className="space-y-4 p-4">
-              {connectorExtra(setupConnector).api_key_url && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const url = connectorExtra(setupConnector).api_key_url;
-                    if (url) void openExternal(url);
-                  }}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open {setupConnector.name} key page
-                </Button>
+              {(setupConnector.api_key_url || connectorExtra(setupConnector).api_key_url) && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Step 1 — get your key
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const url =
+                        setupConnector.api_key_url ||
+                        connectorExtra(setupConnector).api_key_url;
+                      if (url) void openExternal(url);
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open {setupConnector.name} key page
+                  </Button>
+                </div>
               )}
 
               <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Step 2 — paste it here
+                  </p>
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowSecrets((v) => !v)}
+                  >
+                    {showSecrets ? "Hide" : "Show"}
+                  </button>
+                </div>
                 {Object.keys(connectorSecrets).map((key) => (
                   <div key={key} className="space-y-1.5">
                     <Label htmlFor={`connector-secret-${key}`}>{fieldMeta(key).label}</Label>
                     <Input
                       id={`connector-secret-${key}`}
-                      type={key.includes("PASSWORD") || key.includes("TOKEN") || key.includes("KEY") ? "password" : "text"}
+                      type={
+                        !showSecrets &&
+                        (key.includes("PASSWORD") || key.includes("TOKEN") || key.includes("KEY"))
+                          ? "password"
+                          : "text"
+                      }
                       value={connectorSecrets[key] ?? ""}
                       placeholder={fieldMeta(key).placeholder}
                       onChange={(event) => {
@@ -1140,6 +1318,13 @@ export default function ConnectorsPage() {
                   {setupConnector.status.extra.setup_steps.map((step) => (
                     <p key={step}>{step}</p>
                   ))}
+                </div>
+              )}
+
+              {modalError && (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{modalError}</span>
                 </div>
               )}
 
