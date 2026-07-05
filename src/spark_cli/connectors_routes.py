@@ -39,6 +39,51 @@ class GmailImapConnectRequest(BaseModel):
     app_password: str
 
 
+class ApiKeyRequest(BaseModel):
+    api_key: str
+    env_var: str = ""  # optional override; must be one of the connector's env vars
+
+
+def _connector_kind(connector) -> str:
+    """Coarse connect-flow kind for the UI: mcp / oauth / cli / api_key."""
+    from tools.connectors import Transport
+
+    if connector.transport is Transport.MCP:
+        return "mcp"
+    spec = getattr(connector, "spec", None)
+    auth_type = getattr(spec, "auth_type", "") if spec is not None else ""
+    if auth_type == "cli":
+        return "cli"
+    if auth_type == "oauth":
+        return "oauth"
+    return "api_key"
+
+
+def _connector_payload(connector, status) -> dict:
+    """Single-payload description + live state for one connector."""
+    from spark_cli.connector_skills import grant_for
+
+    spec = getattr(connector, "spec", None)
+    mapping = grant_for(connector.id, connector.skills)
+    return {
+        **connector.describe(),
+        "icon": connector.id,
+        "kind": _connector_kind(connector),
+        "connected": status.connected,
+        "configured": status.state.value != "not_installed",
+        "state": status.state.value,
+        "detail": status.detail,
+        "account": status.account,
+        "api_key_url": getattr(spec, "api_key_url", "") if spec is not None else "",
+        "primary_env_var": getattr(spec, "primary_env_var", "") if spec is not None else "",
+        "env_vars": list(getattr(spec, "env_vars", ()) or ()) if spec is not None else [],
+        "setup_steps": list(getattr(spec, "setup_steps", ()) or ()) if spec is not None else [],
+        "skills": mapping["skills"],
+        "toolsets": mapping["toolsets"],
+        "status": status.to_dict(),
+    }
+
+
 def set_server_port(port: int) -> None:
     """Called by web_server.py at startup so we know our callback URL."""
     global _server_port
@@ -105,22 +150,10 @@ async def list_connectors():
 
     items = []
     for connector in list_registered_connectors():
+        if connector.id == "google":
+            continue
         status = connector.status()
-        mapping = grant_for(connector.id, connector.skills)
-        item = {
-            **connector.describe(),
-            "icon": connector.id,
-            "connected": status.connected,
-            "configured": status.state.value != "not_installed",
-            "state": status.state.value,
-            "detail": status.detail,
-            "account": status.account,
-            "skills": mapping["skills"],
-            "toolsets": mapping["toolsets"],
-            "status": status.to_dict(),
-        }
-        if connector.id != "google":
-            items.append(item)
+        items.append(_connector_payload(connector, status))
 
     try:
         from spark_cli.google_connector import get_connection_status_async
@@ -136,6 +169,7 @@ async def list_connectors():
                 "name": "Google Workspace",
                 "description": "Gmail, Google Calendar",
                 "icon": "google",
+                "kind": "oauth",
                 "transport": "cli",
                 "state": "connected" if google_status.get("connected") else "disconnected",
                 "detail": (
@@ -213,6 +247,102 @@ async def connector_enable_skills(connector_id: str):
         return JSONResponse({"ok": True, **result})
     except Exception as exc:
         logger.warning("connector_enable_skills error for %s: %s", connector_id, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/connectors/{id}/api-key — guided key paste (persists to profile .env)
+# ---------------------------------------------------------------------------
+
+@router.post("/api/connectors/{connector_id}/api-key")
+async def connector_save_api_key(connector_id: str, payload: ApiKeyRequest):
+    """Persist a pasted API key to the active profile's .env and re-probe status.
+
+    The key is written via `save_env_value` (atomic write, 0600, under
+    `get_spark_home()`), never a hardcoded path.
+    """
+    try:
+        from tools.connectors import get_connector
+
+        connector = get_connector(connector_id)
+        if connector is None:
+            return JSONResponse({"error": "unknown_connector"}, status_code=404)
+        spec = getattr(connector, "spec", None)
+        env_vars = list(getattr(spec, "env_vars", ()) or ()) if spec is not None else []
+        if not env_vars:
+            return JSONResponse(
+                {"error": "no_api_key", "message": "This connector does not use an API key."},
+                status_code=400,
+            )
+        env_var = (payload.env_var or "").strip() or (
+            getattr(spec, "primary_env_var", "") or env_vars[0]
+        )
+        if env_var not in env_vars:
+            return JSONResponse(
+                {"error": "invalid_env_var", "message": f"Expected one of: {', '.join(env_vars)}"},
+                status_code=400,
+            )
+        api_key = payload.api_key.strip()
+        if not api_key or any(ch in api_key for ch in "\r\n"):
+            return JSONResponse(
+                {"error": "invalid_api_key", "message": "Paste a single-line API key."},
+                status_code=400,
+            )
+
+        from spark_cli.config import save_env_value
+
+        save_env_value(env_var, api_key)
+
+        status = connector.status()
+        if status.connected:
+            try:
+                from spark_cli.connector_skills import enable_connector_skills
+
+                enable_connector_skills(connector_id, connector.skills)
+            except Exception as exc:
+                logger.warning("Could not enable skills for %s: %s", connector_id, exc)
+        if status.state.value == "error":
+            # Validation failed — roll back so a bad key isn't left in .env.
+            try:
+                from spark_cli.config import remove_env_value
+
+                remove_env_value(env_var)
+            except Exception:
+                pass
+            return JSONResponse(
+                {"error": "validation_failed", "message": status.detail},
+                status_code=400,
+            )
+        return JSONResponse({"saved": True, "env_var": env_var,
+                             **_connector_payload(connector, status)})
+    except Exception as exc:
+        logger.warning("connector_save_api_key error for %s: %s", connector_id, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/connectors/{id}/connect/status — poll a pending (MCP OAuth) connect
+# ---------------------------------------------------------------------------
+
+@router.get("/api/connectors/{connector_id}/connect/status")
+async def connector_connect_status(connector_id: str):
+    try:
+        from tools.connectors import get_connector
+
+        connector = get_connector(connector_id)
+        if connector is None:
+            return JSONResponse({"error": "unknown_connector"}, status_code=404)
+        status = connector.status()
+        extra = status.extra or {}
+        return JSONResponse({
+            "connected": status.connected,
+            "state": status.state.value,
+            "detail": status.detail,
+            "connect_state": extra.get("connect_state", ""),
+            "connect_error": extra.get("connect_error", ""),
+        })
+    except Exception as exc:
+        logger.warning("connector_connect_status error for %s: %s", connector_id, exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
@@ -390,6 +520,30 @@ async def connector_connect(connector_id: str):
         connector = get_connector(connector_id)
         if connector is None:
             return JSONResponse({"error": "unknown_connector"}, status_code=404)
+
+        # MCP preset connectors: connect() writes the mcp_servers entry and
+        # launches the browser OAuth flow in the background; the UI polls
+        # GET /api/connectors/{id}/connect/status until connected.
+        from tools.connectors import Transport
+
+        if connector.transport is Transport.MCP:
+            status = connector.connect()
+            try:
+                from spark_cli.connector_skills import enable_connector_skills
+
+                enable_connector_skills(connector_id, connector.skills)
+            except Exception as exc:
+                logger.warning("Could not enable skills for %s: %s", connector_id, exc)
+            extra = status.extra or {}
+            return JSONResponse({
+                "flow": "mcp_oauth" if extra.get("auth_type") == "mcp_oauth" else "mcp",
+                "connected": status.connected,
+                "state": status.state.value,
+                "detail": status.detail,
+                "connect_state": extra.get("connect_state", ""),
+                "poll_url": f"/api/connectors/{connector_id}/connect/status",
+            })
+
         if connector_id not in OAUTH_PROVIDERS:
             return JSONResponse(
                 {
@@ -716,6 +870,25 @@ async def connector_disconnect(connector_id: str, disable_skills: bool = True):
         connector = get_connector(connector_id)
         if connector is None:
             return JSONResponse({"error": "unknown_connector"}, status_code=404)
+
+        # MCP preset connectors clean up their own tokens + mcp_servers entry.
+        from tools.connectors import Transport
+
+        if connector.transport is Transport.MCP:
+            connector.disconnect()
+            mcp_skills_disabled: list[str] = []
+            if disable_skills:
+                try:
+                    from spark_cli.connector_skills import disable_connector_skills
+
+                    mcp_skills_disabled = disable_connector_skills(
+                        connector_id, connector.skills
+                    )["skills"]
+                except Exception as exc:
+                    logger.warning("Could not disable skills for %s: %s", connector_id, exc)
+            return JSONResponse(
+                {"disconnected": True, "skills_disabled": mcp_skills_disabled}
+            )
 
         # 1. Forget any stored OAuth token.
         try:

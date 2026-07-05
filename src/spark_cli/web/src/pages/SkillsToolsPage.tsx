@@ -343,22 +343,7 @@ export default function SkillsToolsPage() {
       {tab === "tools" && (
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-4">
           <div className="mx-auto max-w-5xl">
-            {/* MCP servers entry point */}
-            <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-4 rounded-lg border border-border/50 bg-card/30 px-5 py-3.5">
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-foreground">MCP servers</div>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  Connect Model Context Protocol servers to add custom tools from other apps and services.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="h-8 shrink-0 rounded-md bg-foreground/10 px-3 text-[12px] font-medium text-foreground transition hover:bg-foreground/15"
-                onClick={() => window.dispatchEvent(new CustomEvent("spark-open-settings"))}
-              >
-                Manage MCP
-              </button>
-            </div>
+            {/* Connectors page owns all app/tool connections, including MCP. */}
             <ConnectorsPage />
           </div>
         </div>
