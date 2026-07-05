@@ -22,6 +22,17 @@ If a tool already exists as an MCP server somewhere, connecting it to Spark is u
 
 ---
 
+## One-Click Connectors (recommended)
+
+The easiest way to connect popular tools is the **Connectors** page in the Spark web UI:
+
+- **MCP presets** (Notion, Figma, Linear, GitHub MCP, Sentry, Context7) connect with a single click — Spark opens your browser for OAuth, stores tokens under your profile, and writes the `mcp_servers` entry for you. Newly connected MCP tools apply from your next session.
+- **API-key apps** (Airtable, HubSpot, Asana, Firecrawl, Exa, …) use a guided modal: Spark deep-links to the provider's key page, you paste the key, and it is validated and saved to your profile `.env`.
+- Anything already configured (env keys or `mcp_servers` entries) shows as **Connected** automatically — no re-auth needed after upgrading.
+- Custom servers not in the catalog can still be added under **Advanced — custom MCP servers** (URL or launch command), or with `spark mcp add` below.
+
+---
+
 ## Quick Start
 
 1. Install MCP support (already included in the standard install):

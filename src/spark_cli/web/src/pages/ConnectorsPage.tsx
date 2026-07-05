@@ -482,7 +482,8 @@ export default function ConnectorsPage() {
           return;
         }
         showToast(
-          `Approve ${connector.name} in the browser window Spark just opened.`,
+          `Approve ${connector.name} in the browser window Spark just opened. ` +
+            "New tools apply from your next session.",
           "success",
         );
         startMcpPolling(connector.id);

@@ -294,6 +294,13 @@ async def connector_save_api_key(connector_id: str, payload: ApiKeyRequest):
         save_env_value(env_var, api_key)
 
         status = connector.status()
+        if status.connected:
+            try:
+                from spark_cli.connector_skills import enable_connector_skills
+
+                enable_connector_skills(connector_id, connector.skills)
+            except Exception as exc:
+                logger.warning("Could not enable skills for %s: %s", connector_id, exc)
         if status.state.value == "error":
             # Validation failed — roll back so a bad key isn't left in .env.
             try:
@@ -521,6 +528,12 @@ async def connector_connect(connector_id: str):
 
         if connector.transport is Transport.MCP:
             status = connector.connect()
+            try:
+                from spark_cli.connector_skills import enable_connector_skills
+
+                enable_connector_skills(connector_id, connector.skills)
+            except Exception as exc:
+                logger.warning("Could not enable skills for %s: %s", connector_id, exc)
             extra = status.extra or {}
             return JSONResponse({
                 "flow": "mcp_oauth" if extra.get("auth_type") == "mcp_oauth" else "mcp",
@@ -863,17 +876,19 @@ async def connector_disconnect(connector_id: str, disable_skills: bool = True):
 
         if connector.transport is Transport.MCP:
             connector.disconnect()
-            skills_disabled: list[str] = []
+            mcp_skills_disabled: list[str] = []
             if disable_skills:
                 try:
                     from spark_cli.connector_skills import disable_connector_skills
 
-                    skills_disabled = disable_connector_skills(
+                    mcp_skills_disabled = disable_connector_skills(
                         connector_id, connector.skills
                     )["skills"]
                 except Exception as exc:
                     logger.warning("Could not disable skills for %s: %s", connector_id, exc)
-            return JSONResponse({"disconnected": True, "skills_disabled": skills_disabled})
+            return JSONResponse(
+                {"disconnected": True, "skills_disabled": mcp_skills_disabled}
+            )
 
         # 1. Forget any stored OAuth token.
         try:
