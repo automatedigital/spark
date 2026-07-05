@@ -193,6 +193,12 @@ Control where Spark runs shell commands.
 
 Each platform needs its own token. Set only the ones you use.
 
+Each platform also has an advisory `*_ENABLED` flag (e.g. `SLACK_ENABLED`).
+You normally don't set it by hand: saving a platform's required credentials in
+Messaging > Settings automatically writes `*_ENABLED=true` once the platform is
+fully configured, and the toggle in that UI writes `true`/`false` explicitly.
+An explicit `*_ENABLED=false` is never overridden by a later credential save.
+
 ### Telegram
 
 | Variable | Notes |
