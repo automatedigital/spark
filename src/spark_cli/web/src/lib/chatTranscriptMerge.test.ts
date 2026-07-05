@@ -58,4 +58,27 @@ describe("chat transcript merge", () => {
       { id: "local-a1", role: "assistant", content: "Once there was a turtle", streaming: false },
     ]);
   });
+
+  it("does not replace richer local history with an incomplete synced tail page", () => {
+    const sessionId = "session-tail";
+    const tailPage: ChatMessage[] = [
+      { id: "db:10", role: "user", content: "Latest question" },
+      { id: "db:11", role: "assistant", content: "Latest answer" },
+    ];
+    const localHistory: ChatMessage[] = [
+      { id: "db:1", role: "user", content: "Older question" },
+      { id: "db:2", role: "assistant", content: "Older answer" },
+      ...tailPage,
+    ];
+
+    const merged = mergeSyncedMessages(tailPage, localHistory, sessionId, {
+      preferSyncedAssistants: true,
+      syncedComplete: false,
+    });
+
+    expect(merged.filter((m) => m.role === "assistant").map((m) => m.content)).toEqual([
+      "Older answer",
+      "Latest answer",
+    ]);
+  });
 });

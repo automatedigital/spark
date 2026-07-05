@@ -105,6 +105,8 @@ export interface SessionStoreValue {
   deleteSession: (id: string) => Promise<void>;
   deleteProject: (slug: string) => Promise<void>;
   createProject: (request: ProjectCreateRequest | string, template?: string) => Promise<string>;
+  moveSessionToProject: (id: string, slug: string | null) => Promise<void>;
+  renameProject: (slug: string, name: string) => Promise<string>;
   reloadSessions: () => Promise<void>;
   reloadProjects: () => Promise<void>;
 }
@@ -436,6 +438,65 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     return res.slug;
   }, [reloadProjects]);
 
+  const moveSessionToProject = useCallback(async (id: string, slug: string | null) => {
+    const source = slug ? `workspace:${slug}` : "web";
+    let previous: SessionInfo | null = null;
+    setSessions((prev) => prev.map((session) => {
+      if (session.id !== id) return session;
+      previous = session;
+      return { ...session, source };
+    }));
+    if (slug) {
+      setExpandedProjects((prev) => {
+        const next = new Set(prev);
+        next.add(slug);
+        localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+        return next;
+      });
+    }
+    try {
+      const res = await api.moveSession(id, source);
+      if (res.session) {
+        setSessions((prev) => prev.map((session) => (
+          session.id === id ? { ...session, ...res.session } : session
+        )));
+      }
+    } catch (e) {
+      if (previous) {
+        setSessions((prev) => prev.map((session) => (
+          session.id === id ? previous as SessionInfo : session
+        )));
+      } else {
+        void reloadSessions();
+      }
+      throw e;
+    }
+  }, [reloadSessions]);
+
+  const renameProject = useCallback(async (slug: string, name: string): Promise<string> => {
+    const res = await api.renameWorkspaceProject(slug, name);
+    const newSlug = res.slug;
+    setProjects((prev) => prev.map((project) => (
+      project.slug === slug
+        ? { ...project, slug: newSlug, name: res.name, path: res.path, mtime: res.mtime }
+        : project
+    )));
+    setSessions((prev) => prev.map((session) => (
+      session.source === `workspace:${slug}`
+        ? { ...session, source: `workspace:${newSlug}` }
+        : session
+    )));
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.delete(slug)) next.add(newSlug);
+      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+      return next;
+    });
+    setComposingFor((prev) => (prev === slug ? newSlug : prev));
+    void reloadProjects();
+    return newSlug;
+  }, [reloadProjects]);
+
   // ── Derived ──
   const displayedSessions = searchResults ?? sessions;
   const selectedSession = useMemo(
@@ -471,6 +532,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     deleteSession,
     deleteProject,
     createProject,
+    moveSessionToProject,
+    renameProject,
     reloadSessions,
     reloadProjects,
   };

@@ -917,6 +917,31 @@ class SessionDB:
         rowcount = self._execute_write(_do)
         return rowcount > 0
 
+    def update_session_source(self, session_id: str, source: str | None) -> bool:
+        """Move a session to a new source bucket.
+
+        The web UI uses ``source`` for lightweight grouping, e.g.
+        ``web`` for regular chats and ``workspace:<slug>`` for project chats.
+        """
+        def _do(conn):
+            cursor = conn.execute(
+                "UPDATE sessions SET source = ? WHERE id = ?",
+                (source, session_id),
+            )
+            return cursor.rowcount
+        rowcount = self._execute_write(_do)
+        return rowcount > 0
+
+    def migrate_session_source(self, old_source: str, new_source: str | None) -> int:
+        """Bulk-rewrite session sources, returning the number of moved rows."""
+        def _do(conn):
+            cursor = conn.execute(
+                "UPDATE sessions SET source = ? WHERE source = ?",
+                (new_source, old_source),
+            )
+            return cursor.rowcount
+        return int(self._execute_write(_do))
+
     def get_session_title(self, session_id: str) -> str | None:
         """Get the title for a session, or None."""
         with self._lock:

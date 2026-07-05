@@ -689,7 +689,7 @@ export function ChatPanel({
             mapped,
             initialTranscript.length > 0 ? prev : optimistic,
             resp.session_id ?? selectedSessionId,
-            { preferSyncedAssistants: true },
+            { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
           ));
           setHasEarlier(resp.has_earlier ?? false);
         } catch {
@@ -724,7 +724,12 @@ export function ChatPanel({
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
           setChatMessages((prev) => (
-            mergeSyncedMessages(mapped, initialTranscript.length > 0 ? prev : optimistic, resp.session_id ?? sessionId)
+            mergeSyncedMessages(
+              mapped,
+              initialTranscript.length > 0 ? prev : optimistic,
+              resp.session_id ?? sessionId,
+              { syncedComplete: !(resp.has_earlier ?? false) },
+            )
           ));
           setHasEarlier(resp.has_earlier ?? false);
           // If history already contains an assistant reply, the turn finished
@@ -1012,7 +1017,7 @@ export function ChatPanel({
             mapped,
             prev,
             resp.session_id ?? sid,
-            { preferSyncedAssistants: true },
+            { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
           ));
         } catch {
           /* keep whatever we have locally */
@@ -1302,7 +1307,7 @@ export function ChatPanel({
               mapped,
               prev,
               responseSessionId,
-              { preferSyncedAssistants: true },
+              { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
             ));
           };
           void api
@@ -1677,7 +1682,8 @@ export function ChatPanel({
     if (!sid || loadingEarlier) return;
     const recoverySeq = sessionRecoverySeqRef.current;
     const firstMsg = chatMessages.find((m) => (m as { sessionIdx?: number }).sessionIdx != null);
-    const beforeId = (firstMsg as { id?: string })?.id;
+    const firstId = (firstMsg as { id?: string })?.id;
+    const beforeId = firstId?.startsWith("db:") ? firstId.slice(3) : firstId;
     setLoadingEarlier(true);
     try {
       const resp = await api.getSessionMessages(sid, HISTORY_PAGE, beforeId);
