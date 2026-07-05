@@ -8886,6 +8886,11 @@ class GatewayRunner:
                     "input_tokens": _input_toks,
                     "output_tokens": _output_toks,
                     "model": _resolved_model,
+                    # Propagate failure so delivery is never suppressed as
+                    # "already streamed" — the error is new content the user
+                    # hasn't seen (web UI freeze fix).
+                    "failed": True,
+                    "error": result.get("error"),
                 }
             
             # Scan tool results for MEDIA:<path> tags that need to be delivered
@@ -8977,6 +8982,12 @@ class GatewayRunner:
                 "model": _resolved_model,
                 "session_id": effective_session_id,
                 "response_previewed": result.get("response_previewed", False),
+                # Keep failure state visible to the delivery path: a failed
+                # turn's final_response is an error message the user hasn't
+                # seen, so it must never be marked "already_sent" just
+                # because streaming delivered earlier partial output.
+                "failed": bool(result.get("failed")),
+                "error": result.get("error"),
             }
         
         # Start progress message sender if enabled
@@ -9395,6 +9406,10 @@ class GatewayRunner:
                             )
                         )
                     )
+                    if result.get("failed"):
+                        # A failed turn's final_response is an error message the
+                        # user hasn't seen yet — never treat it as streamed.
+                        _already_streamed = False
                     first_response = result.get("final_response", "")
                     if first_response and not _already_streamed:
                         try:
