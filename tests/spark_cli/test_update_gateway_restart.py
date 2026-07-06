@@ -957,3 +957,45 @@ class TestGatewayModeWritesExitCodeEarly:
         assert exit_code_existed_at_restart, "systemctl restart was never called"
         assert exit_code_existed_at_restart[0] is True, \
             ".update_exit_code must exist BEFORE systemctl restart (cgroup kill race)"
+
+
+class TestDashboardVerification:
+    @patch("shutil.which", return_value=None)
+    @patch("subprocess.run")
+    def test_dashboard_failure_overwrites_gateway_exit_code(
+        self, mock_run, _mock_which, capsys, tmp_path, monkeypatch,
+    ):
+        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
+        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
+        monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
+
+        spark_home = tmp_path / ".spark"
+        spark_home.mkdir()
+        monkeypatch.setenv("SPARK_HOME", str(spark_home))
+
+        import spark_cli.main as _main_mod
+
+        monkeypatch.setattr(_main_mod, "get_spark_home", lambda: spark_home)
+
+        mock_run.side_effect = _make_run_side_effect(
+            commit_count="1", systemd_active=True,
+        )
+
+        args = SimpleNamespace(gateway=True)
+
+        with patch.object(gateway_cli, "find_gateway_pids", return_value=[]), \
+             patch.object(_main_mod, "_verify_dashboard_after_update", wraps=_main_mod._verify_dashboard_after_update), \
+             patch("spark_cli.dashboard_health.check_dashboard_health") as check:
+            check.return_value = SimpleNamespace(
+                enabled=True,
+                ok=False,
+                url="http://127.0.0.1:9119/api/dashboard/auth/info",
+                host="0.0.0.0",
+                port=9119,
+                error="connection refused",
+            )
+            cmd_update(args)
+
+        captured = capsys.readouterr().out
+        assert "Dashboard verification failed after update" in captured
+        assert (spark_home / ".update_exit_code").read_text() == "1"

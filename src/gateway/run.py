@@ -1797,6 +1797,17 @@ class GatewayRunner:
                         raise
                     except Exception as e:
                         logger.error("Embedded dashboard server stopped: %s", e)
+                        try:
+                            from gateway.status import write_runtime_status
+
+                            write_runtime_status(
+                                platform="dashboard",
+                                platform_state="error",
+                                error_code="dashboard_start_failed",
+                                error_message=f"{_host}:{_port}: {e}",
+                            )
+                        except Exception:
+                            logger.debug("Failed to persist dashboard error status", exc_info=True)
 
                 _dt = asyncio.create_task(_dashboard_server_task())
                 self._background_tasks.add(_dt)

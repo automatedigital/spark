@@ -25,6 +25,20 @@ def test_installer_syncs_bundled_skills_via_module():
     assert "dashboard SPARK_HOME" in content
 
 
+def test_installer_migrates_config_and_checks_dashboard_health():
+    content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert "run_config_migration()" in content
+    assert "migrate_config(interactive=False" in content
+    assert "gateway_runtime_required()" in content
+    assert "API_SERVER_ENABLED API_SERVER_KEY" in content
+    assert 'dash.get("enabled_with_gateway", True)' in content
+    assert "Spark uses the gateway for messaging, API server access, and the embedded Web UI." in content
+    assert "verify_dashboard_health()" in content
+    assert "-m spark_cli.dashboard_health --wait 20" in content
+    assert "Dashboard health check failed after gateway restart" in content
+
+
 def test_legacy_setup_script_syncs_missing_bundled_skills():
     content = SETUP_SCRIPT.read_text(encoding="utf-8")
 

@@ -4515,6 +4515,42 @@ def _ensure_dream_databases() -> None:
         print(f"  ⚠  Could not initialize dream database: {e}")
 
 
+def _write_update_exit_code(code: int) -> None:
+    _exit_code_path = get_spark_home() / ".update_exit_code"
+    try:
+        _exit_code_path.write_text(str(code))
+    except OSError:
+        pass
+
+
+def _verify_dashboard_after_update(*, gateway_mode: bool = False) -> bool:
+    try:
+        from spark_cli.dashboard_health import (
+            check_dashboard_health,
+            format_dashboard_health_failure,
+        )
+
+        result = check_dashboard_health(wait_seconds=0, timeout=2, interval=1)
+    except Exception as exc:
+        print()
+        print(f"  ⚠ Dashboard verification skipped: {exc}")
+        return True
+
+    if not result.enabled:
+        return True
+    if result.ok:
+        print(f"  ✓ Dashboard healthy at {result.url}")
+        return True
+
+    print()
+    print("  ⚠ Dashboard verification failed after update.")
+    for line in format_dashboard_health_failure(result).splitlines():
+        print(f"    {line}")
+    if gateway_mode:
+        _write_update_exit_code(1)
+    return False
+
+
 def cmd_update(args):
     """Update Spark Agent to the latest version."""
     import shutil
@@ -5011,15 +5047,12 @@ def cmd_update(args):
         # before we attempt the restart — ensures the new gateway sees it
         # regardless of how we die.
         if gateway_mode:
-            _exit_code_path = get_spark_home() / ".update_exit_code"
-            try:
-                _exit_code_path.write_text("0")
-            except OSError:
-                pass
+            _write_update_exit_code(0)
 
         # Auto-restart ALL gateways after update.
         # The code update (git pull) is shared across all profiles, so every
         # running gateway needs restarting to pick up the new code.
+        dashboard_check_needed = False
         try:
             from spark_cli.gateway import (
                 is_macos,
@@ -5150,6 +5183,7 @@ def cmd_update(args):
                     print("    Restart manually: spark gateway run")
 
             if restarted_services:
+                dashboard_check_needed = True
                 print()
                 for svc in restarted_services:
                     print(f"  ✓ Restarted {svc}")
@@ -5184,6 +5218,9 @@ def cmd_update(args):
 
         except Exception as e:
             logger.debug("Gateway restart during update failed: %s", e)
+
+        if dashboard_check_needed:
+            _verify_dashboard_after_update(gateway_mode=gateway_mode)
 
         print()
         print("Tip: You can now select a provider and model:")

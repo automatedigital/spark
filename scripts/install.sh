@@ -1362,29 +1362,90 @@ run_setup_wizard() {
     fi
 }
 
-maybe_start_gateway() {
-    # Check if any messaging platform tokens were configured
-    ENV_FILE="$SPARK_HOME/.env"
-    if [ ! -f "$ENV_FILE" ]; then
+run_config_migration() {
+    local config_python
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
+        config_python="$INSTALL_DIR/.venv/bin/python"
+    else
+        config_python="$PYTHON_PATH"
+    fi
+
+    log_info "Checking configuration migrations..."
+    if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$config_python" - <<'PY'
+from spark_cli.config import migrate_config
+migrate_config(interactive=False, quiet=False)
+PY
+    then
+        log_success "Configuration migration check complete"
+    else
+        log_warn "Configuration migration failed. Run: spark config migrate"
+    fi
+}
+
+verify_dashboard_health() {
+    local health_python
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
+        health_python="$INSTALL_DIR/.venv/bin/python"
+    else
+        health_python="$PYTHON_PATH"
+    fi
+
+    if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$health_python" -m spark_cli.dashboard_health --wait 20 >/tmp/spark-dashboard-health.$$ 2>&1; then
+        cat /tmp/spark-dashboard-health.$$ 2>/dev/null || true
+        rm -f /tmp/spark-dashboard-health.$$
         return 0
     fi
 
-    HAS_MESSAGING=false
-    for VAR in TELEGRAM_BOT_TOKEN DISCORD_BOT_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN WHATSAPP_ENABLED; do
-        VAL=$(grep "^${VAR}=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2-)
-        if [ -n "$VAL" ] && [ "$VAL" != "your-token-here" ]; then
-            HAS_MESSAGING=true
-            break
-        fi
-    done
+    log_warn "Dashboard health check failed after gateway restart."
+    sed 's/^/  /' /tmp/spark-dashboard-health.$$ 2>/dev/null || true
+    rm -f /tmp/spark-dashboard-health.$$
+    log_warn "The bot may be online while the Web UI is unavailable."
+    log_info "Check logs: journalctl --user -u spark-gateway.service -n 100 --no-pager"
+    log_info "Repair: spark config migrate && spark gateway restart"
+    return 1
+}
 
-    if [ "$HAS_MESSAGING" = false ]; then
+gateway_runtime_required() {
+    local env_file="$SPARK_HOME/.env"
+
+    if [ -f "$env_file" ]; then
+        local var val
+        for var in TELEGRAM_BOT_TOKEN DISCORD_BOT_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN WHATSAPP_ENABLED API_SERVER_ENABLED API_SERVER_KEY; do
+            val=$(grep "^${var}=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
+            if [ -n "$val" ] && [ "$val" != "your-token-here" ] && [ "$val" != "false" ] && [ "$val" != "0" ]; then
+                return 0
+            fi
+        done
+    fi
+
+    local config_python
+    if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
+        config_python="$INSTALL_DIR/.venv/bin/python"
+    else
+        config_python="$PYTHON_PATH"
+    fi
+
+    SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$config_python" - <<'PY'
+from spark_cli.config import load_config
+
+cfg = load_config()
+dash = cfg.get("dashboard") if isinstance(cfg, dict) else {}
+if not isinstance(dash, dict):
+    dash = {}
+raise SystemExit(0 if dash.get("enabled_with_gateway", True) else 1)
+PY
+}
+
+maybe_start_gateway() {
+    ENV_FILE="$SPARK_HOME/.env"
+
+    if ! gateway_runtime_required; then
         return 0
     fi
 
     echo ""
-    log_info "Messaging platform token detected!"
-    log_info "The gateway needs to be running for Spark to send/receive messages."
+    log_info "Gateway runtime required!"
+    log_info "Spark uses the gateway for messaging, API server access, and the embedded Web UI."
 
     # If WhatsApp is enabled and no session exists yet, run foreground first for QR scan
     WHATSAPP_VAL=$(grep "^WHATSAPP_ENABLED=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2-)
@@ -1432,6 +1493,7 @@ maybe_start_gateway() {
                     else
                         log_success "Your bot is online!"
                     fi
+                    verify_dashboard_health || true
                 else
                     GATEWAY_STATE=$(systemctl --user show spark-gateway.service --property=ActiveState --value 2>/dev/null || echo "unknown")
                     if [ "$GATEWAY_STATE" = "failed" ]; then
@@ -1455,6 +1517,8 @@ maybe_start_gateway() {
         nohup $SPARK_CMD gateway > "$SPARK_HOME/logs/gateway.log" 2>&1 &
         GATEWAY_PID=$!
         log_success "Gateway started (PID $GATEWAY_PID). Logs: ~/.spark/logs/gateway.log"
+        sleep 2
+        verify_dashboard_health || true
         log_info "To stop: kill $GATEWAY_PID"
         log_info "To restart later: spark gateway"
         if [ "$DISTRO" = "termux" ]; then
@@ -1560,6 +1624,7 @@ main() {
     setup_path
     copy_config_templates
     maybe_install_cua_driver
+    run_config_migration
     run_setup_wizard
     maybe_start_gateway
 
