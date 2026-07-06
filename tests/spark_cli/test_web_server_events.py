@@ -28,8 +28,12 @@ def web_client(monkeypatch, tmp_path):
     monkeypatch.setattr(web_server, "_web_event_loop", asyncio.get_event_loop())
     web_server._event_subscribers.clear()
     web_server._web_active_turns.clear()
+    web_server._web_turn_aliases.clear()
     web_server._web_agents.clear()
     web_server._web_agent_signatures.clear()
+    web_server._web_agent_last_used.clear()
+    web_server._web_warm_inflight.clear()
+    web_server._web_warm_recent.clear()
     web_server._web_queues.clear()
 
     return TestClient(web_server.app)
@@ -1408,6 +1412,47 @@ class TestConversationControl:
             assert resp.json()["turn_active"] is False
         finally:
             web_server._web_queues.pop("s_done", None)
+
+    def test_status_exposes_streaming_health_metrics(self, web_client):
+        import spark_cli.web_server as web_server
+
+        web_server._streaming_pipeline_metrics.record_loop_lag(0.123)
+        resp = web_client.get("/api/status")
+        assert resp.status_code == 200
+        health = resp.json()["streaming_health"]
+        assert health["loop_lag_seconds"] == 0.123
+        assert "checkpoint_writes" in health
+        assert "executor_queued" in health
+        assert "agent_cache_size" in health
+
+    def test_stream_snapshot_endpoint_uses_thread_offload(self, web_client, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        calls = []
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            calls.append(fn.__name__)
+            return fn(*args, **kwargs)
+
+        monkeypatch.setattr(web_server.asyncio, "to_thread", fake_to_thread)
+        resp = web_client.get("/api/conversations/snapshot-threaded/stream-snapshot")
+        assert resp.status_code == 200
+        assert calls == ["_conversation_stream_snapshot_payload"]
+
+    def test_agent_cache_eviction_skips_active_turn(self, web_client, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        monkeypatch.setattr(web_server, "_web_agent_cache_limit", lambda: 1)
+        inactive = MagicMock()
+        active = MagicMock()
+        web_server._store_web_agent("inactive-agent", inactive, {"model": "m"})
+        web_server._mark_web_turn_active("active-agent")
+        try:
+            web_server._store_web_agent("active-agent", active, {"model": "m"})
+            assert "active-agent" in web_server._web_agents
+            assert "inactive-agent" not in web_server._web_agents
+        finally:
+            web_server._clear_web_turn("active-agent")
 
     def test_completed_conversation_without_stream_consumer_is_not_active(self, web_client, monkeypatch):
         import time

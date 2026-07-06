@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PlatformStatus, SessionInfo, StatusResponse } from "@/lib/api";
-import { timeAgo, isoTimeAgo } from "@/lib/utils";
+import { cn, timeAgo, isoTimeAgo } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/i18n";
@@ -162,6 +162,60 @@ export default function StatusPage() {
         <PlatformsCard platforms={platforms} platformStateBadge={PLATFORM_STATE_BADGE} />
       )}
 
+      {status.streaming_health && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base">Streaming health</CardTitle>
+            </div>
+          </CardHeader>
+
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <HealthMetric
+              label="Loop lag"
+              value={formatMs(status.streaming_health.loop_lag_seconds)}
+              warn={status.streaming_health.loop_lag_seconds >= 0.25}
+            />
+            <HealthMetric
+              label="Turn lock max"
+              value={formatMs(status.streaming_health.turn_lock_wait_seconds_max)}
+              warn={status.streaming_health.turn_lock_wait_seconds_max >= 0.05}
+            />
+            <HealthMetric
+              label="Fanout max"
+              value={formatMs(status.streaming_health.fanout_latency_seconds_max)}
+              warn={status.streaming_health.fanout_latency_seconds_max >= 0.25}
+            />
+            <HealthMetric
+              label="Event drops"
+              value={String(status.streaming_health.event_drops)}
+              warn={status.streaming_health.event_drops > 0}
+            />
+            <HealthMetric
+              label="Checkpoint writes"
+              value={String(status.streaming_health.checkpoint_writes)}
+              warn={status.streaming_health.checkpoint_write_errors > 0}
+            />
+            <HealthMetric
+              label="Turn executor"
+              value={`${status.streaming_health.executor_running} running / ${status.streaming_health.executor_queued} queued`}
+              warn={status.streaming_health.executor_queued > 0}
+            />
+            <HealthMetric
+              label="Agent cache"
+              value={String(status.streaming_health.agent_cache_size)}
+              warn={false}
+            />
+            <HealthMetric
+              label="Warm dedupe"
+              value={String(status.streaming_health.warm_session_deduped)}
+              warn={false}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {activeSessions.length > 0 && (
         <Card>
           <CardHeader>
@@ -235,6 +289,21 @@ export default function StatusPage() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function formatMs(seconds: number | undefined): string {
+  return `${Math.round((seconds ?? 0) * 1000)} ms`;
+}
+
+function HealthMetric({ label, value, warn }: { label: string; value: string; warn: boolean }) {
+  return (
+    <div className="border border-border p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={cn("mt-1 text-sm font-semibold font-mono-ui", warn && "text-warning")}>
+        {value}
+      </div>
     </div>
   );
 }

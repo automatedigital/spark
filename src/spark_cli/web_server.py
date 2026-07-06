@@ -28,9 +28,12 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from collections import OrderedDict
+from contextlib import asynccontextmanager, contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from pathlib import Path
+from time import monotonic as _steady_clock
 from typing import Any, Callable, Dict, List, Optional
 
 import yaml
@@ -115,6 +118,8 @@ class WebActiveTurn:
     checkpoint_session_id: str | None = None
     last_checkpoint_at: float = 0.0
     checkpointed_chars: int = 0
+    session_aliases: set[str] = field(default_factory=set)
+    lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
 class _WebTurnCallbackContext:
@@ -135,7 +140,149 @@ class _WebTurnCallbackContext:
 
 
 _web_active_turns: dict[str, WebActiveTurn] = {}
+_web_turn_aliases: dict[str, str] = {}
 _web_turn_lock = threading.RLock()
+
+
+class _StreamingPipelineMetrics:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.checkpoint_writes = 0
+        self.checkpoint_write_seconds_total = 0.0
+        self.checkpoint_write_seconds_max = 0.0
+        self.checkpoint_write_errors = 0
+        self.turn_lock_wait_seconds_total = 0.0
+        self.turn_lock_wait_seconds_max = 0.0
+        self.turn_lock_wait_samples = 0
+        self.loop_lag_seconds = 0.0
+        self.loop_lag_seconds_max = 0.0
+        self.executor_submitted = 0
+        self.executor_completed = 0
+        self.executor_running = 0
+        self.executor_queued = 0
+        self.executor_queue_wait_seconds_total = 0.0
+        self.executor_queue_wait_seconds_max = 0.0
+        self.agent_cache_evictions = 0
+        self.warm_session_deduped = 0
+        self.fanout_latency_seconds_total = 0.0
+        self.fanout_latency_seconds_max = 0.0
+        self.fanout_latency_samples = 0
+
+    def record_lock_wait(self, seconds: float) -> None:
+        if seconds <= 0:
+            return
+        with self._lock:
+            self.turn_lock_wait_samples += 1
+            self.turn_lock_wait_seconds_total += seconds
+            self.turn_lock_wait_seconds_max = max(self.turn_lock_wait_seconds_max, seconds)
+
+    def record_checkpoint_write(self, seconds: float) -> None:
+        with self._lock:
+            self.checkpoint_writes += 1
+            self.checkpoint_write_seconds_total += max(0.0, seconds)
+            self.checkpoint_write_seconds_max = max(self.checkpoint_write_seconds_max, seconds)
+
+    def record_checkpoint_error(self) -> None:
+        with self._lock:
+            self.checkpoint_write_errors += 1
+
+    def record_loop_lag(self, seconds: float) -> None:
+        with self._lock:
+            self.loop_lag_seconds = max(0.0, seconds)
+            self.loop_lag_seconds_max = max(self.loop_lag_seconds_max, self.loop_lag_seconds)
+
+    def record_executor_submitted(self) -> None:
+        with self._lock:
+            self.executor_submitted += 1
+            self.executor_queued += 1
+
+    def record_executor_started(self, queue_wait: float) -> None:
+        with self._lock:
+            self.executor_queued = max(0, self.executor_queued - 1)
+            self.executor_running += 1
+            self.executor_queue_wait_seconds_total += max(0.0, queue_wait)
+            self.executor_queue_wait_seconds_max = max(self.executor_queue_wait_seconds_max, queue_wait)
+
+    def record_executor_completed(self) -> None:
+        with self._lock:
+            self.executor_running = max(0, self.executor_running - 1)
+            self.executor_completed += 1
+
+    def record_agent_eviction(self) -> None:
+        with self._lock:
+            self.agent_cache_evictions += 1
+
+    def record_warm_deduped(self) -> None:
+        with self._lock:
+            self.warm_session_deduped += 1
+
+    def record_fanout_latency(self, seconds: float) -> None:
+        with self._lock:
+            self.fanout_latency_samples += 1
+            self.fanout_latency_seconds_total += max(0.0, seconds)
+            self.fanout_latency_seconds_max = max(self.fanout_latency_seconds_max, seconds)
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            avg_lock = (
+                self.turn_lock_wait_seconds_total / self.turn_lock_wait_samples
+                if self.turn_lock_wait_samples
+                else 0.0
+            )
+            avg_checkpoint = (
+                self.checkpoint_write_seconds_total / self.checkpoint_writes
+                if self.checkpoint_writes
+                else 0.0
+            )
+            avg_queue_wait = (
+                self.executor_queue_wait_seconds_total / self.executor_submitted
+                if self.executor_submitted
+                else 0.0
+            )
+            avg_fanout = (
+                self.fanout_latency_seconds_total / self.fanout_latency_samples
+                if self.fanout_latency_samples
+                else 0.0
+            )
+            return {
+                "checkpoint_writes": self.checkpoint_writes,
+                "checkpoint_write_errors": self.checkpoint_write_errors,
+                "checkpoint_write_seconds_avg": avg_checkpoint,
+                "checkpoint_write_seconds_max": self.checkpoint_write_seconds_max,
+                "turn_lock_wait_seconds_avg": avg_lock,
+                "turn_lock_wait_seconds_max": self.turn_lock_wait_seconds_max,
+                "turn_lock_wait_samples": self.turn_lock_wait_samples,
+                "event_drops": sum(_event_drop_counts.values()),
+                "event_drop_keys": len(_event_drop_counts),
+                "loop_lag_seconds": self.loop_lag_seconds,
+                "loop_lag_seconds_max": self.loop_lag_seconds_max,
+                "executor_submitted": self.executor_submitted,
+                "executor_completed": self.executor_completed,
+                "executor_running": self.executor_running,
+                "executor_queued": self.executor_queued,
+                "executor_queue_wait_seconds_avg": avg_queue_wait,
+                "executor_queue_wait_seconds_max": self.executor_queue_wait_seconds_max,
+                "agent_cache_size": len(_web_agents),
+                "agent_cache_evictions": self.agent_cache_evictions,
+                "warm_session_deduped": self.warm_session_deduped,
+                "fanout_latency_seconds_avg": avg_fanout,
+                "fanout_latency_seconds_max": self.fanout_latency_seconds_max,
+                "fanout_latency_samples": self.fanout_latency_samples,
+            }
+
+
+_streaming_pipeline_metrics = _StreamingPipelineMetrics()
+
+
+@contextmanager
+def _with_web_turn_lock():
+    started = _steady_clock()
+    _web_turn_lock.acquire()
+    _streaming_pipeline_metrics.record_lock_wait(_steady_clock() - started)
+    try:
+        yield
+    finally:
+        _web_turn_lock.release()
 
 _EVENT_QUEUE_SIZE = 512
 _PRIORITY_EVENT_TOPICS = {
@@ -223,6 +370,43 @@ def _web_turn_key(session_id: str) -> str:
     return str(ids.get("latest") or ids.get("resolved") or session_id)
 
 
+def _web_turn_alias_set(session_id: Optional[str]) -> set[str]:
+    if not session_id:
+        return set()
+    return _web_turn_candidates(session_id) | {session_id}
+
+
+def _web_turn_candidate_keys(session_id: Optional[str], *, resolve: bool = True) -> list[str]:
+    if not session_id:
+        return []
+    candidates = [session_id]
+    with _with_web_turn_lock():
+        mapped = _web_turn_aliases.get(session_id)
+    if mapped:
+        candidates.insert(0, mapped)
+    if resolve:
+        candidates.extend(_web_turn_candidates(session_id))
+    with _with_web_turn_lock():
+        for candidate in list(candidates):
+            mapped = _web_turn_aliases.get(candidate)
+            if mapped:
+                candidates.insert(0, mapped)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            ordered.append(candidate)
+            seen.add(candidate)
+    return ordered
+
+
+def _remember_web_turn_aliases(key: str, turn: WebActiveTurn, aliases: set[str]) -> None:
+    for alias in aliases:
+        if alias:
+            _web_turn_aliases[alias] = key
+            turn.session_aliases.add(alias)
+
+
 def _mark_web_turn_active(
     session_id: str,
     *,
@@ -239,9 +423,11 @@ def _mark_web_turn_active(
         interrupt_requested=False,
         active_agent_session_id=active_agent_session_id,
         phase=phase,
+        session_aliases=_web_turn_alias_set(session_id),
     )
-    with _web_turn_lock:
+    with _with_web_turn_lock():
         _web_active_turns[key] = turn
+        _remember_web_turn_aliases(key, turn, turn.session_aliases | {key})
     return turn
 
 
@@ -255,21 +441,22 @@ def _touch_web_turn(
 ) -> None:
     if not session_id:
         return
-    with _web_turn_lock:
-        candidates = list(_web_turn_candidates(session_id))
+    candidates = _web_turn_candidate_keys(session_id)
+    with _with_web_turn_lock():
         turns = [(candidate, _web_active_turns.get(candidate)) for candidate in candidates]
     for _candidate, turn in turns:
         if not turn:
             continue
-        turn.last_event_at = time.time()
-        if status is not None:
-            turn.status = _sanitize_web_chat_text(status)
-        if phase is not None:
-            turn.phase = phase
-        if interrupt_requested is not None:
-            turn.interrupt_requested = interrupt_requested
-        if active_agent_session_id is not None:
-            turn.active_agent_session_id = active_agent_session_id
+        with turn.lock:
+            turn.last_event_at = time.time()
+            if status is not None:
+                turn.status = _sanitize_web_chat_text(status)
+            if phase is not None:
+                turn.phase = phase
+            if interrupt_requested is not None:
+                turn.interrupt_requested = interrupt_requested
+            if active_agent_session_id is not None:
+                turn.active_agent_session_id = active_agent_session_id
         return
 
 
@@ -279,24 +466,25 @@ def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
     token = _sanitize_web_chat_text(token)
     if not token:
         return
-    with _web_turn_lock:
-        candidates = list(_web_turn_candidates(session_id))
+    candidates = _web_turn_candidate_keys(session_id, resolve=False)
+    with _with_web_turn_lock():
         turns = [(candidate, _web_active_turns.get(candidate)) for candidate in candidates]
     for candidate, turn in turns:
         if not turn:
             continue
-        turn.last_event_at = time.time()
-        turn.phase = "streaming"
-        turn.stream_text += token
-        turn.stream_revision += 1
+        with turn.lock:
+            turn.last_event_at = time.time()
+            turn.phase = "streaming"
+            turn.stream_text += token
+            turn.stream_revision += 1
         _checkpoint_web_turn(candidate, turn)
         return
 
 
-_WEB_TURN_CHECKPOINT_INTERVAL_S = 0.0
+_WEB_TURN_CHECKPOINT_INTERVAL_S = 1.5
 
 
-def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn) -> None:
+def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn, *, force: bool = False) -> None:
     """Persist the streamed assistant text so a mid-turn crash keeps it.
 
     The first checkpoint inserts an assistant row marked finish_reason
@@ -305,30 +493,41 @@ def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn) -> None:
     normally, _persist_web_turn_if_missing either finalizes this row or
     deletes it when the agent flushed its own copy.
     """
-    now = time.time()
-    if _WEB_TURN_CHECKPOINT_INTERVAL_S > 0 and now - turn.last_checkpoint_at < _WEB_TURN_CHECKPOINT_INTERVAL_S:
-        return
-    text = turn.stream_text
-    if not text or len(text) <= turn.checkpointed_chars:
-        return
-    turn.last_checkpoint_at = now
+    with turn.lock:
+        now = time.time()
+        if (
+            not force
+            and _WEB_TURN_CHECKPOINT_INTERVAL_S > 0
+            and now - turn.last_checkpoint_at < _WEB_TURN_CHECKPOINT_INTERVAL_S
+        ):
+            return
+        text = turn.stream_text
+        if not text or len(text) <= turn.checkpointed_chars:
+            return
+        turn.last_checkpoint_at = now
+        assistant_message_id = turn.assistant_message_id
+        target = turn.checkpoint_session_id or turn.active_agent_session_id or session_id
+    started = _steady_clock()
     try:
         from core.spark_state import SessionDB
 
         db = SessionDB()
         try:
-            if turn.assistant_message_id is None:
-                target = turn.active_agent_session_id or session_id
-                turn.checkpoint_session_id = target
-                turn.assistant_message_id = db.append_message(
+            if assistant_message_id is None:
+                assistant_message_id = db.append_message(
                     target, "assistant", content=text, finish_reason="interrupted"
                 )
             else:
-                db.update_message(turn.assistant_message_id, content=text)
-            turn.checkpointed_chars = len(text)
+                db.update_message(assistant_message_id, content=text)
         finally:
             db.close()
+        with turn.lock:
+            turn.checkpoint_session_id = target
+            turn.assistant_message_id = assistant_message_id
+            turn.checkpointed_chars = len(text)
+        _streaming_pipeline_metrics.record_checkpoint_write(_steady_clock() - started)
     except Exception:
+        _streaming_pipeline_metrics.record_checkpoint_error()
         _log.debug("web turn checkpoint failed session=%s", session_id, exc_info=True)
 
 
@@ -350,14 +549,21 @@ def _persist_web_user_message(session_id: str, user_message: str) -> int | None:
 
 
 def _clear_web_turn(session_id: str) -> None:
-    with _web_turn_lock:
-        for candidate in _web_turn_candidates(session_id):
-            _web_active_turns.pop(candidate, None)
+    candidates = _web_turn_candidate_keys(session_id)
+    with _with_web_turn_lock():
+        turns = [_web_active_turns.pop(candidate, None) for candidate in candidates]
+        for turn in turns:
+            if not turn:
+                continue
+            for alias in list(turn.session_aliases):
+                if _web_turn_aliases.get(alias) in candidates:
+                    _web_turn_aliases.pop(alias, None)
 
 
 def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTurn]]:
-    with _web_turn_lock:
-        for candidate in _web_turn_candidates(session_id):
+    candidates = _web_turn_candidate_keys(session_id)
+    with _with_web_turn_lock():
+        for candidate in candidates:
             turn = _web_active_turns.get(candidate)
             if turn:
                 return candidate, turn
@@ -379,10 +585,10 @@ def _get_web_agent_for_turn(session_id: str) -> tuple[Optional[str], Any]:
     ]
     for candidate in candidates:
         if candidate and candidate in _web_agents:
-            return candidate, _web_agents[candidate]
+            return candidate, _get_web_cached_agent(candidate)
     _, turn = _get_web_turn(session_id)
     if turn and turn.active_agent_session_id and turn.active_agent_session_id in _web_agents:
-        return turn.active_agent_session_id, _web_agents[turn.active_agent_session_id]
+        return turn.active_agent_session_id, _get_web_cached_agent(turn.active_agent_session_id)
     return None, None
 
 
@@ -442,10 +648,30 @@ def _prewarm_agent_stack() -> None:
         _log.debug("agent prewarm skipped", exc_info=True)
 
 
+async def _monitor_web_loop_lag() -> None:
+    """Track event-loop scheduling delay for the Status page."""
+    interval = 0.5
+    next_tick = _steady_clock() + interval
+    recent_warnings: list[float] = []
+    while True:
+        await asyncio.sleep(interval)
+        now = _steady_clock()
+        lag = max(0.0, now - next_tick)
+        next_tick = now + interval
+        _streaming_pipeline_metrics.record_loop_lag(lag)
+        if lag >= 0.25:
+            cutoff = now - 30.0
+            recent_warnings = [ts for ts in recent_warnings if ts >= cutoff]
+            recent_warnings.append(now)
+            if len(recent_warnings) >= 3:
+                _log.warning("Web event loop lag high: %.3fs", lag)
+
+
 async def _lifespan(_app: FastAPI):
     global _web_event_loop
     _web_event_loop = asyncio.get_running_loop()
     ensure_dashboard_token_file()
+    loop_lag_task = asyncio.create_task(_monitor_web_loop_lag())
     # Warm the update cache in the background so /api/status has it immediately
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _prefetch_update_check)
@@ -471,7 +697,13 @@ async def _lifespan(_app: FastAPI):
         _web_event_loop = None
         _event_subscribers.clear()
         _web_active_turns.clear()
+        _web_turn_aliases.clear()
         _web_queues.clear()
+        loop_lag_task.cancel()
+        try:
+            await loop_lag_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Spark Agent", version=__version__, lifespan=_lifespan)
@@ -616,6 +848,7 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
     loop = _web_event_loop
     if loop is None:
         return
+    published_at = _steady_clock()
     if topic.startswith("chat."):
         if not session_id:
             _record_event_drop(topic, session_id)
@@ -626,6 +859,7 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
     envelope = {"topic": topic, "session_id": session_id, "ts": time.time(), "data": data}
 
     def _fanout() -> None:
+        _streaming_pipeline_metrics.record_fanout_latency(_steady_clock() - published_at)
         for q in tuple(_event_subscribers):
             try:
                 q.put_nowait(envelope)
@@ -1684,6 +1918,7 @@ async def get_status():
         "dashboard_features": {
             "subagents_sidebar": bool(_dash.get("subagents_sidebar", True)),
         },
+        "streaming_health": _streaming_pipeline_metrics.snapshot(),
     }
 
 
@@ -4590,7 +4825,12 @@ async def warm_session_agent(session_id: str):
 
     # Already warm — nothing to do.
     if sid in _web_agents:
+        _touch_web_agent_cache(sid)
         return {"ok": True, "warm": True}
+    now = time.time()
+    if sid in _web_warm_inflight or now - _web_warm_recent.get(sid, 0.0) < 5.0:
+        _streaming_pipeline_metrics.record_warm_deduped()
+        return {"ok": True, "warm": False}
 
     # Resolve routing (model, provider, etc.) using an empty-string message
     # so routing heuristics use the same defaults as a real turn.
@@ -4598,30 +4838,38 @@ async def warm_session_agent(session_id: str):
         turn_route = _resolve_web_turn_route("")
     except Exception:
         return {"ok": True, "warm": False}
+    _web_warm_inflight.add(sid)
+    _web_warm_recent[sid] = now
 
     def _warm_in_thread() -> None:
-        from core.spark_state import SessionDB as _DB
-        _db = _DB()
         try:
-            conversation_history = _db.get_messages_as_conversation(sid)
+            from core.spark_state import SessionDB as _DB
+            _db = _DB()
+            try:
+                conversation_history = _db.get_messages_as_conversation(sid)
+            finally:
+                _db.close()
+            if sid in _web_agents:
+                _touch_web_agent_cache(sid)
+                return
+            _new_web_agent(
+                session_id=sid,
+                model=turn_route["model"],
+                runtime=turn_route["runtime"],
+                request_overrides=turn_route.get("request_overrides"),
+                signature=turn_route["signature"],
+                token_callback=None,
+                tool_start_callback=None,
+                tool_complete_callback=None,
+                reasoning_callback=None,
+                status_callback=None,
+            )
+            # Load conversation history so the system prompt is built and cached.
+            agent = _get_web_cached_agent(sid)
+            if agent and conversation_history:
+                _hydrate_web_agent_from_history(agent, conversation_history)
         finally:
-            _db.close()
-        _new_web_agent(
-            session_id=sid,
-            model=turn_route["model"],
-            runtime=turn_route["runtime"],
-            request_overrides=turn_route.get("request_overrides"),
-            signature=turn_route["signature"],
-            token_callback=None,
-            tool_start_callback=None,
-            tool_complete_callback=None,
-            reasoning_callback=None,
-            status_callback=None,
-        )
-        # Load conversation history so the system prompt is built and cached.
-        agent = _web_agents.get(sid)
-        if agent and conversation_history:
-            _hydrate_web_agent_from_history(agent, conversation_history)
+            _web_warm_inflight.discard(sid)
 
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, _warm_in_thread)
@@ -5024,8 +5272,105 @@ _KANBAN_STATUSES = {"backlog", "active", "review", "done"}
 
 # In-memory state for web chat sessions
 _web_queues: Dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
-_web_agents: Dict[str, Any] = {}             # session_id → AIAgent (multi-turn context)
+_web_agents: "OrderedDict[str, Any]" = OrderedDict()  # session_id → AIAgent (multi-turn context)
 _web_agent_signatures: Dict[str, Any] = {}    # session_id → effective model/runtime signature
+_web_agent_last_used: Dict[str, float] = {}
+_web_warm_inflight: set[str] = set()
+_web_warm_recent: Dict[str, float] = {}
+
+
+def _web_turn_worker_count() -> int:
+    raw = os.getenv("SPARK_WEB_TURN_WORKERS", "").strip()
+    if raw:
+        try:
+            return max(1, min(16, int(raw)))
+        except ValueError:
+            _log.warning("Invalid SPARK_WEB_TURN_WORKERS setting: %r", raw)
+    try:
+        cfg = load_config().get("dashboard") or {}
+        return max(1, min(16, int(cfg.get("turn_workers") or 4)))
+    except Exception:
+        return 4
+
+
+_WEB_TURN_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_web_turn_worker_count(),
+    thread_name_prefix="spark-web-turn",
+)
+
+
+def _web_agent_cache_limit() -> int:
+    raw = os.getenv("SPARK_WEB_AGENT_CACHE_SIZE", "").strip()
+    if raw:
+        try:
+            return max(1, min(128, int(raw)))
+        except ValueError:
+            _log.warning("Invalid SPARK_WEB_AGENT_CACHE_SIZE setting: %r", raw)
+    try:
+        cfg = load_config().get("dashboard") or {}
+        return max(1, min(128, int(cfg.get("agent_cache_size") or 8)))
+    except Exception:
+        return 8
+
+
+async def _run_web_turn_in_executor(loop: asyncio.AbstractEventLoop, fn: Callable[[], Any]) -> Any:
+    submitted_at = _steady_clock()
+    _streaming_pipeline_metrics.record_executor_submitted()
+
+    def _wrapped() -> Any:
+        _streaming_pipeline_metrics.record_executor_started(_steady_clock() - submitted_at)
+        try:
+            return fn()
+        finally:
+            _streaming_pipeline_metrics.record_executor_completed()
+
+    return await loop.run_in_executor(_WEB_TURN_EXECUTOR, _wrapped)
+
+
+def _touch_web_agent_cache(session_id: str) -> None:
+    if session_id in _web_agents:
+        _web_agents.move_to_end(session_id)
+        _web_agent_last_used[session_id] = time.time()
+
+
+def _get_web_cached_agent(session_id: str) -> Any:
+    agent = _web_agents.get(session_id)
+    if agent is not None:
+        _touch_web_agent_cache(session_id)
+    return agent
+
+
+def _has_pending_web_approval(session_id: str) -> bool:
+    try:
+        from tools import approval as approval_mod
+
+        pending = getattr(approval_mod, "_gateway_pending", None)
+        if isinstance(pending, dict):
+            return session_id in pending
+    except Exception:
+        pass
+    return False
+
+
+def _evict_web_agent_cache_if_needed() -> None:
+    limit = _web_agent_cache_limit()
+    if len(_web_agents) <= limit:
+        return
+    for sid in list(_web_agents.keys()):
+        if len(_web_agents) <= limit:
+            break
+        if _is_web_turn_active(sid) or _has_pending_web_approval(sid):
+            continue
+        _close_web_agent(sid)
+        _web_agent_last_used.pop(sid, None)
+        _streaming_pipeline_metrics.record_agent_eviction()
+
+
+def _store_web_agent(session_id: str, agent: Any, signature: Any) -> None:
+    _web_agents[session_id] = agent
+    _web_agent_signatures[session_id] = signature
+    _touch_web_agent_cache(session_id)
+    _evict_web_agent_cache_if_needed()
 
 
 def _web_max_iterations() -> int:
@@ -5170,13 +5515,16 @@ def _make_web_chat_callbacks(
             turn.phase = "streaming"
             turn.status = "Context compressed; continuing…"
             turn.active_agent_session_id = new_id
-            with _web_turn_lock:
+            with _with_web_turn_lock():
                 if _web_active_turns.get(old_key) is turn:
                     _web_active_turns.pop(old_key, None)
                 _web_active_turns[new_id] = turn
+                _remember_web_turn_aliases(new_id, turn, _web_turn_alias_set(new_id) | {old_id, new_id})
         if old_id in _web_agents and new_id not in _web_agents:
-            _web_agents[new_id] = _web_agents[old_id]
-            _web_agent_signatures[new_id] = _web_agent_signatures.get(old_id)
+            _web_agents[new_id] = _web_agents.pop(old_id)
+            _web_agent_signatures[new_id] = _web_agent_signatures.pop(old_id, None)
+            _web_agent_last_used[new_id] = _web_agent_last_used.pop(old_id, time.time())
+            _web_agents.move_to_end(new_id)
         _publish_event(
             "chat.session_migrated",
             {"old_session_id": old_id, "new_session_id": new_id, "reason": reason},
@@ -5978,6 +6326,7 @@ def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
 def _close_web_agent(session_id: str) -> None:
     agent = _web_agents.pop(session_id, None)
     _web_agent_signatures.pop(session_id, None)
+    _web_agent_last_used.pop(session_id, None)
     db = getattr(agent, "_session_db", None)
     close = getattr(db, "close", None)
     if callable(close):
@@ -6092,8 +6441,7 @@ def _new_web_agent(
         session_db=SessionDB(),
         working_dir=working_dir,
     )
-    _web_agents[session_id] = agent
-    _web_agent_signatures[session_id] = signature
+    _store_web_agent(session_id, agent, signature)
     return agent
 
 
@@ -7018,8 +7366,8 @@ async def create_conversation(body: ConversationCreate):
             else:
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
-                result = await loop.run_in_executor(
-                    None, lambda: _run_web_agent_turn(agent, message, None, _items)
+                result = await _run_web_turn_in_executor(
+                    loop, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
         except Exception as exc:
             _log.exception("Web chat agent error session=%s", session_id)
@@ -7027,6 +7375,8 @@ async def create_conversation(body: ConversationCreate):
         finally:
             unregister_gateway_notify(session_id)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
+            if _active_turn:
+                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
             _persist_web_turn_if_missing(
                 final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
@@ -7303,7 +7653,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         ) = _make_web_chat_callbacks(session_id, queue, loop)
         _web_queues[session_id] = queue
         turn_route = _resolve_web_turn_route(body.message)
-        agent = _web_agents.get(session_id)
+        agent = _get_web_cached_agent(session_id)
         conversation_history = db.get_messages_as_conversation(session_id)
         history_count = len(conversation_history)
         cached_signature_matches = (
@@ -7382,8 +7732,8 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             else:
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
-                result = await loop.run_in_executor(
-                    None, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
+                result = await _run_web_turn_in_executor(
+                    loop, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
                 )
         except Exception as exc:
             _log.exception("Web chat follow-up error session=%s", session_id)
@@ -7391,6 +7741,8 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         finally:
             unregister_gateway_notify(session_id)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
+            if _active_turn:
+                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
             _persist_web_turn_if_missing(
                 final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
@@ -7807,8 +8159,8 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         result = None
         try:
             _publish_web_status(session_id, "api_call_started", "Retrying model call…", phase="api")
-            result = await loop.run_in_executor(
-                None,
+            result = await _run_web_turn_in_executor(
+                loop,
                 lambda: _run_web_agent_turn(agent, user_msg, conv_hist),
             )
         except Exception as exc:
@@ -7818,6 +8170,8 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             unregister_gateway_notify(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
+            if _active_turn:
+                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
             _persist_web_turn_if_missing(
                 final_session_id,
                 user_msg,
@@ -7884,6 +8238,10 @@ async def conversation_turn_status(session_id: str):
     Lightweight source of truth the UI can poll to recover from a lost
     ``chat.turn_done`` event (e.g. the SSE bus dropped mid-turn).
     """
+    return await asyncio.to_thread(_conversation_turn_status_payload, session_id)
+
+
+def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
     payload: dict[str, Any] = {
@@ -7900,18 +8258,19 @@ async def conversation_turn_status(session_id: str):
         "active_agent_session_id": None,
     }
     if turn:
-        payload.update(
-            {
-                "started_at": turn.started_at,
-                "last_event_at": turn.last_event_at,
-                "status": turn.status,
-                "interrupt_requested": turn.interrupt_requested,
-                "active_agent_session_id": turn.active_agent_session_id,
-                "phase": turn.phase,
-                "stream_revision": turn.stream_revision,
-                "stream_text_chars": len(turn.stream_text),
-            }
-        )
+        with turn.lock:
+            payload.update(
+                {
+                    "started_at": turn.started_at,
+                    "last_event_at": turn.last_event_at,
+                    "status": turn.status,
+                    "interrupt_requested": turn.interrupt_requested,
+                    "active_agent_session_id": turn.active_agent_session_id,
+                    "phase": turn.phase,
+                    "stream_revision": turn.stream_revision,
+                    "stream_text_chars": len(turn.stream_text),
+                }
+            )
     return payload
 
 
@@ -7923,17 +8282,28 @@ async def conversation_stream_snapshot(session_id: str):
     calls this heavier endpoint only during stall/reconnect recovery so it can
     patch a partial assistant bubble without waiting for final persistence.
     """
+    return await asyncio.to_thread(_conversation_stream_snapshot_payload, session_id)
+
+
+def _conversation_stream_snapshot_payload(session_id: str) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
+    if turn:
+        with turn.lock:
+            stream_text = turn.stream_text
+            stream_revision = turn.stream_revision
+    else:
+        stream_text = ""
+        stream_revision = 0
     return {
         "session_id": ids.get("requested") or session_id,
         "resolved_session_id": ids.get("resolved") or session_id,
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
         "active_turn_session_id": active_key,
         "turn_active": turn is not None,
-        "stream_text": turn.stream_text if turn else "",
-        "stream_revision": turn.stream_revision if turn else 0,
-        "stream_text_chars": len(turn.stream_text) if turn else 0,
+        "stream_text": stream_text,
+        "stream_revision": stream_revision,
+        "stream_text_chars": len(stream_text),
     }
 
 
@@ -8168,8 +8538,8 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             else:
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
-                result = await loop.run_in_executor(
-                    None, lambda: _run_web_agent_turn(agent, message, None, _items)
+                result = await _run_web_turn_in_executor(
+                    loop, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
         except Exception as exc:
             _log.exception("Workspace chat agent error session=%s slug=%s", session_id, slug)
@@ -8178,6 +8548,8 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             unregister_gateway_notify(session_id)
             _strip_user_message_prefix(session_id, context_prefix, raw_message)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
+            if _active_turn:
+                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
             _persist_web_turn_if_missing(
                 final_session_id, raw_message, result, before_message_count,
                 eager_user_id=eager_user_id,

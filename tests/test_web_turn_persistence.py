@@ -93,10 +93,15 @@ class TestStreamingCheckpoint:
         assert msgs[0]["content"] == "partial answer "
         assert msgs[0]["finish_reason"] == "interrupted"
 
-        # More tokens arrive; the same row is updated immediately so a crash
-        # after any streamed chunk leaves the latest visible text recoverable.
+        # More tokens inside the throttle window do not rewrite the row on
+        # every chunk; the final forced checkpoint preserves the full answer.
         turn.stream_text += "more text"
         web_server._checkpoint_web_turn(sid, turn)
+        msgs = db.get_messages(sid)
+        assert len(msgs) == 1
+        assert msgs[0]["content"] == "partial answer "
+
+        web_server._checkpoint_web_turn(sid, turn, force=True)
         msgs = db.get_messages(sid)
         assert len(msgs) == 1
         assert msgs[0]["content"] == "partial answer more text"
@@ -184,11 +189,39 @@ class TestStreamingCheckpoint:
                 for m in db.get_messages(bravo)
                 if m["role"] == "assistant"
             ]
-            assert alpha_rows == [("assistant", "ALPHA-01 ALPHA-02")]
+            assert alpha_rows == [("assistant", "ALPHA-01 ")]
             assert bravo_rows == [("assistant", "BRAVO-01 ")]
+
+            _, alpha_turn = web_server._get_web_turn(alpha)
+            assert alpha_turn is not None
+            web_server._checkpoint_web_turn(alpha, alpha_turn, force=True)
+            alpha_rows = [
+                (m["role"], m["content"])
+                for m in db.get_messages(alpha)
+                if m["role"] == "assistant"
+            ]
+            assert alpha_rows == [("assistant", "ALPHA-01 ALPHA-02")]
         finally:
             web_server._clear_web_turn(alpha)
             web_server._clear_web_turn(bravo)
+
+    def test_active_turn_tokens_do_not_resolve_ids_per_token(self, db, monkeypatch):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "hotpath-no-resolve")
+        web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        try:
+            def fail_resolve(_session_id):
+                raise AssertionError("hot token path should use cached turn aliases")
+
+            with monkeypatch.context() as m:
+                m.setattr(web_server, "_resolve_web_turn_ids", fail_resolve)
+                web_server._append_web_turn_token(sid, "hello")
+            _, turn = web_server._get_web_turn(sid)
+            assert turn is not None
+            assert turn.stream_text == "hello"
+        finally:
+            web_server._clear_web_turn(sid)
 
 
 class TestEndOfTurnReconciliation:

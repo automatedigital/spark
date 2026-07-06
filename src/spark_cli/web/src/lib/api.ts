@@ -1600,6 +1600,31 @@ export interface StatusResponse {
   dashboard_features?: {
     subagents_sidebar?: boolean;
   };
+  streaming_health?: {
+    checkpoint_writes: number;
+    checkpoint_write_errors: number;
+    checkpoint_write_seconds_avg: number;
+    checkpoint_write_seconds_max: number;
+    turn_lock_wait_seconds_avg: number;
+    turn_lock_wait_seconds_max: number;
+    turn_lock_wait_samples: number;
+    event_drops: number;
+    event_drop_keys: number;
+    loop_lag_seconds: number;
+    loop_lag_seconds_max: number;
+    executor_submitted: number;
+    executor_completed: number;
+    executor_running: number;
+    executor_queued: number;
+    executor_queue_wait_seconds_avg: number;
+    executor_queue_wait_seconds_max: number;
+    agent_cache_size: number;
+    agent_cache_evictions: number;
+    warm_session_deduped: number;
+    fanout_latency_seconds_avg: number;
+    fanout_latency_seconds_max: number;
+    fanout_latency_samples: number;
+  };
 }
 
 export interface DashboardAuthInfo {

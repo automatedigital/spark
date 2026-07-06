@@ -50,6 +50,7 @@ import {
   recoverTurnStateFromBackend,
   type ChatTurnState,
 } from "@/lib/chatTurnState";
+import { decideRecoveryPoll } from "@/lib/chatRecovery";
 import {
   persistSafeMode,
   pruneLongTasks,
@@ -77,7 +78,6 @@ let _msgId = 0;
 const nid = () => `m${++_msgId}`;
 const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
 const STREAM_FLUSH_INTERVAL_MS = 80;
-const STREAM_SNAPSHOT_POLL_MS = 2_000;
 const CHAT_WORD_WRAP_CHANGED_EVENT = "spark:chat-word-wrap-changed";
 const chatWordWrapFromConfig = (config: Record<string, unknown>): boolean => {
   const display = config.display;
@@ -495,6 +495,7 @@ export function ChatPanel({
   // Timestamp of the last visible assistant token. Status/reasoning events can
   // keep the backend heartbeat alive while the rendered answer itself is stuck.
   const lastTokenAtRef = useRef<number>(0);
+  const lastIdleRecoveryPollAtRef = useRef<number>(0);
   // Guards against overlapping turn-status re-sync polls.
   const resyncInFlightRef = useRef(false);
   const resyncTurnStateRef = useRef<((options?: { allowIdle?: boolean }) => Promise<void>) | null>(null);
@@ -502,7 +503,6 @@ export function ChatPanel({
   // Track revisions so recovery polling only repaints when the server advanced.
   const streamRevisionRef = useRef(0);
   const streamTextCharsRef = useRef(0);
-  const streamSnapshotInFlightRef = useRef(false);
   // Keep the viewport pinned to the live tail while the user is following the
   // stream, but stop auto-scrolling as soon as they deliberately scroll upward.
   const followStreamRef = useRef(true);
@@ -741,9 +741,17 @@ export function ChatPanel({
             setStreaming(false);
             setStatusLabel(null);
           }
-          // Fire-and-forget: pre-warm the agent cache so the first message
-          // doesn't pay cold-start costs (system prompt rebuild, memory load).
-          void api.warmSession(resp.session_id ?? sessionId).catch(() => {});
+          // Fire-and-forget after a short debounce: pre-warm only if the user
+          // is still on this thread after rapid A -> B -> C switching.
+          const warmSessionId = resp.session_id ?? sessionId;
+          window.setTimeout(() => {
+            if (
+              activeSessionRef.current === warmSessionId ||
+              activeSessionAliasesRef.current.has(warmSessionId)
+            ) {
+              void api.warmSession(warmSessionId).catch(() => {});
+            }
+          }, 400);
         })
         .catch(() => setError("Failed to load conversation history."))
         .finally(() => setLoadingHistory(false));
@@ -907,29 +915,6 @@ export function ChatPanel({
     }
   }, [flushTokenBuffer]);
 
-  const reconcileStreamSnapshot = useCallback(async (sid: string) => {
-    if (streamSnapshotInFlightRef.current) return;
-    streamSnapshotInFlightRef.current = true;
-    try {
-      const snapshotSessionId = activeTurnSessionIdRef.current ?? sid;
-      const snapshot = await api.getStreamSnapshot(snapshotSessionId);
-      if (!streamingRef.current || activeSessionRef.current !== sid) return;
-      activeTurnSessionIdRef.current = snapshot.turn_active
-        ? snapshot.active_turn_session_id ?? snapshotSessionId
-        : null;
-      if (snapshot.stream_text) {
-        syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
-      }
-      if (!snapshot.turn_active) {
-        void resyncTurnStateRef.current?.();
-      }
-    } catch {
-      /* snapshot reconciliation is best-effort */
-    } finally {
-      streamSnapshotInFlightRef.current = false;
-    }
-  }, [syncLiveAssistantSnapshot]);
-
   const flushReasoningBuffer = useCallback(() => {
     reasoningRafRef.current = null;
     const buffered = reasoningBufferRef.current;
@@ -1073,27 +1058,6 @@ export function ChatPanel({
   ]);
 
   resyncTurnStateRef.current = resyncTurnState;
-
-  // During active turns, continuously reconcile the UI against the backend's
-  // authoritative stream buffer. SSE remains the low-latency path, but this
-  // prevents a dropped event, paused tab, or render hiccup from stranding the
-  // visible answer on an old markdown prefix.
-  useEffect(() => {
-    if (!streaming) return;
-    const sid = activeSessionId;
-    if (!sid) return;
-    let cancelled = false;
-    const pollSnapshot = async () => {
-      if (cancelled || !streamingRef.current || activeSessionRef.current !== sid) return;
-      await reconcileStreamSnapshot(sid);
-    };
-    void pollSnapshot();
-    const interval = setInterval(() => void pollSnapshot(), STREAM_SNAPSHOT_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [activeSessionId, streaming, reconcileStreamSnapshot]);
 
   useEventBus((env) => {
     // Synthetic local event from the SSE bus reopening after a drop. Events
@@ -1373,74 +1337,40 @@ export function ChatPanel({
     }
   });
 
-  // Stall watchdog: while a turn is streaming, if no chat event has arrived for
-  // a while the turn may have finished without us seeing its `turn_done` (lost
-  // SSE on a flaky VPS link). Poll the authoritative turn-status to recover
-  // instead of leaving the typing indicator spinning forever.
+  // One recovery poller covers both active stalls and idle app-resume checks.
+  // It stays quiet while SSE is fresh and pauses while the window is hidden.
   useEffect(() => {
-    if (!streaming) return;
-    lastEventAtRef.current = Date.now();
-    if (!lastTokenAtRef.current) lastTokenAtRef.current = Date.now();
-    const STALL_MS = 3_000;
-    const interval = setInterval(() => {
-      if (!streamingRef.current) return;
-      const now = Date.now();
-      const elapsed = now - lastEventAtRef.current;
-      const tokenElapsed = now - (lastTokenAtRef.current || lastEventAtRef.current);
-      if (elapsed >= 30_000) {
-        setStatusLabel("Reconnecting…");
-      } else if (elapsed >= 12_000) {
-        setStatusLabel("Still waiting for backend…");
-      } else if (tokenElapsed >= 12_000) {
-        setStatusLabel(MODEL_LOADING_LABEL);
-      } else if (elapsed >= STALL_MS) {
-        setStatusLabel((prev) => prev ?? MODEL_LOADING_LABEL);
+    if (!activeSessionId) return;
+    if (!lastEventAtRef.current) lastEventAtRef.current = Date.now();
+    if (streaming && !lastTokenAtRef.current) lastTokenAtRef.current = Date.now();
+    const tick = () => {
+      const decision = decideRecoveryPoll({
+        streaming: streamingRef.current,
+        hidden: typeof document !== "undefined" && document.hidden,
+        now: Date.now(),
+        lastEventAt: lastEventAtRef.current,
+        lastTokenAt: lastTokenAtRef.current,
+        lastIdlePollAt: lastIdleRecoveryPollAtRef.current,
+      });
+      lastIdleRecoveryPollAtRef.current = decision.nextIdlePollAt;
+      if (decision.statusLabel) {
+        setStatusLabel(decision.statusLabel);
       }
-      if (elapsed >= STALL_MS || tokenElapsed >= 12_000) {
-        void resyncTurnState();
-      }
-    }, 2_000);
-    return () => clearInterval(interval);
-  }, [streaming, resyncTurnState]);
-
-  // If a missed event or app resume leaves the local UI idle while the backend
-  // still has an active turn, restore the working controls from turn-status.
-  useEffect(() => {
-    if (!activeSessionId || streaming) return;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const status = await api.getTurnStatus(activeSessionId);
-        if (cancelled || !activeSessionAliasesRef.current.has(activeSessionId)) return;
-        rememberActiveSessionAliases(
-          activeSessionId,
-          status.resolved_session_id,
-          status.latest_session_id,
-          status.active_turn_session_id,
-        );
-        if (status.turn_active) {
-          activeTurnSessionIdRef.current = status.active_turn_session_id ?? activeSessionId;
-          lastEventAtRef.current = Date.now();
-          setTurnState(recoverTurnStateFromBackend({
-            turnActive: true,
-            phase: status.phase,
-            interruptRequested: status.interrupt_requested,
-          }));
-          setStatusLabel(status.status ?? MODEL_LOADING_LABEL);
-        } else {
-          activeTurnSessionIdRef.current = null;
-        }
-      } catch {
-        /* idle reconciliation is best-effort */
+      if (decision.poll) {
+        void resyncTurnState({ allowIdle: !streamingRef.current });
       }
     };
-    void poll();
-    const interval = setInterval(() => void poll(), 5_000);
+    const handleVisibility = () => {
+      if (document.hidden) return;
+      void resyncTurnState({ allowIdle: !streamingRef.current });
+    };
+    const interval = setInterval(tick, 2_000);
+    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
-      cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [activeSessionId, streaming]);
+  }, [activeSessionId, streaming, resyncTurnState]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -1933,8 +1863,13 @@ export function ChatPanel({
   useEffect(() => {
     const root = messageListRef.current;
     if (!root || typeof ResizeObserver === "undefined") return;
-    const measureRenderedRows = () => {
+    const measureRenderedRows = (entries?: ResizeObserverEntry[]) => {
       if (rowResizeRafRef.current !== null) cancelAnimationFrame(rowResizeRafRef.current);
+      const rows = entries?.length
+        ? entries
+            .map((entry) => entry.target)
+            .filter((target): target is HTMLDivElement => target instanceof HTMLDivElement)
+        : Array.from(root.querySelectorAll<HTMLDivElement>("[data-index]"));
       rowResizeRafRef.current = requestAnimationFrame(() => {
         rowResizeRafRef.current = null;
         const scrollEl = scrollContainerRef.current;
@@ -1944,9 +1879,7 @@ export function ChatPanel({
               .find((row) => row.dataset.rowId === anchorId)
               ?.getBoundingClientRect().top ?? null
           : null;
-        root
-          .querySelectorAll<HTMLDivElement>("[data-index]")
-          .forEach((row) => measureRowElement(row));
+        rows.forEach((row) => measureRowElement(row));
         // While a bottom jump is in flight (session open / jump pill), row
         // measurement grows scrollHeight after the initial scrollToIndex —
         // re-clamp so the view never lands short of the latest message.
@@ -1965,7 +1898,7 @@ export function ChatPanel({
         }
       });
     };
-    const observer = new ResizeObserver(measureRenderedRows);
+    const observer = new ResizeObserver((entries) => measureRenderedRows(entries));
     rowResizeObserverRef.current = observer;
     root
       .querySelectorAll<HTMLDivElement>("[data-index]")
