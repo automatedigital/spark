@@ -70,4 +70,9 @@ hdiutil detach "$MOUNT" -quiet
 rm -f "$OUT"
 hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$OUT" >/dev/null
 
+if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  echo "==> Signing DMG with Developer ID identity: $APPLE_SIGNING_IDENTITY"
+  codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$OUT"
+fi
+
 echo "  DMG written: $OUT"
