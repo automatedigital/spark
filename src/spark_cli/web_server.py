@@ -3959,7 +3959,6 @@ def _codex_full_login_worker(session_id: str) -> None:
         from spark_cli.auth import (
             CODEX_OAUTH_CLIENT_ID,
             CODEX_OAUTH_TOKEN_URL,
-            DEFAULT_CODEX_BASE_URL,
         )
 
         issuer = "https://auth.openai.com"
@@ -7978,7 +7977,12 @@ async def stream_conversation(session_id: str):
 
 def mount_spa(application: FastAPI):
     """Mount the built SPA. Falls back to index.html for client-side routing."""
-    if not WEB_DIST.exists():
+    assets_dir = WEB_DIST / "assets"
+    if (
+        not WEB_DIST.exists()
+        or not (WEB_DIST / "index.html").is_file()
+        or not assets_dir.is_dir()
+    ):
 
         @application.get("/{full_path:path}")
         async def no_frontend(full_path: str):
@@ -7989,9 +7993,7 @@ def mount_spa(application: FastAPI):
 
         return
 
-    application.mount(
-        "/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets"
-    )
+    application.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     @application.get("/{full_path:path}")
     async def serve_spa(full_path: str):

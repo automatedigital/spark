@@ -1246,6 +1246,56 @@ install_node_deps() {
     fi
 }
 
+web_ui_bundle_ready() {
+    local web_dist="$INSTALL_DIR/src/spark_cli/web_dist"
+    local assets_dir="$web_dist/assets"
+
+    [ -f "$web_dist/index.html" ] || return 1
+    [ -d "$assets_dir" ] || return 1
+    find "$assets_dir" -maxdepth 1 -type f -name '*.js' -print -quit 2>/dev/null | grep -q . || return 1
+    find "$assets_dir" -maxdepth 1 -type f -name '*.css' -print -quit 2>/dev/null | grep -q . || return 1
+    return 0
+}
+
+build_web_ui_bundle() {
+    local web_dir="$INSTALL_DIR/src/spark_cli/web"
+    if [ ! -f "$web_dir/package.json" ]; then
+        return 0
+    fi
+
+    if [ "$HAS_NODE" = false ]; then
+        if web_ui_bundle_ready; then
+            log_info "Skipping Web UI build (Node not installed; existing bundle present)"
+            return 0
+        fi
+        log_warn "Web UI bundle is missing, but Node.js is not available to build it."
+        if gateway_runtime_required; then
+            log_error "Cannot start the gateway Web UI without the built dashboard bundle."
+            log_info "Install Node.js, then rerun: spark update"
+            return 1
+        fi
+        return 0
+    fi
+
+    log_info "Building Web UI dashboard bundle..."
+    if (cd "$web_dir" && npm install --silent && npm run build); then
+        if web_ui_bundle_ready; then
+            log_success "Web UI dashboard bundle built"
+            return 0
+        fi
+        log_warn "Web UI build completed but expected assets are still missing."
+    else
+        log_warn "Web UI dashboard build failed"
+    fi
+
+    if gateway_runtime_required; then
+        log_error "Cannot start the gateway Web UI until the dashboard bundle builds successfully."
+        log_info "Repair manually: cd $web_dir && npm install && npm run build"
+        return 1
+    fi
+    return 0
+}
+
 maybe_install_cua_driver() {
     # macOS only — ask before installing cua-driver and enabling computer_use in config.
     [ "$OS" = "macos" ] || return 0
@@ -1471,8 +1521,8 @@ maybe_start_gateway() {
     SPARK_CMD="$(get_spark_command_path)"
 
     if [ "$DISTRO" != "termux" ] && command -v systemctl &> /dev/null; then
-        log_info "Installing gateway as a background service..."
-        if $SPARK_CMD gateway install 2>/dev/null; then
+        log_info "Installing/updating gateway background service..."
+        if $SPARK_CMD gateway install --force 2>/dev/null; then
             log_success "Gateway service installed"
             if $SPARK_CMD gateway restart 2>/dev/null; then
                 log_success "Gateway restarted with latest packages!"
@@ -1493,20 +1543,23 @@ maybe_start_gateway() {
                     else
                         log_success "Your bot is online!"
                     fi
-                    verify_dashboard_health || true
+                    verify_dashboard_health
                 else
                     GATEWAY_STATE=$(systemctl --user show spark-gateway.service --property=ActiveState --value 2>/dev/null || echo "unknown")
                     if [ "$GATEWAY_STATE" = "failed" ]; then
-                        log_warn "Gateway failed to start. Check logs: journalctl --user -u spark-gateway.service -n 20"
+                        log_error "Gateway failed to start. Check logs: journalctl --user -u spark-gateway.service -n 20"
                     else
-                        log_info "Gateway is still starting (state: $GATEWAY_STATE). Check: spark gateway status"
+                        log_error "Gateway is still starting (state: $GATEWAY_STATE). Check: spark gateway status"
                     fi
+                    return 1
                 fi
             else
-                log_warn "Service installed but failed to restart. Try: spark gateway restart"
+                log_error "Service installed but failed to restart. Try: spark gateway restart"
+                return 1
             fi
         else
-            log_warn "Systemd install failed. You can start manually: spark gateway"
+            log_error "Systemd install failed. You can start manually: spark gateway"
+            return 1
         fi
     else
         if [ "$DISTRO" = "termux" ]; then
@@ -1518,7 +1571,7 @@ maybe_start_gateway() {
         GATEWAY_PID=$!
         log_success "Gateway started (PID $GATEWAY_PID). Logs: ~/.spark/logs/gateway.log"
         sleep 2
-        verify_dashboard_health || true
+        verify_dashboard_health
         log_info "To stop: kill $GATEWAY_PID"
         log_info "To restart later: spark gateway"
         if [ "$DISTRO" = "termux" ]; then
@@ -1625,6 +1678,7 @@ main() {
     copy_config_templates
     maybe_install_cua_driver
     run_config_migration
+    build_web_ui_bundle
     run_setup_wizard
     maybe_start_gateway
 

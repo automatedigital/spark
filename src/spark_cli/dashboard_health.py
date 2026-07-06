@@ -10,6 +10,7 @@ import argparse
 import json
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 from urllib import error, request
 
@@ -25,6 +26,23 @@ class DashboardHealthResult:
     port: int
     status_code: int | None = None
     error: str = ""
+
+
+def dashboard_frontend_assets_ready(web_dist: Path | None = None) -> tuple[bool, str]:
+    """Return whether the built React dashboard bundle is present."""
+    dist = web_dist or (Path(__file__).parent / "web_dist")
+    if not dist.exists():
+        return False, f"Dashboard frontend bundle is missing: {dist}"
+    if not (dist / "index.html").is_file():
+        return False, f"Dashboard frontend index is missing: {dist / 'index.html'}"
+    assets_dir = dist / "assets"
+    if not assets_dir.is_dir():
+        return False, f"Dashboard frontend assets directory is missing: {assets_dir}"
+    if not any(assets_dir.glob("*.js")):
+        return False, f"Dashboard frontend JavaScript assets are missing: {assets_dir}"
+    if not any(assets_dir.glob("*.css")):
+        return False, f"Dashboard frontend CSS assets are missing: {assets_dir}"
+    return True, ""
 
 
 def _load_dashboard_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -75,6 +93,17 @@ def check_dashboard_health(
             url=url,
             host=host,
             port=port,
+        )
+
+    assets_ready, assets_error = dashboard_frontend_assets_ready()
+    if not assets_ready:
+        return DashboardHealthResult(
+            enabled=True,
+            ok=False,
+            url=url,
+            host=host,
+            port=port,
+            error=assets_error,
         )
 
     deadline = time.monotonic() + max(0.0, wait_seconds)

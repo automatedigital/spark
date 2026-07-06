@@ -37,6 +37,10 @@ def test_installer_migrates_config_and_checks_dashboard_health():
     assert "verify_dashboard_health()" in content
     assert "-m spark_cli.dashboard_health --wait 20" in content
     assert "Dashboard health check failed after gateway restart" in content
+    assert "build_web_ui_bundle()" in content
+    assert "Web UI dashboard bundle built" in content
+    assert "gateway install --force" in content
+    assert "verify_dashboard_health || true" not in content
 
 
 def test_legacy_setup_script_syncs_missing_bundled_skills():

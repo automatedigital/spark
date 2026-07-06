@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from spark_cli.dashboard_health import (
     check_dashboard_health,
+    dashboard_frontend_assets_ready,
     dashboard_health_url,
     dashboard_probe_host,
     format_dashboard_health_failure,
@@ -43,7 +44,10 @@ def test_healthy_dashboard_passes():
         def __exit__(self, exc_type, exc, tb):
             return None
 
-    with patch("spark_cli.dashboard_health.request.urlopen", return_value=Response()):
+    with (
+        patch("spark_cli.dashboard_health.dashboard_frontend_assets_ready", return_value=(True, "")),
+        patch("spark_cli.dashboard_health.request.urlopen", return_value=Response()),
+    ):
         result = check_dashboard_health({"dashboard": {"host": "0.0.0.0", "port": 9119}})
 
     assert result.enabled is True
@@ -52,7 +56,10 @@ def test_healthy_dashboard_passes():
 
 
 def test_failed_dashboard_health_formats_recovery_commands():
-    with patch("spark_cli.dashboard_health.request.urlopen", side_effect=ConnectionRefusedError("nope")):
+    with (
+        patch("spark_cli.dashboard_health.dashboard_frontend_assets_ready", return_value=(True, "")),
+        patch("spark_cli.dashboard_health.request.urlopen", side_effect=ConnectionRefusedError("nope")),
+    ):
         result = check_dashboard_health({"dashboard": {"host": "0.0.0.0", "port": 9119}})
 
     assert result.ok is False
@@ -62,3 +69,35 @@ def test_failed_dashboard_health_formats_recovery_commands():
     assert "http://127.0.0.1:9119/api/dashboard/auth/info" in message
     assert "spark config migrate" in message
     assert "spark gateway restart" in message
+
+
+def test_dashboard_health_fails_when_frontend_assets_are_missing():
+    with patch(
+        "spark_cli.dashboard_health.dashboard_frontend_assets_ready",
+        return_value=(False, "Dashboard frontend assets directory is missing"),
+    ):
+        result = check_dashboard_health({"dashboard": {"host": "0.0.0.0", "port": 9119}})
+
+    assert result.ok is False
+    assert "frontend assets" in result.error
+
+
+def test_dashboard_frontend_assets_ready_requires_js_and_css(tmp_path):
+    web_dist = tmp_path / "web_dist"
+    assets = web_dist / "assets"
+    assets.mkdir(parents=True)
+    (web_dist / "index.html").write_text("<html></html>", encoding="utf-8")
+
+    ok, error = dashboard_frontend_assets_ready(web_dist)
+    assert ok is False
+    assert "JavaScript assets" in error
+
+    (assets / "app.js").write_text("console.log('ok')", encoding="utf-8")
+    ok, error = dashboard_frontend_assets_ready(web_dist)
+    assert ok is False
+    assert "CSS assets" in error
+
+    (assets / "app.css").write_text("body {}", encoding="utf-8")
+    ok, error = dashboard_frontend_assets_ready(web_dist)
+    assert ok is True
+    assert error == ""
