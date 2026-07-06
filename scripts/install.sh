@@ -1434,13 +1434,14 @@ PY
 
 verify_dashboard_health() {
     local health_python
+    local wait_seconds="${SPARK_DASHBOARD_HEALTH_WAIT_SECONDS:-45}"
     if [ "$USE_VENV" = true ] && [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
         health_python="$INSTALL_DIR/.venv/bin/python"
     else
         health_python="$PYTHON_PATH"
     fi
 
-    if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$health_python" -m spark_cli.dashboard_health --wait 20 >/tmp/spark-dashboard-health.$$ 2>&1; then
+    if SPARK_HOME="${SPARK_HOME:-$HOME/.spark}" "$health_python" -m spark_cli.dashboard_health --wait "$wait_seconds" >/tmp/spark-dashboard-health.$$ 2>&1; then
         cat /tmp/spark-dashboard-health.$$ 2>/dev/null || true
         rm -f /tmp/spark-dashboard-health.$$
         return 0
@@ -1527,15 +1528,7 @@ maybe_start_gateway() {
             if $SPARK_CMD gateway restart 2>/dev/null; then
                 log_success "Gateway restarted with latest packages!"
                 log_info "Waiting for gateway to initialize..."
-                GATEWAY_WAIT=0
-                while [ "$GATEWAY_WAIT" -lt 20 ]; do
-                    sleep 2
-                    GATEWAY_WAIT=$((GATEWAY_WAIT + 2))
-                    if systemctl --user is-active --quiet spark-gateway.service 2>/dev/null; then
-                        break
-                    fi
-                done
-                if systemctl --user is-active --quiet spark-gateway.service 2>/dev/null; then
+                if verify_dashboard_health; then
                     RECENT_LOGS=$(journalctl --user -u spark-gateway.service -n 50 --no-pager 2>/dev/null || true)
                     if echo "$RECENT_LOGS" | grep -q "not installed\|No adapter available"; then
                         log_warn "Gateway is running but some messaging adapters didn't load."
@@ -1543,7 +1536,6 @@ maybe_start_gateway() {
                     else
                         log_success "Your bot is online!"
                     fi
-                    verify_dashboard_health
                 else
                     GATEWAY_STATE=$(systemctl --user show spark-gateway.service --property=ActiveState --value 2>/dev/null || echo "unknown")
                     if [ "$GATEWAY_STATE" = "failed" ]; then

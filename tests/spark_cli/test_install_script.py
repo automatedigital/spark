@@ -35,7 +35,8 @@ def test_installer_migrates_config_and_checks_dashboard_health():
     assert 'dash.get("enabled_with_gateway", True)' in content
     assert "Spark uses the gateway for messaging, API server access, and the embedded Web UI." in content
     assert "verify_dashboard_health()" in content
-    assert "-m spark_cli.dashboard_health --wait 20" in content
+    assert 'SPARK_DASHBOARD_HEALTH_WAIT_SECONDS:-45' in content
+    assert '-m spark_cli.dashboard_health --wait "$wait_seconds"' in content
     assert "Dashboard health check failed after gateway restart" in content
     assert "build_web_ui_bundle()" in content
     assert "Web UI dashboard bundle built" in content
