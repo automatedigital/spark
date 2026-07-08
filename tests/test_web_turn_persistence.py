@@ -356,3 +356,40 @@ class TestEndOfTurnReconciliation:
             ("assistant", "full answer after user switched away"),
         ]
         assert msgs[1]["finish_reason"] is None
+
+    def test_migrated_turn_finalizes_into_leaf_session_not_parent_checkpoint(self, db):
+        from spark_cli import web_server
+
+        parent = _make_session(db, "compact-parent")
+        leaf = _make_session(db, "compact-leaf")
+        db.end_session(parent, "compressed")
+
+        eager_id = web_server._persist_web_user_message(parent, "the question")
+        before = len(db.get_messages(leaf))
+        turn = web_server.WebActiveTurn(
+            started_at=time.time(),
+            last_event_at=time.time(),
+            status="Running…",
+            interrupt_requested=False,
+            active_agent_session_id=parent,
+            phase="streaming",
+        )
+        turn.stream_text = "partial before compaction"
+        web_server._checkpoint_web_turn(parent, turn)
+        assert turn.assistant_message_id is not None
+
+        web_server._persist_web_turn_if_missing(
+            leaf,
+            "the question",
+            {"final_response": "full answer after compaction"},
+            before,
+            eager_user_id=eager_id,
+            checkpoint_assistant_id=turn.assistant_message_id,
+        )
+
+        parent_msgs = db.get_messages(parent)
+        leaf_msgs = db.get_messages(leaf)
+        assert [(m["role"], m["content"]) for m in leaf_msgs] == [
+            ("assistant", "full answer after compaction"),
+        ]
+        assert [m for m in parent_msgs if m["role"] == "assistant"] == []

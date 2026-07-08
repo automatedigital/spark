@@ -81,4 +81,28 @@ describe("chat transcript merge", () => {
       "Latest answer",
     ]);
   });
+
+  it("does not append a cached streamed assistant when saved history has the final answer", () => {
+    const sessionId = "session-local-prefix-dup";
+    const saved: ChatMessage[] = [
+      { id: "db:1", role: "user", content: "Status?" },
+      { id: "db:2", role: "assistant", content: "The deployment is still running." },
+    ];
+    const cached: ChatMessage[] = [
+      ...saved,
+      {
+        id: "local-stream",
+        role: "assistant",
+        content: "The deployment is still running. I will keep watching it.",
+        streaming: true,
+      },
+    ];
+    localTurnCache.set(sessionId, cached);
+
+    const merged = mergeSyncedMessages(saved, cached, sessionId);
+
+    expect(merged.filter((m) => m.role === "assistant").map((m) => m.content)).toEqual([
+      "The deployment is still running.",
+    ]);
+  });
 });

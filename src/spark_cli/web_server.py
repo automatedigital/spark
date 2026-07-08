@@ -6681,6 +6681,10 @@ def _persist_web_turn_if_missing(
                 new_messages = [
                     m for m in new_messages if m.get("id") != checkpoint_assistant_id
                 ]
+            checkpoint_in_final_session = (
+                checkpoint_assistant_id is not None
+                and any(m.get("id") == checkpoint_assistant_id for m in messages)
+            )
             user_messages = [m for m in new_messages if m.get("role") == "user"]
             delivery_instruction_user_messages = [
                 m
@@ -6739,7 +6743,7 @@ def _persist_web_turn_if_missing(
                         # The agent flushed its own final assistant message —
                         # the streaming checkpoint row is now a duplicate.
                         db.delete_message(checkpoint_assistant_id)
-                elif checkpoint_assistant_id is not None:
+                elif checkpoint_assistant_id is not None and checkpoint_in_final_session:
                     # Finalize the checkpoint row in place: full content, clear
                     # the "interrupted" marker, move it to end-of-turn order.
                     db.update_message(
@@ -6749,7 +6753,13 @@ def _persist_web_turn_if_missing(
                         touch_timestamp=True,
                     )
                 else:
+                    # Context compression can migrate the active turn to a new
+                    # leaf session after the stream checkpoint was inserted in
+                    # the parent. In that case, save the final answer into the
+                    # leaf and drop the stale parent checkpoint.
                     db.append_message(session_id, "assistant", content=display_response)
+                    if checkpoint_assistant_id is not None:
+                        db.delete_message(checkpoint_assistant_id)
             # No final response (crash/interrupt): a checkpoint row keeps the
             # partial streamed text, still marked "interrupted".
         finally:

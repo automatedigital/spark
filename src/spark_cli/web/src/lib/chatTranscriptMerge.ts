@@ -66,12 +66,28 @@ function cacheKey(msg: ChatMessage): string {
   }
 }
 
+function isAssistantDuplicate(
+  candidate: Extract<ChatMessage, { role: "assistant" }>,
+  existing: ChatMessage[],
+): boolean {
+  const content = candidate.content.trim();
+  if (!content) return false;
+  return existing.some((msg) => {
+    if (msg.role !== "assistant") return false;
+    const other = msg.content.trim();
+    if (!other) return false;
+    if (content === other) return true;
+    return content.startsWith(other) || other.startsWith(content);
+  });
+}
+
 function mergeCachedProgress(mapped: ChatMessage[], cached: ChatMessage[]): ChatMessage[] {
   if (cached.length === 0) return mapped;
   if (mapped.length === 0) return cached;
 
   const seen = new Set(mapped.map(cacheKey));
   const missing = cached.filter((msg) => {
+    if (msg.role === "assistant" && isAssistantDuplicate(msg, mapped)) return false;
     const key = cacheKey(msg);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -164,7 +180,7 @@ export function mergeSyncedMessages(
   if (mappedAssistantCount < recoveryAssistantCount) {
     const missingLocalRows = cachedTurn.filter((msg) => {
       if (msg.role === "assistant") {
-        return hasText(msg.content) && !mappedAssistantIds.has(msg.id);
+        return hasText(msg.content) && !mappedAssistantIds.has(msg.id) && !isAssistantDuplicate(msg, monotonicMapped);
       }
       if (msg.role === "reasoning") {
         return !monotonicMapped.some((m) => m.role === "reasoning" && m.id === msg.id);
@@ -177,7 +193,9 @@ export function mergeSyncedMessages(
         ? missingLocalRows.map((msg) => (
             msg.role === "assistant" ? { ...msg, streaming: false } : msg
           ))
-        : [{ ...latestLocalAssistant, streaming: false }]),
+        : isAssistantDuplicate(latestLocalAssistant, monotonicMapped)
+          ? []
+          : [{ ...latestLocalAssistant, streaming: false }]),
     ]);
   }
 

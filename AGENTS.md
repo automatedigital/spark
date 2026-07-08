@@ -5,7 +5,7 @@ Instructions for AI coding assistants and developers working on the spark-agent 
 ## Development Environment
 
 ```bash
-source venv/bin/activate  # ALWAYS activate before running Python
+source .venv/bin/activate  # ALWAYS activate before running Python
 ```
 
 ## Project Structure
@@ -524,7 +524,7 @@ def profile_env(tmp_path, monkeypatch):
 ## Testing
 
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 python -m pytest tests/ -q                      # Full suite (~3000 tests, ~3 min)
 python -m pytest tests/tools/ -q                # Tool-level tests
 python -m pytest tests/gateway/ -q              # Gateway tests

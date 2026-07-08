@@ -668,9 +668,27 @@ export function ChatPanel({
             }
             if (!snapshot.turn_active) {
               setTurnState("idle");
-              setStatusLabel(null);
+              setStatusLabel("Finalizing from saved history…");
               flushPendingStream();
               finalizeAssistant();
+              try {
+                const resp = await api.getSessionMessages(selectedSessionId, HISTORY_PAGE);
+                if (!recoveryStillCurrent(resp.session_id)) return;
+                rememberActiveSessionAliases(selectedSessionId, resp.session_id);
+                const mapped = sessionMessagesToChat(
+                  resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+                );
+                setChatMessages((prev) => mergeSyncedMessages(
+                  mapped,
+                  prev,
+                  resp.session_id ?? selectedSessionId,
+                  { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
+                ));
+              } catch {
+                /* final history recovery is best-effort */
+              } finally {
+                setStatusLabel(null);
+              }
             }
           } catch {
             /* snapshot hydration is best-effort */
@@ -1038,6 +1056,33 @@ export function ChatPanel({
             : null;
           if (snapshot.stream_text) {
             syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
+          }
+          if (!snapshot.turn_active) {
+            activeTurnSessionIdRef.current = null;
+            flushPendingStream();
+            finalizeAssistant();
+            setStreaming(false);
+            setStatusLabel("Finalizing from saved history…");
+            try {
+              const resp = await api.getSessionMessages(snapshot.latest_session_id ?? snapshotSessionId, HISTORY_PAGE);
+              if (!isCurrentSessionResponse(recoverySeq, sid, resp.session_id)) return;
+              rememberActiveSessionAliases(sid, resp.session_id);
+              const mapped = sessionMessagesToChat(
+                resp.messages.filter(
+                  (m) => m.role === "user" || m.role === "assistant" || m.role === "tool",
+                ),
+              );
+              setChatMessages((prev) => mergeSyncedMessages(
+                mapped,
+                prev,
+                resp.session_id ?? sid,
+                { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
+              ));
+            } catch {
+              /* final history recovery is best-effort */
+            } finally {
+              setStatusLabel(null);
+            }
           }
         } catch {
           /* snapshot recovery is best-effort */
