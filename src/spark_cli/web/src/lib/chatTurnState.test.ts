@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  backendTurnStatusLabel,
   nextChatTurnState,
   normalizeBackendPhase,
   recoverTurnStateFromBackend,
@@ -66,5 +67,14 @@ describe("chat turn state", () => {
       phase: "provider_wait",
       interruptRequested: true,
     })).toBe("stopping");
+  });
+
+  it("maps backend heartbeat state to explicit status labels", () => {
+    expect(backendTurnStatusLabel({ turnActive: false, state: "not_found" })).toBeNull();
+    expect(backendTurnStatusLabel({ turnActive: true, phase: "starting", state: "running" })).toBe("Preparing agent");
+    expect(backendTurnStatusLabel({ turnActive: true, phase: "api", state: "running" })).toBe("Waiting for provider response");
+    expect(backendTurnStatusLabel({ turnActive: true, phase: "tool", state: "running", status: "Tool running: ls" })).toBe("Tool running: ls");
+    expect(backendTurnStatusLabel({ turnActive: true, phase: "streaming", state: "streaming" })).toBe("Streaming response");
+    expect(backendTurnStatusLabel({ turnActive: true, phase: "api", state: "stalled", idleForSeconds: 52.9 })).toBe("Backend stalled for 52s");
   });
 });

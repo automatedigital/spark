@@ -105,4 +105,30 @@ describe("chat transcript merge", () => {
       "The deployment is still running.",
     ]);
   });
+
+  it("keeps richer live assistant progress when saved history is only a checkpoint prefix", () => {
+    const sessionId = "session-active-checkpoint";
+    const saved: ChatMessage[] = [
+      { id: "db:1", role: "user", content: "Stream status?" },
+      { id: "db:2", role: "assistant", content: "alpha chunk 1. " },
+    ];
+    const live: ChatMessage[] = [
+      { id: "db:1", role: "user", content: "Stream status?" },
+      { id: "local-live", role: "assistant", content: "alpha chunk 1. alpha chunk 2. ", streaming: true, renderRevision: 2 },
+    ];
+
+    const merged = mergeSyncedMessages(saved, live, sessionId, {
+      preserveLocalAssistantPrefix: true,
+    });
+
+    expect(merged.filter((m) => m.role === "assistant")).toEqual([
+      {
+        id: "db:2",
+        role: "assistant",
+        content: "alpha chunk 1. alpha chunk 2. ",
+        streaming: true,
+        renderRevision: 2,
+      },
+    ]);
+  });
 });

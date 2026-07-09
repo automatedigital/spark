@@ -51,6 +51,36 @@ export function recoverTurnStateFromBackend({
   return normalizeBackendPhase(phase, interruptRequested);
 }
 
+export function backendTurnStatusLabel({
+  turnActive,
+  phase,
+  state,
+  status,
+  idleForSeconds,
+}: {
+  turnActive: boolean;
+  phase?: string | null;
+  state?: BackendTurnState | null;
+  status?: string | null;
+  idleForSeconds?: number | null;
+}): string | null {
+  if (!turnActive) return null;
+  if (state === "stalled") {
+    const seconds = typeof idleForSeconds === "number" ? Math.floor(idleForSeconds) : null;
+    return seconds !== null
+      ? `Backend stalled for ${seconds}s`
+      : "Backend stalled";
+  }
+  if (state === "stopping") return "Stopping response";
+  if (state === "redirecting") return "Redirecting response";
+  if (phase === "starting") return status || "Preparing agent";
+  if (phase === "api") return status || "Waiting for provider response";
+  if (phase === "tool") return status || "Tool running";
+  if (phase === "reasoning") return status || "Reasoning";
+  if (state === "streaming" || phase === "streaming") return status || "Streaming response";
+  return status || "Working";
+}
+
 export function nextChatTurnState(current: ChatTurnState, event: ChatTurnEvent): ChatTurnState {
   switch (event.type) {
     case "submit":

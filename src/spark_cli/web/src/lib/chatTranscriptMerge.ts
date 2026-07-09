@@ -81,6 +81,14 @@ function isAssistantDuplicate(
   });
 }
 
+function latestTextAssistant(messages: ChatMessage[]): Extract<ChatMessage, { role: "assistant" }> | undefined {
+  return [...messages]
+    .reverse()
+    .find((m): m is Extract<ChatMessage, { role: "assistant" }> =>
+      m.role === "assistant" && hasText(m.content),
+    );
+}
+
 function mergeCachedProgress(mapped: ChatMessage[], cached: ChatMessage[]): ChatMessage[] {
   if (cached.length === 0) return mapped;
   if (mapped.length === 0) return cached;
@@ -100,7 +108,11 @@ export function mergeSyncedMessages(
   mapped: ChatMessage[],
   prev: ChatMessage[],
   sessionId: string | null,
-  options: { preferSyncedAssistants?: boolean; syncedComplete?: boolean } = {},
+  options: {
+    preferSyncedAssistants?: boolean;
+    preserveLocalAssistantPrefix?: boolean;
+    syncedComplete?: boolean;
+  } = {},
 ): ChatMessage[] {
   const forms = prev.filter((m) => m.role === "feedback_form");
   const withForms = (messages: ChatMessage[]) => (
@@ -157,12 +169,28 @@ export function mergeSyncedMessages(
   if (preservedLongerAssistant) return withForms(monotonicMapped);
 
   const recoveryMessages = prev.some((m) => m.role === "assistant" && hasText(m.content)) ? prev : cachedTurn;
-  const latestLocalAssistant = [...recoveryMessages]
-    .reverse()
-    .find((m): m is Extract<ChatMessage, { role: "assistant" }> =>
-      m.role === "assistant" && hasText(m.content),
-    );
+  const latestLocalAssistant = latestTextAssistant(recoveryMessages);
   if (!latestLocalAssistant) return withForms(mergeCachedProgress(mapped, cachedTurn));
+
+  const latestMappedAssistant = latestTextAssistant(monotonicMapped);
+  if (
+    options.preserveLocalAssistantPrefix &&
+    !options.preferSyncedAssistants &&
+    latestMappedAssistant &&
+    latestLocalAssistant.content.length > latestMappedAssistant.content.length &&
+    latestLocalAssistant.content.startsWith(latestMappedAssistant.content)
+  ) {
+    return withForms(monotonicMapped.map((msg) => (
+      msg.id === latestMappedAssistant.id
+        ? {
+            ...latestMappedAssistant,
+            content: latestLocalAssistant.content,
+            streaming: latestLocalAssistant.streaming ?? true,
+            renderRevision: latestLocalAssistant.renderRevision ?? latestMappedAssistant.renderRevision,
+          }
+        : msg
+    )));
+  }
 
   const mappedAssistantIds = new Set(
     monotonicMapped

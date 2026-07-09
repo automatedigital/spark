@@ -81,7 +81,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
-    from pydantic import BaseModel
+    from pydantic import BaseModel, Field
     from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError:
     raise SystemExit(
@@ -150,6 +150,7 @@ class WebActiveTurn:
     checkpointed_chars: int = 0
     session_aliases: set[str] = field(default_factory=set)
     timings: dict[str, float] = field(default_factory=dict)
+    compaction: dict[str, Any] = field(default_factory=dict)
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
@@ -638,6 +639,7 @@ def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn, *, force: bool = 
         finally:
             db.close()
         with turn.lock:
+            turn.last_event_at = time.time()
             turn.checkpoint_session_id = target
             turn.assistant_message_id = assistant_message_id
             turn.checkpointed_chars = len(text)
@@ -5553,6 +5555,27 @@ class ConversationCreate(BaseModel):
     source: Optional[str] = None
 
 
+class FakeStreamEvent(BaseModel):
+    type: str
+    text: str = ""
+    kind: Optional[str] = None
+    phase: Optional[str] = None
+    name: Optional[str] = None
+    tool_call_id: Optional[str] = None
+    args: Dict[str, Any] = Field(default_factory=dict)
+    result: Any = None
+    delay_ms: int = 0
+
+
+class FakeStreamStart(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    model: Optional[str] = None
+    source: Optional[str] = None
+    title: Optional[str] = None
+    events: list[FakeStreamEvent] = Field(default_factory=list)
+
+
 class ConversationMessage(BaseModel):
     message: str
     context_items: list = []
@@ -5671,6 +5694,13 @@ def _make_web_chat_callbacks(
             turn.phase = "streaming"
             turn.status = "Context compressed; continuing…"
             turn.active_agent_session_id = new_id
+            turn.compaction = {
+                "status": "completed",
+                "old_session_id": old_id,
+                "new_session_id": new_id,
+                "reason": reason,
+                "completed_at": time.time(),
+            }
             with _with_web_turn_lock():
                 if _web_active_turns.get(old_key) is turn:
                     _web_active_turns.pop(old_key, None)
@@ -5686,8 +5716,36 @@ def _make_web_chat_callbacks(
             {"old_session_id": old_id, "new_session_id": new_id, "reason": reason},
             turn_context.session_id,
         )
+        _publish_event(
+            "chat.compaction",
+            {"status": "completed", "old_session_id": old_id, "new_session_id": new_id, "reason": reason},
+            new_id,
+        )
         turn_context.migrate(new_id)
         publish_status("context_compression", "Context compressed; continuing…", phase="streaming")
+
+    def compaction_failed(reason: str, message: str) -> None:
+        current_session_id = turn_context.session_id
+        now = time.time()
+        _, turn = _get_web_turn(current_session_id)
+        if turn:
+            with turn.lock:
+                turn.last_event_at = now
+                turn.phase = "failed"
+                turn.status = message
+                turn.compaction = {
+                    "status": "failed",
+                    "session_id": current_session_id,
+                    "reason": reason,
+                    "message": message,
+                    "failed_at": now,
+                }
+        _publish_event(
+            "chat.compaction",
+            {"status": "failed", "session_id": current_session_id, "reason": reason, "message": message},
+            current_session_id,
+        )
+        publish_status("context_compression_failed", message, phase="failed")
 
     def subagent_event_callback(payload: dict) -> None:
         if not isinstance(payload, dict):
@@ -5704,7 +5762,167 @@ def _make_web_chat_callbacks(
         status_callback,
         session_migrated_callback,
         subagent_event_callback,
+        compaction_failed,
     )
+
+
+def _web_fake_streams_enabled() -> bool:
+    return str(os.getenv("SPARK_WEB_FAKE_STREAMS", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _create_fake_stream_session(
+    session_id: str,
+    *,
+    source: str,
+    model: Optional[str],
+    title: Optional[str],
+) -> dict[str, Any] | None:
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db._conn.execute(
+                "INSERT OR IGNORE INTO sessions (id, source, model, title, started_at, kanban_status) "
+                "VALUES (?, ?, ?, ?, ?, 'active')",
+                (session_id, source, model, title, time.time()),
+            )
+            db._conn.commit()
+            return db.get_session(session_id)
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("fake stream session create failed session=%s", session_id, exc_info=True)
+        return None
+
+
+def _event_delay_seconds(event: FakeStreamEvent) -> float:
+    try:
+        return max(0.0, min(60.0, float(event.delay_ms or 0) / 1000.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _run_fake_stream_task(
+    *,
+    session_id: str,
+    message: str,
+    events: list[FakeStreamEvent],
+    queue: asyncio.Queue,
+    loop: asyncio.AbstractEventLoop,
+    before_message_count: int,
+    eager_user_id: int | None,
+) -> None:
+    callbacks = _make_web_chat_callbacks(session_id, queue, loop)
+    token_callback = callbacks[0]
+    tool_start_callback = callbacks[1]
+    tool_complete_callback = callbacks[2]
+    reasoning_callback = callbacks[3]
+    status_callback = callbacks[4]
+    session_migrated_callback = callbacks[5]
+    compaction_failed_callback = callbacks[7]
+    final_text_chunks: list[str] = []
+    explicit_final: Optional[str] = None
+    result: dict[str, Any] = {"final_response": ""}
+    failed = False
+    tool_args_by_id: dict[str, Any] = {}
+
+    try:
+        _touch_web_turn(session_id, status="Starting fake stream…", phase="starting")
+        _record_web_turn_timing(session_id, "task_started")
+        _record_web_turn_timing(session_id, "user_message_persisted")
+        for index, event in enumerate(events):
+            delay = _event_delay_seconds(event)
+            if delay:
+                time.sleep(delay)
+            event_type = str(event.type or "").strip().lower()
+            if event_type in {"status", "recover"}:
+                status_callback(event.kind or event_type, event.text or "Fake stream status")
+                if event.phase:
+                    _touch_web_turn(session_id, phase=event.phase)
+            elif event_type in {"token", "text"}:
+                token_callback(event.text)
+                final_text_chunks.append(event.text)
+            elif event_type == "reasoning":
+                reasoning_callback(event.text)
+            elif event_type in {"tool_start", "tool"}:
+                tid = event.tool_call_id or f"fake_tool_{index}"
+                args = event.args if isinstance(event.args, dict) else {}
+                tool_args_by_id[tid] = args
+                tool_start_callback(tid, event.name or "fake_tool", args)
+            elif event_type in {"tool_end", "tool_complete"}:
+                tid = event.tool_call_id or next(iter(tool_args_by_id), f"fake_tool_{index}")
+                args = tool_args_by_id.pop(tid, event.args if isinstance(event.args, dict) else {})
+                tool_complete_callback(tid, event.name or "fake_tool", args, event.result)
+            elif event_type == "stall":
+                _touch_web_turn(
+                    session_id,
+                    status=event.text or "Fake stream intentionally stalled…",
+                    phase=event.phase or "api",
+                )
+            elif event_type == "migrate":
+                new_id = event.text.strip() if event.text else f"{session_id}_migrated"
+                session_migrated_callback(session_id, new_id, event.kind or "fake_stream_migration")
+            elif event_type in {"compact_fail", "compaction_fail"}:
+                failed = True
+                message_text = event.text or "Context compression failed; retry this message to continue."
+                compaction_failed_callback(event.kind or "fake_stream_compaction_failure", message_text)
+                if message_text:
+                    final_text_chunks.append(f"\n\n{message_text}")
+                result = {
+                    "backend_error_class": event.name or "ContextCompactionError",
+                    "final_response": "".join(final_text_chunks),
+                }
+                break
+            elif event_type == "fail":
+                failed = True
+                result = {
+                    "backend_error_class": event.name or "FakeStreamError",
+                    "final_response": "".join(final_text_chunks),
+                }
+                break
+            elif event_type == "complete":
+                explicit_final = event.text if event.text else None
+                if explicit_final:
+                    final_text_chunks.append(explicit_final)
+                break
+            else:
+                _publish_web_status(
+                    session_id,
+                    "fake_event_ignored",
+                    f"Ignored fake stream event: {event_type or 'unknown'}",
+                    phase="streaming",
+                )
+        if not failed:
+            result = {"final_response": explicit_final or "".join(final_text_chunks)}
+    except Exception as exc:
+        _log.exception("fake web stream error session=%s", session_id)
+        result = {"backend_error_class": type(exc).__name__, "final_response": "".join(final_text_chunks)}
+    finally:
+        _, active_turn = _get_web_turn(session_id)
+        if active_turn:
+            _checkpoint_web_turn(session_id, active_turn, force=True)
+        _persist_web_turn_if_missing(
+            session_id,
+            message,
+            result,
+            before_message_count,
+            eager_user_id=eager_user_id,
+            checkpoint_assistant_id=active_turn.assistant_message_id if active_turn else None,
+        )
+        _emit_web_session_updated(session_id)
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+        except Exception:
+            pass
+        _web_queues.pop(session_id, None)
+        _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
+        _clear_web_turn(session_id)
 
 
 def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
@@ -7461,6 +7679,7 @@ async def create_conversation(body: ConversationCreate):
         status_callback,
         session_migrated_callback,
         subagent_event_callback,
+        _compaction_failed_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     if body.model:
@@ -7577,6 +7796,63 @@ async def create_conversation(body: ConversationCreate):
         turn.timings["backend_received"] = request_received_at
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
+
+
+@app.post("/api/dev/fake-streams")
+async def create_fake_stream(body: FakeStreamStart):
+    """Start a scripted, provider-free stream through the production web chat pipeline."""
+    from datetime import datetime
+
+    if not _web_fake_streams_enabled():
+        raise HTTPException(status_code=404, detail="Fake web streams are disabled")
+
+    request_received_at = time.time()
+    session_id = (
+        body.session_id.strip()
+        if body.session_id and body.session_id.strip()
+        else datetime.now().strftime("%Y%m%d_%H%M%S") + "_fake_" + uuid.uuid4().hex[:8]
+    )
+    source = _normalize_web_session_source(body.source)
+    row = _create_fake_stream_session(
+        session_id,
+        source=source,
+        model=body.model or "fake-stream",
+        title=(body.title or body.message[:80] or "Fake stream"),
+    )
+    if row:
+        _emit_sessions_changed("created", session_id, row)
+
+    queue: asyncio.Queue = asyncio.Queue()
+    _web_queues[session_id] = queue
+    loop = asyncio.get_running_loop()
+    turn = _mark_web_turn_active(
+        session_id,
+        status="Starting fake stream…",
+        phase="starting",
+        active_agent_session_id=session_id,
+    )
+    with turn.lock:
+        turn.timings["backend_received"] = request_received_at
+    eager_user_id = _persist_web_user_message(session_id, body.message)
+    with turn.lock:
+        turn.user_message_id = eager_user_id
+    before_message_count = _session_message_count(session_id)
+    thread = threading.Thread(
+        target=_run_fake_stream_task,
+        kwargs={
+            "session_id": session_id,
+            "message": body.message,
+            "events": body.events,
+            "queue": queue,
+            "loop": loop,
+            "before_message_count": before_message_count,
+            "eager_user_id": eager_user_id,
+        },
+        name=f"spark-fake-web-stream-{session_id}",
+        daemon=True,
+    )
+    thread.start()
+    return {"ok": True, "session_id": session_id}
 
 
 @app.get("/api/conversations/{session_id}/subagents")
@@ -7800,6 +8076,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         status_callback,
         session_migrated_callback,
         subagent_event_callback,
+        _compaction_failed_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     from core.spark_state import SessionDB
@@ -7834,6 +8111,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             status_callback,
             session_migrated_callback,
             subagent_event_callback,
+            _compaction_failed_callback,
         ) = _make_web_chat_callbacks(session_id, queue, loop)
         _web_queues[session_id] = queue
         turn_route = _resolve_web_turn_route(body.message)
@@ -8313,6 +8591,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
         status_callback,
         session_migrated_callback,
         subagent_event_callback,
+        _compaction_failed_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
     turn_route = _resolve_web_turn_route(user_msg)
     if agent and _web_agent_signatures.get(agent_session_id or session_id) == turn_route["signature"]:
@@ -8476,6 +8755,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                     "stream_text_chars": len(turn.stream_text),
                     "phase": turn.phase,
                     "timings": _web_turn_timing_payload(turn),
+                    "compaction": dict(turn.compaction),
                 }
             )
             payload.update(
@@ -8489,6 +8769,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                     "stream_revision": turn.stream_revision,
                     "stream_text_chars": len(turn.stream_text),
                     "timings": _web_turn_timing_payload(turn),
+                    "compaction": dict(turn.compaction),
                 }
             )
     return payload
@@ -8564,6 +8845,7 @@ def _conversation_stream_snapshot_payload(
         "returned_text_start": text_start,
         "returned_text_mode": text_mode,
         "timings": _web_turn_timing_payload(turn),
+        "compaction": dict(turn.compaction) if turn else {},
     }
     return {
         "session_id": ids.get("requested") or session_id,
@@ -8711,6 +8993,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         status_callback,
         session_migrated_callback,
         subagent_event_callback,
+        _compaction_failed_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
     if body.model:
