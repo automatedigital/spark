@@ -1291,6 +1291,7 @@ class TestConversationControl:
         db = SessionDB()
         try:
             db.create_session("web_search_session", source="web", model="m1")
+            db.set_session_title("web_search_session", "Needle thread")
             db.append_message("web_search_session", "user", content="needle project")
             db.create_session("cli_search_session", source="cli", model="m1")
             db.append_message("cli_search_session", "user", content="needle project")
@@ -1302,6 +1303,7 @@ class TestConversationControl:
         ids = {row["session_id"] for row in resp.json()["results"]}
         assert "web_search_session" in ids
         assert "cli_search_session" not in ids
+        assert resp.json()["results"][0]["title"] == "Needle thread"
 
     def test_session_title_patch(self, web_client):
         from core.spark_state import SessionDB

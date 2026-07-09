@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   applySessionRows,
   coalesceSessionRows,
+  mergeSessionPage,
   mergeSessionRow,
   pendingInitialMessageForSession,
+  sessionInfoFromDetail,
 } from "./sessionStore";
 import type { SessionInfo } from "./api";
 
@@ -108,5 +110,44 @@ describe("pendingInitialMessageForSession", () => {
     expect(next.map((row) => row.id)).toEqual(["s1", "new", "older"]);
     expect(next.find((row) => row.id === "s1")?.preview).toBe("updated");
     expect(next.find((row) => row.id === "s1")?.message_count).toBe(5);
+  });
+
+  it("merges overlapping pages deterministically without duplicate sessions", () => {
+    const current = [
+      session({ id: "newest", last_active: 10 }),
+      session({ id: "boundary", last_active: 9, preview: "first page" }),
+    ];
+    const next = mergeSessionPage(current, [
+      session({ id: "boundary", last_active: 9, preview: "second page", message_count: 2 }),
+      session({ id: "older", last_active: 8 }),
+    ]);
+
+    expect(next.map((row) => row.id)).toEqual(["newest", "boundary", "older"]);
+    expect(next.find((row) => row.id === "boundary")?.message_count).toBe(2);
+    expect(next.find((row) => row.id === "boundary")?.preview).toBe("second page");
+  });
+
+  it("hydrates a complete sidebar row from session detail and FTS metadata", () => {
+    const hydrated = sessionInfoFromDetail(
+      { id: "old", title: "Old session", message_count: 4 },
+      {
+        session_id: "old",
+        snippet: "matched content",
+        role: "user",
+        source: "workspace:archive",
+        model: "test-model",
+        title: "Old session",
+        session_started: 12,
+      },
+    );
+
+    expect(hydrated).toMatchObject({
+      id: "old",
+      title: "Old session",
+      preview: "matched content",
+      source: "workspace:archive",
+      last_active: 12,
+      message_count: 4,
+    });
   });
 });

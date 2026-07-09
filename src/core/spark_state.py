@@ -1775,6 +1775,7 @@ class SessionDB:
                 m.tool_name,
                 s.source,
                 s.model,
+                s.title,
                 s.started_at AS session_started
             FROM messages_fts
             JOIN messages m ON m.id = messages_fts.rowid
