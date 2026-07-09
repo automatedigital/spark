@@ -105,7 +105,6 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_slug, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant);
-CREATE INDEX IF NOT EXISTS idx_tasks_owner_profile ON tasks(owner_profile);
 
 CREATE TABLE IF NOT EXISTS task_links (
     parent_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -197,6 +196,18 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def ensure_kanban_schema() -> None:
+    """Idempotently repair the Kanban schema for older profile databases."""
+    path = str(kanban_db_path())
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        conn.row_factory = sqlite3.Row
+        _ensure_schema(conn)
+    finally:
+        conn.close()
+
+
 def init_kanban_db() -> None:
     """Create DB file and schema if missing."""
     path = str(kanban_db_path())
@@ -220,6 +231,10 @@ def _connect() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    # Old profile databases may have been marked initialized before newer
+    # columns existed. Keep this idempotent repair on each connection so
+    # background dashboard polling self-heals instead of throwing forever.
+    _ensure_schema(conn)
     try:
         yield conn
         conn.commit()

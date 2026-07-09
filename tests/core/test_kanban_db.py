@@ -3,11 +3,79 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
 
 import pytest
 
 from core import kanban_db as kb
+
+
+def test_old_schema_missing_owner_profile_self_heals():
+    path = kb.kanban_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE boards (
+                slug TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                created_at REAL NOT NULL
+            );
+            CREATE TABLE tasks (
+                id TEXT PRIMARY KEY,
+                board_slug TEXT NOT NULL DEFAULT 'default',
+                title TEXT NOT NULL,
+                body TEXT,
+                status TEXT NOT NULL DEFAULT 'todo',
+                assignee TEXT,
+                tenant TEXT,
+                priority INTEGER NOT NULL DEFAULT 0,
+                idempotency_key TEXT UNIQUE,
+                workspace_kind TEXT NOT NULL DEFAULT 'scratch',
+                workspace_path TEXT,
+                skills_json TEXT,
+                result TEXT,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                current_run_id INTEGER,
+                claim_token TEXT,
+                claim_expires_at REAL,
+                worker_pid INTEGER,
+                spawn_failures INTEGER NOT NULL DEFAULT 0,
+                max_runtime_seconds INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO boards (slug, display_name, description, icon, created_at)
+            VALUES ('default', 'Default', '', '', 1);
+            INSERT INTO tasks (
+                id, board_slug, title, status, priority, workspace_kind,
+                created_at, updated_at
+            )
+            VALUES ('old_task', 'default', 'Old task', 'running', 1, 'scratch', 1, 1);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    kb._initialized[str(path)] = True
+    try:
+        board = kb.get_board()
+    finally:
+        kb._initialized.pop(str(path), None)
+
+    assert board["columns"]["running"][0]["id"] == "old_task"
+    assert board["columns"]["running"][0]["owner_profile"] is None
+
+    conn = sqlite3.connect(path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+    finally:
+        conn.close()
+    assert "owner_profile" in columns
 
 
 def test_create_with_dependency_promotes_when_parent_done():

@@ -65,7 +65,58 @@ def test_session_messages_accept_db_prefixed_before_id(web_client):
     assert res.status_code == 200
     body = res.json()
     assert [m["id"] for m in body["messages"]] == [first, second]
+    assert body["has_earlier"] is False
+    assert body["page_start_index"] == 0
+    assert body["page_end_index"] == 1
+    assert body["next_before_id"] is None
+
+
+def test_session_messages_page_large_thread_from_recent_tail(web_client):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("long-history-page", source="web")
+        ids = []
+        for idx in range(1000):
+            role = "user" if idx % 2 == 0 else "assistant"
+            ids.append(db.append_message("long-history-page", role, content=f"message {idx}"))
+    finally:
+        db.close()
+
+    tail = web_client.get("/api/sessions/long-history-page/messages?limit=50")
+    assert tail.status_code == 200
+    body = tail.json()
+    assert body["total"] == 1000
+    assert len(body["messages"]) == 50
+    assert body["messages"][0]["content"] == "message 950"
+    assert body["messages"][-1]["content"] == "message 999"
     assert body["has_earlier"] is True
+    assert body["page_start_index"] == 950
+    assert body["page_end_index"] == 999
+    assert str(body["next_before_id"]) == str(ids[950])
+
+    older = web_client.get(
+        f"/api/sessions/long-history-page/messages?limit=50&before_id=db:{ids[950]}"
+    )
+    assert older.status_code == 200
+    older_body = older.json()
+    assert len(older_body["messages"]) == 50
+    assert older_body["messages"][0]["content"] == "message 900"
+    assert older_body["messages"][-1]["content"] == "message 949"
+    assert older_body["has_earlier"] is True
+    assert older_body["page_start_index"] == 900
+    assert older_body["page_end_index"] == 949
+
+    first_page = web_client.get(
+        f"/api/sessions/long-history-page/messages?limit=50&before_id=db:{ids[50]}"
+    )
+    assert first_page.status_code == 200
+    first_body = first_page.json()
+    assert first_body["messages"][0]["content"] == "message 0"
+    assert first_body["messages"][-1]["content"] == "message 49"
+    assert first_body["has_earlier"] is False
+    assert first_body["next_before_id"] is None
 
 
 def test_session_messages_hide_empty_assistant_placeholders(web_client):
