@@ -23,6 +23,78 @@ export interface StreamRenderSnapshot {
   revision?: number | null;
 }
 
+export interface FrameScheduler<T> {
+  schedule(value: T): void;
+  dispose(): void;
+}
+
+export interface RenderProbeSnapshot {
+  activePageRenders: number;
+}
+
+declare global {
+  interface Window {
+    __sparkRenderHealth?: RenderProbeSnapshot;
+  }
+}
+
+export function createFrameScheduler<T>(
+  write: (value: T) => void,
+  requestFrame: (callback: FrameRequestCallback) => number,
+  cancelFrame: (handle: number) => void,
+): FrameScheduler<T> {
+  let frame: number | null = null;
+  let latest: T | undefined;
+  let disposed = false;
+
+  return {
+    schedule(value) {
+      if (disposed) return;
+      latest = value;
+      if (frame !== null) return;
+      frame = requestFrame(() => {
+        frame = null;
+        if (disposed || latest === undefined) return;
+        const valueToWrite = latest;
+        latest = undefined;
+        write(valueToWrite);
+      });
+    },
+    dispose() {
+      disposed = true;
+      latest = undefined;
+      if (frame !== null) {
+        cancelFrame(frame);
+        frame = null;
+      }
+    },
+  };
+}
+
+function renderProbe(): RenderProbeSnapshot | null {
+  if (typeof window === "undefined") return null;
+  window.__sparkRenderHealth ??= { activePageRenders: 0 };
+  return window.__sparkRenderHealth;
+}
+
+export function recordActivePageRender(): void {
+  const probe = renderProbe();
+  if (probe) probe.activePageRenders += 1;
+}
+
+export function readActivePageRenderCount(): number {
+  return renderProbe()?.activePageRenders ?? 0;
+}
+
+export function resetActivePageRenderCount(): void {
+  const probe = renderProbe();
+  if (probe) probe.activePageRenders = 0;
+}
+
+export function shouldTrackDecorativePointer(prefersReducedMotion: boolean): boolean {
+  return !prefersReducedMotion;
+}
+
 export function safeModeKey(sessionId: string): string {
   return `${SAFE_MODE_KEY_PREFIX}${sessionId}`;
 }

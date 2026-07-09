@@ -1,4 +1,4 @@
-import { lazy, useState, useEffect, useRef } from "react";
+import { lazy, memo, useState, useEffect, useRef } from "react";
 import {
   Blocks,
   Clock,
@@ -26,11 +26,13 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
+import { CursorGlow } from "@/components/CursorGlow";
 import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
 import { gatewayFooterState } from "@/lib/gatewayFooterState";
+import { recordActivePageRender } from "@/lib/renderHealth";
 import {
   isEditableShortcutTarget,
   isSidebarToggleShortcut,
@@ -107,6 +109,24 @@ const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
 };
 
 const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas", "messaging", "skillsTools"]);
+
+const ActivePageOutlet = memo(function ActivePageOutlet({
+  page,
+  label,
+}: {
+  page: PageId;
+  label: string;
+}) {
+  useEffect(() => {
+    recordActivePageRender();
+  });
+  const PageComponent = PAGE_COMPONENTS[page];
+  return (
+    <LazyLoadBoundary label={label}>
+      <PageComponent />
+    </LazyLoadBoundary>
+  );
+});
 
 function pageForGlobalNavTarget(target: GlobalNavTarget): PageId {
   switch (target.type) {
@@ -302,7 +322,6 @@ function AppShell() {
   const [tokenHint, setTokenHint] = useState<string | null>(null);
   const [tokenInput, setTokenInput] = useState("");
   const [authChecking, setAuthChecking] = useState(true);
-  const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
   const [statusSnapshot, setStatusSnapshot] = useState<StatusResponse | null>(null);
   const [statusPollFailed, setStatusPollFailed] = useState(false);
@@ -320,14 +339,6 @@ function AppShell() {
 
   // ── Shared session store (global sidebar + ChatPage) ──
   const { selectSession, newProjectThread } = useSessionStore();
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setBlobPos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
 
   useEventBus((env) => {
     if (!isTauri()) return;
@@ -614,7 +625,6 @@ function AppShell() {
 
   const sidebarOpen = navExpanded || navHovered;
 
-  const PageComponent = PAGE_COMPONENTS[page];
   const gatewayFooter = gatewayFooterState(statusSnapshot, statusPollFailed);
 
   const saveToken = () => {
@@ -653,12 +663,7 @@ function AppShell() {
       )}
       <GlobalToasts />
 
-      {/* Cursor-following glow blob */}
-      <div
-        className="cursor-blob"
-        style={{ left: blobPos.x, top: blobPos.y }}
-        aria-hidden="true"
-      />
+      <CursorGlow />
       {/* Global graphite texture + signal wash */}
       <div className="noise-overlay" />
       <div className="warm-glow" />
@@ -953,9 +958,7 @@ function AppShell() {
                 </div>
               </section>
             ) : (
-              <LazyLoadBoundary label={navLabel(PAGE_LABEL_KEYS[page])}>
-                <PageComponent />
-              </LazyLoadBoundary>
+              <ActivePageOutlet page={page} label={navLabel(PAGE_LABEL_KEYS[page])} />
             )}
           </main>
           {!authChecking && !authWall && (

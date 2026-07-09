@@ -9,6 +9,11 @@ import {
   applyStreamRenderSnapshotState,
   shouldEnableSafeMode,
   shouldApplyStreamRenderSnapshot,
+  createFrameScheduler,
+  readActivePageRenderCount,
+  recordActivePageRender,
+  resetActivePageRenderCount,
+  shouldTrackDecorativePointer,
 } from "./renderHealth";
 
 function installLocalStorage() {
@@ -105,5 +110,75 @@ describe("stream render snapshot revision gate", () => {
       { revision: 7, textChars: 200 },
       { text: "x".repeat(150), revision: 8 },
     )).toEqual({ revision: 8, textChars: 200 });
+  });
+});
+
+describe("pointer render isolation", () => {
+  it("coalesces a pointer burst into one write with the latest position", () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    const writes: Array<{ x: number; y: number }> = [];
+    let nextHandle = 0;
+    const scheduler = createFrameScheduler(
+      (position: { x: number; y: number }) => writes.push(position),
+      (callback) => {
+        const handle = ++nextHandle;
+        callbacks.set(handle, callback);
+        return handle;
+      },
+      (handle) => callbacks.delete(handle),
+    );
+
+    for (let index = 0; index < 1_000; index += 1) {
+      scheduler.schedule({ x: index, y: index * 2 });
+    }
+
+    expect(callbacks.size).toBe(1);
+    expect(writes).toEqual([]);
+    callbacks.get(1)?.(16);
+    expect(writes).toEqual([{ x: 999, y: 1_998 }]);
+  });
+
+  it("cancels a pending frame and ignores work after cleanup", () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    const write = vi.fn();
+    const cancelFrame = vi.fn((handle: number) => callbacks.delete(handle));
+    const scheduler = createFrameScheduler(
+      write,
+      (callback) => {
+        callbacks.set(7, callback);
+        return 7;
+      },
+      cancelFrame,
+    );
+
+    scheduler.schedule({ x: 10, y: 20 });
+    scheduler.dispose();
+    scheduler.schedule({ x: 30, y: 40 });
+
+    expect(cancelFrame).toHaveBeenCalledWith(7);
+    expect(callbacks.size).toBe(0);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("tracks active-page renders independently from pointer scheduling", () => {
+    vi.stubGlobal("window", {});
+    resetActivePageRenderCount();
+    const beforePointerBurst = readActivePageRenderCount();
+
+    const scheduler = createFrameScheduler(
+      () => undefined,
+      () => 1,
+      () => undefined,
+    );
+    for (let index = 0; index < 1_000; index += 1) scheduler.schedule(index);
+
+    expect(readActivePageRenderCount()).toBe(beforePointerBurst);
+    recordActivePageRender();
+    expect(readActivePageRenderCount()).toBe(beforePointerBurst + 1);
+  });
+
+  it("disables decorative pointer tracking for reduced motion", () => {
+    expect(shouldTrackDecorativePointer(true)).toBe(false);
+    expect(shouldTrackDecorativePointer(false)).toBe(true);
   });
 });
