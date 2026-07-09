@@ -2902,6 +2902,7 @@ async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = 
                         "role": m.get("role"),
                         "source": m.get("source"),
                         "model": m.get("model"),
+                        "title": m.get("title"),
                         "session_started": m.get("session_started"),
                     }
             return {"results": list(seen.values())}

@@ -3,8 +3,9 @@
  * grouped by workspace project. Hermes-style layout; backed by the shared
  * session store.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowLeft,
   ArrowRight,
@@ -61,6 +62,11 @@ import { Input } from "@/components/ui/input";
 import { threadTitle } from "@/components/chat/ThreadRow";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 import { chooseDefaultStarter, toggleProjectWizardValue } from "@/lib/projectWizard";
+import {
+  buildSidebarRows,
+  estimateSidebarRowHeight,
+  type SidebarRow,
+} from "@/components/sidebar/sidebarRows";
 
 const SESSION_DRAG_MIME = "application/x-spark-session-id";
 type DropTarget = "pinned" | "chats" | `project:${string}` | null;
@@ -159,40 +165,24 @@ function SessionRow({
 
 function ProjectGroup({
   project,
-  threads,
+  sessionCount,
   isExpanded,
-  selectedId,
-  unreadSessionIds,
-  pinnedIds,
   onToggle,
-  onOpen,
-  onTogglePin,
-  onDelete,
   onNewThread,
   onDeleteProject,
   onRenameProject,
-  onDragSessionStart,
-  onDragSessionEnd,
   dragOverTarget,
   onDragOverProject,
   onDropOnProject,
   onClearDragOver,
 }: {
   project: WorkspaceProject;
-  threads: SessionInfo[];
+  sessionCount: number;
   isExpanded: boolean;
-  selectedId: string | null;
-  unreadSessionIds: Set<string>;
-  pinnedIds: Set<string>;
   onToggle: () => void;
-  onOpen: (id: string) => void;
-  onTogglePin: (id: string) => void;
-  onDelete: (id: string) => void;
   onNewThread: (slug: string) => void;
   onDeleteProject: (slug: string) => void;
   onRenameProject: (slug: string, name: string) => Promise<string>;
-  onDragSessionStart: (id: string) => void;
-  onDragSessionEnd: () => void;
   dragOverTarget: DropTarget;
   onDragOverProject: (slug: string, e: React.DragEvent) => void;
   onDropOnProject: (slug: string, e: React.DragEvent) => void;
@@ -312,9 +302,9 @@ function ProjectGroup({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
-        {threads.length > 0 && (
+        {sessionCount > 0 && (
           <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">
-            {threads.length}
+            {sessionCount}
           </Badge>
         )}
       </div>
@@ -347,29 +337,6 @@ function ProjectGroup({
         </div>
       )}
 
-      {isExpanded && (
-        <div className="pb-1">
-          {threads.length === 0 ? (
-            <p className="py-1 pl-9 text-[11px] italic text-muted-foreground/40">No chats</p>
-          ) : (
-            threads.map((t) => (
-              <SessionRow
-                key={t.id}
-                session={t}
-                active={selectedId === t.id}
-                indent
-                pinned={pinnedIds.has(t.id)}
-                unread={unreadSessionIds.has(t.id)}
-                onOpen={() => onOpen(t.id)}
-                onTogglePin={() => onTogglePin(t.id)}
-                onDelete={() => onDelete(t.id)}
-                onDragStart={onDragSessionStart}
-                onDragEnd={onDragSessionEnd}
-              />
-            ))
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -879,6 +846,9 @@ export function SidebarSessions({
     projects,
     loadingProjects,
     loadingSessions,
+    loadingMoreSessions,
+    hasMoreSessions,
+    sessionsError,
     sessions,
     displayedSessions,
     searchQ,
@@ -896,9 +866,12 @@ export function SidebarSessions({
     createProject,
     moveSessionToProject,
     renameProject,
+    loadMoreSessions,
   } = useSessionStore();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollAnchorRef = useRef<{ key: string; delta: number } | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
@@ -931,27 +904,77 @@ export function SidebarSessions({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const pinnedSessions = useMemo(
-    () => displayedSessions.filter((s) => pinnedIds.has(s.id)),
-    [displayedSessions, pinnedIds],
-  );
+  const rows = useMemo(() => buildSidebarRows({
+    projects,
+    sessions: displayedSessions,
+    pinnedIds,
+    expandedProjects,
+    collapsedSections,
+    searchResultsActive: searchResults !== null,
+    searchQ,
+    loading: loadingSessions,
+    loadingMore: loadingMoreSessions,
+    hasMore: hasMoreSessions,
+    loadError: sessionsError,
+    dragging: Boolean(draggingSessionId),
+  }), [
+    collapsedSections,
+    displayedSessions,
+    draggingSessionId,
+    expandedProjects,
+    hasMoreSessions,
+    loadingMoreSessions,
+    loadingSessions,
+    pinnedIds,
+    projects,
+    searchQ,
+    searchResults,
+    sessionsError,
+  ]);
 
-  const ungrouped = useMemo(
-    () => displayedSessions.filter((s) => !slugFromSource(s.source)),
-    [displayedSessions],
-  );
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => estimateSidebarRowHeight(rows[index]),
+    getItemKey: (index) => rows[index].key,
+    overscan: 8,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
 
-  const bySlug = useMemo(() => {
-    const map = new Map<string, SessionInfo[]>();
-    for (const s of displayedSessions) {
-      const slug = slugFromSource(s.source);
-      if (!slug) continue;
-      const list = map.get(slug) ?? [];
-      list.push(s);
-      map.set(slug, list);
+  useEffect(() => {
+    const last = virtualItems.at(-1);
+    if (
+      last
+      && last.index >= rows.length - 5
+      && hasMoreSessions
+      && !loadingMoreSessions
+      && searchResults === null
+      && (scrollRef.current?.scrollTop ?? 0) > 0
+    ) {
+      void loadMoreSessions();
     }
-    return map;
-  }, [displayedSessions]);
+  }, [hasMoreSessions, loadMoreSessions, loadingMoreSessions, rows.length, searchResults, virtualItems]);
+
+  // Keep the first visible stable row at the same pixel when SSE patches or
+  // pagination rebuild the flattened model.
+  useLayoutEffect(() => {
+    const anchor = scrollAnchorRef.current;
+    if (!anchor || !scrollRef.current) return;
+    const index = rows.findIndex((row) => row.key === anchor.key);
+    if (index < 0) return;
+    virtualizer.scrollToIndex(index, { align: "start" });
+    scrollRef.current.scrollTop += anchor.delta;
+  }, [rows, virtualizer]);
+
+  const rememberScrollAnchor = () => {
+    const scrollTop = scrollRef.current?.scrollTop ?? 0;
+    const first = virtualizer.getVirtualItems().find((item) => item.end > scrollTop);
+    if (!first) return;
+    scrollAnchorRef.current = {
+      key: rows[first.index]?.key ?? "",
+      delta: scrollTop - first.start,
+    };
+  };
 
   const draggedSessionFromEvent = (e: React.DragEvent): string => (
     e.dataTransfer.getData(SESSION_DRAG_MIME) || e.dataTransfer.getData("text/plain")
@@ -1034,149 +1057,173 @@ export function SidebarSessions({
         </div>
       </div>
 
-      {/* Scrollable list */}
-      <div className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1 pb-2">
-        {/* PINNED */}
-        <div
-          className={cn(
-            "pt-2",
-            dragOverTarget === "pinned" && "rounded-sm bg-primary/10 ring-1 ring-primary/40",
-          )}
-          onDragOver={(e) => allowDrop("pinned", e)}
-          onDragLeave={() => setDragOverTarget(null)}
-          onDrop={(e) => void dropSession("pinned", e)}
-        >
-          <div className="flex items-center gap-1.5 px-2 pb-1">
-            <Pin className="h-3 w-3 text-muted-foreground/50" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
-              Pinned
-            </span>
-          </div>
-          {pinnedSessions.length === 0 ? (
-            <p className="px-2.5 pb-1 text-[11px] italic text-muted-foreground/40">
-              Shift-click a chat to pin
-            </p>
-          ) : (
-            pinnedSessions.map((s) => (
-              <SessionRow
-                key={`pin-${s.id}`}
-                session={s}
-                active={selectedId === s.id}
-                pinned
-                unread={unreadSessionIds.has(s.id)}
-                onOpen={() => onOpenSession(s.id)}
-                onTogglePin={() => togglePin(s.id)}
-                onDelete={() => void deleteSession(s.id)}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-              />
-            ))
-          )}
-        </div>
-        {dragError && (
-          <p className="px-2.5 pt-1 text-[11px] text-destructive">{dragError}</p>
-        )}
-
-        {/* PROJECTS */}
-        <div className="pt-3">
-          <SectionHeader
-            label="Projects"
-            collapsed={collapsedSections.has("sessions")}
-            onToggle={() => toggleSection("sessions")}
-            actions={
-              <>
-                {(loadingSessions || loadingProjects) && !sessions.length && (
-                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40" />
+      {/* One virtualized scroll surface for pinned, project, and chat rows. */}
+      <div
+        ref={scrollRef}
+        className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1 pb-2"
+        onScroll={rememberScrollAnchor}
+        data-testid="session-sidebar-scroll"
+      >
+        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualItems.map((virtualRow) => {
+            const row: SidebarRow = rows[virtualRow.index];
+            const projectDropSlug = row.kind === "session" && row.placement === "project"
+              ? slugFromSource(row.session.source)
+              : null;
+            const dropTarget: Exclude<DropTarget, null> | null = row.kind === "session"
+              ? row.placement === "pinned"
+                ? "pinned"
+                : row.placement === "chats"
+                  ? "chats"
+                  : projectDropSlug
+                    ? `project:${projectDropSlug}`
+                    : null
+              : null;
+            return (
+              <div
+                key={row.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualRow.index}
+                data-sidebar-row={row.kind}
+                data-sidebar-session-row={row.kind === "session" ? row.session.id : undefined}
+                className="absolute left-0 top-0 w-full"
+                style={{ transform: `translateY(${virtualRow.start}px)` }}
+                onDragOver={dropTarget ? (event) => allowDrop(dropTarget, event) : undefined}
+                onDragLeave={dropTarget ? () => setDragOverTarget(null) : undefined}
+                onDrop={dropTarget ? (event) => void dropSession(dropTarget, event) : undefined}
+              >
+                {row.kind === "pinned-header" && (
+                  <div
+                    className={cn(
+                      "flex items-center gap-1.5 px-2 pb-1 pt-2",
+                      dragOverTarget === "pinned" && "rounded-sm bg-primary/10 ring-1 ring-primary/40",
+                    )}
+                    onDragOver={(event) => allowDrop("pinned", event)}
+                    onDragLeave={() => setDragOverTarget(null)}
+                    onDrop={(event) => void dropSession("pinned", event)}
+                  >
+                    <Pin className="h-3 w-3 text-muted-foreground/50" />
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                      Pinned
+                    </span>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  title="New project workspace"
-                  className="rounded p-0.5 text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground"
-                  onClick={() => setCreatingProject(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </>
-            }
-          />
-
-          {!collapsedSections.has("sessions") && (
-            <>
-              {/* Project workspace groups */}
-              {projects.map((project) => (
-                <ProjectGroup
-                  key={project.slug}
-                  project={project}
-                  threads={bySlug.get(project.slug) ?? []}
-                  isExpanded={expandedProjects.has(project.slug) || Boolean(searchResults)}
-                  selectedId={selectedId}
-                  unreadSessionIds={unreadSessionIds}
-                  pinnedIds={pinnedIds}
-                  onToggle={() => toggleProjectExpanded(project.slug)}
-                  onOpen={onOpenSession}
-                  onTogglePin={togglePin}
-                  onDelete={(id) => void deleteSession(id)}
-                  onNewThread={onNewProjectThread}
-                  onDeleteProject={(slug) => void deleteProject(slug)}
-                  onRenameProject={renameProject}
-                  onDragSessionStart={handleDragStart}
-                  onDragSessionEnd={handleDragEnd}
-                  dragOverTarget={dragOverTarget}
-                  onDragOverProject={(slug, e) => allowDrop(`project:${slug}`, e)}
-                  onDropOnProject={(slug, e) => void dropSession(`project:${slug}`, e)}
-                  onClearDragOver={() => setDragOverTarget(null)}
-                />
-              ))}
-
-              {searchResults !== null && displayedSessions.length === 0 && (
-                <p className="px-2.5 py-2 text-[11px] text-muted-foreground/50">
-                  No results for "{searchQ}"
-                </p>
-              )}
-              {searchResults === null && !loadingSessions && ungrouped.length === 0 && projects.length === 0 && (
-                <p className="px-2.5 py-2 text-[11px] text-muted-foreground/40">No projects yet</p>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* CHATS (ungrouped sessions) */}
-        {(ungrouped.length > 0 || draggingSessionId) && (
-          <div
-            className={cn(
-              "pt-3",
-              dragOverTarget === "chats" && "rounded-sm bg-primary/10 ring-1 ring-primary/40",
-            )}
-            onDragOver={(e) => allowDrop("chats", e)}
-            onDragLeave={() => setDragOverTarget(null)}
-            onDrop={(e) => void dropSession("chats", e)}
-          >
-            <SectionHeader
-              label="Chats"
-              collapsed={collapsedSections.has("chats")}
-              onToggle={() => toggleSection("chats")}
-            />
-            {!collapsedSections.has("chats") &&
-              (ungrouped.length > 0 ? (
-                ungrouped.map((s) => (
+                {row.kind === "pinned-empty" && (
+                  <p className="px-2.5 pb-1 text-[11px] italic text-muted-foreground/40">
+                    Shift-click a chat to pin
+                  </p>
+                )}
+                {row.kind === "projects-header" && (
+                  <div className="pt-3">
+                    <SectionHeader
+                      label="Projects"
+                      collapsed={collapsedSections.has("sessions")}
+                      onToggle={() => toggleSection("sessions")}
+                      actions={
+                        <>
+                          {(loadingSessions || loadingProjects) && !sessions.length && (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40" />
+                          )}
+                          <button
+                            type="button"
+                            title="New project workspace"
+                            className="rounded p-0.5 text-muted-foreground/50 transition hover:bg-secondary hover:text-foreground"
+                            onClick={() => setCreatingProject(true)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      }
+                    />
+                  </div>
+                )}
+                {row.kind === "project" && (
+                  <ProjectGroup
+                    project={row.project}
+                    sessionCount={row.sessionCount}
+                    isExpanded={expandedProjects.has(row.project.slug) || Boolean(searchResults)}
+                    onToggle={() => toggleProjectExpanded(row.project.slug)}
+                    onNewThread={onNewProjectThread}
+                    onDeleteProject={(slug) => void deleteProject(slug)}
+                    onRenameProject={renameProject}
+                    dragOverTarget={dragOverTarget}
+                    onDragOverProject={(slug, event) => allowDrop(`project:${slug}`, event)}
+                    onDropOnProject={(slug, event) => void dropSession(`project:${slug}`, event)}
+                    onClearDragOver={() => setDragOverTarget(null)}
+                  />
+                )}
+                {row.kind === "project-empty" && (
+                  <p className="py-1 pl-9 text-[11px] italic text-muted-foreground/40">No chats</p>
+                )}
+                {row.kind === "session" && (
                   <SessionRow
-                    key={s.id}
-                    session={s}
-                    active={selectedId === s.id}
-                    pinned={pinnedIds.has(s.id)}
-                    unread={unreadSessionIds.has(s.id)}
-                    onOpen={() => onOpenSession(s.id)}
-                    onTogglePin={() => togglePin(s.id)}
-                    onDelete={() => void deleteSession(s.id)}
+                    session={row.session}
+                    active={selectedId === row.session.id}
+                    indent={row.indent}
+                    pinned={row.pinned}
+                    unread={unreadSessionIds.has(row.session.id)}
+                    onOpen={() => onOpenSession(row.session.id)}
+                    onTogglePin={() => togglePin(row.session.id)}
+                    onDelete={() => void deleteSession(row.session.id)}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                   />
-                ))
-              ) : (
-                <p className="px-2.5 pb-1 text-[11px] italic text-muted-foreground/40">Drop here to unfile</p>
-              ))}
-          </div>
-        )}
+                )}
+                {row.kind === "search-empty" && (
+                  <p className="px-2.5 py-2 text-[11px] text-muted-foreground/50">
+                    No results for "{row.query}"
+                  </p>
+                )}
+                {row.kind === "projects-empty" && (
+                  <p className="px-2.5 py-2 text-[11px] text-muted-foreground/40">No projects yet</p>
+                )}
+                {row.kind === "chats-header" && (
+                  <div
+                    className={cn(
+                      "pt-3",
+                      dragOverTarget === "chats" && "rounded-sm bg-primary/10 ring-1 ring-primary/40",
+                    )}
+                    onDragOver={(event) => allowDrop("chats", event)}
+                    onDragLeave={() => setDragOverTarget(null)}
+                    onDrop={(event) => void dropSession("chats", event)}
+                  >
+                    <SectionHeader
+                      label="Chats"
+                      collapsed={collapsedSections.has("chats")}
+                      onToggle={() => toggleSection("chats")}
+                    />
+                  </div>
+                )}
+                {row.kind === "chats-empty" && (
+                  <p className="px-2.5 pb-1 text-[11px] italic text-muted-foreground/40">Drop here to unfile</p>
+                )}
+                {row.kind === "loading" && (
+                  <p className="flex items-center justify-center gap-1 py-2 text-[11px] text-muted-foreground/50">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading older chats…
+                  </p>
+                )}
+                {row.kind === "load-more" && (
+                  <button
+                    type="button"
+                    className="w-full py-2 text-center text-[11px] text-muted-foreground/60 hover:text-foreground"
+                    onClick={() => void loadMoreSessions()}
+                  >
+                    Load older chats
+                  </button>
+                )}
+                {row.kind === "load-error" && (
+                  <div className="flex items-center justify-between gap-2 px-2.5 py-1 text-[11px] text-destructive">
+                    <span className="truncate">{row.message}</span>
+                    <button type="button" className="shrink-0 underline" onClick={() => void loadMoreSessions()}>
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {dragError && <p className="px-2.5 pt-1 text-[11px] text-destructive">{dragError}</p>}
       </div>
     </div>
   );

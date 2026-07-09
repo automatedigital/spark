@@ -15,7 +15,12 @@ import {
   useState,
 } from "react";
 import { api } from "@/lib/api";
-import type { ProjectCreateRequest, SessionInfo, WorkspaceProject } from "@/lib/api";
+import type {
+  ProjectCreateRequest,
+  SessionInfo,
+  SessionSearchResult,
+  WorkspaceProject,
+} from "@/lib/api";
 import {
   addSessionNotification,
   dismissSessionNotification,
@@ -31,6 +36,7 @@ import { recordChatDiagnosticCounter } from "@/lib/chatDiagnostics";
 
 const PINNED_KEY = "spark-pinned-sessions";
 const EXPANDED_KEY = "spark-chat-expanded";
+export const SESSION_PAGE_SIZE = 50;
 
 export type PendingInitialMessages = Record<string, string>;
 
@@ -84,6 +90,55 @@ export function applySessionRows(prev: SessionInfo[], rows: SessionInfo[]): Sess
   return next.sort((a, b) => b.last_active - a.last_active);
 }
 
+export function mergeSessionPage(prev: SessionInfo[], rows: SessionInfo[]): SessionInfo[] {
+  return applySessionRows(prev, rows);
+}
+
+export function sessionInfoFromDetail(
+  detail: Partial<SessionInfo> & { id: string },
+  search?: SessionSearchResult,
+): SessionInfo {
+  const startedAt = detail.started_at ?? search?.session_started ?? 0;
+  return {
+    id: detail.id,
+    source: detail.source ?? search?.source ?? null,
+    model: detail.model ?? search?.model ?? null,
+    title: detail.title ?? search?.title ?? null,
+    started_at: startedAt,
+    ended_at: detail.ended_at ?? null,
+    last_active: detail.last_active ?? startedAt,
+    is_active: detail.is_active ?? false,
+    message_count: detail.message_count ?? 0,
+    tool_call_count: detail.tool_call_count ?? 0,
+    input_tokens: detail.input_tokens ?? 0,
+    output_tokens: detail.output_tokens ?? 0,
+    preview: detail.preview ?? search?.snippet ?? null,
+    kanban_status: detail.kanban_status ?? null,
+    estimated_cost_usd: detail.estimated_cost_usd ?? null,
+  };
+}
+
+export function filterSessionsLocally(sessions: SessionInfo[], query: string): SessionInfo[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return sessions;
+  return sessions.filter(
+    (session) => threadTitle(session).toLowerCase().includes(normalized)
+      || session.preview?.toLowerCase().includes(normalized),
+  );
+}
+
+export function mergeSearchRows(primary: SessionInfo[], secondary: SessionInfo[]): SessionInfo[] {
+  const seen = new Set(primary.map((session) => session.id));
+  return [
+    ...primary,
+    ...secondary.filter((session) => {
+      if (seen.has(session.id)) return false;
+      seen.add(session.id);
+      return true;
+    }),
+  ];
+}
+
 function loadPinnedIds(): Set<string> {
   try {
     return new Set(JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]") as string[]);
@@ -106,6 +161,9 @@ export interface SessionStoreValue {
   sessions: SessionInfo[];
   loadingProjects: boolean;
   loadingSessions: boolean;
+  loadingMoreSessions: boolean;
+  hasMoreSessions: boolean;
+  sessionsError: string | null;
 
   // Search
   searchQ: string;
@@ -147,6 +205,7 @@ export interface SessionStoreValue {
   moveSessionToProject: (id: string, slug: string | null) => Promise<void>;
   renameProject: (slug: string, name: string) => Promise<string>;
   reloadSessions: () => Promise<void>;
+  loadMoreSessions: () => Promise<void>;
   reloadProjects: () => Promise<void>;
 }
 
@@ -155,8 +214,13 @@ const SessionStoreContext = createContext<SessionStoreValue | null>(null);
 export function SessionStoreProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const sessionsRef = useRef<SessionInfo[]>([]);
+  sessionsRef.current = sessions;
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
+  const [hasMoreSessions, setHasMoreSessions] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composingFor, setComposingFor] = useState<string | null>(null);
@@ -166,11 +230,17 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const [searchResults, setSearchResults] = useState<SessionInfo[] | null>(null);
   const [searching, setSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestRef = useRef(0);
   const reconcileSessionsRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedSessionRowsRef = useRef<Map<string, SessionInfo>>(new Map());
   const queuedSessionRowsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nextSessionsOffsetRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const hydrationRequestsRef = useRef<Map<string, Promise<SessionInfo | null>>>(new Map());
 
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(loadPinnedIds);
+  const pinnedIdsRef = useRef(pinnedIds);
+  pinnedIdsRef.current = pinnedIds;
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(loadExpanded);
 
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(getUnreadSessionIds);
@@ -197,20 +267,70 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   const reloadSessions = useCallback(async () => {
     setLoadingSessions(true);
+    setSessionsError(null);
     recordChatDiagnosticCounter("sidebar_reload_sessions");
     try {
-      const res = await api.getSessions(500, 0);
+      const res = await api.getSessions(SESSION_PAGE_SIZE, 0);
       // Seed known message counts — any SSE update that exceeds these is "new"
-      const counts = new Map<string, number>();
-      res.sessions.forEach((s) => counts.set(s.id, s.message_count ?? 0));
+      // without forgetting older pages already loaded into this store.
+      const counts = new Map(lastMessageCountRef.current);
+      const notifiedCounts = new Map(notifiedMessageCountRef.current);
+      res.sessions.forEach((s) => {
+        counts.set(s.id, s.message_count ?? 0);
+        notifiedCounts.set(s.id, Math.max(notifiedCounts.get(s.id) ?? 0, s.message_count ?? 0));
+      });
       lastMessageCountRef.current = counts;
-      notifiedMessageCountRef.current = new Map(counts);
-      setSessions(res.sessions);
+      notifiedMessageCountRef.current = notifiedCounts;
+      nextSessionsOffsetRef.current = Math.max(nextSessionsOffsetRef.current, res.sessions.length);
+      setHasMoreSessions(nextSessionsOffsetRef.current < res.total);
+      setSessions((prev) => (prev.length === 0 ? coalesceSessionRows(res.sessions) : mergeSessionPage(prev, res.sessions)));
     } catch (e) {
       console.error("Load sessions failed", e);
+      setSessionsError(e instanceof Error ? e.message : "Could not load sessions");
     } finally {
       setLoadingSessions(false);
     }
+  }, []);
+
+  const loadMoreSessions = useCallback(async () => {
+    if (
+      loadingMoreRef.current
+      || (!hasMoreSessions && nextSessionsOffsetRef.current > 0)
+    ) return;
+    loadingMoreRef.current = true;
+    setLoadingMoreSessions(true);
+    setSessionsError(null);
+    const offset = nextSessionsOffsetRef.current;
+    try {
+      const res = await api.getSessions(SESSION_PAGE_SIZE, offset);
+      nextSessionsOffsetRef.current = offset + res.sessions.length;
+      setSessions((prev) => mergeSessionPage(prev, res.sessions));
+      setHasMoreSessions(res.sessions.length > 0 && nextSessionsOffsetRef.current < res.total);
+    } catch (e) {
+      console.error("Load older sessions failed", e);
+      setSessionsError(e instanceof Error ? e.message : "Could not load older sessions");
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMoreSessions(false);
+    }
+  }, [hasMoreSessions]);
+
+  const hydrateSession = useCallback((id: string, search?: SessionSearchResult): Promise<SessionInfo | null> => {
+    const existing = hydrationRequestsRef.current.get(id);
+    if (existing) return existing;
+    const request = api.getSession(id)
+      .then((detail) => {
+        const row = sessionInfoFromDetail(detail, search);
+        setSessions((prev) => mergeSessionPage(prev, [row]));
+        return row;
+      })
+      .catch((error) => {
+        console.error(`Load session ${id} failed`, error);
+        return null;
+      })
+      .finally(() => hydrationRequestsRef.current.delete(id));
+    hydrationRequestsRef.current.set(id, request);
+    return request;
   }, []);
 
   const scheduleSessionsReconcile = useCallback(() => {
@@ -254,6 +374,15 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     void reloadProjects();
     void reloadSessions();
   }, [reloadProjects, reloadSessions]);
+
+  // Pins are durable across reloads and may point outside the recent page.
+  useEffect(() => {
+    if (loadingSessions) return;
+    const loaded = new Set(sessions.map((session) => session.id));
+    pinnedIdsRef.current.forEach((id) => {
+      if (!loaded.has(id)) void hydrateSession(id);
+    });
+  }, [hydrateSession, loadingSessions, sessions]);
 
   useEffect(() => () => {
     if (reconcileSessionsRef.current) clearTimeout(reconcileSessionsRef.current);
@@ -310,41 +439,49 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     if (!searchQ.trim()) {
+      searchRequestRef.current += 1;
       setSearchResults(null);
       setSearching(false);
       return;
     }
 
-    // Client-side filter for short queries
-    if (searchQ.trim().length < 3) {
-      const q = searchQ.toLowerCase();
-      setSearchResults(sessions.filter(
-        (s) => threadTitle(s).toLowerCase().includes(q) || s.preview?.toLowerCase().includes(q),
-      ));
-      return;
-    }
-
-    // FTS5 search for longer queries
+    const localResults = filterSessionsLocally(sessionsRef.current, searchQ);
+    // Filtering the loaded page is immediate. Full-history FTS is deliberately
+    // debounced so normal typing cannot fan out one database query per key.
+    setSearchResults(localResults);
     setSearching(true);
+    const requestId = ++searchRequestRef.current;
     searchDebounceRef.current = setTimeout(async () => {
       try {
         const res = await api.searchSessions(searchQ.trim(), 100);
-        setSearchResults(
-          res.results
-            .map((r) => sessions.find((s) => s.id === r.session_id))
-            .filter((s): s is SessionInfo => Boolean(s)),
-        );
+        const loaded = new Map(sessionsRef.current.map((session) => [session.id, session]));
+        const hydrated = res.results.map((result) => {
+          const existing = loaded.get(result.session_id);
+          if (existing) return existing;
+          const provisional = sessionInfoFromDetail(
+            { id: result.session_id, title: result.title },
+            result,
+          );
+          setSessions((prev) => mergeSessionPage(prev, [provisional]));
+          void hydrateSession(result.session_id, result).then((row) => {
+            if (!row || requestId !== searchRequestRef.current) return;
+            setSearchResults((prev) => prev?.map((session) => (
+              session.id === row.id ? mergeSessionRow(session, row) : session
+            )) ?? prev);
+          });
+          return provisional;
+        });
+        if (requestId === searchRequestRef.current) {
+          setSearchResults(mergeSearchRows(localResults, hydrated));
+        }
       } catch {
-        // Fall back to client-side filter
-        const q = searchQ.toLowerCase();
-        setSearchResults(sessions.filter(
-          (s) => threadTitle(s).toLowerCase().includes(q) || s.preview?.toLowerCase().includes(q),
-        ));
+        // The immediate loaded-page result remains useful if FTS is unavailable.
+        if (requestId === searchRequestRef.current) setSearchResults(localResults);
       } finally {
-        setSearching(false);
+        if (requestId === searchRequestRef.current) setSearching(false);
       }
-    }, 300);
-  }, [searchQ, sessions]);
+    }, 250);
+  }, [hydrateSession, searchQ]);
 
   // ── Selection / composing ──
   const selectSession = useCallback((id: string | null) => {
@@ -361,9 +498,10 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
         return prev;
       });
     }
+    if (id && !sessionsRef.current.some((session) => session.id === id)) void hydrateSession(id);
     setSelectedId(id);
     setComposingFor(null);
-  }, []);
+  }, [hydrateSession]);
 
   const newSession = useCallback(() => {
     setSelectedId(null);
@@ -619,6 +757,9 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     sessions,
     loadingProjects,
     loadingSessions,
+    loadingMoreSessions,
+    hasMoreSessions,
+    sessionsError,
     searchQ,
     setSearchQ,
     searchResults,
@@ -645,6 +786,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     moveSessionToProject,
     renameProject,
     reloadSessions,
+    loadMoreSessions,
     reloadProjects,
   };
 

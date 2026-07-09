@@ -181,6 +181,8 @@ export const api = {
     if (source) qs.set("source", source);
     return fetchJSON<PaginatedSessions>(`/api/sessions?${qs.toString()}`);
   },
+  getSession: (id: string) =>
+    fetchJSON<Partial<SessionInfo> & { id: string }>(`/api/sessions/${encodeURIComponent(id)}`),
   getSessionMessages: (id: string, limit = 0, beforeId?: string) => {
     const qs = new URLSearchParams();
     if (limit > 0) qs.set("limit", String(limit));
@@ -1944,6 +1946,7 @@ export interface SessionSearchResult {
   role: string | null;
   source: string | null;
   model: string | null;
+  title: string | null;
   session_started: number | null;
 }
 
