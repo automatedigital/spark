@@ -1,6 +1,7 @@
 """Tests for web UI SSE event bus and conversation control endpoints."""
 
 import asyncio
+import json
 import time
 from unittest.mock import MagicMock
 
@@ -620,6 +621,35 @@ class TestEventBus:
             assert resp.json()["diagnostics"]["timings"]["relative_seconds"]["send_to_first_visible_event"] == 1.75
         finally:
             web_server._clear_web_turn("sess_timing")
+
+    def test_conversation_diagnostics_reports_safe_timing_metadata(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("sess_diag", source="web", model="m1")
+            db.append_message("sess_diag", "user", content="private prompt text")
+        finally:
+            db.close()
+
+        turn = web_server._mark_web_turn_active("sess_diag")
+        try:
+            with turn.lock:
+                turn.timings["backend_received"] = turn.started_at
+                turn.timings["model_request_start"] = turn.started_at + 0.5
+                turn.timings["first_visible_event"] = turn.started_at + 1.25
+            resp = web_client.get("/api/conversations/sess_diag/diagnostics")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["ok"] is True
+            assert data["turn"]["active"] is True
+            assert data["message_count"] == 1
+            assert data["timing_breakdown"]["send_to_model_request_start_s"] == 0.5
+            assert data["timing_breakdown"]["send_to_first_visible_event_s"] == 1.25
+            assert "private prompt text" not in json.dumps(data)
+        finally:
+            web_server._clear_web_turn("sess_diag")
 
     def test_stream_snapshot_can_return_delta_or_tail(self, web_client):
         import spark_cli.web_server as web_server

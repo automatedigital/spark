@@ -27,6 +27,7 @@ import { threadTitle } from "@/components/chat/ThreadRow";
 import { useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { recordChatDiagnosticCounter } from "@/lib/chatDiagnostics";
 
 const PINNED_KEY = "spark-pinned-sessions";
 const EXPANDED_KEY = "spark-chat-expanded";
@@ -196,6 +197,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   const reloadSessions = useCallback(async () => {
     setLoadingSessions(true);
+    recordChatDiagnosticCounter("sidebar_reload_sessions");
     try {
       const res = await api.getSessions(500, 0);
       // Seed known message counts — any SSE update that exceeds these is "new"
@@ -227,11 +229,13 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     const rows = [...queuedSessionRowsRef.current.values()];
     queuedSessionRowsRef.current.clear();
     if (rows.length > 0) {
+      recordChatDiagnosticCounter("sidebar_session_patch_flush");
       setSessions((prev) => applySessionRows(prev, rows));
     }
   }, []);
 
   const queueSessionRowPatch = useCallback((row: SessionInfo, immediate = false) => {
+    recordChatDiagnosticCounter(immediate ? "sidebar_session_patch_immediate" : "sidebar_session_patch_queued");
     if (immediate) {
       queuedSessionRowsRef.current.delete(row.id);
       setSessions((prev) => applySessionRows(prev, [row]));

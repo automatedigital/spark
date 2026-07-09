@@ -2709,6 +2709,75 @@ async def diagnostics_webview(
     }
 
 
+def _conversation_diagnostics_payload(session_id: str) -> dict[str, Any]:
+    status = _conversation_turn_status_payload(session_id)
+    timings = status.get("timings") if isinstance(status.get("timings"), dict) else {}
+    relative = timings.get("relative_seconds") if isinstance(timings.get("relative_seconds"), dict) else {}
+    absolute = timings.get("absolute") if isinstance(timings.get("absolute"), dict) else {}
+
+    def _rounded_number(value: Any) -> Optional[float]:
+        if isinstance(value, (int, float)):
+            return round(float(value), 3)
+        return None
+
+    timing_breakdown = {
+        "send_to_model_request_start_s": _rounded_number(relative.get("send_to_model_request_start")),
+        "send_to_first_visible_event_s": _rounded_number(relative.get("send_to_first_visible_event")),
+        "backend_received_at": _rounded_number(absolute.get("backend_received")),
+        "task_started_at": _rounded_number(absolute.get("task_started")),
+        "history_hydrated_at": _rounded_number(absolute.get("history_hydrated")),
+        "agent_init_start_at": _rounded_number(absolute.get("agent_init_start")),
+        "agent_init_end_at": _rounded_number(absolute.get("agent_init_end")),
+        "model_request_start_at": _rounded_number(absolute.get("model_request_start")),
+        "first_visible_event_at": _rounded_number(absolute.get("first_visible_event")),
+    }
+    timing_breakdown = {k: v for k, v in timing_breakdown.items() if v is not None}
+
+    ids = _resolve_web_turn_ids(session_id)
+    resolved_id = ids.get("latest") or ids.get("resolved") or session_id
+    message_count = 0
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            rows = db.get_messages(resolved_id)
+            message_count = len(rows)
+        finally:
+            db.close()
+    except Exception:
+        _log.debug("conversation diagnostics message count failed session=%s", session_id, exc_info=True)
+
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "resolved_session_id": resolved_id,
+        "active_turn_session_id": status.get("active_turn_session_id"),
+        "turn": {
+            "active": bool(status.get("turn_active")),
+            "state": status.get("state"),
+            "phase": status.get("phase"),
+            "status": status.get("status"),
+            "interrupt_requested": bool(status.get("interrupt_requested")),
+            "idle_for_seconds": _rounded_number(status.get("idle_for_seconds")),
+            "stale_after_seconds": _rounded_number(status.get("stale_after_seconds")),
+            "stream_revision": status.get("stream_revision"),
+            "stream_text_chars": status.get("stream_text_chars"),
+        },
+        "timing_breakdown": timing_breakdown,
+        "message_count": message_count,
+        "notes": [
+            "Diagnostics omit message text, tool arguments, local paths, and credentials.",
+            "Relative timings are measured from backend receipt of the user message when available.",
+        ],
+    }
+
+
+@app.get("/api/conversations/{session_id}/diagnostics")
+async def conversation_diagnostics(session_id: str):
+    return await asyncio.to_thread(_conversation_diagnostics_payload, session_id)
+
+
 @app.get("/api/dashboard/auth/info")
 async def dashboard_auth_info():
     """Public metadata for wiring LAN clients (no secrets in response body)."""

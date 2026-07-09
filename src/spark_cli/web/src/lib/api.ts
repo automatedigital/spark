@@ -237,6 +237,10 @@ export const api = {
     }>(
       `/api/conversations/${encodeURIComponent(id)}/turn-status`,
     ),
+  getConversationDiagnostics: (id: string) =>
+    fetchJSON<ConversationDiagnosticsResponse>(
+      `/api/conversations/${encodeURIComponent(id)}/diagnostics`,
+    ),
   getStreamSnapshot: (id: string, options: { afterChars?: number; tailChars?: number } = {}) => {
     const qs = new URLSearchParams();
     if (typeof options.afterChars === "number") qs.set("after_chars", String(options.afterChars));
@@ -2074,6 +2078,27 @@ export interface DiagnosticsSummary {
   gateway_running: boolean;
   dashboard_auth: { token_file: string; configured: boolean };
   actions: AdminActionMeta[];
+}
+
+export interface ConversationDiagnosticsResponse {
+  ok: boolean;
+  session_id: string;
+  resolved_session_id: string;
+  active_turn_session_id: string | null;
+  turn: {
+    active: boolean;
+    state?: string | null;
+    phase?: string | null;
+    status?: string | null;
+    interrupt_requested: boolean;
+    idle_for_seconds?: number | null;
+    stale_after_seconds?: number | null;
+    stream_revision?: number | null;
+    stream_text_chars?: number | null;
+  };
+  timing_breakdown: Record<string, number>;
+  message_count: number;
+  notes: string[];
 }
 
 /** Payload shapes for /api/events chat.* topics */
