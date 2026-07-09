@@ -1,16 +1,16 @@
 # Graph Report - spark  (2026-07-09)
 
 ## Corpus Check
-- 1844 files · ~3,719,175 words
+- 1844 files · ~3,719,281 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 49758 nodes · 83327 edges · 2083 communities (1890 shown, 193 thin omitted)
+- 49761 nodes · 83334 edges · 2059 communities (1863 shown, 196 thin omitted)
 - Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 10435 edges (avg confidence: 0.61)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `234cbf13`
+- Built from commit: `d76b6a09`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -1620,7 +1620,6 @@
 - [[_COMMUNITY_Community 1603|Community 1603]]
 - [[_COMMUNITY_Community 1604|Community 1604]]
 - [[_COMMUNITY_Community 1605|Community 1605]]
-- [[_COMMUNITY_Community 1606|Community 1606]]
 - [[_COMMUNITY_Community 1607|Community 1607]]
 - [[_COMMUNITY_Community 1608|Community 1608]]
 - [[_COMMUNITY_Community 1609|Community 1609]]
@@ -1628,7 +1627,6 @@
 - [[_COMMUNITY_Community 1611|Community 1611]]
 - [[_COMMUNITY_Community 1612|Community 1612]]
 - [[_COMMUNITY_Community 1613|Community 1613]]
-- [[_COMMUNITY_Community 1614|Community 1614]]
 - [[_COMMUNITY_Community 1615|Community 1615]]
 - [[_COMMUNITY_Community 1616|Community 1616]]
 - [[_COMMUNITY_Community 1617|Community 1617]]
@@ -1649,7 +1647,6 @@
 - [[_COMMUNITY_Community 1632|Community 1632]]
 - [[_COMMUNITY_Community 1633|Community 1633]]
 - [[_COMMUNITY_Community 1634|Community 1634]]
-- [[_COMMUNITY_Community 1635|Community 1635]]
 - [[_COMMUNITY_Community 1636|Community 1636]]
 - [[_COMMUNITY_Community 1637|Community 1637]]
 - [[_COMMUNITY_Community 1638|Community 1638]]
@@ -1686,9 +1683,7 @@
 - [[_COMMUNITY_Community 1669|Community 1669]]
 - [[_COMMUNITY_Community 1670|Community 1670]]
 - [[_COMMUNITY_Community 1671|Community 1671]]
-- [[_COMMUNITY_Community 1672|Community 1672]]
 - [[_COMMUNITY_Community 1673|Community 1673]]
-- [[_COMMUNITY_Community 1674|Community 1674]]
 - [[_COMMUNITY_Community 1675|Community 1675]]
 - [[_COMMUNITY_Community 1676|Community 1676]]
 - [[_COMMUNITY_Community 1677|Community 1677]]
@@ -1759,17 +1754,13 @@
 - [[_COMMUNITY_Community 1743|Community 1743]]
 - [[_COMMUNITY_Community 1744|Community 1744]]
 - [[_COMMUNITY_Community 1745|Community 1745]]
-- [[_COMMUNITY_Community 1746|Community 1746]]
-- [[_COMMUNITY_Community 1747|Community 1747]]
 - [[_COMMUNITY_Community 1748|Community 1748]]
 - [[_COMMUNITY_Community 1749|Community 1749]]
 - [[_COMMUNITY_Community 1750|Community 1750]]
 - [[_COMMUNITY_Community 1751|Community 1751]]
 - [[_COMMUNITY_Community 1752|Community 1752]]
 - [[_COMMUNITY_Community 1753|Community 1753]]
-- [[_COMMUNITY_Community 1754|Community 1754]]
 - [[_COMMUNITY_Community 1755|Community 1755]]
-- [[_COMMUNITY_Community 1756|Community 1756]]
 - [[_COMMUNITY_Community 1757|Community 1757]]
 - [[_COMMUNITY_Community 1758|Community 1758]]
 - [[_COMMUNITY_Community 1759|Community 1759]]
@@ -1802,8 +1793,6 @@
 - [[_COMMUNITY_Community 1786|Community 1786]]
 - [[_COMMUNITY_Community 1787|Community 1787]]
 - [[_COMMUNITY_Community 1790|Community 1790]]
-- [[_COMMUNITY_Community 1791|Community 1791]]
-- [[_COMMUNITY_Community 1792|Community 1792]]
 - [[_COMMUNITY_Community 1794|Community 1794]]
 - [[_COMMUNITY_Community 1795|Community 1795]]
 - [[_COMMUNITY_Community 1796|Community 1796]]
@@ -1832,8 +1821,6 @@
 - [[_COMMUNITY_Community 1819|Community 1819]]
 - [[_COMMUNITY_Community 1820|Community 1820]]
 - [[_COMMUNITY_Community 1821|Community 1821]]
-- [[_COMMUNITY_Community 1822|Community 1822]]
-- [[_COMMUNITY_Community 1823|Community 1823]]
 - [[_COMMUNITY_Community 1824|Community 1824]]
 - [[_COMMUNITY_Community 1825|Community 1825]]
 - [[_COMMUNITY_Community 1826|Community 1826]]
@@ -1844,7 +1831,6 @@
 - [[_COMMUNITY_Community 1831|Community 1831]]
 - [[_COMMUNITY_Community 1833|Community 1833]]
 - [[_COMMUNITY_Community 1834|Community 1834]]
-- [[_COMMUNITY_Community 1835|Community 1835]]
 - [[_COMMUNITY_Community 1836|Community 1836]]
 - [[_COMMUNITY_Community 1837|Community 1837]]
 - [[_COMMUNITY_Community 1838|Community 1838]]
@@ -1877,7 +1863,6 @@
 - [[_COMMUNITY_Community 1865|Community 1865]]
 - [[_COMMUNITY_Community 1866|Community 1866]]
 - [[_COMMUNITY_Community 1867|Community 1867]]
-- [[_COMMUNITY_Community 1868|Community 1868]]
 - [[_COMMUNITY_Community 1869|Community 1869]]
 - [[_COMMUNITY_Community 1870|Community 1870]]
 - [[_COMMUNITY_Community 1871|Community 1871]]
@@ -1891,9 +1876,7 @@
 - [[_COMMUNITY_Community 1881|Community 1881]]
 - [[_COMMUNITY_Community 1882|Community 1882]]
 - [[_COMMUNITY_Community 1883|Community 1883]]
-- [[_COMMUNITY_Community 1884|Community 1884]]
 - [[_COMMUNITY_Community 1885|Community 1885]]
-- [[_COMMUNITY_Community 1886|Community 1886]]
 - [[_COMMUNITY_Community 1887|Community 1887]]
 - [[_COMMUNITY_Community 1888|Community 1888]]
 - [[_COMMUNITY_Community 1889|Community 1889]]
@@ -1925,8 +1908,6 @@
 - [[_COMMUNITY_Community 1920|Community 1920]]
 - [[_COMMUNITY_Community 1921|Community 1921]]
 - [[_COMMUNITY_Community 1922|Community 1922]]
-- [[_COMMUNITY_Community 1923|Community 1923]]
-- [[_COMMUNITY_Community 1924|Community 1924]]
 - [[_COMMUNITY_Community 1925|Community 1925]]
 - [[_COMMUNITY_Community 1926|Community 1926]]
 - [[_COMMUNITY_Community 1927|Community 1927]]
@@ -1976,7 +1957,6 @@
 - [[_COMMUNITY_Community 1976|Community 1976]]
 - [[_COMMUNITY_Community 1977|Community 1977]]
 - [[_COMMUNITY_Community 1978|Community 1978]]
-- [[_COMMUNITY_Community 1979|Community 1979]]
 - [[_COMMUNITY_Community 1980|Community 1980]]
 - [[_COMMUNITY_Community 1981|Community 1981]]
 - [[_COMMUNITY_Community 1983|Community 1983]]
@@ -2009,16 +1989,12 @@
 - [[_COMMUNITY_Community 2014|Community 2014]]
 - [[_COMMUNITY_Community 2015|Community 2015]]
 - [[_COMMUNITY_Community 2016|Community 2016]]
-- [[_COMMUNITY_Community 2017|Community 2017]]
 - [[_COMMUNITY_Community 2018|Community 2018]]
 - [[_COMMUNITY_Community 2019|Community 2019]]
 - [[_COMMUNITY_Community 2075|Community 2075]]
-- [[_COMMUNITY_Community 2076|Community 2076]]
 - [[_COMMUNITY_Community 2078|Community 2078]]
 - [[_COMMUNITY_Community 2079|Community 2079]]
 - [[_COMMUNITY_Community 2080|Community 2080]]
-- [[_COMMUNITY_Community 2082|Community 2082]]
-- [[_COMMUNITY_Community 2083|Community 2083]]
 - [[_COMMUNITY_Community 2084|Community 2084]]
 
 ## God Nodes (most connected - your core abstractions)
@@ -2064,63 +2040,63 @@
 - 1-file cycle: `src/spark_relay/app.py -> src/spark_relay/app.py`
 - 1-file cycle: `src/tools/skill_usage.py -> src/tools/skill_usage.py`
 
-## Communities (2083 total, 193 thin omitted)
+## Communities (2059 total, 196 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.16
-Nodes (9): WSL with PULSE_SERVER set should NOT block voice mode., WSL device query failure should not block if PULSE_SERVER is set., Device query failure without PULSE_SERVER should block., No SSH, Docker, or WSL — should be available., SSH environment should block voice mode., WSL without PULSE_SERVER should block voice mode., TestDetectAudioEnvironment, detect_audio_environment() (+1 more)
+Cohesion: 0.04
+Nodes (41): Voice mode (record / transcribe / speak) for SparkCLI (mixin).  Extracted from c, Stop recording, transcribe via STT, and queue the transcript as input., Speak the agent's response aloud using TTS (runs in background thread)., Start capturing audio from the microphone., Handle /voice [on|off|tts|status] command., Enable voice mode after checking requirements., Disable voice mode, cancel any active recording, and stop TTS., Toggle TTS output for voice mode. (+33 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.01
-Nodes (592): AsyncWebClient, Color, DEFAULT_TYPE, DiscordMessage, Enum, Platform, PlatformConfig, Configuration for a single messaging platform. (+584 more)
+Nodes (560): AsyncWebClient, Color, DEFAULT_TYPE, DeliveryRouter, DeliveryTarget, DiscordMessage, Platform, PlatformConfig (+552 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.03
-Nodes (44): adapter(), auth_adapter(), _create_app(), _make_adapter(), GET /api/jobs?include_disabled=true passes the flag., GET /api/jobs without flag passes include_disabled=False., POST /api/jobs with valid body returns created job., POST /api/jobs without name returns 400. (+36 more)
+Cohesion: 0.04
+Nodes (39): _create_app(), GET /api/jobs?include_disabled=true passes the flag., GET /api/jobs without flag passes include_disabled=False., POST /api/jobs with valid body returns created job., POST /api/jobs without name returns 400., POST /api/jobs with name > 200 chars returns 400., POST /api/jobs with prompt > 5000 chars returns 400., POST /api/jobs with repeat=0 returns 400. (+31 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.03
-Nodes (106): build_session_key(), Resolve which named agent/workspace an inbound message routes to.      ``routing, Build a deterministic session key from a message source.      This is the single, resolve_agent_name(), DummyTelegramAdapter, _make_event(), Tests for BasePlatformAdapter topic-aware session handling., TestBasePlatformTopicSessions (+98 more)
+Nodes (86): build_session_key(), Build a deterministic session key from a message source.      This is the single, DummyTelegramAdapter, _make_event(), TestBasePlatformTopicSessions, _make_event(), Tests for Discord message reactions tied to processing lifecycle hooks., When DISCORD_REACTIONS=false, no reactions should be added. (+78 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.01
-Nodes (209): Log formatter that redacts secrets from all log messages., RedactingFormatter, TestRedactingFormatter, CanonicalUsage, Configuration for real-time token streaming to messaging platforms., StreamingConfig, _dequeue_pending_event(), GatewayRunner (+201 more)
+Nodes (219): Log formatter that redacts secrets from all log messages., RedactingFormatter, TestRedactingFormatter, CanonicalUsage, Configuration for real-time token streaming to messaging platforms., StreamingConfig, DeliveryRouter, Routes messages to appropriate destinations.          Handles the logic of resol (+211 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.01
-Nodes (139): _make_adapter(), Tests for Mattermost platform adapter., ![alt](url) should be converted to just the URL., Regular markdown (bold, italic, code) should be kept as-is., Non-image links should be preserved., send() should POST to /api/v4/posts with channel_id and message., Empty content should return success without calling the API., When reply_mode is 'thread', reply_to should become root_id. (+131 more)
+Nodes (127): _make_adapter(), Tests for Mattermost platform adapter., ![alt](url) should be converted to just the URL., Regular markdown (bold, italic, code) should be kept as-is., Non-image links should be preserved., send() should POST to /api/v4/posts with channel_id and message., Empty content should return success without calling the API., When reply_mode is 'thread', reply_to should become root_id. (+119 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.02
-Nodes (84): Tests for the Email gateway platform adapter.  Covers: 1. Platform enum exists w, Verify SMTP connections are closed even when send_message raises., SMTP quit() must be called even when send_message() raises., If both send_message() and quit() fail, close() is the fallback., IMAP logout() must be called even when uid fetch raises., Test email parsing helper functions., IMAP logout() must be called even when returning early (no unseen)., Test email body extraction from different message formats. (+76 more)
+Cohesion: 0.01
+Nodes (110): _apply_env_overrides(), _coerce_bool(), GatewayConfig, _normalize_unauthorized_dm_behavior(), Main gateway configuration.          Manages all platform connections, session p, Coerce bool-ish config values, preserving a caller-provided default., Return list of platforms that are enabled and configured., Get the appropriate reset policy for a session.                  Priority: platf (+102 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.02
-Nodes (115): PooledCredential, _agent_history_snapshot(), _anthropic_oauth_status(), _append_web_turn_token(), _build_schema_from_config(), _cached_web_agent_matches_history(), _checkpoint_web_turn(), _claude_code_only_status() (+107 more)
+Nodes (111): PooledCredential, _agent_history_snapshot(), _anthropic_oauth_status(), _append_web_turn_token(), _cached_web_agent_matches_history(), _checkpoint_web_turn(), _claude_code_only_status(), _clear_web_turn() (+103 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.03
-Nodes (41): _create_app(), _generic_signature(), _github_signature(), _make_adapter(), _mock_request(), Valid X-Hub-Signature-256 is accepted., Wrong X-Hub-Signature-256 is rejected., GitLab plain-token match via X-Gitlab-Token. (+33 more)
+Nodes (45): _create_app(), _generic_signature(), _github_signature(), _make_adapter(), _mock_request(), Valid X-Hub-Signature-256 is accepted., Wrong X-Hub-Signature-256 is rejected., GitLab plain-token match via X-Gitlab-Token. (+37 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.02
-Nodes (219): BaseHTTPMiddleware, BaseModel, ContextBucket, ContextEstimate, ContextItem, ContextItemType, ContextScope, InclusionMode (+211 more)
+Nodes (198): BaseHTTPMiddleware, BaseModel, ContextBucket, ContextEstimate, ContextItem, ContextItemType, ContextScope, InclusionMode (+190 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.05
-Nodes (48): list_provider_models(), Return all model IDs for a provider from models.dev.      Returns an empty list, NamedTuple, _check_spark_model_warning(), DirectAlias, _ensure_direct_aliases(), get_authenticated_provider_slugs(), _load_direct_aliases() (+40 more)
+Cohesion: 0.03
+Nodes (81): list_provider_models(), Return all model IDs for a provider from models.dev.      Returns an empty list, NamedTuple, _check_spark_model_warning(), DirectAlias, _ensure_direct_aliases(), get_authenticated_provider_slugs(), _load_direct_aliases() (+73 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.09
-Nodes (35): parse_restart_drain_timeout(), Shared gateway restart constants and parsing helpers., Parse a configured drain timeout, falling back to the shared default., make_restart_runner(), make_restart_source(), test_cancel_background_tasks_cancels_inflight_message_processing(), test_drain_active_agents_throttles_status_updates(), test_gateway_stop_drains_running_agents_before_disconnect() (+27 more)
+Cohesion: 0.04
+Nodes (47): Verify SkinConfig handles tool_emojis field correctly., TestSkinConfigToolEmojis, _make_cli_stub(), TestCliSkinPromptIntegration, _build_skin_config(), get_active_goodbye(), get_active_help_header(), get_active_prompt_symbol() (+39 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.02
-Nodes (115): convert_scratchpad_to_think(), Convert <REASONING_SCRATCHPAD> tags to <think> tags., Enable DEBUG-level console logging for ``--verbose`` / ``-v`` mode.      Called, setup_verbose_logging(), AIAgent, main(), Simple chat interface that returns just the final response.          Args:, Main function for running the agent directly.      Args:         query (str): Na (+107 more)
+Nodes (110): convert_scratchpad_to_think(), Convert <REASONING_SCRATCHPAD> tags to <think> tags., AIAgent, main(), Simple chat interface that returns just the final response.          Args:, Main function for running the agent directly.      Args:         query (str): Na, Reset all session-scoped token counters to 0 for a fresh session., Switch the model/provider in-place for a live agent.          Called by the /mod (+102 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.02
-Nodes (57): _make_event(), If join fails with exception, callback is cleaned up., If join returns False, callback is cleaned up., If leave_voice_channel raises, voice_mode is still cleaned up., Normal leave also clears the voice input callback., _handle_voice_timeout_cleanup removes voice_mode for chat., When done event is never set, playback times out gracefully., While loop waiting for previous playback has a timeout. (+49 more)
+Cohesion: 0.03
+Nodes (48): _make_event(), If join fails with exception, callback is cleaned up., If join returns False, callback is cleaned up., If leave_voice_channel raises, voice_mode is still cleaned up., Normal leave also clears the voice input callback., _handle_voice_timeout_cleanup removes voice_mode for chat., When done event is never set, playback times out gracefully., While loop waiting for previous playback has a timeout. (+40 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.07
@@ -2132,7 +2108,7 @@ Nodes (25): adapter(), _ensure_discord_mock(), FakeDMChannel, FakeThread, make_a
 
 ### Community 16 - "Community 16"
 Cohesion: 0.03
-Nodes (205): ProjectTemplate, AgentBrowserUnavailable, Raised when the agent-browser CLI/runtime is not available., BrowserUnavailable, Raised when Playwright/Chromium is not available., get_template(), list_templates(), _package_json() (+197 more)
+Nodes (204): ProjectTemplate, AgentBrowserUnavailable, Raised when the agent-browser CLI/runtime is not available., BrowserUnavailable, Raised when Playwright/Chromium is not available., get_template(), list_templates(), _package_json() (+196 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.16
@@ -2147,32 +2123,32 @@ Cohesion: 0.08
 Nodes (22): _app(), _config(), Tests for the WeCom callback-mode adapter., TestWecomCallbackEventConstruction, TestWecomCallbackPollLoop, TestWecomCallbackRouting, TestWecomCrypto, check_wecom_callback_requirements() (+14 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.08
-Nodes (19): _kill_orphaned_mcp_children(), Return a set of current child process PIDs.      Uses /proc on Linux, falls back, Close all MCP server connections and stop the background loop.      Each server, Best-effort kill of MCP stdio subprocesses that survived loop shutdown.      Aft, Stop the background event loop and join its thread., shutdown_mcp_servers(), _snapshot_child_pids(), _stop_mcp_loop() (+11 more)
+Cohesion: 0.06
+Nodes (25): _make_adapter(), Tests for the Weixin platform adapter., Markdown links should be converted to plaintext since WeChat can't render them., Regression tests for the blank-bubble bugs.      Three separate guards now preve, _send_message raises ValueError for empty/whitespace text., WeChat doesn't support message editing — cursor must be suppressed., Media builder uses base64(hex_key), not base64(raw_bytes) for aes_key., TestWeixinBlankMessagePrevention (+17 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.06
-Nodes (18): ModuleType, Namespace, Test the claw_command router., Test the migrate command handler., Dry run should not modify the source directory., The 'full' preset should set migrate_secrets=True automatically., Test the cleanup command handler., TestClawCommand (+10 more)
+Cohesion: 0.04
+Nodes (39): Namespace, Restore a Spark backup from a zip file., run_import(), cmd_import(), Restore a Spark backup from a zip file., Tests for spark backup and import commands., Import extracts files into spark home., Import strips .spark/ prefix if all entries share it. (+31 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.01
-Nodes (103): _apply_env_overrides(), GatewayConfig, load_gateway_config(), Main gateway configuration.          Manages all platform connections, session p, Return list of platforms that are enabled and configured., Get the home channel for a platform., Get the appropriate reset policy for a session.                  Priority: platf, Return the effective unauthorized-DM behavior for a platform. (+95 more)
+Cohesion: 0.02
+Nodes (79): Tests for TelegramAdapter.send_video() — sending videos to users., metadata thread_id is forwarded as message_thread_id (required for Telegram foru, TestSendVideo, _fake_transport_factory(), FakeDoHClient, FakeTransport, _fast_fallback_retries(), Tests for gateway.platforms.telegram_network – fallback transport layer.  Backgr (+71 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.02
-Nodes (47): RotatingFileHandler, agent(), agent_with_memory_tool(), _make_tool_defs(), Unit tests for run_agent.py (AIAgent).  Tests cover pure functions, state/struct, Verify _max_tokens_param returns the correct key for each provider., Budget exhaustion grace call system., Agent should have budget grace call flags. (+39 more)
+Cohesion: 0.01
+Nodes (85): FailoverReason, Why an API call failed — determines recovery strategy., agent(), agent_with_memory_tool(), _make_chunk(), _make_tc_delta(), _make_tool_defs(), Unit tests for run_agent.py (AIAgent).  Tests cover pure functions, state/struct (+77 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.02
-Nodes (87): _make_signal_adapter(), Tests for Signal messenger platform adapter., Create a SignalAdapter with sensible test defaults., Verify that phone numbers with + are URL-encoded in the SSE endpoint., The + in E.164 phone numbers must be percent-encoded in the SSE query string., Digits and country codes should pass through URL encoding unchanged., Verify that _fetch_attachment uses the correct RPC parameter name., RPC getAttachment must use 'id', not 'attachmentId' (signal-cli requirement). (+79 more)
+Nodes (85): _make_signal_adapter(), Tests for Signal messenger platform adapter., Create a SignalAdapter with sensible test defaults., Verify that phone numbers with + are URL-encoded in the SSE endpoint., The + in E.164 phone numbers must be percent-encoded in the SSE query string., Digits and country codes should pass through URL encoding unchanged., Verify that _fetch_attachment uses the correct RPC parameter name., RPC getAttachment must use 'id', not 'attachmentId' (signal-cli requirement). (+77 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.01
-Nodes (120): Button, adapter(), FakeDMChannel, FakeBot, FakeTree, SlowSyncBot, SlowSyncTree, test_connect_does_not_wait_for_slash_sync() (+112 more)
+Cohesion: 0.02
+Nodes (111): Button, adapter(), FakeDMChannel, FakeBot, FakeTree, SlowSyncBot, SlowSyncTree, test_connect_does_not_wait_for_slash_sync() (+103 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.08
-Nodes (16): _build_markdown_post_payload(), Send a Feishu message., Edit a previously sent Feishu text/post message., Send an interactive card with approval buttons.          The buttons carry ``spa, Replace the approval card with a resolved status card., Send audio to Feishu as a file attachment plus optional caption., Send a document/file attachment to Feishu., Send a video file to Feishu. (+8 more)
+Cohesion: 0.06
+Nodes (28): _build_skills_manifest(), build_skills_system_prompt(), _build_snapshot_entry(), clear_skills_system_prompt_cache(), _load_skills_snapshot(), System prompt assembly -- identity, platform hints, skills index, context files., Drop the in-process skills prompt cache (and optionally the disk snapshot)., Build an mtime/size manifest of all SKILL.md and DESCRIPTION.md files. (+20 more)
 
 ### Community 27 - "Community 27"
 Cohesion: 0.05
@@ -2183,8 +2159,8 @@ Cohesion: 0.09
 Nodes (19): _make_event(), _make_runner(), Verify the gateway spawns spark update --gateway., The spawned update command includes --gateway and PYTHONUNBUFFERED., Tests for _watch_update_progress() streaming output., New output is sent to the adapter periodically., Build a MessageEvent for testing., Detects .update_prompt.json and sends it to the user. (+11 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.01
-Nodes (190): load_soul_md(), Load SOUL.md from SPARK_HOME and return its content, or None.      Used as the a, Verify config files get secure permissions., TestConfigFilePermissions, check_config_version(), config_command(), _deep_merge(), edit_config() (+182 more)
+Cohesion: 0.02
+Nodes (165): get_anthropic_key(), Return the first usable Anthropic credential, or ``""``.      Checks both the ``, check_config_version(), config_command(), _deep_merge(), edit_config(), _ensure_default_soul_md(), _ensure_default_wiki_readme() (+157 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.01
@@ -2192,7 +2168,7 @@ Nodes (151): API Reference, Axolotl - Api, cli.args, cli.art, cli.checks, cli.cl
 
 ### Community 31 - "Community 31"
 Cohesion: 0.07
-Nodes (24): _make_discord_adapter(), _make_event(), _make_feishu_adapter(), _make_matrix_adapter(), _make_telegram_adapter(), _make_wecom_adapter(), Tests for text message batching across all gateway adapters.  When a user sends, Create a minimal DiscordAdapter for testing text batching. (+16 more)
+Nodes (25): _make_discord_adapter(), _make_event(), _make_feishu_adapter(), _make_matrix_adapter(), _make_telegram_adapter(), _make_wecom_adapter(), Tests for text message batching across all gateway adapters.  When a user sends, Create a minimal DiscordAdapter for testing text batching. (+17 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.03
@@ -2207,20 +2183,20 @@ Cohesion: 0.02
 Nodes (132): AdminActionMeta, AdminActionsResponse, AdminRun, AdminRunOutputLine, AdminRunStartResponse, AnalyticsDailyEntry, AnalyticsModelEntry, AnalyticsResponse (+124 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.05
-Nodes (38): get_default_spark_root(), Return the root Spark directory for profile-level operations.      In standard d, _detect_prefix(), _prune_quick_snapshots(), _quick_snapshot_root(), Backup and import commands for spark CLI.  `spark backup` creates a zip archive, Create a zip backup of the Spark home directory., Detect if the zip has a common directory prefix wrapping all entries.      Some (+30 more)
+Cohesion: 0.06
+Nodes (35): Handle /snapshot - lightweight state snapshots for Spark config/state., create_quick_snapshot(), _detect_prefix(), list_quick_snapshots(), _prune_quick_snapshots(), _quick_snapshot_root(), Backup and import commands for spark CLI.  `spark backup` creates a zip archive, Create a zip backup of the Spark home directory. (+27 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.04
-Nodes (22): _make_adapter(), _sync_loop should call handle_sync() and persist next_batch., send() should retry with crypto.share_keys() on E2EE errors., _on_encrypted_event should buffer undecrypted events for retry., Buffer should not grow past _MAX_PENDING_EVENTS., disconnect() should close client.api.session., disconnect() should not raise if session close fails., disconnect() should handle None client gracefully. (+14 more)
+Nodes (19): _make_adapter(), _sync_loop should call handle_sync() and persist next_batch., send() should retry with crypto.share_keys() on E2EE errors., _on_encrypted_event should buffer undecrypted events for retry., Buffer should not grow past _MAX_PENDING_EVENTS., disconnect() should close client.api.session., disconnect() should not raise if session close fails., disconnect() should handle None client gracefully. (+11 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.05
-Nodes (14): BasePlatformAdapter, RestartTestAdapter, _FatalAdapter, Retryable runtime fatal errors queue the platform for reconnection     instead o, _RuntimeRetryableAdapter, test_runner_queues_retryable_runtime_fatal_for_reconnection(), test_runner_requests_clean_exit_for_nonretryable_startup_conflict(), _DisabledAdapter (+6 more)
+Cohesion: 0.03
+Nodes (32): BasePlatformAdapter, RestartTestAdapter, _make_adapter(), _make_event(), /new must be dispatched directly, not queued., /reset (alias for /new) must be dispatched directly., /approve must bypass (deadlock prevention)., /deny must bypass (deadlock prevention). (+24 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.03
-Nodes (123): _auth_file_path(), _auth_lock_path(), _auth_store_lock(), clear_provider_auth(), _codex_access_token_is_expiring(), _codex_cli_device_code_login(), _codex_device_code_login(), _codex_token_exp() (+115 more)
+Cohesion: 0.04
+Nodes (115): _auth_file_path(), _auth_lock_path(), _auth_store_lock(), clear_provider_auth(), _codex_access_token_is_expiring(), _codex_cli_device_code_login(), _codex_device_code_login(), _codex_token_exp() (+107 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.03
@@ -2228,19 +2204,19 @@ Nodes (83): Any, Response, Path, camofox_back(), camofox_click(), camofox_close(
 
 ### Community 40 - "Community 40"
 Cohesion: 0.03
-Nodes (48): Short outputs should pass through compaction (under TINY_OUTPUT)., test_post_process_idempotent_on_short_output(), Central registry for all spark-agent tools.  Each tool file calls ``registry.reg, Register a tool.  Called at module-import time by each tool file., Remove a tool from the registry.          Also cleans up the toolset check if no, Return OpenAI-format tool schemas for the requested tool names.          Only to, Execute a tool handler by name.          * Async handlers are bridged automatica, Return per-tool max result size, or *default* (or global default). (+40 more)
+Nodes (42): Remove a tool from the registry.          Also cleans up the toolset check if no, Return OpenAI-format tool schemas for the requested tool names.          Only to, Execute a tool handler by name.          * Async handlers are bridged automatica, Return per-tool max result size, or *default* (or global default)., Return sorted list of all registered tool names., Return a tool's raw schema dict, bypassing check_fn filtering.          Useful f, Return the toolset a tool belongs to, or None., Return the emoji for a tool, or *default* if unset. (+34 more)
 
 ### Community 41 - "Community 41"
 Cohesion: 0.09
 Nodes (18): Should print thinking line above spinner for CLI path., Gateway path should batch tool calls and flush at BATCH_SIZE., Thinking events should NOT be sent to gateway (too noisy)., Each child's callback should have independent batch state., Batch mode (task_count > 1) should show 1-indexed prefix for all tasks., Single task (task_count=1) should not show index prefix., Tests for gateway batch flush on subagent completion., _flush should send remaining tool names to gateway. (+10 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.06
-Nodes (37): _clear_approval_state(), _make_event(), _make_runner(), _make_source(), Tests for /approve and /deny gateway commands.  Verifies that dangerous command, resolve_gateway_approval with resolve_all=True signals all entries., resolve_gateway_approval without resolve_all resolves oldest first., unregister_gateway_notify signals all waiting entries to prevent hangs. (+29 more)
+Cohesion: 0.05
+Nodes (36): _clear_approval_state(), _make_event(), _make_runner(), _make_source(), resolve_gateway_approval with resolve_all=True signals all entries., resolve_gateway_approval without resolve_all resolves oldest first., unregister_gateway_notify signals all waiting entries to prevent hangs., Basic /approve signals the oldest blocked agent thread. (+28 more)
 
 ### Community 43 - "Community 43"
-Cohesion: 0.01
-Nodes (186): Verify SkinConfig handles tool_emojis field correctly., TestSkinConfigToolEmojis, _AgentSetupMixin, Agent construction + runtime credential/config resolution (mixin).  Extracted fr, Ensure runtime credentials are resolved before agent use.         Re-resolves pr, Initialize the agent on first use.         When resuming a session, restores con, Return a realistic example media path for the current Termux setup., _termux_example_image_path() (+178 more)
+Cohesion: 0.03
+Nodes (70): _AgentSetupMixin, Agent construction + runtime credential/config resolution (mixin).  Extracted fr, Ensure runtime credentials are resolved before agent use.         Re-resolves pr, Initialize the agent on first use.         When resuming a session, restores con, Cycle tool progress mode: off → new → all → verbose → off., Handle /feedback — collect user feedback and POST to n8n webhook., Handle /background <prompt> - run a prompt in a separate background session., Handle /btw <question> - ephemeral side question using session context. (+62 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.06
@@ -2248,11 +2224,11 @@ Nodes (21): Tests for DingTalk platform adapter., TestConnect, TestDeduplication
 
 ### Community 45 - "Community 45"
 Cohesion: 0.06
-Nodes (38): advance_next_run(), create_job(), _ensure_aware(), get_due_jobs(), get_job(), load_jobs(), mark_job_run(), Return a timezone-aware datetime in Spark configured timezone.      Backward com (+30 more)
+Nodes (39): advance_next_run(), create_job(), _ensure_aware(), get_due_jobs(), get_job(), load_jobs(), mark_job_run(), Return a timezone-aware datetime in Spark configured timezone.      Backward com (+31 more)
 
 ### Community 46 - "Community 46"
 Cohesion: 0.03
-Nodes (113): Handle /browser connect|disconnect|status - manage live Chrome CDP connection., _activate_browser_session(), _allow_private_urls(), _backend_unhealthy_error(), _breaker_error(), _breaker_is_open(), browser_a11y(), browser_back() (+105 more)
+Nodes (121): Handle /browser connect|disconnect|status - manage live Chrome CDP connection., _cleanup_old_screenshots should remove files older than max_age_hours., Only files matching browser_screenshot_*.png should be cleaned., Cleanup should not fail on empty directory., Cleanup should not fail if directory doesn't exist., _activate_browser_session(), _allow_private_urls(), _backend_unhealthy_error() (+113 more)
 
 ### Community 47 - "Community 47"
 Cohesion: 0.03
@@ -2260,15 +2236,15 @@ Nodes (55): Path, CheckpointManager, _dir_file_count(), format_checkpoint_list()
 
 ### Community 48 - "Community 48"
 Cohesion: 0.03
-Nodes (35): _create_app(), If no instructions provided, carry forward from previous response., GET returns a previously stored response., DELETE removes a stored response and returns confirmation., When agent returns tool calls, they appear as function_call items., Without tool calls, output is just a message., Responses API returns real token counts., Chat completions returns real token counts. (+27 more)
+Nodes (37): _create_app(), If no instructions provided, carry forward from previous response., GET returns a previously stored response., DELETE removes a stored response and returns confirmation., When agent returns tool calls, they appear as function_call items., Without tool calls, output is just a message., Responses API returns real token counts., Chat completions returns real token counts. (+29 more)
 
 ### Community 49 - "Community 49"
 Cohesion: 0.02
-Nodes (42): db(), Tests for spark_state.py — SessionDB SQLite CRUD, FTS5 search, export., Tests for title lineage resolution and auto-numbering., When numbered variants exist, return the most recent one., Resolving an exact numbered title returns that specific session., With no existing sessions, base title is returned as-is., First continuation after the original gets #2., Each continuation increments the number. (+34 more)
+Nodes (42): db(), Tests for spark_state.py — SessionDB SQLite CRUD, FTS5 search, export., Tests for unique title enforcement and title-based lookups., Setting a title already used by another session raises ValueError., A session can re-set its own title without error., Multiple sessions can have NULL titles (no constraint violation)., Titles containing SQL LIKE wildcards (%, _) must not cause false matches., A title like 'test_project' should not match 'testXproject #2'. (+34 more)
 
 ### Community 50 - "Community 50"
 Cohesion: 0.06
-Nodes (27): ProcessSession, Process Registry -- In-memory registry for managed background processes.  Tracks, _make_session(), Tests for watch_patterns background process monitoring feature.  Covers:   - Pro, Disabled watch produces no notifications., Each delivered notification increments _watch_hits., Very long matched output is truncated., Notifications within the rate limit all get delivered. (+19 more)
+Nodes (27): ProcessSession, _make_session(), Tests for watch_patterns background process monitoring feature.  Covers:   - Pro, Disabled watch produces no notifications., Each delivered notification increments _watch_hits., Very long matched output is truncated., Notifications within the rate limit all get delivered., Notifications beyond the rate limit are suppressed. (+19 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.06
@@ -2279,16 +2255,16 @@ Cohesion: 0.03
 Nodes (47): ContextCompressor, Update tracked token usage from API response., Check if context exceeds the compression threshold., Replace old tool result contents with a short placeholder.          Walks backwa, Scale summary token budget with the amount of content being compressed., Serialize conversation turns into labeled text for the summarizer.          Incl, Generate a structured summary of conversation turns.          Uses a structured, Normalize summary text to the current compaction handoff format. (+39 more)
 
 ### Community 53 - "Community 53"
-Cohesion: 0.05
-Nodes (41): Path, _build_summary(), _check_structure(), _determine_verdict(), Finding, format_scan_report(), Scan a single file for threat patterns and invisible unicode characters.      Ar, Scan all files in a skill directory for security threats.      Performs:     1. (+33 more)
+Cohesion: 0.04
+Nodes (44): Path, _build_summary(), _check_structure(), content_hash(), _determine_verdict(), Finding, format_scan_report(), Scan a single file for threat patterns and invisible unicode characters.      Ar (+36 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.08
-Nodes (48): _attachment_placeholder(), _build_media_ref_from_payload(), _build_onboard_client(), check_feishu_requirements(), _coerce_int(), _coerce_required_int(), _collect_action_labels(), _collect_card_lines() (+40 more)
+Cohesion: 0.06
+Nodes (17): Resolve API key and base URL for an API-key provider.      Returns dict with: pr, Resolve runtime details for local subprocess-backed providers., resolve_api_key_provider_credentials(), resolve_external_process_provider_credentials(), GLM_API_KEY takes priority over ZAI_API_KEY., ZAI_API_KEY used when GLM_API_KEY not set., Test that resolve_api_key_provider_credentials auto-detects sk-kimi- keys., Ensure the auto-detect logic doesn't leak to other providers. (+9 more)
 
 ### Community 55 - "Community 55"
-Cohesion: 0.05
-Nodes (21): FeishuAdapter, Feishu/Lark bot adapter., Feishu bot API does not expose a typing indicator., Return real chat metadata from Feishu when available., Schedule Feishu card actions on the adapter loop and acknowledge immediately., Fetch the reacted-to message; if it was sent by this bot, emit a synthetic text, Return True if this card action token was already processed within the dedup win, Route Feishu interactive card button clicks as synthetic COMMAND events. (+13 more)
+Cohesion: 0.02
+Nodes (116): FeishuAdapter, _mock_event_dispatcher_builder(), Tests for the Feishu gateway integration., Tests for TTL-aware deduplication., Tests for @_all (Feishu @everyone) group mention routing., @_all bypasses mention gating but NOT the allowlist policy., Tests for _resolve_sender_name_from_api., TestAdapterModule (+108 more)
 
 ### Community 56 - "Community 56"
 Cohesion: 0.02
@@ -2296,27 +2272,27 @@ Nodes (74): model.base_url should NOT be used when model.provider doesn't match.
 
 ### Community 57 - "Community 57"
 Cohesion: 0.04
-Nodes (35): MemoryManager, Collect system prompt blocks from all providers.          Returns combined text,, Collect prefetch context from all providers concurrently.          Runs all prov, Queue background prefetch on all providers for the next turn., Sync a completed turn to all providers., Collect tool schemas from all providers., Return set of all tool names across all providers., Check if any provider handles this tool. (+27 more)
+Nodes (34): MemoryManager, Collect system prompt blocks from all providers.          Returns combined text,, Collect prefetch context from all providers concurrently.          Runs all prov, Queue background prefetch on all providers for the next turn., Sync a completed turn to all providers., Return set of all tool names across all providers., Check if any provider handles this tool., Notify all providers of a new turn.          kwargs may include: remaining_token (+26 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.06
-Nodes (45): _extract_reasoning_from_message(), Any, Runs spark-agent's tool-calling loop using standard OpenAI-spec tool calling., Initialize the agent loop.          Args:             server: Server object with, Execute the full agent loop using standard OpenAI tool calling.          Args:, Replace the global tool executor with a new one of the given size.      Called b, Get ManagedServer state if the server supports it.          Returns state dict w, Record of a tool execution error during the agent loop. (+37 more)
+Cohesion: 0.05
+Nodes (63): AgentResult, _extract_reasoning_from_message(), Any, SparkAgentLoop -- Reusable Multi-Turn Agent Engine  Runs the spark-agent tool-ca, Runs spark-agent's tool-calling loop using standard OpenAI-spec tool calling., Initialize the agent loop.          Args:             server: Server object with, Execute the full agent loop using standard OpenAI tool calling.          Args:, Replace the global tool executor with a new one of the given size.      Called b (+55 more)
 
 ### Community 59 - "Community 59"
-Cohesion: 0.04
-Nodes (73): curses_checklist(), Curses multi-select checklist. Returns set of selected indices.      Args:, _apply_mcp_preset(), cmd_mcp_add(), cmd_mcp_configure(), cmd_mcp_list(), cmd_mcp_remove(), cmd_mcp_test() (+65 more)
+Cohesion: 0.02
+Nodes (125): print_header(), prompt(), prompt_yes_no(), Print a bold yellow header., Prompt the user for input with optional default and password masking.      Repla, Prompt for a yes/no answer. Returns bool., color(), Colors (+117 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.04
-Nodes (77): Release all resources (terminal VMs, browser sessions, background processes), main(), Test executing Python code in Modal., Test installing a package with pip in Modal., Test that filesystem persists between commands in the same task., Test that different task_ids get isolated environments., Run all Modal terminal tests., Test that Modal requirements are met. (+69 more)
+Cohesion: 0.03
+Nodes (85): Release all resources (terminal VMs, browser sessions, background processes), main(), Test executing Python code in Modal., Test installing a package with pip in Modal., Test that filesystem persists between commands in the same task., Test that different task_ids get isolated environments., Run all Modal terminal tests., Test that Modal requirements are met. (+77 more)
 
 ### Community 61 - "Community 61"
 Cohesion: 0.04
 Nodes (48): FakeClient, provider(), container_tag with {identity} resolves to profile-scoped tag., Without agent_identity kwarg, {identity} resolves to 'default'., SUPERMEMORY_CONTAINER_TAG env var overrides config., search_mode from config is passed to _SupermemoryClient., Invalid search_mode falls back to 'hybrid'., Multi-container is off by default; schemas have no container_tag param. (+40 more)
 
 ### Community 62 - "Community 62"
-Cohesion: 0.04
-Nodes (40): Handles sampling/createMessage requests for a single MCP server.      Each MCPSe, SamplingHandler, _make_llm_response(), _make_llm_tool_response(), _make_sampling_params(), Tests for the MCP (Model Context Protocol) client support.  All tests use mocks, Create a fake CreateMessageRequestParams using SimpleNamespace.      Each messag, Create a fake OpenAI chat completion response (text). (+32 more)
+Cohesion: 0.05
+Nodes (37): Handles sampling/createMessage requests for a single MCP server.      Each MCPSe, SamplingHandler, _make_llm_response(), _make_llm_tool_response(), _make_sampling_params(), Create a fake CreateMessageRequestParams using SimpleNamespace.      Each messag, Create a fake OpenAI chat completion response (text)., Create a fake response with tool_calls.      ``tool_calls_data``: list of (id, n (+29 more)
 
 ### Community 63 - "Community 63"
 Cohesion: 0.06
@@ -2327,12 +2303,12 @@ Cohesion: 0.06
 Nodes (70): _AnthropicChatShim, _AnthropicCompletionsAdapter, async_call_llm(), AsyncAnthropicAuxiliaryClient, _AsyncAnthropicChatShim, _AsyncAnthropicCompletionsAdapter, _build_call_kwargs(), call_llm() (+62 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.03
-Nodes (63): Any, BaseException, _check_message_handler_support(), _connect_server(), _discover_and_register_server(), discover_mcp_tools(), _ensure_mcp_loop(), _existing_tool_names() (+55 more)
+Cohesion: 0.04
+Nodes (53): Any, BaseException, _check_message_handler_support(), discover_mcp_tools(), _ensure_mcp_loop(), _existing_tool_names(), _format_connect_error(), get_mcp_status() (+45 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.08
-Nodes (16): _make_cli(), Tests for CLI /status command behavior., test_process_command_status_dispatches_without_toggling_status_bar(), test_show_session_status_prints_gateway_style_summary(), test_status_command_is_available_in_cli_registry(), test_status_prefix_prefers_status_command_over_statusbar_toggle(), test_statusbar_still_toggles_visibility(), The safety net in gateway/run.py _run_agent must discard command text     that l (+8 more)
+Cohesion: 0.04
+Nodes (36): _make_cli(), Tests for CLI /status command behavior., test_process_command_status_dispatches_without_toggling_status_bar(), test_show_session_status_prints_gateway_style_summary(), test_status_command_is_available_in_cli_registry(), test_status_prefix_prefers_status_command_over_statusbar_toggle(), test_statusbar_still_toggles_visibility(), The safety net in gateway/run.py _run_agent must discard command text     that l (+28 more)
 
 ### Community 67 - "Community 67"
 Cohesion: 0.08
@@ -2343,8 +2319,8 @@ Cohesion: 0.04
 Nodes (30): CodexAuxiliaryClient, OpenAI-client-compatible wrapper that routes through Codex Responses API.      C, _FakeOpenAI, _make_agent(), Provider parity tests: verify that AIAgent builds correct API kwargs and handles, Codex API should NOT sanitize, all other APIs should sanitize., GPT-5 and Codex models should get 'developer' instead of 'system' role., service_tier via request_overrides works on the chat_completions path. (+22 more)
 
 ### Community 69 - "Community 69"
-Cohesion: 0.04
-Nodes (32): AutoSuggest, SlashCommandCompleter, CommandDef, Inline ghost-text suggestions for slash commands and their subcommands.      Sho, Definition of a single slash command., SlashCommandAutoSuggest, _completions(), Tests for the central command registry and autocomplete. (+24 more)
+Cohesion: 0.06
+Nodes (23): AutoSuggest, SlashCommandCompleter, Inline ghost-text suggestions for slash commands and their subcommands.      Sho, SlashCommandAutoSuggest, _completions(), Tests for the central command registry and autocomplete., gateway_only commands should NOT appear in the CLI COMMANDS dict., Commands with gateway_config_gate are always in GATEWAY_KNOWN_COMMANDS. (+15 more)
 
 ### Community 70 - "Community 70"
 Cohesion: 0.10
@@ -2359,12 +2335,12 @@ Cohesion: 0.04
 Nodes (37): FileOperations, LintResult, PatchResult, Result from reading a file., Result from writing a file., Result from patching a file., A single search match., Result from searching. (+29 more)
 
 ### Community 73 - "Community 73"
-Cohesion: 0.09
-Nodes (17): View the content of a skill or a specific file within a skill directory.      Ar, skill_view(), Direct .. traversal should be rejected., Nested .. traversal should also be rejected., Valid paths within the skill directory should work normally., Calling skill_view without file_path should return the SKILL.md., Symlinks pointing outside the skill directory should be blocked., Even if traversal somehow passes, sensitive content must not leak. (+9 more)
+Cohesion: 0.04
+Nodes (38): skip_disabled=True ignores the disabled set (for config UI)., TestFindAllSkillsFiltering, Path, has_traversal_component(), Shared path validation helpers for tool implementations.  Extracts the ``resolve, Ensure *path* resolves to a location within *root*.      Returns an error messag, Return True if *path_str* contains ``..`` traversal components.      Quick check, validate_within_dir() (+30 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.04
-Nodes (53): fetch_models_dev(), _find_model_entry(), _get_cache_path(), get_model_capabilities(), get_model_info(), get_provider_info(), _get_provider_models(), list_agentic_models() (+45 more)
+Cohesion: 0.05
+Nodes (39): _extract_context(), fetch_models_dev(), _find_model_entry(), _get_cache_path(), get_model_info(), get_provider_info(), _get_provider_models(), list_agentic_models() (+31 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.02
@@ -2372,7 +2348,7 @@ Nodes (81): Add LoRA adapter to the model for parameter efficient fine tuning, B
 
 ### Community 76 - "Community 76"
 Cohesion: 0.04
-Nodes (83): _derive_category_from_install_path(), do_audit(), do_browse(), do_check(), do_inspect(), do_install(), do_list(), do_publish() (+75 more)
+Nodes (66): Handle /skills slash command - delegates to spark_cli.skills_hub., _derive_category_from_install_path(), do_audit(), do_browse(), do_check(), do_inspect(), do_install(), do_list() (+58 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.05
@@ -2380,27 +2356,27 @@ Nodes (36): Progressive subdirectory hint discovery.  As the agent navigates int
 
 ### Community 78 - "Community 78"
 Cohesion: 0.10
-Nodes (26): _default_export_ignore(), export_profile(), _get_active_profile_path(), _get_default_spark_home(), get_profile_dir(), import_profile(), _normalize_profile_archive_parts(), Return the default (pre-profile) SPARK_HOME path.      In standard deployments t (+18 more)
+Nodes (19): export_profile(), get_profile_dir(), import_profile(), Resolve a profile name to its SPARK_HOME directory., Export a profile to a tar.gz archive.      Returns the output file path., Import a profile from a tar.gz archive.      If *name* is not given, infers it f, Tests for export_profile() / import_profile()., Exporting the default profile produces a valid tar.gz. (+11 more)
 
 ### Community 79 - "Community 79"
-Cohesion: 0.05
-Nodes (27): Clear the deduplication cache for file reads.      Called after context compress, reset_file_dedup(), _FakeReadResult, _make_fake_ops(), A read that returns >max chars is rejected., Normal-sized reads pass through fine., Content just under the limit should pass through fine., Re-reading an unchanged file should return a lightweight stub. (+19 more)
+Cohesion: 0.03
+Nodes (47): _get_max_read_chars(), _is_blocked_device(), Read a file with pagination and line numbers., Return the configured max characters per file read.      Reads ``file_read_max_c, Clear the deduplication cache for file reads.      Called after context compress, Return True if the path would hang the process (infinite output or blocking inpu, read_file_tool(), reset_file_dedup() (+39 more)
 
 ### Community 80 - "Community 80"
 Cohesion: 0.05
-Nodes (25): BudgetConfig, Configurable budget constants for tool result persistence.  Overridable at the R, Immutable budget constants for the 3-layer tool result persistence system., Resolve the persistence threshold for a tool.          Priority: pinned -> tool_, Unit tests for tools/budget_config.py.  Covers default values, resolve_threshold, BudgetConfig can be created with non-default values., Priority: pinned > tool_overrides > registry > default., Even if tool_overrides contains read_file, pinned value wins. (+17 more)
+Nodes (26): Build a BudgetConfig from env config fields., BudgetConfig, Configurable budget constants for tool result persistence.  Overridable at the R, Immutable budget constants for the 3-layer tool result persistence system., Resolve the persistence threshold for a tool.          Priority: pinned -> tool_, Unit tests for tools/budget_config.py.  Covers default values, resolve_threshold, BudgetConfig can be created with non-default values., Priority: pinned > tool_overrides > registry > default. (+18 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.04
-Nodes (32): ModelSwitchResult, Result of a model switch attempt., Tests for Ollama Cloud authentication and /model switch fixes.  Covers: - OLLAMA, CLI /model command should update requested_provider for session persistence., ModelSwitchResult has all required fields for CLI state update., runtime_provider should use OLLAMA_API_KEY for ollama.com endpoints., When base_url contains ollama.com, OLLAMA_API_KEY is in the candidate chain., _try_activate_fallback should pass base_url from fallback config. (+24 more)
+Cohesion: 0.09
+Nodes (4): Tests for web UI SSE event bus and conversation control endpoints., TestConversationModels, TestEventBus, web_client()
 
 ### Community 82 - "Community 82"
 Cohesion: 0.06
-Nodes (10): Test the main plugin class., Test turn synchronization via the write queue., Test the built-in memory mirror hook., TestOnMemoryWrite, TestRetainDBMemoryProvider, TestSyncTurn, RetainDB cloud memory — durable queue, semantic search, dialectic synthesis, sha, Fire context + dialectic + agent model prefetches in background. (+2 more)
+Nodes (11): Test turn synchronization via the write queue., Test the built-in memory mirror hook., TestOnMemoryWrite, TestSyncTurn, _Client, RetainDB cloud memory — durable queue, semantic search, dialectic synthesis, sha, Fire context + dialectic + agent model prefetches in background., Consume prefetched results and return them as a context block. (+3 more)
 
 ### Community 83 - "Community 83"
 Cohesion: 0.04
-Nodes (44): End-to-end test simulating CLI interrupt during subagent execution.  Reproduces, Simulate exact CLI scenario., Full integration: parent runs delegate_task, main thread interrupts., TestCLISubagentInterrupt, Test interrupt propagation from parent to child agents.  Reproduces the CLI scen, Simulates exact CLI flow: parent runs delegate in thread, main thread interrupts, Verify that interrupting one agent does NOT affect another agent's thread., set_interrupt(True, tid) only makes is_interrupted() True on that thread. (+36 more)
+Nodes (44): End-to-end test simulating CLI interrupt during subagent execution.  Reproduces, Simulate exact CLI scenario., Full integration: parent runs delegate_task, main thread interrupts., TestCLISubagentInterrupt, main(), make_slow_response(), API response that takes a while., Test interrupt propagation from parent to child agents.  Reproduces the CLI scen (+36 more)
 
 ### Community 84 - "Community 84"
 Cohesion: 0.05
@@ -2411,16 +2387,16 @@ Cohesion: 0.05
 Nodes (54): Any, Apply a V4A format patch.                  V4A format:             *** Begin Pat, _apply_add(), _apply_delete(), _apply_move(), _apply_update(), apply_v4a_operations(), _count_occurrences() (+46 more)
 
 ### Community 86 - "Community 86"
-Cohesion: 0.05
-Nodes (33): KawaiiSpinner, Animated spinner with plain text labels for CLI feedback during tool execution., Write to the stdout captured at spinner creation time.          If a print_fn wa, Check if output is a real terminal, safe against closed streams., Return True when stdout is prompt_toolkit's StdoutProxy.          patch_stdout w, Print a line above the spinner without disrupting animation.          Clears the, Tests for KawaiiSpinner.print_above method., print_above should write to stdout even when spinner is not running. (+25 more)
+Cohesion: 0.04
+Nodes (44): KawaiiSpinner, Animated spinner with plain text labels for CLI feedback during tool execution., Write to the stdout captured at spinner creation time.          If a print_fn wa, Check if output is a real terminal, safe against closed streams., Return True when stdout is prompt_toolkit's StdoutProxy.          patch_stdout w, Print a line above the spinner without disrupting animation.          Clears the, Tests for subagent progress relay (issue #169).  Verifies that: - KawaiiSpinner., Tests for the _thinking callback in AIAgent conversation loop. (+36 more)
 
 ### Community 87 - "Community 87"
 Cohesion: 0.04
 Nodes (15): Tests for gateway/platforms/base.py — MessageEvent, media extraction, message tr, Verify the UTF-16 length helper., Verify UTF-16-aware prefix truncation., A message at 4096 codepoints but >4096 UTF-16 units must split., All chunks produced with utf16_len must fit the limit., TestExtractMedia, TestGetHumanDelay, TestMessageEventGetCommand (+7 more)
 
 ### Community 88 - "Community 88"
-Cohesion: 0.20
-Nodes (11): ActionResult, CaptureResult, ActionResult, CaptureResult, CuaDriverBackend, Submit *coro* to the bridge loop and block until done., Stateful macOS desktop control backend.      Maintains _active_pid and _active_w, Capture the target window.  Sets the sticky window context.          Args: (+3 more)
+Cohesion: 0.26
+Nodes (7): ActionResult, CuaDriverBackend, Submit *coro* to the bridge loop and block until done., Stateful macOS desktop control backend.      Maintains _active_pid and _active_w, Add best-effort visual pointer metadata for desktop chat UI., Update active window context for the named app.          Does NOT bring the wind, Any
 
 ### Community 89 - "Community 89"
 Cohesion: 0.05
@@ -2435,24 +2411,24 @@ Cohesion: 0.05
 Nodes (31): _mock_assistant_msg(), _mock_tool_call(), Gemini thinking models attach extra_content with thought_signature         to to, Standard tool calls (no thinking model) should not have extra_content., Tests for _execute_tool_calls_concurrent and dispatch logic., Single tool call should use sequential path, not concurrent., Batch containing clarify should use sequential path., Multiple read-only tools should use concurrent path. (+23 more)
 
 ### Community 92 - "Community 92"
-Cohesion: 0.03
-Nodes (97): BaseEnv, BaseEnvConfig, AgentResult, SparkAgentLoop -- Reusable Multi-Turn Agent Engine  Runs the spark-agent tool-ca, Result of running the agent loop., AgenticOPDConfig, AgenticOPDEnv, _append_hint_to_messages() (+89 more)
+Cohesion: 0.06
+Nodes (29): AgenticOPDEnv, _append_hint_to_messages(), _build_hint_judge_messages(), _parse_hint_result(), AgentResult, Any, APIServerConfig, Item (+21 more)
 
 ### Community 93 - "Community 93"
 Cohesion: 0.02
-Nodes (129): Enable computer_use for CLI, refresh the tool list, optionally queue a task., Handle /tools [list|disable|enable] slash commands.          /tools (no args) sh, cua_driver_resolution_hint(), Short diagnostic for humans when computer_use is unavailable on macOS., Tests for MCP tools interactive configuration in spark_cli.tools_config., Tools in exclude list start unchecked., Only tools in include list start checked., Returns immediately when no MCP servers are configured. (+121 more)
+Nodes (143): Enable computer_use for CLI, refresh the tool list, optionally queue a task., Handle /tools [list|disable|enable] slash commands.          /tools (no args) sh, Display active profile name and home directory., cua_driver_install_command(), cua_driver_resolution_hint(), Short diagnostic for humans when computer_use is unavailable on macOS., Return the official macOS installer command for Cua Driver., display_spark_home() (+135 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.04
-Nodes (41): classify_api_error(), Classify an API error into a structured recovery recommendation.      Priority-o, MockAPIError, Simulates an OpenAI SDK APIStatusError., End-to-end classification tests., OpenRouter 403 'key limit exceeded' is billing, not auth., Alibaba/DashScope returns a unique throttling message.          Port from anomal, Generic 400 with large session → context overflow heuristic. (+33 more)
+Cohesion: 0.06
+Nodes (23): classify_api_error(), Classify an API error into a structured recovery recommendation.      Priority-o, MockAPIError, Simulates an OpenAI SDK APIStatusError., End-to-end classification tests., OpenRouter 403 'key limit exceeded' is billing, not auth., Alibaba/DashScope returns a unique throttling message.          Port from anomal, Generic 400 with large session → context overflow heuristic. (+15 more)
 
 ### Community 95 - "Community 95"
-Cohesion: 0.03
-Nodes (35): get_api_key_provider_status(), ProviderConfig, Describes a known inference provider., Status snapshot for API-key providers (z.ai, Kimi, MiniMax)., Resolve API key and base URL for an API-key provider.      Returns dict with: pr, Return the correct Kimi base URL based on the API key prefix.      If the user h, Resolve an API-key provider's token and indicate where it came from., resolve_api_key_provider_credentials() (+27 more)
+Cohesion: 0.04
+Nodes (31): get_api_key_provider_status(), get_auth_status(), get_external_process_provider_status(), ProviderConfig, Describes a known inference provider., Status snapshot for API-key providers (z.ai, Kimi, MiniMax)., Status snapshot for providers that run a local subprocess., Generic auth status dispatcher. (+23 more)
 
 ### Community 96 - "Community 96"
-Cohesion: 0.12
-Nodes (7): _detect_file_drop(), Detect if *user_input* starts with a real local file path.      This catches dra, A directory path should not be treated as a file drop., TestImageFileDrop, TestNonFileInputs, A directory path should not be treated as a file drop., TestNonFileInputs
+Cohesion: 0.04
+Nodes (32): _detect_file_drop(), Detect if *user_input* starts with a real local file path.      This catches dra, Tests for _detect_file_drop — file path detection that prevents dragged/pasted a, r"""macOS drags produce paths like /path/to/my\ file.png, A file literally named 'help' inside a directory starting with /., Create a temporary .png file and return its path., Create a temporary .py file and return its path., Create a file whose name contains spaces (like macOS screenshots). (+24 more)
 
 ### Community 97 - "Community 97"
 Cohesion: 0.08
@@ -2464,23 +2440,23 @@ Nodes (32): _apply_replacements(), _build_orig_to_norm_map(), _calculate_line_po
 
 ### Community 100 - "Community 100"
 Cohesion: 0.03
-Nodes (68): Validate and sanitize a loaded GatewayConfig in place.      Called by ``load_gat, _validate_gateway_config(), Tests for the Cron Jobs API endpoints on the API server adapter.  Covers: - CRUD, TestAuthRequired, TestCreateJob, TestCronUnavailable, TestDeleteJob, TestGetJob (+60 more)
+Nodes (66): Tests for the API server bind-address startup guard.  Validates that is_network_, Verify that connect() refuses dangerous configurations., Loopback with no key should pass the guard., Non-loopback with a key should pass the guard., TestConnectBindGuard, adapter(), auth_adapter(), _make_adapter() (+58 more)
 
 ### Community 101 - "Community 101"
-Cohesion: 0.16
-Nodes (15): build_plan_path(), build_preloaded_skills_prompt(), _build_skill_message(), _load_skill_payload(), Shared slash command helpers for skills and built-in prompt-style modes.  Shared, Format a loaded skill into a user/system message payload., Return the default workspace-relative markdown path for a /plan invocation., Load one or more skills for session-wide CLI preloading.      Returns (prompt_te (+7 more)
+Cohesion: 0.04
+Nodes (50): build_plan_path(), build_preloaded_skills_prompt(), build_skill_invocation_message(), _build_skill_message(), get_skill_commands(), _inject_skill_config(), _load_skill_payload(), Shared slash command helpers for skills and built-in prompt-style modes.  Shared (+42 more)
 
 ### Community 102 - "Community 102"
 Cohesion: 0.06
 Nodes (57): addBrowserFindings(), addVisualContrastFindings(), addVisualContrastResult(), browserFindingsFromMap(), checkBorders(), checkElementBorders(), checkElementBordersDOM(), checkElementHeroEyebrow() (+49 more)
 
 ### Community 103 - "Community 103"
-Cohesion: 0.04
-Nodes (44): Path, Tests for tools/vision_tools.py — URL validation, type hints, error logging., Verify that ~/path style paths are expanded correctly., vision_analyze_tool should expand ~ in file paths., A tilde path that doesn't resolve to a real file should fail gracefully., Verify that file:// URIs resolve as local file paths., file:///absolute/path should be treated as a local file., file:// pointing to a missing file should fail gracefully. (+36 more)
+Cohesion: 0.09
+Nodes (19): Path, Tests for the auto-resize function., Images under the limit should be returned unchanged., Images over the default target should be auto-resized to fit., The max_base64_bytes parameter should be respected., Non-PNG images should be resized as JPEG., Hard limit should be larger than resize target., Extreme aspect ratios should be preserved during resize. (+11 more)
 
 ### Community 104 - "Community 104"
-Cohesion: 0.04
-Nodes (26): quarantine_bundle(), Write a skill bundle to the quarantine directory for scanning., A downloaded skill ready for quarantine/scanning/installation., SkillBundle, Tests for tools/skills_hub.py — source adapters, lock file, taps, dedup logic., Tests for the Git Trees API path in _download_directory., Tree API returns files from nested subdirectories., When tree is truncated, fall back to recursive Contents API. (+18 more)
+Cohesion: 0.05
+Nodes (24): bundle_content_hash(), check_for_skill_updates(), Compute a deterministic hash for an in-memory skill bundle., Check installed hub skills for upstream changes., A downloaded skill ready for quarantine/scanning/installation., SkillBundle, Tests for the Git Trees API path in _download_directory., Tree API returns files from nested subdirectories. (+16 more)
 
 ### Community 105 - "Community 105"
 Cohesion: 0.05
@@ -2491,28 +2467,28 @@ Cohesion: 0.09
 Nodes (9): _make_config(), Tests for the QQ Bot platform adapter., Build a PlatformConfig(enabled=True, extra=extra) for testing., TestBuildTextBody, TestDispatchPayload, TestDmAllowed, TestGroupAllowed, TestReadyHandling (+1 more)
 
 ### Community 107 - "Community 107"
-Cohesion: 0.07
-Nodes (26): _AsyncCM, _connect_patches(), _make_adapter(), _mock_aiohttp(), Tests for WhatsApp connect() error handling.  Regression tests for two bugs in W, Verify ``data = {}`` prevents NameError when resp.json() fails., HTTP 200 sets http_ready but json() always raises.          Without the fix, ``d, Verify the bridge log file handle is closed on every failure path. (+18 more)
+Cohesion: 0.06
+Nodes (28): _AsyncCM, _connect_patches(), _make_adapter(), _mock_aiohttp(), Tests for WhatsApp connect() error handling.  Regression tests for two bugs in W, Direct tests for the _close_bridge_log() helper method., HTTP 200 sets http_ready but json() always raises.          Without the fix, ``d, Bridge process exits during Phase 1 health-check loop. (+20 more)
 
 ### Community 108 - "Community 108"
-Cohesion: 0.08
-Nodes (20): WhatsApp adapter.          This implementation uses a simple HTTP bridge pattern, Start the WhatsApp bridge.                  This launches the Node.js bridge pro, Close the bridge log file handle if open., Return a fatal error message if the managed bridge child exited., Stop the WhatsApp bridge and clean up any orphaned processes., Convert standard markdown to WhatsApp-compatible formatting.          WhatsApp s, Send a message via the WhatsApp bridge.          Formats markdown for WhatsApp,, Edit a previously sent message via the WhatsApp bridge. (+12 more)
+Cohesion: 0.05
+Nodes (39): Verify ``data = {}`` prevents NameError when resp.json() fails., Verify the bridge log file handle is closed on every failure path., TestDataInitialized, TestFileHandleClosedOnError, WhatsApp message length limits., TestMessageLimits, Tests for WhatsApp reply_prefix config.yaml support.  Covers: - config.yaml what, Ensure _config_version covers all ENV_VARS_BY_VERSION keys. (+31 more)
 
 ### Community 109 - "Community 109"
 Cohesion: 0.05
-Nodes (36): _mock_response(), Tests for the main run_conversation method.      Each test mocks client.chat.com, Common setup for run_conversation tests., Model hallucinates an invalid tool name, agent retries and succeeds., Reasoning-only responses no longer trigger compression — prefill then accepted., Structured reasoning-only triggers prefill (2), then retries (3), then (empty)., When prefill continuation produces content, it becomes the final response., Truly empty response (no content, no reasoning) retries 3 times then falls throu (+28 more)
+Nodes (34): _mock_response(), Tests for the main run_conversation method.      Each test mocks client.chat.com, Common setup for run_conversation tests., Model hallucinates an invalid tool name, agent retries and succeeds., Reasoning-only responses no longer trigger compression — prefill then accepted., Structured reasoning-only triggers prefill (2), then retries (3), then (empty)., When prefill continuation produces content, it becomes the final response., Truly empty response (no content, no reasoning) retries 3 times then falls throu (+26 more)
 
 ### Community 110 - "Community 110"
-Cohesion: 0.06
-Nodes (63): agent_browser_path(), agent_browser_ready(), agent_browser_version(), _candidate_node_bins(), install_agent_browser(), main(), npm_path(), _npm_project_root() (+55 more)
+Cohesion: 0.05
+Nodes (83): CABundleError, _configured_ca_bundle_value(), httpx_client_kwargs(), httpx_verify_value(), TLS verification helpers for outbound provider HTTP clients., Return ``urllib.request.urlopen`` kwargs for configured TLS verification., Raised when the configured custom CA bundle cannot be used., Return the configured CA bundle path, expanding env vars and ``~``. (+75 more)
 
 ### Community 111 - "Community 111"
-Cohesion: 0.06
-Nodes (20): MemoryProvider, Queue a background recall for the NEXT turn.          Called after each turn com, Persist a completed turn to the backend.          Called after each turn. Should, Return tool schemas this provider exposes.          Each schema follows the Open, Handle a tool call for one of this provider's tools.          Must return a JSON, Clean shutdown — flush queues, close connections., Called at the start of each turn with the user message.          Use for turn-co, Called when a session ends (explicit exit or timeout).          Use for end-of-s (+12 more)
+Cohesion: 0.05
+Nodes (24): All registered providers in order., Get a provider by name, or None if not registered., Register a memory provider.          Built-in provider (name ``"builtin"``) is a, MemoryProvider, Queue a background recall for the NEXT turn.          Called after each turn com, Persist a completed turn to the backend.          Called after each turn. Should, Return tool schemas this provider exposes.          Each schema follows the Open, Handle a tool call for one of this provider's tools.          Must return a JSON (+16 more)
 
 ### Community 112 - "Community 112"
-Cohesion: 0.08
-Nodes (41): proxy_kwargs_for_aiohttp(), Build kwargs for standalone ``aiohttp.ClientSession`` with proxy.      Returns `, _describe_media_for_mirror(), _error(), _get_cron_auto_delivery_target(), _handle_list(), _handle_send(), _maybe_skip_cron_duplicate_send() (+33 more)
+Cohesion: 0.09
+Nodes (39): _describe_media_for_mirror(), _error(), _get_cron_auto_delivery_target(), _handle_list(), _handle_send(), _maybe_skip_cron_duplicate_send(), Send Message Tool -- cross-channel messaging via platform APIs.  Sends a message, Send via QQBot using the REST API directly (no WebSocket needed).      Uses the (+31 more)
 
 ### Community 113 - "Community 113"
 Cohesion: 0.08
@@ -2520,19 +2496,19 @@ Nodes (22): _is_connection_error(), _is_payment_error(), Detect payment/credit/q
 
 ### Community 114 - "Community 114"
 Cohesion: 0.05
-Nodes (37): AnthropicAuxiliaryClient, _get_provider_chain(), Try alternative providers after a payment/credit or connection error.      Itera, OpenAI-client-compatible wrapper over a native Anthropic client., Return the ordered provider detection chain.      Built at call time (not module, _try_payment_fallback(), _clean_env(), codex_auth_dir() (+29 more)
+Nodes (35): AnthropicAuxiliaryClient, Try alternative providers after a payment/credit or connection error.      Itera, OpenAI-client-compatible wrapper over a native Anthropic client., _try_payment_fallback(), _clean_env(), codex_auth_dir(), Tests for agent.auxiliary_client resolution chain, provider overrides, and model, _get_provider_chain() resolves functions at call time (testable). (+27 more)
 
 ### Community 115 - "Community 115"
 Cohesion: 0.05
 Nodes (63): _make_adapter(), _make_mock_message(), Tests for Telegram DM Private Chat Topics (Bot API 9.4).  Covers: - _setup_dm_to, Mix of persisted and new topics should work correctly., Empty dm_topics config should be a no-op., No dm_topics in config at all should be a no-op., Duplicate topic error should return None gracefully., Generic error should return None with warning. (+55 more)
 
 ### Community 116 - "Community 116"
-Cohesion: 0.21
-Nodes (12): Handle /export [session_id] [--publish] - write a redacted session export., export_session_redacted(), exports_dir(), publish_export(), Export a conversation session to a shareable, redacted JSON file.  Reuses `Sessi, Return a copy of an exported session with secrets stripped from messages., Opt-in: publish a redacted export file to a public GitHub Gist via `gh`.      Re, Export a session to a redacted JSON file. Returns {ok, path, messages} or {error (+4 more)
+Cohesion: 0.07
+Nodes (25): Load a resumed session's history from the DB early (before first chat)., Render a compact recap of previous conversation messages.          Uses Rich mar, Handle /export [session_id] [--publish] - write a redacted session export., Check clipboard for an image and attach it if found.          Saves the image to, Save the current conversation to a file., Retry the last user message by removing the last exchange and re-sending., Remove the last user/assistant exchange from conversation history.          Walk, Accept string or dict personality value; return system prompt string. (+17 more)
 
 ### Community 117 - "Community 117"
 Cohesion: 0.06
-Nodes (36): Any, ProcessSession, _handle_process(), ProcessRegistry, ProcessSession, On gateway startup, probe PIDs from checkpoint file.          Returns the number, In-memory registry of running and finished background processes.      Thread-saf, Strip shell startup warnings from the beginning of output. (+28 more)
+Nodes (36): Any, _handle_process(), ProcessRegistry, ProcessSession, Process Registry -- In-memory registry for managed background processes.  Tracks, On gateway startup, probe PIDs from checkpoint file.          Returns the number, In-memory registry of running and finished background processes.      Thread-saf, Strip shell startup warnings from the beginning of output. (+28 more)
 
 ### Community 118 - "Community 118"
 Cohesion: 0.07
@@ -2540,7 +2516,7 @@ Nodes (21): Test suite for _get_backend() backend selection logic.      The back
 
 ### Community 119 - "Community 119"
 Cohesion: 0.05
-Nodes (38): Resolve the Spark update command as argv parts.      Tries in order:     1. ``sh, _resolve_spark_bin(), _make_event(), _make_runner(), Tests for /update gateway slash command.  Tests both the _handle_update_command, Returns error when spark is not on PATH and spark_cli is not importable., Falls back to sys.executable -m spark_cli.main when spark not on PATH., _resolve_spark_bin returns argv parts from shutil.which when available. (+30 more)
+Nodes (37): Resolve the Spark update command as argv parts.      Tries in order:     1. ``sh, _resolve_spark_bin(), _make_event(), _make_runner(), Returns error when spark is not on PATH and spark_cli is not importable., Falls back to sys.executable -m spark_cli.main when spark not on PATH., _resolve_spark_bin returns argv parts from shutil.which when available., _resolve_spark_bin falls back to sys.executable argv when which fails. (+29 more)
 
 ### Community 120 - "Community 120"
 Cohesion: 0.10
@@ -2571,20 +2547,20 @@ Cohesion: 0.21
 Nodes (7): _make_cli(), Create a SparkCLI instance with minimal mocking.      SparkCLI.__init__ does not, TestHistoryDisplay, TestProviderResolution, Regression tests for CLI /retry history replacement semantics., test_process_command_retry_requeues_original_message_not_retry_command(), test_retry_last_truncates_history_before_requeueing_message()
 
 ### Community 127 - "Community 127"
-Cohesion: 0.11
-Nodes (11): Return (command_name, description) pairs for Telegram setMyCommands.      Telegr, Convert a command/skill/plugin name to a valid Telegram command name.      Teleg, _sanitize_telegram_name(), telegram_bot_commands(), Telegram does not support hyphens in command names., Telegram requires: lowercase a-z, 0-9, underscores only., Tests for _sanitize_telegram_name() — Telegram requires [a-z0-9_] only., Regression: skill name 'Jellyfin + Jellystat 24h Summary'. (+3 more)
+Cohesion: 0.19
+Nodes (6): Convert a command/skill/plugin name to a valid Telegram command name.      Teleg, _sanitize_telegram_name(), Tests for _sanitize_telegram_name() — Telegram requires [a-z0-9_] only., Regression: skill name 'Jellyfin + Jellystat 24h Summary'., Regression: skill name 'Sonarr v3/v4 API Integration'., TestSanitizeTelegramName
 
 ### Community 128 - "Community 128"
 Cohesion: 0.08
-Nodes (59): _active_profile_name(), _all_profile_host_configs(), clone_honcho_for_profile(), cmd_disable(), cmd_enable(), cmd_identity(), cmd_map(), cmd_migrate() (+51 more)
+Nodes (61): _active_profile_name(), _all_profile_host_configs(), clone_honcho_for_profile(), cmd_disable(), cmd_enable(), cmd_identity(), cmd_map(), cmd_migrate() (+53 more)
 
 ### Community 129 - "Community 129"
 Cohesion: 0.05
 Nodes (20): _assert_clean(), ops(), populated_dir(), Live integration tests for file operations and terminal tools.  These tests run, Write -> read back -> verify exact match., Every entry in the files list must be a real path, not noise., Dedicated noise check: search must return only real content., Paths like ~; rm -rf / must NOT execute shell commands. (+12 more)
 
 ### Community 130 - "Community 130"
-Cohesion: 0.01
-Nodes (138): build_context_files_prompt(), build_environment_hints(), build_name_guidance(), _build_skills_manifest(), build_skills_system_prompt(), _build_snapshot_entry(), build_soul_guidance(), clear_skills_system_prompt_cache() (+130 more)
+Cohesion: 0.07
+Nodes (36): _parse_skill_file(), Read a SKILL.md once and return platform compatibility, frontmatter, and descrip, discover_all_skill_config_vars(), extract_skill_conditions(), extract_skill_config_vars(), extract_skill_description(), get_all_skills_dirs(), get_disabled_skill_names() (+28 more)
 
 ### Community 131 - "Community 131"
 Cohesion: 0.06
@@ -2599,68 +2575,64 @@ Cohesion: 0.06
 Nodes (17): _make_adapter(), If target already contains ';' it's a raw GUID — return unchanged., Image MIME routes to cache_image_from_bytes., Audio MIME routes to cache_audio_from_bytes., Non-image/audio MIME routes to cache_document_from_bytes., No client → returns None gracefully., _webhook_url property normalises local hosts to 'localhost'., Tests for _register_webhook, _unregister_webhook, _find_registered_webhooks. (+9 more)
 
 ### Community 134 - "Community 134"
-Cohesion: 0.07
-Nodes (24): body_limit_middleware(), cors_middleware(), _make_request_fingerprint(), _openai_error(), OpenAI-compatible API server platform adapter.  Exposes an HTTP server with endp, GET /v1/responses/{response_id} — retrieve a stored response., Build the full output item array from the agent's messages.          Walks *resu, Create an agent and run a conversation in a thread executor.          Returns `` (+16 more)
+Cohesion: 0.15
+Nodes (8): _make_request_fingerprint(), Create an agent and run a conversation in a thread executor.          Returns ``, Retrieve a stored response by ID (updates access time for LRU)., Get the latest response_id for a conversation name., Map a conversation name to its latest response_id., POST /v1/chat/completions — OpenAI Chat Completions format., Write real streaming SSE from agent's stream_delta_callback queue.          If t, POST /v1/responses — OpenAI Responses API format.
 
 ### Community 135 - "Community 135"
 Cohesion: 0.04
-Nodes (30): AuthError, Resolve runtime details for local subprocess-backed providers., Structured auth error with UX mapping hints., resolve_external_process_provider_credentials(), When auto-detect picks Codex but credentials are revoked, fall through to OpenRo, When requested_provider is 'auto' and Qwen creds fail, fall through., test_auto_detected_codex_auth_failure_falls_through_to_openrouter(), test_qwen_oauth_auto_fallthrough_on_auth_failure() (+22 more)
+Nodes (29): RuntimeError, AuthError, Structured auth error with UX mapping hints., When auto-detect picks Codex but credentials are revoked, fall through to OpenRo, When requested_provider is 'auto' and Qwen creds fail, fall through., test_auto_detected_codex_auth_failure_falls_through_to_openrouter(), test_qwen_oauth_auto_fallthrough_on_auth_failure(), Tests for Xiaomi MiMo provider support. (+21 more)
 
 ### Community 136 - "Community 136"
-Cohesion: 0.06
-Nodes (55): Any, Path, TestTtsDispatcherMistral, _check(), _check_neutts_available(), _check_piper_available(), check_tts_requirements(), _convert_to_opus() (+47 more)
+Cohesion: 0.04
+Nodes (70): None sentinel causes remaining buffer to be spoken., Setting stop_event causes early exit., tts_done_event is set even when an exception occurs., <think>...</think> content is not spoken., Sentences are split at boundaries and spoken individually., Markdown formatting is removed before display/speech., Repeated sentences are spoken only once., Without ELEVENLABS_API_KEY, display callback still works. (+62 more)
 
 ### Community 137 - "Community 137"
 Cohesion: 0.07
 Nodes (21): _coalesce_session_name_args(), Join unquoted multi-word session names after -c/--continue and -r/--resume., Tests for _coalesce_session_name_args — multi-word session name merging., spark -c my project sessions list → stops before 'sessions, spark -c my setup → 'setup' is a subcommand, not part of name, spark -c Pokemon Agent Dev → -c 'Pokemon Agent Dev, spark --continue Pokemon Agent Dev, spark -c MyProject (no merging needed) (+13 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.05
-Nodes (30): extract_content_or_reasoning(), Extract content from an LLM response, falling back to reasoning fields.      Mir, _make_response(), Tests for None guard on response.choices[0].message.content.strip().  OpenAI-com, tools/web_tools.py — synthesize_content() final_summary line, tools/vision_tools.py — analyze_image() analysis extraction, tools/skills_guard.py — _llm_audit_skill() llm_text extraction, tools/session_search_tool.py — _summarize_session() return line (+22 more)
+Cohesion: 0.07
+Nodes (20): _make_response(), Tests for None guard on response.choices[0].message.content.strip().  OpenAI-com, tools/web_tools.py — synthesize_content() final_summary line, tools/vision_tools.py — analyze_image() analysis extraction, tools/skills_guard.py — _llm_audit_skill() llm_text extraction, tools/session_search_tool.py — _summarize_session() return line, Build a minimal OpenAI-compatible ChatCompletion response stub.      Extra keywo, Run an async coroutine synchronously. (+12 more)
 
 ### Community 139 - "Community 139"
 Cohesion: 0.05
 Nodes (22): _extract(), Tests for extract_local_files() — auto-detection of bare local file paths in mod, Paths that don't exist on disk are not extracted., Mix of existing and non-existing — only existing are returned., Paths embedded in HTTP URLs must not be extracted., ~/photos/a.png and /home/user/photos/a.png are the same file., Run extract_local_files with os.path.isfile mocked to return True     for any pa, The raw ~/... form should be removed, not the expanded /home/user/... form. (+14 more)
 
 ### Community 140 - "Community 140"
-Cohesion: 0.09
-Nodes (34): _ensure_discord_mock(), FakeTextChannel, FakeThread, make_message(), Tests for Discord ignored_channels and no_thread_channels config., Messages in ignored channels are silently dropped., Ignored channels take priority — even @mentions are dropped., Channels not in the ignored list process normally. (+26 more)
-
-### Community 141 - "Community 141"
-Cohesion: 0.04
-Nodes (5): Tests for web UI SSE event bus and conversation control endpoints., TestConversationControl, TestConversationModels, _wait_for(), web_client()
+Cohesion: 0.12
+Nodes (28): _ensure_discord_mock(), FakeTextChannel, FakeThread, make_message(), Tests for Discord ignored_channels and no_thread_channels config., Messages in ignored channels are silently dropped., Ignored channels take priority — even @mentions are dropped., Channels not in the ignored list process normally. (+20 more)
 
 ### Community 142 - "Community 142"
-Cohesion: 0.05
-Nodes (30): Any, check_session_search_requirements(), _format_conversation(), _format_timestamp(), _list_recent_sessions(), Summarize a single session conversation focused on the search query., Return metadata for the most recent sessions (no LLM calls)., Search past sessions and return focused summaries of matching conversations. (+22 more)
+Cohesion: 0.12
+Nodes (12): Any, check_session_search_requirements(), _format_conversation(), Summarize a single session conversation focused on the search query., Requires SQLite state database and an auxiliary text model., Format session messages into a readable transcript for summarization., _summarize_session(), Tests for tools/session_search_tool.py — helper functions and search dispatcher. (+4 more)
 
 ### Community 143 - "Community 143"
-Cohesion: 0.07
-Nodes (13): _make_session(), Tests for tools/process_registry.py — ProcessRegistry query methods, pruning, ch, Create a fresh ProcessRegistry., Helper to create a ProcessSession for testing., registry(), TestActiveQueries, TestGetAndPoll, TestKillProcess (+5 more)
+Cohesion: 0.05
+Nodes (19): Popen, ProcessSession, _make_session(), Tests for tools/process_registry.py — ProcessRegistry query methods, pruning, ch, Create a fresh ProcessRegistry., Helper to create a ProcessSession for testing., Spawn a portable short-lived Python sleep process., Poll a predicate until it returns truthy or the timeout elapses. (+11 more)
 
 ### Community 144 - "Community 144"
 Cohesion: 0.06
-Nodes (29): delegate_task(), Spawn one or more child agents to handle delegated tasks.      Supports two mode, _make_mock_parent(), Setting only model (no provider) changes model but keeps parent credentials., When tasks array is provided, top-level goal/context/toolsets are ignored., Verify child gets parent's depth + 1., Verify children are registered/unregistered for interrupt propagation., Verify _last_resolved_tool_names is restored after subagent runs. (+21 more)
+Nodes (28): delegate_task(), Spawn one or more child agents to handle delegated tasks.      Supports two mode, _make_mock_parent(), Setting only model (no provider) changes model but keeps parent credentials., When tasks array is provided, top-level goal/context/toolsets are ignored., Verify child gets parent's depth + 1., Verify children are registered/unregistered for interrupt propagation., Verify _last_resolved_tool_names is restored after subagent runs. (+20 more)
 
 ### Community 145 - "Community 145"
 Cohesion: 0.06
 Nodes (56): _apply_to_store(), _call_synthesis_llm(), configure_schedule(), _dream_dir(), DreamResult, _format_facts(), _format_memory_md(), _format_tool_usage() (+48 more)
 
 ### Community 147 - "Community 147"
-Cohesion: 0.05
-Nodes (24): HonchoMemoryProvider, Honcho memory plugin — MemoryProvider for Honcho AI-native memory.  Provides cro, Honcho AI-native memory with dialectic Q&A and persistent user modeling., Check if Honcho is configured. No network calls., Write config to $SPARK_HOME/honcho.json (Honcho SDK native format)., Run the full Honcho setup wizard after provider selection., Initialize Honcho session manager.          Handles: cron guard, recall_mode, se, Shared session initialization logic for both eager and lazy paths. (+16 more)
+Cohesion: 0.04
+Nodes (28): Verify Honcho plugin uses gateway user_id for peer_name when provided., When user_id is in kwargs and no explicit peer_name, user_id should be used., Without user_id, the config peer_name should be preserved., TestHonchoUserIdScoping, HonchoMemoryProvider, Honcho memory plugin — MemoryProvider for Honcho AI-native memory.  Provides cro, Honcho AI-native memory with dialectic Q&A and persistent user modeling., Check if Honcho is configured. No network calls. (+20 more)
 
 ### Community 148 - "Community 148"
-Cohesion: 0.11
-Nodes (60): ExecContext, make_item(), Wrap a value in the standard item envelope., resolve_params(), WorkflowNode, _absolute_url(), _agent_node(), _code_node() (+52 more)
+Cohesion: 0.10
+Nodes (61): ExecContext, make_item(), Wrap a value in the standard item envelope., resolve_params(), WorkflowNode, _absolute_url(), _agent_node(), _code_node() (+53 more)
 
 ### Community 149 - "Community 149"
-Cohesion: 0.04
-Nodes (32): _compute_twilio_signature(), Tests for SMS (Twilio) platform integration.  Covers config loading, format/trun, Adapter should ignore messages from its own number., The adapter stores _from_number for echo prevention., Verify cron scheduler recognizes 'sms' as a valid platform., Verify send_message_tool recognizes 'sms'., Verify cronjob_tools mentions sms in deliver description., Adapter must refuse to start without SMS_WEBHOOK_URL. (+24 more)
+Cohesion: 0.07
+Nodes (16): _compute_twilio_signature(), Reference implementation of Twilio's signature algorithm., Signature must be computed with params sorted alphabetically., Blank values must be included in signature computation., Different URLs produce different signatures., Signature for https URL with :443 validates against URL without port., Signature for https URL without port validates against URL with :443., Non-standard port must NOT match URL without port. (+8 more)
 
 ### Community 150 - "Community 150"
-Cohesion: 0.11
-Nodes (8): HonchoClientConfig, Configuration for Honcho client, resolved for a specific host., TestNewConfigFieldDefaults, TestResolveSessionNameTitle, TestHonchoClientConfigDefaults, TestResolveSessionName, Queries exceeding dialectic_max_input_chars are truncated., TestDialecticInputGuard
+Cohesion: 0.05
+Nodes (23): HonchoClientConfig, Configuration for Honcho client, resolved for a specific host., Return the git repo root directory name, or None if not in a repo., Resolve Honcho session name.          Resolution order:           1. Manual dire, TestNewConfigFieldDefaults, TestResolveSessionNameTitle, Tests for plugins/memory/honcho/client.py — Honcho client configuration., Existing configs without explicit observationMode keep 'unified' default. (+15 more)
 
 ### Community 151 - "Community 151"
 Cohesion: 0.08
@@ -2683,20 +2655,20 @@ Cohesion: 0.07
 Nodes (30): ExecuteResult, Search for content inside files (grep-like)., Search using ripgrep., Fallback search using grep., Result from executing a shell command., File operations implemented via shell commands.          Works with ANY terminal, Initialize file operations with a terminal environment.                  Args:, Execute command via terminal backend.                  Args:             stdin_d (+22 more)
 
 ### Community 156 - "Community 156"
-Cohesion: 0.12
-Nodes (14): Handle /snapshot - lightweight state snapshots for Spark config/state., create_quick_snapshot(), list_quick_snapshots(), Create a quick state snapshot of critical files.      Copies STATE_FILES to a ti, List existing quick state snapshots, most recent first., Restore state from a quick snapshot.      Overwrites current state files with th, CLI entry point for spark backup --quick., restore_quick_snapshot() (+6 more)
+Cohesion: 0.05
+Nodes (24): _DisplayCommandsMixin, Handle /sessions — fuzzy-browse recent sessions and resume one., Handle /files — fuzzy file picker that inserts @path into the next message., Handle /memory — show recent memory entries stored by the agent., Handle /keys — show keyboard shortcuts reference., Handle /branch [name] - fork the current session into a new independent copy., Resolve a checkpoint number or hash to a full commit hash., Handle /stop - kill all running background processes.          Inspired by OpenA (+16 more)
 
 ### Community 157 - "Community 157"
-Cohesion: 0.09
-Nodes (20): mcp_factories(), McpConnector, McpConnectorSpec, MCP preset connectors — one-click remote MCP servers with browser OAuth.  An `Mc, Write the server entry and start OAuth in the background., Connector backed by a curated remote MCP server preset., McpConnectorSpec, register_connectors_routes() (+12 more)
+Cohesion: 0.10
+Nodes (18): mcp_factories(), McpConnector, McpConnectorSpec, MCP preset connectors — one-click remote MCP servers with browser OAuth.  An `Mc, Write the server entry and start OAuth in the background., Connector backed by a curated remote MCP server preset., McpConnectorSpec, Any (+10 more)
 
 ### Community 158 - "Community 158"
 Cohesion: 0.05
 Nodes (14): db(), Tests for core/spark_state.py — SessionDB.  Covers: session lifecycle, message s, A fresh in-memory-equivalent SessionDB for each test., Concurrent writes via separate threads must not raise or corrupt data., _sid(), TestFTSSearch, TestMessages, TestSchemaInit (+6 more)
 
 ### Community 159 - "Community 159"
-Cohesion: 0.06
-Nodes (35): socket, Any, Event, _env_temp_dir(), execute_code(), _execute_remote(), _get_or_create_env(), _kill_process_group() (+27 more)
+Cohesion: 0.04
+Nodes (51): socket, Any, Event, check_sandbox_requirements(), _env_temp_dir(), execute_code(), _execute_remote(), generate_spark_tools_module() (+43 more)
 
 ### Community 160 - "Community 160"
 Cohesion: 0.06
@@ -2715,8 +2687,8 @@ Cohesion: 0.08
 Nodes (46): asRecord(), eventPayload(), eventType(), firstNumber(), firstString(), formatDuration(), formatElapsed(), statusClasses() (+38 more)
 
 ### Community 164 - "Community 164"
-Cohesion: 0.09
-Nodes (17): clear_session_context(), get_trace_id(), _JsonFormatter, new_trace_id(), Set the session ID for the current thread.      All subsequent log records on th, Clear the session ID for the current thread., Emit each log record as a single JSON line.      Fields emitted: timestamp (ISO-, Generate a fresh trace ID, set it on the current context, and return it.      Ca (+9 more)
+Cohesion: 0.27
+Nodes (6): get_trace_id(), new_trace_id(), Generate a fresh trace ID, set it on the current context, and return it.      Ca, Return the current trace ID, or empty string if none is set., TestTraceId, LogRecord
 
 ### Community 165 - "Community 165"
 Cohesion: 0.05
@@ -2728,15 +2700,15 @@ Nodes (56): add_comment(), add_link(), _all_parents_done(), append_events_since(
 
 ### Community 167 - "Community 167"
 Cohesion: 0.06
-Nodes (16): Path, _get_safe_write_root(), _is_write_denied(), Return True if path is on the write deny list., Return the resolved SPARK_WRITE_SAFE_ROOT path, or None if unset.      When set,, TestIsWriteDenied, Basic sanity checks for the static write deny list., SPARK_WRITE_SAFE_ROOT should sandbox writes to a specific subtree. (+8 more)
+Nodes (17): Path, _get_safe_write_root(), _is_write_denied(), Return True if path is on the write deny list., Return the resolved SPARK_WRITE_SAFE_ROOT path, or None if unset.      When set,, TestIsWriteDenied, Tests for file write safety and SPARK_WRITE_SAFE_ROOT sandboxing.  Based on PR #, Basic sanity checks for the static write deny list. (+9 more)
 
 ### Community 168 - "Community 168"
 Cohesion: 0.06
 Nodes (28): check_package_for_malware(), _infer_ecosystem(), _parse_npm_package(), _parse_package_from_args(), _parse_pypi_package(), _query_osv(), OSV malware check for MCP extension packages.  Before launching an MCP server vi, Parse npm package: @scope/name@version or name@version. (+20 more)
 
 ### Community 169 - "Community 169"
-Cohesion: 0.05
-Nodes (32): Cron job scheduling system for Spark Agent.  This module provides scheduled task, _build_delivery_content(), _execute_job_with_timeout(), _format_job_output(), _get_script_timeout(), Cron job scheduler - executes due jobs.  Provides tick() which checks for due jo, Send extracted MEDIA files as native platform attachments via a live adapter., Wrap content with cron header if configured, then extract media files.      Retu (+24 more)
+Cohesion: 0.08
+Nodes (20): Execute a single cron job.      Returns:         Tuple of (success, full_output_, Check and run all due jobs.          Uses a file lock so only one tick runs at a, run_job(), tick(), Tests for cron/scheduler.py — origin resolution, delivery routing, and error log, Agent appended [SILENT] after explanation text — must still suppress., Failed jobs deliver regardless of [SILENT] in output., Verify that tick() calls advance_next_run before run_job for crash safety. (+12 more)
 
 ### Community 170 - "Community 170"
 Cohesion: 0.05
@@ -2744,7 +2716,7 @@ Nodes (30): BaseEnvironment, _cwd_marker(), _get_activity_callback(), _get_outpu
 
 ### Community 171 - "Community 171"
 Cohesion: 0.04
-Nodes (25): LocalEnvironment, Return a shell-safe writable temp dir for local execution.          Termux does, Kill the entire process group (all children)., Read CWD from temp file (local-only, no round-trip needed)., env(), A real LocalEnvironment rooted in a temp directory., TestHasCommand, TestPatchReplace (+17 more)
+Nodes (28): LocalEnvironment, Return a shell-safe writable temp dir for local execution.          Termux does, Kill the entire process group (all children)., Read CWD from temp file (local-only, no round-trip needed)., env(), A real LocalEnvironment rooted in a temp directory., TestHasCommand, TestPatchReplace (+20 more)
 
 ### Community 172 - "Community 172"
 Cohesion: 0.07
@@ -2768,31 +2740,31 @@ Nodes (37): make_message_cb(), make_step_cb(), make_thinking_cb(), make_tool_pro
 
 ### Community 177 - "Community 177"
 Cohesion: 0.06
-Nodes (23): convert_messages_to_anthropic(), Sanitize a tool call ID for the Anthropic API.      Anthropic requires IDs match, Convert OpenAI-format messages to Anthropic format.      Returns (system_prompt,, _sanitize_tool_id(), Tests for the thinking block handling strategy:     strip from old turns, preser, Thinking blocks are removed from all assistant messages except the last., A signed thinking block on the last assistant message is kept., Unsigned thinking blocks on the last turn become text blocks. (+15 more)
+Nodes (21): convert_messages_to_anthropic(), Convert OpenAI-format messages to Anthropic format.      Returns (system_prompt,, Tests for the thinking block handling strategy:     strip from old turns, preser, Thinking blocks are removed from all assistant messages except the last., A signed thinking block on the last assistant message is kept., Unsigned thinking blocks on the last turn become text blocks., Redacted thinking with 'data' field is kept on last turn., Redacted thinking without 'data' is dropped — can't be validated. (+13 more)
 
 ### Community 178 - "Community 178"
-Cohesion: 0.07
-Nodes (20): Create a test zip with given files., Import extracts files into spark home., Import strips .spark/ prefix if all entries share it., Import rejects an empty zip., Import rejects a zip that doesn't look like a spark backup., Import blocks zip entries with path traversal., Import aborts when user says no to confirmation., Import with --force skips confirmation and overwrites. (+12 more)
+Cohesion: 0.05
+Nodes (24): load_gateway_config(), Load gateway configuration from multiple sources.      Priority (highest to lowe, TestLoadGatewayConfig, gateway/config.py bridges discord.ignored_channels to env var., gateway/config.py bridges discord.no_thread_channels to env var., Env vars should take precedence over config.yaml values., test_config_bridges_ignored_channels(), test_config_bridges_no_thread_channels() (+16 more)
 
 ### Community 179 - "Community 179"
-Cohesion: 0.11
-Nodes (20): _extract_text(), Run Spark on the user's prompt and stream events back to the editor., Extract plain text from ACP content blocks., Tracks per-session state for an ACP-managed Spark agent., SessionState, The prompt method should call run_conversation on the agent., After a prompt, session history should be updated., The final response should be sent as an AgentMessageChunk. (+12 more)
+Cohesion: 0.06
+Nodes (14): _find_git_root(), _find_spark_md(), Discover the nearest ``.spark.md`` or ``SPARK.md``.      Search order: *cwd* fir, Walk *start* and its parents looking for a ``.git`` directory.      Returns the, Tests for agent/prompt_builder.py — context scanning, truncation, skills index., Does not walk past the git root., Tests for GPT/Codex-specific execution discipline guidance., TestEnvironmentHints (+6 more)
 
 ### Community 180 - "Community 180"
-Cohesion: 0.08
-Nodes (15): normalize_opencode_model_id(), normalize_provider(), opencode_model_api_mode(), provider_label(), Normalize OpenCode config IDs to the bare model slug used in API requests., Determine the API mode for an OpenCode Zen / Go model.      OpenCode routes diff, Normalize provider aliases to Spark' canonical provider ids.      Note: ``"auto", Return a human-friendly label for a provider id or alias. (+7 more)
+Cohesion: 0.07
+Nodes (22): Test email parsing helper functions., Test email body extraction from different message formats., Verify check_email_requirements function., TestCheckRequirements, TestExtractTextBody, TestHelperFunctions, check_email_requirements(), _decode_header_value() (+14 more)
 
 ### Community 181 - "Community 181"
 Cohesion: 0.12
 Nodes (18): _AsyncWorker, _delete_direct_snapshot(), _direct_snapshot_key(), _get_snapshot_restore_candidate(), _load_snapshots(), ModalEnvironment, Modal cloud execution environment using the native Modal SDK directly.  Uses ``S, Background thread with its own event loop for async-safe Modal calls. (+10 more)
 
 ### Community 182 - "Community 182"
-Cohesion: 0.08
-Nodes (14): Verify current_rms property updates in real-time for UI feedback., Brief dips below threshold during speech should NOT reset speech tracking., Verify continuous mode: auto-restart after transcription or silence., TestAudioLevelIndicator, TestAudioRecorder, TestAudioRecorderCancel, TestAudioRecorderProperties, TestAudioRecorderStop (+6 more)
+Cohesion: 0.03
+Nodes (49): Any, mock_sd(), Tests for tools.voice_mode -- all mocked, no real microphone or API calls., Verify current_rms property updates in real-time for UI feedback., Verify that silence detection params can be configured., Bug: proc.wait(timeout) raised TimeoutExpired but process was not killed., Bug: stream.start() failure left stream unclosed., Bug: _on_silence_stop was read/written without lock in audio callback. (+41 more)
 
 ### Community 183 - "Community 183"
-Cohesion: 0.07
-Nodes (18): build_anthropic_client(), _common_betas_for_base_url(), _is_oauth_token(), _is_third_party_anthropic_endpoint(), _normalize_base_url_text(), Check if the key is an Anthropic OAuth/setup token.      Positively identifies A, Normalize SDK/base transport URL values to a plain string for inspection.      S, Return True for non-Anthropic endpoints using the Anthropic Messages API.      T (+10 more)
+Cohesion: 0.18
+Nodes (5): _common_betas_for_base_url(), Return the beta headers that are safe for the configured endpoint.      MiniMax', MiniMax Anthropic-compat endpoints reject fine-grained-tool-streaming beta., Build client, return the anthropic-beta header string., TestMinimaxBetaHeaders
 
 ### Community 184 - "Community 184"
 Cohesion: 0.06
@@ -2803,28 +2775,28 @@ Cohesion: 0.08
 Nodes (49): _api_key_default_label(), auth_add_command(), auth_command(), auth_list_command(), auth_remove_command(), auth_reset_command(), _display_source(), _format_exhausted_status() (+41 more)
 
 ### Community 186 - "Community 186"
-Cohesion: 0.10
-Nodes (13): fetch_openrouter_models(), _find_openrouter_slug(), model_ids(), Return the curated OpenRouter picker list, refreshed from the live catalog when, Return just the OpenRouter model-id strings., Find the full OpenRouter model slug for a bare or partial model name.      Handl, Tests for the spark_cli models module., Model IDs should follow the provider/model format. (+5 more)
+Cohesion: 0.07
+Nodes (15): Resolve an Anthropic token from all available sources.      Priority:       1. A, resolve_anthropic_token(), When cred file has expired token + refresh token, auto-refresh is attempted., TestResolveAnthropicToken, TestResolveWithRefresh, FailoverReason, RLock, Return the live main runtime for session-scoped auxiliary routing. (+7 more)
 
 ### Community 187 - "Community 187"
 Cohesion: 0.06
 Nodes (25): get_model_context_length(), Get the context length for a model.      Resolution order:     0. Explicit confi, get_model_context_length uses local server query before falling back to 2M., Unknown model on local endpoint gets ctx from server, not 2M default., Context length returned from local server is persisted to cache., When local server returns None, still falls back to 2M probe tier., For non-local endpoints, _query_local_context_length is not called., Cached context length is returned without querying the local server. (+17 more)
 
 ### Community 188 - "Community 188"
-Cohesion: 0.05
-Nodes (27): Verify Mem0 plugin uses gateway user_id when provided., When user_id is passed via kwargs, it should override the config default., Without user_id in kwargs, should use config default., Without user_id or config override, should default to 'spark-user'., Two providers initialized with different user_ids should be scoped differently., Verify Honcho plugin uses gateway user_id for peer_name when provided., When user_id is in kwargs and no explicit peer_name, user_id should be used., Without user_id, the config peer_name should be preserved. (+19 more)
+Cohesion: 0.06
+Nodes (23): Verify Mem0 plugin uses gateway user_id when provided., When user_id is passed via kwargs, it should override the config default., Without user_id in kwargs, should use config default., Without user_id or config override, should default to 'spark-user'., Two providers initialized with different user_ids should be scoped differently., TestMem0UserIdScoping, _load_config(), Mem0MemoryProvider (+15 more)
 
 ### Community 189 - "Community 189"
 Cohesion: 0.07
 Nodes (35): Inspector(), InspectorProps, upstreamSources(), explicitFields, fieldsFor(), InspectorField, InspectorFieldKind, canvasIdentityKey() (+27 more)
 
 ### Community 190 - "Community 190"
-Cohesion: 0.11
-Nodes (13): Verify the expanded Priority Processing model registry., Verify Anthropic Fast Mode model support and override resolution., OpenAI models should still get service_tier, not speed., TestAnthropicFastMode, TestPriorityProcessingModels, _is_anthropic_fast_model(), model_supports_fast_mode(), Strip vendor/ prefix from a model ID (e.g. 'anthropic/claude-opus-4-6' -> 'claud (+5 more)
+Cohesion: 0.10
+Nodes (9): build_context_files_prompt(), Discover and load context files for the system prompt.      Priority (first foun, AGENTS.md is loaded from cwd only — subdirectory copies are ignored., Walks parent dirs up to git root., Should NOT walk past the git root., When both exist, .spark.md wins and AGENTS.md is not loaded., When all four types exist, only .spark.md is loaded., Cursorrules still loads when no higher-priority files exist. (+1 more)
 
 ### Community 191 - "Community 191"
 Cohesion: 0.01
-Nodes (116): adapter(), _ensure_discord_mock(), _ensure_slack_mock(), _ensure_telegram_mock(), make_adapter(), make_event(), make_runner(), make_session_entry() (+108 more)
+Nodes (124): adapter(), _ensure_discord_mock(), _ensure_slack_mock(), _ensure_telegram_mock(), make_adapter(), make_event(), make_runner(), make_session_entry() (+116 more)
 
 ### Community 192 - "Community 192"
 Cohesion: 0.08
@@ -2835,32 +2807,32 @@ Cohesion: 0.08
 Nodes (23): QQAdapter, Download a URL and cache it locally., Check if an attachment is a voice/audio message., Return Authorization headers for QQ multimedia CDN downloads.          QQ's mult, Download a voice attachment, convert to wav, and transcribe.          Priority:, Resolve STT backend configuration from config/environment.          Priority:, Call an OpenAI-compatible STT API to transcribe a wav file.          Uses the pr, QQ Bot adapter backed by the official QQ Bot WebSocket Gateway + REST API. (+15 more)
 
 ### Community 194 - "Community 194"
-Cohesion: 0.07
-Nodes (43): capture_local_edit_snapshot(), _diff_ansi(), _diff_dim(), _diff_file(), _diff_from_snapshot(), _diff_hunk(), _diff_minus(), _diff_plus() (+35 more)
+Cohesion: 0.05
+Nodes (52): capture_local_edit_snapshot(), _detect_tool_failure(), _diff_ansi(), _diff_dim(), _diff_file(), _diff_from_snapshot(), _diff_hunk(), _diff_minus() (+44 more)
 
 ### Community 195 - "Community 195"
 Cohesion: 0.07
 Nodes (28): _query_local_context_length(), Query a local server for the model's context length., Tests for _query_local_context_length and the local server fallback in get_model, When /api/show returns 404, falls through to /v1/models/{model}., _query_local_context_length with vLLM-style /v1/models/{model} response., Reads max_model_len from /v1/models/{model} response., Reads context_length from /v1/models/{model} response., _query_local_context_length: falls back to /v1/models list. (+20 more)
 
 ### Community 196 - "Community 196"
-Cohesion: 0.07
-Nodes (25): APIServerConfig, Any, OpenThoughts-TBLite Evaluation Environment  A lighter, faster alternative to Ter, Configuration for the OpenThoughts-TBLite evaluation environment.      Inherits, OpenThoughts-TBLite evaluation environment.      Inherits all evaluation logic f, TBLiteEvalConfig, TBLiteEvalEnv, Log TB2-specific metrics to wandb. (+17 more)
+Cohesion: 0.06
+Nodes (38): BaseEnvConfig, APIServerConfig, Any, APIServerConfig, Path, ToolContext, Configuration for spark-agent Atropos environments.      Extends BaseEnvConfig w, SparkAgentEnvConfig (+30 more)
 
 ### Community 197 - "Community 197"
 Cohesion: 0.10
-Nodes (49): _build_agent(), _codex_ack_message_response(), _codex_commentary_message_response(), _codex_incomplete_message_response(), _codex_message_response(), _codex_request_kwargs(), _codex_tool_call_response(), Debug dumps should show /responses URL when in codex_responses mode. (+41 more)
+Nodes (47): _build_agent(), _codex_ack_message_response(), _codex_commentary_message_response(), _codex_incomplete_message_response(), _codex_message_response(), _codex_request_kwargs(), _codex_tool_call_response(), Debug dumps should show /responses URL when in codex_responses mode. (+39 more)
 
 ### Community 198 - "Community 198"
 Cohesion: 0.09
 Nodes (29): cmd_webhook(), Webhook subscription management., _make_args(), Tests for spark_cli/webhook.py — webhook subscription CLI., TestList, TestPersistence, TestRemove, TestSubscribe (+21 more)
 
 ### Community 199 - "Community 199"
-Cohesion: 0.07
+Cohesion: 0.06
 Nodes (21): GitHubAuth, GitHubSource, GitHub API authentication. Tries methods in priority order:       1. GITHUB_TOKE, Return authorization headers for GitHub API requests., Return which auth method is active: 'pat', 'gh-cli', 'github-app', or 'anonymous, Try to get a token from the gh CLI., Try GitHub App JWT authentication if credentials are configured., Fetch skills from GitHub repos via the Contents API. (+13 more)
 
 ### Community 200 - "Community 200"
-Cohesion: 0.04
-Nodes (56): _convert_content_part_to_anthropic(), _convert_content_to_anthropic(), convert_tools_to_anthropic(), _detect_claude_code_version(), _extract_preserved_thinking_blocks(), _generate_pkce(), _get_claude_code_version(), _image_source_from_openai_url() (+48 more)
+Cohesion: 0.05
+Nodes (47): _convert_content_part_to_anthropic(), _convert_content_to_anthropic(), _detect_claude_code_version(), _extract_preserved_thinking_blocks(), _generate_pkce(), _get_claude_code_version(), _image_source_from_openai_url(), is_claude_code_token_valid() (+39 more)
 
 ### Community 201 - "Community 201"
 Cohesion: 0.05
@@ -2883,8 +2855,8 @@ Cohesion: 0.06
 Nodes (21): IPv4Address, IPv6Address, Tests for SSRF protection in url_safety module., ::ffff:127.0.0.1 — IPv4-mapped IPv6 loopback., ::ffff:169.254.169.254 — IPv4-mapped IPv6 cloud metadata., 0.0.0.0 — unspecified address, can bind to all interfaces., Unexpected exceptions should block, not allow., fc00::/7 — IPv6 unique local addresses. (+13 more)
 
 ### Community 206 - "Community 206"
-Cohesion: 0.08
-Nodes (55): checkBorders(), checkColors(), checkElementAIPaletteDOM(), checkElementBorders(), checkElementBordersDOM(), checkElementColors(), checkElementColorsDOM(), checkElementGlow() (+47 more)
+Cohesion: 0.10
+Nodes (45): checkBorders(), checkColors(), checkElementAIPaletteDOM(), checkElementBorders(), checkElementBordersDOM(), checkElementColors(), checkElementColorsDOM(), checkElementGlowDOM() (+37 more)
 
 ### Community 207 - "Community 207"
 Cohesion: 0.07
@@ -2895,8 +2867,8 @@ Cohesion: 0.08
 Nodes (42): canvas_interact(), _canvas_path(), CanvasDoc, _check_id(), _delete_canvas(), delete_global_canvas(), delete_project_canvas(), get_global_canvas() (+34 more)
 
 ### Community 209 - "Community 209"
-Cohesion: 0.06
-Nodes (39): get_container_exec_info(), Read container mode metadata from SPARK_HOME/.container-mode.      Returns a dic, _exec_in_container(), main(), _probe_container(), Main entry point for spark CLI., Run a container inspect probe, returning the CompletedProcess.      Catches Time, Replace the current process with a command inside the managed container.      Pr (+31 more)
+Cohesion: 0.03
+Nodes (75): discover_memory_providers returns available providers., discover_memory_providers(), discover_plugin_cli_commands(), _get_active_memory_provider(), load_memory_provider(), _load_provider_from_dir(), _ProviderCollector, Memory provider plugin discovery.  Scans ``plugins/memory/<name>/`` directories (+67 more)
 
 ### Community 210 - "Community 210"
 Cohesion: 0.09
@@ -2920,23 +2892,23 @@ Nodes (47): load_module(), load_skills_guard(), MESSAGING_CWD pointing inside th
 
 ### Community 215 - "Community 215"
 Cohesion: 0.07
-Nodes (29): clear_env_passthrough(), get_all_passthrough(), _get_allowed(), is_env_passthrough(), is_safe_subprocess_env_var(), _load_config_passthrough(), Environment variable passthrough registry.  Skills that declare ``required_envir, Check whether *var_name* is allowed to pass through to sandboxes.      Returns ` (+21 more)
+Nodes (30): clear_env_passthrough(), get_all_passthrough(), _get_allowed(), is_env_passthrough(), is_safe_subprocess_env_var(), _load_config_passthrough(), Environment variable passthrough registry.  Skills that declare ``required_envir, Check whether *var_name* is allowed to pass through to sandboxes.      Returns ` (+22 more)
 
 ### Community 216 - "Community 216"
-Cohesion: 0.06
-Nodes (31): _make_event(), _make_runner(), Tests for /background gateway slash command.  Tests the _handle_background_comma, Long prompts are truncated to 60 chars in the confirmation message., Each background task gets a unique task ID., The /background command works for all platforms., Tests for GatewayRunner._run_background_task (the actual execution)., When no adapter is available, the task returns without error. (+23 more)
+Cohesion: 0.08
+Nodes (24): _make_event(), _make_runner(), Long prompts are truncated to 60 chars in the confirmation message., Each background task gets a unique task ID., The /background command works for all platforms., Tests for GatewayRunner._run_background_task (the actual execution)., When no adapter is available, the task returns without error., When provider credentials are missing, an error is sent. (+16 more)
 
 ### Community 217 - "Community 217"
-Cohesion: 0.03
-Nodes (45): Display available toolsets with kawaii ASCII art., Regression tests for the base agent's cold-boot footprint.  These guard the slim, browser_open should be visible whenever browser deps are installed;     only the, The serialised default-tool schemas should fit comfortably under the     pre-sli, test_browser_open_check_fn_does_not_require_activation(), test_browser_toolset_still_exposes_all_subtools(), test_default_tool_schema_token_budget(), create_custom_toolset() (+37 more)
+Cohesion: 0.06
+Nodes (28): Command + display methods for SparkCLI (mixin).  Extracted from core/cli/__init_, Display available toolsets with kawaii ASCII art., create_custom_toolset(), get_all_toolsets(), _get_plugin_toolset_names(), get_toolset(), get_toolset_info(), get_toolset_names() (+20 more)
 
 ### Community 218 - "Community 218"
-Cohesion: 0.05
-Nodes (25): handle_function_call(), Main function call dispatcher that routes calls to the tool registry.      Args:, Any, Read a file from the rollout's filesystem.          Args:             path: File, Write a TEXT file in the rollout's filesystem.          Uses a shell heredoc und, Upload a local file to the rollout's sandbox (binary-safe).          Unlike writ, Upload an entire local directory to the rollout's sandbox (binary-safe)., Download a file from the rollout's sandbox to the host (binary-safe).          T (+17 more)
+Cohesion: 0.07
+Nodes (25): handle_function_call(), Main function call dispatcher that routes calls to the tool registry.      Args:, Any, ToolContext -- Unrestricted Tool Access for Reward Functions  A per-rollout hand, Read a file from the rollout's filesystem.          Args:             path: File, Write a TEXT file in the rollout's filesystem.          Uses a shell heredoc und, Upload a local file to the rollout's sandbox (binary-safe).          Unlike writ, Upload an entire local directory to the rollout's sandbox (binary-safe). (+17 more)
 
 ### Community 219 - "Community 219"
-Cohesion: 0.10
-Nodes (16): HookRegistry, Event Hook System  A lightweight event-driven system that fires handlers at key, Fire all handlers registered for an event.          Supports wildcard matching:, Discovers, loads, and fires event hooks.      Usage:         registry = HookRegi, Return metadata about all loaded hooks., Register built-in hooks that are always active., Scan the hooks directory for hook directories and load their handlers., _create_hook() (+8 more)
+Cohesion: 0.05
+Nodes (30): HookRegistry, Event Hook System  A lightweight event-driven system that fires handlers at key, Fire all handlers registered for an event.          Supports wildcard matching:, Discovers, loads, and fires event hooks.      Usage:         registry = HookRegi, Return metadata about all loaded hooks., Register built-in hooks that are always active., Scan the hooks directory for hook directories and load their handlers., _create_hook() (+22 more)
 
 ### Community 220 - "Community 220"
 Cohesion: 0.04
@@ -2955,44 +2927,44 @@ Cohesion: 0.07
 Nodes (29): config_from_env(), create_app(), _exchange_code(), _is_acceptable_callback(), FastAPI app for the Spark OAuth relay.  Run with: ``uvicorn spark_relay.app:app, Only broker back to http(s) callbacks (basic anti-abuse)., _refresh_token(), RelayConfig (+21 more)
 
 ### Community 224 - "Community 224"
-Cohesion: 0.11
-Nodes (25): Any, Path, Pattern, Later layers override earlier layers by rule id., test_user_rule_overrides_builtin_by_id(), _apply_counters(), _apply_filters(), CompactionStats (+17 more)
+Cohesion: 0.10
+Nodes (43): Any, Path, Pattern, _padded(), Unit tests for the TokenJuice tool-output normalization pipeline., Smoke test: shipped builtin.json parses without error., Pad text past the tiny-output passthrough threshold., Later layers override earlier layers by rule id. (+35 more)
 
 ### Community 225 - "Community 225"
 Cohesion: 0.04
 Nodes (47): Available Tools, Basic Configuration Reference, Blacklist server tools, Common keys, Config-level exposure control, Current Limits, Disable a server entirely, Discovery (+39 more)
 
 ### Community 226 - "Community 226"
-Cohesion: 0.07
-Nodes (22): Integration tests using the mock dispatcher., Script that just prints -- no tool calls., Sandboxed scripts can import modules that live at the repo root., Script calls terminal and prints the result., Script calls multiple tools sequentially., Script with a syntax error returns error status., Script with a runtime error returns error status., Script calling a tool not in the allow-list gets an error from RPC. (+14 more)
+Cohesion: 0.06
+Nodes (25): Integration tests using the mock dispatcher., Helper: run code with mocked handle_function_call., Script that just prints -- no tool calls., Sandboxed scripts can import modules that live at the repo root., Script calls terminal and prints the result., Script calls multiple tools sequentially., Script with a syntax error returns error status., Script with a runtime error returns error status. (+17 more)
 
 ### Community 227 - "Community 227"
-Cohesion: 0.07
-Nodes (24): Store the client connection for sending session updates., Register ACP-provided MCP servers and refresh the agent tool surface., Advertise supported slash commands to the connected ACP client., Send the command advertisement after the session response is queued., Dispatch a slash command and return the response text.          Returns ``None``, Switch the model for a session (called by ACP protocol)., Persist the editor-requested mode so ACP clients do not fail on mode switches., Accept ACP config option updates even when Spark has no typed ACP config surface (+16 more)
+Cohesion: 0.05
+Nodes (45): _extract_text(), Store the client connection for sending session updates., Register ACP-provided MCP servers and refresh the agent tool surface., Run Spark on the user's prompt and stream events back to the editor., Advertise supported slash commands to the connected ACP client., Send the command advertisement after the session response is queued., Dispatch a slash command and return the response text.          Returns ``None``, Switch the model for a session (called by ACP protocol). (+37 more)
 
 ### Community 228 - "Community 228"
-Cohesion: 0.09
-Nodes (16): Execute a cron job's data-collection script and capture its output.      Scripts, _run_job_script(), Scripts can output structured JSON for the LLM to parse., Regression tests for path containment bypass in _run_job_script().      Prior to, Absolute paths outside ~/.spark/scripts/ must be rejected., Absolute paths to /tmp must be rejected., ~ prefixed paths must be rejected (expanduser bypasses check)., ~/../../../tmp/evil.py must be rejected. (+8 more)
+Cohesion: 0.06
+Nodes (24): Execute a cron job's data-collection script and capture its output.      Scripts, _run_job_script(), cron_env(), Tests for cron job script injection feature.  Tests cover: - Script field in job, Scripts can output structured JSON for the LLM to parse., Test the cronjob tool's script parameter., Isolated cron environment with temp SPARK_HOME., Regression tests for path containment bypass in _run_job_script().      Prior to (+16 more)
 
 ### Community 229 - "Community 229"
 Cohesion: 0.20
-Nodes (3): adapter(), Tests for Telegram MarkdownV2 formatting in gateway/platforms/telegram.py.  Cove, TestFormatMessageBasic
+Nodes (3): adapter(), Tests for Telegram MarkdownV2 formatting in gateway/platforms/telegram.py.  Cove, TestFormatMessageStrikethrough
 
 ### Community 230 - "Community 230"
 Cohesion: 0.04
 Nodes (45): 1. Start Small, 2. Monitor GPU Usage, 3. Optimize Batch Size, 4. Use Mixed Precision, 5. Check Communication, 70B Model Evaluation (MMLU, 5-shot), 7B Model Evaluation (Multiple Tasks), Best Practices (+37 more)
 
 ### Community 231 - "Community 231"
-Cohesion: 0.17
-Nodes (7): create_profile(), Create a new profile directory.      Parameters     ----------     name:, Tests for create_profile()., Clone config gracefully skips files that don't exist in source., Verify that two profiles have completely separate paths., TestCreateProfile, TestProfileIsolation
+Cohesion: 0.09
+Nodes (19): create_profile(), get_active_profile(), list_profiles(), ProfileInfo, Summary information about a profile., Return info for all profiles, including the default., Create a new profile directory.      Parameters     ----------     name:, Read the sticky active profile name.      Returns ``"default"`` if no active_pro (+11 more)
 
 ### Community 232 - "Community 232"
-Cohesion: 0.08
-Nodes (15): None sentinel causes remaining buffer to be spoken., Setting stop_event causes early exit., tts_done_event is set even when an exception occurs., <think>...</think> content is not spoken., Sentences are split at boundaries and spoken individually., Markdown formatting is removed before display/speech., Repeated sentences are spoken only once., Without ELEVENLABS_API_KEY, display callback still works. (+7 more)
+Cohesion: 0.07
+Nodes (18): Entry in the session store.          Maps a session key to its current session I, Check if a session has expired based on its reset policy.                  Works, SessionEntry, The memory_flushed flag on SessionEntry prevents double-flushing., memory_flushed=True must survive a save/load cycle (simulates restart)., An entry without memory_flushed stays False after reload., to_dict/from_dict must preserve memory_flushed., Old sessions.json entries missing memory_flushed should default to False. (+10 more)
 
 ### Community 233 - "Community 233"
-Cohesion: 0.08
-Nodes (21): _convert_mcp_schema(), Convert an MCP tool listing to the Spark registry schema format.      Args:, _make_mcp_tool(), Hyphens in tool/server names are replaced with underscores for LLM compat., Create a fake MCP Tool object matching the SDK interface., MCP tools that collide with built-in tool names are skipped., An MCP tool whose prefixed name collides with a built-in is skipped., MCP tools register normally when there's no collision. (+13 more)
+Cohesion: 0.05
+Nodes (31): _convert_mcp_schema(), _discover_and_register_server(), Convert an MCP tool listing to the Spark registry schema format.      Args:, Connect to a single MCP server, discover tools, and register them.      Returns, _make_mcp_tool(), Tests for the MCP (Model Context Protocol) client support.  All tests use mocks, Hyphens in tool/server names are replaced with underscores for LLM compat., Verify utility tools are registered alongside regular MCP tools. (+23 more)
 
 ### Community 234 - "Community 234"
 Cohesion: 0.04
@@ -3003,28 +2975,28 @@ Cohesion: 0.04
 Nodes (44): Advanced Configuration, Advanced Configuration, Anthropic Claude, API-Based Models, API Models (Anthropic, OpenAI), Available Models, Azure OpenAI, Basic Setup (+36 more)
 
 ### Community 236 - "Community 236"
-Cohesion: 0.11
-Nodes (25): Normalize provider-specific model IDs and routing., _copilot_catalog_ids(), _copilot_catalog_item_is_text_model(), copilot_model_api_mode(), fetch_github_model_catalog(), _fetch_github_models(), github_model_reasoning_efforts(), _github_reasoning_efforts_for_model_id() (+17 more)
+Cohesion: 0.02
+Nodes (94): Normalize provider-specific model IDs and routing., Show current model + provider and list all authenticated providers.          Sho, _copilot_catalog_ids(), _copilot_catalog_item_is_text_model(), copilot_model_api_mode(), curated_models_for_provider(), _fetch_ai_gateway_models(), _fetch_anthropic_models() (+86 more)
 
 ### Community 237 - "Community 237"
 Cohesion: 0.11
-Nodes (38): cancel_workflow_run(), _clamp_iterations(), _clamp_timeout(), _doc_with_node_param(), _doc_with_trigger_payload(), _event_stream(), _extract_triggers(), _file_mtime() (+30 more)
+Nodes (39): WorkflowDoc, cancel_workflow_run(), _clamp_iterations(), _clamp_timeout(), _doc_with_node_param(), _doc_with_trigger_payload(), _event_stream(), _extract_triggers() (+31 more)
 
 ### Community 238 - "Community 238"
-Cohesion: 0.11
-Nodes (24): Any, str, _build_setup_note(), _capture_required_environment_variables(), check_skills_requirements(), _collect_prerequisite_values(), _gateway_setup_hint(), _get_disabled_skill_names() (+16 more)
+Cohesion: 0.07
+Nodes (32): Any, Path, str, _build_setup_note(), _capture_required_environment_variables(), check_skills_requirements(), _collect_prerequisite_values(), _gateway_setup_hint() (+24 more)
 
 ### Community 239 - "Community 239"
-Cohesion: 0.12
-Nodes (15): Any, Unit tests for tools/tool_backend_helpers.py.  Tests cover: - managed_nous_tools, Validate and coerce the requested modal execution mode., normalize_modal_mode is an alias for coerce_modal_mode., TestCoerceModalMode, TestNormalizeModalMode, coerce_modal_mode(), managed_nous_tools_enabled() (+7 more)
+Cohesion: 0.05
+Nodes (26): Any, Unit tests for tools/tool_backend_helpers.py.  Tests cover: - managed_nous_tools, Detect Modal credentials via env vars or config file., Full matrix of direct vs managed Modal backend selection., Helper to call resolve_modal_backend_state with feature flag control., Priority: VOICE_TOOLS_OPENAI_KEY > OPENAI_API_KEY., Validate and coerce the requested modal execution mode., normalize_modal_mode is an alias for coerce_modal_mode. (+18 more)
 
 ### Community 240 - "Community 240"
 Cohesion: 0.08
 Nodes (37): Any, Path, Missing shared blocklist files are warned and skipped, not fatal., Malformed config with default path should fail open (return None), not crash., test_browser_navigate_allows_when_shared_file_missing(), test_check_website_access_blocks_scheme_less_urls(), test_check_website_access_fails_open_on_malformed_config(), test_check_website_access_matches_parent_domain_subdomains() (+29 more)
 
 ### Community 241 - "Community 241"
-Cohesion: 0.08
-Nodes (21): _build_child_agent(), _build_child_system_prompt(), check_delegate_requirements(), _get_max_concurrent_children(), _load_config(), Load delegation config from CLI_CONFIG or persistent config.      Checks the run, Best-effort local workspace hint for child prompts.      We only inject a path w, Build a child AIAgent on the main thread (thread-safe construction).     Returns (+13 more)
+Cohesion: 0.06
+Nodes (25): _build_child_agent(), _build_child_system_prompt(), check_delegate_requirements(), _get_max_concurrent_children(), _load_config(), Load delegation config from CLI_CONFIG or persistent config.      Checks the run, Best-effort local workspace hint for child prompts.      We only inject a path w, Build a child AIAgent on the main thread (thread-safe construction).     Returns (+17 more)
 
 ### Community 242 - "Community 242"
 Cohesion: 0.06
@@ -3060,7 +3032,7 @@ Nodes (32): _make_update_side_effect(), Conflicts always auto-reset (no prompt) 
 
 ### Community 250 - "Community 250"
 Cohesion: 0.06
-Nodes (22): ProcessSession, _make_session(), Tests for notify_on_complete background process feature.  Covers:   - ProcessSes, Nonzero exit codes are captured correctly., Calling _move_to_finished twice must NOT enqueue two notifications.          Reg, Long output is truncated to last 2000 chars., Multiple notify processes all push to the same queue., Old checkpoint entries without the field default to False. (+14 more)
+Nodes (23): ProcessSession, _make_session(), Tests for notify_on_complete background process feature.  Covers:   - ProcessSes, Nonzero exit codes are captured correctly., Calling _move_to_finished twice must NOT enqueue two notifications.          Reg, Long output is truncated to last 2000 chars., Multiple notify processes all push to the same queue., Old checkpoint entries without the field default to False. (+15 more)
 
 ### Community 251 - "Community 251"
 Cohesion: 0.08
@@ -3068,7 +3040,7 @@ Nodes (18): BrowserUseProvider, _clear_pending_create_key(), _get_or_create_pend
 
 ### Community 252 - "Community 252"
 Cohesion: 0.09
-Nodes (37): CredentialPool, _initialize_job_agent(), Resolve provider/model routing and construct the AIAgent for a cron job., format_auth_error(), has_usable_secret(), Return True when a configured secret looks usable, not empty/placeholder., Map auth failures to concise user-facing guidance., list_available_providers() (+29 more)
+Nodes (35): CredentialPool, _initialize_job_agent(), Resolve provider/model routing and construct the AIAgent for a cron job., format_auth_error(), has_usable_secret(), Return True when a configured secret looks usable, not empty/placeholder., Map auth failures to concise user-facing guidance., _auto_detect_local_model() (+27 more)
 
 ### Community 253 - "Community 253"
 Cohesion: 0.05
@@ -3088,15 +3060,15 @@ Nodes (17): _atexit_commit_sessions(), _get_httpx(), OpenVikingMemoryProvider, O
 
 ### Community 257 - "Community 257"
 Cohesion: 0.09
-Nodes (12): If the same skill name exists locally and externally, local wins., TestExternalSkillsInFindAll, skip_disabled=True ignores the disabled set (for config UI)., TestFindAllSkillsFiltering, _find_all_skills(), Recursively find all skills in ~/.spark/skills/ and external dirs.      Args:, If no description in frontmatter, first non-header line is used., Test that _find_all_skills respects the platforms field. (+4 more)
+Nodes (21): BaseEnv, AgentResult, Any, Item, ScoredDataGroup, ToolContext, Abstract base environment for spark-agent Atropos integration.      Handles two, Resolve toolsets for a group. Called once in collect_trajectories(),         the (+13 more)
 
 ### Community 258 - "Community 258"
 Cohesion: 0.05
 Nodes (42): Advanced Features, Anthropic Models, API Evaluation, "Authentication failed", Best Practices, Caching, Chat Models, Chat Models (Recommended) (+34 more)
 
 ### Community 259 - "Community 259"
-Cohesion: 0.10
-Nodes (20): _make_event(), _make_runner(), Tests for /title gateway slash command.  Tests the _handle_title_command handler, Setting a title already used by another session returns error., Returns error when session database is not available., Setting a title that exceeds max length returns error., Control characters are stripped and sanitized title is stored., Title with only control chars returns empty error. (+12 more)
+Cohesion: 0.06
+Nodes (13): Edge cases discovered during live testing with real SDK objects., Some providers return strings instead of JSON., Must not infinite-loop on circular __cause__., Some providers send rate limits as 400 instead of 429., Some providers send billing errors as 400., 200 status with error in body — should be unknown, not crash., Body message must be included in pattern matching even when         str(error) d, Disconnect + large session must beat generic transport catch. (+5 more)
 
 ### Community 260 - "Community 260"
 Cohesion: 0.10
@@ -3104,7 +3076,7 @@ Nodes (44): get_qwen_auth_status(), _qwen_access_token_is_expiring(), _qwen_cli_
 
 ### Community 261 - "Community 261"
 Cohesion: 0.05
-Nodes (25): _get_command_timeout(), Return the configured browser command timeout from config.yaml.      Reads ``con, _clean_caches(), Tests for browser_tool.py hardening: caching, security, thread safety, truncatio, Verify that URL-encoded API keys are caught by the exfiltration guard., browser_navigate should block URLs with percent-encoded API keys., Reset all module-level caches so tests start clean., Verify _recording_sessions is accessed under _cleanup_lock. (+17 more)
+Nodes (28): _get_command_timeout(), Structure-aware truncation for snapshots.      Cuts at line boundaries so that a, Return the configured browser command timeout from config.yaml.      Reads ``con, _truncate_snapshot(), _clean_caches(), Tests for browser_tool.py hardening: caching, security, thread safety, truncatio, Verify that URL-encoded API keys are caught by the exfiltration guard., browser_navigate should block URLs with percent-encoded API keys. (+20 more)
 
 ### Community 262 - "Community 262"
 Cohesion: 0.05
@@ -3115,20 +3087,20 @@ Cohesion: 0.11
 Nodes (15): _make_env_config(), Tests for foreground timeout cap in terminal_tool.  Ensures that foreground comm, Background commands should NOT be subject to foreground timeout cap., Default timeout (180s) should not trigger rejection., Return a minimal _get_env_config()-shaped dict with optional overrides., Timeout exactly at FOREGROUND_MAX_TIMEOUT should execute normally., Verify the FOREGROUND_MAX_TIMEOUT constant and schema., Default FOREGROUND_MAX_TIMEOUT is 600 when env var is not set. (+7 more)
 
 ### Community 264 - "Community 264"
-Cohesion: 0.03
-Nodes (88): _make_adapter(), Tests for the Weixin platform adapter., Markdown links should be converted to plaintext since WeChat can't render them., Regression tests for the blank-bubble bugs.      Three separate guards now preve, _send_message raises ValueError for empty/whitespace text., WeChat doesn't support message editing — cursor must be suppressed., Media builder uses base64(hex_key), not base64(raw_bytes) for aes_key., TestWeixinBlankMessagePrevention (+80 more)
+Cohesion: 0.06
+Nodes (50): _account_dir(), _account_file(), _aes128_ecb_decrypt(), _aes128_ecb_encrypt(), _aes_padded_size(), _api_get(), _api_post(), _base_info() (+42 more)
 
 ### Community 265 - "Community 265"
-Cohesion: 0.07
-Nodes (32): _mock_urlopen(), Tests for gateway.platforms.feishu — Feishu scan-to-create registration., Tests for the poll step., Credentials and lark tenant_brand in one response must not be discarded., Tests for the low-level HTTP helper., Tests for QR code terminal rendering., Tests for bot connectivity verification., Without lark_oapi, probe falls back to raw HTTP. (+24 more)
+Cohesion: 0.29
+Nodes (5): Tests for the poll step., Credentials and lark tenant_brand in one response must not be discarded., TestPollRegistration, _poll_registration(), Poll until the user scans the QR code, or timeout/denial.      Returns dict with
 
 ### Community 266 - "Community 266"
 Cohesion: 0.13
 Nodes (11): FakeHAServer, Fake Home Assistant server for integration testing.  Provides a real HTTP + WebS, Base URL of the running server, e.g. ``http://127.0.0.1:12345``., Enqueue a state_changed event for delivery over WebSocket., Return a 401 response if the Bearer token is wrong, else None., In-process fake Home Assistant for integration tests.      Parameters     ------, Any, Application (+3 more)
 
 ### Community 267 - "Community 267"
-Cohesion: 0.15
-Nodes (17): _make_document(), _make_file_obj(), _make_message(), _make_photo(), _make_update(), Build a mock Telegram Message with the given document/photo., Wrap a message in a mock Update., When no specific media attr is set, message_type defaults to DOCUMENT. (+9 more)
+Cohesion: 0.12
+Nodes (24): adapter(), _ensure_telegram_mock(), _make_document(), _make_file_obj(), _make_message(), _make_photo(), _make_update(), Tests for Telegram document handling in gateway/platforms/telegram.py.  Covers: (+16 more)
 
 ### Community 268 - "Community 268"
 Cohesion: 0.05
@@ -3159,12 +3131,12 @@ Cohesion: 0.05
 Nodes (41): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typography Rules, 4. Component Stylings, 5. Layout Principles, 6. Depth & Elevation, 7. Do's and Don'ts, 8. Responsive Behavior (+33 more)
 
 ### Community 275 - "Community 275"
-Cohesion: 0.06
-Nodes (22): build_anthropic_kwargs(), normalize_model_name(), Build kwargs for anthropic.messages.create().      Naming note — two distinct co, Normalize a model name for the Anthropic API.      - Strips 'anthropic/' prefix, Return True for Claude 4.6 models that support adaptive thinking., _supports_adaptive_thinking(), Date-stamped model IDs should resolve via substring match., Unknown future models should get the highest known limit. (+14 more)
+Cohesion: 0.08
+Nodes (14): build_anthropic_kwargs(), Build kwargs for anthropic.messages.create().      Naming note — two distinct co, Date-stamped model IDs should resolve via substring match., Unknown future models should get the highest known limit., User-specified max_tokens should be respected., max_tokens should be clamped to context_length if it's smaller., No clamping when context_length exceeds output limit., When max_tokens is None, use the model's native output limit. (+6 more)
 
 ### Community 276 - "Community 276"
-Cohesion: 0.06
-Nodes (42): ClassifiedError, _classify_400(), _classify_402(), _classify_by_error_code(), _classify_by_message(), _classify_by_status(), _extract_error_body(), _extract_error_code() (+34 more)
+Cohesion: 0.09
+Nodes (27): ClassifiedError, _classify_400(), _classify_402(), _classify_by_error_code(), _classify_by_message(), _classify_by_status(), API error classification for smart failover and recovery.  Provides a structured, Classify based on HTTP status code with message-aware refinement. (+19 more)
 
 ### Community 277 - "Community 277"
 Cohesion: 0.05
@@ -3183,12 +3155,12 @@ Cohesion: 0.09
 Nodes (27): build_channel_directory(), _build_discord(), _build_from_sessions(), _build_slack(), _channel_target_name(), format_directory_for_display(), load_directory(), _normalize_channel_query() (+19 more)
 
 ### Community 281 - "Community 281"
-Cohesion: 0.10
-Nodes (10): Pattern, Skill source backed by the centralized Spark Skills Index.      The index is a J, Whether the index is loaded and has skills., Search the cached index.  Zero API calls., Fetch a skill using the resolved path from the index.          If the index has, Return metadata from the index.  Zero API calls., Look up a skill in the index by identifier or name., Discover skills via skills.sh and fetch content from the underlying GitHub repo. (+2 more)
+Cohesion: 0.11
+Nodes (14): _load_agents_md(), _load_claude_md(), _load_cursorrules(), _load_spark_md(), AGENTS.md — top-level only (no recursive walk)., CLAUDE.md / claude.md — cwd only., .cursorrules + .cursor/rules/*.mdc — cwd only., Scan context file content for injection. Returns sanitized content. (+6 more)
 
 ### Community 282 - "Community 282"
-Cohesion: 0.12
-Nodes (7): Ignore read-receipt events that Spark does not act on., Handle bot being added to a group chat., Handle bot being removed from a group chat., Increment the anomaly counter for remote_ip and emit a WARNING every threshold h, Reset the anomaly counter for remote_ip after a successful request., Verify Feishu webhook signature using timing-safe comparison.          Feishu si, Return False when the composite rate_key has exceeded _FEISHU_WEBHOOK_RATE_LIMIT
+Cohesion: 0.11
+Nodes (17): Validate and sanitize a loaded GatewayConfig in place.      Called by ``load_gat, _validate_gateway_config(), _make_gateway_config(), Tests for gateway weak credential rejection at startup.  Ported from openclaw/op, Verify that the API server rejects placeholder keys on network hosts., Loopback with a placeholder key is fine — not network-exposed., Create a minimal GatewayConfig-like object for validation testing., Call _validate_gateway_config and return the config (mutated in place). (+9 more)
 
 ### Community 283 - "Community 283"
 Cohesion: 0.05
@@ -3215,8 +3187,8 @@ Cohesion: 0.05
 Nodes (13): Tests for spark claw commands., Test directory archival (rename)., Test script discovery in known locations., Test discovery of OpenClaw directories., Test the report formatting function., Test scanning for workspace state files., TestArchiveDirectory, TestDetectOpenclawProcesses (+5 more)
 
 ### Community 289 - "Community 289"
-Cohesion: 0.09
-Nodes (13): _FakePatchResult, _FakeReadResult, _FakeWriteResult, _make_fake_ops(), Read, then external modify, then write — should warn., Writing a file that was never read — no warning., Creating a new file — no warning., Task A reads, file changes, Task B writes — no warning for B. (+5 more)
+Cohesion: 0.10
+Nodes (15): _now(), Return the current local time., Load sessions index from disk if not already loaded., Load sessions index from disk. Must be called with self._lock held., Save sessions index to disk (kept for session key -> ID mapping)., Generate a session key from a source, honoring channel→workspace routing., Check if a session should be reset based on policy.                  Returns the, Check if any sessions have ever been created (across all platforms).          Us (+7 more)
 
 ### Community 290 - "Community 290"
 Cohesion: 0.05
@@ -3251,24 +3223,24 @@ Cohesion: 0.05
 Nodes (40): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typography Rules, 4. Component Stylings, 5. Layout Principles, 6. Depth & Elevation, 7. Do's and Don'ts, 8. Responsive Behavior (+32 more)
 
 ### Community 298 - "Community 298"
-Cohesion: 0.06
-Nodes (25): _extract_relevant_content(), _get_extraction_model(), Use LLM to extract relevant content from a snapshot based on the user's task., Structure-aware truncation for snapshots.      Cuts at line boundaries so that a, Model for page snapshot text summarization — same as web_extract., _truncate_snapshot(), _make_response(), Tests for None guard on browser_tool LLM response content.  browser_tool.py has (+17 more)
+Cohesion: 0.08
+Nodes (22): _extract_relevant_content(), _get_extraction_model(), Use LLM to extract relevant content from a snapshot based on the user's task., Model for page snapshot text summarization — same as web_extract., _make_response(), Tests for None guard on browser_tool LLM response content.  browser_tool.py has, Build a minimal OpenAI-compatible ChatCompletion response stub., When LLM returns None content, should fall back to truncated snapshot. (+14 more)
 
 ### Community 299 - "Community 299"
 Cohesion: 0.08
 Nodes (25): Manage user-created skills. Dispatches to the appropriate action handler.      R, skill_manage(), skill_manage emits a skills.updated event on successful writes (4.1.3)., _skill_dir(), test_create_emits_skills_updated(), test_failed_write_emits_no_event(), TestSkillManageDispatcher, isolate_skills() (+17 more)
 
 ### Community 300 - "Community 300"
-Cohesion: 0.07
-Nodes (15): _make_voice_cli(), Tests for CLI voice mode integration -- command parsing, markdown stripping, sta, Tests _voice_stop_and_transcribe with real CLI instance., Bug: _refresh_level thread read _voice_recording without lock., Create a minimal SparkCLI with only voice-related attrs initialized.      Uses `, Verify that concurrent state changes don't corrupt state., Tests _enable_voice_mode with real CLI instance., Tests _disable_voice_mode with real CLI instance. (+7 more)
+Cohesion: 0.08
+Nodes (10): _make_voice_cli(), Tests _voice_stop_and_transcribe with real CLI instance., Create a minimal SparkCLI with only voice-related attrs initialized.      Uses `, Tests _enable_voice_mode with real CLI instance., Tests _disable_voice_mode with real CLI instance., Tests _voice_speak_response with real CLI instance., TestDisableVoiceModeReal, TestEnableVoiceModeReal (+2 more)
 
 ### Community 301 - "Community 301"
 Cohesion: 0.08
 Nodes (7): Tests for agent/memory_manager.py — MemoryManager.  Covers: provider registratio, A provider that sleeps 3 s must not delay the result past ~2.5 s., _StubProvider, TestConcurrentPrefetch, TestLifecycleHooks, TestProviderRegistration, TestToolRouting
 
 ### Community 302 - "Community 302"
-Cohesion: 0.06
-Nodes (30): ShellFileOperations, Exception, _check_file_reqs(), _check_file_staleness(), _get_file_ops(), _get_max_read_chars(), _handle_patch(), _handle_read_file() (+22 more)
+Cohesion: 0.03
+Nodes (46): ShellFileOperations, Exception, has_binary_extension(), Binary file extensions to skip for text-based operations.  These files can't be, Check if a file path has a binary extension. Pure string check, no I/O., _check_file_reqs(), _check_file_staleness(), _check_sensitive_path() (+38 more)
 
 ### Community 303 - "Community 303"
 Cohesion: 0.14
@@ -3370,10 +3342,6 @@ Nodes (37): _add_model_aliases(), _coerce_reasonable_int(), detect_local_server_
 Cohesion: 0.05
 Nodes (38): 1. Tool calls during streaming, 1a. Add stream_callback parameter to __init__ (~5 lines), 1b. Add _run_streaming_chat_completion() method (~65 lines), 1c. Modify _run_codex_stream() for Responses API (~10 lines), 1d. Modify _interruptible_api_call() (~5 lines), 1e. Signal end-of-stream to consumers (~5 lines), 2. Duplicate messages, 2a. Read streaming config (~15 lines) (+30 more)
 
-### Community 328 - "Community 328"
-Cohesion: 0.12
-Nodes (10): Tests for provider-aware `/model` validation in spark_cli.models., Shortcut: call validate_requested_model with mocked API., When a very close match exists, validate returns corrected_model., Models too different for auto-correction still get suggestions., No hardcoded catalog gatekeeping — accept, persist, and warn., TestValidateApiFallback, TestValidateApiFound, TestValidateApiNotFound (+2 more)
-
 ### Community 329 - "Community 329"
 Cohesion: 0.05
 Nodes (38): CLI Commands Reference, Command index, Global options, Maintenance, See also, `spark acp`, `spark auth`, `spark backup` (+30 more)
@@ -3383,12 +3351,12 @@ Cohesion: 0.07
 Nodes (23): ApprovalMsg, ApprovalRow, AssistantMsg, AssistantRow, ChatPanelProps, FeedbackFormMsg, FeedbackRow, MODE_SHORT (+15 more)
 
 ### Community 331 - "Community 331"
-Cohesion: 0.04
-Nodes (69): _add_rotating_handler(), _ComponentFilter, _ManagedRotatingFileHandler, Only pass records whose logger name starts with one of *prefixes*.      Used to, Configure the Spark logging subsystem.      Safe to call multiple times — the se, RotatingFileHandler that ensures group-writable perms in managed mode.      In m, Add a ``RotatingFileHandler`` to *logger*, skipping if one already     exists fo, Best-effort read of ``logging.*`` from config.yaml.      Returns ``(level, max_s (+61 more)
+Cohesion: 0.06
+Nodes (54): main(), Wait for shutdown signal., Start the gateway and run until interrupted.          This is the main entry poi, CLI entry point for the gateway., start_gateway(), acquire_scoped_lock(), _build_pid_record(), _build_runtime_status_record() (+46 more)
 
 ### Community 332 - "Community 332"
-Cohesion: 0.09
-Nodes (16): has_binary_extension(), Binary file extensions to skip for text-based operations.  These files can't be, Check if a file path has a binary extension. Pure string check, no I/O., Read a file with pagination and line numbers., read_file_tool(), TestReadFileHandler, Subsequent reads remain blocked with incrementing count., Reading a different region of the same file resets consecutive count. (+8 more)
+Cohesion: 0.16
+Nodes (10): Controls when sessions reset (lose context).          Modes:     - "daily": Rese, SessionResetPolicy, _make_source(), _make_store(), Tests for session auto-reset notifications.  Verifies that: - _should_reset() re, Expired session with no tokens → reset_had_activity=False., Expired session with tokens → reset_had_activity=True., TestResetPolicyNotify (+2 more)
 
 ### Community 333 - "Community 333"
 Cohesion: 0.10
@@ -3412,7 +3380,7 @@ Nodes (39): :1234: Precision issues, (2) Continued training from a saved LoRA ad
 
 ### Community 338 - "Community 338"
 Cohesion: 0.12
-Nodes (18): _make_event(), _make_runner(), Tests for /resume gateway slash command.  Tests the _handle_resume_command handl, Resolves a title and switches to that session., Returns error for unknown session name., Returns friendly message when already on the requested session., Asking for 'My Project' when 'My Project #2' exists gets the latest., Build a MessageEvent for testing. (+10 more)
+Nodes (21): _build_runner(), _FakeRegistry, Tests that internal synthetic events (e.g. background process completion) bypass, An internal event should skip _is_user_authorized entirely., An internal event with no user_id must not generate a pairing code., Synthetic completion event should carry user_id and user_name from the watcher., A non-internal event with user_id=None should be silently dropped., A message with user_id=None must never call generate_code. (+13 more)
 
 ### Community 339 - "Community 339"
 Cohesion: 0.05
@@ -3435,12 +3403,12 @@ Cohesion: 0.05
 Nodes (38): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typography Rules, 4. Component Stylings, 5. Layout Principles, 6. Depth & Elevation, 7. Do's and Don'ts, 8. Responsive Behavior (+30 more)
 
 ### Community 344 - "Community 344"
-Cohesion: 0.15
-Nodes (7): Tests for batch_runner checkpoint behavior — incremental writes, resume, atomici, Verify that initializing a run with resume=True loads prior checkpoint., Create a BatchRunner with all paths pointing at tmp_path., Verify _load_checkpoint reads existing data or returns defaults., runner(), TestLoadCheckpoint, TestResumePreservesProgress
+Cohesion: 0.10
+Nodes (9): Tests for batch_runner checkpoint behavior — incremental writes, resume, atomici, Verify that initializing a run with resume=True loads prior checkpoint., Create a BatchRunner with all paths pointing at tmp_path., Verify _save_checkpoint writes valid, atomic JSON., Verify _load_checkpoint reads existing data or returns defaults., runner(), TestLoadCheckpoint, TestResumePreservesProgress (+1 more)
 
 ### Community 345 - "Community 345"
-Cohesion: 0.10
-Nodes (20): platform_label(), PlatformInfo, Shared platform registry for Spark Agent.  Single source of truth for platform m, Metadata for a single platform entry., Return the display label for a platform key, or *default*., _get_categories(), _list_all_skills(), Skills configuration for Spark Agent. `spark skills` enters this module.  Toggle (+12 more)
+Cohesion: 0.12
+Nodes (24): _config_overrides(), _configured_platforms(), _count_mcp_servers(), _count_skills(), _cron_summary(), _get_git_commit(), _get_model_and_provider(), _memory_provider() (+16 more)
 
 ### Community 346 - "Community 346"
 Cohesion: 0.06
@@ -3475,8 +3443,8 @@ Cohesion: 0.08
 Nodes (29): FilePathAction(), MediaPreview(), MemoBlock, MemoMarkdownSegment, MemoPlainSegment, splitLocalFilePaths(), TextWithFileActions(), BlockNode (+21 more)
 
 ### Community 354 - "Community 354"
-Cohesion: 0.08
-Nodes (20): build_animated_sticker_injection(), build_sticker_injection(), cache_sticker_description(), get_cached_description(), _load_cache(), Sticker description cache for Telegram.  When users send stickers, we describe t, Build injection text for animated/video stickers we can't analyze., Load the sticker cache from disk. (+12 more)
+Cohesion: 0.11
+Nodes (16): build_animated_sticker_injection(), cache_sticker_description(), get_cached_description(), _load_cache(), Sticker description cache for Telegram.  When users send stickers, we describe t, Build injection text for animated/video stickers we can't analyze., Load the sticker cache from disk., Save the sticker cache to disk. (+8 more)
 
 ### Community 355 - "Community 355"
 Cohesion: 0.05
@@ -3532,27 +3500,27 @@ Nodes (37): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typograph
 
 ### Community 368 - "Community 368"
 Cohesion: 0.06
-Nodes (29): _get_tool_loop(), Return a long-lived event loop for running async tool handlers.      Using a per, _create_and_return_transport(), _get_current_loop(), _mock_vision_response(), Regression tests for the _run_async() event-loop lifecycle.  These tests verify, Multiple _run_async calls on the same worker thread should         reuse the sam, Different worker threads must get their own loops to avoid         contention (t (+21 more)
+Nodes (27): _create_and_return_transport(), _get_current_loop(), _mock_vision_response(), Regression tests for the _run_async() event-loop lifecycle.  These tests verify, Multiple _run_async calls on the same worker thread should         reuse the sam, Different worker threads must get their own loops to avoid         contention (t, Worker thread loops must be different from the main thread's         persistent, When a loop is already running, _run_async falls back to a thread. (+19 more)
 
 ### Community 369 - "Community 369"
-Cohesion: 0.20
-Nodes (7): Tests for spark_logging — centralized logging setup., Reset the module-level sentinel and clean up root logger handlers     added by s, Provide an isolated SPARK_HOME for logging tests.      Uses the same tmp_path as, setup_verbose_logging() adds a DEBUG-level console handler., _reset_logging_state(), spark_home(), TestSetupVerboseLogging
+Cohesion: 0.10
+Nodes (11): Tests for spark_logging — centralized logging setup., Reset the module-level sentinel and clean up root logger handlers     added by s, Unit tests for _ComponentFilter., Provide an isolated SPARK_HOME for logging tests.      Uses the same tmp_path as, setup_verbose_logging() adds a DEBUG-level console handler., _read_logging_config() reads from config.yaml., _reset_logging_state(), spark_home() (+3 more)
 
 ### Community 370 - "Community 370"
-Cohesion: 0.09
-Nodes (19): _dm_source(), _group_source(), Tests for DM thread session isolation.  DM thread sessions must start empty — no, Returning to an existing thread session should not reset it., Edge cases — threads always start empty regardless of context., Group/channel threads should also start empty., Thread session without a parent DM session should start empty., Top-level DMs (no thread_id) should start empty as always. (+11 more)
+Cohesion: 0.08
+Nodes (17): Replace the entire transcript for a session with new messages., Load all messages from a session's transcript., Manages session storage and retrieval.          Uses SQLite (via SessionDB) for, Get the path to a session's legacy transcript file., Append a message to a session's transcript (SQLite + legacy JSONL).          Arg, SessionStore, idle_store(), no_reset_store() (+9 more)
 
 ### Community 371 - "Community 371"
 Cohesion: 0.15
 Nodes (25): test_custom_endpoint_models_api_pricing_is_supported(), test_estimate_usage_cost_marks_subscription_routes_included(), test_estimate_usage_cost_refuses_cache_pricing_without_official_cache_rate(), test_normalize_usage_anthropic_keeps_cache_buckets_separate(), test_normalize_usage_openai_subtracts_cached_prompt_tokens(), test_openrouter_models_api_pricing_is_converted_from_per_token_to_per_million(), BillingRoute, CostResult (+17 more)
 
 ### Community 372 - "Community 372"
-Cohesion: 0.16
-Nodes (36): AppHandle, Option, PathBuf, Result, agent_cursor_hide(), agent_cursor_update(), build_tray(), clear_quarantine_on_bundle() (+28 more)
+Cohesion: 0.13
+Nodes (39): AppHandle, Option, PathBuf, Result, agent_cursor_hide(), agent_cursor_update(), build_tray(), clear_quarantine_on_bundle() (+31 more)
 
 ### Community 373 - "Community 373"
-Cohesion: 0.11
-Nodes (32): detectUrl(), runVisualContrastFallback(), finding(), getAP(), createDetectorProfile(), extractFindingIds(), profileFindings(), profileFindingsAsync() (+24 more)
+Cohesion: 0.13
+Nodes (21): finding(), getAP(), profileStep(), CSS_IN_JS_EXTENSIONS, detectText(), extractCSSinJS(), extractStyleBlocks(), REGEX_ANALYZERS (+13 more)
 
 ### Community 374 - "Community 374"
 Cohesion: 0.08
@@ -3563,8 +3531,8 @@ Cohesion: 0.08
 Nodes (24): _content_lines_from_stream_prints(), _make_cli_stub(), _make_real_streaming_cli_stub(), Tests for _stream_delta's handling of <think> tags in prose vs real reasoning bl, Create a minimal SparkCLI-like object with stream state., `<think>`' should NOT trigger reasoning., Real <think> tags at block boundaries should still be caught., <think>reasoning</think>answer' should suppress reasoning. (+16 more)
 
 ### Community 376 - "Community 376"
-Cohesion: 0.13
-Nodes (12): apply_ipv4_preference(), Monkey-patch ``socket.getaddrinfo`` to prefer IPv4 connections.      On servers, Tests for apply_ipv4_preference()., Save the original getaddrinfo before each test., Restore the original getaddrinfo after each test., No patch when force=False., Patches socket.getaddrinfo when force=True., Calling apply twice doesn't double-wrap. (+4 more)
+Cohesion: 0.09
+Nodes (17): apply_ipv4_preference(), Monkey-patch ``socket.getaddrinfo`` to prefer IPv4 connections.      On servers, Tests for network.force_ipv4 — the socket.getaddrinfo monkey-patch., Verify network section exists in DEFAULT_CONFIG., Reload spark_constants to get a fresh apply_ipv4_preference., Tests for apply_ipv4_preference()., Save the original getaddrinfo before each test., Restore the original getaddrinfo after each test. (+9 more)
 
 ### Community 377 - "Community 377"
 Cohesion: 0.10
@@ -3623,16 +3591,16 @@ Cohesion: 0.05
 Nodes (36): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typography Rules, 4. Component Stylings, 5. Layout Principles, 6. Depth & Elevation, 7. Do's and Don'ts, 8. Responsive Behavior (+28 more)
 
 ### Community 391 - "Community 391"
-Cohesion: 0.10
-Nodes (14): DELETE /v1/responses/{response_id} — delete a stored response., Return error response if cron module isn't available., Validate and extract job_id. Returns (job_id, error_response)., GET /api/jobs — list all cron jobs., POST /api/jobs — create a new cron job., GET /api/jobs/{job_id} — get a single cron job., PATCH /api/jobs/{job_id} — update a cron job., DELETE /api/jobs/{job_id} — delete a cron job. (+6 more)
+Cohesion: 0.13
+Nodes (12): Return error response if cron module isn't available., Validate and extract job_id. Returns (job_id, error_response)., GET /api/jobs — list all cron jobs., POST /api/jobs — create a new cron job., GET /api/jobs/{job_id} — get a single cron job., PATCH /api/jobs/{job_id} — update a cron job., DELETE /api/jobs/{job_id} — delete a cron job., POST /api/jobs/{job_id}/pause — pause a cron job. (+4 more)
 
 ### Community 392 - "Community 392"
 Cohesion: 0.05
 Nodes (15): Tests for browser_console tool and browser_vision annotate param., browser_console is properly registered in the tool registry., browser_console must be reachable via toolset resolution., browser_vision supports annotate parameter., Without annotate, screenshot command has no --annotate flag., With annotate=True, screenshot command includes --annotate., browser.record_sessions config option., Recording doesn't start when config says record_sessions: false. (+7 more)
 
 ### Community 393 - "Community 393"
-Cohesion: 0.11
-Nodes (21): _count_skills(), create_wrapper_script(), _get_wrapper_dir(), _is_wrapper_dir_in_path(), list_profiles(), profile_exists(), ProfileInfo, Profile management for multiple isolated Spark instances.  Each profile is a ful (+13 more)
+Cohesion: 0.06
+Nodes (50): cmd_profile(), Profile management — create, delete, list, switch, alias., check_alias_collision(), _check_gateway_running(), _cleanup_gateway_service(), _count_skills(), create_wrapper_script(), _default_export_ignore() (+42 more)
 
 ### Community 394 - "Community 394"
 Cohesion: 0.09
@@ -3659,8 +3627,8 @@ Cohesion: 0.06
 Nodes (35): Agent loop, Architecture, Available benchmarks, BaseEnv (Atropos), Concrete environments, Configuration reference, Core components, Creating environments (+27 more)
 
 ### Community 400 - "Community 400"
-Cohesion: 0.14
-Nodes (14): _collect_query_images(), _format_image_attachment_badges(), Format the attached-image badge row for the interactive CLI.      Narrow termina, Collect local image attachments for single-query CLI flows., Resolve a user-supplied local attachment path.      Accepts quoted or unquoted p, _resolve_attachment_path(), _make_cli(), _make_image() (+6 more)
+Cohesion: 0.09
+Nodes (23): _collect_query_images(), _format_image_attachment_badges(), _format_process_notification(), Attachment and file-drop parsing helpers for the Spark CLI.  Extracted from core, Format a process notification event into a [SYSTEM: ...] message.      Handles b, Return a realistic example media path for the current Termux setup., Format the attached-image badge row for the interactive CLI.      Narrow termina, Collect local image attachments for single-query CLI flows. (+15 more)
 
 ### Community 401 - "Community 401"
 Cohesion: 0.09
@@ -3675,8 +3643,8 @@ Cohesion: 0.07
 Nodes (19): FakeAgent, Tests for cron job inactivity-based timeout.  Tests cover: - Active agent runs i, An agent that goes idle should be detected and interrupted., SPARK_CRON_TIMEOUT=0 means no timeout at all., SPARK_CRON_TIMEOUT env var is respected., SPARK_CRON_TIMEOUT=0 yields None (unlimited)., The TimeoutError message should include last activity info., If agent lacks get_activity_summary, idle_secs stays 0 (never times out). (+11 more)
 
 ### Community 404 - "Community 404"
-Cohesion: 0.11
-Nodes (25): CABundleError, _configured_ca_bundle_value(), httpx_client_kwargs(), httpx_verify_value(), TLS verification helpers for outbound provider HTTP clients., Return ``urllib.request.urlopen`` kwargs for configured TLS verification., Raised when the configured custom CA bundle cannot be used., Return the configured CA bundle path, expanding env vars and ``~``. (+17 more)
+Cohesion: 0.12
+Nodes (17): _FakeApp, _FakeBuffer, _make_cli_stub(), test_cancel_secret_capture_marks_setup_skipped(), test_cli_chat_registers_secret_capture_callback(), test_secret_capture_callback_can_be_completed_from_cli_state_machine(), test_secret_capture_timeout_clears_hidden_input_buffer(), test_secret_capture_uses_getpass_without_tui() (+9 more)
 
 ### Community 405 - "Community 405"
 Cohesion: 0.07
@@ -3687,20 +3655,20 @@ Cohesion: 0.10
 Nodes (13): adapter_factory(), _ensure_telegram_mock(), Tests for Telegram reply_to_mode functionality.  Covers the threading behavior c, Invalid mode behaves like 'first' - only first chunk threads., Tests for send() method respecting reply_to_mode., Mock the telegram package if it's not installed., Factory to create TelegramAdapter with custom reply_to_mode., Tests for reply_to_mode configuration loading. (+5 more)
 
 ### Community 407 - "Community 407"
-Cohesion: 0.08
-Nodes (39): _make_adapter(), _make_event(), Tests for Telegram message reactions tied to processing lifecycle hooks., _set_reaction should return False when bot is not available., API errors during reaction should not propagate., Processing start should add eyes reaction when enabled., Processing start should not react when reactions are disabled., Should handle events without chat_id or message_id gracefully. (+31 more)
+Cohesion: 0.09
+Nodes (35): _make_adapter(), _make_event(), Tests for Telegram message reactions tied to processing lifecycle hooks., _set_reaction should return False when bot is not available., API errors during reaction should not propagate., Processing start should add eyes reaction when enabled., Processing start should not react when reactions are disabled., Should handle events without chat_id or message_id gracefully. (+27 more)
 
 ### Community 408 - "Community 408"
 Cohesion: 0.05
-Nodes (41): _file_mtime_key(), get_sandbox_dir(), _load_json_store(), Load a JSON file as a dict, returning ``{}`` on any error., Write *data* as pretty-printed JSON to *path*., Return ``(mtime, size)`` for cache comparison, or ``None`` if unreadable., Return the host-side root for all sandbox storage (Docker workspaces,     Singul, _save_json_store() (+33 more)
+Nodes (38): _file_mtime_key(), get_sandbox_dir(), _load_json_store(), Load a JSON file as a dict, returning ``{}`` on any error., Write *data* as pretty-printed JSON to *path*., Return ``(mtime, size)`` for cache comparison, or ``None`` if unreadable., Return the host-side root for all sandbox storage (Docker workspaces,     Singul, _save_json_store() (+30 more)
 
 ### Community 409 - "Community 409"
-Cohesion: 0.10
-Nodes (19): get_honcho_client(), _normalize_observation_mode(), _normalize_recall_mode(), Honcho client initialization and configuration.  Resolution order for config fil, Normalize observation mode values., Resolve per-peer observation booleans.      Config forms:       String shorthand, Create config from the resolved Honcho config path.          Resolution: $SPARK_, Return the git repo root directory name, or None if not in a repo. (+11 more)
+Cohesion: 0.09
+Nodes (18): _normalize_observation_mode(), _normalize_recall_mode(), Honcho client initialization and configuration.  Resolution order for config fil, Normalize observation mode values., Resolve per-peer observation booleans.      Config forms:       String shorthand, Create config from environment variables (fallback)., Create config from the resolved Honcho config path.          Resolution: $SPARK_, Derive the Honcho host key from the active Spark profile.      Resolution order: (+10 more)
 
 ### Community 410 - "Community 410"
-Cohesion: 0.08
-Nodes (6): Tests for plugins/memory/honcho/session.py — HonchoSession and helpers., TestChunkMessage, TestFormatMigrationTranscript, TestManagerCacheOps, TestPeerLookupHelpers, TestSanitizeId
+Cohesion: 0.06
+Nodes (7): Tests for plugins/memory/honcho/session.py — HonchoSession and helpers., TestChunkMessage, TestFormatMigrationTranscript, TestHonchoSession, TestManagerCacheOps, TestPeerLookupHelpers, TestSanitizeId
 
 ### Community 411 - "Community 411"
 Cohesion: 0.06
@@ -3743,28 +3711,28 @@ Cohesion: 0.06
 Nodes (35): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typography Rules, 4. Component Stylings, 5. Layout Principles, 6. Depth & Elevation, 7. Do's and Don'ts, 8. Responsive Behavior (+27 more)
 
 ### Community 421 - "Community 421"
-Cohesion: 0.09
-Nodes (31): _decide(), Unit tests for the prompt-injection screener., A bare mention of 'api key' should NOT trigger a block on its own., test_bare_credential_noun_below_block(), test_benign_outputs_score_zero(), test_blocked_stub_includes_metadata(), test_credential_exfiltration_intent_hits(), test_empty_input_safe() (+23 more)
+Cohesion: 0.07
+Nodes (36): _decide(), Unit tests for the prompt-injection screener., A bare mention of 'api key' should NOT trigger a block on its own., test_bare_credential_noun_below_block(), test_benign_outputs_score_zero(), test_blocked_stub_includes_metadata(), test_credential_exfiltration_intent_hits(), test_empty_input_safe() (+28 more)
 
 ### Community 422 - "Community 422"
-Cohesion: 0.10
-Nodes (9): HubLockFile, Manages skills/.hub/lock.json — tracks provenance of installed hub skills., Manages the taps.json file — custom GitHub repo sources., Remove a tap by repo name. Returns False if not found., Remove a hub-installed skill. Refuses to remove builtins., TapsManager, uninstall_skill(), TestHubLockFile (+1 more)
+Cohesion: 0.08
+Nodes (12): create_source_router(), HubLockFile, Manages skills/.hub/lock.json — tracks provenance of installed hub skills., Manages the taps.json file — custom GitHub repo sources., Remove a tap by repo name. Returns False if not found., Remove a hub-installed skill. Refuses to remove builtins., Create all configured source adapters.     Returns a list of active sources for, TapsManager (+4 more)
 
 ### Community 423 - "Community 423"
-Cohesion: 0.13
-Nodes (12): probe_mcp_server_tools(), Temporarily connect to configured MCP servers and list their tools.      Designe, Tests for probe_mcp_server_tools() in tools.mcp_tool., Ensure clean MCP module state before/after each test., Tools without descriptions get empty string., _stop_mcp_loop is called even when probe fails., Disabled servers are not probed., Tests for the lightweight probe_mcp_server_tools function. (+4 more)
+Cohesion: 0.08
+Nodes (21): probe_mcp_server_tools(), Temporarily connect to configured MCP servers and list their tools.      Designe, Close all MCP server connections and stop the background loop.      Each server, Stop the background event loop and join its thread., shutdown_mcp_servers(), _stop_mcp_loop(), Tests for probe_mcp_server_tools() in tools.mcp_tool., Ensure clean MCP module state before/after each test. (+13 more)
 
 ### Community 424 - "Community 424"
 Cohesion: 0.12
 Nodes (11): _looks_like_slash_command(), Return True if *text* looks like a slash command, not a file path.      Slash co, _ModelMixin, Model picker + /model switch handling for SparkCLI (mixin).  Extracted from core, Run curses_single_select via run_in_terminal so prompt_toolkit handles terminal, Handle /model command - switch the universal model config.          Supports:, Prompt for free-text input safely inside or outside prompt_toolkit., Return True when /model should be handled immediately on the UI thread. (+3 more)
 
 ### Community 425 - "Community 425"
-Cohesion: 0.13
-Nodes (26): _archive_directory(), claw_command(), _cmd_cleanup(), _cmd_migrate(), _detect_openclaw_processes(), _find_migration_script(), _find_openclaw_dirs(), _load_migration_module() (+18 more)
+Cohesion: 0.03
+Nodes (81): build_environment_hints(), build_name_guidance(), build_soul_guidance(), build_workspace_guidance(), load_soul_md(), Describe Spark's profile-scoped default workspace for the agent., Tell the agent the user-chosen name, set during onboarding., Describe Spark's profile-scoped SOUL.md identity file for the agent. (+73 more)
 
 ### Community 426 - "Community 426"
-Cohesion: 0.04
-Nodes (20): _get_anthropic_max_output(), Look up the max output token limit for an Anthropic model.      Uses substring m, claude-3-5-sonnet' should match before 'claude-3-5'., TestGetAnthropicMaxOutput, Tests for MiniMax provider hardening — context lengths, thinking, catalog, beta, M1 models are not available on the /anthropic endpoint., Highspeed variants are available but not shown in default catalog         (users, Verify _get_anthropic_max_output returns correct limits for MiniMax models. (+12 more)
+Cohesion: 0.06
+Nodes (14): Tests for MiniMax provider hardening — context lengths, thinking, catalog, beta, M1 models are not available on the /anthropic endpoint., Highspeed variants are available but not shown in default catalog         (users, Verify that MiniMax model names preserve dots through the Anthropic adapter., Verify switch_model() does not leak Anthropic credentials to MiniMax.      The _, switch_model() should NOT call resolve_anthropic_token() for MiniMax., Verify context length entries match official docs (204,800 for all models)., Verify auxiliary model is standard (not highspeed). (+6 more)
 
 ### Community 427 - "Community 427"
 Cohesion: 0.06
@@ -3832,19 +3800,19 @@ Nodes (18): fuzzy_find_and_replace(), Find and replace text using a chain of inc
 
 ### Community 443 - "Community 443"
 Cohesion: 0.13
-Nodes (18): Sync bundled skills into ~/.spark/skills/ using the manifest.      Args:, sync_skills(), Create a fake bundled skills directory., Return context manager stack for patching sync globals., After fresh install, manifest should have v2 format with hashes., New bundled design skills are synced and not disabled by default., Skill in manifest but not on disk = user deleted it. Don't re-add., Skill in manifest + on disk + user hasn't modified = update from bundled. (+10 more)
+Nodes (18): Sync bundled skills into ~/.spark/skills/ using the manifest.      Args:, sync_skills(), Create a fake bundled skills directory., Return context manager stack for patching sync globals., After fresh install, manifest should have v2 format with hashes., New bundled skills sync with their supporting files., Skill in manifest but not on disk = user deleted it. Don't re-add., Skill in manifest + on disk + user hasn't modified = update from bundled. (+10 more)
 
 ### Community 444 - "Community 444"
 Cohesion: 0.11
 Nodes (16): _json_stdout(), _mock_run(), Tests for the tirith security scanning subprocess wrapper., Pre-set cached path to skip auto-install in scan tests.      Tests that specific, Build a mock subprocess.CompletedProcess., _reset_resolved_path(), TestCaps, TestDisabled (+8 more)
 
 ### Community 445 - "Community 445"
-Cohesion: 0.11
-Nodes (12): RL environment for training multi-step web research skills.      The model is gi, Load the FRAMES benchmark or fall back to built-in samples., Return the next item, cycling through the dataset., Format the research question as a task prompt., Multi-signal reward function:            correctness_weight * correctness  — LLM, Run evaluation on the held-out split using the full agent loop with tools., Log reward breakdown metrics to wandb., Use the server's LLM to judge answer correctness.         Falls back to keyword (+4 more)
+Cohesion: 0.09
+Nodes (16): AgentResult, APIServerConfig, ToolContext, RL environment for training multi-step web research skills.      The model is gi, Default configuration for the web research environment., Load the FRAMES benchmark or fall back to built-in samples., Return the next item, cycling through the dataset., Format the research question as a task prompt. (+8 more)
 
 ### Community 446 - "Community 446"
-Cohesion: 0.08
-Nodes (16): Tests for auxiliary model config bridging — verifies that config.yaml values are, Config without auxiliary section should not crash., Malformed task config (e.g. string instead of dict) is safely ignored., Verify the gateway/run.py config bridge contains the auxiliary section., Simulate the auxiliary config → env var bridging logic shared by CLI and gateway, The gateway config bridge must include auxiliary.* bridging., Gateway should NOT bridge compression config to env vars (config-only)., Verify the DEFAULT_CONFIG in spark_cli/config.py has correct auxiliary structure (+8 more)
+Cohesion: 0.10
+Nodes (12): Tests for auxiliary model config bridging — verifies that config.yaml values are, Config without auxiliary section should not crash., Malformed task config (e.g. string instead of dict) is safely ignored., Simulate the auxiliary config → env var bridging logic shared by CLI and gateway, Verify the DEFAULT_CONFIG in spark_cli/config.py has correct auxiliary structure, Verify cli.py load_cli_config() defaults dict does NOT include auxiliary     (it, The load_cli_config deep merge logic handles keys not in defaults.         Verif, Verify the config.yaml → env var bridging logic used by CLI and gateway. (+4 more)
 
 ### Community 447 - "Community 447"
 Cohesion: 0.09
@@ -3855,12 +3823,12 @@ Cohesion: 0.11
 Nodes (11): _attach_agent(), _make_cli(), Ensure status bar fragments don't overflow the terminal width., Total fragment text length must not exceed the width used to build them., When prompt_toolkit reports a width, shutil.get_terminal_size must not be used., Outside a TUI context (no running app), shutil must be used as fallback., _build_status_bar_text() must also prefer prompt_toolkit width., An explicit width= argument must bypass both PT and shutil lookups. (+3 more)
 
 ### Community 449 - "Community 449"
-Cohesion: 0.16
-Nodes (10): get_distribution(), print_distribution_info(), Get a toolset distribution by name.          Args:         name (str): Name of t, Sample toolsets based on a distribution's probabilities.          Each toolset i, Print detailed information about a distribution.          Args:         distribu, sample_toolsets_from_distribution(), any, Tests for toolset_distributions.py — distribution CRUD, sampling, validation. (+2 more)
+Cohesion: 0.09
+Nodes (17): get_distribution(), list_distributions(), print_distribution_info(), Get a toolset distribution by name.          Args:         name (str): Name of t, List all available distributions.          Returns:         Dict: All distributi, Sample toolsets based on a distribution's probabilities.          Each toolset i, Check if a distribution name is valid.          Args:         distribution_name, Print detailed information about a distribution.          Args:         distribu (+9 more)
 
 ### Community 450 - "Community 450"
-Cohesion: 0.08
-Nodes (18): _deliver_result(), Deliver job output to the configured target.      Returns None on success, or an, Verify that cron deliveries are wrapped with header/footer and no longer mirrore, Delivered content should include task name header and agent-invisible note., When a job has no name, the wrapper should fall back to job id., When cron.wrap_response is false, deliver raw content without header/footer., Cron delivery should pass MEDIA attachments separately to the send helper., When a live adapter is available, MEDIA files should be sent as native         p (+10 more)
+Cohesion: 0.05
+Nodes (34): Cron job scheduling system for Spark Agent.  This module provides scheduled task, _build_delivery_content(), _deliver_result(), _execute_job_with_timeout(), _format_job_output(), _get_script_timeout(), Cron job scheduler - executes due jobs.  Provides tick() which checks for due jo, Send extracted MEDIA files as native platform attachments via a live adapter. (+26 more)
 
 ### Community 451 - "Community 451"
 Cohesion: 0.08
@@ -3879,8 +3847,8 @@ Cohesion: 0.11
 Nodes (15): DesktopGatewaySupervisor, gateway_autostart_enabled(), is_desktop_app(), Desktop gateway autostart/shutdown.  On the macOS desktop app, the messaging gat, Run the gateway to completion on its own event loop., Gracefully stop the gateway, but only if this supervisor started it., Entry point called from the web server lifespan on startup., Entry point called from the web server lifespan on shutdown. (+7 more)
 
 ### Community 455 - "Community 455"
-Cohesion: 0.05
-Nodes (35): build_workspace_guidance(), Describe Spark's profile-scoped default workspace for the agent., Try to launch Chrome/Chromium with remote debugging enabled.          Uses a ded, load_cli_config(), Load CLI configuration from config files.      Config lookup order:     1. ~/"sp, Display current configuration with kawaii ASCII art., Initialize the Spark CLI.          Args:             model: Model to use (defaul, _get_chrome_debug_candidates() (+27 more)
+Cohesion: 0.03
+Nodes (55): _CommandHandlersMixin, Slash-command handler methods for SparkCLI (mixin).  Extracted from core/cli/__i, Handle /skin [name] - show or change the display skin., Toggle YOLO mode - skip all dangerous command approval prompts., Handle /reasoning - manage effort level and display toggle.          Usage:, Handle /backend - show or set the command-execution backend., Handle /think - quick reasoning-effort control.          Usage: /think <off|low|, Handle /fast - toggle fast mode (OpenAI Priority Processing / Anthropic Fast Mod (+47 more)
 
 ### Community 456 - "Community 456"
 Cohesion: 0.12
@@ -3923,8 +3891,8 @@ Cohesion: 0.06
 Nodes (34): dependencies, class-variance-authority, clsx, @codemirror/lang-cpp, @codemirror/lang-css, @codemirror/lang-go, @codemirror/lang-html, @codemirror/lang-java (+26 more)
 
 ### Community 466 - "Community 466"
-Cohesion: 0.09
-Nodes (18): build_tool_start(), build_tool_title(), extract_locations(), Create a ToolCallStart event for the given spark tool invocation., Extract file-system locations from tool arguments., Build a human-readable title for a tool call., patch should produce a FileEditToolCallContent (diff)., write_file should produce a FileEditToolCallContent (diff). (+10 more)
+Cohesion: 0.07
+Nodes (23): build_tool_start(), build_tool_title(), extract_locations(), make_tool_call_id(), ACP tool-call helpers for mapping spark tools to ACP ToolKind and building conte, Create a ToolCallStart event for the given spark tool invocation., Extract file-system locations from tool arguments., Generate a unique tool call ID. (+15 more)
 
 ### Community 467 - "Community 467"
 Cohesion: 0.07
@@ -3935,12 +3903,8 @@ Cohesion: 0.13
 Nodes (32): _default_state(), get_archive_after_days(), get_interval_hours(), get_min_idle_hours(), get_stale_after_days(), is_enabled(), is_paused(), _list_agent_created_skills() (+24 more)
 
 ### Community 469 - "Community 469"
-Cohesion: 0.06
-Nodes (27): atomic_json_write(), atomic_yaml_write(), env_bool(), env_int(), env_var_enabled(), is_truthy_value(), Shared utility functions for spark-agent., Parse JSON, returning *default* on any parse error.      Replaces the ``try: jso (+19 more)
-
-### Community 470 - "Community 470"
-Cohesion: 0.14
-Nodes (14): BatchRunner, main(), Run batch processing of agent prompts from a dataset.      Args:         dataset, Manages batch processing of agent prompts with checkpointing and statistics., Initialize the batch runner.          Args:             dataset_file (str): Path, Load dataset from JSONL file.                  Returns:             List[Dict]:, Split dataset into batches with indices.                  Returns:             L, Load checkpoint data if it exists.                  Returns:             Dict: C (+6 more)
+Cohesion: 0.10
+Nodes (22): atomic_yaml_write(), env_bool(), env_int(), env_var_enabled(), is_truthy_value(), Shared utility functions for spark-agent., Parse JSON, returning *default* on any parse error.      Replaces the ``try: jso, Read an environment variable as an integer, with fallback. (+14 more)
 
 ### Community 471 - "Community 471"
 Cohesion: 0.07
@@ -3952,7 +3916,7 @@ Nodes (27): ConnectionSection(), getApiBase(), getConnectionMode(), getRemoteBas
 
 ### Community 473 - "Community 473"
 Cohesion: 0.11
-Nodes (16): FeishuAdapter, _ensure_feishu_mocks(), _make_adapter(), _make_card_action_data(), Tests for Feishu interactive card approval buttons., Test the approval intercept in _handle_card_action_event., Provide stubs for lark-oapi / aiohttp.web so the import succeeds., Non-approval card actions should still become synthetic commands. (+8 more)
+Nodes (15): _ensure_feishu_mocks(), _make_adapter(), _make_card_action_data(), Tests for Feishu interactive card approval buttons., Test the approval intercept in _handle_card_action_event., Provide stubs for lark-oapi / aiohttp.web so the import succeeds., Non-approval card actions should still become synthetic commands., Test the card update after approval resolution. (+7 more)
 
 ### Community 474 - "Community 474"
 Cohesion: 0.08
@@ -3995,20 +3959,20 @@ Cohesion: 0.16
 Nodes (31): buildColor(), CANONICAL_SECTIONS, collectBullets(), collectColorValues(), collectParagraphs(), detectFormat(), extractColors(), extractComponents() (+23 more)
 
 ### Community 484 - "Community 484"
-Cohesion: 0.09
-Nodes (11): _CallbacksMixin, Capture local before-state for write-capable tools., Render file edits with inline diff after write-capable tools complete., Platform callback for the clarify tool. Called from the agent thread.          S, Prompt for sudo password through the prompt_toolkit UI.          Called from the, Prompt for dangerous command approval through the prompt_toolkit UI.          Ca, Return approval choices for a dangerous command prompt., Process the currently selected dangerous-command approval choice. (+3 more)
+Cohesion: 0.04
+Nodes (39): get_tool_emoji(), get_tool_preview_max_len(), Return the configured max preview length (0 = unlimited)., Get the display emoji for a tool.      Resolution order:     1. Active skin's ``, Tests for get_tool_emoji in agent/display.py — skin + registry integration., Registry-registered emoji is used when no skin is active., Skin tool_emojis override registry defaults., Empty skin tool_emojis falls through to registry. (+31 more)
 
 ### Community 485 - "Community 485"
 Cohesion: 0.08
 Nodes (12): _fake_session(), FakePage, _Keyboard, _Mouse, Tests for the streamed server-side browser (src/spark_cli/preview_browser.py)., Build a session whose worker thread serves a FakePage (no Playwright)., test_back_forward(), test_cookies_lists_name_and_domain() (+4 more)
 
 ### Community 486 - "Community 486"
-Cohesion: 0.09
-Nodes (12): Any, DebugSession, Shared debug session infrastructure for Spark tools.  Replaces the identical DEB, Per-tool debug session that records tool calls to a JSON log file.      Activate, Append a tool-call entry to the in-memory log., Flush the in-memory log to a JSON file in the logs directory., Return a summary dict suitable for returning from get_debug_session_info()., Tests for tools/debug_helpers.py — DebugSession class. (+4 more)
+Cohesion: 0.10
+Nodes (11): Any, DebugSession, Per-tool debug session that records tool calls to a JSON log file.      Activate, Append a tool-call entry to the in-memory log., Flush the in-memory log to a JSON file in the logs directory., Return a summary dict suitable for returning from get_debug_session_info()., Tests for tools/debug_helpers.py — DebugSession class., When the env var is not set, DebugSession should be a cheap no-op. (+3 more)
 
 ### Community 487 - "Community 487"
-Cohesion: 0.06
-Nodes (24): Any, TestTranscribeOpenAI, clean_env(), mock_mistral_module(), Tests for tools.transcription_tools — three-provider STT pipeline.  Covers the f, Create a minimal valid WAV file (1 second of silence at 16kHz)., Create a fake OGG file for validation tests., Ensure no real API keys leak into tests. (+16 more)
+Cohesion: 0.09
+Nodes (12): Any, TestTranscribeOpenAI, A model not in either known set should not be overridden., TestModelAutoCorrection, TestTranscribeGroq, TestTranscribeOpenAIExtended, _extract_transcript_text(), Transcribe using Groq Whisper API (free tier available). (+4 more)
 
 ### Community 488 - "Community 488"
 Cohesion: 0.06
@@ -4031,28 +3995,28 @@ Cohesion: 0.08
 Nodes (16): Tests for TTS speed configuration across providers., Speed below 0.25 is clamped to 0.25., Speed above 4.0 is clamped to 4.0., Global tts.speed used when minimax.speed not set., tts.minimax.speed takes precedence over tts.speed., No speed config => no rate kwarg passed to Communicate., Global tts.speed used as fallback., tts.edge.speed takes precedence over tts.speed. (+8 more)
 
 ### Community 493 - "Community 493"
-Cohesion: 0.09
-Nodes (18): BlueBubblesAdapter, check_bluebubbles_requirements(), _normalize_server_url(), BlueBubbles iMessage platform adapter.  Uses the local BlueBubbles macOS server, Compute the external webhook URL for BlueBubbles registration., Return list of BB webhook entries matching *url*., Register this webhook URL with the BlueBubbles server.          BlueBubbles requ, Unregister this webhook URL from the BlueBubbles server.          Removes *all* (+10 more)
+Cohesion: 0.07
+Nodes (25): Tests for the BlueBubbles iMessage gateway adapter., Verify _download_attachment routes to the correct cache helper., TestBlueBubblesAttachmentDownload, TestBlueBubblesGuidResolution, TestBlueBubblesPlatformEnum, TestBlueBubblesPromptHint, TestBlueBubblesToolsetIntegration, BlueBubblesAdapter (+17 more)
 
 ### Community 494 - "Community 494"
 Cohesion: 0.08
 Nodes (14): Read a valid, non-expired Codex OAuth access token from Spark auth store.      I, _read_codex_access_token(), Expired JWT tokens should be skipped so auto chain continues., Non-expired JWT tokens should be returned., Non-JWT tokens (no dots) should be returned as-is., When Codex token is expired, auto chain should skip it and try next provider., With expired Codex + OpenRouter key, OpenRouter should win (1st in chain)., With expired Codex + custom endpoint (Ollama), custom should win (3rd in chain). (+6 more)
 
 ### Community 495 - "Community 495"
-Cohesion: 0.12
-Nodes (29): createBrowserDetector(), confirm(), detectCli(), formatFindings(), handleStdin(), printUsage(), buildImportGraph(), detectFrameworkConfig() (+21 more)
+Cohesion: 0.18
+Nodes (21): createBrowserDetector(), confirm(), detectCli(), formatFindings(), handleStdin(), printUsage(), buildImportGraph(), detectFrameworkConfig() (+13 more)
 
 ### Community 496 - "Community 496"
 Cohesion: 0.06
 Nodes (31): Add Project Context, Approach A: Static Allowlist, Approach B: DM Pairing (Recommended for Teams), Control Tool Progress Display, Daily Standup Summary, Find Your User ID, Give the Bot a Personality, Install as a Persistent Service (+23 more)
 
 ### Community 497 - "Community 497"
-Cohesion: 0.13
-Nodes (11): _make_manager(), _make_session(), Tests for the async-memory Honcho improvements.  Covers:   - write_frequency par, TestAsyncWriterRetry, TestAsyncWriterThread, TestFlushAll, TestMemoryFileMigrationTargets, TestPrefetchCacheAccessors (+3 more)
+Cohesion: 0.09
+Nodes (12): _make_manager(), _make_session(), Tests for the async-memory Honcho improvements.  Covers:   - write_frequency par, TestAsyncWriterRetry, TestAsyncWriterThread, TestFlushAll, TestMemoryFileMigrationTargets, TestPrefetchCacheAccessors (+4 more)
 
 ### Community 498 - "Community 498"
-Cohesion: 0.25
-Nodes (18): _padded(), Unit tests for the TokenJuice tool-output normalization pipeline., Smoke test: shipped builtin.json parses without error., Pad text past the tiny-output passthrough threshold., _rule(), test_builtin_rules_load_successfully(), test_dedupe_adjacent(), test_filters_skip_patterns() (+10 more)
+Cohesion: 0.11
+Nodes (13): convert_tools_to_anthropic(), normalize_model_name(), Write refreshed credentials back to ~/.claude/.credentials.json.      The option, Normalize a model name for the Anthropic API.      - Strips 'anthropic/' prefix, Convert OpenAI tool definitions to Anthropic format., _write_claude_code_credentials(), Tests for agent/anthropic_adapter.py — Anthropic Messages API adapter., OpenRouter uses dots (4.6), Anthropic uses hyphens (4-6). (+5 more)
 
 ### Community 499 - "Community 499"
 Cohesion: 0.06
@@ -4087,8 +4051,8 @@ Cohesion: 0.06
 Nodes (31): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typography Rules, 4. Component Stylings, 5. Layout Principles, 6. Depth & Elevation, 7. Do's and Don'ts, 8. Responsive Behavior (+23 more)
 
 ### Community 507 - "Community 507"
-Cohesion: 0.14
-Nodes (20): _fake_tool_handler(), _get_tokenizer(), _make_server_manager(), Integration tests for SparkAgentLoop with a local vLLM server.  Tests the full P, Handle fake tool calls for testing., vLLM model calls a tool, gets result, responds — full Phase 2 flow., vLLM model calls multiple tools across turns., ManagedServer should produce SequenceNodes with tokens and logprobs. (+12 more)
+Cohesion: 0.15
+Nodes (19): _fake_tool_handler(), _get_tokenizer(), _make_server_manager(), Integration tests for SparkAgentLoop with a local vLLM server.  Tests the full P, Handle fake tool calls for testing., vLLM model calls a tool, gets result, responds — full Phase 2 flow., vLLM model calls multiple tools across turns., ManagedServer should produce SequenceNodes with tokens and logprobs. (+11 more)
 
 ### Community 508 - "Community 508"
 Cohesion: 0.10
@@ -4099,12 +4063,12 @@ Cohesion: 0.06
 Nodes (33): DockerEnvironment, _ensure_docker_available(), find_docker(), _load_spark_env_vars(), _normalize_env_dict(), _normalize_forward_env_names(), Docker execution environment for sandboxed command execution.  Security hardened, Locate the docker CLI binary.      Checks ``shutil.which`` first (respects PATH) (+25 more)
 
 ### Community 510 - "Community 510"
-Cohesion: 0.09
-Nodes (11): Setting an effort level should update reasoning_config., With no args, should show current state (no crash)., Test the combined _handle_reasoning_command method., Create a minimal CLI stub with the reasoning attributes., Post-response reasoning display should be suppressed when reasoning     was alre, _reasoning_shown_this_turn must NOT be cleared by         _reset_stream_state (c, The turn flag should be reset at the start of a new user turn.         This happ, TestHandleReasoningCommand (+3 more)
+Cohesion: 0.10
+Nodes (10): _parse_reasoning_config(), Parse a reasoning effort level into an OpenRouter reasoning config dict., Setting an effort level should update reasoning_config., Invalid arguments should be rejected (parsed returns None)., With no args, should show current state (no crash)., Test the combined _handle_reasoning_command method., Create a minimal CLI stub with the reasoning attributes., TestHandleReasoningCommand (+2 more)
 
 ### Community 511 - "Community 511"
-Cohesion: 0.04
-Nodes (38): The gateway help text includes /voice (generated from registry)., Handle /spark slash command., _build_command_lookup(), _build_description(), _clamp_command_names(), _collect_gateway_skill_entries(), gateway_help_lines(), _is_gateway_available() (+30 more)
+Cohesion: 0.06
+Nodes (22): The gateway help text includes /voice (generated from registry)., Handle /spark slash command., gateway_help_lines(), _is_gateway_available(), Return canonical names of commands whose ``gateway_config_gate`` is truthy., Check if *cmd* should appear in gateway surfaces (help, menus, mappings).      U, Generate gateway help text lines from the registry., Return (command_name, description) pairs for Telegram setMyCommands.      Telegr (+14 more)
 
 ### Community 512 - "Community 512"
 Cohesion: 0.10
@@ -4155,8 +4119,8 @@ Cohesion: 0.06
 Nodes (30): 1. Official optional skills (`official`), 2. skills.sh (`skills-sh`), 3. Well-known skill endpoints (`well-known`), 4. Direct GitHub skills (`github`), 5. ClawHub (`clawhub`), 6. Claude marketplace-style repos (`claude-marketplace`), 7. LobeHub (`lobehub`), Actions (+22 more)
 
 ### Community 524 - "Community 524"
-Cohesion: 0.16
-Nodes (7): _extract_context(), lookup_models_dev_context(), Look up context_length for a provider+model combo in models.dev.      Returns th, Extract context_length from a models.dev model entry.      Returns None for inva, Same model, different context per provider., TestExtractContext, TestLookupModelsDevContext
+Cohesion: 0.13
+Nodes (9): Test the real _should_send_voice_reply method on GatewayRunner.      The gateway, Call real _should_send_voice_reply on a GatewayRunner instance., voice_only + voice input: base auto-TTS handles it, runner skips., all + voice input: base auto-TTS handles it, runner skips., all + text input: only runner fires (base auto-TTS only for voice)., voice_only + text input: neither fires., Discord VC + voice input: base adapter play_tts plays in VC,         so runner s, Discord VC + voice_only + voice: base adapter handles. (+1 more)
 
 ### Community 525 - "Community 525"
 Cohesion: 0.10
@@ -4179,8 +4143,8 @@ Cohesion: 0.08
 Nodes (17): format_context_pressure_gateway(), Build a plain-text context pressure notification for messaging platforms.      N, agent(), _make_tool_defs(), Tests for context pressure warnings (user-facing, not injected into messages)., Progress > 1.0 should cap percentage text at 100%., Minimal AIAgent with mocked internals., Class-level dedup prevents warning spam across AIAgent instances. (+9 more)
 
 ### Community 530 - "Community 530"
-Cohesion: 0.08
-Nodes (20): Memory providers are discovered from plugins/memory/ directory., discover_memory_providers returns available providers., load_memory_provider returns a working provider instance., load_memory_provider returns None for unknown names., TestPluginMemoryDiscovery, discover_memory_providers(), discover_plugin_cli_commands(), _get_active_memory_provider() (+12 more)
+Cohesion: 0.13
+Nodes (10): extract_content_or_reasoning(), Extract content from an LLM response, falling back to reasoning fields.      Mir, When content is only think blocks, fall back to structured reasoning., DeepSeek-R1 pattern: content=None, reasoning='..., Moonshot/Novita pattern: content=None, reasoning_content='..., OpenRouter unified format: reasoning_details=[{summary: ...}], When reasoning and reasoning_content have the same value, don't duplicate., Different reasoning sources are joined with double newline. (+2 more)
 
 ### Community 531 - "Community 531"
 Cohesion: 0.07
@@ -4207,12 +4171,12 @@ Cohesion: 0.08
 Nodes (16): _make_runner(), Integration tests for gateway AIAgent caching.  Verifies that the agent cache co, End-to-end cache behavior with real AIAgent construction., Second message with same config reuses the cached agent instance., Model change produces different signature → cache miss., _evict_cached_agent removes the entry., Evicting one session leaves other sessions cached., Reasoning config can be set on a cached agent without eviction. (+8 more)
 
 ### Community 537 - "Community 537"
-Cohesion: 0.09
-Nodes (12): _make_adapter(), _make_event(), Tests for the Home Assistant gateway adapter.  Tests real logic: state change fo, Without watch_domains, watch_entities, or watch_all, events are dropped., With watch_all=True and no specific filters, all events pass through., send() uses REST API (not WebSocket) to avoid race conditions., Build a mock aiohttp session + response for async-with patterns.          aiohtt, send() must use REST API, not the WS connection (race condition fix). (+4 more)
+Cohesion: 0.14
+Nodes (11): _make_adapter(), _make_event(), Tests for the Home Assistant gateway adapter.  Tests real logic: state change fo, Without watch_domains, watch_entities, or watch_all, events are dropped., With watch_all=True and no specific filters, all events pass through., send() uses REST API (not WebSocket) to avoid race conditions., Build a mock aiohttp session + response for async-with patterns.          aiohtt, send() must use REST API, not the WS connection (race condition fix). (+3 more)
 
 ### Community 538 - "Community 538"
-Cohesion: 0.11
-Nodes (12): _doh_answer(), FakeDoHClient, Build a minimal DoH JSON response with A records., Mock httpx.AsyncClient for DoH queries., Build an httpx.Response with a request attached (needed for raise_for_status)., Tests for discover_fallback_ips() — DoH-based auto-discovery., Wire up fake DoH client and system DNS., The IP from system DNS is the one that doesn't work — exclude it. (+4 more)
+Cohesion: 0.18
+Nodes (9): _doh_answer(), Build a minimal DoH JSON response with A records., Tests for discover_fallback_ips() — DoH-based auto-discovery., Wire up fake DoH client and system DNS., The IP from system DNS is the one that doesn't work — exclude it., If system DNS fails, nothing gets excluded — all DoH IPs kept., DoH returns only the same blocked IP — seed list is the fallback., AAAA records (type 28) and CNAME (type 5) should be skipped. (+1 more)
 
 ### Community 539 - "Community 539"
 Cohesion: 0.10
@@ -4259,16 +4223,16 @@ Cohesion: 0.07
 Nodes (29): 1. Add voice permissions to your bot, 2. Enable privileged gateway intents, 3. Install the Opus codec, 4. Environment variables, API keys, Audio delivery, Before You Start, CLI Voice Mode (+21 more)
 
 ### Community 550 - "Community 550"
-Cohesion: 0.24
-Nodes (8): build_skill_invocation_message(), Scan ~/.spark/skills/ and return a mapping of /command -> skill info.      Retur, Build the user message content for a skill slash command invocation.      Args:, scan_skill_commands(), _make_skill(), Helper to create a minimal skill directory with SKILL.md., Skills without platforms field should register on any platform., TestBuildSkillInvocationMessage
+Cohesion: 0.11
+Nodes (9): _extract_status_code(), Walk the error and its cause chain to find an HTTP status code., Integers outside 100-599 on .status should be ignored., Server disconnect with large session → context overflow., Server disconnect with small session → timeout., limit exceeded' + 'wait' with no status code → rate_limit., Server disconnect with 200+ messages should trigger context overflow., TestExtractStatusCode (+1 more)
 
 ### Community 551 - "Community 551"
 Cohesion: 0.10
 Nodes (14): build_tool_preview(), _oneline(), Collapse whitespace (including newlines) to single spaces., Build a short preview of a tool call's primary argument for display.      *max_l, Tests for build_tool_preview defensive handling and normal operation., PR #453: None args should not crash, should return None., Empty dict has no keys to preview., Known tool with its primary arg should return a preview string. (+6 more)
 
 ### Community 552 - "Community 552"
-Cohesion: 0.18
-Nodes (18): _cleanup_test_artifacts(), create_test_dataset(), main(), monitor_checkpoint_during_run(), print_test_plan(), Remove test-generated files and directories., Test the current checkpoint implementation., Test that resume actually works after interruption. (+10 more)
+Cohesion: 0.09
+Nodes (28): BatchRunner, main(), Run batch processing of agent prompts from a dataset.      Args:         dataset, Manages batch processing of agent prompts with checkpointing and statistics., Load checkpoint data if it exists.                  Returns:             Dict: C, Save checkpoint data.                  Args:             checkpoint_data (Dict):, Scan all batch files and extract completed prompts by their actual content., Filter the dataset to exclude prompts that have already been completed. (+20 more)
 
 ### Community 553 - "Community 553"
 Cohesion: 0.13
@@ -4283,12 +4247,12 @@ Cohesion: 0.07
 Nodes (28): Before You Start, Cloud Deployment Example (Fly.io), Command Approval for Risky Commands, Configure DM Topics, Configure Webhook, DNS Fallback (Restricted Networks), Emoji Reactions, Example Group Config (+20 more)
 
 ### Community 556 - "Community 556"
-Cohesion: 0.13
-Nodes (22): get_connector(), list_connectors(), Connector registry — single source of truth for available connectors.  Mirrors t, Return a fresh connector instance for `connector_id`, or None., Return a fresh instance of every registered connector., Connector, _patch_gc(), Tests for the connectors foundation (registry, base, Google adapter).  The Googl (+14 more)
+Cohesion: 0.11
+Nodes (25): Handle /connectors, /connect <id>, /disconnect <id>.          Lists external-pla, get_connector(), list_connectors(), Connector registry — single source of truth for available connectors.  Mirrors t, Return a fresh connector instance for `connector_id`, or None., Return a fresh instance of every registered connector., connector_enable_skills(), Enable the skills/toolsets mapped to this connector (used after connect). (+17 more)
 
 ### Community 557 - "Community 557"
-Cohesion: 0.11
-Nodes (21): Handle the /cron command to manage scheduled tasks., list_jobs(), List all jobs, optionally including disabled ones., _cron_api(), cron_command(), cron_create(), cron_edit(), cron_list() (+13 more)
+Cohesion: 0.12
+Nodes (20): Handle the /cron command to manage scheduled tasks., list_jobs(), List all jobs, optionally including disabled ones., _cron_api(), cron_command(), cron_create(), cron_edit(), cron_list() (+12 more)
 
 ### Community 558 - "Community 558"
 Cohesion: 0.09
@@ -4303,32 +4267,32 @@ Cohesion: 0.10
 Nodes (9): Adapter for SDK backends (Modal, Daytona) that have no real subprocess.      Wra, _ThreadedProcessHandle, Return a _ThreadedProcessHandle wrapping a blocking Daytona SDK call., Return a _ThreadedProcessHandle wrapping an async Modal sandbox exec., Tests for _ThreadedProcessHandle — the adapter for SDK backends., TestBasicExecution, TestCancelFn, TestPolling (+1 more)
 
 ### Community 561 - "Community 561"
-Cohesion: 0.13
-Nodes (17): get_anthropic_key(), Return the first usable Anthropic credential, or ``""``.      Checks both the ``, cmd_status(), Show status of all components., check_mark(), _configured_model_label(), _effective_provider_label(), _format_iso_timestamp() (+9 more)
+Cohesion: 0.11
+Nodes (18): cmd_status(), Show status of all components., provider_label(), Return a human-friendly label for a provider id or alias., check_mark(), _configured_model_label(), _effective_provider_label(), _format_iso_timestamp() (+10 more)
 
 ### Community 562 - "Community 562"
 Cohesion: 0.08
 Nodes (13): Obfuscation techniques must not bypass dangerous command detection., Fullwidth Unicode 'ｒｍ -ｒｆ /' must be caught after NFKC normalization., Fullwidth 'ｄｄ if=/dev/zero' must be caught., Fullwidth 'ｃｈｍｏｄ 777' must be caught., ANSI CSI color codes wrapping 'rm' must be stripped and caught., ANSI OSC sequences embedded in command must be stripped., 8-bit C1 CSI (0x9b) wrapping 'rm' must be stripped and caught., Null bytes injected into 'rm' must be stripped and caught. (+5 more)
 
 ### Community 563 - "Community 563"
-Cohesion: 0.10
-Nodes (11): Tests for the API server bind-address startup guard.  Validates that is_network_, Verify that connect() refuses dangerous configurations., Loopback with no key should pass the guard., Non-loopback with a key should pass the guard., Direct tests for the address classification helper., If a hostname resolves to both loopback and non-loopback, it's         network-a, Unresolvable hostnames should require an API key (fail closed)., TestConnectBindGuard (+3 more)
+Cohesion: 0.13
+Nodes (8): Direct tests for the address classification helper., If a hostname resolves to both loopback and non-loopback, it's         network-a, Unresolvable hostnames should require an API key (fail closed)., TestIsNetworkAccessible, Periodically clean up run streams that were never consumed., Start the aiohttp web server., is_network_accessible(), Return True if *host* would expose the server beyond loopback.      Loopback add
 
 ### Community 564 - "Community 564"
-Cohesion: 0.13
-Nodes (4): Connect to Feishu/Lark., Disconnect from Feishu/Lark., Route user reactions on bot messages as synthetic text events., Best-effort discovery of bot identity for precise group mention gating.
+Cohesion: 0.14
+Nodes (6): Recursively resolve a toolset to get all tool names.          This function hand, resolve_toolset(), Tests for the spark-api-server toolset definition., TestSparkApiServerToolset, TestToolsetIntegration, TestResolveToolset
 
 ### Community 565 - "Community 565"
 Cohesion: 0.07
 Nodes (28): 1. Caching for Performance, 2. Error Handling, 3. Monitoring, 4. A/B Testing, Basic RAG, Binary Classifier, Classification, Complete Example: Customer Support Bot (+20 more)
 
 ### Community 566 - "Community 566"
-Cohesion: 0.08
-Nodes (17): Tests for issue #860 — SQLite session transcript deduplication.  Verifies that:, Multiple _persist_session calls don't duplicate DB entries., After compression creates a new session, flush index resets., Verify skip_db=True writes JSONL but not SQLite., With skip_db=True, message appears in JSONL but not SQLite., With skip_db=True and a real DB, message does NOT appear in SQLite., Without skip_db, message appears in both JSONL and SQLite., Verify _flush_messages_to_session_db tracks what it already wrote. (+9 more)
+Cohesion: 0.12
+Nodes (10): Tests for issue #860 — SQLite session transcript deduplication.  Verifies that:, Verify skip_db=True writes JSONL but not SQLite., With skip_db=True, message appears in JSONL but not SQLite., With skip_db=True and a real DB, message does NOT appear in SQLite., Without skip_db, message appears in both JSONL and SQLite., Verify _last_flushed_db_idx is properly initialized., Agent starts with _last_flushed_db_idx = 0., Without session_db, flush is a no-op and doesn't crash. (+2 more)
 
 ### Community 567 - "Community 567"
-Cohesion: 0.19
-Nodes (17): find_shell_configs(), get_project_root(), log_info(), log_success(), log_warn(), Spark Agent Uninstaller.  Provides options for: - Full uninstall: Remove everyth, Stop and uninstall the gateway service if running., Run the uninstall process.          Options:     - Full uninstall: removes code (+9 more)
+Cohesion: 0.12
+Nodes (15): get_model_capabilities(), ModelCapabilities, Structured capability metadata for a model from models.dev., Look up full capability metadata from models.dev cache.      Uses the existing f, Tests for get_model_capabilities vision detection., Models with attachment=True should report supports_vision=True., Models with 'image' in modalities.input but attachment=False should         stil, Models with neither attachment nor image modality should be non-vision. (+7 more)
 
 ### Community 568 - "Community 568"
 Cohesion: 0.07
@@ -4351,8 +4315,8 @@ Cohesion: 0.08
 Nodes (20): Popen, _pid_alive(), Tests for zombie process cleanup — verifies processes spawned by tools are prope, close() should call kill_all, cleanup_vm, cleanup_browser., close() can be called multiple times without error., close() should call close() on all active child agents., close() continues cleanup even if one step fails., Verify gateway lifecycle calls close() on agents. (+12 more)
 
 ### Community 573 - "Community 573"
-Cohesion: 0.03
-Nodes (62): _FakeApp, _FakeBuffer, _make_cli_stub(), test_cancel_secret_capture_marks_setup_skipped(), test_cli_chat_registers_secret_capture_callback(), test_secret_capture_callback_can_be_completed_from_cli_state_machine(), test_secret_capture_timeout_clears_hidden_input_buffer(), test_secret_capture_uses_getpass_without_tui() (+54 more)
+Cohesion: 0.04
+Nodes (47): Banner, session resume, and session-op methods for SparkCLI (mixin).  Extracted, check_for_updates(), _display_toolset_name(), format_banner_version_label(), get_git_banner_state(), get_update_result(), _git_short_hash(), prefetch_update_check() (+39 more)
 
 ### Community 574 - "Community 574"
 Cohesion: 0.11
@@ -4363,7 +4327,7 @@ Cohesion: 0.10
 Nodes (10): Tests for BaseEnvironment unified execution model.  Tests _wrap_command(), _extr, Concrete subclass for testing base class methods., When _snapshot_ready=False, execute() should pass login=True to _run_bash., If the marker appears in command output AND as the real marker,         rfind gr, _TestableEnv, TestCwdMarker, TestEmbedStdinHeredoc, TestExtractCwdFromOutput (+2 more)
 
 ### Community 576 - "Community 576"
-Cohesion: 0.09
+Cohesion: 0.10
 Nodes (18): _make_fake_popen(), Tests for subprocess env sanitization in LocalEnvironment.  Verifies that Spark-, Tool and gateway secrets/config must not leak into subprocess env., Credential-file path vars must not leak into subprocess env., Standard env vars (PATH, HOME, USER) must still be passed through., Custom self.env vars are stripped unless explicitly passed through., Callers can opt in to passing a blocked var via _SPARK_FORCE_ prefix., _SPARK_FORCE_OPENAI_API_KEY in self.env should inject OPENAI_API_KEY. (+10 more)
 
 ### Community 577 - "Community 577"
@@ -4371,8 +4335,8 @@ Cohesion: 0.09
 Nodes (20): Automatic context window compression for long conversations.  Self-contained cla, Abstract base class for pluggable context engines.  A context engine controls ho, _make_minimal_agent(), Tests for session reset completeness (fixes #2635).  /clear and /new must not ca, reset_session_state() must not raise when context_compressor is None., Return an AIAgent constructed with the absolute minimum args.      We pass dummy, reset_session_state() must clear ALL session-scoped state., Compression summary from old session must not leak into new session. (+12 more)
 
 ### Community 578 - "Community 578"
-Cohesion: 0.08
-Nodes (24): apply_anthropic_cache_control(), _apply_cache_marker(), Anthropic prompt caching (system_and_3 strategy).  Reduces input token costs by, Add cache_control to a single message, handling all format variations., Apply system_and_3 caching strategy to messages for Anthropic models.      Place, Tests for agent/prompt_caching.py — Anthropic cache control injection., Native Anthropic path: cache_control injected top-level (adapter moves it inside, OpenRouter path: top-level cache_control on role:tool is invalid and causes sile (+16 more)
+Cohesion: 0.11
+Nodes (12): apply_anthropic_cache_control(), _apply_cache_marker(), Anthropic prompt caching (system_and_3 strategy).  Reduces input token costs by, Add cache_control to a single message, handling all format variations., Apply system_and_3 caching strategy to messages for Anthropic models.      Place, Tests for agent/prompt_caching.py — Anthropic cache control injection., Native Anthropic path: cache_control injected top-level (adapter moves it inside, OpenRouter path: top-level cache_control on role:tool is invalid and causes sile (+4 more)
 
 ### Community 579 - "Community 579"
 Cohesion: 0.07
@@ -4411,12 +4375,12 @@ Cohesion: 0.07
 Nodes (27): Auto-Reset Policies, Auto-Titling, Cleanup, Delete, Every Platform, One Store, Export, Group and Multi-User Sessions, Jump Back In (+19 more)
 
 ### Community 588 - "Community 588"
-Cohesion: 0.07
-Nodes (24): _detect_tool_failure(), get_cute_tool_message(), _get_skin(), get_skin_tool_prefix(), get_tool_emoji(), get_tool_preview_max_len(), Return the configured max preview length (0 = unlimited)., Get the active skin config, or None if not available. (+16 more)
+Cohesion: 0.15
+Nodes (17): _capture(), _capture_check(), _capture_update(), _DummyLockFile, hub_env(), Set up isolated hub directory paths and return (monkeypatch, tmp_path)., Populate hub/builtin/local skills for source-classification tests., Run do_list into a string buffer and return the output. (+9 more)
 
 ### Community 589 - "Community 589"
-Cohesion: 0.20
-Nodes (14): GitHubAuth, batch_resolve_paths(), crawl_skills_sh(), crawl_source(), _fetch_repo_tree(), main(), _meta_to_dict(), Fetch the recursive tree for a repo. Returns list of tree entries. (+6 more)
+Cohesion: 0.14
+Nodes (16): GitHubAuth, batch_resolve_paths(), crawl_skills_sh(), crawl_source(), _fetch_repo_tree(), main(), _meta_to_dict(), Fetch the recursive tree for a repo. Returns list of tree entries. (+8 more)
 
 ### Community 590 - "Community 590"
 Cohesion: 0.07
@@ -4427,8 +4391,8 @@ Cohesion: 0.07
 Nodes (27): Best Practices, Cleanup, Common vars, Controlling Tweens, Core Tween Methods, Creating a Timeline, Credits And References, Defaults (+19 more)
 
 ### Community 592 - "Community 592"
-Cohesion: 0.10
-Nodes (27): _fake_tool_handler(), _get_api_key(), _make_server(), Integration tests for SparkAgentLoop tool calling.  Tests the full agent loop wi, Handle fake tool calls for testing., Model should call a single tool, get the result, and respond., Model should call multiple tools in a single turn., Agent should handle multiple turns of tool calls. (+19 more)
+Cohesion: 0.11
+Nodes (26): _fake_tool_handler(), _get_api_key(), _make_server(), Integration tests for SparkAgentLoop tool calling.  Tests the full agent loop wi, Handle fake tool calls for testing., Model should call a single tool, get the result, and respond., Model should call multiple tools in a single turn., Agent should handle multiple turns of tool calls. (+18 more)
 
 ### Community 593 - "Community 593"
 Cohesion: 0.16
@@ -4439,8 +4403,8 @@ Cohesion: 0.11
 Nodes (21): _agent_browser_bin(), browser_profile_dir(), _cdp_port_for(), clear_browsing_data(), close_agent_browser_session(), get_agent_browser_session(), is_available(), agent-browser-backed streamed preview session (Item 2).  This is the agent-brows (+13 more)
 
 ### Community 595 - "Community 595"
-Cohesion: 0.05
-Nodes (22): adapter(), _ensure_telegram_mock(), Tests for Telegram document handling in gateway/platforms/telegram.py.  Covers:, Point document cache to tmp_path so tests don't touch ~/.spark., Tests for TelegramAdapter.send_document() — sending files to users., Adapter with a mock bot attached., A local file is sent via bot.send_document and returns success., Install mock telegram modules so TelegramAdapter can be imported. (+14 more)
+Cohesion: 0.08
+Nodes (13): Tests for TelegramAdapter.send_document() — sending files to users., Adapter with a mock bot attached., A local file is sent via bot.send_document and returns success., The file_name parameter overrides the basename for display., Missing file returns error without calling Telegram API., If bot is None, returns not connected error., Captions longer than 1024 chars are truncated., If Telegram API raises, falls back to base class text message. (+5 more)
 
 ### Community 596 - "Community 596"
 Cohesion: 0.13
@@ -4467,8 +4431,8 @@ Cohesion: 0.07
 Nodes (27): Bite-Sized Task Granularity, Common Mistakes, DRY (Don't Repeat Yourself), Execution Handoff, Frequent Commits, Header (Required), Incomplete Code, Missing File Paths (+19 more)
 
 ### Community 602 - "Community 602"
-Cohesion: 0.10
-Nodes (8): ABC cannot be instantiated directly., Minimal provider that records what initialize() receives., Verify user_id reaches providers via initialize_all., CLI sessions should not have user_id in kwargs., Explicit None user_id should not appear in kwargs., RecordingProvider, TestMemoryManagerUserIdThreading, MemoryProvider
+Cohesion: 0.07
+Nodes (15): MemoryManager — orchestrates the built-in memory provider plus at most ONE exter, Abstract base class for pluggable memory providers.  Memory providers give the a, ABC cannot be instantiated directly., Tests for per-user memory scoping via user_id threading.  Verifies that gateway, Minimal provider that records what initialize() receives., Verify AIAgent stores user_id and passes it to memory init kwargs., AIAgent should store user_id as instance attribute., AIAgent should have None user_id when not provided (CLI mode). (+7 more)
 
 ### Community 603 - "Community 603"
 Cohesion: 0.07
@@ -4539,8 +4503,8 @@ Cohesion: 0.11
 Nodes (20): acknowledgePendingEvent(), annotRoot, args, CONTEXT_DIR, { detectScript, sessionPath, livePath }, __dirname, enqueueEvent(), existingRecord (+12 more)
 
 ### Community 621 - "Community 621"
-Cohesion: 0.09
-Nodes (16): build_tool_complete(), get_tool_kind(), make_tool_call_id(), ACP tool-call helpers for mapping spark tools to ACP ToolKind and building conte, Create a ToolCallUpdate (progress) event for a completed tool call., Return the ACP ToolKind for a spark tool, defaulting to 'other'., Generate a unique tool call ID., Tests for acp_adapter.tools — tool kind mapping and ACP content building. (+8 more)
+Cohesion: 0.13
+Nodes (11): build_tool_complete(), get_tool_kind(), Create a ToolCallUpdate (progress) event for a completed tool call., Return the ACP ToolKind for a spark tool, defaulting to 'other'., Completed terminal call should include output text., Very large outputs should be truncated., Every common spark tool should appear in TOOL_KIND_MAP., TestBuildToolComplete (+3 more)
 
 ### Community 622 - "Community 622"
 Cohesion: 0.09
@@ -4578,10 +4542,6 @@ Nodes (14): Tests for credential pool preservation through smart routing and 429
 Cohesion: 0.08
 Nodes (25): ASCII Video, Blend modes and composition, Character palettes (24), Color strategies, Coordinate transforms (11), File structure, Grid system, Hardware adaptation (+17 more)
 
-### Community 631 - "Community 631"
-Cohesion: 0.08
-Nodes (7): Tests for plugins/memory/honcho/client.py — Honcho client configuration., Tests for the initOnSessionStart config field., base_url alone (no API key) is sufficient to enable a local instance., TestFromEnv, TestInitOnSessionStart, TestProfileScopedConfig, TestResetHonchoClient
-
 ### Community 632 - "Community 632"
 Cohesion: 0.08
 Nodes (25): 403 Forbidden errors, Bot is not responding, Bot is offline, "Failed to authenticate" on startup, How Spark Behaves Once Connected, Manual Configuration, Mattermost, Mention Behavior (+17 more)
@@ -4599,12 +4559,12 @@ Cohesion: 0.08
 Nodes (25): 1. Configure settings.json, 1. Install the ACP Client extension, 1. Install the ACP plugin, 2. Configure settings.json, 2. Configure the agent, 2. Restart Zed, 3. Restart VS Code, 3. Use the agent (+17 more)
 
 ### Community 636 - "Community 636"
-Cohesion: 0.14
-Nodes (8): _import_cli(), Tests for the /fast CLI command and service-tier config handling., Fast mode should add request_overrides but NOT change the provider/runtime., Anthropic models should get speed:'fast' override, not service_tier., TestConfigDefault, TestFastModeRouting, TestHandleFastCommand, TestParseServiceTierConfig
+Cohesion: 0.07
+Nodes (18): Resolve model/runtime overrides for a single user turn., _import_cli(), Tests for the /fast CLI command and service-tier config handling., Verify the expanded Priority Processing model registry., Fast mode should add request_overrides but NOT change the provider/runtime., Verify Anthropic Fast Mode model support and override resolution., OpenAI models should still get service_tier, not speed., Anthropic models should get speed:'fast' override, not service_tier. (+10 more)
 
 ### Community 637 - "Community 637"
-Cohesion: 0.11
-Nodes (11): _make_session(), Tests for context item validation, persistence, and message augmentation., TestContextItemPersistence, TestContextItemValidation, TestContextMessageAugmentation, _build_context_augmented_message(), Return the text to inject for a context item, or None if nothing to inject., Prepend resolved context item content to the user message. (+3 more)
+Cohesion: 0.06
+Nodes (46): _make_session(), Tests for context item validation, persistence, and message augmentation., TestContextItemPersistence, TestContextItemValidation, GlobalModelConfig, Shared helpers for Spark's universal model configuration.  The model/runtime sel, Return the normalized model selection from config.yaml or a config dict., Persist the universal model selection to config.yaml.      ``None`` means "leave (+38 more)
 
 ### Community 638 - "Community 638"
 Cohesion: 0.13
@@ -4619,8 +4579,8 @@ Cohesion: 0.13
 Nodes (16): _make_author(), _make_message(), Tests for Discord system message filtering (thread renames, pins, etc.)., Create a mock Discord author., Create a mock Discord message with a specific type., Test that Discord system messages (thread renames, pins, etc.) are ignored., Simulate the on_message filter logic and return whether message was accepted., Regular user messages (type=default) should be accepted. (+8 more)
 
 ### Community 641 - "Community 641"
-Cohesion: 0.16
-Nodes (3): _Client, Mirror built-in memory writes to RetainDB., Any
+Cohesion: 0.18
+Nodes (5): atomic_json_write(), Write JSON data to a file atomically.      Uses temp file + fsync + os.replace t, Multiple rapid writes should each produce valid JSON., Core atomic write behavior., TestAtomicJsonWrite
 
 ### Community 642 - "Community 642"
 Cohesion: 0.08
@@ -4635,8 +4595,8 @@ Cohesion: 0.10
 Nodes (14): cosign verify-blob exits 0 → returns True., Identity regexp must pin to the release workflow, not the whole repo., cosign verify-blob exits non-zero → returns False (abort install)., cosign not on PATH → returns None (proceed with SHA-256 only)., cosign times out → returns None (proceed with SHA-256 only)., cosign OSError → returns None (proceed with SHA-256 only)., _install_tirith returns None when cosign rejects the signature., _install_tirith proceeds with SHA-256 only when cosign is not on PATH. (+6 more)
 
 ### Community 645 - "Community 645"
-Cohesion: 0.11
-Nodes (11): Crash-safe stdio wrapping for the agent runtime.  When spark-agent runs headless, Transparent stdio wrapper that catches OSError/ValueError from broken pipes., _SafeWriter, Verify _SafeWriter guards stdout against OSError (broken pipes)., When stdout is healthy, _SafeWriter is transparent., OSError on write is silently caught, returns len(data)., OSError on flush is silently caught., print() through _SafeWriter doesn't crash on broken pipe. (+3 more)
+Cohesion: 0.10
+Nodes (13): _install_safe_stdio(), Crash-safe stdio wrapping for the agent runtime.  When spark-agent runs headless, Transparent stdio wrapper that catches OSError/ValueError from broken pipes., Wrap stdout/stderr so best-effort console output cannot crash the agent., _SafeWriter, Verify _SafeWriter guards stdout against OSError (broken pipes)., When stdout is healthy, _SafeWriter is transparent., OSError on write is silently caught, returns len(data). (+5 more)
 
 ### Community 646 - "Community 646"
 Cohesion: 0.09
@@ -4644,7 +4604,7 @@ Nodes (14): args, buildElementLifecycles(), captureSnapshots(), COMP_DIR, findLa
 
 ### Community 647 - "Community 647"
 Cohesion: 0.15
-Nodes (26): cleanup(), clearAnnotations(), clearScrollY(), clearSession(), closeTunePopover(), copyToClipboard(), desc(), handleClick() (+18 more)
+Nodes (25): cleanup(), clearScrollY(), clearSession(), copyToClipboard(), desc(), handleClick(), handleKeyDown(), handleMouseMove() (+17 more)
 
 ### Community 648 - "Community 648"
 Cohesion: 0.17
@@ -4655,24 +4615,24 @@ Cohesion: 0.13
 Nodes (24): check_auth(), _ensure_deps(), exchange_auth_code(), _extract_code_and_state(), get_auth_url(), install_deps(), _load_pending_auth(), _load_token_payload() (+16 more)
 
 ### Community 650 - "Community 650"
-Cohesion: 0.36
-Nodes (4): check_alias_collision(), Return a human-readable collision message, or None if the name is safe.      Che, Tests for check_alias_collision()., TestAliasCollision
+Cohesion: 0.16
+Nodes (11): _make_source(), _make_store(), Tests for the clean shutdown marker that prevents unwanted session auto-resets., If .clean_shutdown exists, suspend_recently_active should NOT be called., Without .clean_shutdown marker (crash), suspension should fire., stop(restart=True) should also write the marker., Verify suspend_recently_active only marks recent sessions., Test that the marker file controls session suspension on startup. (+3 more)
 
 ### Community 651 - "Community 651"
-Cohesion: 0.09
-Nodes (16): get_active_profile_name(), _get_profiles_root(), Return the directory where named profiles are stored.      Anchored to the spark, Infer the current profile name from SPARK_HOME.      Returns ``"default"`` if SP, Tests for get_active_profile_name()., A custom SPARK_HOME (Docker, etc.) IS the default root., Tests for _get_profiles_root() and _get_default_spark_home()., In Docker (SPARK_HOME outside ~/.spark), profiles go under SPARK_HOME. (+8 more)
+Cohesion: 0.08
+Nodes (21): get_active_profile_name(), _get_default_spark_home(), _get_profiles_root(), Return the directory where named profiles are stored.      Anchored to the spark, Return the default (pre-profile) SPARK_HOME path.      In standard deployments t, Infer the current profile name from SPARK_HOME.      Returns ``"default"`` if SP, profile_env(), Comprehensive tests for spark_cli.profiles module.  Tests cover: validation, dir (+13 more)
 
 ### Community 652 - "Community 652"
-Cohesion: 0.09
-Nodes (14): _check_gateway_running(), Raise ``ValueError`` if *name* is not a valid profile identifier., Check if a gateway is running for a given profile directory., validate_profile_name(), Tests for validate_profile_name()., Additional edge-case tests., Verify _check_gateway_running reads pid file and probes os.kill., Pid file containing just a number (legacy format). (+6 more)
+Cohesion: 0.10
+Nodes (12): Raise ``ValueError`` if *name* is not a valid profile identifier., validate_profile_name(), Tests for validate_profile_name()., Additional edge-case tests., Verify _check_gateway_running reads pid file and probes os.kill., Pid file containing just a number (legacy format)., Single alphanumeric character is valid., Name starting with hyphen is invalid. (+4 more)
 
 ### Community 653 - "Community 653"
 Cohesion: 0.08
 Nodes (8): Tests for Arcee AI provider support — standard direct API provider., Arcee uses main-model-first — no entry in _API_KEY_PROVIDER_AUX_MODELS., TestArceeAliases, TestArceeAuxiliary, TestArceeModelCatalog, TestArceeProviderRegistry, TestArceeProvidersModule, TestArceeURLMapping
 
 ### Community 654 - "Community 654"
-Cohesion: 0.04
-Nodes (59): Handle /files — fuzzy file picker that inserts @path into the next message., curses_radiolist(), curses_single_select(), _numbered_fallback(), _numbered_single_fallback(), _radio_numbered_fallback(), Shared curses-based UI components for Spark CLI.  Used by `spark tools` and `spa, Curses single-select radio list. Returns the selected index.      Args: (+51 more)
+Cohesion: 0.08
+Nodes (25): Tests for tool token estimation and curses_ui status_fn support., The status_fn should return a human-readable token count string., When toolsets overlap (browser includes web_search), tokens should not double-co, Status function with no tools selected should return ~0 tokens., _estimate_tool_tokens should return a non-empty dict with positive values., The numbered fallback should print the status_fn output., The numbered fallback should work fine without status_fn., registry.get_schema() should return a tool's schema dict. (+17 more)
 
 ### Community 655 - "Community 655"
 Cohesion: 0.10
@@ -4680,15 +4640,15 @@ Nodes (16): Tests for model_context_length in normalize/denormalize and /api/mod
 
 ### Community 656 - "Community 656"
 Cohesion: 0.09
-Nodes (47): NodeHandler, _doc(), Tests for the workflow execution engine + built-in node handlers., test_agent_node_honors_iteration_toolset_and_memory_params(), test_code_node_uses_sandbox(), test_context_memory_node_shares_state(), test_cycle_detected(), test_field_mapping_between_nodes() (+39 more)
+Nodes (46): NodeHandler, _doc(), Tests for the workflow execution engine + built-in node handlers., test_agent_node_honors_iteration_toolset_and_memory_params(), test_code_node_uses_sandbox(), test_context_memory_node_shares_state(), test_cycle_detected(), test_field_mapping_between_nodes() (+38 more)
 
 ### Community 657 - "Community 657"
 Cohesion: 0.12
 Nodes (10): _build_utility_schemas(), Return an MCP name component safe for tool and prefix generation.      Preserves, Build schemas for the MCP utility tools (resources & prompts).      Returns a li, sanitize_mcp_name_component(), Tests for _build_utility_schemas() and the schema format of utility tools., Verify sanitize_mcp_name_component handles all edge cases., Server names with slashes produce valid utility tool names., _sync_mcp_toolsets uses sanitize consistently with _convert_mcp_schema. (+2 more)
 
 ### Community 658 - "Community 658"
-Cohesion: 0.09
-Nodes (15): _mcp_loop_exception_handler(), Suppress benign 'Event loop is closed' noise during shutdown.      When the MCP, Tests for MCP stability fixes — event loop handler, PID tracking, shutdown robus, _check_config_mcp_changes uses a timeout on _reload_mcp., If _reload_mcp hangs, the config watcher times out and returns., _mcp_loop_exception_handler suppresses benign 'Event loop is closed'., MCPServerTask.run() retries initial connection failures instead of giving up., _MAX_INITIAL_CONNECT_RETRIES should be defined. (+7 more)
+Cohesion: 0.06
+Nodes (23): _kill_orphaned_mcp_children(), _mcp_loop_exception_handler(), Suppress benign 'Event loop is closed' noise during shutdown.      When the MCP, Best-effort kill of MCP stdio subprocesses that survived loop shutdown.      Aft, Tests for MCP stability fixes — event loop handler, PID tracking, shutdown robus, Unix-like platforms should keep using SIGKILL for orphan cleanup., Windows-like signal modules without SIGKILL should fall back to SIGTERM., _check_config_mcp_changes uses a timeout on _reload_mcp. (+15 more)
 
 ### Community 659 - "Community 659"
 Cohesion: 0.08
@@ -4707,8 +4667,8 @@ Cohesion: 0.09
 Nodes (11): Tests for transcription_tools.py — local (faster-whisper) and OpenAI providers., _get_provider() picks the right backend based on config + availability., Explicit local provider must not silently fall back to cloud., Explicit openai without key returns none — no cross-provider fallback., TestGetProvider, TestTranscribeLocal, Second call with same model should NOT reload the model., Switching model name should reload the model. (+3 more)
 
 ### Community 663 - "Community 663"
-Cohesion: 0.15
-Nodes (10): Path, _get_category_from_path(), _load_category_description(), _parse_frontmatter(), Parse YAML frontmatter from markdown content.      Delegates to ``agent.skill_ut, Extract category from skill path based on directory structure.      For paths li, Load category description from DESCRIPTION.md if it exists.      Args:         c, Malformed YAML falls back to simple key:value parsing. (+2 more)
+Cohesion: 0.18
+Nodes (6): _get_anthropic_max_output(), Look up the max output token limit for an Anthropic model.      Uses substring m, claude-3-5-sonnet' should match before 'claude-3-5'., TestGetAnthropicMaxOutput, Verify _get_anthropic_max_output returns correct limits for MiniMax models., TestMinimaxMaxOutput
 
 ### Community 664 - "Community 664"
 Cohesion: 0.08
@@ -4719,8 +4679,8 @@ Cohesion: 0.08
 Nodes (25): Basic transcription, Batch processing, Best practices, Command line usage, Extract audio from video, GPU acceleration, Initial prompt, Installation (+17 more)
 
 ### Community 666 - "Community 666"
-Cohesion: 0.08
-Nodes (24): _ACPChatCompletions, _ACPChatNamespace, CopilotACPClient, _ensure_path_within_cwd(), _extract_tool_calls_from_text(), _format_messages_as_prompt(), _jsonrpc_error(), OpenAI-compatible shim that forwards Spark requests to `copilot --acp`.  This ad (+16 more)
+Cohesion: 0.15
+Nodes (16): _ACPChatCompletions, _ACPChatNamespace, CopilotACPClient, _ensure_path_within_cwd(), _extract_tool_calls_from_text(), _format_messages_as_prompt(), _jsonrpc_error(), OpenAI-compatible shim that forwards Spark requests to `copilot --acp`.  This ad (+8 more)
 
 ### Community 667 - "Community 667"
 Cohesion: 0.11
@@ -4743,8 +4703,8 @@ Cohesion: 0.08
 Nodes (24): Access Policies, AES-128-ECB Encrypted CDN, All Environment Variables, Configuration Options, Connect Your Account, DM Policy, Group Policy, How It Works (+16 more)
 
 ### Community 672 - "Community 672"
-Cohesion: 0.12
-Nodes (8): Skill names with +, /, or other special chars produce clean cmd keys., Skill with name consisting only of special chars is silently skipped., Skill names with / chars produce clean cmd keys., New bundled skills are discoverable as slash commands., macOS-only skills should not register slash commands on Linux., macOS-only skills should register slash commands on macOS., Disabled skills should not register slash commands., TestScanSkillCommands
+Cohesion: 0.14
+Nodes (11): get_default_spark_root(), Return the root Spark directory for profile-level operations.      In standard d, Tests for spark_constants module., Tests for get_default_spark_root() — Docker/custom deployment awareness., When SPARK_HOME is not set, returns ~/.spark., When SPARK_HOME = ~/.spark, returns ~/.spark., When SPARK_HOME is a profile under ~/.spark, returns ~/.spark., When SPARK_HOME points outside ~/.spark (Docker), returns SPARK_HOME. (+3 more)
 
 ### Community 673 - "Community 673"
 Cohesion: 0.14
@@ -4783,8 +4743,8 @@ Cohesion: 0.08
 Nodes (24): Animating results, Bar chart comparison (most common), Building architecture diagrams, Common mistakes, Data flow animation, Domain-specific patterns, Equation reveal strategy, First-principles equation explanation (+16 more)
 
 ### Community 682 - "Community 682"
-Cohesion: 0.06
-Nodes (49): ConnectorGrant, disable_connector_skills(), enable_connector_skills(), grant_for(), Declarative connectors → skills/toolsets mapping.  Single source of truth for wh, Disable the mapped skills for a connector (toolsets are left alone —     they ar, Skills + toolsets unlocked by one connector., Merged mapping for a connector: declared (spec) skills + grant table.      Retur (+41 more)
+Cohesion: 0.05
+Nodes (52): ConnectorGrant, disable_connector_skills(), enable_connector_skills(), grant_for(), Declarative connectors → skills/toolsets mapping.  Single source of truth for wh, Disable the mapped skills for a connector (toolsets are left alone —     they ar, Skills + toolsets unlocked by one connector., Merged mapping for a connector: declared (spec) skills + grant table.      Retur (+44 more)
 
 ### Community 683 - "Community 683"
 Cohesion: 0.08
@@ -4811,8 +4771,8 @@ Cohesion: 0.08
 Nodes (23): Abstract, Acknowledgments, Anonymity, Appendices, Citations, Credits, Figures and tables, File Format (+15 more)
 
 ### Community 689 - "Community 689"
-Cohesion: 0.08
-Nodes (19): _bar_chart(), _format_duration(), Session Insights Engine for Spark Agent.  Analyzes historical session data from, Find notable sessions (longest, most messages, most tokens)., Format the insights report for terminal display (CLI)., Format the insights report for gateway/messaging (shorter)., Format seconds into a human-readable duration string., Create simple horizontal bar chart strings from values. (+11 more)
+Cohesion: 0.23
+Nodes (5): _format_duration(), Find notable sessions (longest, most messages, most tokens)., Format the insights report for gateway/messaging (shorter)., Format seconds into a human-readable duration string., TestFormatDuration
 
 ### Community 690 - "Community 690"
 Cohesion: 0.14
@@ -4851,8 +4811,8 @@ Cohesion: 0.08
 Nodes (23): For /graphify add and --watch, For /graphify query, For the commit hook and native CLAUDE.md integration, For --update and --cluster-only, /graphify, Honesty Rules, Interpreter guard for subcommands, Part A - Structural extraction for code files (+15 more)
 
 ### Community 699 - "Community 699"
-Cohesion: 0.24
-Nodes (7): _extract_parallel_scope_path(), Tool-batch parallelism heuristics for the agent loop.  Pure functions + constant, Return the normalized file target for path-scoped tools., Return True when a tool-call batch is safe to run concurrently., _should_parallelize_tool_batch(), TestParallelScopePathNormalization, Path
+Cohesion: 0.16
+Nodes (12): _extract_parallel_scope_path(), _paths_overlap(), Tool-batch parallelism heuristics for the agent loop.  Pure functions + constant, Return the normalized file target for path-scoped tools., Return True when two paths may refer to the same subtree., Return True when a tool-call batch is safe to run concurrently., _should_parallelize_tool_batch(), Unit tests for the _paths_overlap helper. (+4 more)
 
 ### Community 700 - "Community 700"
 Cohesion: 0.08
@@ -4872,15 +4832,15 @@ Nodes (3): stop() acquires _lock before clearing buffers.          Verify by hol
 
 ### Community 704 - "Community 704"
 Cohesion: 0.18
-Nodes (8): _coerce_value(), Attempt to coerce a string *value* to *expected_type*.      Returns the original, Unit tests for _coerce_value., Strings expected as strings should not be coerced., Union types try each in order., If no type matches, return original string., A non-numeric string in [number, string] should stay a string., TestCoerceValue
+Nodes (7): _make_adapter(), Inline code should not have its content reformatted., Single *italic* should pass through unchanged., Create a WhatsAppAdapter with test attributes (bypass __init__)., WhatsApp markdown conversion., Code blocks should not have their content reformatted., TestFormatMessage
 
 ### Community 705 - "Community 705"
-Cohesion: 0.12
-Nodes (13): Any, _compute_composite_score(), Read final game state from a YC-Bench SQLite database.      Returns dict with fi, Compute composite score from survival and final funds.      Score = survival_wei, YC-Bench long-horizon agent benchmark environment (eval-only).      Each eval it, Verify yc-bench is installed and build the eval matrix., Write a single run result to the streaming JSONL file immediately., Evaluate a single (preset, seed) run.          1. Sets DATABASE_URL and YC_BENCH (+5 more)
+Cohesion: 0.09
+Nodes (18): Any, APIServerConfig, _compute_composite_score(), YCBenchEvalEnv -- YC-Bench Long-Horizon Agent Benchmark Environment  Evaluates a, Configuration for the YC-Bench evaluation environment.      Extends SparkAgentEn, Read final game state from a YC-Bench SQLite database.      Returns dict with fi, Compute composite score from survival and final funds.      Score = survival_wei, YC-Bench long-horizon agent benchmark environment (eval-only).      Each eval it (+10 more)
 
 ### Community 706 - "Community 706"
-Cohesion: 0.15
-Nodes (10): Build a mock Slack message event with file attachments., A PDF attachment should be downloaded, cached, and set as DOCUMENT type., A .txt file under 100KB should have its content injected into event text., A .md file under 100KB should have its content injected., A .txt file over 100KB should be cached but NOT injected., A .zip file should be cached as a supported document., A document over 20MB should be skipped., If document download fails, handler should not crash. (+2 more)
+Cohesion: 0.18
+Nodes (6): build_anthropic_client(), _is_oauth_token(), Check if the key is an Anthropic OAuth/setup token.      Positively identifies A, Create an Anthropic client, auto-detecting setup-tokens vs API keys.      Return, TestBuildAnthropicClient, TestIsOAuthToken
 
 ### Community 707 - "Community 707"
 Cohesion: 0.10
@@ -4927,12 +4887,12 @@ Cohesion: 0.11
 Nodes (17): _extract_attachments(), _extract_message_content(), _get_session_db(), _get_sessions_dir(), _load_channel_directory(), _load_sessions_index(), Path, Spark MCP Server - expose messaging conversations as MCP tools.  Starts a stdio (+9 more)
 
 ### Community 718 - "Community 718"
-Cohesion: 0.21
-Nodes (7): _find_powershell(), _get_ps_exe(), Clipboard image extraction for macOS, Windows, Linux, and WSL2.  Provides a sing, Return the first available PowerShell executable, or None., Check if the Windows clipboard contains an image., _windows_has_image(), TestWindowsHasImage
+Cohesion: 0.13
+Nodes (10): _find_powershell(), _get_ps_exe(), Clipboard image extraction for macOS, Windows, Linux, and WSL2.  Provides a sing, Return the first available PowerShell executable, or None., Check if the Windows clipboard contains an image., Extract clipboard image on native Windows via PowerShell → base64 PNG., _windows_has_image(), _windows_save() (+2 more)
 
 ### Community 719 - "Community 719"
-Cohesion: 0.15
-Nodes (8): has_clipboard_image(), Check if X11 clipboard has image content., Quick check: does the clipboard currently contain an image?      Lighter than sa, _xclip_has_image(), Verify has_clipboard_image dispatches to _windows_has_image on win32., TestHasClipboardImage, TestHasClipboardImageWin32, TestXclipHasImage
+Cohesion: 0.11
+Nodes (11): has_clipboard_image(), Check if Windows clipboard has an image (via powershell.exe)., Check if X11 clipboard has image content., Quick check: does the clipboard currently contain an image?      Lighter than sa, _wsl_has_image(), _xclip_has_image(), Verify has_clipboard_image dispatches to _windows_has_image on win32., TestHasClipboardImage (+3 more)
 
 ### Community 720 - "Community 720"
 Cohesion: 0.13
@@ -4947,8 +4907,8 @@ Cohesion: 0.15
 Nodes (22): is_port_env_key(), is_secret_env_key(), normalize_http_base_url(), normalize_model_name(), normalize_port(), normalize_secret(), Validation helpers for setup and onboarding entry points., Return a TCP port number or raise ``ValueError`` with a user-facing message. (+14 more)
 
 ### Community 723 - "Community 723"
-Cohesion: 0.14
-Nodes (21): Any, check_fal_api_key(), check_image_generation_requirements(), _get_managed_fal_client(), _handle_image_generate(), image_generate_tool(), _ManagedFalSyncClient, _normalize_fal_queue_url_format() (+13 more)
+Cohesion: 0.07
+Nodes (37): Any, check_fal_api_key(), check_image_generation_requirements(), _get_managed_fal_client(), _handle_image_generate(), image_generate_tool(), _ManagedFalSyncClient, _normalize_fal_queue_url_format() (+29 more)
 
 ### Community 724 - "Community 724"
 Cohesion: 0.19
@@ -4967,20 +4927,16 @@ Cohesion: 0.08
 Nodes (23): 1. Visual Theme & Atmosphere, 2. Color Palette & Roles, 3. Typography Rules, 4. Component Stylings, 5. Layout Principles, 6. Depth & Elevation, 7. Do's and Don'ts, 8. Responsive Behavior (+15 more)
 
 ### Community 728 - "Community 728"
-Cohesion: 0.15
-Nodes (9): Resolve a profile name to a SPARK_HOME path string.      Called early in the CLI, resolve_profile_env(), profile_env(), Comprehensive tests for spark_cli.profiles module.  Tests cover: validation, dir, Tests for resolve_profile_env()., Set up an isolated environment for profile tests.      * Path.home() -> tmp_path, Tests for get_profile_dir()., TestGetProfileDir (+1 more)
+Cohesion: 0.27
+Nodes (6): _apply_profile_override(), Pre-parse --profile/-p and set SPARK_HOME before module imports., Resolve a profile name to a SPARK_HOME path string.      Called early in the CLI, resolve_profile_env(), Tests for resolve_profile_env()., TestResolveProfileEnv
 
 ### Community 729 - "Community 729"
 Cohesion: 0.10
 Nodes (7): client(), _FakeSession, Tests for the agent ⇄ user collaboration features (PLAN.md 2b wave 2 — Group 2)., test_pick_element_empty_when_eval_denied(), test_pick_element_returns_descriptor(), test_record_gif_none_without_pillow(), test_record_gif_writes_file()
 
 ### Community 730 - "Community 730"
-Cohesion: 0.24
-Nodes (8): Send via Telegram Bot API (one-shot, no polling needed).      Applies markdown→M, _send_telegram(), _install_telegram_mock(), Verify that messages containing HTML tags are sent with parse_mode=HTML     and, Expressions like 'x < 5' or '3 > 2' should not trigger HTML mode., If Telegram rejects the HTML, fall back to plain text., TestSendTelegramHtmlDetection, TestSendTelegramMediaDelivery
-
-### Community 731 - "Community 731"
-Cohesion: 0.13
-Nodes (3): makeStaticStyle(), StaticDocument, StaticElement
+Cohesion: 0.17
+Nodes (10): Send via Telegram Bot API (one-shot, no polling needed).      Applies markdown→M, _send_telegram(), _install_telegram_mock(), Tests for tools/send_message_tool.py., Verify that messages containing HTML tags are sent with parse_mode=HTML     and, Expressions like 'x < 5' or '3 > 2' should not trigger HTML mode., If Telegram rejects the HTML, fall back to plain text., TestSendTelegramHtmlDetection (+2 more)
 
 ### Community 732 - "Community 732"
 Cohesion: 0.12
@@ -4991,16 +4947,16 @@ Cohesion: 0.14
 Nodes (7): _cleanup(), Tests for the SSH remote execution environment backend., _run(), _setup_ssh_env(), TestOneShotSSH, TestPersistentSSH, TestSSHPreflight
 
 ### Community 734 - "Community 734"
-Cohesion: 0.10
-Nodes (15): mock_sd(), Tests for tools.voice_mode -- all mocked, no real microphone or API calls., Verify that silence detection params can be configured., Bug: proc.wait(timeout) raised TimeoutExpired but process was not killed., Bug: stream.start() failure left stream unclosed., Bug: _on_silence_stop was read/written without lock in audio callback., Create a minimal valid WAV file (1 second of silence at 16kHz)., Redirect _TEMP_DIR to a temporary path. (+7 more)
+Cohesion: 0.26
+Nodes (13): detectUrl(), runVisualContrastFallback(), createDetectorProfile(), extractFindingIds(), profileFindings(), profileFindingsAsync(), profileNow(), profileStepAsync() (+5 more)
 
 ### Community 735 - "Community 735"
-Cohesion: 0.14
-Nodes (11): _make_spark_tree(), Tests for spark backup and import commands., Backup creates a valid zip containing expected files., Backup does NOT include spark-agent/ directory., Backup does NOT include __pycache__ dirs., Create a realistic ~/.spark directory structure for testing., Backup does NOT include PID files., When no output path given, zip goes to ~/spark-backup-*.zip. (+3 more)
+Cohesion: 0.19
+Nodes (8): _make_spark_tree(), Backup creates a valid zip containing expected files., Backup does NOT include spark-agent/ directory., Backup does NOT include __pycache__ dirs., Create a realistic ~/.spark directory structure for testing., Backup does NOT include PID files., When no output path given, zip goes to ~/spark-backup-*.zip., TestBackup
 
 ### Community 736 - "Community 736"
-Cohesion: 0.09
-Nodes (19): _make_adapter(), _make_event(), /new must be dispatched directly, not queued., /reset (alias for /new) must be dispatched directly., /approve must bypass (deadlock prevention)., /deny must bypass (deadlock prevention)., /status must bypass so it returns a system response., /background must bypass so it spawns a parallel task, not an interrupt. (+11 more)
+Cohesion: 0.15
+Nodes (12): clear_session_context(), _install_session_record_factory(), Centralized logging setup for Spark Agent.  Provides a single ``setup_logging()`, Set the session ID for the current thread.      All subsequent log records on th, Clear the session ID for the current thread., Replace the global LogRecord factory with one that adds ``session_tag``.      Un, Enable DEBUG-level console logging for ``--verbose`` / ``-v`` mode.      Called, set_session_context() (+4 more)
 
 ### Community 737 - "Community 737"
 Cohesion: 0.09
@@ -5027,8 +4983,8 @@ Cohesion: 0.06
 Nodes (26): _build_provider_env_blocklist(), _find_bash(), _make_run_env(), Local execution environment — spawn-per-call with session snapshot., Build an allowlisted environment for a local tool subprocess., Find bash for command execution., Build an allowlisted run environment with a sane PATH., Derive the blocklist from provider, tool, and gateway config. (+18 more)
 
 ### Community 743 - "Community 743"
-Cohesion: 0.33
-Nodes (5): Any, ParseResult, _deserialize_value(), GLM 4.5 (GLM-4-MoE) tool call parser.  Format uses custom arg_key/arg_value tags, Try to deserialize a string value to its native Python type.     Attempts json.l
+Cohesion: 0.15
+Nodes (12): Any, ParseResult, ParseResult, _deserialize_value(), Glm45ToolCallParser, GLM 4.5 (GLM-4-MoE) tool call parser.  Format uses custom arg_key/arg_value tags, Try to deserialize a string value to its native Python type.     Attempts json.l, Parser for GLM 4.5 (GLM-4-MoE) tool calls.      Uses <tool_call>...</tool_call> (+4 more)
 
 ### Community 744 - "Community 744"
 Cohesion: 0.14
@@ -5078,17 +5034,13 @@ Nodes (22): Animated counters, Animation Quality, Color meaning consistency, Col
 Cohesion: 0.18
 Nodes (12): _build_agent(), _connection_error(), FakeCodexResponseStream, FakeRequestClient, FakeSharedClient, OpenAIFactory, test_closed_shared_client_is_recreated_before_request(), test_codex_stream_progress_prevents_outer_stale_timeout() (+4 more)
 
-### Community 756 - "Community 756"
-Cohesion: 0.15
-Nodes (9): _make_chunk(), _make_tc_delta(), Build a SimpleNamespace mimicking an OpenAI streaming chunk., Build a SimpleNamespace mimicking a streaming tool_call delta., Tests for _streaming_api_call — voice TTS streaming pipeline., Ollama sends every tool call at index 0 with different ids.          Without the, Ollama with streamed arguments across multiple chunks at same index., When streaming fails before any deltas, error propagates to the main retry loop. (+1 more)
-
 ### Community 757 - "Community 757"
 Cohesion: 0.12
 Nodes (16): annotateFrame(), args, buildOverlaySVG(), COMP_DIR, compositeOver(), FPS, HEIGHT, isBBoxOutsideFrame() (+8 more)
 
 ### Community 758 - "Community 758"
-Cohesion: 0.03
-Nodes (48): Command + display methods for SparkCLI (mixin).  Extracted from core/cli/__init_, Show warnings about disabled tools due to missing API keys., Display available tools with kawaii ASCII art., Banner, session resume, and session-op methods for SparkCLI (mixin).  Extracted, Load a resumed session's history from the DB early (before first chat)., Render a compact recap of previous conversation messages.          Uses Rich mar, Check clipboard for an image and attach it if found.          Saves the image to, Save the current conversation to a file. (+40 more)
+Cohesion: 0.04
+Nodes (40): Display available tools with kawaii ASCII art., check_toolset_requirements(), _coerce_value(), _discover_tools(), get_all_tool_names(), get_available_toolsets(), get_tool_definitions(), _get_tool_loop() (+32 more)
 
 ### Community 759 - "Community 759"
 Cohesion: 0.10
@@ -5116,15 +5068,15 @@ Nodes (15): Path, _path_escapes_skill_dir(), Tests for the skill_view path bound
 
 ### Community 765 - "Community 765"
 Cohesion: 0.08
-Nodes (19): auxiliary_max_tokens_param(), neuter_async_httpx_del(), Return the correct max tokens kwarg for the auxiliary client's provider., Monkey-patch ``AsyncHttpxClientWrapper.__del__`` to be a no-op.      The OpenAI, Codex adapter translates max_tokens internally, so we return max_tokens., TestAuxiliaryMaxTokensParam, Tests for the AsyncHttpxClientWrapper.__del__ neuter fix.  The OpenAI SDK's ``As, Entries with an open loop should be preserved. (+11 more)
+Nodes (21): auxiliary_max_tokens_param(), cleanup_stale_async_clients(), neuter_async_httpx_del(), Return the correct max tokens kwarg for the auxiliary client's provider., Monkey-patch ``AsyncHttpxClientWrapper.__del__`` to be a no-op.      The OpenAI, Force-close cached async clients whose event loop is closed.      Call this afte, Codex adapter translates max_tokens internally, so we return max_tokens., TestAuxiliaryMaxTokensParam (+13 more)
 
 ### Community 766 - "Community 766"
 Cohesion: 0.12
 Nodes (16): Writing then reading the marker should work., Marker older than TTL should be ignored., Marker with 'cosign_missing' reason clears if cosign is now on PATH., Marker with 'cosign_missing' reason stays if cosign is still missing., Markers with other reasons are NOT cleared by cosign appearing., _failure_marker_path must use SPARK_HOME, not hardcoded ~/.spark., _clear_install_failed(), _failure_marker_path() (+8 more)
 
 ### Community 767 - "Community 767"
-Cohesion: 0.14
-Nodes (17): choose_cheap_model_route(), _coerce_bool(), _coerce_int(), Helpers for optional cheap-vs-strong model routing., Resolve the effective model/runtime for one turn.      Returns a dict with model, Return the configured cheap-model route when a message looks simple.      Conser, resolve_turn_route(), When smart routing picks a cheap model but resolve_runtime_provider         fail (+9 more)
+Cohesion: 0.16
+Nodes (16): choose_cheap_model_route(), _coerce_bool(), _coerce_int(), Helpers for optional cheap-vs-strong model routing., Resolve the effective model/runtime for one turn.      Returns a dict with model, Return the configured cheap-model route when a message looks simple.      Conser, resolve_turn_route(), When smart routing picks a cheap model but resolve_runtime_provider         fail (+8 more)
 
 ### Community 768 - "Community 768"
 Cohesion: 0.16
@@ -5139,8 +5091,8 @@ Cohesion: 0.09
 Nodes (21): Database Location, Database Structure, Export and Cleanup, Filtering, FTS5 Full-Text Search, Full-Text Search, Handling Write Contention, Initialize (+13 more)
 
 ### Community 771 - "Community 771"
-Cohesion: 0.15
-Nodes (14): _build_tar_b64(), _load_terminalbench_module(), Security tests for Terminal-Bench 2 archive extraction., _stub_module(), test_extract_base64_tar_allows_safe_files(), test_extract_base64_tar_rejects_path_traversal(), test_extract_base64_tar_rejects_symlinks(), IO (+6 more)
+Cohesion: 0.20
+Nodes (11): _build_tar_b64(), _load_terminalbench_module(), Security tests for Terminal-Bench 2 archive extraction., _stub_module(), test_extract_base64_tar_allows_safe_files(), test_extract_base64_tar_rejects_path_traversal(), test_extract_base64_tar_rejects_symlinks(), IO (+3 more)
 
 ### Community 772 - "Community 772"
 Cohesion: 0.09
@@ -5235,8 +5187,8 @@ Cohesion: 0.09
 Nodes (21): Available Events, Boot Checklist (BOOT.md) — Built-in, Command Usage Logger, Create a Hook, Event Hooks, Examples, Gateway Event Hooks, handler.py (+13 more)
 
 ### Community 795 - "Community 795"
-Cohesion: 0.14
-Nodes (11): Tests for subagent progress relay (issue #169).  Verifies that: - KawaiiSpinner., Tests for the _thinking callback in AIAgent conversation loop., Simulate the exact code path from run_agent.py for the thinking callback., tool_progress_callback should receive _thinking event         when assistant mes, Should not fire when assistant has no content., Should truncate long content to 80 chars., Main agent (delegate_depth=0) should NOT fire thinking events.         This prev, REASONING_SCRATCHPAD tags should be stripped before display. (+3 more)
+Cohesion: 0.12
+Nodes (8): Tests for title lineage resolution and auto-numbering., When numbered variants exist, return the most recent one., Resolving an exact numbered title returns that specific session., With no existing sessions, base title is returned as-is., First continuation after the original gets #2., Each continuation increments the number., Passing a numbered title strips the number and finds the base., TestTitleLineage
 
 ### Community 796 - "Community 796"
 Cohesion: 0.10
@@ -5263,20 +5215,20 @@ Cohesion: 0.24
 Nodes (13): firstCssUrl(), getLayerValue(), loadVisualContrastImage(), parseObjectPosition(), parsePositionPair(), parsePositionToken(), pointToImageSource(), resolveObjectImageRect() (+5 more)
 
 ### Community 802 - "Community 802"
-Cohesion: 0.02
-Nodes (145): parse_reasoning_effort(), Parse a reasoning effort level into a config dict.      Valid levels: "none", "m, deactivate_provider(), _prompt_model_selection(), Interactive model selection. Puts current_model first with a marker. Returns cho, Save the selected model to config.yaml (single source of truth).      The model, Clear active_provider in auth.json without deleting credentials.     Used when t, _save_model_choice() (+137 more)
+Cohesion: 0.11
+Nodes (11): config_home(), Tests that `spark model` always shows the model selection menu for custom provid, First-time flow (no saved model) still works as before., When custom_providers entry has api_mode, it should be applied., When custom_providers entry has no api_mode, stale api_mode is removed., Isolated SPARK_HOME with a minimal config., Ensure _model_flow_named_custom always probes and shows menu., When a model is already saved, the function must still call         fetch_api_mo (+3 more)
 
 ### Community 803 - "Community 803"
 Cohesion: 0.10
 Nodes (20): Agent Loop (`agent_loop.py`), Architecture Overview, Concrete Environments, Core Components, Creating a New Environment, Directory Structure, Eval-Only Environment (Benchmark), Inheritance Chain (+12 more)
 
 ### Community 804 - "Community 804"
-Cohesion: 0.05
-Nodes (31): _normalise(), Per-platform display/verbosity configuration resolver.  Provides ``resolve_displ, Resolve a display setting with per-platform override support.      Parameters, Normalise YAML quirks (bare ``off`` → False in YAML 1.1)., resolve_display_setting(), resolve_display_setting() resolves with correct priority., display.platforms.<plat>.<key> takes top priority., YAML 1.1 quirks (bare off → False, on → True) are handled. (+23 more)
+Cohesion: 0.13
+Nodes (14): _normalise(), Per-platform display/verbosity configuration resolver.  Provides ``resolve_displ, Resolve a display setting with per-platform override support.      Parameters, Normalise YAML quirks (bare ``off`` → False in YAML 1.1)., resolve_display_setting(), Built-in defaults reflect platform capability tiers., Telegram and Discord default to 'all' tool progress., Slack, Mattermost, Matrix default to 'new' tool progress. (+6 more)
 
 ### Community 805 - "Community 805"
-Cohesion: 0.15
-Nodes (14): build_vendor_gateway_url(), get_tool_gateway_scheme(), ManagedToolGatewayConfig, Generic managed-tool gateway helpers.  Managed hosted gateways were tied to the, Return configured shared gateway URL scheme., Return the gateway origin for a specific vendor., Managed tool gateways are disabled after provider cleanup., Managed gateway token resolution is disabled. (+6 more)
+Cohesion: 0.17
+Nodes (9): _list_recent_sessions(), Return metadata for the most recent sessions (no LLM calls)., Search past sessions and return focused summaries of matching conversations., session_search(), session_search should never return the current session., Other sessions should still be returned when current is excluded., Compression/delegation parents should be excluded for the active child session., Delegation child hits should be excluded when they resolve to the current root s (+1 more)
 
 ### Community 806 - "Community 806"
 Cohesion: 0.17
@@ -5319,8 +5271,8 @@ Cohesion: 0.10
 Nodes (20): 12 Core Principles, ANNOTATED_DIAGRAM, Classic 3B1B, Color Palettes, Fine-Grained Text Control, Font Availability, Font Selection, FULL_CENTER (+12 more)
 
 ### Community 816 - "Community 816"
-Cohesion: 0.21
-Nodes (9): ChatCompletionMessageToolCall, Any, ParseResult, Qwen3CoderToolCallParser, Qwen3-Coder tool call parser.  Format uses XML-style nested tags:     <tool_call, Try to convert a parameter value string to a native Python type.     Handles nul, Parser for Qwen3-Coder XML-format tool calls.      Uses nested XML tags: <tool_c, Parse a single <function=name>...</function> block into a ToolCall. (+1 more)
+Cohesion: 0.13
+Nodes (14): ChatCompletionMessageToolCall, ParseResult, Any, ParseResult, DeepSeekV3ToolCallParser, DeepSeek V3 tool call parser.  Format uses special unicode tokens:     <｜tool▁ca, Parser for DeepSeek V3 tool calls.      Uses special unicode tokens with fullwid, Parses the input text and extracts all available tool calls. (+6 more)
 
 ### Community 817 - "Community 817"
 Cohesion: 0.18
@@ -5332,7 +5284,7 @@ Nodes (14): DMs always respond regardless of mention setting., DMs strip mention
 
 ### Community 819 - "Community 819"
 Cohesion: 0.04
-Nodes (34): MCPServerTask, Signal the Task to exit and wait for clean resource teardown., Return kwargs to pass to ClientSession for sampling support., Manages a single MCP server connection in a dedicated asyncio Task.      The ent, Check if this server uses HTTP transport., Build a ``message_handler`` callback for ``ClientSession``.          Dispatches, Re-fetch tools from the server and update the registry.          Called when the, Run the server using stdio transport. (+26 more)
+Nodes (39): _connect_server(), MCPServerTask, Create the background Task and wait until ready (or failed)., Signal the Task to exit and wait for clean resource teardown., Return a set of current child process PIDs.      Uses /proc on Linux, falls back, Create an MCPServerTask, start it, and return when ready.      The server Task k, Return kwargs to pass to ClientSession for sampling support., Manages a single MCP server connection in a dedicated asyncio Task.      The ent (+31 more)
 
 ### Community 820 - "Community 820"
 Cohesion: 0.10
@@ -5343,8 +5295,8 @@ Cohesion: 0.15
 Nodes (9): Pure-function tests; no I/O required., Canonical Anthropic error: max_tokens: X > context_window: Y - input_tokens: Z =, Handles extra spaces around the colon., available tokens: N' wording (no underscore)., Edge case: only 1 token left., prompt is too long' errors must NOT be caught — they need context halving., Generic context window errors without available_tokens should not match., Error not related to max_tokens at all. (+1 more)
 
 ### Community 822 - "Community 822"
-Cohesion: 0.07
-Nodes (19): check_sandbox_requirements(), generate_spark_tools_module(), Code execution sandbox requires a POSIX OS for Unix domain sockets., Build the source code for the spark_tools.py stub module.      Only tools in bot, _force_local_terminal(), _mock_handle_function_call(), Verify json_parse, shell_quote, and retry helpers are generated., Verify that _TOOL_STUBS in code_execution_tool.py stay in sync with     the real (+11 more)
+Cohesion: 0.12
+Nodes (10): Tests for ManagedServer / tool-parser integration.  Validates that: 1. The insta, ManagedServer checks `if parsed_tool_calls:` — None should be falsy., ManagedServer uses `parsed_content or ""` — must be str or None., Test that spark_base_env.py's tool-parser wiring matches the current API., Spark wires parser selection through ServerManager.tool_parser., Verify spark_base_env uses the config field rather than a local parser instance., Test that spark-agent's parsers match ManagedServer's expectations., ManagedServer expects parser.parse(text) -> (content, tool_calls)         where (+2 more)
 
 ### Community 823 - "Community 823"
 Cohesion: 0.14
@@ -5359,8 +5311,8 @@ Cohesion: 0.10
 Nodes (6): manager(), Tests for acp_adapter.session — SessionManager and SessionState., SessionManager with a mock agent factory (avoids needing API keys)., TestCreateSession, TestForkSession, TestListAndCleanup
 
 ### Community 826 - "Community 826"
-Cohesion: 0.24
-Nodes (4): Tests for spark_cli/skills_config.py and skills_tool disabled filtering., TestIsSkillDisabled, _is_skill_disabled(), Check if a skill is disabled in config.
+Cohesion: 0.10
+Nodes (11): Tests for spark_cli/skills_config.py and skills_tool disabled filtering., Tests for agent.skill_utils.get_disabled_skill_names., Explicit platform= parameter should resolve per-platform list., SPARK_SESSION_PLATFORM should be used when SPARK_PLATFORM is unset., SPARK_PLATFORM should win over SPARK_SESSION_PLATFORM., Explicit platform= param should override all env vars., No platform env vars or param should return global list., TestGetDisabledSkillNames (+3 more)
 
 ### Community 827 - "Community 827"
 Cohesion: 0.10
@@ -5372,7 +5324,7 @@ Nodes (11): Tests for surrogate character sanitization in user input.  Surrogate
 
 ### Community 829 - "Community 829"
 Cohesion: 0.13
-Nodes (8): Test that long messages are split before sending., Messages over MAX_MESSAGE_LENGTH should be split., Short messages should be sent in one call., Blockquote '>' markers must survive format → chunk → send pipeline., Bold+italic ***text*** is formatted as *_text_* in sent messages., Pre-escaped &amp; in sent messages must not become &amp;amp;., Wikipedia-style URL with parens survives send pipeline., TestMessageSplitting
+Nodes (8): Generate a complete insights report.          Args:             days: Number of, Fetch sessions within the time window., Get tool call counts from messages.          Uses two sources:         1. tool_n, Get aggregate message statistics., Break down usage by platform/source., Process tool usage data into a ranked list with percentages., Analyze activity patterns by day of week and hour., Any
 
 ### Community 830 - "Community 830"
 Cohesion: 0.16
@@ -5383,28 +5335,28 @@ Cohesion: 0.15
 Nodes (7): parse_duration(), parse_schedule(), Parse schedule string into structured format.          Returns dict with:, Parse duration string into minutes.          Examples:         "30m" → 30, TestParseDuration, TestParseSchedule, parse_schedule('30m') should produce a tz-aware run_at.
 
 ### Community 832 - "Community 832"
-Cohesion: 0.13
-Nodes (6): Popen, Spawn a portable short-lived Python sleep process., Poll a predicate until it returns truthy or the timeout elapses., _spawn_python_sleep(), TestCheckpoint, _wait_until()
+Cohesion: 0.15
+Nodes (8): _ComponentFilter, _ManagedRotatingFileHandler, Only pass records whose logger name starts with one of *prefixes*.      Used to, RotatingFileHandler that ensures group-writable perms in managed mode.      In m, RotatingFileHandler, Repeated AIAgent init should not accumulate duplicate errors.log handlers., test_aiagent_reuses_existing_errors_log_handler(), LogRecord
 
 ### Community 833 - "Community 833"
 Cohesion: 0.15
 Nodes (12): _build_runner(), _FakeRegistry, Tests for configurable background process notification modes.  The gateway proce, thread_id from watcher dict is forwarded as metadata to adapter.send()., When thread_id is empty, metadata should be None (general topic)., Return pre-canned sessions, then None once exhausted., Create a GatewayRunner with a fake config for the given mode., test_no_thread_id_sends_no_metadata() (+4 more)
 
 ### Community 834 - "Community 834"
-Cohesion: 0.16
+Cohesion: 0.17
 Nodes (9): detect_provider_for_model(), Auto-detect the best provider for a model name.      Returns ``(provider_id, mod, claude-opus-4-6 should resolve to anthropic provider., deepseek-chat should resolve to deepseek provider., Models belonging to the current provider should not trigger a switch., Models in the OpenRouter catalog should be found., Completely unknown model names should return None., nous/openrouter should never be auto-suggested as target provider. (+1 more)
 
 ### Community 835 - "Community 835"
-Cohesion: 0.12
-Nodes (10): Tests for _detect_file_drop — file path detection that prevents dragged/pasted a, A file literally named 'help' inside a directory starting with /., Create a temporary .png file and return its path., Create a temporary .py file and return its path., Create a file whose name contains spaces (like macOS screenshots)., TestEdgeCases, TestNonImageFileDrop, tmp_image() (+2 more)
+Cohesion: 0.13
+Nodes (8): Verify config survives GET → edit → PUT without data loss., GET /api/config should not expose _config_version or _model_meta., GET /api/config should normalize model dict to a string., Changing the model string should update model.default on disk., Editing a nested config value should persist correctly., Editing the WebUI chat word-wrap default should persist correctly., Every schema field should have a matching-type value in the config., TestConfigRoundTrip
 
 ### Community 836 - "Community 836"
 Cohesion: 0.10
 Nodes (6): Tests for TelegramPlatform._merge_caption caption deduplication logic., These are the exact scenarios that the old substring check got wrong., TestMergeCaptionBasic, TestMergeCaptionMultipleItems, TestMergeCaptionSubstringBug, TestMergeCaptionWhitespace
 
 ### Community 837 - "Community 837"
-Cohesion: 0.13
-Nodes (7): Path, OptionalSkillSource, Fetch skills from the optional-skills/ directory shipped with the repo.      The, Find a skill directory by name anywhere in optional-skills/., Enumerate all optional skills with metadata., Parse YAML frontmatter from SKILL.md content., TestOptionalSkillSourceBinaryAssets
+Cohesion: 0.17
+Nodes (6): OptionalSkillSource, Fetch skills from the optional-skills/ directory shipped with the repo.      The, Find a skill directory by name anywhere in optional-skills/., Enumerate all optional skills with metadata., Parse YAML frontmatter from SKILL.md content., TestOptionalSkillSourceBinaryAssets
 
 ### Community 838 - "Community 838"
 Cohesion: 0.10
@@ -5460,7 +5412,7 @@ Nodes (9): Tests for optional-skills/productivity/memento-flashcards/scripts/you
 
 ### Community 851 - "Community 851"
 Cohesion: 0.03
-Nodes (141): is_container(), is_termux(), is_wsl(), Return True when running inside a Termux (Android) environment.      Checks ``TE, Return True when running inside WSL (Windows Subsystem for Linux).      Checks `, Return True when running inside a Docker/Podman container.      Checks ``/.docke, _gateway_status(), Return a short gateway status string. (+133 more)
+Nodes (147): is_container(), is_termux(), is_wsl(), Return True when running inside a Termux (Android) environment.      Checks ``TE, Return True when running inside WSL (Windows Subsystem for Linux).      Checks `, Return True when running inside a Docker/Podman container.      Checks ``/.docke, Terminate a PID with platform-appropriate force semantics.      POSIX uses SIGTE, terminate_pid() (+139 more)
 
 ### Community 852 - "Community 852"
 Cohesion: 0.12
@@ -5475,12 +5427,8 @@ Cohesion: 0.08
 Nodes (20): _configure_context_engine(), _configure_memory_provider(), _discover_context_engines(), _discover_memory_providers(), Return [(name, description), ...] for available memory providers., Return [(name, description), ...] for available context engines., Persist memory.provider to config.yaml., Persist context.engine to config.yaml. (+12 more)
 
 ### Community 855 - "Community 855"
-Cohesion: 0.03
-Nodes (71): _Codex401ThenSuccessAgent, _FakeOpenAI, _patch_agent_bootstrap(), test_cron_run_job_codex_path_handles_internal_401_refresh(), test_gateway_run_agent_codex_path_handles_internal_401_refresh(), _UnauthorizedError, _build_media_placeholder(), _check_unavailable_skill() (+63 more)
-
-### Community 856 - "Community 856"
-Cohesion: 0.23
-Nodes (7): Check and run all due jobs.          Uses a file lock so only one tick runs at a, tick(), Agent appended [SILENT] after explanation text — must still suppress., Failed jobs deliver regardless of [SILENT] in output., advance_next_run must be called before run_job to prevent crash-loop re-fires., Verify that [SILENT] responses suppress delivery while still saving output., TestSilentDelivery
+Cohesion: 0.18
+Nodes (6): _Codex401ThenSuccessAgent, _FakeOpenAI, _patch_agent_bootstrap(), test_cron_run_job_codex_path_handles_internal_401_refresh(), test_gateway_run_agent_codex_path_handles_internal_401_refresh(), _UnauthorizedError
 
 ### Community 857 - "Community 857"
 Cohesion: 0.23
@@ -5495,8 +5443,8 @@ Cohesion: 0.12
 Nodes (13): Any, Run a pre-built child agent. Called from within a thread.     Returns a structur, _run_single_child(), Heartbeat propagates child activity to parent during delegation.      Without th, Parent's _touch_activity is called while child.run_conversation blocks., Heartbeat thread is cleaned up when the child finishes., Heartbeat thread is cleaned up even when the child raises., When child has no current_tool, heartbeat uses last_activity_desc. (+5 more)
 
 ### Community 860 - "Community 860"
-Cohesion: 0.18
-Nodes (7): _discover_bundled_skills(), Read the name field from SKILL.md YAML frontmatter, falling back to *fallback*., Find all SKILL.md files in the bundled directory.     Returns list of (skill_nam, _read_skill_name(), Tests for tools/skills_sync.py — manifest-based skill seeding and updating., TestDiscoverBundledSkills, TestReadSkillName
+Cohesion: 0.36
+Nodes (3): Read the name field from SKILL.md YAML frontmatter, falling back to *fallback*., _read_skill_name(), TestReadSkillName
 
 ### Community 861 - "Community 861"
 Cohesion: 0.13
@@ -5511,8 +5459,8 @@ Cohesion: 0.12
 Nodes (11): Remove toolsets that contain only blocked tools., _strip_blocked_tools(), TestStripBlockedTools, Tests for delegate_tool toolset scoping.  Verifies that subagents cannot gain to, Subagent toolsets must be a subset of parent's enabled_toolsets., LLM requests toolsets parent doesn't have — extras are dropped., LLM requests subset of parent tools — all pass through., When toolsets is None/empty, child inherits parent's set. (+3 more)
 
 ### Community 864 - "Community 864"
-Cohesion: 0.21
-Nodes (8): _cua_timeout_message(), _CuaDriverSession, is_available(), Return True if cua-driver is installed and we're on macOS., Wraps a cua-driver MCP subprocess (stdio transport).      Lazy: the subprocess i, Call a cua-driver MCP tool and return a normalised result dict.          Returns, Return executable path for cua-driver, or None., _resolve_cua_binary()
+Cohesion: 0.33
+Nodes (4): _cua_timeout_message(), _CuaDriverSession, Wraps a cua-driver MCP subprocess (stdio transport).      Lazy: the subprocess i, Call a cua-driver MCP tool and return a normalised result dict.          Returns
 
 ### Community 865 - "Community 865"
 Cohesion: 0.12
@@ -5527,8 +5475,8 @@ Cohesion: 0.10
 Nodes (19): compilerOptions, allowImportingTsExtensions, erasableSyntaxOnly, lib, module, moduleDetection, moduleResolution, noEmit (+11 more)
 
 ### Community 868 - "Community 868"
-Cohesion: 0.15
-Nodes (9): detect_provider(), has_provider(), ACP auth helpers — detect the currently configured Spark provider., Return True if Spark can resolve any runtime provider credentials., Resolve the active Spark runtime provider, or None if unavailable., Tests for acp_adapter.auth — provider detection., TestDetectProvider, TestHasProvider (+1 more)
+Cohesion: 0.18
+Nodes (8): detect_provider(), has_provider(), ACP auth helpers — detect the currently configured Spark provider., Return True if Spark can resolve any runtime provider credentials., Resolve the active Spark runtime provider, or None if unavailable., Tests for acp_adapter.auth — provider detection., TestDetectProvider, TestHasProvider
 
 ### Community 869 - "Community 869"
 Cohesion: 0.14
@@ -5547,16 +5495,16 @@ Cohesion: 0.04
 Nodes (37): BriefPanelProps, ContextTray, ContextTrayItem, ContextTrayProps, MODE_LABELS, MODE_ORDER, formatTokens(), PromptBar() (+29 more)
 
 ### Community 873 - "Community 873"
-Cohesion: 0.08
-Nodes (16): ClaudeMarketplaceSource, create_source_router(), LobeHubSource, Discover skills from Claude Code marketplace repos.     Marketplace repos contai, Fetch skills from LobeHub's agent marketplace (14,500+ agents).     LobeHub agen, Fetch a single agent's JSON file., Convert a LobeHub agent JSON into SKILL.md format., Abstract base for all skill registry adapters. (+8 more)
+Cohesion: 0.21
+Nodes (5): LobeHubSource, Fetch skills from LobeHub's agent marketplace (14,500+ agents).     LobeHub agen, Fetch the LobeHub agent index (cached for 1 hour)., Fetch a single agent's JSON file., Convert a LobeHub agent JSON into SKILL.md format.
 
 ### Community 874 - "Community 874"
 Cohesion: 0.15
 Nodes (11): Register a callback fired with each stdout line as it's read., set_output_callback(), _Env, _FakeProc, _FakeStdout, _make_env(), Incremental tool-stdout streaming: _wait_for_process fires the output callback f, Yields lines slowly so we can observe incremental delivery. (+3 more)
 
 ### Community 875 - "Community 875"
-Cohesion: 0.22
-Nodes (12): _extract_reasoning_stats(), _extract_tool_stats(), _normalize_tool_error_counts(), _normalize_tool_stats(), _process_batch_worker(), _process_single_prompt(), Extract tool usage statistics from message history.          Args:         messa, Count how many assistant turns have reasoning vs no reasoning.          Checks f (+4 more)
+Cohesion: 0.15
+Nodes (16): _extract_reasoning_stats(), _extract_tool_stats(), _normalize_tool_error_counts(), _normalize_tool_stats(), _process_batch_worker(), _process_single_prompt(), Extract tool usage statistics from message history.          Args:         messa, Count how many assistant turns have reasoning vs no reasoning.          Checks f (+8 more)
 
 ### Community 876 - "Community 876"
 Cohesion: 0.16
@@ -5567,16 +5515,16 @@ Cohesion: 0.15
 Nodes (10): Tests for document cache utilities in gateway/platforms/base.py.  Covers: get_do, Point the module-level DOCUMENT_CACHE_DIR to a fresh tmp_path., _redirect_cache(), TestCleanupDocumentCache, TestGetDocumentCacheDir, TestSupportedDocumentTypes, cleanup_document_cache(), get_document_cache_dir() (+2 more)
 
 ### Community 878 - "Community 878"
-Cohesion: 0.13
-Nodes (11): Verify that TTS playback can be interrupted., TestPlaybackInterrupt, TestPlayBeep, _import_audio(), play_beep(), Play a short beep tone using numpy + sounddevice.      Args:         frequency:, Lazy-import sounddevice and numpy.  Returns (sd, np).      Raises ImportError or, Stop recording and write captured audio to a WAV file.          The underlying s (+3 more)
+Cohesion: 0.14
+Nodes (8): resolve_display_setting() resolves with correct priority., display.platforms.<plat>.<key> takes top priority., Falls back to display.<key> when no platform override exists., Falls back to built-in platform default., Unknown platforms get the global defaults., Explicit fallback is used when nothing else matches., Other platforms are unaffected by a specific platform override., TestResolveDisplaySetting
 
 ### Community 879 - "Community 879"
 Cohesion: 0.17
 Nodes (12): _make_mock_agent(), _make_runner(), Tests for gateway /usage command — agent cache lookup and output fields., Create a mock AIAgent with realistic session counters., PENDING sentinel in _running_agents should fall through to cache., No running or cached agent → rough estimate from transcript., Cache token lines should be omitted when zero., Subscription-included providers show 'included' instead of dollar amount. (+4 more)
 
 ### Community 880 - "Community 880"
-Cohesion: 0.09
-Nodes (14): _AsyncCM, _make_adapter(), Tests for WhatsApp message formatting and chunking.  Covers: - format_message():, Inline code should not have its content reformatted., Single *italic* should pass through unchanged., WhatsApp send() splits long messages into chunks., Markdown should be converted to WhatsApp format before sending., reply_to should only be set on the first chunk. (+6 more)
+Cohesion: 0.13
+Nodes (7): _AsyncCM, Tests for WhatsApp message formatting and chunking.  Covers: - format_message():, WhatsApp send() splits long messages into chunks., Markdown should be converted to WhatsApp format before sending., reply_to should only be set on the first chunk., Minimal async context manager returning a fixed value., TestSendChunking
 
 ### Community 881 - "Community 881"
 Cohesion: 0.11
@@ -5679,16 +5627,16 @@ Cohesion: 0.18
 Nodes (8): Read a log file for standalone upload.      Returns the file content (last *max_, _read_full_log(), Test _read_full_log for standalone log uploads., Files larger than max_bytes get tail-truncated., When gateway.log doesn't exist, falls back to gateway.log.1., Primary log is used when it exists, even if .1 also exists., Empty primary log falls back to .1 rotation., TestReadFullLog
 
 ### Community 906 - "Community 906"
-Cohesion: 0.13
-Nodes (7): TestCreateAudioRecorder, TestTermuxAudioRecorder, create_audio_recorder(), Recorder backend that uses Termux:API microphone capture commands., Stop recording and discard all captured audio.          The underlying stream is, Return the best recorder backend for the current environment., TermuxAudioRecorder
+Cohesion: 0.24
+Nodes (13): _make_event(), _make_runner(), _make_source(), Tests for universal model config sync in the gateway., A `spark model` config change must beat old Telegram /model overrides., Gateway should not pass stale SPARK_INFERENCE_PROVIDER into resolution., Telegram /model should save config.yaml, not a session override., Create a minimal GatewayRunner with stubbed internals. (+5 more)
 
 ### Community 907 - "Community 907"
 Cohesion: 0.16
 Nodes (7): Convert audio bytes to a temp .wav file using pilk (SILK) or ffmpeg.          QQ, Guess file extension from magic bytes., Check if bytes look like a SILK audio file., Convert audio file to WAV using the pilk library.          Tries the file as-is, Last resort: try writing audio data as raw PCM 16-bit mono 16kHz WAV.          T, Convert audio file to WAV using ffmpeg., Convert audio bytes to .wav using pilk (SILK) or ffmpeg, caching the result.
 
 ### Community 908 - "Community 908"
-Cohesion: 0.18
-Nodes (13): _count_output_lines(), _format_completed_tool_line(), Interactive callbacks for SparkCLI (mixin).  Extracted from core/cli/__init__.py, Status glyph for a completed tool call: ✓ ok / ✗ error., Count non-empty lines in a tool result (0 when empty/None)., Compose the completed-tool scrollback line: glyph + message + collapse hint., _tool_status_glyph(), Tool-output status glyphs + collapsed line-count affordance (TUI). (+5 more)
+Cohesion: 0.22
+Nodes (6): Truncate a conversation transcript to *max_chars*, choosing a window     that ma, _truncate_around_matches(), Full phrase deep in text should be found even when a single term         appears, When exact phrase is absent, terms co-occurring within proximity         should, Sliding window should capture as many match clusters as possible., TestTruncateAroundMatches
 
 ### Community 909 - "Community 909"
 Cohesion: 0.14
@@ -5720,7 +5668,7 @@ Nodes (16): Adding a Slash Command (3 files), Adding a Tool (3 files), Adding Co
 
 ### Community 916 - "Community 916"
 Cohesion: 0.09
-Nodes (31): ParseResult, ParseResult, ParseResult, ParseResult, ParseResult, Glm45ToolCallParser, Parser for GLM 4.5 (GLM-4-MoE) tool calls.      Uses <tool_call>...</tool_call>, Glm47ToolCallParser (+23 more)
+Nodes (28): ParseResult, ParseResult, ParseResult, ParseResult, ParseResult, DeepSeekV31ToolCallParser, DeepSeek V3.1 tool call parser.  Similar to V3 but with a slightly different for, Parser for DeepSeek V3.1 tool calls.      Slightly different regex than V3: func (+20 more)
 
 ### Community 917 - "Community 917"
 Cohesion: 0.20
@@ -5731,20 +5679,20 @@ Cohesion: 0.12
 Nodes (12): ModelInfoCard(), ModelInfoCardProps, formatTokenCount(), timeUntil(), CronPage(), cronToFriendly(), DAYS, formatNextRun() (+4 more)
 
 ### Community 919 - "Community 919"
-Cohesion: 0.21
-Nodes (12): GlobalModelConfig, Shared helpers for Spark's universal model configuration.  The model/runtime sel, Return the normalized model selection from config.yaml or a config dict., Persist the universal model selection to config.yaml.      ``None`` means "leave, Persist a ``ModelSwitchResult`` as the universal model selection., read_global_model_config(), write_global_model_config(), write_model_switch_result() (+4 more)
+Cohesion: 0.27
+Nodes (3): Return False if the skill's conditional activation rules exclude it., _skill_should_show(), TestSkillShouldShow
 
 ### Community 920 - "Community 920"
 Cohesion: 0.22
 Nodes (6): _convert_openai_images_to_anthropic(), _is_anthropic_compat_endpoint(), Detect if an endpoint expects Anthropic-format content blocks.      Returns True, Convert OpenAI ``image_url`` content blocks to Anthropic ``image`` blocks., Tests for _is_anthropic_compat_endpoint and _convert_openai_images_to_anthropic., TestAnthropicCompatImageConversion
 
 ### Community 921 - "Community 921"
-Cohesion: 0.19
-Nodes (8): _format_process_notification(), Attachment and file-drop parsing helpers for the Spark CLI.  Extracted from core, Format a process notification event into a [SYSTEM: ...] message.      Handles b, Auto-attach clipboard images only for image-only paste gestures., r"""Split a leading file path token from trailing free-form text.      Supports, _should_auto_attach_clipboard_image_on_paste(), _split_path_input(), TestAutoAttachClipboardImageOnPaste
+Cohesion: 0.43
+Nodes (3): Auto-attach clipboard images only for image-only paste gestures., _should_auto_attach_clipboard_image_on_paste(), TestAutoAttachClipboardImageOnPaste
 
 ### Community 922 - "Community 922"
-Cohesion: 0.12
-Nodes (9): Should return False when user sees preview but declines to proceed., Test the _offer_openclaw_migration helper in isolation., Should catch exceptions and return False., Should return False immediately when ~/.openclaw does not exist., Should bootstrap config.yaml before running migration., Should return False when the migration script file is absent., Should return False when user declines the migration prompt., Should run dry-run preview first, then execute after confirmation. (+1 more)
+Cohesion: 0.08
+Nodes (14): ModuleType, Test the migrate command handler., Dry run should not modify the source directory., The 'full' preset should set migrate_secrets=True automatically., TestCmdMigrate, Should return False when user sees preview but declines to proceed., Test the _offer_openclaw_migration helper in isolation., Should catch exceptions and return False. (+6 more)
 
 ### Community 923 - "Community 923"
 Cohesion: 0.16
@@ -5803,8 +5751,8 @@ Cohesion: 0.11
 Nodes (17): Alpha Channel / Transparent Background (RGBA), `_apply_shader_step()` — Full Dispatch Function, Audio-Reactive Shaders, Available Modes, Creative Combinations, Design Philosophy, Feedback Buffer, Feedback Presets (+9 more)
 
 ### Community 937 - "Community 937"
-Cohesion: 0.14
-Nodes (18): clearHandled(), cycleVariant(), extractContext(), handleGo(), id8(), isSessionHandled(), loadSession(), pickVariantContent() (+10 more)
+Cohesion: 0.21
+Nodes (12): clearHandled(), cycleVariant(), isSessionHandled(), loadSession(), pickVariantContent(), queueCheckpoint(), readScrollY(), resumeSession() (+4 more)
 
 ### Community 938 - "Community 938"
 Cohesion: 0.20
@@ -5815,24 +5763,24 @@ Cohesion: 0.13
 Nodes (15): Tests for Google Workspace gws bridge and CLI wrapper., Missing token file causes exit with code 1., main() sets GOOGLE_WORKSPACE_CLI_TOKEN in subprocess env., calendar list without dates uses +agenda helper., calendar list with --start/--end uses raw events list API., Non-expired token is returned without refresh., Expired token triggers a refresh via token_uri., test_api_calendar_list_respects_date_range() (+7 more)
 
 ### Community 940 - "Community 940"
-Cohesion: 0.15
-Nodes (8): _linux_save(), Try clipboard backends in priority order: WSL → Wayland → X11., Use wl-paste to extract clipboard image (Wayland sessions)., _wayland_save(), When both PNG and BMP are available, PNG should be preferred., Test that _linux_save dispatches correctly to WSL → Wayland → X11., TestLinuxSave, TestWaylandSave
+Cohesion: 0.16
+Nodes (7): _linux_save(), Try clipboard backends in priority order: WSL → Wayland → X11., Use xclip to extract clipboard image (X11 sessions)., _xclip_save(), Test that _linux_save dispatches correctly to WSL → Wayland → X11., TestLinuxSave, TestXclipSave
 
 ### Community 941 - "Community 941"
-Cohesion: 0.13
-Nodes (13): Exception, Verify that exc_info=True is used in error/warning log calls., After max retries, the download error should include exc_info., When vision_analyze_tool encounters an error, it should log with exc_info., Temp file cleanup failure should log warning with exc_info., Verify that API 400 errors produce actionable guidance., An invalid_request_error from the API should mention image size/format., Tests for the size-error detection helper. (+5 more)
+Cohesion: 0.05
+Nodes (30): Analyze attached images via the vision tool and return enriched text.          I, Tests for tools/vision_tools.py — URL validation, type hints, error logging., Verify that exc_info=True is used in error/warning log calls., After max retries, the download error should include exc_info., When vision_analyze_tool encounters an error, it should log with exc_info., Temp file cleanup failure should log warning with exc_info., Verify that ~/path style paths are expanded correctly., vision_analyze_tool should expand ~ in file paths. (+22 more)
 
 ### Community 942 - "Community 942"
 Cohesion: 0.16
 Nodes (10): Handle /debug - upload debug report + logs and print paste URLs., Collect debug report + full logs, upload each, print URLs., run_debug_share(), Test the run_debug_share CLI handler., --local prints the report plus full log contents., Successful share uploads report + agent.log + gateway.log., Only uploads logs that exist., Log upload failure doesn't stop the report from being shared. (+2 more)
 
 ### Community 943 - "Community 943"
-Cohesion: 0.15
-Nodes (5): Normalize Feishu inbound events into MessageEvent., Shared inbound message handling for websocket and webhook transports., Per-group policy gate for non-DM traffic., Require an explicit @mention before group messages enter the agent., Check whether any mention targets the configured or inferred bot identity.
+Cohesion: 0.29
+Nodes (12): _make_event(), _make_runner(), _make_source(), Tests for gateway warning when an unrecognized /command is dispatched.  Without, Telegram may send /foo_bar — same guard must trigger for underscored     command, A real built-in like /status must NOT hit the unknown-command guard., Telegram autocomplete sends /reload_mcp for the /reload-mcp built-in.     That m, A genuinely unknown /foobar should return user-facing guidance, not     silently (+4 more)
 
 ### Community 944 - "Community 944"
-Cohesion: 0.19
-Nodes (9): Remove all hub-installed and user-created skills; restore bundled defaults., Read the manifest as a dict of {skill_name: origin_hash}.      Handles both v1 (, Write the manifest file atomically in v2 format (name:hash).      Uses a temp fi, _read_manifest(), reset_skills(), _write_manifest(), v1 format (plain names, no hashes) should be read with empty hashes., Manifest with both v1 and v2 lines (shouldn't happen but handle gracefully). (+1 more)
+Cohesion: 0.16
+Nodes (10): Handle /reset-skills — remove hub-installed/custom skills, restore bundled., Remove all hub-installed and user-created skills; restore bundled defaults., Read the manifest as a dict of {skill_name: origin_hash}.      Handles both v1 (, Write the manifest file atomically in v2 format (name:hash).      Uses a temp fi, _read_manifest(), reset_skills(), _write_manifest(), v1 format (plain names, no hashes) should be read with empty hashes. (+2 more)
 
 ### Community 945 - "Community 945"
 Cohesion: 0.24
@@ -5859,8 +5807,8 @@ Cohesion: 0.15
 Nodes (13): local_env(), Reproducible perf benchmark for file sync overhead.  Measures actual env.execute, Rapid sequential commands within 5s window — no sync at all., Run *command* n times and return per-call wall-clock durations., Local baseline — no file sync, no network. Sets the floor., SSH with FileSyncManager — mtime skip should make sync ~0ms., Sequential echo commands — measures per-command overhead including sync check., Measure sync cost when the rate-limit window has expired.          Sleep past th (+5 more)
 
 ### Community 951 - "Community 951"
-Cohesion: 0.07
-Nodes (20): Any, ClawHubSource, parallel_search_sources(), Fetch skills from ClawHub (clawhub.ai) via their HTTP API.     All skills are tr, Download skill as a ZIP bundle from the /download endpoint and extract text file, Fetch and parse .claude-plugin/marketplace.json from a repo., Fetch the LobeHub agent index (cached for 1 hour)., Read cached data if not expired. (+12 more)
+Cohesion: 0.06
+Nodes (25): Any, Pattern, ClawHubSource, Fetch skills from ClawHub (clawhub.ai) via their HTTP API.     All skills are tr, Download skill as a ZIP bundle from the /download endpoint and extract text file, Fetch and parse .claude-plugin/marketplace.json from a repo., Read cached data if not expired., Convert a SkillMeta to a dict for caching. (+17 more)
 
 ### Community 952 - "Community 952"
 Cohesion: 0.11
@@ -5871,8 +5819,8 @@ Cohesion: 0.14
 Nodes (10): ensure_installed must return immediately when download needed., ensure_installed skips network attempt when disk marker exists., _resolve_tirith_path returns default while background thread runs., After background thread finishes, _resolve_tirith_path uses cached path., TestBackgroundInstall, TestEnsureInstalled, ensure_installed(), _is_explicit_path() (+2 more)
 
 ### Community 954 - "Community 954"
-Cohesion: 0.15
-Nodes (11): _fetch_ai_gateway_models(), _fetch_anthropic_models(), _get_ollama_base_url(), provider_model_ids(), Best-effort GitHub token for fetching the Copilot model catalog., Return the best known model catalog for a provider.      Tries live API endpoint, Fetch available models from the Anthropic /v1/models endpoint.      Uses resolve, Fetch available language models with tool-use from AI Gateway. (+3 more)
+Cohesion: 0.23
+Nodes (12): _canonical(), _make_agent(), Caching-invariant golden test (ADR-0001).  This test captures the **byte-exact s, system_and_3 cache breakpoints + tool order must match the golden exactly., Codex Responses payload (instructions, input order, tools, prompt_cache_key), Defense-in-depth: Anthropic permits at most 4 cache_control breakpoints     (sys, Build a fully deterministic AIAgent for serialization snapshotting.      Tools a, Serialize preserving insertion order (cache_control position + tool order     ar (+4 more)
 
 ### Community 955 - "Community 955"
 Cohesion: 0.11
@@ -5891,8 +5839,8 @@ Cohesion: 0.18
 Nodes (5): Test slash command dispatch in the ACP adapter., Slash commands should be handled without calling the LLM., Unknown /commands should be sent to the LLM, not intercepted., `/model provider:model` should rebuild the ACP agent on that provider., TestSlashCommands
 
 ### Community 959 - "Community 959"
-Cohesion: 0.10
-Nodes (14): build_memory_context_block(), MemoryManager — orchestrates the built-in memory provider plus at most ONE exter, Strip fence-escape sequences from provider output., Wrap prefetched memory in a fenced block with system note.      The fence preven, sanitize_context(), Abstract base class for pluggable memory providers.  Memory providers give the a, TestContextHelpers, Prefetch context must be wrapped in <memory-context> fence so the model     does (+6 more)
+Cohesion: 0.19
+Nodes (7): build_memory_context_block(), Strip fence-escape sequences from provider output., Wrap prefetched memory in a fenced block with system note.      The fence preven, sanitize_context(), TestContextHelpers, Prefetch context must be wrapped in <memory-context> fence so the model     does, TestMemoryContextFencing
 
 ### Community 960 - "Community 960"
 Cohesion: 0.12
@@ -5915,8 +5863,8 @@ Cohesion: 0.16
 Nodes (10): _make_cli(), Tests for automatic MCP reload when config.yaml mcp_servers section changes., If mtime and mcp_servers unchanged, _reload_mcp is NOT called., If file mtime changes but mcp_servers is identical, no reload., Adding a new MCP server to config triggers auto-reload., Removing an MCP server from config triggers auto-reload., Create a minimal SparkCLI instance with mocked config., If called within CONFIG_WATCH_INTERVAL, stat() is skipped. (+2 more)
 
 ### Community 965 - "Community 965"
-Cohesion: 0.09
-Nodes (11): Tests for the combined /reasoning command.  Covers both reasoning effort level m, Verify reasoning extraction from the messages list., Verify reasoning_callback invocation., Verify config default for show_reasoning., Verify /reasoning is in the COMMANDS dict., Simulate the full pipeline: extraction -> result dict -> display., TestCommandRegistered, TestConfigDefault (+3 more)
+Cohesion: 0.12
+Nodes (9): Tests for the combined /reasoning command.  Covers both reasoning effort level m, Verify reasoning_callback invocation., Verify config default for show_reasoning., Verify /reasoning is in the COMMANDS dict., Simulate the full pipeline: extraction -> result dict -> display., TestCommandRegistered, TestConfigDefault, TestEndToEndPipeline (+1 more)
 
 ### Community 966 - "Community 966"
 Cohesion: 0.14
@@ -6011,8 +5959,8 @@ Cohesion: 0.21
 Nodes (16): _classify(), _collect_artifacts(), _extract_link_target(), list_artifacts(), FastAPI routes for the Artifacts page (/api/artifacts).  Aggregates artifacts pr, Collect artifacts from one project directory, depth- and budget-capped., List workspace-derived artifacts with type filtering and paging., Best-effort extraction of the href from a ``.url`` / ``.webloc`` file. (+8 more)
 
 ### Community 990 - "Community 990"
-Cohesion: 0.32
-Nodes (5): Search all sources (in parallel) and merge results., unified_search(), Create a mock SkillSource that returns fixed results., Regression: builtin must not be overwritten by trusted., TestUnifiedSearchDedup
+Cohesion: 0.10
+Nodes (17): parallel_search_sources(), Abstract base for all skill registry adapters., Search for skills matching a query string., Download a skill bundle by identifier., Fetch metadata for a skill without downloading all files., Unique identifier for this source (e.g. 'github', 'clawhub')., Determine trust level for a skill from this source., Search a single source.  Runs in a thread for parallelism. (+9 more)
 
 ### Community 991 - "Community 991"
 Cohesion: 0.19
@@ -6052,10 +6000,10 @@ Nodes (9): _handle_call_service(), Handler for ha_call_service tool., data param
 
 ### Community 1000 - "Community 1000"
 Cohesion: 0.01
-Nodes (219): _coerce_bool(), HomeChannel, _normalize_unauthorized_dm_behavior(), Gateway configuration management.  Handles loading and validating configuration, Controls when sessions reset (lose context).          Modes:     - "daily": Rese, Coerce bool-ish config values, preserving a caller-provided default., Normalize unauthorized DM behavior to a supported value., Default destination for a platform.          When a cron job specifies deliver=" (+211 more)
+Nodes (300): Enum, HomeChannel, Gateway configuration management.  Handles loading and validating configuration, Get the home channel for a platform., Default destination for a platform.          When a cron job specifies deliver=", Delivery routing for cron job outputs and agent responses.  Routes messages to t, Initialize the delivery router.                  Args:             config: Gatew, Parse a delivery target string.                  Formats:         - "origin" → b (+292 more)
 
 ### Community 1001 - "Community 1001"
-Cohesion: 0.23
+Cohesion: 0.21
 Nodes (3): Verify that execute_code filters environment variables correctly.      The child, Run a script that dumps its environment and return the env dict., TestEnvVarFiltering
 
 ### Community 1002 - "Community 1002"
@@ -6063,12 +6011,12 @@ Cohesion: 0.12
 Nodes (16): Alt+V — works in most terminals, Ctrl+V (Linux desktop only), Ctrl+V — only if your clipboard has both text and an image, How to Attach, Linux (Wayland), Linux (X11), macOS, Paste an Image (+8 more)
 
 ### Community 1003 - "Community 1003"
-Cohesion: 0.27
-Nodes (11): beginEditPin(), cancelEditingPin(), finalizeEditingPin(), localCoords(), onAnnotDown(), onAnnotInputKey(), onAnnotMove(), onAnnotUp() (+3 more)
+Cohesion: 0.26
+Nodes (12): beginEditPin(), cancelEditingPin(), clearAnnotations(), finalizeEditingPin(), localCoords(), onAnnotDown(), onAnnotInputKey(), onAnnotMove() (+4 more)
 
 ### Community 1004 - "Community 1004"
-Cohesion: 0.24
-Nodes (6): Resolve a user-typed /command to its canonical skill_cmds key.      Skills are a, resolve_skill_command_key(), Telegram bot-command names disallow hyphens, so the menu registers     skills wi, /claude_code from Telegram autocomplete must resolve to /claude-code., A user-typed /foo-bar (hyphen) must not trigger the underscore fallback., TestResolveSkillCommandKey
+Cohesion: 0.23
+Nodes (7): Run 'claude setup-token' interactively and return the resulting token.      Chec, run_oauth_setup_token(), After subprocess completes, reads credentials from Claude Code files., Falls back to CLAUDE_CODE_OAUTH_TOKEN env var when no cred files., Returns None when subprocess completes but no credentials are found., Returns None gracefully when user interrupts the flow., TestRunOauthSetupToken
 
 ### Community 1005 - "Community 1005"
 Cohesion: 0.12
@@ -6099,8 +6047,8 @@ Cohesion: 0.12
 Nodes (15): Choose Your Mode, Chunking, Message Formatting and Delivery, Prerequisites, Re-pairing, Security, Session Persistence, Step 1: Pair with WhatsApp (+7 more)
 
 ### Community 1012 - "Community 1012"
-Cohesion: 0.13
-Nodes (10): Tests for _detect_file_drop — file path detection that prevents dragged/pasted a, r"""macOS drags produce paths like /path/to/my\ file.png, Create a temporary .png file and return its path., Create a temporary .py file and return its path., Create a file whose name contains spaces (like macOS screenshots)., TestEscapedSpaces, TestNonImageFileDrop, tmp_image() (+2 more)
+Cohesion: 0.23
+Nodes (6): ModelInfo, Human-readable cost string, e.g. '$3.00/M in, $15.00/M out'., Human-readable capabilities, e.g. 'reasoning, tools, vision, PDF'., Full metadata for a single model from models.dev., CustomAutoResult, Result of switching to bare 'custom' provider with auto-detect.
 
 ### Community 1013 - "Community 1013"
 Cohesion: 0.21
@@ -6155,12 +6103,12 @@ Cohesion: 0.12
 Nodes (15): Add Content to a Page, API Basics, Common Operations, Create a Database, Create Page in a Database, Get Page, Get Page Content (blocks), Key Differences in API Version 2025-09-03 (+7 more)
 
 ### Community 1026 - "Community 1026"
-Cohesion: 0.17
-Nodes (5): Top-level scalar fields should be in 'general' unless overridden., Nested fields should use the top-level parent as their category., Small categories should be merged into larger ones., After merging, no category should have just 1 field., TestBuildSchemaFromConfig
+Cohesion: 0.12
+Nodes (9): Top-level scalar fields should be in 'general' unless overridden., Nested fields should use the top-level parent as their category., Small categories should be merged into larger ones., After merging, no category should have just 1 field., TestBuildSchemaFromConfig, _build_schema_from_config(), _infer_type(), Infer a UI field type from a Python value. (+1 more)
 
 ### Community 1027 - "Community 1027"
-Cohesion: 0.28
-Nodes (6): _get_bundled_dir(), Locate the bundled skills/ directory.      Checks SPARK_BUNDLED_SKILLS env var f, SPARK_BUNDLED_SKILLS env var overrides the default path resolution., Without the env var, falls back to relative path from __file__., Empty SPARK_BUNDLED_SKILLS should fall back to default., TestGetBundledDir
+Cohesion: 0.21
+Nodes (7): _get_bundled_dir(), Locate the bundled skills/ directory.      Checks SPARK_BUNDLED_SKILLS env var f, Tests for tools/skills_sync.py — manifest-based skill seeding and updating., SPARK_BUNDLED_SKILLS env var overrides the default path resolution., Without the env var, falls back to relative path from __file__., Empty SPARK_BUNDLED_SKILLS should fall back to default., TestGetBundledDir
 
 ### Community 1028 - "Community 1028"
 Cohesion: 0.12
@@ -6187,8 +6135,8 @@ Cohesion: 0.12
 Nodes (15): 1. Read the beat's storyboard section, 2. Build the static end-state first, 3. Verify the static layout, 4. Add entrance animations, 5. Add mid-scene activity, 6. Add exit / transition, 7. Asset cross-reference, 8. Self-review (+7 more)
 
 ### Community 1034 - "Community 1034"
-Cohesion: 0.11
-Nodes (16): Show current model + provider and list all authenticated providers.          Sho, curated_models_for_provider(), fetch_models_with_pricing(), format_model_pricing_table(), _format_price_per_mtok(), _get_custom_base_url(), get_pricing_for_provider(), Convert a per-token price string to a human-friendly $/Mtok string.      Always (+8 more)
+Cohesion: 0.17
+Nodes (7): YAML 1.1 quirks (bare off → False, on → True) are handled., YAML's bare `off` parses as False — normalised to 'off' string., YAML's bare `on` parses as True — normalised to 'all'., String 'true' is normalised to bool True., String numbers are normalised to int., Per-platform bare off → normalised., TestYAMLNormalisation
 
 ### Community 1035 - "Community 1035"
 Cohesion: 0.23
@@ -6227,12 +6175,12 @@ Cohesion: 0.20
 Nodes (7): Tests that plugin context engines get update_model() called during init.  Regres, Minimal concrete context engine for testing., Plugin context engine should have context_length set during AIAgent init., Verify update_model() receives model, context_length, base_url, api_key, provide, _StubEngine, test_plugin_engine_gets_context_length_on_init(), test_plugin_engine_update_model_args()
 
 ### Community 1044 - "Community 1044"
-Cohesion: 0.20
-Nodes (10): TestCheckVoiceRequirements, _audio_available(), check_voice_requirements(), Voice Mode -- Push-to-talk audio recording and playback for the CLI.  Provides a, Return True if audio libraries can be imported., Check if all voice mode requirements are met.      Returns:         Dict with ``, _termux_api_app_installed(), _termux_microphone_command() (+2 more)
+Cohesion: 0.17
+Nodes (7): Regression: load_transcript must return whichever source (SQLite or JSONL)     h, Legacy session: JSONL has full history, SQLite has only recent turn., Fully migrated session: SQLite has more (JSONL stopped growing)., No SQLite rows — falls back to JSONL (original behavior preserved)., Neither source has data — returns empty list., When both have same count, SQLite wins (has richer fields like reasoning)., TestLoadTranscriptPreferLongerSource
 
 ### Community 1045 - "Community 1045"
-Cohesion: 0.13
-Nodes (7): _extract_screenshot_path_from_text(), Extract a screenshot file path from agent-browser human-readable output., Regression tests for browser session cleanup and screenshot recovery., When camofox mode + managed persistence, soft_cleanup fires instead of close., When camofox mode but managed persistence is off, camofox_close fires., TestBrowserCleanup, TestScreenshotPathRecovery
+Cohesion: 0.14
+Nodes (5): Regression tests for browser session cleanup and screenshot recovery., When camofox mode + managed persistence, soft_cleanup fires instead of close., When camofox mode but managed persistence is off, camofox_close fires., TestBrowserCleanup, TestScreenshotPathRecovery
 
 ### Community 1046 - "Community 1046"
 Cohesion: 0.12
@@ -6247,8 +6195,8 @@ Cohesion: 0.18
 Nodes (3): Tests for GET /api/model/info endpoint., Endpoint should return zeros on import/resolution errors, not 500., TestModelInfoEndpoint
 
 ### Community 1049 - "Community 1049"
-Cohesion: 0.05
-Nodes (50): DeliveryRouter, DeliveryTarget, DeliveryRouter, DeliveryTarget, Delivery routing for cron job outputs and agent responses.  Routes messages to t, Routes messages to appropriate destinations.          Handles the logic of resol, Initialize the delivery router.                  Args:             config: Gatew, Deliver content to all specified targets.                  Args:             con (+42 more)
+Cohesion: 0.17
+Nodes (25): _creator_source(), _cursor_path(), _format_notification(), _load_cursor(), _notify_owner(), _origin_from_payload(), _payload(), Gateway-side Kanban notification and wake workflow. (+17 more)
 
 ### Community 1050 - "Community 1050"
 Cohesion: 0.18
@@ -6256,7 +6204,7 @@ Nodes (5): _parse_env_var(), Parse an environment variable with *converter*, rai
 
 ### Community 1051 - "Community 1051"
 Cohesion: 0.17
-Nodes (5): Tests for unique title enforcement and title-based lookups., Setting a title already used by another session raises ValueError., A session can re-set its own title without error., Multiple sessions can have NULL titles (no constraint violation)., TestTitleUniqueness
+Nodes (8): body_limit_middleware(), _openai_error(), GET /v1/responses/{response_id} — retrieve a stored response., DELETE /v1/responses/{response_id} — delete a stored response., GET /v1/runs/{run_id}/events — SSE stream of structured agent lifecycle events., Remove a response from the store. Returns True if found and deleted., OpenAI-style error envelope., Reject overly large request bodies early based on Content-Length.
 
 ### Community 1052 - "Community 1052"
 Cohesion: 0.12
@@ -6323,16 +6271,16 @@ Cohesion: 0.19
 Nodes (6): Tests for Discord thread participation persistence.  Verifies that _threads (Thr, Thread IDs are saved to disk and reloaded on init., Build a minimal DiscordAdapter with SPARK_HOME pointed at tmp_path., Threads tracked by one adapter instance are visible to the next., Load/save tolerate missing directories., TestDiscordThreadPersistence
 
 ### Community 1068 - "Community 1068"
-Cohesion: 0.22
-Nodes (9): cua_driver_install_command(), Return the official macOS installer command for Cua Driver., _action_result(), _capture_result(), handle_computer_use(), computer_use tool handler — registered with the Spark tool registry., Any, Return a JSON result string for tool handlers.      Accepts a dict positional ar (+1 more)
+Cohesion: 0.19
+Nodes (11): ActionResult, CaptureResult, CaptureResult, Capture the target window.  Sets the sticky window context.          Args:, _action_result(), _capture_result(), handle_computer_use(), computer_use tool handler — registered with the Spark tool registry. (+3 more)
 
 ### Community 1069 - "Community 1069"
 Cohesion: 0.18
 Nodes (4): When running under a named profile, /v1/models advertises the profile name., Default profile falls back to 'spark-agent'., Named profile uses the profile name as model name., TestModelsEndpoint
 
 ### Community 1070 - "Community 1070"
-Cohesion: 0.13
-Nodes (13): delete_profile(), get_active_profile(), Delete a profile, its wrapper script, and its gateway service.      Stops the ga, Read the sticky active profile name.      Returns ``"default"`` if no active_pro, Set the sticky active profile.      Writes to ``~/.spark/active_profile``. Use `, set_active_profile(), Tests for delete_profile()., Tests for set_active_profile() / get_active_profile(). (+5 more)
+Cohesion: 0.18
+Nodes (12): _looks_like_chatty_line_for_weixin(), _looks_like_heading_line_for_weixin(), _pack_markdown_blocks_for_weixin(), Split formatted content into chat-friendly delivery units.      Weixin can rende, Return True when a line looks like a standalone chat utterance., Return True when a short line behaves like a plain-text heading., Split only chat-like multiline blocks into separate bubbles., Split content into sequential Weixin messages.      *compact* (default): Keep ev (+4 more)
 
 ### Community 1071 - "Community 1071"
 Cohesion: 0.07
@@ -6367,8 +6315,8 @@ Cohesion: 0.13
 Nodes (14): 1. Discover servers and notebooks, 2. Execute code (primary operation), 3. Inspect live variables, 4. Edit notebook cells, 5. Verification (restart + run all), Core Workflow, Creating a Notebook for REPL Use, Jupyter Live Kernel (hamelnb) (+6 more)
 
 ### Community 1079 - "Community 1079"
-Cohesion: 0.25
-Nodes (6): Stop a running gateway process via its PID file., Rename a profile: directory, wrapper script, service, active_profile.      Retur, rename_profile(), _stop_gateway_process(), Tests for rename_profile()., TestRenameProfile
+Cohesion: 0.17
+Nodes (11): checkTypography(), BORDER_SAFE_TAGS, BRAND_FONT_DOMAINS, GENERIC_FONTS, GITHUB_DOMAINS, GOOGLE_DOMAINS, isBrandFontOnOwnDomain(), KNOWN_SERIF_FONTS (+3 more)
 
 ### Community 1080 - "Community 1080"
 Cohesion: 0.13
@@ -6419,8 +6367,8 @@ Cohesion: 0.13
 Nodes (8): Anthropic base URLs should route to native Anthropic client., Claude model via OpenRouter should enable prompt caching., Non-Claude model should disable prompt caching., Custom base_url (not OpenRouter) should disable prompt caching., Native Anthropic provider should enable prompt caching., valid_tool_names should contain names from loaded tools., Session ID should be auto-generated in YYYYMMDD_HHMMSS_<hex6> format., TestInit
 
 ### Community 1092 - "Community 1092"
-Cohesion: 0.20
-Nodes (15): applyParamDefaults(), applyParamValue(), buildParamsPanel(), closedClipPath(), formatRangeValue(), getVisibleVariantEl(), hideParamsPanel(), openTunePopover() (+7 more)
+Cohesion: 0.19
+Nodes (16): applyParamDefaults(), applyParamValue(), buildParamsPanel(), closedClipPath(), closeTunePopover(), formatRangeValue(), getVisibleVariantEl(), hideParamsPanel() (+8 more)
 
 ### Community 1093 - "Community 1093"
 Cohesion: 0.27
@@ -6443,16 +6391,16 @@ Cohesion: 0.16
 Nodes (7): Raised when a CDP screencast can't be established (→ polled fallback)., Drives a CDP ``Page.startScreencast`` over a background WebSocket thread.      C, Start (once) the CDP console/network listener; None if unavailable., Resolve the *page* CDP WebSocket URL (None when unavailable).          agent-bro, Start a CDP screencast, invoking ``on_frame`` with each JPEG frame.          Ret, ScreencastHandle, ScreencastUnavailable
 
 ### Community 1098 - "Community 1098"
-Cohesion: 0.19
-Nodes (7): _macos_save(), Extract an image from the system clipboard and save it as PNG.      Returns True, Try pngpaste first (fast, handles more formats), fall back to osascript., save_clipboard_image(), Path, TestSaveClipboardImage, TestVoiceSubmission
+Cohesion: 0.09
+Nodes (13): _macos_pngpaste(), _macos_save(), Extract an image from the system clipboard and save it as PNG.      Returns True, Try pngpaste first (fast, handles more formats), fall back to osascript., Use pngpaste (brew install pngpaste) — fastest, cleanest., save_clipboard_image(), Path, Tests for clipboard image paste — clipboard extraction, multimodal conversion, a (+5 more)
 
 ### Community 1099 - "Community 1099"
 Cohesion: 0.13
 Nodes (5): Exit code 113 (\"Could not find service\") should also trigger bootstrap recover, launchd_stop must bootout the service so KeepAlive doesn't respawn it., launchd_stop silently handles exit codes 3/113 (job not loaded)., launchd_stop calls _wait_for_gateway_exit after bootout., TestLaunchdServiceRecovery
 
 ### Community 1100 - "Community 1100"
-Cohesion: 0.08
-Nodes (26): ScanResult, content_hash(), Compute a SHA-256 hash of all files in a skill directory for integrity tracking., append_audit_log(), bundle_content_hash(), check_for_skill_updates(), install_from_quarantine(), _load_spark_index() (+18 more)
+Cohesion: 0.06
+Nodes (23): ScanResult, Path, append_audit_log(), install_from_quarantine(), _load_spark_index(), _load_stale_index_cache(), _normalize_bundle_path(), quarantine_bundle() (+15 more)
 
 ### Community 1101 - "Community 1101"
 Cohesion: 0.20
@@ -6479,8 +6427,8 @@ Cohesion: 0.18
 Nodes (11): check_firecrawl_api_key(), _get_direct_firecrawl_config(), _has_direct_firecrawl_config(), _has_env(), _is_backend_available(), _is_tool_gateway_ready(), Return True when the selected backend is currently usable., Return explicit direct Firecrawl kwargs + cache key, or None when unset. (+3 more)
 
 ### Community 1107 - "Community 1107"
-Cohesion: 0.29
-Nodes (5): Same inputs always produce the same session ID., None system prompt doesn't crash., TestDeriveChatSessionId, _derive_chat_session_id(), Derive a stable session ID from the conversation's first user message.      Open
+Cohesion: 0.23
+Nodes (7): Multiple _persist_session calls don't duplicate DB entries., After compression creates a new session, flush index resets., Verify _flush_messages_to_session_db tracks what it already wrote., Create a minimal AIAgent with a real session DB., First flush writes all new messages, second flush writes none., Messages added between flushes are written exactly once., TestFlushDeduplication
 
 ### Community 1108 - "Community 1108"
 Cohesion: 0.20
@@ -6495,8 +6443,8 @@ Cohesion: 0.17
 Nodes (3): provider_with_config(), Create a provider factory that accepts custom config overrides., TestPrefetch
 
 ### Community 1111 - "Community 1111"
-Cohesion: 0.20
-Nodes (5): Auto-detect: groq (free) is preferred over openai (paid)., Explicit openai with no key returns none — no cross-provider fallback., Auto-detect fallback priority and explicit provider behaviour., Auto-detect prefers local over any cloud provider., TestGetProviderFallbackPriority
+Cohesion: 0.07
+Nodes (20): clean_env(), mock_mistral_module(), Tests for tools.transcription_tools — three-provider STT pipeline.  Covers the f, Auto-detect: groq (free) is preferred over openai (paid)., Explicit openai with no key returns none — no cross-provider fallback., Create a minimal valid WAV file (1 second of silence at 16kHz)., Create a fake OGG file for validation tests., Ensure no real API keys leak into tests. (+12 more)
 
 ### Community 1112 - "Community 1112"
 Cohesion: 0.22
@@ -6551,8 +6499,8 @@ Cohesion: 0.14
 Nodes (10): Gateway streaming consumer — bridges sync agent callbacks to async platform deli, Tests for GatewayStreamConsumer — media directive stripping in streaming., End-to-end: deltas with MEDIA: produce clean visible text., Cancellation must set final_response_sent when already_sent is True.      The 5-, Cancelling after content was sent should set final_response_sent., Cancelling before anything was sent should NOT set final_response_sent., Integration: verify think blocks don't leak through the full run() path., TestCancelledConsumerSetsFlags (+2 more)
 
 ### Community 1125 - "Community 1125"
-Cohesion: 0.20
-Nodes (6): _coerce_boolean(), Try to parse *value* as a boolean.  Returns original string on failure., Tests for tool argument type coercion.  When LLMs return tool call arguments, th, Unit tests for _coerce_boolean., 1' and '0' are not boolean values., TestCoerceBoolean
+Cohesion: 0.24
+Nodes (5): _coerce_boolean(), Try to parse *value* as a boolean.  Returns original string on failure., Unit tests for _coerce_boolean., 1' and '0' are not boolean values., TestCoerceBoolean
 
 ### Community 1126 - "Community 1126"
 Cohesion: 0.20
@@ -6595,8 +6543,8 @@ Cohesion: 0.22
 Nodes (11): PathLike, _load_dotenv_with_fallback(), load_spark_dotenv(), Helpers for loading Spark .env files consistently across entrypoints., Pre-sanitize a .env file before python-dotenv reads it.      python-dotenv does, Load Spark environment files with user config taking precedence.      Behavior:, _sanitize_env_file_if_needed(), test_project_env_overrides_stale_shell_values_when_user_env_missing() (+3 more)
 
 ### Community 1136 - "Community 1136"
-Cohesion: 0.24
-Nodes (5): _check_sensitive_path(), Return an error message if the path targets a sensitive system location., Tests for file write safety and SPARK_WRITE_SAFE_ROOT sandboxing.  Based on PR #, Verify _check_sensitive_path blocks /private/etc paths (issue #8734)., TestCheckSensitivePathMacOSBypass
+Cohesion: 0.36
+Nodes (5): Exception, Tests for the size-error detection helper., TestIsImageSizeError, _is_image_size_error(), Detect if an API error is related to image or payload size.
 
 ### Community 1137 - "Community 1137"
 Cohesion: 0.14
@@ -6655,16 +6603,16 @@ Cohesion: 0.14
 Nodes (13): 1. Song Structure (Pick One or Invent Your Own), 2. Rhyme, Meter, and Sound, 3. Emotional Arc and Dynamics, 4. Writing Lyrics That Work, 5. Parody and Adaptation, 6. Suno AI Prompt Engineering, 7. Phonetic Tricks for AI Singers, 8. Workflow (+5 more)
 
 ### Community 1151 - "Community 1151"
-Cohesion: 0.34
-Nodes (4): Return True if *rel_path* (relative to spark root) should be skipped., _should_exclude(), TestShouldExclude, Path
+Cohesion: 0.25
+Nodes (5): Return True if *rel_path* (relative to spark root) should be skipped., _should_exclude(), Create a test zip with given files., TestShouldExclude, Path
 
 ### Community 1152 - "Community 1152"
 Cohesion: 0.19
 Nodes (13): get_available_skills(), Return skills grouped by category, filtered by platform and disabled state., Tests for banner get_available_skills() — disabled and platform filtering., get_available_skills should call _find_all_skills (which handles filtering)., Disabled skills should not appear in the banner count., No skills installed returns empty dict., If _find_all_skills import fails, return empty dict gracefully., Skills with None category should be grouped under 'general'. (+5 more)
 
 ### Community 1153 - "Community 1153"
-Cohesion: 0.17
-Nodes (10): _no_auto_discovery(), After exhausting retries, the conflict should become fatal., Disable DoH auto-discovery so connect() uses the plain builder chain., A single 409 should trigger a retry, not an immediate fatal error., test_connect_clears_webhook_before_polling(), test_connect_marks_retryable_fatal_error_for_startup_network_failure(), test_connect_rejects_same_host_token_lock(), test_disconnect_skips_inactive_updater_and_app() (+2 more)
+Cohesion: 0.42
+Nodes (3): _JsonFormatter, Emit each log record as a single JSON line.      Fields emitted: timestamp (ISO-, TestJsonFormatter
 
 ### Community 1154 - "Community 1154"
 Cohesion: 0.16
@@ -6703,8 +6651,8 @@ Cohesion: 0.14
 Nodes (13): Background Process Management, Configuration, Container Resources, Container Security, Docker Backend, Modal (Serverless Cloud), Singularity/Apptainer, SSH Backend (+5 more)
 
 ### Community 1163 - "Community 1163"
-Cohesion: 0.20
-Nodes (5): Return validated fallback IPs from config (populated by _apply_env_overrides)., Create a forum topic in a private (DM) chat.          Uses Bot API 9.4's createF, Save a newly created thread_id back into config.yaml so it persists across resta, Load or create configured DM topics for specified chats.          Reads config.e, Connect to Telegram via polling or webhook.          By default, uses long polli
+Cohesion: 0.24
+Nodes (7): Return Telegram menu commands capped to the Bot API limit.      Priority order (, telegram_menu_commands(), Integration: telegram_menu_commands enforces the 32-char limit., Skills disabled for telegram should not appear in the menu., Skills with +, /, or other special chars produce valid Telegram names., Skills whose names sanitize to empty string are silently dropped., TestTelegramMenuCommands
 
 ### Community 1164 - "Community 1164"
 Cohesion: 0.17
@@ -6715,32 +6663,32 @@ Cohesion: 0.38
 Nodes (4): Handle cross-channel send_message tool calls., send_message_tool(), _make_config(), TestSendMessageTool
 
 ### Community 1166 - "Community 1166"
-Cohesion: 0.10
-Nodes (16): Path, _get_token_dir(), Sanitize a server name for use as a filename (no path separators)., Read a JSON file, returning None if it doesn't exist or is invalid., Write a dict as JSON with restricted permissions (0o600)., Persist OAuth tokens and client registration to JSON files.      File layout::, Delete all stored OAuth state for this server., Return True if we have tokens on disk (may be expired). (+8 more)
+Cohesion: 0.22
+Nodes (10): _add_rotating_handler(), Configure the Spark logging subsystem.      Safe to call multiple times — the se, Add a ``RotatingFileHandler`` to *logger*, skipping if one already     exists fo, Best-effort read of ``logging.*`` from config.yaml.      Returns ``(level, max_s, _read_logging_config(), setup_logging(), Filter, Formatter (+2 more)
 
 ### Community 1167 - "Community 1167"
 Cohesion: 0.14
 Nodes (8): Path traversal and absolute path rejection.      A malicious skill could declare, ../sensitive' must not escape SPARK_HOME., ../../etc/passwd' style traversal must be rejected., Absolute paths must be rejected regardless of whether they exist., Normal files inside SPARK_HOME must still be registered., Files in subdirectories of SPARK_HOME must be allowed., A symlink inside SPARK_HOME pointing outside must be rejected., TestPathTraversalSecurity
 
 ### Community 1168 - "Community 1168"
-Cohesion: 0.10
-Nodes (13): _ensure_slack_mock(), Tests for tools/send_message_tool.py., Messages exceeding the platform limit are split into multiple sends., Bold+italic ***text*** survives tool-layer formatting., Blockquote '>' markers must survive formatting (not escaped to '&gt;')., Pre-escaped HTML entities survive tool-layer formatting without double-escaping., Wikipedia-style URL with parens survives tool-layer formatting., _send_to_platform passes thread_id through to _send_discord. (+5 more)
+Cohesion: 0.19
+Nodes (7): _ensure_slack_mock(), Messages exceeding the platform limit are split into multiple sends., Bold+italic ***text*** survives tool-layer formatting., Blockquote '>' markers must survive formatting (not escaped to '&gt;')., Pre-escaped HTML entities survive tool-layer formatting without double-escaping., Wikipedia-style URL with parens survives tool-layer formatting., TestSendToPlatformChunking
 
 ### Community 1170 - "Community 1170"
 Cohesion: 0.19
 Nodes (8): _vprint should suppress output during streaming TTS unless force=True., Create a minimal agent-like object with _vprint., Normal _vprint output is suppressed when streaming TTS is active., Normal _vprint output is shown when streaming is not active., force=True bypasses the streaming suppression., force=True works normally when not streaming (no regression)., Verify that critical error _vprint calls in run_agent.py         include force=T, TestVprintForceParameter
 
 ### Community 1172 - "Community 1172"
-Cohesion: 0.37
-Nodes (12): _group_message(), _make_adapter(), test_config_bridges_whatsapp_group_settings(), test_dm_always_passes_even_with_require_mention(), test_free_response_chats_bypass_mention_gating(), test_free_response_chats_does_not_bypass_other_groups(), test_group_messages_can_be_opened_via_config(), test_group_messages_can_require_direct_trigger_via_config() (+4 more)
+Cohesion: 0.42
+Nodes (11): _group_message(), _make_adapter(), test_dm_always_passes_even_with_require_mention(), test_free_response_chats_bypass_mention_gating(), test_free_response_chats_does_not_bypass_other_groups(), test_group_messages_can_be_opened_via_config(), test_group_messages_can_require_direct_trigger_via_config(), test_invalid_regex_patterns_are_ignored() (+3 more)
 
 ### Community 1173 - "Community 1173"
-Cohesion: 0.22
-Nodes (4): list_distributions(), List all available distributions.          Returns:         Dict: All distributi, TestDistributionStructure, TestListDistributions
+Cohesion: 0.20
+Nodes (6): Regression tests for the base agent's cold-boot footprint.  These guard the slim, browser_open should be visible whenever browser deps are installed;     only the, The serialised default-tool schemas should fit comfortably under the     pre-sli, test_browser_open_check_fn_does_not_require_activation(), test_browser_toolset_still_exposes_all_subtools(), test_default_tool_schema_token_budget()
 
 ### Community 1174 - "Community 1174"
-Cohesion: 0.17
-Nodes (7): Existing configs without explicit observationMode keep 'unified' default., Config with host block but no observationMode → 'unified' (old default)., Config with no host block and no credentials → 'directional' (new default)., Existing config with explicit observationMode → uses what's set., Existing config with explicit observationMode unified → stays unified., Explicit observation object overrides both preset and migration default., TestObservationModeMigration
+Cohesion: 0.29
+Nodes (5): TestContextMessageAugmentation, _build_context_augmented_message(), Return the text to inject for a context item, or None if nothing to inject., Prepend resolved context item content to the user message., _resolve_context_item_content()
 
 ### Community 1175 - "Community 1175"
 Cohesion: 0.15
@@ -6755,8 +6703,8 @@ Cohesion: 0.15
 Nodes (12): Before You Start: Install the Dependencies, Changing Group Session Behavior, DingTalk, How the Bot Behaves, Notes, Security, Step 1: Create a DingTalk App, Step 2: Enable the Robot Capability (+4 more)
 
 ### Community 1178 - "Community 1178"
-Cohesion: 0.17
-Nodes (5): Verify Hugging Face model lists are consistent across all locations., Model lists in main.py and models.py should be identical., Every HF model should have a context length entry., HF models should use org/name format (e.g. Qwen/Qwen3-235B)., TestHuggingFaceModels
+Cohesion: 0.31
+Nodes (4): build_sticker_injection(), Build the warm-style injection text for a sticker description.      Returns a st, set_name alone (no emoji) produces no context — only emoji+set_name triggers 'fr, TestBuildStickerInjection
 
 ### Community 1179 - "Community 1179"
 Cohesion: 0.09
@@ -6795,20 +6743,20 @@ Cohesion: 0.15
 Nodes (12): Advanced topics, Common issues, Common workflows, Hardware requirements, lm-evaluation-harness - LLM Benchmarking, Quick start, Resources, When to use vs alternatives (+4 more)
 
 ### Community 1188 - "Community 1188"
-Cohesion: 0.21
-Nodes (7): Any, TestTranscribeRecording, TestWhisperHallucinationFilter, is_whisper_hallucination(), Check if a transcript is a known Whisper hallucination on silence., Transcribe a WAV recording using the existing Whisper pipeline.      Delegates t, transcribe_recording()
+Cohesion: 0.38
+Nodes (9): _make_event(), _make_history(), _make_runner(), _make_source(), Tests for gateway /compress <focus> — focus topic on the gateway side., Focus topic from /compress <focus> is passed through to _compress_context., Bare /compress passes focus_topic=None., test_compress_focus_topic_passed_to_agent() (+1 more)
 
 ### Community 1189 - "Community 1189"
 Cohesion: 0.22
 Nodes (12): _provider(), Holographic memory: auto-extract is ON by default (Phase 2a Auto-memory)., With no auto_extract configured, session end extracts facts., auto_extract: false disables extraction., A string 'false' from YAML is coerced and disables extraction., auto_extract: true keeps extraction on., Empty history is a no-op even when enabled., test_auto_extract_explicit_true() (+4 more)
 
 ### Community 1190 - "Community 1190"
-Cohesion: 0.17
-Nodes (7): Test that WSL users see appropriate guidance., spark gateway install on WSL without systemd shows guidance., spark gateway start on WSL without systemd shows guidance., spark gateway install on WSL with systemd shows warning but proceeds., spark gateway status on WSL with manual process shows WSL note., spark gateway status on WSL with no process shows WSL start advice., TestGatewayCommandWSLMessages
+Cohesion: 0.05
+Nodes (19): Tests for WSL detection and WSL-aware gateway behavior., Test that supports_systemd_services() handles WSL correctly., WSL + working systemd → True., WSL + no systemd → False., Native Linux (not WSL) → True without checking systemd., Termux → False regardless of WSL status., Test that WSL users see appropriate guidance., spark gateway install on WSL without systemd shows guidance. (+11 more)
 
 ### Community 1191 - "Community 1191"
-Cohesion: 0.22
-Nodes (3): Test the shared is_wsl() utility., After first detection, subsequent calls return the cached value., TestIsWsl
+Cohesion: 0.20
+Nodes (6): Tests for Discord Opus codec loading — must use ctypes.util.find_library., find_library must be the primary lookup strategy., Homebrew paths must only be tried when find_library returns None., Opus decode failure must log the error, not silently return., Opus loading must try ctypes.util.find_library first, with platform fallback., TestOpusFindLibrary
 
 ### Community 1192 - "Community 1192"
 Cohesion: 0.25
@@ -6899,8 +6847,8 @@ Cohesion: 0.15
 Nodes (5): Tests for the desktop gateway autostart supervisor and config opt-out., If a gateway is already running, the desktop app must not manage it., Desktop + enabled + no existing gateway -> starts and owns it., test_maybe_start_does_not_adopt_external_gateway(), test_maybe_start_launches_when_clear()
 
 ### Community 1215 - "Community 1215"
-Cohesion: 0.05
-Nodes (38): RuntimeError, build_oauth_auth(), _can_open_browser(), _find_free_port(), _is_interactive(), _make_callback_handler(), OAuthNonInteractiveError, Find an available TCP port on localhost. (+30 more)
+Cohesion: 0.04
+Nodes (49): Path, build_oauth_auth(), _can_open_browser(), _find_free_port(), _get_token_dir(), _is_interactive(), OAuthNonInteractiveError, Sanitize a server name for use as a filename (no path separators). (+41 more)
 
 ### Community 1216 - "Community 1216"
 Cohesion: 0.20
@@ -6943,8 +6891,8 @@ Cohesion: 0.24
 Nodes (6): Return the checklist result for an Enter key press., _resolve_checklist_enter(), test_checklist_enter_adds_current_to_existing_selection(), test_checklist_enter_default_confirms_without_selecting_current(), test_checklist_enter_keeps_existing_selected_current(), test_checklist_enter_selects_current_from_empty_selection()
 
 ### Community 1226 - "Community 1226"
-Cohesion: 0.24
-Nodes (3): Full matrix of direct vs managed Modal backend selection., Helper to call resolve_modal_backend_state with feature flag control., TestResolveModalBackendState
+Cohesion: 0.31
+Nodes (4): Use wl-paste to extract clipboard image (Wayland sessions)., _wayland_save(), When both PNG and BMP are available, PNG should be preferred., TestWaylandSave
 
 ### Community 1227 - "Community 1227"
 Cohesion: 0.27
@@ -7004,7 +6952,7 @@ Nodes (11): Common Skill Categories, Find Skills, How to Help Users Find Skills,
 
 ### Community 1241 - "Community 1241"
 Cohesion: 0.24
-Nodes (5): get_disabled_skills(), Return disabled skill names. Platform-specific list falls back to global., TestGetDisabledSkills, get_skills(), The Taste skill (Leonxlnx/taste-skill) ships as a Creative base skill.
+Nodes (5): get_disabled_skills(), Return disabled skill names. Platform-specific list falls back to global., TestGetDisabledSkills, get_skills(), New bundled design skills are synced and not disabled by default.
 
 ### Community 1242 - "Community 1242"
 Cohesion: 0.17
@@ -7017,6 +6965,10 @@ Nodes (3): _format_size(), Human-readable file size., TestFormatSize
 ### Community 1245 - "Community 1245"
 Cohesion: 0.17
 Nodes (11): By experience level, I want a coding assistant in my terminal, I want to automate recurring tasks, I want to build my own tools or skills, I want to embed Spark in a Python app, I want to run a Telegram or Discord bot, I want to train models with RL, Learning Path (+3 more)
+
+### Community 1246 - "Community 1246"
+Cohesion: 0.25
+Nodes (6): _extract_error_body(), _extract_message(), Extract the structured error body from an SDK exception., Extract the most informative error message., TestExtractErrorBody, Exception
 
 ### Community 1247 - "Community 1247"
 Cohesion: 0.17
@@ -7083,8 +7035,8 @@ Cohesion: 0.17
 Nodes (11): How to grade your own translation, Overview, Remotion to HyperFrames, Step 1: Lint the source, Step 2: Plan the translation, Step 3: Generate the HF composition, Step 4: Validate, Step 5: Document gaps (+3 more)
 
 ### Community 1263 - "Community 1263"
-Cohesion: 0.33
-Nodes (3): Resolve a credential pool for the child agent.      Rules:     1. Same provider, _resolve_child_credential_pool(), TestChildCredentialPoolResolution
+Cohesion: 0.31
+Nodes (4): _bar_chart(), Format the insights report for terminal display (CLI)., Create simple horizontal bar chart strings from values., TestBarChart
 
 ### Community 1264 - "Community 1264"
 Cohesion: 0.18
@@ -7103,8 +7055,8 @@ Cohesion: 0.32
 Nodes (12): actionLabel(), buildConfigureRow(), buildConfirmedRow(), buildCyclingRow(), buildDots(), buildGeneratingRow(), buildSavingRow(), el() (+4 more)
 
 ### Community 1269 - "Community 1269"
-Cohesion: 0.08
-Nodes (16): _estimate_cost(), _has_known_pricing(), Generate a complete insights report.          Args:             days: Number of, Fetch sessions within the time window., Get tool call counts from messages.          Uses two sources:         1. tool_n, Get aggregate message statistics., Compute high-level overview statistics., Check if a model has known pricing (vs unknown/custom endpoint). (+8 more)
+Cohesion: 0.09
+Nodes (18): _estimate_cost(), _has_known_pricing(), Session Insights Engine for Spark Agent.  Analyzes historical session data from, Compute high-level overview statistics., Check if a model has known pricing (vs unknown/custom endpoint)., Break down usage by model., Estimate the USD cost for a session row or a model/token tuple., TestEstimateCost (+10 more)
 
 ### Community 1270 - "Community 1270"
 Cohesion: 0.21
@@ -7159,8 +7111,8 @@ Cohesion: 0.17
 Nodes (11): Blockers, Executive Summary, Exploratory web QA report, Features Tested, Issue #{issue_number}: {issue_title}, Issues, Issues Summary Table, Not Tested / Out of Scope (+3 more)
 
 ### Community 1286 - "Community 1286"
-Cohesion: 0.25
-Nodes (5): Verify that the system prompt stays stable across turns for cache hits., When conversation_history is non-empty and session DB has a stored         promp, On the first turn (no history), system prompt should be built fresh., If the session DB has no stored prompt, build fresh even with history., TestSystemPromptStability
+Cohesion: 0.22
+Nodes (5): Collect tool schemas from all providers., Route a tool call to the correct provider.          Returns JSON string result., Notify all providers of session end., Notify all providers before context compression.          Returns combined text, Any
 
 ### Community 1287 - "Community 1287"
 Cohesion: 0.17
@@ -7168,7 +7120,7 @@ Nodes (6): Verify TZ env var is passed to sandboxed child process via real execu
 
 ### Community 1288 - "Community 1288"
 Cohesion: 0.33
-Nodes (4): Verify _kill_port_process uses platform-appropriate commands., TestKillPortProcess, _kill_port_process(), Kill any process listening on the given TCP port.
+Nodes (6): _mock_urlopen(), Tests for the init step., Create a mock for urllib.request.urlopen that returns JSON response_data., TestInitRegistration, _init_registration(), Verify the environment supports client_secret auth.      Raises RuntimeError if
 
 ### Community 1289 - "Community 1289"
 Cohesion: 0.20
@@ -7187,12 +7139,12 @@ Cohesion: 0.17
 Nodes (7): Text starting with / in a tuple should still be a command., Empty text + images should not be treated as a command., Test that (text, images) tuples are correctly unpacked and routed., Regular text input has no images., (text, images) tuple is correctly split., Images without text — text should be empty string., TestQueueRouting
 
 ### Community 1293 - "Community 1293"
-Cohesion: 0.25
-Nodes (5): _interruptible_api_call must handle Anthropic mode when interrupted., The interrupt handler must check api_mode == 'anthropic_messages'., After interrupting, the Anthropic client should be rebuilt., _streaming_api_call must also handle Anthropic interrupt., TestAnthropicInterruptHandler
+Cohesion: 0.31
+Nodes (5): Tests for bot connectivity verification., Without lark_oapi, probe falls back to raw HTTP., TestProbeBot, probe_bot(), Verify bot connectivity via /open-apis/bot/v3/info.      Uses lark_oapi SDK when
 
 ### Community 1295 - "Community 1295"
-Cohesion: 0.20
-Nodes (7): external_skills_dir(), Tests for external skill directories (skills.external_dirs config)., Create a temp dir with a sample external skill., Create a minimal SPARK_HOME with config., spark_home(), TestExternalSkillView, TestGetAllSkillsDirs
+Cohesion: 0.14
+Nodes (9): external_skills_dir(), Tests for external skill directories (skills.external_dirs config)., If the same skill name exists locally and externally, local wins., Create a temp dir with a sample external skill., Create a minimal SPARK_HOME with config., spark_home(), TestExternalSkillsInFindAll, TestExternalSkillView (+1 more)
 
 ### Community 1296 - "Community 1296"
 Cohesion: 0.18
@@ -7224,7 +7176,7 @@ Nodes (11): Compilation Commands Example, Core Mechanism of One-Click Switching,
 
 ### Community 1303 - "Community 1303"
 Cohesion: 0.18
-Nodes (11): 一键切换的核心机制, 中文版本, 依赖文件检查结果, 切换到Camera-ready版本, 切换到匿名投稿版本, 如何使用统一模板, 实际使用建议, 文件清单 (+3 more)
+Nodes (11): 1. "Illegal, another \bibstyle command"错误, 2. 参考文献格式不正确, 一键切换的核心机制, 中文版本, 依赖文件检查结果, 实际使用建议, 常见问题解决, 文件清单 (+3 more)
 
 ### Community 1304 - "Community 1304"
 Cohesion: 0.33
@@ -7255,8 +7207,8 @@ Cohesion: 0.27
 Nodes (5): _make_cli(), Tests for protected SparkCLI TUI extension hooks.  Verifies that wrapper CLIs ca, Create a SparkCLI with prompt_toolkit stubs (same pattern as test_cli_init)., TestExtensionHookDefaults, TestExtensionHookSubclass
 
 ### Community 1312 - "Community 1312"
-Cohesion: 0.24
-Nodes (7): git_repo(), _git_repo_root(), Tests for git worktree isolation (CLI --worktree / -w flag).  Verifies worktree, Test git repo root detection., Create a temporary git repo for testing., Test version of _git_repo_root., TestGitRepoDetection
+Cohesion: 0.38
+Nodes (4): _git_repo_root(), Test git repo root detection., Test version of _git_repo_root., TestGitRepoDetection
 
 ### Community 1313 - "Community 1313"
 Cohesion: 0.27
@@ -7279,12 +7231,12 @@ Cohesion: 0.29
 Nodes (4): _make_adapter(), Tests for Discord channel_skill_bindings auto-skill resolution., Create a minimal DiscordAdapter with mocked config., TestResolveChannelSkills
 
 ### Community 1318 - "Community 1318"
-Cohesion: 0.22
-Nodes (5): _handle_terminal(), _handle_terminal passes notify_on_complete to terminal_tool., TestTerminalSchema, _handle_terminal passes watch_patterns to terminal_tool., TestTerminalToolSchema
+Cohesion: 0.25
+Nodes (7): Tests for the begin step., TestBeginRegistration, _accounts_base_url(), _begin_registration(), _qr_register_inner(), Start the device-code flow. Returns device_code, qr_url, user_code, interval, ex, Run init → begin → poll → probe. Raises on network/protocol errors.
 
 ### Community 1319 - "Community 1319"
-Cohesion: 0.18
-Nodes (6): _cleanup_old_screenshots should remove files older than max_age_hours., Only files matching browser_screenshot_*.png should be cleaned., Cleanup should not fail on empty directory., Cleanup should not fail if directory doesn't exist., _cleanup_old_screenshots(), Remove browser screenshots older than max_age_hours to prevent disk bloat.
+Cohesion: 0.22
+Nodes (3): Commands with explicit subcommands on CommandDef are extracted., Plain commands should not appear in SUBCOMMANDS., TestSubcommands
 
 ### Community 1320 - "Community 1320"
 Cohesion: 0.06
@@ -7372,7 +7324,7 @@ Nodes (10): Delaying, Importing Audio, Looping, Muting, Pitch, Prerequisites, Sp
 
 ### Community 1341 - "Community 1341"
 Cohesion: 0.09
-Nodes (24): buildAnnotationsForCapture(), buildPinElement(), captureAndEmit(), captureElementToBlob(), checkpointPayload(), collectFontCssText(), compileShader(), handleAccept() (+16 more)
+Nodes (25): buildAnnotationsForCapture(), buildPinElement(), captureAndEmit(), captureElementToBlob(), checkpointPayload(), collectFontCssText(), compileShader(), extractContext() (+17 more)
 
 ### Community 1342 - "Community 1342"
 Cohesion: 0.25
@@ -7415,16 +7367,20 @@ Cohesion: 0.13
 Nodes (15): 0.A Read these signals first, 0.B Output a one-line "Design Read" before generating, 0. BRIEF INFERENCE (Read the Room Before Anything Else), 0.C If the brief is ambiguous, ask one question, do not guess, 0.D Anti-Default Discipline, 13. OUT OF SCOPE, 14. FINAL PRE-FLIGHT CHECK, 1.A Dial Inference (design read → dial values) (+7 more)
 
 ### Community 1352 - "Community 1352"
-Cohesion: 0.12
-Nodes (10): get_skill_commands(), Return the current skill commands mapping (scan first if empty)., Drop delivery_info entries older than the idempotency TTL.          Mirrors the, Reload agent-created subscriptions from disk if the file changed., POST /webhooks/{route_name} — receive and process a webhook event., Validate webhook signature (GitHub, GitLab, generic HMAC-SHA256)., Render a prompt template with the webhook payload.          Supports dot-notatio, Render delivery_extra template values with payload data. (+2 more)
+Cohesion: 0.39
+Nodes (3): Unit tests for _send_media_via_adapter — routes files to typed adapter methods., Helper: run _send_media_via_adapter with a real running event loop., TestSendMediaViaAdapter
+
+### Community 1353 - "Community 1353"
+Cohesion: 0.54
+Nodes (7): _make_event(), _make_history(), _make_runner(), _make_source(), Tests for gateway /compress user-facing messaging., test_compress_command_explains_when_token_estimate_rises(), test_compress_command_reports_noop_without_success_banner()
 
 ### Community 1354 - "Community 1354"
 Cohesion: 0.25
-Nodes (5): _is_blocked_device(), Return True if the path would hang the process (infinite output or blocking inpu, Paths like /dev/zero should be rejected before any I/O., read_file_tool returns an error without any file I/O., TestDevicePathBlocking
+Nodes (5): display.platforms beats tool_progress_overrides., Legacy overrides don't affect other settings., Legacy tool_progress_overrides is still respected as a fallback., tool_progress_overrides is read when no platforms entry exists., TestBackwardCompat
 
 ### Community 1355 - "Community 1355"
-Cohesion: 0.15
-Nodes (3): Empty strings are normalized to None (clearing the title)., Multiple sessions can have empty-string (normalized to NULL) titles., TestSessionTitle
+Cohesion: 0.25
+Nodes (5): Streaming per-platform override semantics., When streaming is None, the caller should use global config., Explicit False disables streaming for that platform., Explicit True enables streaming for that platform., TestStreamingPerPlatform
 
 ### Community 1356 - "Community 1356"
 Cohesion: 0.31
@@ -7451,8 +7407,8 @@ Cohesion: 0.18
 Nodes (10): Automatic Fallback, Config, Config, Local model sizes, Provider notes, Telegram Voice Bubbles & ffmpeg, Text-to-Speech (TTS), Voice Message Transcription (STT) (+2 more)
 
 ### Community 1364 - "Community 1364"
-Cohesion: 0.09
-Nodes (30): client_host_is_trusted_local(), ensure_dashboard_token_file(), extract_bearer_token(), get_configured_dashboard_secret(), Dashboard authentication for LAN-safe Spark Web UI., Ensure ``~/.spark/dashboard.token`` exists; return the secret string., Resolve dashboard shared secret: env override, then token file., True if TCP peer is loopback (safe to skip bearer token). (+22 more)
+Cohesion: 0.29
+Nodes (5): Tests for gateway.platforms.feishu — Feishu scan-to-create registration., Tests for QR code terminal rendering., TestRenderQr, Try to render a QR code in the terminal. Returns True if successful., _render_qr()
 
 ### Community 1365 - "Community 1365"
 Cohesion: 0.25
@@ -7479,8 +7435,8 @@ Cohesion: 0.20
 Nodes (9): How Context Files Are Chosen (First Match Wins), Memory Snapshots Are Frozen at Session Start, Prompt Assembly, Related Docs, The 10 Layers of a Cached System Prompt, What Stays Ephemeral (Not Cached), What the Assembled Prompt Looks Like, Why It's Split This Way (+1 more)
 
 ### Community 1371 - "Community 1371"
-Cohesion: 0.24
-Nodes (8): Show Kanban board summary or run lightweight subcommands., _config(), Gateway Kanban dispatcher — claims ready tasks and spawns worker processes., Reclaim stale work, then claim and spawn up to ``max_tasks`` workers., run_dispatch_tick(), cmd_kanban(), CLI for durable Kanban board., Any
+Cohesion: 0.32
+Nodes (7): _config(), Gateway Kanban dispatcher — claims ready tasks and spawns worker processes., Reclaim stale work, then claim and spawn up to ``max_tasks`` workers., run_dispatch_tick(), cmd_kanban(), CLI for durable Kanban board., Any
 
 ### Community 1372 - "Community 1372"
 Cohesion: 0.18
@@ -7507,8 +7463,8 @@ Cohesion: 0.20
 Nodes (9): Background Mode (Long Tasks), Batch PR Reviews, Codex CLI, Key Flags, One-Shot Tasks, Parallel Issue Fixing with Worktrees, PR Reviews, Prerequisites (+1 more)
 
 ### Community 1379 - "Community 1379"
-Cohesion: 0.08
-Nodes (11): cron_env(), Tests for cron job script injection feature.  Tests cover: - Script field in job, Test the cronjob tool's script parameter., Isolated cron environment with temp SPARK_HOME., Test API-boundary validation of cron script paths in cronjob_tools., Clearing a script (empty string) should always be permitted., Test that run_job() env vars are cleaned up even on early failure., Origin env vars must be cleaned up even if run_job fails early. (+3 more)
+Cohesion: 0.20
+Nodes (3): Test API-boundary validation of cron script paths in cronjob_tools., Clearing a script (empty string) should always be permitted., TestCronjobToolScriptValidation
 
 ### Community 1380 - "Community 1380"
 Cohesion: 0.20
@@ -7527,8 +7483,8 @@ Cohesion: 0.33
 Nodes (3): TestEscapeMdv2, _escape_mdv2(), Escape Telegram MarkdownV2 special characters with a preceding backslash.
 
 ### Community 1384 - "Community 1384"
-Cohesion: 0.36
-Nodes (11): _group_message(), _make_adapter(), _mention_entity(), test_config_bridges_telegram_group_settings(), test_config_bridges_telegram_ignored_threads(), test_free_response_chats_bypass_mention_requirement(), test_group_messages_can_be_opened_via_config(), test_group_messages_can_require_direct_trigger_via_config() (+3 more)
+Cohesion: 0.49
+Nodes (9): _group_message(), _make_adapter(), _mention_entity(), test_free_response_chats_bypass_mention_requirement(), test_group_messages_can_be_opened_via_config(), test_group_messages_can_require_direct_trigger_via_config(), test_ignored_threads_drop_group_messages_before_other_gates(), test_invalid_regex_patterns_are_ignored() (+1 more)
 
 ### Community 1385 - "Community 1385"
 Cohesion: 0.20
@@ -7548,7 +7504,7 @@ Nodes (6): HonchoSession, Sanitize an ID to match Honcho's pattern: ^[a-zA-Z0-9_
 
 ### Community 1389 - "Community 1389"
 Cohesion: 0.01
-Nodes (152): get_spark_home(), Return the Spark home directory (default: ~/.spark).      Reads SPARK_HOME env v, Returns default when no response within timeout., Empty response file returns default., When input_fn is provided, it's called instead of input()., When input_fn returns 'y', stash apply is attempted., With --gateway, stash restore uses _gateway_prompt instead of input()., Writes .update_prompt.json, reads .update_response, returns answer. (+144 more)
+Nodes (157): get_spark_home(), Return the Spark home directory (default: ~/.spark).      Reads SPARK_HOME env v, Returns default when no response within timeout., Empty response file returns default., When input_fn is provided, it's called instead of input()., When input_fn returns 'y', stash apply is attempted., With --gateway, stash restore uses _gateway_prompt instead of input()., Writes .update_prompt.json, reads .update_response, returns answer. (+149 more)
 
 ### Community 1390 - "Community 1390"
 Cohesion: 0.20
@@ -7563,16 +7519,16 @@ Cohesion: 0.25
 Nodes (3): _CaptureStream, Flicker-prevention invariant: the streamed-response path must emit only append-o, test_stream_emits_no_flicker_sequences()
 
 ### Community 1393 - "Community 1393"
-Cohesion: 0.22
-Nodes (5): _InfoCommandsMixin, Usage/insights/kanban/MCP info commands for SparkCLI (mixin).  Extracted from co, Show usage insights and analytics from session history., Detect mcp_servers changes in config.yaml and auto-reload MCP connections., Reload MCP servers: disconnect all, re-read config.yaml, reconnect.          Aft
+Cohesion: 0.18
+Nodes (6): _InfoCommandsMixin, Usage/insights/kanban/MCP info commands for SparkCLI (mixin).  Extracted from co, Show usage insights and analytics from session history., Show Kanban board summary or run lightweight subcommands., Detect mcp_servers changes in config.yaml and auto-reload MCP connections., Reload MCP servers: disconnect all, re-read config.yaml, reconnect.          Aft
 
 ### Community 1394 - "Community 1394"
 Cohesion: 0.33
 Nodes (3): _extract_logger_name(), Extract the logger name from a log line., TestExtractLoggerName
 
 ### Community 1395 - "Community 1395"
-Cohesion: 0.33
-Nodes (4): Priority: VOICE_TOOLS_OPENAI_KEY > OPENAI_API_KEY., TestResolveOpenaiAudioApiKey, Prefer the voice-tools key, but fall back to the normal OpenAI key., resolve_openai_audio_api_key()
+Cohesion: 0.39
+Nodes (3): _format_timestamp(), Convert a Unix timestamp (float/int) or ISO string to a human-readable date., TestFormatTimestamp
 
 ### Community 1396 - "Community 1396"
 Cohesion: 0.20
@@ -7707,8 +7663,8 @@ Cohesion: 0.20
 Nodes (6): set_session_context / clear_session_context + _SessionFilter., When session context is set, log lines include [session_id]., Without session context, log lines have no session tag., After clearing, session tag disappears., Session context is per-thread — one thread's context doesn't leak., TestSessionContext
 
 ### Community 1429 - "Community 1429"
-Cohesion: 0.29
-Nodes (4): All registered providers in order., Get a provider by name, or None if not registered., Register a memory provider.          Built-in provider (name ``"builtin"``) is a, MemoryProvider
+Cohesion: 0.43
+Nodes (3): _extract_error_code(), Extract an error code string from the response body., TestExtractErrorCode
 
 ### Community 1430 - "Community 1430"
 Cohesion: 0.20
@@ -7732,27 +7688,23 @@ Nodes (6): Tests for get_cache_directory_mounts() and iter_cache_files()., Exist
 
 ### Community 1437 - "Community 1437"
 Cohesion: 0.43
-Nodes (5): /backend command: show + set the execution backend., _Stub, test_invalid_backend_rejected(), test_set_valid_backend(), test_show_current_backend_no_arg()
+Nodes (3): Remove optional YAML frontmatter (``---`` delimited) from *content*.      The fr, _strip_yaml_frontmatter(), TestStripYamlFrontmatter
 
 ### Community 1438 - "Community 1438"
-Cohesion: 0.11
-Nodes (11): Tests for ManagedServer / tool-parser integration.  Validates that: 1. The insta, Test that spark_base_env.py's tool-parser wiring matches the current API., Spark wires parser selection through ServerManager.tool_parser., Verify spark_base_env uses the config field rather than a local parser instance., Test that ManagedServer's API matches what spark-agent expects., ManagedServer should accept tool_call_parser parameter., ServerManager.managed_server() should accept tool_call_parser., ManagedServer should have CHAT_TEMPLATE_KWARGS for forwarding tools/thinking. (+3 more)
+Cohesion: 0.20
+Nodes (6): Test that ManagedServer's API matches what spark-agent expects., ManagedServer should accept tool_call_parser parameter., ServerManager.managed_server() should accept tool_call_parser., ManagedServer should have CHAT_TEMPLATE_KWARGS for forwarding tools/thinking., get_logprobs should be removed in tool_call_support branch., TestManagedServerAPI
 
 ### Community 1439 - "Community 1439"
 Cohesion: 0.20
 Nodes (8): Upload to dpaste.com.  Returns the paste URL.      dpaste.com uses multipart for, Upload *content* to a paste service, trying paste.rs then dpaste.com.      Retur, _upload_dpaste_com(), upload_to_pastebin(), Test the combined upload with fallback., Test dpaste.com fallback upload path., TestUploadDpasteCom, TestUploadToPastebin
 
 ### Community 1440 - "Community 1440"
-Cohesion: 0.17
-Nodes (4): enable_pipeline(), isolated_registry(), Integration tests for registry.dispatch() post-processing pipeline., Force pipeline settings on without touching disk config.
-
-### Community 1442 - "Community 1442"
-Cohesion: 0.33
-Nodes (4): When api_mode != chat_completions, stream_callback must still receive     the re, For chat_completions-shaped responses, callback gets content., For Anthropic responses, text blocks are extracted and forwarded., TestStreamCallbackNonStreamingProvider
+Cohesion: 0.11
+Nodes (9): enable_pipeline(), isolated_registry(), Integration tests for registry.dispatch() post-processing pipeline., Short outputs should pass through compaction (under TINY_OUTPUT)., Force pipeline settings on without touching disk config., test_post_process_idempotent_on_short_output(), Register a tool.  Called at module-import time by each tool file., Metadata for a single registered tool. (+1 more)
 
 ### Community 1443 - "Community 1443"
-Cohesion: 0.40
-Nodes (4): _is_anthropic_oauth must update when token type changes during refresh., Refreshing from API key to OAuth token must set flag to True., Refreshing from OAuth to API key must set flag to False., TestOAuthFlagAfterCredentialRefresh
+Cohesion: 0.29
+Nodes (4): Post-response reasoning display should be suppressed when reasoning     was alre, _reasoning_shown_this_turn must NOT be cleared by         _reset_stream_state (c, The turn flag should be reset at the start of a new user turn.         This happ, TestReasoningShownThisTurnFlag
 
 ### Community 1444 - "Community 1444"
 Cohesion: 0.29
@@ -7761,10 +7713,6 @@ Nodes (4): Without SPARK_HOME set, falls back to ~/.spark., _spark_bin_dir must 
 ### Community 1445 - "Community 1445"
 Cohesion: 0.22
 Nodes (8): Anytime helpers, Good to know, How to use `/tasker` — step-by-step guide, Step 1 — Connect your tracker, Step 2 — Get ideas into the tracker, Step 3 — Decide what's worth doing, Step 4 — Plan the keepers, Step 5 — Build
-
-### Community 1446 - "Community 1446"
-Cohesion: 0.33
-Nodes (4): _turns_since_memory must persist across run_conversation calls., Counters must exist on the agent after __init__., The run_conversation preamble must not zero the nudge counters., TestMemoryNudgeCounterPersistence
 
 ### Community 1447 - "Community 1447"
 Cohesion: 0.22
@@ -7915,12 +7863,12 @@ Cohesion: 0.33
 Nodes (4): Extract the repo name from a Git URL for the plugin directory name., _repo_name_from_url(), Extract plugin directory name from Git URLs., TestRepoNameFromUrl
 
 ### Community 1486 - "Community 1486"
-Cohesion: 0.20
-Nodes (6): Test that supports_systemd_services() handles WSL correctly., WSL + working systemd → True., WSL + no systemd → False., Native Linux (not WSL) → True without checking systemd., Termux → False regardless of WSL status., TestSupportsSystemdServicesWSL
+Cohesion: 0.29
+Nodes (3): Gateway STT config tests — honor stt.enabled: false from config.yaml., test_load_gateway_config_bridges_stt_enabled_from_config_yaml(), test_prepare_inbound_message_text_transcribes_queued_voice_event()
 
 ### Community 1488 - "Community 1488"
-Cohesion: 0.13
-Nodes (6): Tests for the Mistral (Voxtral) TTS provider in tools/tts_tool.py., TestCheckTtsRequirementsMistral, TestGenerateMistralTts, TestMistralTtsOpus, _generate_mistral_tts(), Generate audio using Mistral Voxtral TTS API.      The API returns base64-encode
+Cohesion: 0.16
+Nodes (5): Tests for the Mistral (Voxtral) TTS provider in tools/tts_tool.py., TestGenerateMistralTts, TestMistralTtsOpus, _generate_mistral_tts(), Generate audio using Mistral Voxtral TTS API.      The API returns base64-encode
 
 ### Community 1489 - "Community 1489"
 Cohesion: 0.22
@@ -7947,24 +7895,24 @@ Cohesion: 0.22
 Nodes (8): AnimationMixer Pattern, Avoid, Basic Pattern, Contract, Credits And References, Good Uses, Three.js for HyperFrames, Validation
 
 ### Community 1495 - "Community 1495"
-Cohesion: 0.27
-Nodes (4): Create config from environment variables (fallback)., Derive the Honcho host key from the active Spark profile.      Resolution order:, resolve_active_host(), TestResolveActiveHost
+Cohesion: 0.29
+Nodes (6): checkRepeatedSectionKickers(), checkRepeatedSectionKickersDOM(), cleanInlineText(), collectRepeatedSectionKickerCandidates(), isRepeatedKickerCandidate(), makeStaticStyle()
 
 ### Community 1496 - "Community 1496"
-Cohesion: 0.32
-Nodes (8): buildDesignHeader(), fetchDesignSystem(), msgDiv(), renderDesignBody(), renderDesignChrome(), renderParsedMdCta(), renderStaleHint(), toggleDesignPanel()
+Cohesion: 0.20
+Nodes (12): buildDesignHeader(), fetchDesignSystem(), loadDetectScript(), msgDiv(), onDetectMessage(), renderDesignBody(), renderDesignChrome(), renderParsedMdCta() (+4 more)
 
 ### Community 1497 - "Community 1497"
 Cohesion: 0.36
 Nodes (3): Validate a skill name. Returns error message or None if valid., _validate_name(), TestValidateName
 
 ### Community 1498 - "Community 1498"
-Cohesion: 0.50
-Nodes (3): Test .worktreeinclude with directories (symlinked)., Directories in .worktreeinclude should be symlinked., TestWorktreeDirectorySymlink
+Cohesion: 0.17
+Nodes (9): git_repo(), Tests for git worktree isolation (CLI --worktree / -w flag).  Verifies worktree, Create a temporary git repo for testing., Test .worktreeinclude with directories (symlinked)., Directories in .worktreeinclude should be symlinked., Test that the agent gets worktree context in its system prompt., Verify the system prompt note contains all required info., TestSystemPromptInjection (+1 more)
 
 ### Community 1499 - "Community 1499"
-Cohesion: 0.08
-Nodes (15): Tests for gateway.display_config — per-platform display/verbosity resolver., display.platforms beats tool_progress_overrides., Legacy overrides don't affect other settings., Version 16 migration moves tool_progress_overrides into display.platforms., Old overrides are migrated into display.platforms.<plat>.tool_progress., Existing display.platforms entries are NOT overwritten by migration., Streaming per-platform override semantics., When streaming is None, the caller should use global config. (+7 more)
+Cohesion: 0.25
+Nodes (5): Tests for gateway.display_config — per-platform display/verbosity resolver., Version 16 migration moves tool_progress_overrides into display.platforms., Old overrides are migrated into display.platforms.<plat>.tool_progress., Existing display.platforms entries are NOT overwritten by migration., TestConfigMigration
 
 ### Community 1500 - "Community 1500"
 Cohesion: 0.22
@@ -8000,7 +7948,7 @@ Nodes (9): scripts, build, desktop:build, desktop:dev, dev, lint, preview, tauri
 
 ### Community 1508 - "Community 1508"
 Cohesion: 0.07
-Nodes (14): get_parser(), list_parsers(), Return sorted list of registered parser names., Get a parser instance by name.      Args:         name: Parser name (e.g., "spar, ManagedServer checks `if parsed_tool_calls:` — None should be falsy., ManagedServer uses `parsed_content or ""` — must be str or None., Test that spark-agent's parsers match ManagedServer's expectations., ManagedServer expects parser.parse(text) -> (content, tool_calls)         where (+6 more)
+Nodes (12): get_parser(), list_parsers(), Return sorted list of registered parser names., Get a parser instance by name.      Args:         name: Parser name (e.g., "spar, Tests for environments/tool_call_parsers/ — client-side tool call parsers.  Thes, Ensure all parsers conform to the ParseResult contract., When tool calls are found, they should be ChatCompletionMessageToolCall objects., Every registered parser should be importable and instantiable. (+4 more)
 
 ### Community 1509 - "Community 1509"
 Cohesion: 0.25
@@ -8027,8 +7975,8 @@ Cohesion: 0.27
 Nodes (6): Test the eager fallback guard in run_agent.py's error handling loop., Create a minimal AIAgent mock with the fields needed., 429 with active pool should NOT trigger eager fallback., 429 without pool should trigger eager fallback., 429 with exhausted pool should trigger eager fallback., TestEagerFallbackWithPool
 
 ### Community 1515 - "Community 1515"
-Cohesion: 0.33
-Nodes (3): Build paginated model buttons. Returns (keyboard, page_info_text)., Handle model picker inline keyboard callbacks (mp:/mm:/mb:/mx:/mg:)., Handle inline keyboard button clicks.
+Cohesion: 0.38
+Nodes (4): _make_callback_handler(), Create a per-flow callback HTTP handler class with its own result dict.      Ret, Verify concurrent OAuth flows don't share state., TestCallbackHandlerIsolation
 
 ### Community 1516 - "Community 1516"
 Cohesion: 0.33
@@ -8039,12 +7987,12 @@ Cohesion: 0.25
 Nodes (5): Root user handling in _system_service_identity()., When root is auto-detected (not explicitly requested), raise., When root is explicitly passed via --run-as-user root, allow it., Normal non-root user works as before., TestSystemServiceIdentityRootHandling
 
 ### Community 1518 - "Community 1518"
-Cohesion: 0.47
-Nodes (3): List all available skills (progressive disclosure tier 1 - minimal metadata)., skills_list(), TestSkillsList
+Cohesion: 0.33
+Nodes (4): Verify the gateway/run.py config bridge contains the auxiliary section., The gateway config bridge must include auxiliary.* bridging., Gateway should NOT bridge compression config to env vars (config-only)., TestGatewayBridgeCodeParity
 
-### Community 1520 - "Community 1520"
-Cohesion: 0.22
-Nodes (6): _parse_reasoning_config(), Parse a reasoning effort level into an OpenRouter reasoning config dict., test_parse_reasoning_config_roundtrip(), Invalid arguments should be rejected (parsed returns None)., Verify _parse_reasoning_config handles all effort levels., TestParseReasoningConfig
+### Community 1519 - "Community 1519"
+Cohesion: 0.40
+Nodes (4): Tests for the low-level HTTP helper., TestPostRegistration, _post_registration(), POST form-encoded data to the registration endpoint, return parsed JSON.      Th
 
 ### Community 1521 - "Community 1521"
 Cohesion: 0.25
@@ -8135,8 +8083,8 @@ Cohesion: 0.25
 Nodes (7): Matching dimensions of a video, Return value, Setting a default outName, Setting duration based on a video, Setting duration based on multiple videos, Transforming props, Using calculateMetadata
 
 ### Community 1544 - "Community 1544"
-Cohesion: 0.50
-Nodes (3): Check if a distribution name is valid.          Args:         distribution_name, validate_distribution(), TestValidateDistribution
+Cohesion: 0.33
+Nodes (4): cors_middleware(), Add CORS headers for explicitly allowed origins; handle OPTIONS preflight., Return CORS headers for an allowed browser origin., Allow non-browser clients and explicitly configured browser origins.
 
 ### Community 1545 - "Community 1545"
 Cohesion: 0.25
@@ -8174,33 +8122,29 @@ Nodes (4): _make_cli(), _make_plan_skill(), Tests for the /plan CLI slash comman
 Cohesion: 0.22
 Nodes (8): _clean_env(), _make_mock_client(), provider(), Tests for the Hindsight memory provider plugin.  Tests cover config loading, too, Ensure no stale env vars leak between tests., Create a mock Hindsight client with async methods., Create an initialized HindsightMemoryProvider with a mock client., TestConfigSchema
 
+### Community 1555 - "Community 1555"
+Cohesion: 0.33
+Nodes (3): Verify structural integrity of the built-in TOOLSETS dict., All spark-* platform toolsets should have the same tools., TestToolsetConsistency
+
 ### Community 1556 - "Community 1556"
 Cohesion: 0.36
 Nodes (4): Read plugin.yaml and return the parsed dict, or empty dict., _read_manifest(), Manifest reading edge cases., TestReadManifest
 
 ### Community 1557 - "Community 1557"
-Cohesion: 0.50
-Nodes (3): _custom_unit_to_cp(), Split a long message into chunks, preserving code block boundaries.          Whe, Return the largest codepoint offset *n* such that ``len_fn(s[:n]) <= budget``.
-
-### Community 1558 - "Community 1558"
-Cohesion: 0.39
-Nodes (3): Use xclip to extract clipboard image (X11 sessions)., _xclip_save(), TestXclipSave
+Cohesion: 0.33
+Nodes (4): _send_to_platform passes thread_id through to _send_discord., Discord platform with thread_id passes it to _send_discord., Discord platform without thread_id passes None., TestSendToPlatformDiscordThread
 
 ### Community 1559 - "Community 1559"
 Cohesion: 0.25
 Nodes (7): Tests for .env sanitization during load to prevent token duplication (#8908)., A well-formed .env file should be parsed identically., Verify env_loader._sanitize_env_file_if_needed fixes corrupted files., Verify load_env() splits concatenated KEY=VALUE pairs.      Reproduces the scena, test_env_loader_sanitizes_before_dotenv(), test_load_env_normal_file_unchanged(), test_load_env_sanitizes_concatenated_lines()
 
-### Community 1560 - "Community 1560"
-Cohesion: 0.50
-Nodes (3): _flush_sentinel must be stripped before sending messages to the API., Verify _flush_sentinel is not sent to the API provider., TestFlushSentinelNotLeaked
-
 ### Community 1561 - "Community 1561"
 Cohesion: 0.50
-Nodes (3): All interrupt _vprint calls must use force=True so they are always visible., Scan source for _vprint calls containing 'Interrupt' — each must have force=True, TestInterruptVprintForceTrue
+Nodes (3): TestVisionRequirements, check_vision_requirements(), Check if the configured runtime vision path can resolve a client.
 
 ### Community 1562 - "Community 1562"
-Cohesion: 0.31
-Nodes (3): Extract clipboard image on native Windows via PowerShell → base64 PNG., _windows_save(), TestWindowsSave
+Cohesion: 0.50
+Nodes (3): Initialize the Spark CLI.          Args:             model: Model to use (defaul, _parse_service_tier_config(), Parse a persisted service-tier preference into a Responses API value.
 
 ### Community 1563 - "Community 1563"
 Cohesion: 0.25
@@ -8239,8 +8183,8 @@ Cohesion: 0.29
 Nodes (3): Verify long reasoning is collapsed to 10 lines in the box., _on_reasoning shows max 5 lines., TestReasoningCollapse
 
 ### Community 1574 - "Community 1574"
-Cohesion: 0.50
-Nodes (3): Bug #3: _generate_edge_tts must use lazy import, not bare module name., AST check: _generate_edge_tts must call _import_edge_tts(), not         referenc, TestEdgeTTSLazyImport
+Cohesion: 0.08
+Nodes (17): Tests for CLI voice mode integration -- command parsing, markdown stripping, sta, Bug: _refresh_level thread read _voice_recording without lock., Verify that concurrent state changes don't corrupt state., Bug #3: _generate_edge_tts must use lazy import, not bare module name., AST check: _generate_edge_tts must call _import_edge_tts(), not         referenc, Bug #7: output_stream must be closed in finally block., AST check: stream_tts_to_speaker's finally block must close         output_strea, Bug #4: Ctrl+C cancel must reset _voice_continuous. (+9 more)
 
 ### Community 1575 - "Community 1575"
 Cohesion: 0.25
@@ -8256,7 +8200,7 @@ Nodes (3): _extract_level(), Extract the log level from a line., TestExtractLeve
 
 ### Community 1578 - "Community 1578"
 Cohesion: 0.50
-Nodes (3): Test that the agent gets worktree context in its system prompt., Verify the system prompt note contains all required info., TestSystemPromptInjection
+Nodes (4): is_available(), Return True if cua-driver is installed and we're on macOS., Return executable path for cua-driver, or None., _resolve_cua_binary()
 
 ### Community 1579 - "Community 1579"
 Cohesion: 0.36
@@ -8275,8 +8219,8 @@ Cohesion: 0.25
 Nodes (7): Error Handling, Example — Chapters Output, Helper Script, Output Formats, Setup, Workflow, YouTube Content Tool
 
 ### Community 1583 - "Community 1583"
-Cohesion: 0.27
-Nodes (6): Path, _compute_relative_dest(), Compute the destination path in SKILLS_DIR preserving the category structure., New bundled skills sync with their supporting files., The Tasker workflow ships as a Productivity base skill., TestComputeRelativeDest
+Cohesion: 0.18
+Nodes (9): Path, _compute_relative_dest(), _discover_bundled_skills(), Find all SKILL.md files in the bundled directory.     Returns list of (skill_nam, Compute the destination path in SKILLS_DIR preserving the category structure., The Taste skill (Leonxlnx/taste-skill) ships as a Creative base skill., The Tasker workflow ships as a Productivity base skill., TestComputeRelativeDest (+1 more)
 
 ### Community 1584 - "Community 1584"
 Cohesion: 0.06
@@ -8291,24 +8235,12 @@ Cohesion: 0.38
 Nodes (4): _assert_chrome_debug_cmd(), Tests for CLI browser CDP auto-launch helpers., Verify the auto-launch command has all required flags., TestChromeDebugLaunch
 
 ### Community 1591 - "Community 1591"
-Cohesion: 0.33
-Nodes (3): Tests for core/cli/parsing.py helpers (Phase 3 extraction)., A relative --prefill path resolves under SPARK_HOME.      Regression: the extrac, test_load_prefill_messages_relative_path_resolves_under_spark_home()
-
-### Community 1592 - "Community 1592"
-Cohesion: 0.50
-Nodes (3): Bug #7: output_stream must be closed in finally block., AST check: stream_tts_to_speaker's finally block must close         output_strea, TestStreamingTTSOutputStreamCleanup
+Cohesion: 0.29
+Nodes (4): Tests for core/cli/parsing.py helpers (Phase 3 extraction)., A relative --prefill path resolves under SPARK_HOME.      Regression: the extrac, test_load_prefill_messages_relative_path_resolves_under_spark_home(), test_parse_reasoning_config_roundtrip()
 
 ### Community 1593 - "Community 1593"
 Cohesion: 0.29
 Nodes (4): Full-text search over facts using FTS5.          Returns a list of fact dicts or, Browse facts ordered by trust_score descending.          Optionally filter by ca, Convert a sqlite3.Row to a plain dict., Row
-
-### Community 1594 - "Community 1594"
-Cohesion: 0.67
-Nodes (3): 1. "Illegal, another \bibstyle command"错误, 2. 参考文献格式不正确, 常见问题解决
-
-### Community 1595 - "Community 1595"
-Cohesion: 0.50
-Nodes (3): Bug #4: Ctrl+C cancel must reset _voice_continuous., Source check: Ctrl+C voice cancel block must set         _voice_continuous = Fal, TestCtrlCResetsContinuousMode
 
 ### Community 1596 - "Community 1596"
 Cohesion: 0.38
@@ -8327,8 +8259,8 @@ Cohesion: 0.57
 Nodes (6): _event(), Tests for gateway /kanban command behavior., _runner(), test_gateway_kanban_dispatch_disabled_by_config(), test_gateway_kanban_dispatch_enabled_spawns_tick(), test_gateway_kanban_summary_and_show()
 
 ### Community 1601 - "Community 1601"
-Cohesion: 0.33
-Nodes (6): Path, has_traversal_component(), Shared path validation helpers for tool implementations.  Extracts the ``resolve, Ensure *path* resolves to a location within *root*.      Returns an error messag, Return True if *path_str* contains ``..`` traversal components.      Quick check, validate_within_dir()
+Cohesion: 0.67
+Nodes (3): 切换到Camera-ready版本, 切换到匿名投稿版本, 如何使用统一模板
 
 ### Community 1602 - "Community 1602"
 Cohesion: 0.29
@@ -8345,10 +8277,6 @@ Nodes (6): Batch: many prompts at once, Cron requires a running gateway, Make ev
 ### Community 1605 - "Community 1605"
 Cohesion: 0.29
 Nodes (6): Create a Profile, Profiles and Gateways, See Also, Set a Default Profile, Switch Profiles, Use a Profile for One Command
-
-### Community 1606 - "Community 1606"
-Cohesion: 0.50
-Nodes (3): Bug #5: _disable_voice_mode must stop active TTS playback., Source check: _disable_voice_mode must call stop_playback()., TestDisableVoiceModeStopsTTS
 
 ### Community 1607 - "Community 1607"
 Cohesion: 0.29
@@ -8377,10 +8305,6 @@ Nodes (6): Export Formats, File Structure, Modes, p5.js Skill, Prerequisites, Wh
 ### Community 1613 - "Community 1613"
 Cohesion: 0.29
 Nodes (7): Anthropic Direct, DeepSeek And Other Direct Providers, Gemini / Vertex, OpenAI Direct, OpenRouter, Provider Normalization Rules, Subscription / Included-Cost Routes
-
-### Community 1614 - "Community 1614"
-Cohesion: 0.31
-Nodes (4): Detect Modal credentials via env vars or config file., TestHasDirectModalCredentials, has_direct_modal_credentials(), Return True when direct Modal credentials/config are available.
 
 ### Community 1615 - "Community 1615"
 Cohesion: 0.29
@@ -8462,10 +8386,6 @@ Nodes (6): Adding AI voiceover to a Remotion composition, Delaying audio start, 
 Cohesion: 0.31
 Nodes (4): Coerce arbitrary input to a lowercase browser provider key., TestNormalizeBrowserCloudProvider, normalize_browser_cloud_provider(), Return a normalized browser provider key.
 
-### Community 1635 - "Community 1635"
-Cohesion: 0.43
-Nodes (3): Check if Windows clipboard has an image (via powershell.exe)., _wsl_has_image(), TestWslHasImage
-
 ### Community 1636 - "Community 1636"
 Cohesion: 0.43
 Nodes (3): Check if Wayland clipboard has image content., _wayland_has_image(), TestWaylandHasImage
@@ -8522,10 +8442,6 @@ Nodes (6): Changes, Motivation, Notes for Reviewers, Screenshots / Examples, Sum
 Cohesion: 0.50
 Nodes (3): browser_tool.py must NOT register SIGINT/SIGTERM handlers that call     sys.exit, Source check: browser_tool.py must not call signal.signal()         for SIGINT o, TestBrowserToolSignalHandlerRemoved
 
-### Community 1651 - "Community 1651"
-Cohesion: 0.12
-Nodes (4): Tests for clipboard image paste — clipboard extraction, multimodal conversion, a, Test the clipboard → state flow., TestIsWsl, TestTryAttachClipboardImage
-
 ### Community 1652 - "Community 1652"
 Cohesion: 0.29
 Nodes (4): _clean_state(), Tests for credential file passthrough and skills directory mounting., Reset module state between tests., TestIterSkillsFiles
@@ -8551,8 +8467,8 @@ Cohesion: 0.29
 Nodes (6): CSS Transitions, Hard Rules (CSS), Scene Template, Shader Transitions, Shader Transitions, Transition Catalog
 
 ### Community 1659 - "Community 1659"
-Cohesion: 0.07
-Nodes (10): Tests for gateway service management helpers., System units must remap ALL paths from the caller's home to the target user., ~/.local/bin must be in PATH so uvx/pipx tools are discoverable., Tests for _ensure_user_systemd_env() D-Bus session bus auto-detection., TestEnsureUserSystemdEnv, TestGatewayServiceDetection, TestGeneratedUnitIncludesLocalBin, TestGeneratedUnitUsesDetectedVenv (+2 more)
+Cohesion: 0.18
+Nodes (6): Tests for gateway service management helpers., System units must remap ALL paths from the caller's home to the target user., ~/.local/bin must be in PATH so uvx/pipx tools are discoverable., TestGeneratedUnitIncludesLocalBin, TestGeneratedUnitUsesDetectedVenv, TestSystemUnitPathRemapping
 
 ### Community 1661 - "Community 1661"
 Cohesion: 0.33
@@ -8591,12 +8507,8 @@ Cohesion: 0.33
 Nodes (3): chmod +x && ./ is the two-step social engineering pattern where a     script is, chmod +x alone without immediate execution must not be flagged., TestChmodExecuteCombo
 
 ### Community 1673 - "Community 1673"
-Cohesion: 0.67
-Nodes (3): kanban_events(), SSE stream of new task_events rows., Request
-
-### Community 1674 - "Community 1674"
-Cohesion: 0.33
-Nodes (3): check_webhook_requirements(), Generic webhook platform adapter.  Runs an aiohttp HTTP server that receives web, Check if webhook adapter dependencies are available.
+Cohesion: 0.09
+Nodes (22): BlockBody, BulkPatchBody, BulkPatchResponse, CommentBody, CompleteBody, dispatch_nudge(), DispatchResponse, kanban_events() (+14 more)
 
 ### Community 1675 - "Community 1675"
 Cohesion: 0.33
@@ -8769,6 +8681,10 @@ Nodes (5): Run the Spark Web UI dashboard server (async, embeddable in gateway).
 ### Community 1726 - "Community 1726"
 Cohesion: 0.33
 Nodes (5): Key Config Files, Python Packages (`src/`), Spark Agent — Repository Structure, Top-Level Directories, User Data (not in repo)
+
+### Community 1727 - "Community 1727"
+Cohesion: 0.33
+Nodes (4): If a response has both reasoning and message content, it should still be 'stop'., When both output and output_text are empty, validation should     correctly mark, test_normalize_codex_response_reasoning_with_content_is_stop(), test_run_conversation_codex_empty_output_no_output_text_retries()
 
 ### Community 1728 - "Community 1728"
 Cohesion: 0.47
@@ -8962,14 +8878,6 @@ Nodes (4): Customization, Spark Agent - Base Soul, Voice, Working Style
 Cohesion: 0.40
 Nodes (4): At-rest protection, Preview Browser — Credential Storage & Threat Model, Threat model, Where credentials are stored
 
-### Community 1791 - "Community 1791"
-Cohesion: 0.39
-Nodes (3): _macos_pngpaste(), Use pngpaste (brew install pngpaste) — fastest, cleanest., TestMacosPngpaste
-
-### Community 1792 - "Community 1792"
-Cohesion: 0.29
-Nodes (7): _build_boot_prompt(), handle(), Built-in boot-md hook — run ~/.spark/BOOT.md on gateway startup.  This hook is a, Wrap BOOT.md content in a system-level instruction., Spawn a one-shot agent session to execute the boot instructions., Gateway startup handler — run BOOT.md if it exists., _run_boot_agent()
-
 ### Community 1794 - "Community 1794"
 Cohesion: 0.40
 Nodes (5): 12.A File Location, 12.B Required Frontmatter, 12.C Required Body Sections, 12.D Block-Library Discipline, 12. THE BLOCK LIBRARY (Contract - Implementations Land Here Iteratively)
@@ -9050,14 +8958,6 @@ Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphif
 Cohesion: 0.50
 Nodes (3): Test running multiple worktrees concurrently (the core use case)., Create 10 worktrees — simulating 10 parallel agents., TestMultipleWorktrees
 
-### Community 1822 - "Community 1822"
-Cohesion: 0.20
-Nodes (3): Tests for WSL detection and WSL-aware gateway behavior., Test the WSL systemd check., TestWslSystemdOperational
-
-### Community 1823 - "Community 1823"
-Cohesion: 0.25
-Nodes (5): Auto-correction for typos on openai-codex provider., gpt5.3-codex (missing dash) auto-corrects to gpt-5.3-codex., Exact model name does not trigger auto-correction., Names too different for auto-correction get the suggestion list., TestValidateCodexAutoCorrection
-
 ### Community 1824 - "Community 1824"
 Cohesion: 0.50
 Nodes (3): For /graphify add, For --watch, graphify reference: add a URL and watch a folder
@@ -9077,10 +8977,6 @@ Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphif
 ### Community 1831 - "Community 1831"
 Cohesion: 0.50
 Nodes (3): Spark Agent, What Spark can do, Where do you want to go?
-
-### Community 1835 - "Community 1835"
-Cohesion: 0.25
-Nodes (4): Create the audio InputStream once and keep it alive.          The stream stays o, Start capturing audio from the default input device.          The underlying Inp, Close the audio stream with a timeout to prevent CoreAudio hangs., Release the audio stream.  Call when voice mode is disabled.
 
 ### Community 1836 - "Community 1836"
 Cohesion: 0.50
@@ -9190,10 +9086,6 @@ Nodes (3): Test that skills subparser doesn't conflict (regression test for #898
 Cohesion: 0.50
 Nodes (4): Config Sections, Key Paths & Config, Providers, Toolsets
 
-### Community 1868 - "Community 1868"
-Cohesion: 0.33
-Nodes (5): ParseResult, DeepSeekV3ToolCallParser, DeepSeek V3 tool call parser.  Format uses special unicode tokens:     <｜tool▁ca, Parser for DeepSeek V3 tool calls.      Uses special unicode tokens with fullwid, Parses the input text and extracts all available tool calls.
-
 ### Community 1869 - "Community 1869"
 Cohesion: 0.50
 Nodes (4): 7. DIAL DEFINITIONS (Technical Reference), DESIGN_VARIANCE (Level 1-10), MOTION_INTENSITY (Level 1-10), VISUAL_DENSITY (Level 1-10)
@@ -9230,17 +9122,9 @@ Nodes (3): Gravity Drop, Morph Circle, Other
 Cohesion: 0.50
 Nodes (3): Scale / Zoom, Zoom Out, Zoom Through
 
-### Community 1884 - "Community 1884"
-Cohesion: 0.38
-Nodes (4): /think <off|low|med|high> maps to reasoning effort (off → none, med → medium)., _Stub, test_think_maps_levels(), test_think_unknown_level_is_rejected()
-
 ### Community 1885 - "Community 1885"
 Cohesion: 0.67
 Nodes (3): 1. "Illegal, another \bibstyle command" Error, 2. Incorrect Reference Format, Common Issues and Solutions
-
-### Community 1886 - "Community 1886"
-Cohesion: 0.29
-Nodes (3): Ensure all parsers conform to the ParseResult contract., When tool calls are found, they should be ChatCompletionMessageToolCall objects., TestParseResultContract
 
 ### Community 1890 - "Community 1890"
 Cohesion: 0.60
@@ -9286,46 +9170,30 @@ Nodes (3): :gear: Official Recommended Settings, :question:Testing the model, �
 Cohesion: 0.67
 Nodes (3): Multi-image training, Vision Fine-tuning, Vision Fine-tuning Dataset
 
-### Community 1923 - "Community 1923"
-Cohesion: 0.40
-Nodes (4): ParseResult, DeepSeekV31ToolCallParser, DeepSeek V3.1 tool call parser.  Similar to V3 but with a slightly different for, Parser for DeepSeek V3.1 tool calls.      Slightly different regex than V3: func
-
-### Community 2017 - "Community 2017"
-Cohesion: 0.33
-Nodes (3): Groq-specific provider selection tests., Explicit groq with no key returns none — no cross-provider fallback., TestGetProviderGroq
-
 ### Community 2075 - "Community 2075"
 Cohesion: 0.33
 Nodes (4): Bug #8: _show_voice_status must read record key from config., Source check: _show_voice_status must not hardcode Ctrl+B., Source check: _show_voice_status must use load_config()., TestVoiceStatusUsesConfigKey
-
-### Community 2076 - "Community 2076"
-Cohesion: 0.47
-Nodes (3): TestPlayAudioFile, play_audio_file(), Play an audio file through the default output device.      Strategy:     1. WAV
 
 ### Community 2078 - "Community 2078"
 Cohesion: 0.50
 Nodes (3): decideRecoveryPoll(), RecoveryPollDecision, RecoveryPollInput
 
 ### Community 2079 - "Community 2079"
-Cohesion: 0.03
-Nodes (167): print_error(), print_header(), print_info(), print_success(), print_warning(), prompt(), prompt_yes_no(), Shared CLI output helpers for Spark CLI modules.  Extracts the identical ``print (+159 more)
-
-### Community 2083 - "Community 2083"
-Cohesion: 0.60
-Nodes (4): _connector_or_error(), connectors_tool(), _is_interactive(), Agent tool: `connectors` — list, inspect, and manage platform connectors.  Thin
+Cohesion: 0.02
+Nodes (261): deactivate_provider(), get_model_routing_slot_selection(), _prompt_model_selection(), Interactive model selection. Puts current_model first with a marker. Returns cho, Save the selected model to config.yaml (single source of truth).      The model, During multi-model setup, which slot is being configured: ``smart`` or ``fast``., Clear active_provider in auth.json without deleting credentials.     Used when t, _save_model_choice() (+253 more)
 
 ## Knowledge Gaps
 - **9696 isolated node(s):** `run_eval.sh script`, `PYTHONUNBUFFERED`, `LOGLEVEL`, `run_eval.sh script`, `PYTHONUNBUFFERED` (+9691 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **193 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **196 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `GatewayRunner` connect `Community 4` to `Community 1`, `Community 3`, `Community 259`, `Community 5`, `Community 264`, `Community 396`, `Community 13`, `Community 1422`, `Community 767`, `Community 19`, `Community 22`, `Community 24`, `Community 1049`, `Community 25`, `Community 536`, `Community 923`, `Community 28`, `Community 416`, `Community 33`, `Community 37`, `Community 42`, `Community 172`, `Community 44`, `Community 47`, `Community 55`, `Community 572`, `Community 191`, `Community 703`, `Community 193`, `Community 833`, `Community 454`, `Community 584`, `Community 331`, `Community 338`, `Community 852`, `Community 86`, `Community 855`, `Community 216`, `Community 219`, `Community 859`, `Community 607`, `Community 100`, `Community 1000`, `Community 105`, `Community 1514`, `Community 745`, `Community 108`, `Community 493`, `Community 879`, `Community 629`, `Community 119`, `Community 120`, `Community 377`, `Community 255`?**
-  _High betweenness centrality (0.048) - this node is a cross-community bridge._
-- **Why does `Platform` connect `Community 1` to `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 13`, `Community 19`, `Community 22`, `Community 24`, `Community 25`, `Community 1049`, `Community 537`, `Community 538`, `Community 539`, `Community 28`, `Community 31`, `Community 26`, `Community 33`, `Community 36`, `Community 37`, `Community 42`, `Community 44`, `Community 1069`, `Community 48`, `Community 1073`, `Community 51`, `Community 54`, `Community 55`, `Community 66`, `Community 67`, `Community 586`, `Community 1107`, `Community 87`, `Community 609`, `Community 97`, `Community 100`, `Community 105`, `Community 106`, `Community 107`, `Community 108`, `Community 110`, `Community 628`, `Community 119`, `Community 120`, `Community 133`, `Community 1672`, `Community 1165`, `Community 1168`, `Community 146`, `Community 149`, `Community 667`, `Community 169`, `Community 173`, `Community 184`, `Community 1209`, `Community 191`, `Community 703`, `Community 193`, `Community 706`, `Community 1221`, `Community 721`, `Community 212`, `Community 216`, `Community 217`, `Community 730`, `Community 736`, `Community 745`, `Community 758`, `Community 1274`, `Community 259`, `Community 775`, `Community 264`, `Community 1288`, `Community 1296`, `Community 787`, `Community 280`, `Community 1306`, `Community 804`, `Community 829`, `Community 833`, `Community 338`, `Community 855`, `Community 856`, `Community 1367`, `Community 880`, `Community 370`, `Community 1924`, `Community 406`, `Community 925`, `Community 416`, `Community 450`, `Community 968`, `Community 1493`, `Community 1000`, `Community 493`?**
+- **Why does `GatewayRunner` connect `Community 4` to `Community 1`, `Community 3`, `Community 5`, `Community 6`, `Community 650`, `Community 396`, `Community 524`, `Community 1422`, `Community 13`, `Community 767`, `Community 19`, `Community 20`, `Community 22`, `Community 24`, `Community 25`, `Community 536`, `Community 923`, `Community 28`, `Community 416`, `Community 33`, `Community 37`, `Community 42`, `Community 172`, `Community 44`, `Community 47`, `Community 55`, `Community 572`, `Community 191`, `Community 703`, `Community 193`, `Community 833`, `Community 454`, `Community 584`, `Community 331`, `Community 338`, `Community 852`, `Community 86`, `Community 216`, `Community 219`, `Community 859`, `Community 93`, `Community 607`, `Community 100`, `Community 1000`, `Community 105`, `Community 1514`, `Community 745`, `Community 108`, `Community 493`, `Community 879`, `Community 629`, `Community 119`, `Community 120`, `Community 377`, `Community 255`?**
   _High betweenness centrality (0.046) - this node is a cross-community bridge._
+- **Why does `Platform` connect `Community 1` to `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 8`, `Community 524`, `Community 13`, `Community 19`, `Community 1044`, `Community 20`, `Community 22`, `Community 1557`, `Community 24`, `Community 25`, `Community 537`, `Community 1049`, `Community 28`, `Community 538`, `Community 539`, `Community 31`, `Community 33`, `Community 36`, `Community 37`, `Community 42`, `Community 44`, `Community 1069`, `Community 48`, `Community 1073`, `Community 51`, `Community 564`, `Community 55`, `Community 1592`, `Community 66`, `Community 67`, `Community 586`, `Community 87`, `Community 609`, `Community 97`, `Community 100`, `Community 105`, `Community 106`, `Community 107`, `Community 108`, `Community 110`, `Community 116`, `Community 628`, `Community 119`, `Community 120`, `Community 133`, `Community 650`, `Community 1165`, `Community 1168`, `Community 146`, `Community 149`, `Community 667`, `Community 169`, `Community 173`, `Community 178`, `Community 180`, `Community 184`, `Community 1209`, `Community 191`, `Community 703`, `Community 704`, `Community 193`, `Community 1221`, `Community 721`, `Community 212`, `Community 216`, `Community 730`, `Community 232`, `Community 745`, `Community 756`, `Community 1274`, `Community 775`, `Community 264`, `Community 1296`, `Community 787`, `Community 280`, `Community 282`, `Community 1306`, `Community 289`, `Community 833`, `Community 1352`, `Community 332`, `Community 338`, `Community 855`, `Community 1367`, `Community 880`, `Community 370`, `Community 406`, `Community 925`, `Community 416`, `Community 450`, `Community 968`, `Community 1493`, `Community 1000`, `Community 493`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **Why does `Button` connect `Community 25` to `Community 1`, `Community 1347`, `Community 165`, `Community 1126`, `Community 553`, `Community 330`, `Community 778`, `Community 201`, `Community 558`, `Community 1682`, `Community 1235`, `Community 1522`, `Community 1042`, `Community 918`, `Community 471`, `Community 1114`, `Community 957`?**
   _High betweenness centrality (0.039) - this node is a cross-community bridge._
 - **Are the 686 inferred relationships involving `PlatformConfig` (e.g. with `AsyncWebClient` and `Button`) actually correct?**

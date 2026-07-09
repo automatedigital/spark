@@ -92,6 +92,29 @@ except ImportError:
 WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
+_WEB_SESSION_LIST_FIELDS = {
+    "id",
+    "source",
+    "model",
+    "title",
+    "started_at",
+    "ended_at",
+    "last_active",
+    "is_active",
+    "message_count",
+    "tool_call_count",
+    "input_tokens",
+    "output_tokens",
+    "preview",
+    "kanban_status",
+    "estimated_cost_usd",
+}
+
+
+def _web_session_list_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Return the compact row shape consumed by the web sidebar session list."""
+    return {key: row.get(key) for key in _WEB_SESSION_LIST_FIELDS}
+
 # Captured at startup — fan-out SSE events from sync agent threads
 _web_event_loop: Optional[asyncio.AbstractEventLoop] = None
 _event_subscribers: set = set()  # asyncio.Queue
@@ -2629,7 +2652,7 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
                     and (now - s.get("last_active", s.get("started_at", 0))) < 300
                 )
             return {
-                "sessions": sessions,
+                "sessions": [_web_session_list_row(s) for s in sessions],
                 "total": total,
                 "limit": limit,
                 "offset": offset,

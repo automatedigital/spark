@@ -611,6 +611,24 @@ class TestConversationControl:
         assert "cli_session" not in ids
         assert resp.json()["total"] == 1
 
+    def test_sessions_list_returns_compact_sidebar_rows(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("web_compact_session", source="web", model="m1")
+            db.update_system_prompt("web_compact_session", "large prompt" * 1000)
+        finally:
+            db.close()
+
+        resp = web_client.get("/api/sessions?source=web&limit=20")
+        assert resp.status_code == 200
+        row = next(r for r in resp.json()["sessions"] if r["id"] == "web_compact_session")
+        assert "system_prompt" not in row
+        assert "model_config" not in row
+        assert row["id"] == "web_compact_session"
+        assert row["model"] == "m1"
+
     def test_session_search_can_filter_to_web_source(self, web_client):
         from core.spark_state import SessionDB
 

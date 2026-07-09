@@ -2465,8 +2465,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1783554215.580624,
-    "ast_hash": "0a94220bb44e5ca4d63d3ce8352e5b86",
+    "mtime": 1783555729.9738429,
+    "ast_hash": "d05e7ee98d659e7bc200b5821b68647d",
     "semantic_hash": ""
   },
   "src/spark_cli/webhook.py": {
@@ -5135,8 +5135,8 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
-    "mtime": 1783336702.2777908,
-    "ast_hash": "ae997510d648ac83c18f295129bea8ea",
+    "mtime": 1783555738.391853,
+    "ast_hash": "206cf59f53d5bcf272189057d90a2368",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_webhook_cli.py": {
