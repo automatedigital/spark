@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run bundle:check",
+    "bundle:check": "node ./scripts/check-bundle-budget.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "node ./e2e/multi-chat.mjs",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -17,7 +17,6 @@ import {
   SquareTerminal,
   X,
 } from "lucide-react";
-import hljs from "highlight.js";
 import { api, workspaceRawFileUrl } from "@/lib/api";
 import type { WorkspaceFileNode, WorkspaceProject } from "@/lib/api";
 import { isMiddleClickCloseIntent } from "@/lib/panelTabs";
@@ -32,9 +31,9 @@ import { threadTitle } from "@/components/chat/ThreadRow";
 import { TypeOnTitle } from "@/components/chat/TypeOnTitle";
 import { FileTreePane } from "@/components/workspace/FileTreePane";
 import { getFileCategory } from "@/lib/fileCategory";
-import { WorkspaceTerminalPanel } from "@/components/workspace/WorkspaceTerminalPanel";
 import { WorkspaceChangesPanel } from "@/components/workspace/WorkspaceChangesPanel";
 import { WorkspacePreviewPanel } from "@/components/workspace/WorkspacePreviewPanel";
+import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
 import { previewAutoOpenEnabled } from "@/lib/previewPrefs";
 import {
   pendingInitialMessageForSession,
@@ -45,6 +44,12 @@ import type { ThreadCreatedMeta } from "@/lib/sessionStore";
 import { useSubagents } from "@/hooks/useSubagents";
 import { SubagentsPanel } from "@/components/chat/SubagentsPanel";
 import { preserveSelectedSubagentId } from "@/lib/subagents";
+
+const WorkspaceTerminalPanel = lazy(() =>
+  import("@/components/workspace/WorkspaceTerminalPanel").then((module) => ({
+    default: module.WorkspaceTerminalPanel,
+  })),
+);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -303,6 +308,7 @@ function NewThreadCompose({
 
 function SimpleFileViewer({ slug, node }: { slug: string; node: WorkspaceFileNode }) {
   const [content, setContent] = useState<string | null>(null);
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -315,6 +321,29 @@ function SimpleFileViewer({ slug, node }: { slug: string; node: WorkspaceFileNod
       .catch(() => setContent("Error loading file."))
       .finally(() => setLoading(false));
   }, [slug, node.path, node.mime, node.name]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHighlightedHtml(null);
+    if (content === null) return;
+    const lang = languageForFile(node.name);
+    void import("highlight.js/lib/common").then(({ default: hljs }) => {
+      if (cancelled) return;
+      try {
+        const html = lang && hljs.getLanguage(lang)
+          ? hljs.highlight(content, { language: lang, ignoreIllegals: true }).value
+          : hljs.highlightAuto(content).value;
+        setHighlightedHtml(html);
+      } catch {
+        // The plain-text render below remains available.
+      }
+    }).catch(() => {
+      // Syntax highlighting is optional; never block reading a file.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [content, node.name]);
 
   const cat = getFileCategory(node.mime ?? "application/octet-stream", node.name);
 
@@ -354,13 +383,6 @@ function SimpleFileViewer({ slug, node }: { slug: string; node: WorkspaceFileNod
 
   if (content !== null) {
     const lang = languageForFile(node.name);
-    let html = content;
-    try {
-      html = lang && hljs.getLanguage(lang)
-        ? hljs.highlight(content, { language: lang, ignoreIllegals: true }).value
-        : hljs.highlightAuto(content).value;
-    } catch { /* use raw content */ }
-
     const lineCount = content.split("\n").length;
 
     return (
@@ -380,7 +402,11 @@ function SimpleFileViewer({ slug, node }: { slug: string; node: WorkspaceFileNod
             {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
           </pre>
           <pre className="hljs min-h-full flex-1 overflow-visible px-4 py-3">
-            <code dangerouslySetInnerHTML={{ __html: html }} />
+            {highlightedHtml === null ? (
+              <code>{content}</code>
+            ) : (
+              <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+            )}
           </pre>
         </div>
       </div>
@@ -647,11 +673,16 @@ function WorkspaceRightPanel({
   onCloseSubagentDetail: () => void;
 }) {
   const [selectedFile, setSelectedFile] = useState<WorkspaceFileNode | null>(null);
+  const [terminalActivated, setTerminalActivated] = useState(activeTab === "terminal");
   const suppressRailClickRef = useRef<RightTab | null>(null);
   const tabs = availableRightTabs(Boolean(slug), isProject, Boolean(sessionId), subagentsEnabled);
 
   // Reset selected file when project changes
   useEffect(() => { setSelectedFile(null); }, [slug]);
+
+  useEffect(() => {
+    if (activeTab === "terminal") setTerminalActivated(true);
+  }, [activeTab]);
 
   // The panel keeps all panes mounted whether open or collapsed, so the terminal
   // shell and preview survive both tab switches AND collapse. When collapsed we
@@ -781,9 +812,13 @@ function WorkspaceRightPanel({
         </div>
         {slug && (
           <>
-            <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "terminal" && "hidden")}>
-              <WorkspaceTerminalPanel slug={slug} />
-            </div>
+            {terminalActivated && (
+              <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "terminal" && "hidden")}>
+                <LazyLoadBoundary label="terminal">
+                  <WorkspaceTerminalPanel slug={slug} />
+                </LazyLoadBoundary>
+              </div>
+            )}
             <div className={cn("absolute inset-0 flex min-h-0 flex-col overflow-hidden", activeTab !== "preview" && "hidden")}>
               <WorkspacePreviewPanel slug={slug} visible={open && activeTab === "preview"} />
             </div>
