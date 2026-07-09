@@ -216,14 +216,23 @@ export const api = {
       latest_session_id: string;
       active_turn_session_id: string | null;
       turn_active: boolean;
+      state?: string;
+      reason?: string | null;
+      stale_after_seconds?: number;
+      idle_for_seconds?: number | null;
       status: string | null;
       phase: "idle" | string;
       started_at: number | null;
+      ended_at?: number | null;
       last_event_at: number | null;
       interrupt_requested: boolean;
       active_agent_session_id: string | null;
       stream_revision?: number;
       stream_text_chars?: number;
+      timings?: {
+        absolute?: Record<string, number>;
+        relative_seconds?: Record<string, number>;
+      };
       diagnostics?: Record<string, unknown>;
     }>(
       `/api/conversations/${encodeURIComponent(id)}/turn-status`,
@@ -240,12 +249,20 @@ export const api = {
       latest_session_id: string;
       active_turn_session_id: string | null;
       turn_active: boolean;
+      state?: string;
+      reason?: string | null;
+      stale_after_seconds?: number;
+      idle_for_seconds?: number | null;
       stream_text: string;
       stream_revision: number;
       stream_text_chars: number;
       stream_text_start?: number;
       stream_text_mode?: "full" | "delta" | "tail" | string;
       stream_text_complete?: boolean;
+      timings?: {
+        absolute?: Record<string, number>;
+        relative_seconds?: Record<string, number>;
+      };
       diagnostics?: Record<string, unknown>;
     }>(
       `/api/conversations/${encodeURIComponent(id)}/stream-snapshot${query ? `?${query}` : ""}`,
@@ -397,11 +414,11 @@ export const api = {
     ),
 
   // Web chat conversations
-  postConversation: (message: string, model?: string, contextItems?: unknown[]) =>
+  postConversation: (message: string, model?: string, contextItems?: unknown[], source?: string | null) =>
     fetchJSON<{ session_id: string; ok: boolean }>("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, model, context_items: contextItems ?? [] }),
+      body: JSON.stringify({ message, model, context_items: contextItems ?? [], source }),
     }),
   postConversationMessage: (sessionId: string, message: string, contextItems?: unknown[]) =>
     fetchJSON<{ session_id: string; ok: boolean }>(
@@ -1303,13 +1320,13 @@ export const api = {
       sseUrl(`/api/workspace/projects/${encodeURIComponent(slug)}/preview/events`),
     ),
 
-  startWorkspaceConversation: (slug: string, message: string, model?: string) =>
+  startWorkspaceConversation: (slug: string, message: string, model?: string, contextItems?: unknown[]) =>
     fetchJSON<{ session_id: string; ok: boolean; source: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/conversations`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, model }),
+        body: JSON.stringify({ message, model, context_items: contextItems ?? [] }),
       },
     ),
 

@@ -1056,8 +1056,8 @@ export default function ChatPage() {
                 workspaceSlug={activeProjectSlug ?? undefined}
                 initialMessage={activeInitialMessage}
                 onBack={() => selectSession(null)}
-                onSessionCreated={(id, initialMessage) => {
-                  if (initialMessage) threadCreated(id, initialMessage);
+                onSessionCreated={(id, initialMessage, meta) => {
+                  if (initialMessage) threadCreated(id, initialMessage, meta);
                   else selectSession(id);
                 }}
                 onSessionUpdated={clearPendingInitialMessage}

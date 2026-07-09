@@ -132,6 +132,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const [searchResults, setSearchResults] = useState<SessionInfo[] | null>(null);
   const [searching, setSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconcileSessionsRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(loadPinnedIds);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(loadExpanded);
@@ -175,10 +176,22 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  const scheduleSessionsReconcile = useCallback(() => {
+    if (reconcileSessionsRef.current) clearTimeout(reconcileSessionsRef.current);
+    reconcileSessionsRef.current = setTimeout(() => {
+      reconcileSessionsRef.current = null;
+      void reloadSessions();
+    }, 750);
+  }, [reloadSessions]);
+
   useEffect(() => {
     void reloadProjects();
     void reloadSessions();
   }, [reloadProjects, reloadSessions]);
+
+  useEffect(() => () => {
+    if (reconcileSessionsRef.current) clearTimeout(reconcileSessionsRef.current);
+  }, []);
 
   // ── Real-time updates (SSE) ──
   useEventBus((env: SparkEventEnvelope) => {
@@ -370,8 +383,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       };
       return [optimistic, ...prev];
     });
-    void reloadSessions();
-  }, [reloadSessions]);
+    scheduleSessionsReconcile();
+  }, [scheduleSessionsReconcile]);
 
   const clearPendingInitialMessage = useCallback((sessionId?: string) => {
     setPendingInitialMessages((pending) => {
@@ -383,7 +396,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     });
   }, []);
 
-  // Desktop tray "New Chat" + global sidebar "New session" dispatch this event.
+  // Desktop tray "New Chat" + global sidebar "New chat" dispatch this event.
   useEffect(() => {
     const handler = () => newSession();
     window.addEventListener("spark-new-chat", handler);

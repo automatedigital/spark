@@ -72,7 +72,7 @@ export const en: Translations = {
       canvas: "Canvas",
       memory: "Memory",
       connectors: "Connectors",
-      newSession: "New session",
+      newSession: "New chat",
       skillsAndTools: "Skills & Tools",
       messaging: "Messaging",
     },

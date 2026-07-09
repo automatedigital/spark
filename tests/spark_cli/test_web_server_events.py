@@ -141,6 +141,35 @@ def test_session_source_patch_moves_chat_between_project_and_chats(web_client):
         db.close()
 
 
+def test_create_conversation_can_preclaim_workspace_source(web_client, monkeypatch):
+    import spark_cli.web_server as web_server
+    from core.spark_state import SessionDB
+    from spark_cli.config import get_spark_home
+
+    (get_spark_home() / "workspace" / "particles").mkdir(parents=True)
+    created_tasks = []
+    monkeypatch.setattr(web_server.asyncio, "create_task", lambda coro: created_tasks.append(coro))
+
+    try:
+        resp = web_client.post(
+            "/api/conversations",
+            json={"message": "What is this project?", "source": "workspace:particles"},
+        )
+        assert resp.status_code == 200
+        session_id = resp.json()["session_id"]
+
+        db = SessionDB()
+        try:
+            row = db.get_session(session_id)
+            assert row is not None
+            assert row["source"] == "workspace:particles"
+        finally:
+            db.close()
+    finally:
+        for coro in created_tasks:
+            coro.close()
+
+
 class TestEventBus:
     def test_publish_event_delivers_to_subscriber(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
@@ -270,6 +299,9 @@ class TestEventBus:
             assert status.status_code == 200
             assert status.json()["stream_text_chars"] == len("hello world")
             assert status.json()["stream_revision"] == 2
+            assert status.json()["state"] == "streaming"
+            assert status.json()["reason"] == "stream_text_available"
+            assert status.json()["stale_after_seconds"] > 0
             assert status.json()["diagnostics"]["source"] == "turn-status"
             assert status.json()["diagnostics"]["requested_session_id"] == "sess_snapshot"
 
@@ -277,6 +309,7 @@ class TestEventBus:
             assert snapshot.status_code == 200
             data = snapshot.json()
             assert data["turn_active"] is True
+            assert data["state"] == "streaming"
             assert data["stream_text"] == "hello world"
             assert data["stream_revision"] == 2
             assert data["stream_text_mode"] == "full"
@@ -284,6 +317,55 @@ class TestEventBus:
             assert data["stream_text_complete"] is True
         finally:
             web_server._clear_web_turn("sess_snapshot")
+
+    def test_turn_status_reports_not_found_when_no_active_turn(self, web_client):
+        resp = web_client.get("/api/conversations/no_active_turn/turn-status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["turn_active"] is False
+        assert data["state"] == "not_found"
+        assert data["reason"] == "no_active_turn"
+        assert data["active_turn_session_id"] is None
+
+    def test_turn_status_reports_stalled_active_turn(self, web_client, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        web_server._mark_web_turn_active("sess_stalled")
+        try:
+            _, turn = web_server._get_web_turn("sess_stalled")
+            assert turn is not None
+            with turn.lock:
+                turn.last_event_at = 100.0
+            monkeypatch.setattr(web_server.time, "time", lambda: 200.0)
+            resp = web_client.get("/api/conversations/sess_stalled/turn-status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["turn_active"] is True
+            assert data["state"] == "stalled"
+            assert data["reason"] == "no_recent_backend_event"
+            assert data["idle_for_seconds"] == 100.0
+        finally:
+            web_server._clear_web_turn("sess_stalled")
+
+    def test_turn_status_includes_latency_timing_metadata(self, web_client):
+        import spark_cli.web_server as web_server
+
+        turn = web_server._mark_web_turn_active("sess_timing")
+        try:
+            with turn.lock:
+                turn.timings["backend_received"] = turn.started_at - 0.25
+                turn.timings["model_request_start"] = turn.started_at + 0.75
+                turn.timings["first_visible_event"] = turn.started_at + 1.5
+            resp = web_client.get("/api/conversations/sess_timing/turn-status")
+            assert resp.status_code == 200
+            timings = resp.json()["timings"]
+            assert timings["absolute"]["backend_received"] == turn.started_at - 0.25
+            assert timings["relative_seconds"]["turn_registered"] == 0.0
+            assert timings["relative_seconds"]["send_to_model_request_start"] == 1.0
+            assert timings["relative_seconds"]["send_to_first_visible_event"] == 1.75
+            assert resp.json()["diagnostics"]["timings"]["relative_seconds"]["send_to_first_visible_event"] == 1.75
+        finally:
+            web_server._clear_web_turn("sess_timing")
 
     def test_stream_snapshot_can_return_delta_or_tail(self, web_client):
         import spark_cli.web_server as web_server
@@ -374,6 +456,71 @@ class TestEventBus:
         finally:
             web_server._clear_web_turn("alpha_session")
             web_server._clear_web_turn("bravo_session")
+
+    def test_multi_chat_streaming_stress_keeps_three_active_sessions_isolated(self, web_client):
+        import spark_cli.web_server as web_server
+
+        sessions = {
+            "stress_alpha": ["A1 ", "A2 ", "A3"],
+            "stress_bravo": ["B1 ", "B2"],
+            "stress_charlie": ["C1 ", "C2 ", "C3 ", "C4"],
+        }
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            events: asyncio.Queue = asyncio.Queue()
+            web_server._event_subscribers.add(events)
+            try:
+                callbacks_by_session = {}
+                for session_id in sessions:
+                    web_server._mark_web_turn_active(session_id)
+                    callbacks_by_session[session_id] = web_server._make_web_chat_callbacks(
+                        session_id, asyncio.Queue(), loop
+                    )[0]
+
+                for session_id, chunks in sessions.items():
+                    callbacks_by_session[session_id](chunks[0])
+                callbacks_by_session["stress_alpha"](sessions["stress_alpha"][1])
+                callbacks_by_session["stress_charlie"](sessions["stress_charlie"][1])
+                callbacks_by_session["stress_bravo"](sessions["stress_bravo"][1])
+                callbacks_by_session["stress_charlie"](sessions["stress_charlie"][2])
+                callbacks_by_session["stress_alpha"](sessions["stress_alpha"][2])
+                callbacks_by_session["stress_charlie"](sessions["stress_charlie"][3])
+
+                items = []
+                expected_count = sum(len(chunks) for chunks in sessions.values())
+                while len(items) < expected_count:
+                    items.append(await asyncio.wait_for(events.get(), timeout=2.0))
+                return items
+            finally:
+                web_server._event_subscribers.discard(events)
+
+        events = asyncio.run(run())
+        try:
+            by_session = {}
+            for event in events:
+                assert event["topic"] == "chat.token"
+                by_session.setdefault(event["session_id"], "")
+                by_session[event["session_id"]] += event["data"]["t"]
+
+            assert by_session == {
+                session_id: "".join(chunks)
+                for session_id, chunks in sessions.items()
+            }
+
+            for session_id, chunks in sessions.items():
+                snapshot = web_client.get(f"/api/conversations/{session_id}/stream-snapshot")
+                turn_status = web_client.get(f"/api/conversations/{session_id}/turn-status")
+                assert snapshot.status_code == 200
+                assert turn_status.status_code == 200
+                assert snapshot.json()["stream_text"] == "".join(chunks)
+                assert snapshot.json()["state"] == "streaming"
+                assert turn_status.json()["state"] == "streaming"
+                assert turn_status.json()["stream_text_chars"] == len("".join(chunks))
+        finally:
+            for session_id in sessions:
+                web_server._clear_web_turn(session_id)
 
     def test_token_callback_strips_ansi_from_events_queue_and_snapshot(self, web_client):
         import spark_cli.web_server as web_server

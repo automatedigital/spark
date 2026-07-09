@@ -27,6 +27,7 @@ import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
 import { api, getDashboardToken, setDashboardToken, getConnectionMode, getRemoteBaseUrl, getApiBase } from "@/lib/api";
+import type { StatusResponse } from "@/lib/api";
 import { displayHost } from "@/lib/connection";
 import { useUpdateModal } from "@/lib/updateModal";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -40,6 +41,7 @@ import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/li
 import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
+import { gatewayFooterState } from "@/lib/gatewayFooterState";
 import {
   isEditableShortcutTarget,
   isSidebarToggleShortcut,
@@ -48,7 +50,7 @@ import {
 } from "@/lib/sidebarPrefs";
 
 
-// Primary sections shown after the "New session" action.
+// Primary sections shown after the "New chat" action.
 const PRIMARY_NAV = [
   { id: "skillsTools", labelKey: "skillsAndTools" as const, icon: Blocks },
   { id: "messaging", labelKey: "messaging" as const, icon: MessageCircle },
@@ -294,7 +296,8 @@ function AppShell() {
   const [authChecking, setAuthChecking] = useState(true);
   const [blobPos, setBlobPos] = useState({ x: -400, y: -400 });
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
-  const [gatewayReady, setGatewayReady] = useState(false);
+  const [statusSnapshot, setStatusSnapshot] = useState<StatusResponse | null>(null);
+  const [statusPollFailed, setStatusPollFailed] = useState(false);
   const [scheduledJobCount, setScheduledJobCount] = useState(0);
   const [activeModel, setActiveModel] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -388,7 +391,7 @@ function AppShell() {
 
   const navLabel = (key: NavLabelKey) => t.app.nav[key];
 
-  // "New session" — clear selection so ChatPage shows the hero composer.
+  // "New chat" — clear selection so ChatPage shows the hero composer.
   // Same path as the desktop tray "new chat" action.
   const handleNewSession = () => {
     navigateTo("chat");
@@ -489,7 +492,8 @@ function AppShell() {
         ]);
         if (!cancelled) {
           setVersionLabel(`v${status.version}_${formatVersionDate()}`);
-          setGatewayReady(status.gateway_running);
+          setStatusSnapshot(status);
+          setStatusPollFailed(false);
           setScheduledJobCount(cronJobs.length);
           setActiveModel(
             modelStatus
@@ -502,7 +506,7 @@ function AppShell() {
       } catch {
         if (!cancelled) {
           setVersionLabel(`v${formatVersionDate()}`);
-          setGatewayReady(false);
+          setStatusPollFailed(true);
         }
       }
     };
@@ -603,6 +607,7 @@ function AppShell() {
   const sidebarOpen = navExpanded || navHovered;
 
   const PageComponent = PAGE_COMPONENTS[page];
+  const gatewayFooter = gatewayFooterState(statusSnapshot, statusPollFailed);
 
   const saveToken = () => {
     const trimmed = tokenInput.trim();
@@ -678,7 +683,7 @@ function AppShell() {
             </button>
           </div>
           <nav className={`flex shrink-0 flex-col gap-1 px-2 pt-3 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
-            {/* New session */}
+            {/* New chat */}
             <button
               type="button"
               title={navLabel("newSession")}
@@ -935,11 +940,9 @@ function AppShell() {
             <footer className="hidden h-7 shrink-0 items-center gap-3 border-t border-border/60 bg-card/35 px-3 text-[11px] text-muted-foreground backdrop-blur md:flex">
               <span className="inline-flex items-center gap-1.5">
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    gatewayReady ? "bg-emerald-400" : "bg-muted-foreground/45"
-                  }`}
+                  className={`h-1.5 w-1.5 rounded-full ${gatewayFooter.dot}`}
                 />
-                {gatewayReady ? "Gateway ready" : "Gateway offline"}
+                <span title={gatewayFooter.title}>{gatewayFooter.label}</span>
               </span>
               <span className="text-border">·</span>
               <span>

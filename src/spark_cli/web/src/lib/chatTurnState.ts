@@ -1,4 +1,15 @@
 export type ChatTurnState = "idle" | "starting" | "streaming" | "stalled" | "stopping" | "redirecting";
+export type BackendTurnState =
+  | "not_found"
+  | "running"
+  | "streaming"
+  | "stalled"
+  | "stopping"
+  | "redirecting"
+  | "complete"
+  | "failed"
+  | "interrupted"
+  | string;
 
 export type ChatTurnEvent =
   | { type: "submit" }
@@ -23,13 +34,20 @@ export function normalizeBackendPhase(phase: string | null | undefined, interrup
 export function recoverTurnStateFromBackend({
   turnActive,
   phase,
+  state,
   interruptRequested = false,
 }: {
   turnActive: boolean;
   phase?: string | null;
+  state?: BackendTurnState | null;
   interruptRequested?: boolean;
 }): ChatTurnState {
   if (!turnActive) return "idle";
+  if (state === "stalled") return "stalled";
+  if (state === "redirecting") return "redirecting";
+  if (state === "stopping") return "stopping";
+  if (state === "running" && phase === "starting") return "starting";
+  if (state === "streaming") return "streaming";
   return normalizeBackendPhase(phase, interruptRequested);
 }
 

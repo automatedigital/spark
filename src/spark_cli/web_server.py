@@ -149,6 +149,7 @@ class WebActiveTurn:
     last_checkpoint_at: float = 0.0
     checkpointed_chars: int = 0
     session_aliases: set[str] = field(default_factory=set)
+    timings: dict[str, float] = field(default_factory=dict)
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
@@ -455,10 +456,58 @@ def _mark_web_turn_active(
         phase=phase,
         session_aliases=_web_turn_alias_set(session_id),
     )
+    turn.timings["turn_registered"] = now
     with _with_web_turn_lock():
         _web_active_turns[key] = turn
         _remember_web_turn_aliases(key, turn, turn.session_aliases | {key})
     return turn
+
+
+def _record_web_turn_timing(
+    session_id: Optional[str],
+    name: str,
+    *,
+    when: Optional[float] = None,
+    only_if_absent: bool = True,
+) -> None:
+    if not session_id or not name:
+        return
+    _, turn = _get_web_turn(session_id)
+    if not turn:
+        return
+    with turn.lock:
+        if only_if_absent and name in turn.timings:
+            return
+        turn.timings[name] = time.time() if when is None else when
+
+
+def _web_turn_timing_payload(turn: Optional[WebActiveTurn]) -> dict[str, Any]:
+    if not turn:
+        return {}
+    with turn.lock:
+        timings = dict(turn.timings)
+        started_at = turn.started_at
+    relative = {
+        key: max(0.0, value - started_at)
+        for key, value in timings.items()
+        if isinstance(value, (int, float))
+    }
+    if "backend_received" in timings and "first_visible_event" in timings:
+        relative["send_to_first_visible_event"] = max(
+            0.0,
+            timings["first_visible_event"] - timings["backend_received"],
+        )
+    if "backend_received" in timings and "model_request_start" in timings:
+        relative["send_to_model_request_start"] = max(
+            0.0,
+            timings["model_request_start"] - timings["backend_received"],
+        )
+    return {"absolute": timings, "relative_seconds": relative}
+
+
+def _record_web_first_visible_event(session_id: Optional[str], kind: str) -> None:
+    _record_web_turn_timing(session_id, "first_visible_event")
+    _record_web_turn_timing(session_id, f"first_{kind}_event")
 
 
 def _touch_web_turn(
@@ -512,6 +561,43 @@ def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
 
 
 _WEB_TURN_CHECKPOINT_INTERVAL_S = 1.5
+_WEB_TURN_STALE_AFTER_S = 45.0
+
+
+def _web_turn_state(
+    turn: Optional[WebActiveTurn],
+    *,
+    now: Optional[float] = None,
+) -> tuple[str, str | None, float | None]:
+    """Return a backend-owned lifecycle state for chat recovery.
+
+    Frontend streaming state is optimistic and can survive refreshes or missed
+    SSE events. This state is intentionally derived from the active-turn
+    registry so the UI can reconcile stale local "loading" indicators against
+    backend truth.
+    """
+    if turn is None:
+        return "not_found", "no_active_turn", None
+    now = time.time() if now is None else now
+    with turn.lock:
+        phase = turn.phase
+        interrupt_requested = turn.interrupt_requested
+        last_event_at = turn.last_event_at
+        has_stream_text = bool(turn.stream_text)
+    idle_for = max(0.0, now - last_event_at)
+    if idle_for >= _WEB_TURN_STALE_AFTER_S:
+        return "stalled", "no_recent_backend_event", idle_for
+    if interrupt_requested:
+        return ("redirecting" if phase == "redirecting" else "stopping"), "interrupt_requested", idle_for
+    if phase == "starting":
+        return "running", "turn_starting", idle_for
+    if phase == "api":
+        return "running", "provider_request_started", idle_for
+    if phase in {"tool", "subagent", "approval"}:
+        return "running", f"{phase}_active", idle_for
+    if has_stream_text or phase == "streaming":
+        return "streaming", "stream_text_available", idle_for
+    return "running", phase or "active_turn", idle_for
 
 
 def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn, *, force: bool = False) -> None:
@@ -5464,6 +5550,7 @@ class ConversationCreate(BaseModel):
     message: str
     model: Optional[str] = None
     context_items: list = []
+    source: Optional[str] = None
 
 
 class ConversationMessage(BaseModel):
@@ -5515,6 +5602,7 @@ def _make_web_chat_callbacks(
     tool_started_monotonic: dict[str, float] = {}
 
     def publish_status(kind: str, message: str, *, phase: Optional[str] = None) -> None:
+        _record_web_first_visible_event(turn_context.session_id, "status")
         _publish_web_status(turn_context.session_id, kind, message, phase=phase)
 
     def token_callback(token: Optional[str]) -> None:
@@ -5525,6 +5613,7 @@ def _make_web_chat_callbacks(
             return
         current_session_id = turn_context.session_id
         _append_web_turn_token(current_session_id, token)
+        _record_web_first_visible_event(current_session_id, "token")
         try:
             loop.call_soon_threadsafe(queue.put_nowait, token)
         except Exception:
@@ -5535,6 +5624,7 @@ def _make_web_chat_callbacks(
         started_at = time.time()
         tool_started_monotonic[tid] = time.monotonic()
         publish_status("tool_running", f"Tool running: {name}", phase="tool")
+        _record_web_first_visible_event(turn_context.session_id, "tool")
         _publish_event(
             "chat.tool_start",
             {"id": tid, "name": name, "args": _json_safe(args), "ts": started_at, "started_at": started_at},
@@ -5563,6 +5653,7 @@ def _make_web_chat_callbacks(
     def reasoning_callback(text: str) -> None:
         current_session_id = turn_context.session_id
         _touch_web_turn(current_session_id, phase="reasoning")
+        _record_web_first_visible_event(current_session_id, "reasoning")
         _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, current_session_id)
 
     def status_callback(kind: str, message: str) -> None:
@@ -7356,6 +7447,7 @@ async def create_conversation(body: ConversationCreate):
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}")
 
+    request_received_at = time.time()
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue
@@ -7378,6 +7470,9 @@ async def create_conversation(body: ConversationCreate):
     turn_route = _resolve_web_turn_route(body.message)
     model = turn_route["model"]
 
+    session_source = _normalize_web_session_source(body.source)
+    workspace_slug = session_source.split(":", 1)[1] if session_source.startswith("workspace:") else None
+
     try:
         from core.spark_state import SessionDB as _SessionDB
 
@@ -7385,8 +7480,8 @@ async def create_conversation(body: ConversationCreate):
         try:
             _db._conn.execute(
                 "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
-                "VALUES (?, 'web', ?, ?, 'active')",
-                (session_id, model, time.time()),
+                "VALUES (?, ?, ?, ?, 'active')",
+                (session_id, session_source, model, time.time()),
             )
             _db._conn.commit()
             row = _db.get_session(session_id)
@@ -7398,7 +7493,7 @@ async def create_conversation(body: ConversationCreate):
         _log.debug("session create emit failed", exc_info=True)
 
     message = body.message
-    validated_items = _validate_context_items(body.context_items)
+    validated_items = _validate_context_items(body.context_items, workspace_slug=workspace_slug)
     _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
@@ -7415,7 +7510,9 @@ async def create_conversation(body: ConversationCreate):
         try:
             _touch_web_turn(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
             _, _active_turn = _get_web_turn(session_id)
+            _record_web_turn_timing(session_id, "task_started")
             eager_user_id = _persist_web_user_message(session_id, message)
+            _record_web_turn_timing(session_id, "user_message_persisted")
             if _active_turn is not None:
                 _active_turn.user_message_id = eager_user_id
             before_message_count = _session_message_count(session_id)
@@ -7426,6 +7523,7 @@ async def create_conversation(body: ConversationCreate):
                 result = {"final_response": slash_text}
             else:
                 _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
+                _record_web_turn_timing(session_id, "agent_init_start")
                 agent = await loop.run_in_executor(
                     None,
                     lambda: _new_web_agent(
@@ -7443,9 +7541,11 @@ async def create_conversation(body: ConversationCreate):
                         subagent_event_callback=subagent_event_callback,
                     ),
                 )
+                _record_web_turn_timing(session_id, "agent_init_end")
                 _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
+                _record_web_turn_timing(session_id, "model_request_start")
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
@@ -7472,7 +7572,9 @@ async def create_conversation(body: ConversationCreate):
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
 
-    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
+    turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
+    with turn.lock:
+        turn.timings["backend_received"] = request_received_at
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
 
@@ -7687,6 +7789,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     """Send a follow-up message to an existing web chat session."""
     from tools.approval import register_gateway_notify, unregister_gateway_notify
 
+    request_received_at = time.time()
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
     (
@@ -7736,6 +7839,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         turn_route = _resolve_web_turn_route(body.message)
         agent = _get_web_cached_agent(session_id)
         conversation_history = db.get_messages_as_conversation(session_id)
+        history_hydrated_at = time.time()
         history_count = len(conversation_history)
         cached_signature_matches = (
             agent is not None
@@ -7798,8 +7902,11 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
         _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
+        _record_web_turn_timing(session_id, "task_started")
+        _record_web_turn_timing(session_id, "history_hydrated", when=history_hydrated_at)
         _, _active_turn = _get_web_turn(session_id)
         eager_user_id = _persist_web_user_message(session_id, message)
+        _record_web_turn_timing(session_id, "user_message_persisted")
         if _active_turn is not None:
             _active_turn.user_message_id = eager_user_id
         before_message_count = _session_message_count(session_id)
@@ -7813,6 +7920,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             else:
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
+                _record_web_turn_timing(session_id, "model_request_start")
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
                 )
@@ -7838,7 +7946,12 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
 
-    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
+    turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
+    with turn.lock:
+        turn.timings["backend_received"] = request_received_at
+        turn.timings["history_hydrated"] = history_hydrated_at
+        if cached_signature_matches and agent is not None:
+            turn.timings["cached_agent_ready"] = history_hydrated_at
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
 
@@ -8325,12 +8438,16 @@ async def conversation_turn_status(session_id: str):
 def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
+    state, reason, idle_for = _web_turn_state(turn)
     diagnostics = {
         "requested_session_id": ids.get("requested") or session_id,
         "resolved_session_id": ids.get("resolved") or session_id,
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
         "active_turn_session_id": active_key,
         "source": "turn-status",
+        "state": state,
+        "reason": reason,
+        "idle_for_seconds": idle_for,
     }
     payload: dict[str, Any] = {
         "session_id": ids.get("requested") or session_id,
@@ -8338,9 +8455,14 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
         "active_turn_session_id": active_key,
         "turn_active": turn is not None,
+        "state": state,
+        "reason": reason,
+        "stale_after_seconds": _WEB_TURN_STALE_AFTER_S,
+        "idle_for_seconds": idle_for,
         "status": None,
         "phase": "idle",
         "started_at": None,
+        "ended_at": None,
         "last_event_at": None,
         "interrupt_requested": False,
         "active_agent_session_id": None,
@@ -8353,6 +8475,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                     "stream_revision": turn.stream_revision,
                     "stream_text_chars": len(turn.stream_text),
                     "phase": turn.phase,
+                    "timings": _web_turn_timing_payload(turn),
                 }
             )
             payload.update(
@@ -8365,6 +8488,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                     "phase": turn.phase,
                     "stream_revision": turn.stream_revision,
                     "stream_text_chars": len(turn.stream_text),
+                    "timings": _web_turn_timing_payload(turn),
                 }
             )
     return payload
@@ -8413,6 +8537,7 @@ def _conversation_stream_snapshot_payload(
 ) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
+    state, reason, idle_for = _web_turn_state(turn)
     if turn:
         with turn.lock:
             stream_text = turn.stream_text
@@ -8431,10 +8556,14 @@ def _conversation_stream_snapshot_payload(
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
         "active_turn_session_id": active_key,
         "source": "stream-snapshot",
+        "state": state,
+        "reason": reason,
+        "idle_for_seconds": idle_for,
         "stream_revision": stream_revision,
         "stream_text_chars": len(stream_text),
         "returned_text_start": text_start,
         "returned_text_mode": text_mode,
+        "timings": _web_turn_timing_payload(turn),
     }
     return {
         "session_id": ids.get("requested") or session_id,
@@ -8442,12 +8571,17 @@ def _conversation_stream_snapshot_payload(
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
         "active_turn_session_id": active_key,
         "turn_active": turn is not None,
+        "state": state,
+        "reason": reason,
+        "stale_after_seconds": _WEB_TURN_STALE_AFTER_S,
+        "idle_for_seconds": idle_for,
         "stream_text": returned_text,
         "stream_revision": stream_revision,
         "stream_text_chars": len(stream_text),
         "stream_text_start": text_start,
         "stream_text_mode": text_mode,
         "stream_text_complete": text_complete,
+        "timings": _web_turn_timing_payload(turn),
         "diagnostics": diagnostics,
     }
 

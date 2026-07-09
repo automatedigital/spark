@@ -52,6 +52,14 @@ describe("chat turn state", () => {
     expect(recoverTurnStateFromBackend({ turnActive: true, phase: "provider_wait" })).toBe("streaming");
   });
 
+  it("prefers explicit backend lifecycle state when provided", () => {
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "streaming", state: "stalled" })).toBe("stalled");
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "streaming", state: "stopping" })).toBe("stopping");
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "starting", state: "running" })).toBe("starting");
+    expect(recoverTurnStateFromBackend({ turnActive: true, phase: "api", state: "streaming" })).toBe("streaming");
+    expect(recoverTurnStateFromBackend({ turnActive: false, phase: "streaming", state: "not_found" })).toBe("idle");
+  });
+
   it("lets interrupt_requested recover stopping even for unknown active phases", () => {
     expect(recoverTurnStateFromBackend({
       turnActive: true,

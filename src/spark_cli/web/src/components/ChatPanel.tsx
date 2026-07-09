@@ -104,7 +104,11 @@ interface ChatPanelProps {
   sessionId: string | null;
   onClose?: () => void;
   onBack?: () => void;
-  onSessionCreated?: (id: string, initialMessage?: string) => void;
+  onSessionCreated?: (
+    id: string,
+    initialMessage?: string,
+    meta?: { source?: string | null; projectSlug?: string | null },
+  ) => void;
   onSessionUpdated?: (id: string) => void;
   sessionTitle?: string | null;
   initialMessage?: string;
@@ -533,6 +537,13 @@ export function ChatPanel({
     });
   }, []);
 
+  const appendRecoveredStaleTurnNote = useCallback((text: string) => {
+    setChatMessages((prev) => {
+      if (prev.some((m) => m.role === "note" && m.text === text)) return prev;
+      return [...prev, { id: nid(), role: "note", text }];
+    });
+  }, []);
+
   const resetActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
     activeSessionAliasesRef.current = new Set(ids.filter((id): id is string => Boolean(id)));
   }, []);
@@ -654,6 +665,7 @@ export function ChatPanel({
         const recoveredState = recoverTurnStateFromBackend({
           turnActive: status.turn_active,
           phase: status.phase,
+          state: status.state,
           interruptRequested: status.interrupt_requested,
         });
         setTurnState(recoveredState);
@@ -730,6 +742,7 @@ export function ChatPanel({
           const mapped = sessionMessagesToChat(
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
+          const hasAssistant = mapped.some((m) => m.role === "assistant" && m.content.trim());
           setChatMessages((prev) => mergeSyncedMessages(
             mapped,
             initialTranscript.length > 0 ? prev : optimistic,
@@ -737,6 +750,9 @@ export function ChatPanel({
             { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
           ));
           setHasEarlier(resp.has_earlier ?? false);
+          if ((initialMessage || initialTranscript.some((m) => m.role === "assistant" && m.streaming)) && !hasAssistant) {
+            appendRecoveredStaleTurnNote("This turn was no longer active after reconnecting. You can retry or send a follow-up.");
+          }
         } catch {
           /* history recovery is best-effort */
         }
@@ -1069,6 +1085,7 @@ export function ChatPanel({
         status.active_turn_session_id,
       );
       if (!status.turn_active) {
+        const wasStreaming = streamingRef.current;
         activeTurnSessionIdRef.current = null;
         // Turn finished while we weren't listening — finalize from history.
         flushPendingStream();
@@ -1084,14 +1101,21 @@ export function ChatPanel({
               (m) => m.role === "user" || m.role === "assistant" || m.role === "tool",
             ),
           );
+          const hasAssistant = mapped.some((m) => m.role === "assistant" && m.content.trim());
           setChatMessages((prev) => mergeSyncedMessages(
             mapped,
             prev,
             resp.session_id ?? sid,
             { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
           ));
+          if (wasStreaming && !hasAssistant) {
+            appendRecoveredStaleTurnNote("The previous response stopped before Spark saved an assistant reply. You can retry this message.");
+          }
         } catch {
           /* keep whatever we have locally */
+          if (wasStreaming) {
+            appendRecoveredStaleTurnNote("Spark lost the live response state while reconnecting. You can retry or send a follow-up.");
+          }
         }
       } else {
         // Still running — reset the stall clock and reassure the user.
@@ -1101,6 +1125,7 @@ export function ChatPanel({
         setTurnState(recoverTurnStateFromBackend({
           turnActive: true,
           phase: status.phase,
+          state: status.state,
           interruptRequested: status.interrupt_requested,
         }));
         setStatusLabel((prev) => status.status ?? prev ?? MODEL_LOADING_LABEL);
@@ -1182,6 +1207,7 @@ export function ChatPanel({
     syncLiveAssistantSnapshot,
     isCurrentSessionResponse,
     rememberActiveSessionAliases,
+    appendRecoveredStaleTurnNote,
   ]);
 
   resyncTurnStateRef.current = resyncTurnState;
@@ -1560,11 +1586,19 @@ export function ChatPanel({
       let sid = activeSessionId;
 
       if (!sid) {
-        const resp = await api.postConversation(text, undefined, itemsToSend);
-        sid = resp.session_id;
-        activeSessionRef.current = sid;
-        setActiveSessionId(sid);
-        onSessionCreated?.(sid, text);
+        if (workspaceSlug) {
+          const resp = await api.startWorkspaceConversation(workspaceSlug, text, undefined, itemsToSend);
+          sid = resp.session_id;
+          activeSessionRef.current = sid;
+          setActiveSessionId(sid);
+          onSessionCreated?.(sid, text, { source: resp.source, projectSlug: workspaceSlug });
+        } else {
+          const resp = await api.postConversation(text, undefined, itemsToSend);
+          sid = resp.session_id;
+          activeSessionRef.current = sid;
+          setActiveSessionId(sid);
+          onSessionCreated?.(sid, text);
+        }
       } else {
         activeSessionRef.current = sid;
         const resp = await api.postConversationMessage(sid, text, itemsToSend);
