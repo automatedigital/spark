@@ -422,9 +422,18 @@ code {
   width: 900px;
   height: 900px;
   background: radial-gradient(circle, rgba(253, 166, 50, 0.045) 0%, rgba(253, 166, 50, 0.018) 44%, transparent 72%);
-  transform: translate(-50%, -50%);
-  transition: left 2.4s cubic-bezier(0.16, 1, 0.3, 1), top 2.4s cubic-bezier(0.16, 1, 0.3, 1);
+  left: 0;
+  top: 0;
+  transform: translate3d(-1000px, -1000px, 0) translate(-50%, -50%);
+  transition: transform 2.4s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
   filter: blur(74px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor-blob {
+    display: none;
+  }
 }
 
 :root[data-webui-theme="codex"] .cursor-blob {
