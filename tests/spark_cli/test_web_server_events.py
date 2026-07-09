@@ -68,6 +68,44 @@ def test_session_messages_accept_db_prefixed_before_id(web_client):
     assert body["has_earlier"] is True
 
 
+def test_session_messages_hide_empty_assistant_placeholders(web_client):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("empty_placeholder_web", source="web")
+        db.append_message("empty_placeholder_web", "user", content="use a tool")
+        db.append_message("empty_placeholder_web", "assistant", content="")
+        db.append_message(
+            "empty_placeholder_web",
+            "assistant",
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"},
+                }
+            ],
+        )
+        db.append_message("empty_placeholder_web", "tool", content="{}", tool_call_id="call_1")
+        db.append_message("empty_placeholder_web", "assistant", content="done")
+    finally:
+        db.close()
+
+    res = web_client.get("/api/sessions/empty_placeholder_web/messages")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] == 4
+    assert [(m["role"], m.get("content")) for m in body["messages"]] == [
+        ("user", "use a tool"),
+        ("assistant", ""),
+        ("tool", "{}"),
+        ("assistant", "done"),
+    ]
+
+
 def test_session_source_patch_moves_chat_between_project_and_chats(web_client):
     from core.spark_state import SessionDB
     from spark_cli.config import get_spark_home
@@ -232,6 +270,8 @@ class TestEventBus:
             assert status.status_code == 200
             assert status.json()["stream_text_chars"] == len("hello world")
             assert status.json()["stream_revision"] == 2
+            assert status.json()["diagnostics"]["source"] == "turn-status"
+            assert status.json()["diagnostics"]["requested_session_id"] == "sess_snapshot"
 
             snapshot = web_client.get("/api/conversations/sess_snapshot/stream-snapshot")
             assert snapshot.status_code == 200
@@ -239,8 +279,50 @@ class TestEventBus:
             assert data["turn_active"] is True
             assert data["stream_text"] == "hello world"
             assert data["stream_revision"] == 2
+            assert data["stream_text_mode"] == "full"
+            assert data["stream_text_start"] == 0
+            assert data["stream_text_complete"] is True
         finally:
             web_server._clear_web_turn("sess_snapshot")
+
+    def test_stream_snapshot_can_return_delta_or_tail(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            web_server._mark_web_turn_active("sess_snapshot_delta")
+            callbacks = web_server._make_web_chat_callbacks("sess_snapshot_delta", asyncio.Queue(), loop)
+            token_callback = callbacks[0]
+            token_callback("alpha ")
+            token_callback("bravo ")
+            token_callback("charlie")
+
+        asyncio.run(run())
+        try:
+            delta = web_client.get(
+                "/api/conversations/sess_snapshot_delta/stream-snapshot?after_chars=6"
+            )
+            assert delta.status_code == 200
+            delta_data = delta.json()
+            assert delta_data["stream_text"] == "bravo charlie"
+            assert delta_data["stream_text_start"] == 6
+            assert delta_data["stream_text_mode"] == "delta"
+            assert delta_data["stream_text_complete"] is False
+            assert delta_data["stream_text_chars"] == len("alpha bravo charlie")
+
+            tail = web_client.get(
+                "/api/conversations/sess_snapshot_delta/stream-snapshot?tail_chars=7"
+            )
+            assert tail.status_code == 200
+            tail_data = tail.json()
+            assert tail_data["stream_text"] == "charlie"
+            assert tail_data["stream_text_start"] == len("alpha bravo ")
+            assert tail_data["stream_text_mode"] == "tail"
+            assert tail_data["stream_text_complete"] is False
+            assert tail_data["diagnostics"]["source"] == "stream-snapshot"
+        finally:
+            web_server._clear_web_turn("sess_snapshot_delta")
 
     def test_token_callbacks_keep_two_active_sessions_isolated(self, web_client):
         import spark_cli.web_server as web_server

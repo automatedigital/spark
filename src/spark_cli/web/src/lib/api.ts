@@ -224,10 +224,16 @@ export const api = {
       active_agent_session_id: string | null;
       stream_revision?: number;
       stream_text_chars?: number;
+      diagnostics?: Record<string, unknown>;
     }>(
       `/api/conversations/${encodeURIComponent(id)}/turn-status`,
     ),
-  getStreamSnapshot: (id: string) =>
+  getStreamSnapshot: (id: string, options: { afterChars?: number; tailChars?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (typeof options.afterChars === "number") qs.set("after_chars", String(options.afterChars));
+    if (typeof options.tailChars === "number") qs.set("tail_chars", String(options.tailChars));
+    const query = qs.toString();
+    return (
     fetchJSON<{
       session_id: string;
       resolved_session_id: string;
@@ -237,9 +243,15 @@ export const api = {
       stream_text: string;
       stream_revision: number;
       stream_text_chars: number;
+      stream_text_start?: number;
+      stream_text_mode?: "full" | "delta" | "tail" | string;
+      stream_text_complete?: boolean;
+      diagnostics?: Record<string, unknown>;
     }>(
-      `/api/conversations/${encodeURIComponent(id)}/stream-snapshot`,
-    ),
+      `/api/conversations/${encodeURIComponent(id)}/stream-snapshot${query ? `?${query}` : ""}`,
+    )
+    );
+  },
   deleteSession: (id: string) =>
     fetchJSON<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",

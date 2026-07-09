@@ -850,6 +850,19 @@ def _message_for_history_response(msg: dict[str, Any], include_tool_results: boo
     return _sanitize_web_chat_value(out)
 
 
+def _hide_from_web_history(msg: dict[str, Any]) -> bool:
+    """Hide assistant placeholders that do not carry content or replay data."""
+    if msg.get("role") != "assistant":
+        return False
+    if str(msg.get("content") or "").strip():
+        return False
+    if msg.get("tool_calls") or msg.get("reasoning") or msg.get("reasoning_details"):
+        return False
+    if msg.get("codex_reasoning_items") or msg.get("finish_reason"):
+        return False
+    return True
+
+
 def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
     """Small response preview for auth diagnostics without exposing secrets."""
     try:
@@ -4623,15 +4636,19 @@ async def get_session_messages(
         # parent session row. Forks are not followed (different end_reason).
         leaf_sid = db.resolve_latest_descendant(sid)
         messages = db.get_messages(leaf_sid)
-        total = len(messages)
-        indexed_messages = list(enumerate(messages))
+        indexed_messages = [
+            (message_index, m)
+            for message_index, m in enumerate(messages)
+            if not _hide_from_web_history(m)
+        ]
+        total = len(indexed_messages)
         # Apply pagination: if limit > 0 and/or before_id specified, return a page
         if before_id:
             raw_before_id = before_id[3:] if before_id.startswith("db:") else before_id
             idx = next(
                 (
                     i
-                    for i, m in enumerate(messages)
+                    for i, (_message_index, m) in enumerate(indexed_messages)
                     if str(m.get("id")) == str(raw_before_id)
                 ),
                 None,
@@ -5609,6 +5626,14 @@ def _turn_done_payload(
         "backend_error_class": None,
     }
     if session_id:
+        ids = _resolve_web_turn_ids(session_id)
+        payload["diagnostics"] = {
+            "requested_session_id": ids.get("requested") or session_id,
+            "resolved_session_id": ids.get("resolved") or session_id,
+            "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
+            "active_turn_session_id": None,
+            "source": "turn-done",
+        }
         payload.update(_last_assistant_message_info(session_id))
     if not isinstance(result, dict):
         return payload
@@ -8277,6 +8302,13 @@ async def conversation_turn_status(session_id: str):
 def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
+    diagnostics = {
+        "requested_session_id": ids.get("requested") or session_id,
+        "resolved_session_id": ids.get("resolved") or session_id,
+        "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
+        "active_turn_session_id": active_key,
+        "source": "turn-status",
+    }
     payload: dict[str, Any] = {
         "session_id": ids.get("requested") or session_id,
         "resolved_session_id": ids.get("resolved") or session_id,
@@ -8289,9 +8321,17 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
         "last_event_at": None,
         "interrupt_requested": False,
         "active_agent_session_id": None,
+        "diagnostics": diagnostics,
     }
     if turn:
         with turn.lock:
+            diagnostics.update(
+                {
+                    "stream_revision": turn.stream_revision,
+                    "stream_text_chars": len(turn.stream_text),
+                    "phase": turn.phase,
+                }
+            )
             payload.update(
                 {
                     "started_at": turn.started_at,
@@ -8308,17 +8348,46 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/conversations/{session_id}/stream-snapshot")
-async def conversation_stream_snapshot(session_id: str):
+async def conversation_stream_snapshot(
+    session_id: str,
+    after_chars: Optional[int] = None,
+    tail_chars: Optional[int] = None,
+):
     """Return the accumulated in-flight assistant text for recovery.
 
     Token SSE events are intentionally droppable under backpressure.  The UI
     calls this heavier endpoint only during stall/reconnect recovery so it can
     patch a partial assistant bubble without waiting for final persistence.
     """
-    return await asyncio.to_thread(_conversation_stream_snapshot_payload, session_id)
+    return await asyncio.to_thread(
+        _conversation_stream_snapshot_payload,
+        session_id,
+        after_chars=after_chars,
+        tail_chars=tail_chars,
+    )
 
 
-def _conversation_stream_snapshot_payload(session_id: str) -> dict[str, Any]:
+def _bounded_stream_snapshot_text(
+    stream_text: str,
+    *,
+    after_chars: Optional[int] = None,
+    tail_chars: Optional[int] = None,
+) -> tuple[str, int, str, bool]:
+    total_chars = len(stream_text)
+    if after_chars is not None and 0 <= after_chars <= total_chars:
+        return stream_text[after_chars:], after_chars, "delta", after_chars == 0
+    if tail_chars is not None and tail_chars > 0 and total_chars > tail_chars:
+        start = total_chars - tail_chars
+        return stream_text[start:], start, "tail", False
+    return stream_text, 0, "full", True
+
+
+def _conversation_stream_snapshot_payload(
+    session_id: str,
+    *,
+    after_chars: Optional[int] = None,
+    tail_chars: Optional[int] = None,
+) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
     if turn:
@@ -8328,15 +8397,35 @@ def _conversation_stream_snapshot_payload(session_id: str) -> dict[str, Any]:
     else:
         stream_text = ""
         stream_revision = 0
+    returned_text, text_start, text_mode, text_complete = _bounded_stream_snapshot_text(
+        stream_text,
+        after_chars=after_chars,
+        tail_chars=tail_chars,
+    )
+    diagnostics = {
+        "requested_session_id": ids.get("requested") or session_id,
+        "resolved_session_id": ids.get("resolved") or session_id,
+        "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
+        "active_turn_session_id": active_key,
+        "source": "stream-snapshot",
+        "stream_revision": stream_revision,
+        "stream_text_chars": len(stream_text),
+        "returned_text_start": text_start,
+        "returned_text_mode": text_mode,
+    }
     return {
         "session_id": ids.get("requested") or session_id,
         "resolved_session_id": ids.get("resolved") or session_id,
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
         "active_turn_session_id": active_key,
         "turn_active": turn is not None,
-        "stream_text": stream_text,
+        "stream_text": returned_text,
         "stream_revision": stream_revision,
         "stream_text_chars": len(stream_text),
+        "stream_text_start": text_start,
+        "stream_text_mode": text_mode,
+        "stream_text_complete": text_complete,
+        "diagnostics": diagnostics,
     }
 
 

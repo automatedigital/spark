@@ -79,6 +79,18 @@ const nid = () => `m${++_msgId}`;
 const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
 const STREAM_FLUSH_INTERVAL_MS = 80;
 const CHAT_WORD_WRAP_CHANGED_EVENT = "spark:chat-word-wrap-changed";
+const CHAT_RECOVERY_DEBUG_KEY = "spark:chat-recovery-debug";
+
+function debugChatRecovery(event: string, payload: unknown) {
+  try {
+    const enabled = window.localStorage.getItem(CHAT_RECOVERY_DEBUG_KEY);
+    if (enabled !== "1" && enabled !== "true") return;
+    console.debug(`[spark-chat-recovery] ${event}`, payload);
+  } catch {
+    /* debug logging is best-effort */
+  }
+}
+
 const chatWordWrapFromConfig = (config: Record<string, unknown>): boolean => {
   const display = config.display;
   return Boolean(
@@ -621,6 +633,7 @@ export function ChatPanel({
     if (sessionId) {
       const selectedSessionId = sessionId;
       void api.getTurnStatus(selectedSessionId).then(async (status) => {
+        debugChatRecovery("initial-turn-status", status.diagnostics ?? status);
         const recoveryStillCurrent = (...ids: Array<string | null | undefined>) => (
           isCurrentSessionResponse(recoverySeq, selectedSessionId, ...ids)
         );
@@ -649,7 +662,11 @@ export function ChatPanel({
           lastEventAtRef.current = Date.now();
           const snapshotSessionId = status.active_turn_session_id ?? selectedSessionId;
           try {
-            const snapshot = await api.getStreamSnapshot(snapshotSessionId);
+            const snapshot = await api.getStreamSnapshot(
+              snapshotSessionId,
+              streamTextCharsRef.current > 0 ? { afterChars: streamTextCharsRef.current } : {},
+            );
+            debugChatRecovery("initial-stream-snapshot", snapshot.diagnostics ?? snapshot);
             if (!recoveryStillCurrent(
               snapshot.resolved_session_id,
               snapshot.latest_session_id,
@@ -664,7 +681,17 @@ export function ChatPanel({
               ? snapshot.active_turn_session_id ?? snapshotSessionId
               : null;
             if (snapshot.stream_text) {
-              syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
+              const applied = syncLiveAssistantSnapshot(
+                snapshot.stream_text,
+                snapshot.stream_revision,
+                snapshot.stream_text_start ?? 0,
+              );
+              if (!applied && (snapshot.stream_text_start ?? 0) > 0) {
+                const fullSnapshot = await api.getStreamSnapshot(snapshotSessionId);
+                if (fullSnapshot.stream_text) {
+                  syncLiveAssistantSnapshot(fullSnapshot.stream_text, fullSnapshot.stream_revision);
+                }
+              }
             }
             if (!snapshot.turn_active) {
               setTurnState("idle");
@@ -872,7 +899,47 @@ export function ChatPanel({
     });
   }, []);
 
-  const syncLiveAssistantSnapshot = useCallback((text: string, revision?: number | null) => {
+  const syncLiveAssistantSnapshot = useCallback((text: string, revision?: number | null, start = 0) => {
+    if (start > 0) {
+      if (!text) return false;
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      if (rafPendingRef.current !== null) {
+        cancelAnimationFrame(rafPendingRef.current);
+        rafPendingRef.current = null;
+      }
+      tokenBufferRef.current = "";
+
+      const nextRevision = typeof revision === "number" ? revision : streamRevisionRef.current + 1;
+      const nextChars = start + text.length;
+      let applied = false;
+      setChatMessages((prev) => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          const msg = next[i];
+          if (msg.role !== "assistant") continue;
+          if (msg.content.length !== start) return prev;
+          next[i] = {
+            ...msg,
+            content: msg.content + text,
+            streaming: true,
+            renderRevision: nextRevision > 0 ? nextRevision : (msg.renderRevision ?? 0) + 1,
+          };
+          applied = true;
+          return next;
+        }
+        return prev;
+      });
+      if (applied) {
+        streamRevisionRef.current = nextRevision;
+        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, nextChars);
+        lastTokenAtRef.current = Date.now();
+      }
+      return applied;
+    }
+
     const currentState = { revision: streamRevisionRef.current, textChars: streamTextCharsRef.current };
     if (!shouldApplyStreamRenderSnapshot(currentState, { text, revision })) return false;
 
@@ -987,6 +1054,7 @@ export function ChatPanel({
     resyncInFlightRef.current = true;
     try {
       const status = await api.getTurnStatus(sid);
+      debugChatRecovery("resync-turn-status", status.diagnostics ?? status);
       if (!isCurrentSessionResponse(
         recoverySeq,
         sid,
@@ -1037,7 +1105,11 @@ export function ChatPanel({
         }));
         setStatusLabel((prev) => status.status ?? prev ?? MODEL_LOADING_LABEL);
         try {
-          const snapshot = await api.getStreamSnapshot(snapshotSessionId);
+          const snapshot = await api.getStreamSnapshot(
+            snapshotSessionId,
+            streamTextCharsRef.current > 0 ? { afterChars: streamTextCharsRef.current } : {},
+          );
+          debugChatRecovery("resync-stream-snapshot", snapshot.diagnostics ?? snapshot);
           if (!isCurrentSessionResponse(
             recoverySeq,
             sid,
@@ -1055,7 +1127,17 @@ export function ChatPanel({
             ? snapshot.active_turn_session_id ?? snapshotSessionId
             : null;
           if (snapshot.stream_text) {
-            syncLiveAssistantSnapshot(snapshot.stream_text, snapshot.stream_revision);
+            const applied = syncLiveAssistantSnapshot(
+              snapshot.stream_text,
+              snapshot.stream_revision,
+              snapshot.stream_text_start ?? 0,
+            );
+            if (!applied && (snapshot.stream_text_start ?? 0) > 0) {
+              const fullSnapshot = await api.getStreamSnapshot(snapshotSessionId);
+              if (fullSnapshot.stream_text) {
+                syncLiveAssistantSnapshot(fullSnapshot.stream_text, fullSnapshot.stream_revision);
+              }
+            }
           }
           if (!snapshot.turn_active) {
             activeTurnSessionIdRef.current = null;
@@ -1236,6 +1318,7 @@ export function ChatPanel({
         break;
       }
       case "chat.turn_done": {
+        debugChatRecovery("turn-done", (data as { diagnostics?: unknown }).diagnostics ?? data);
         // Flush any remaining buffered tokens before finalizing
         flushPendingStream();
         finalizeAssistant();

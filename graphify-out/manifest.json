@@ -1805,8 +1805,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/ChatPanel.tsx": {
-    "mtime": 1783554232.0647707,
-    "ast_hash": "1279e360b4d0b0c46ee5209eb0da8719",
+    "mtime": 1783557350.052132,
+    "ast_hash": "6b1eb775475551da76ebcef80c08a556",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/CodexUsageBadge.tsx": {
@@ -2105,8 +2105,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/api.ts": {
-    "mtime": 1783336604.2065394,
-    "ast_hash": "24bd094786ee8b0304c616304872de23",
+    "mtime": 1783557357.5315678,
+    "ast_hash": "4cd0a2ba42eb67e0c19d67f3f75edc4f",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/browserCoords.ts": {
@@ -2465,8 +2465,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1783555729.9738429,
-    "ast_hash": "d05e7ee98d659e7bc200b5821b68647d",
+    "mtime": 1783557197.1001215,
+    "ast_hash": "94381a5ece40d2d1d1c91586aacad541",
     "semantic_hash": ""
   },
   "src/spark_cli/webhook.py": {
@@ -5135,8 +5135,8 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
-    "mtime": 1783555738.391853,
-    "ast_hash": "206cf59f53d5bcf272189057d90a2368",
+    "mtime": 1783557304.085155,
+    "ast_hash": "b944551f634425fec44c958c95d13f8b",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_webhook_cli.py": {
@@ -6205,7 +6205,7 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1783554159.2909288,
+    "mtime": 1783556725.2129416,
     "ast_hash": "40903a0855f66dcb81027807ab67e223",
     "semantic_hash": ""
   },
@@ -9785,7 +9785,7 @@
     "semantic_hash": ""
   },
   "tests/test_web_turn_persistence.py": {
-    "mtime": 1783554202.4246879,
+    "mtime": 1783556725.3063376,
     "ast_hash": "bee3129166f00238c9a4f0e070729dda",
     "semantic_hash": ""
   },
@@ -9795,12 +9795,12 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatTranscriptMerge.test.ts": {
-    "mtime": 1783554189.4991872,
+    "mtime": 1783556725.3024616,
     "ast_hash": "f71dc7d346c58245cb292876a5e35764",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatTranscriptMerge.ts": {
-    "mtime": 1783554285.0221303,
+    "mtime": 1783556725.3028476,
     "ast_hash": "68671b57ad6c82c60d2e453c00b57922",
     "semantic_hash": ""
   },
