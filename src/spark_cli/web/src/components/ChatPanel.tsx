@@ -15,6 +15,9 @@ import {
   CornerUpLeft,
   FileText,
   ShieldCheck,
+  Activity,
+  RefreshCw,
+  PlayCircle,
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api, openExternal } from "@/lib/api";
@@ -52,6 +55,12 @@ import {
   type ChatTurnState,
 } from "@/lib/chatTurnState";
 import { decideRecoveryPoll } from "@/lib/chatRecovery";
+import {
+  recoveryActionsForTurn,
+  readChatDiagnosticCounters,
+  safeDiagnosticsJson,
+  type RecoveryActionId,
+} from "@/lib/chatDiagnostics";
 import {
   persistSafeMode,
   pruneLongTasks,
@@ -496,6 +505,12 @@ export function ChatPanel({
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
   const [safeModeNotice, setSafeModeNotice] = useState<string | null>(null);
   const [chatWordWrap, setChatWordWrap] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [conversationDiagnostics, setConversationDiagnostics] = useState<Record<string, unknown> | null>(null);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [recoveryActionBusy, setRecoveryActionBusy] = useState<RecoveryActionId | null>(null);
+  const [sseReconnectCount, setSseReconnectCount] = useState(0);
+  const [recoveryPollCount, setRecoveryPollCount] = useState(0);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
@@ -557,6 +572,18 @@ export function ChatPanel({
       return [...prev, { id: nid(), role: "note", text }];
     });
   }, []);
+
+  const latestUserMessage = useMemo(() => {
+    return [...chatMessages]
+      .reverse()
+      .find((m): m is Extract<ChatMessage, { role: "user" }> =>
+        m.role === "user" && typeof m.sessionIdx === "number",
+      ) ?? null;
+  }, [chatMessages]);
+
+  const hasAssistantOutput = useMemo(() => (
+    chatMessages.some((m) => m.role === "assistant" && m.content.trim().length > 0)
+  ), [chatMessages]);
 
   const resetActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
     activeSessionAliasesRef.current = new Set(ids.filter((id): id is string => Boolean(id)));
@@ -1099,6 +1126,7 @@ export function ChatPanel({
     if (!sid || (!streamingRef.current && !options.allowIdle) || resyncInFlightRef.current) return;
     const recoverySeq = sessionRecoverySeqRef.current;
     resyncInFlightRef.current = true;
+    setRecoveryPollCount((count) => count + 1);
     try {
       const status = await api.getTurnStatus(sid);
       debugChatRecovery("resync-turn-status", status.diagnostics ?? status);
@@ -1256,6 +1284,7 @@ export function ChatPanel({
     // emitted during the gap (possibly a whole turn_done) may have been missed,
     // so reconcile against the backend's turn-status.
     if (env.topic === BUS_RECONNECTED_TOPIC) {
+      setSseReconnectCount((count) => count + 1);
       void resyncTurnState({ allowIdle: true });
       return;
     }
@@ -1750,6 +1779,154 @@ export function ChatPanel({
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [setStreaming]);
+
+  const reloadLatestTranscript = useCallback(async () => {
+    const sid = activeSessionRef.current;
+    if (!sid) return;
+    setLoadingHistory(true);
+    try {
+      const resp = await api.getSessionMessages(sid, HISTORY_PAGE);
+      rememberActiveSessionAliases(sid, resp.session_id);
+      const mapped = sessionMessagesToChat(
+        resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
+      );
+      setChatMessages((prev) => mergeSyncedMessages(
+        mapped,
+        prev,
+        resp.session_id ?? sid,
+        { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
+      ));
+      setHasEarlier(resp.has_earlier ?? false);
+      setStatusLabel(streamingRef.current ? statusLabel ?? MODEL_LOADING_LABEL : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [HISTORY_PAGE, rememberActiveSessionAliases, statusLabel]);
+
+  const refreshConversationDiagnostics = useCallback(async () => {
+    const sid = activeSessionRef.current;
+    if (!sid) return null;
+    try {
+      const diag = await api.getConversationDiagnostics(sid);
+      const enriched = {
+        ...diag,
+        browser: {
+          sse_reconnect_count: sseReconnectCount,
+          recovery_poll_count: recoveryPollCount,
+          counters: readChatDiagnosticCounters(),
+          turn_state: turnStateRef.current,
+          streaming: streamingRef.current,
+          safe_mode: safeModeRef.current,
+        },
+      };
+      setConversationDiagnostics(enriched);
+      setDiagnosticsError(null);
+      return enriched;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDiagnosticsError(msg);
+      return null;
+    }
+  }, [recoveryPollCount, sseReconnectCount]);
+
+  const continueFromSavedOutput = useCallback(async () => {
+    const sid = activeSessionRef.current;
+    if (!sid) return;
+    const text = "Continue from the last saved assistant output.";
+    setRecoveryActionBusy("continue");
+    setError(null);
+    try {
+      if (streamingRef.current) {
+        const activeSid = activeTurnSessionIdRef.current ?? sid;
+        setChatMessages((prev) => [...prev, { id: nid(), role: "user", content: text, redirect: true }]);
+        setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested", redirect: true }));
+        setStatusLabel("Redirecting…");
+        await api.interruptConversation(activeSid, text);
+      } else {
+        setChatMessages((prev) => [...prev, { id: nid(), role: "user", content: text }]);
+        setTurnState(nextChatTurnState(turnStateRef.current, { type: "submit" }));
+        setStatusLabel(MODEL_LOADING_LABEL);
+        followStreamRef.current = true;
+        streamRevisionRef.current = 0;
+        streamTextCharsRef.current = 0;
+        await api.postConversationMessage(sid, text);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      void resyncTurnStateRef.current?.({ allowIdle: true });
+    } finally {
+      setRecoveryActionBusy(null);
+    }
+  }, []);
+
+  const copyConversationDiagnostics = useCallback(async () => {
+    setRecoveryActionBusy("copy");
+    try {
+      const diag = await refreshConversationDiagnostics();
+      await navigator.clipboard.writeText(safeDiagnosticsJson(diag ?? conversationDiagnostics ?? {}));
+      setStatusLabel("Diagnostics copied");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRecoveryActionBusy(null);
+    }
+  }, [conversationDiagnostics, refreshConversationDiagnostics]);
+
+  const runRecoveryAction = useCallback(async (id: RecoveryActionId) => {
+    if (recoveryActionBusy) return;
+    setRecoveryActionBusy(id);
+    try {
+      if (id === "reload") {
+        await reloadLatestTranscript();
+      } else if (id === "retry") {
+        if (latestUserMessage?.sessionIdx != null) await doRetry(latestUserMessage.sessionIdx);
+      } else if (id === "stop") {
+        await stop();
+      } else if (id === "continue") {
+        setRecoveryActionBusy(null);
+        await continueFromSavedOutput();
+        return;
+      } else if (id === "copy") {
+        setRecoveryActionBusy(null);
+        await copyConversationDiagnostics();
+        return;
+      }
+    } finally {
+      setRecoveryActionBusy(null);
+    }
+  }, [
+    copyConversationDiagnostics,
+    continueFromSavedOutput,
+    doRetry,
+    latestUserMessage,
+    recoveryActionBusy,
+    reloadLatestTranscript,
+  ]);
+
+  const recoveryActions = useMemo(() => recoveryActionsForTurn({
+    hasSession: Boolean(activeSessionId),
+    turnState,
+    streaming,
+    hasLastUserMessage: Boolean(latestUserMessage),
+    hasAssistantOutput,
+    busy: recoveryActionBusy !== null,
+  }), [
+    activeSessionId,
+    hasAssistantOutput,
+    latestUserMessage,
+    recoveryActionBusy,
+    streaming,
+    turnState,
+  ]);
+
+  const shouldShowRecoveryPanel = Boolean(activeSessionId) && (diagnosticsOpen || turnState === "stalled");
+
+  useEffect(() => {
+    if (!shouldShowRecoveryPanel) return;
+    void refreshConversationDiagnostics();
+  }, [refreshConversationDiagnostics, shouldShowRecoveryPanel, turnState]);
 
   const submitApproval = useCallback(async (choice: "once" | "session" | "always" | "deny") => {
     const sid = activeSessionRef.current;
@@ -2396,6 +2573,20 @@ export function ChatPanel({
     jumpToIndex(collapsedMessages.length - 1, "end");
   }, [collapsedMessages.length, jumpToIndex]);
 
+  const diagnosticsTurn = (
+    conversationDiagnostics?.turn && typeof conversationDiagnostics.turn === "object"
+      ? conversationDiagnostics.turn as Record<string, unknown>
+      : {}
+  );
+  const diagnosticsTiming = (
+    conversationDiagnostics?.timing_breakdown && typeof conversationDiagnostics.timing_breakdown === "object"
+      ? conversationDiagnostics.timing_breakdown as Record<string, unknown>
+      : {}
+  );
+  const diagnosticsMessageCount = typeof conversationDiagnostics?.message_count === "number"
+    ? conversationDiagnostics.message_count
+    : null;
+
   return (
     <div
       className={cn("flex min-h-0 w-full flex-1 flex-col bg-background/45 relative", className)}
@@ -2457,6 +2648,18 @@ export function ChatPanel({
                 Fork
               </Button>
             )}
+            {activeSessionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px] gap-1"
+                onClick={() => setDiagnosticsOpen((open) => !open)}
+                title="Chat diagnostics and recovery actions"
+              >
+                <Activity className="h-3 w-3" />
+                Diagnostics
+              </Button>
+            )}
           </div>
           {activeSessionId && (
             <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[300px]">
@@ -2484,6 +2687,85 @@ export function ChatPanel({
             </div>
           )}
         </div>
+
+      {shouldShowRecoveryPanel && (
+        <div className="border-b border-border bg-card/18 px-3 py-2 text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <Activity className="h-3.5 w-3.5 text-foreground/60" />
+              <span className="font-medium text-foreground/80">Chat diagnostics</span>
+              <span className="truncate">
+                {String(diagnosticsTurn.state ?? turnState)}
+                {diagnosticsTurn.phase ? ` / ${String(diagnosticsTurn.phase)}` : ""}
+              </span>
+              {diagnosticsMessageCount !== null && (
+                <span className="rounded bg-foreground/5 px-1.5 py-0.5">
+                  {diagnosticsMessageCount} msgs
+                </span>
+              )}
+              <span className="rounded bg-foreground/5 px-1.5 py-0.5">
+                SSE {sseReconnectCount}
+              </span>
+              <span className="rounded bg-foreground/5 px-1.5 py-0.5">
+                polls {recoveryPollCount}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px]"
+                onClick={() => void refreshConversationDiagnostics()}
+                title="Refresh diagnostics"
+              >
+                <RefreshCw className="mr-1 h-3 w-3" />
+                Refresh
+              </Button>
+              {recoveryActions.map((action) => (
+                <Button
+                  key={action.id}
+                  variant={action.id === "stop" ? "destructive" : "outline"}
+                  size="sm"
+                  className="h-6 px-2 text-[10px]"
+                  disabled={!action.enabled}
+                  onClick={() => void runRecoveryAction(action.id)}
+                  title={action.label}
+                >
+                  {recoveryActionBusy === action.id ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : action.id === "retry" ? (
+                    <RotateCcw className="mr-1 h-3 w-3" />
+                  ) : action.id === "continue" ? (
+                    <PlayCircle className="mr-1 h-3 w-3" />
+                  ) : action.id === "copy" ? (
+                    <Copy className="mr-1 h-3 w-3" />
+                  ) : action.id === "reload" ? (
+                    <RefreshCw className="mr-1 h-3 w-3" />
+                  ) : null}
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          {Object.keys(diagnosticsTiming).length > 0 && (
+            <div className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
+              {Object.entries(diagnosticsTiming).slice(0, 8).map(([key, value]) => (
+                <div key={key} className="rounded border border-border/60 bg-background/25 px-2 py-1">
+                  <div className="truncate text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                    {key.replace(/_/g, " ")}
+                  </div>
+                  <div className="font-mono text-foreground/80">
+                    {typeof value === "number" ? value.toFixed(3) : String(value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {diagnosticsError && (
+            <div className="mt-1 text-destructive">{diagnosticsError}</div>
+          )}
+        </div>
+      )}
 
       {/* Message search bar */}
       {searchOpen && (
