@@ -28,7 +28,15 @@ export function decideRecoveryPoll(input: RecoveryPollInput): RecoveryPollDecisi
     staleTokenMs = 12_000,
     idlePollMs = 10_000,
   } = input;
-  if (hidden) return { poll: false, nextIdlePollAt: lastIdlePollAt };
+  const elapsed = now - lastEventAt;
+  const tokenElapsed = now - (lastTokenAt || lastEventAt);
+  if (hidden) {
+    if (!streaming) return { poll: false, nextIdlePollAt: lastIdlePollAt };
+    return {
+      poll: elapsed >= staleEventMs || tokenElapsed >= staleTokenMs,
+      nextIdlePollAt: lastIdlePollAt,
+    };
+  }
   if (!streaming) {
     if (now - lastIdlePollAt >= idlePollMs) {
       return { poll: true, nextIdlePollAt: now };
@@ -36,8 +44,6 @@ export function decideRecoveryPoll(input: RecoveryPollInput): RecoveryPollDecisi
     return { poll: false, nextIdlePollAt: lastIdlePollAt };
   }
 
-  const elapsed = now - lastEventAt;
-  const tokenElapsed = now - (lastTokenAt || lastEventAt);
   let statusLabel: string | undefined;
   if (elapsed >= 30_000) {
     statusLabel = "Reconnecting...";

@@ -2,15 +2,26 @@ import { describe, expect, it } from "vitest";
 import { decideRecoveryPoll } from "./chatRecovery";
 
 describe("decideRecoveryPoll", () => {
-  it("does not poll while the document is hidden", () => {
+  it("does not poll idle recovery while the document is hidden", () => {
     expect(decideRecoveryPoll({
-      streaming: true,
+      streaming: false,
       hidden: true,
       now: 10_000,
       lastEventAt: 0,
       lastTokenAt: 0,
       lastIdlePollAt: 0,
     }).poll).toBe(false);
+  });
+
+  it("still polls stale streaming recovery while the document is hidden", () => {
+    expect(decideRecoveryPoll({
+      streaming: true,
+      hidden: true,
+      now: 10_000,
+      lastEventAt: 6_900,
+      lastTokenAt: 9_500,
+      lastIdlePollAt: 0,
+    }).poll).toBe(true);
   });
 
   it("stays quiet while streaming SSE events are fresh", () => {
