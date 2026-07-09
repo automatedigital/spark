@@ -115,6 +115,13 @@ def _web_session_list_row(row: dict[str, Any]) -> dict[str, Any]:
     """Return the compact row shape consumed by the web sidebar session list."""
     return {key: row.get(key) for key in _WEB_SESSION_LIST_FIELDS}
 
+
+def _apply_web_turn_active_state(rows: list[dict[str, Any]]) -> None:
+    """Mark sidebar rows active only while a web turn is actually registered."""
+    for row in rows:
+        sid = row.get("id")
+        row["is_active"] = _is_web_turn_active(str(sid)) if sid else False
+
 # Captured at startup — fan-out SSE events from sync agent threads
 _web_event_loop: Optional[asyncio.AbstractEventLoop] = None
 _event_subscribers: set = set()  # asyncio.Queue
@@ -2658,12 +2665,7 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
                 include_children=False,
             )
             total = db.session_count(source=source, include_children=False)
-            now = time.time()
-            for s in sessions:
-                s["is_active"] = (
-                    s.get("ended_at") is None
-                    and (now - s.get("last_active", s.get("started_at", 0))) < 300
-                )
+            _apply_web_turn_active_state(sessions)
             return {
                 "sessions": [_web_session_list_row(s) for s in sessions],
                 "total": total,
@@ -8707,12 +8709,7 @@ async def list_workspace_conversations(slug: str, limit: int = 30, offset: int =
     try:
         sessions = db.list_sessions_rich(limit=limit, offset=offset, source=source)
         total = db.session_count(source=source)
-        now = time.time()
-        for s in sessions:
-            s["is_active"] = (
-                s.get("ended_at") is None
-                and (now - s.get("last_active", s.get("started_at", 0))) < 300
-            )
+        _apply_web_turn_active_state(sessions)
     finally:
         db.close()
     return {"sessions": sessions, "total": total, "limit": limit, "offset": offset}

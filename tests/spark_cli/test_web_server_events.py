@@ -711,6 +711,27 @@ class TestConversationControl:
         assert row["id"] == "web_compact_session"
         assert row["model"] == "m1"
 
+    def test_sessions_list_uses_authoritative_active_turn_state(self, web_client):
+        import spark_cli.web_server as web_server
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("recent_done_session", source="web", model="m1")
+            db.append_message("recent_done_session", "user", content="done")
+            db.create_session("registered_active_session", source="web", model="m1")
+            db.append_message("registered_active_session", "user", content="active")
+        finally:
+            db.close()
+
+        web_server._mark_web_turn_active("registered_active_session")
+
+        resp = web_client.get("/api/sessions?source=web&limit=20")
+        assert resp.status_code == 200
+        rows = {row["id"]: row for row in resp.json()["sessions"]}
+        assert rows["recent_done_session"]["is_active"] is False
+        assert rows["registered_active_session"]["is_active"] is True
+
     def test_session_search_can_filter_to_web_source(self, web_client):
         from core.spark_state import SessionDB
 
