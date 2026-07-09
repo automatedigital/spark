@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { lazy, useState, useEffect, useRef } from "react";
 import {
   Blocks,
   Clock,
@@ -14,15 +14,6 @@ import {
   Square,
 } from "lucide-react";
 import ChatPage from "@/pages/ChatPage";
-import CronPage from "@/pages/CronPage";
-import FilesPage from "@/pages/FilesPage";
-import KanbanPage from "@/pages/KanbanPage";
-import CanvasPage from "@/pages/CanvasPage";
-import SkillsPage from "@/pages/SkillsPage";
-import ConnectorsPage from "@/pages/ConnectorsPage";
-import SkillsToolsPage from "@/pages/SkillsToolsPage";
-import MessagingPage from "@/pages/MessagingPage";
-import SettingsPanel from "@/components/SettingsPanel";
 import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
@@ -30,13 +21,11 @@ import { api, getDashboardToken, setDashboardToken, getConnectionMode, getRemote
 import type { StatusResponse } from "@/lib/api";
 import { displayHost } from "@/lib/connection";
 import { useUpdateModal } from "@/lib/updateModal";
-import { CommandPalette } from "@/components/CommandPalette";
-import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { GlobalToasts } from "@/components/GlobalToasts";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CodexUsageBadge } from "@/components/CodexUsageBadge";
-import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { BrandLogo } from "@/components/BrandLogo";
+import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
 import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
@@ -63,6 +52,25 @@ const MORE_NAV = [
   { id: "canvas", labelKey: "canvas" as const, icon: Square },
   { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
 ] as const;
+
+const CronPage = lazy(() => import("@/pages/CronPage"));
+const FilesPage = lazy(() => import("@/pages/FilesPage"));
+const KanbanPage = lazy(() => import("@/pages/KanbanPage"));
+const CanvasPage = lazy(() => import("@/pages/CanvasPage"));
+const SkillsPage = lazy(() => import("@/pages/SkillsPage"));
+const ConnectorsPage = lazy(() => import("@/pages/ConnectorsPage"));
+const SkillsToolsPage = lazy(() => import("@/pages/SkillsToolsPage"));
+const MessagingPage = lazy(() => import("@/pages/MessagingPage"));
+const SettingsPanel = lazy(() => import("@/components/SettingsPanel"));
+const CommandPalette = lazy(() =>
+  import("@/components/CommandPalette").then((module) => ({ default: module.CommandPalette })),
+);
+const KeyboardShortcutsModal = lazy(() =>
+  import("@/components/KeyboardShortcutsModal").then((module) => ({ default: module.KeyboardShortcutsModal })),
+);
+const OnboardingWizard = lazy(() =>
+  import("@/components/OnboardingWizard").then((module) => ({ default: module.OnboardingWizard })),
+);
 
 const PAGE_COMPONENTS = {
   chat: ChatPage,
@@ -619,18 +627,30 @@ function AppShell() {
   };
 
   if (needsOnboarding) {
-    return <OnboardingWizard onComplete={() => setNeedsOnboarding(false)} />;
+    return (
+      <LazyLoadBoundary label="onboarding" overlay>
+        <OnboardingWizard onComplete={() => setNeedsOnboarding(false)} />
+      </LazyLoadBoundary>
+    );
   }
 
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground">
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        onNavigate={(id) => navigateTo(id as PageId)}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      {paletteOpen && (
+        <LazyLoadBoundary label="command palette" overlay>
+          <CommandPalette
+            open
+            onClose={() => setPaletteOpen(false)}
+            onNavigate={(id) => navigateTo(id as PageId)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        </LazyLoadBoundary>
+      )}
+      {shortcutsOpen && (
+        <LazyLoadBoundary label="keyboard shortcuts" overlay>
+          <KeyboardShortcutsModal open onClose={() => setShortcutsOpen(false)} />
+        </LazyLoadBoundary>
+      )}
       <GlobalToasts />
 
       {/* Cursor-following glow blob */}
@@ -933,7 +953,9 @@ function AppShell() {
                 </div>
               </section>
             ) : (
-              <PageComponent />
+              <LazyLoadBoundary label={navLabel(PAGE_LABEL_KEYS[page])}>
+                <PageComponent />
+              </LazyLoadBoundary>
             )}
           </main>
           {!authChecking && !authWall && (
@@ -966,7 +988,11 @@ function AppShell() {
         </div>
       </div>
 
-      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <LazyLoadBoundary label="settings" overlay>
+          <SettingsPanel onClose={() => setSettingsOpen(false)} />
+        </LazyLoadBoundary>
+      )}
     </div>
   );
 }

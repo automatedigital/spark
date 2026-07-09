@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -18,25 +18,6 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import ReactCodeMirror, { keymap } from "@uiw/react-codemirror";
-import { python } from "@codemirror/lang-python";
-import { javascript } from "@codemirror/lang-javascript";
-import { markdown } from "@codemirror/lang-markdown";
-import { json } from "@codemirror/lang-json";
-import { html } from "@codemirror/lang-html";
-import { css } from "@codemirror/lang-css";
-import { sql } from "@codemirror/lang-sql";
-import { rust } from "@codemirror/lang-rust";
-import { go } from "@codemirror/lang-go";
-import { java } from "@codemirror/lang-java";
-import { cpp } from "@codemirror/lang-cpp";
-import { xml } from "@codemirror/lang-xml";
-import { StreamLanguage } from "@codemirror/language";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
-import { yaml } from "@codemirror/legacy-modes/mode/yaml";
-import { toml } from "@codemirror/legacy-modes/mode/toml";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView } from "@codemirror/view";
 import { api, mediaFileUrl } from "@/lib/api";
 import type { FileListEntry } from "@/lib/api";
 import {
@@ -48,28 +29,10 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
 import { ROOT_PATH, fileEntryFromPath, parentDirForFile } from "./filesPathUtils";
 
-// Layout + background overrides — syntax colors come from oneDark, background matches app UI
-const cmLayout = [
-  EditorView.theme({
-    "&": { height: "100%", fontSize: "0.72rem" },
-    ".cm-scroller": { fontFamily: "var(--font-mono-ui, monospace)", lineHeight: "1.25rem", overflow: "auto" },
-    ".cm-content": { padding: "0.75rem 0" },
-    ".cm-line": { padding: "0 1rem" },
-    ".cm-gutters": { minWidth: "2.5rem", borderRight: "1px solid rgba(255,255,255,0.06)" },
-    ".cm-activeLine": { background: "rgba(255,255,255,0.03)" },
-    ".cm-activeLineGutter": { background: "rgba(255,255,255,0.03)" },
-  }),
-  // Force background transparent so the app's surface shows through
-  EditorView.theme({
-    "&, &.cm-focused": { background: "transparent !important" },
-    ".cm-editor, .cm-wrap": { background: "transparent !important" },
-    ".cm-scroller": { background: "transparent !important" },
-    ".cm-content": { background: "transparent !important" },
-    ".cm-gutters": { background: "transparent !important" },
-  }, { dark: true }),
-];
+const CodeEditor = lazy(() => import("@/components/files/CodeEditor"));
 
 // ── File utilities ─────────────────────────────────────────────────────────────
 
@@ -213,80 +176,6 @@ function MediaViewer({ file }: { file: OpenFile }) {
         <Download className="h-3.5 w-3.5" /> Download
       </a>
     </div>
-  );
-}
-
-function extensionFor(name: string) {
-  const ext = extOf(name);
-  switch (ext) {
-    case "py": return python();
-    case "js": case "jsx": return javascript({ jsx: true });
-    case "ts": case "tsx": return javascript({ typescript: true, jsx: ext === "tsx" });
-    case "md": return markdown();
-    case "json": return json();
-    case "html": return html();
-    case "css": return css();
-    case "sql": return sql();
-    case "rs": return rust();
-    case "go": return go();
-    case "java": return java();
-    case "c": case "cpp": case "h": return cpp();
-    case "xml": case "svg": return xml();
-    case "sh": case "bash": return StreamLanguage.define(shell);
-    case "yaml": case "yml": return StreamLanguage.define(yaml);
-    case "toml": case "ini": case "cfg": case "env": return StreamLanguage.define(toml);
-    default: return null;
-  }
-}
-
-function CodeEditor({
-  file,
-  onChange,
-  onSave,
-}: {
-  file: OpenFile;
-  onChange: (content: string) => void;
-  onSave: () => void;
-}) {
-  const onSaveRef = useRef(onSave);
-  onSaveRef.current = onSave;
-
-  const extensions = useMemo(() => {
-    const langExt = extensionFor(file.name);
-    const saveBinding = keymap.of([{
-      key: "Mod-s",
-      run: () => { onSaveRef.current(); return true; },
-    }]);
-    return langExt ? [saveBinding, langExt, ...cmLayout] : [saveBinding, ...cmLayout];
-  }, [file.name]);
-
-  return (
-    <ReactCodeMirror
-      value={file.content ?? ""}
-      onChange={onChange}
-      theme={oneDark}
-      extensions={extensions}
-      basicSetup={{
-        lineNumbers: true,
-        foldGutter: false,
-        dropCursor: false,
-        allowMultipleSelections: true,
-        indentOnInput: true,
-        bracketMatching: true,
-        closeBrackets: true,
-        autocompletion: false,
-        rectangularSelection: false,
-        crosshairCursor: false,
-        highlightActiveLine: true,
-        highlightSelectionMatches: true,
-        closeBracketsKeymap: false,
-        searchKeymap: false,
-        foldKeymap: false,
-        completionKeymap: false,
-        lintKeymap: false,
-      }}
-      style={{ height: "100%" }}
-    />
   );
 }
 
@@ -713,11 +602,14 @@ export default function FilesPage() {
                     <span className="uppercase tracking-[0.12em] shrink-0 ml-2">{languageFor(selectedFile.name)}</span>
                   </div>
                   <div className="min-h-0 flex-1 overflow-auto">
-                    <CodeEditor
-                      file={selectedFile}
-                      onChange={handleContentChange}
-                      onSave={handleSave}
-                    />
+                    <LazyLoadBoundary label="editor">
+                      <CodeEditor
+                        filename={selectedFile.name}
+                        value={selectedFile.content ?? ""}
+                        onChange={handleContentChange}
+                        onSave={handleSave}
+                      />
+                    </LazyLoadBoundary>
                   </div>
                 </div>
               ) : (

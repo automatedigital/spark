@@ -15,6 +15,25 @@ export default defineConfig({
     // Parent of this file is src/spark_cli/ — same directory as web_server.py’s web_dist.
     outDir: "../web_dist",
     emptyOutDir: true,
+    manifest: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return "vendor-react";
+          if (id.includes("node_modules/@xyflow/")) return "feature-canvas";
+          if (id.includes("node_modules/@xterm/")) return "feature-terminal";
+          if (
+            id.includes("node_modules/@uiw/") ||
+            (id.includes("node_modules/@codemirror/") &&
+              !id.includes("node_modules/@codemirror/lang-") &&
+              !id.includes("node_modules/@codemirror/legacy-modes/"))
+          ) {
+            return "feature-editor-core";
+          }
+        },
+      },
+    },
   },
   optimizeDeps: {
     // Do not crawl packaged Tauri/Python resource HTML under src-tauri.
