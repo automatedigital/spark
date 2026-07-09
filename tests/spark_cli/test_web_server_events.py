@@ -36,6 +36,10 @@ def web_client(monkeypatch, tmp_path):
     web_server._web_warm_inflight.clear()
     web_server._web_warm_recent.clear()
     web_server._web_queues.clear()
+    with web_server._pending_token_lock:
+        web_server._pending_token_events.clear()
+        web_server._pending_token_gap_sessions.clear()
+        web_server._token_flush_scheduled = False
 
     return TestClient(web_server.app)
 
@@ -528,6 +532,206 @@ class TestEventBus:
         assert env["session_id"] == "sess1"
         assert env["data"]["t"] == "hi"
 
+    def test_subscriber_filters_topic_and_session_before_enqueue(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            notifications = web_server._EventSubscriber(prefixes=("notifications",))
+            scoped = web_server._EventSubscriber(
+                prefixes=("chat",), session_ids=frozenset({"wanted"})
+            )
+            web_server._event_subscribers.update({notifications, scoped})
+            try:
+                for _ in range(1_000):
+                    web_server._publish_event("chat.token", {"t": "x"}, "other")
+                web_server._publish_event(
+                    "notifications.job_complete", {"job_id": "job"}
+                )
+                web_server._publish_event("chat.token", {"t": "ok"}, "wanted")
+                await asyncio.sleep(0.05)
+                return (
+                    notifications.priority_queue.qsize(),
+                    notifications.data_queue.qsize(),
+                    scoped.priority_queue.qsize(),
+                    scoped.data_queue.qsize(),
+                    await scoped.get(),
+                )
+            finally:
+                web_server._event_subscribers.difference_update({notifications, scoped})
+
+        notification_priority, notification_data, scoped_priority, scoped_data, event = (
+            asyncio.run(run())
+        )
+        assert notification_priority == 0
+        assert notification_data == 1
+        assert scoped_priority == 0
+        assert scoped_data == 1
+        assert event["session_id"] == "wanted"
+        assert event["data"]["t"] == "ok"
+
+    def test_hundred_thousand_tokens_keep_bounded_queue_and_recover_exact_text(
+        self, web_client
+    ):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            subscriber = web_server._EventSubscriber(prefixes=("chat", "bus"))
+            web_server._event_subscribers.add(subscriber)
+            web_server._mark_web_turn_active("stress_100k")
+            token_callback = web_server._make_web_chat_callbacks(
+                "stress_100k", asyncio.Queue(), loop
+            )[0]
+            try:
+                for _ in range(100_000):
+                    token_callback("x")
+                await asyncio.sleep(0.1)
+                return (
+                    subscriber.priority_queue.qsize(),
+                    subscriber.data_queue.qsize(),
+                    subscriber.priority_queue.qsize() + subscriber.data_queue.qsize(),
+                )
+            finally:
+                web_server._event_subscribers.discard(subscriber)
+
+        priority_size, data_size, total_size = asyncio.run(run())
+        try:
+            snapshot = web_client.get("/api/conversations/stress_100k/stream-snapshot").json()
+            assert snapshot["stream_text"] == "x" * 100_000
+            assert snapshot["stream_revision"] == 100_000
+            assert priority_size >= 1  # explicit bus.gap recovery signal
+            assert data_size <= 1  # same-session token deltas coalesce
+            assert total_size <= web_server._EVENT_QUEUE_SIZE
+        finally:
+            web_server._clear_web_turn("stress_100k")
+
+    def test_control_event_uses_reserved_capacity_when_data_queue_is_full(self, web_client):
+        import spark_cli.web_server as web_server
+
+        subscriber = web_server._EventSubscriber(prefixes=("chat", "bus"))
+        for index in range(web_server._EVENT_DATA_QUEUE_SIZE):
+            subscriber.enqueue(
+                {
+                    "topic": "chat.status",
+                    "session_id": "slow",
+                    "ts": float(index),
+                    "data": {"index": index},
+                }
+            )
+        subscriber.enqueue(
+            {
+                "topic": "chat.turn_done",
+                "session_id": "slow",
+                "ts": time.time(),
+                "data": {"ok": True},
+            }
+        )
+
+        assert subscriber.data_queue.qsize() == web_server._EVENT_DATA_QUEUE_SIZE
+        assert subscriber.priority_queue.get_nowait()["topic"] == "chat.turn_done"
+
+    def test_token_coalescing_is_isolated_between_subscribers(self, web_client):
+        import spark_cli.web_server as web_server
+
+        first = web_server._EventSubscriber(prefixes=("chat",))
+        second = web_server._EventSubscriber(prefixes=("chat",))
+        for token in ("a", "b", "c"):
+            envelope = {
+                "topic": "chat.token",
+                "session_id": "shared",
+                "ts": time.time(),
+                "data": {"t": token},
+            }
+            first.enqueue(envelope)
+            second.enqueue(envelope)
+
+        assert first.data_queue.get_nowait()["data"]["t"] == "abc"
+        assert second.data_queue.get_nowait()["data"]["t"] == "abc"
+
+    def test_lifecycle_event_cannot_overtake_earlier_token(self, web_client):
+        import spark_cli.web_server as web_server
+
+        subscriber = web_server._EventSubscriber(prefixes=("chat",))
+        subscriber.enqueue(
+            {
+                "topic": "chat.token",
+                "session_id": "ordered",
+                "ts": time.time(),
+                "data": {"t": "final delta"},
+            }
+        )
+        subscriber.enqueue(
+            {
+                "topic": "chat.turn_done",
+                "session_id": "ordered",
+                "ts": time.time(),
+                "data": {},
+            }
+        )
+
+        async def drain():
+            return [await subscriber.get(), await subscriber.get()]
+
+        assert [event["topic"] for event in asyncio.run(drain())] == [
+            "chat.token",
+            "chat.turn_done",
+        ]
+
+    @pytest.mark.parametrize("boundary_topic", ["chat.tool_start", "chat.reasoning"])
+    def test_global_token_batch_preserves_semantic_boundaries(
+        self, web_client, boundary_topic
+    ):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            subscriber = web_server._EventSubscriber(prefixes=("chat",))
+            web_server._event_subscribers.add(subscriber)
+            try:
+                web_server._publish_event("chat.token", {"t": "A"}, "ordered")
+                web_server._publish_event(boundary_topic, {"text": "boundary"}, "ordered")
+                web_server._publish_event("chat.token", {"t": "B"}, "ordered")
+                return [
+                    await asyncio.wait_for(subscriber.get(), timeout=2.0)
+                    for _ in range(3)
+                ]
+            finally:
+                web_server._event_subscribers.discard(subscriber)
+
+        events = asyncio.run(run())
+        assert [event["topic"] for event in events] == [
+            "chat.token",
+            boundary_topic,
+            "chat.token",
+        ]
+        assert events[0]["data"]["t"] == "A"
+        assert events[2]["data"]["t"] == "B"
+
+    def test_pending_token_batch_precedes_immediate_turn_done(self, web_client):
+        import spark_cli.web_server as web_server
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            web_server._web_event_loop = loop
+            subscriber = web_server._EventSubscriber(prefixes=("chat",))
+            web_server._event_subscribers.add(subscriber)
+            try:
+                web_server._publish_event("chat.token", {"t": "last"}, "ordered")
+                web_server._publish_event("chat.turn_done", {}, "ordered")
+                return [
+                    await asyncio.wait_for(subscriber.get(), timeout=2.0),
+                    await asyncio.wait_for(subscriber.get(), timeout=2.0),
+                ]
+            finally:
+                web_server._event_subscribers.discard(subscriber)
+
+        events = asyncio.run(run())
+        assert [event["topic"] for event in events] == ["chat.token", "chat.turn_done"]
+
     def test_priority_turn_done_survives_full_subscriber_queue(self, web_client):
         import spark_cli.web_server as web_server
 
@@ -800,7 +1004,7 @@ class TestEventBus:
                 alpha_token("ALPHA-02")
 
                 items = []
-                while len(items) < 3:
+                while len(items) < 2:
                     items.append(await asyncio.wait_for(events.get(), timeout=2.0))
                 return items
             finally:
@@ -895,7 +1099,7 @@ class TestEventBus:
                 callbacks_by_session["stress_charlie"](sessions["stress_charlie"][3])
 
                 items = []
-                expected_count = sum(len(chunks) for chunks in sessions.values())
+                expected_count = len(sessions)
                 while len(items) < expected_count:
                     items.append(await asyncio.wait_for(events.get(), timeout=2.0))
                 return items
@@ -942,16 +1146,15 @@ class TestEventBus:
                 callbacks = web_server._make_web_chat_callbacks("sess_ansi_token", stream_queue, loop)
                 token_callback = callbacks[0]
                 token_callback("\x1b[31mred\x1b[0m")
-                stream_token = await asyncio.wait_for(stream_queue.get(), timeout=2.0)
+                await asyncio.sleep(0)
                 event = await asyncio.wait_for(event_queue.get(), timeout=2.0)
-                return stream_token, event
+                return stream_queue.empty(), event
             finally:
                 web_server._event_subscribers.discard(event_queue)
 
-        stream_token, event = asyncio.run(run())
+        legacy_queue_empty, event = asyncio.run(run())
         try:
-            assert stream_token == "red"
-            assert "\x1b[" not in stream_token
+            assert legacy_queue_empty is True
             assert event["topic"] == "chat.token"
             assert event["data"]["t"] == "red"
 

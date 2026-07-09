@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
-import { useEventBus, BUS_RECONNECTED_TOPIC } from "@/hooks/useEventBus";
+import { useEventBus, BUS_GAP_TOPIC, BUS_RECONNECTED_TOPIC } from "@/hooks/useEventBus";
 import {
   estimateAssistantRowSize,
   findLiveRowIndex,
@@ -1290,6 +1290,10 @@ export function ChatPanel({
     }
     const sid = env.session_id ?? undefined;
     if (!sid || !activeSessionAliasesRef.current.has(sid)) return;
+    if (env.topic === BUS_GAP_TOPIC) {
+      void resyncTurnState({ allowIdle: true });
+      return;
+    }
     lastEventAtRef.current = Date.now();
     const data = env.data as Record<string, unknown>;
 

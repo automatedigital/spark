@@ -7,11 +7,21 @@ A mid-turn crash must leave the user message and partial assistant text
 recoverable from SQLite.
 """
 
+import asyncio
 import time
 
 import pytest
 
 from core.spark_state import SessionDB
+
+
+@pytest.fixture(autouse=True)
+def _reset_checkpoint_writer():
+    from spark_cli import web_server
+
+    web_server._checkpoint_writer.shutdown(timeout=1.0)
+    yield
+    web_server._checkpoint_writer.shutdown(timeout=1.0)
 
 
 @pytest.fixture()
@@ -72,6 +82,233 @@ class TestDeleteMessage:
 
 
 class TestStreamingCheckpoint:
+    def test_slow_database_does_not_block_token_callback(self, db, monkeypatch):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "slow-checkpoint")
+        eager_id = web_server._persist_web_user_message(sid, "question")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        turn.user_message_id = eager_id
+        original = web_server._CheckpointWriter._write_request
+
+        def delayed(database, request):
+            time.sleep(0.5)
+            return original(database, request)
+
+        monkeypatch.setattr(
+            web_server._CheckpointWriter, "_write_request", staticmethod(delayed)
+        )
+        try:
+            started = time.perf_counter()
+            web_server._append_web_turn_token(sid, "fast token")
+            callback_seconds = time.perf_counter() - started
+            assert callback_seconds < 0.05
+            assert web_server._checkpoint_writer.flush(sid, turn, timeout=2.0)
+            assert db.get_messages(sid)[-1]["content"] == "fast token"
+        finally:
+            web_server._clear_web_turn(sid)
+
+    def test_many_revisions_coalesce_to_bounded_write_rate(self, db, monkeypatch):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "coalesced-checkpoint")
+        eager_id = web_server._persist_web_user_message(sid, "question")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        turn.user_message_id = eager_id
+        monkeypatch.setattr(web_server, "_WEB_TURN_CHECKPOINT_INTERVAL_S", 0.05)
+        before = web_server._streaming_pipeline_metrics.snapshot()["checkpoint_writes"]
+        try:
+            for _ in range(1_000):
+                web_server._append_web_turn_token(sid, "x")
+            assert web_server._checkpoint_writer.flush(sid, turn, timeout=2.0)
+            writes = (
+                web_server._streaming_pipeline_metrics.snapshot()["checkpoint_writes"]
+                - before
+            )
+            assert writes <= 2
+            assert db.get_messages(sid)[-1]["content"] == "x" * 1_000
+        finally:
+            web_server._clear_web_turn(sid)
+
+    def test_transient_writer_failure_retries_without_losing_revision(self, db, monkeypatch):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "retry-checkpoint")
+        eager_id = web_server._persist_web_user_message(sid, "question")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        turn.user_message_id = eager_id
+        original = web_server._CheckpointWriter._write_request
+        attempts = 0
+
+        def flaky(database, request):
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise TimeoutError("database is locked")
+            return original(database, request)
+
+        monkeypatch.setattr(web_server._CheckpointWriter, "_write_request", staticmethod(flaky))
+        try:
+            web_server._append_web_turn_token(sid, "eventual")
+            assert web_server._checkpoint_writer.flush(sid, turn, timeout=2.0)
+            assert attempts == 3
+            assert db.get_messages(sid)[-1]["content"] == "eventual"
+        finally:
+            web_server._clear_web_turn(sid)
+
+    def test_shutdown_forces_pending_checkpoint_before_interval(self, db, monkeypatch):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "shutdown-checkpoint")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        turn.user_message_id = web_server._persist_web_user_message(sid, "question")
+        turn.stream_text = "pending at shutdown"
+        turn.stream_revision = 1
+        turn.last_checkpoint_at = time.perf_counter()
+        monkeypatch.setattr(web_server, "_WEB_TURN_CHECKPOINT_INTERVAL_S", 60.0)
+        writer = web_server._CheckpointWriter()
+        try:
+            writer.mark_dirty(sid, turn)
+            assert writer.pending_count == 1
+            assert writer.shutdown(timeout=2.0)
+            assert db.get_messages(sid)[-1]["content"] == "pending at shutdown"
+        finally:
+            writer.shutdown(timeout=1.0)
+            web_server._clear_web_turn(sid)
+
+    def test_dirty_revision_is_persisted_within_checkpoint_interval(self, db, monkeypatch):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "crash-window-checkpoint")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        turn.user_message_id = web_server._persist_web_user_message(sid, "question")
+        monkeypatch.setattr(web_server, "_WEB_TURN_CHECKPOINT_INTERVAL_S", 0.05)
+        try:
+            web_server._append_web_turn_token(sid, "first")
+            assert web_server._checkpoint_writer.flush(sid, turn, timeout=1.0)
+            web_server._append_web_turn_token(sid, " second")
+            deadline = time.perf_counter() + 0.5
+            while time.perf_counter() < deadline:
+                if db.get_messages(sid)[-1]["content"] == "first second":
+                    break
+                time.sleep(0.01)
+            assert db.get_messages(sid)[-1]["content"] == "first second"
+        finally:
+            web_server._clear_web_turn(sid)
+
+    def test_inflight_timeout_blocks_finalization_until_writer_finishes(
+        self, db, monkeypatch
+    ):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "blocked-finalization")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        turn.user_message_id = web_server._persist_web_user_message(sid, "question")
+        original = web_server._CheckpointWriter._write_request
+        write_started = __import__("threading").Event()
+        release_write = __import__("threading").Event()
+
+        def blocked(database, request):
+            write_started.set()
+            release_write.wait(2.0)
+            return original(database, request)
+
+        monkeypatch.setattr(
+            web_server._CheckpointWriter,
+            "_write_request",
+            staticmethod(blocked),
+        )
+        monkeypatch.setattr(web_server, "_WEB_TURN_CHECKPOINT_FLUSH_TIMEOUT_S", 0.05)
+        finalized = False
+        try:
+            web_server._append_web_turn_token(sid, "partial before blocked flush")
+            assert write_started.wait(1.0)
+            if web_server._force_checkpoint_or_block(
+                sid, turn, operation="test_finalization"
+            ):
+                finalized = True
+
+            assert finalized is False
+            assert web_server._is_web_turn_active(sid) is True
+            assert turn.phase == "checkpoint_blocked"
+            assert [m for m in db.get_messages(sid) if m["role"] == "assistant"] == []
+
+            release_write.set()
+            deadline = time.perf_counter() + 1.0
+            while time.perf_counter() < deadline:
+                assistant = [m for m in db.get_messages(sid) if m["role"] == "assistant"]
+                if assistant:
+                    break
+                time.sleep(0.01)
+            assert assistant[-1]["content"] == "partial before blocked flush"
+            # The late writer did not race a finalized/cleared turn: the
+            # explicit blocker remains visible for deterministic recovery.
+            assert web_server._is_web_turn_active(sid) is True
+            assert turn.phase == "checkpoint_blocked"
+        finally:
+            release_write.set()
+            web_server._checkpoint_writer.flush(sid, turn, timeout=1.0)
+            web_server._clear_web_turn(sid)
+
+    def test_async_checkpoint_barrier_keeps_loop_responsive_and_finalizes_eventually(
+        self, db, monkeypatch
+    ):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "async-blocked-finalization")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        eager_id = web_server._persist_web_user_message(sid, "question")
+        turn.user_message_id = eager_id
+        before = len(db.get_messages(sid))
+        original = web_server._CheckpointWriter._write_request
+        write_started = __import__("threading").Event()
+        release_write = __import__("threading").Event()
+
+        def blocked(database, request):
+            write_started.set()
+            release_write.wait(2.0)
+            return original(database, request)
+
+        monkeypatch.setattr(
+            web_server._CheckpointWriter,
+            "_write_request",
+            staticmethod(blocked),
+        )
+        monkeypatch.setattr(web_server, "_WEB_TURN_CHECKPOINT_FLUSH_TIMEOUT_S", 0.05)
+        web_server._append_web_turn_token(sid, "partial")
+        assert write_started.wait(1.0)
+
+        async def wait_with_heartbeat():
+            barrier = asyncio.create_task(
+                web_server._await_checkpoint_ready(
+                    sid, turn, operation="test_async_finalization"
+                )
+            )
+            ticks = 0
+            for _ in range(5):
+                await asyncio.sleep(0.02)
+                ticks += 1
+            assert not barrier.done()
+            release_write.set()
+            await asyncio.wait_for(barrier, timeout=1.0)
+            return ticks
+
+        try:
+            assert asyncio.run(wait_with_heartbeat()) == 5
+            web_server._persist_web_turn_if_missing(
+                sid,
+                "question",
+                {"final_response": "complete after slow checkpoint"},
+                before,
+                eager_user_id=eager_id,
+                checkpoint_assistant_id=turn.assistant_message_id,
+            )
+            web_server._clear_web_turn(sid)
+            assert web_server._is_web_turn_active(sid) is False
+            assert db.get_messages(sid)[-1]["content"] == "complete after slow checkpoint"
+        finally:
+            release_write.set()
+            web_server._clear_web_turn(sid)
     def test_first_checkpoint_inserts_interrupted_then_updates(self, db):
         from spark_cli import web_server
 
@@ -175,9 +412,17 @@ class TestStreamingCheckpoint:
         web_server._mark_web_turn_active(alpha, active_agent_session_id=alpha)
         web_server._mark_web_turn_active(bravo, active_agent_session_id=bravo)
         try:
+            _, alpha_turn = web_server._get_web_turn(alpha)
+            _, bravo_turn = web_server._get_web_turn(bravo)
+            assert alpha_turn is not None and bravo_turn is not None
+            alpha_turn.user_message_id = 1
+            bravo_turn.user_message_id = 1
             web_server._append_web_turn_token(alpha, "ALPHA-01 ")
             web_server._append_web_turn_token(bravo, "BRAVO-01 ")
             web_server._append_web_turn_token(alpha, "ALPHA-02")
+
+            web_server._checkpoint_web_turn(alpha, alpha_turn, force=True)
+            web_server._checkpoint_web_turn(bravo, bravo_turn, force=True)
 
             alpha_rows = [
                 (m["role"], m["content"])
@@ -189,11 +434,9 @@ class TestStreamingCheckpoint:
                 for m in db.get_messages(bravo)
                 if m["role"] == "assistant"
             ]
-            assert alpha_rows == [("assistant", "ALPHA-01 ")]
+            assert alpha_rows == [("assistant", "ALPHA-01 ALPHA-02")]
             assert bravo_rows == [("assistant", "BRAVO-01 ")]
 
-            _, alpha_turn = web_server._get_web_turn(alpha)
-            assert alpha_turn is not None
             web_server._checkpoint_web_turn(alpha, alpha_turn, force=True)
             alpha_rows = [
                 (m["role"], m["content"])

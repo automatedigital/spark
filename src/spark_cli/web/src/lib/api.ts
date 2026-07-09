@@ -435,9 +435,6 @@ export const api = {
         body: JSON.stringify({ message, context_items: contextItems ?? [] }),
       },
     ),
-  getConversationStream: (sessionId: string): EventSource =>
-    new EventSource(sseUrl(`/api/conversations/${encodeURIComponent(sessionId)}/stream`)),
-
   getConversationSubagents: (sessionId: string) =>
     fetchJSON<ConversationSubagentsResponse>(
       `/api/conversations/${encodeURIComponent(sessionId)}/subagents`,
