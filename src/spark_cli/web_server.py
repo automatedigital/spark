@@ -934,13 +934,21 @@ def _message_for_history_response(msg: dict[str, Any], include_tool_results: boo
     make the normal history page carry only a bounded preview.
     """
     out = dict(msg)
+    stored_content_chars = out.pop("_content_chars", None)
     if "content" in out:
         out["content"] = _sanitize_web_chat_value(out.get("content"))
     if out.get("role") != "tool" or include_tool_results:
         return _sanitize_web_chat_value(out)
 
     content = out.get("content") or ""
-    out.update(_tool_result_preview(content))
+    preview = _tool_result_preview(content)
+    if stored_content_chars is not None and stored_content_chars > len(str(content)):
+        preview.update({
+            "result_chars": stored_content_chars,
+            "result_truncated": True,
+            "has_full_result": True,
+        })
+    out.update(preview)
     out["content"] = out["result_preview"]
     return _sanitize_web_chat_value(out)
 
@@ -4806,78 +4814,56 @@ async def get_session_messages(
     before_id: Optional[str] = None,
     include_tool_results: bool = False,
 ):
-    from core.spark_state import SessionDB
+    def _load_page() -> tuple[str, dict[str, Any] | None]:
+        from core.spark_state import SessionDB
 
-    db = SessionDB()
-    try:
-        sid = db.resolve_session_id(session_id)
-        if not sid:
-            raise HTTPException(status_code=404, detail="Session not found")
-        # Follow the compression chain forward so the UI sees the agent's
-        # current state, not the pre-compression snapshot frozen in the
-        # parent session row. Forks are not followed (different end_reason).
-        leaf_sid = db.resolve_latest_descendant(sid)
-        messages = db.get_messages(leaf_sid)
-        indexed_messages = [
-            (message_index, m)
-            for message_index, m in enumerate(messages)
-            if not _hide_from_web_history(m)
-        ]
-        total = len(indexed_messages)
-        page_end_index = total
-        # Apply pagination: if limit > 0 and/or before_id specified, return a page
-        if before_id:
-            raw_before_id = before_id[3:] if before_id.startswith("db:") else before_id
-            idx = next(
-                (
-                    i
-                    for i, (_message_index, m) in enumerate(indexed_messages)
-                    if str(m.get("id")) == str(raw_before_id)
-                ),
-                None,
+        db = SessionDB()
+        try:
+            sid = db.resolve_session_id(session_id)
+            if not sid:
+                raise HTTPException(status_code=404, detail="Session not found")
+            # Follow only compression descendants, preserving the established
+            # response session_id/migrated_from contract.
+            leaf_sid = db.resolve_latest_descendant(sid)
+            validator = db.get_web_message_validator(leaf_sid)
+            etag_src = (
+                f"{leaf_sid}:{validator['message_count']}:"
+                f"{validator['last_message_id']}:{validator['last_message_timestamp']}:"
+                f"{limit}:{before_id}:{include_tool_results}"
             )
-            if idx is not None:
-                page_end_index = idx
-                indexed_messages = indexed_messages[:idx]
-        if limit > 0:
-            indexed_messages = indexed_messages[-limit:]
-        page_start_index = indexed_messages[0][0] if indexed_messages else page_end_index
-        page_last_index = indexed_messages[-1][0] if indexed_messages else None
-        messages = [
-            _message_for_history_response(
-                {**m, "message_index": message_index},
+            etag = f'"{hashlib.md5(etag_src.encode()).hexdigest()}"'
+            if request.headers.get("if-none-match") == etag:
+                return etag, None
+
+            page = db.get_web_message_page(
+                leaf_sid,
+                limit=limit,
+                before_id=before_id,
                 include_tool_results=include_tool_results,
             )
-            for message_index, m in indexed_messages
-        ]
-        has_earlier = page_start_index > 0
-        resp: dict[str, Any] = {
-            "session_id": leaf_sid,
-            "messages": messages,
-            "total": total,
-            "has_earlier": has_earlier,
-            "page_start_index": page_start_index if messages else None,
-            "page_end_index": page_last_index,
-            "next_before_id": messages[0].get("id") if has_earlier and messages else None,
-        }
-        if leaf_sid != sid:
-            resp["migrated_from"] = sid
+            messages = [
+                _message_for_history_response(
+                    msg,
+                    include_tool_results=include_tool_results,
+                )
+                for msg in page.pop("messages")
+            ]
+            resp: dict[str, Any] = {
+                "session_id": leaf_sid,
+                "messages": messages,
+                **page,
+            }
+            if leaf_sid != sid:
+                resp["migrated_from"] = sid
+            return etag, resp
+        finally:
+            db.close()
 
-        # ETag: hash of message count + last message id for cheap revalidation.
-        last_id = messages[-1].get("id", "") if messages else ""
-        etag_src = f"{leaf_sid}:{total}:{last_id}:{limit}:{before_id}"
-        etag = f'"{hashlib.md5(etag_src.encode()).hexdigest()}"'
-        if request.headers.get("if-none-match") == etag:
-            return Response(status_code=304, headers={
-                "ETag": etag,
-                "Cache-Control": "no-cache",
-            })
-        return JSONResponse(content=resp, headers={
-            "ETag": etag,
-            "Cache-Control": "no-cache",
-        })
-    finally:
-        db.close()
+    etag, resp = await asyncio.to_thread(_load_page)
+    headers = {"ETag": etag, "Cache-Control": "no-cache"}
+    if resp is None:
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(content=resp, headers=headers)
 
 
 @app.get("/api/sessions/{session_id}/tool-results/{tool_call_id}")
