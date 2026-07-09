@@ -46,6 +46,7 @@ import { tokenizeUserBubbleText } from "@/lib/userBubbleTokens";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 import {
+  backendTurnStatusLabel,
   nextChatTurnState,
   recoverTurnStateFromBackend,
   type ChatTurnState,
@@ -157,6 +158,14 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
     }
   });
   return out;
+}
+
+function latestAssistantContentLength(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === "assistant" && msg.content) return msg.content.length;
+  }
+  return 0;
 }
 
 // ── Memoized row components ───────────────────────────────────────────────────
@@ -622,10 +631,10 @@ export function ChatPanel({
     // which can be many seconds on a slow model. Cleared below if history shows
     // the turn already finished, and by the chat.turn_done event otherwise.
     setStreaming(!!initialMessage);
-        setStatusLabel(initialMessage ? MODEL_LOADING_LABEL : null);
+    setStatusLabel(initialMessage ? MODEL_LOADING_LABEL : null);
     lastTokenAtRef.current = initialMessage ? Date.now() : 0;
     streamRevisionRef.current = 0;
-    streamTextCharsRef.current = 0;
+    streamTextCharsRef.current = latestAssistantContentLength(initialTranscript);
     prevCountRef.current = 0;
     lastAutoScrollAtRef.current = 0;
     scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
@@ -669,7 +678,13 @@ export function ChatPanel({
           interruptRequested: status.interrupt_requested,
         });
         setTurnState(recoveredState);
-              setStatusLabel(status.turn_active ? status.status ?? MODEL_LOADING_LABEL : null);
+        setStatusLabel(backendTurnStatusLabel({
+          turnActive: status.turn_active,
+          phase: status.phase,
+          state: status.state,
+          status: status.status,
+          idleForSeconds: status.idle_for_seconds,
+        }));
         if (status.turn_active) {
           lastEventAtRef.current = Date.now();
           const snapshotSessionId = status.active_turn_session_id ?? selectedSessionId;
@@ -784,14 +799,24 @@ export function ChatPanel({
           const mapped = sessionMessagesToChat(
             resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
           );
-          setChatMessages((prev) => (
-            mergeSyncedMessages(
+          setChatMessages((prev) => {
+            const merged = mergeSyncedMessages(
               mapped,
               initialTranscript.length > 0 ? prev : optimistic,
               resp.session_id ?? sessionId,
-              { syncedComplete: !(resp.has_earlier ?? false) },
-            )
-          ));
+              {
+                preserveLocalAssistantPrefix: Boolean(activeTurnSessionIdRef.current),
+                syncedComplete: !(resp.has_earlier ?? false),
+              },
+            );
+            if (activeTurnSessionIdRef.current) {
+              streamTextCharsRef.current = Math.max(
+                streamTextCharsRef.current,
+                latestAssistantContentLength(merged),
+              );
+            }
+            return merged;
+          });
           setHasEarlier(resp.has_earlier ?? false);
           // If history already contains an assistant reply, the turn finished
           // before/at mount — clear the optimistic streaming flag so we don't
@@ -1128,7 +1153,15 @@ export function ChatPanel({
           state: status.state,
           interruptRequested: status.interrupt_requested,
         }));
-        setStatusLabel((prev) => status.status ?? prev ?? MODEL_LOADING_LABEL);
+        setStatusLabel(
+          backendTurnStatusLabel({
+            turnActive: true,
+            phase: status.phase,
+            state: status.state,
+            status: status.status,
+            idleForSeconds: status.idle_for_seconds,
+          }) ?? MODEL_LOADING_LABEL,
+        );
         try {
           const snapshot = await api.getStreamSnapshot(
             snapshotSessionId,
@@ -1326,6 +1359,22 @@ export function ChatPanel({
               text: "Earlier conversation was summarized to free context space — the assistant may not recall fine-grained details from before this point.",
             },
           ]);
+        }
+        break;
+      }
+      case "chat.compaction": {
+        const status = String((data as { status?: string }).status ?? "");
+        if (status === "failed") {
+          const message = String((data as { message?: string }).message ?? "");
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: nid(),
+              role: "note",
+              text: message || "Context compression failed. The transcript was preserved, and you can retry this message.",
+            },
+          ]);
+          setStatusLabel(null);
         }
         break;
       }
@@ -2385,9 +2434,14 @@ export function ChatPanel({
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
+            )}
+          </div>
+          {turnState === "stalled" && (
+            <div className="text-[11px] leading-4 text-amber-300/80">
+              No backend activity recently. Spark will keep checking; you can wait, refresh, or redirect the turn.
+            </div>
           )}
         </div>
-      </div>
 
       {/* Message search bar */}
       {searchOpen && (

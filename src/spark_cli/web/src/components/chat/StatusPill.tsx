@@ -31,7 +31,7 @@ export function StatusPill({
 }) {
   if (!streaming && !label) return null;
 
-  const isToolLabel = label?.startsWith("Tool:");
+  const isToolLabel = label?.startsWith("Tool");
   const isModelLoading = streaming && isModelLoadingLabel(label);
 
   if (isModelLoading) {

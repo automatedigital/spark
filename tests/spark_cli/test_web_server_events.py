@@ -170,6 +170,209 @@ def test_create_conversation_can_preclaim_workspace_source(web_client, monkeypat
             coro.close()
 
 
+def test_fake_stream_endpoint_is_disabled_by_default(web_client, monkeypatch):
+    monkeypatch.delenv("SPARK_WEB_FAKE_STREAMS", raising=False)
+
+    resp = web_client.post(
+        "/api/dev/fake-streams",
+        json={
+            "session_id": "fake_disabled",
+            "message": "hello",
+            "events": [{"type": "token", "text": "nope"}],
+        },
+    )
+
+    assert resp.status_code == 404
+
+
+def test_fake_stream_routes_through_turn_status_snapshot_and_persistence(web_client, monkeypatch):
+    import spark_cli.web_server as web_server
+    from core.spark_state import SessionDB
+    from spark_cli.config import get_spark_home
+
+    monkeypatch.setenv("SPARK_WEB_FAKE_STREAMS", "1")
+    (get_spark_home() / "workspace" / "particles").mkdir(parents=True)
+    events = []
+    original_publish = web_server._publish_event
+
+    def capture_event(topic, data, session_id=None):
+        events.append((topic, data, session_id))
+        return original_publish(topic, data, session_id)
+
+    monkeypatch.setattr(web_server, "_publish_event", capture_event)
+
+    resp = web_client.post(
+        "/api/dev/fake-streams",
+        json={
+            "session_id": "fake_stream_alpha",
+            "message": "fake hello",
+            "source": "workspace:particles",
+            "events": [
+                {"type": "status", "kind": "initializing_agent", "text": "Preparing fake agent"},
+                {"type": "reasoning", "text": "Thinking in test mode"},
+                {"type": "tool_start", "tool_call_id": "tool_1", "name": "fake_lookup", "args": {"q": "spark"}},
+                {"type": "tool_end", "tool_call_id": "tool_1", "name": "fake_lookup", "result": {"ok": True}},
+                {"type": "token", "text": "Alpha "},
+                {"type": "stall", "text": "Holding open", "phase": "api"},
+                {"type": "token", "text": "done", "delay_ms": 120},
+            ],
+        },
+    )
+    assert resp.status_code == 200
+
+    assert _wait_for(
+        lambda: web_client.get("/api/conversations/fake_stream_alpha/stream-snapshot").json()[
+            "stream_text"
+        ]
+        == "Alpha "
+    )
+    snapshot = web_client.get("/api/conversations/fake_stream_alpha/stream-snapshot").json()
+    status = web_client.get("/api/conversations/fake_stream_alpha/turn-status").json()
+    assert snapshot["turn_active"] is True
+    assert snapshot["state"] in {"streaming", "running"}
+    assert status["turn_active"] is True
+    assert status["timings"]["relative_seconds"]["turn_registered"] == 0.0
+
+    assert _wait_for(
+        lambda: web_client.get("/api/conversations/fake_stream_alpha/turn-status").json()[
+            "turn_active"
+        ]
+        is False
+    )
+    db = SessionDB()
+    try:
+        row = db.get_session("fake_stream_alpha")
+        messages = db.get_messages("fake_stream_alpha")
+    finally:
+        db.close()
+
+    assert row["source"] == "workspace:particles"
+    assert [(m["role"], m["content"]) for m in messages] == [
+        ("user", "fake hello"),
+        ("assistant", "Alpha done"),
+    ]
+    assert any(event[0] == "sessions.changed" for event in events)
+    done = [event for event in events if event[0] == "chat.turn_done"]
+    assert done
+    assert done[-1][1]["backend_error_class"] is None
+
+
+def test_fake_stream_compaction_failure_clears_active_turn(web_client, monkeypatch):
+    import spark_cli.web_server as web_server
+    from core.spark_state import SessionDB
+
+    monkeypatch.setenv("SPARK_WEB_FAKE_STREAMS", "1")
+    events = []
+    original_publish = web_server._publish_event
+
+    def capture_event(topic, data, session_id=None):
+        events.append((topic, data, session_id))
+        return original_publish(topic, data, session_id)
+
+    monkeypatch.setattr(web_server, "_publish_event", capture_event)
+
+    resp = web_client.post(
+        "/api/dev/fake-streams",
+        json={
+            "session_id": "fake_compaction_failure",
+            "message": "long thread trigger",
+            "events": [
+                {"type": "token", "text": "Before compaction. "},
+                {
+                    "type": "compact_fail",
+                    "kind": "context_compression",
+                    "name": "ContextCompactionError",
+                    "text": "Context compression failed; retry this message to continue.",
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 200
+
+    assert _wait_for(
+        lambda: web_client.get("/api/conversations/fake_compaction_failure/turn-status").json()[
+            "turn_active"
+        ]
+        is False
+    )
+    status = web_client.get("/api/conversations/fake_compaction_failure/turn-status").json()
+    assert status["state"] == "not_found"
+
+    compact_events = [event for event in events if event[0] == "chat.compaction"]
+    assert compact_events
+    assert compact_events[-1][1]["status"] == "failed"
+    assert compact_events[-1][1]["reason"] == "context_compression"
+    done = [event for event in events if event[0] == "chat.turn_done"]
+    assert done
+    assert done[-1][1]["backend_error_class"] == "ContextCompactionError"
+
+    db = SessionDB()
+    try:
+        messages = db.get_messages("fake_compaction_failure")
+    finally:
+        db.close()
+    assert [(m["role"], m["content"]) for m in messages] == [
+        ("user", "long thread trigger"),
+        (
+            "assistant",
+            "Before compaction. \n\nContext compression failed; retry this message to continue.",
+        ),
+    ]
+
+
+def test_fake_stream_supports_multiple_simultaneous_sessions(web_client, monkeypatch):
+    monkeypatch.setenv("SPARK_WEB_FAKE_STREAMS", "1")
+
+    session_events = {
+        "fake_multi_a": ["A1 ", "A2"],
+        "fake_multi_b": ["B1 ", "B2"],
+        "fake_multi_c": ["C1 ", "C2"],
+    }
+    for session_id, chunks in session_events.items():
+        resp = web_client.post(
+            "/api/dev/fake-streams",
+            json={
+                "session_id": session_id,
+                "message": f"start {session_id}",
+                "events": [
+                    {"type": "token", "text": chunks[0]},
+                    {"type": "token", "text": chunks[1], "delay_ms": 500},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+    for session_id, chunks in session_events.items():
+        assert _wait_for(
+            lambda sid=session_id, first=chunks[0]: web_client.get(
+                f"/api/conversations/{sid}/stream-snapshot"
+            ).json()["stream_text"].startswith(first)
+        )
+        snapshot = web_client.get(f"/api/conversations/{session_id}/stream-snapshot").json()
+        assert snapshot["turn_active"] is True
+
+    assert _wait_for(
+        lambda: all(
+            web_client.get(f"/api/conversations/{session_id}/turn-status").json()[
+                "turn_active"
+            ]
+            is False
+            for session_id in session_events
+        )
+    )
+
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        for session_id, chunks in session_events.items():
+            messages = db.get_messages(session_id)
+            assert messages[-1]["role"] == "assistant"
+            assert messages[-1]["content"] == "".join(chunks)
+    finally:
+        db.close()
+
+
 class TestEventBus:
     def test_publish_event_delivers_to_subscriber(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
@@ -457,6 +660,42 @@ class TestEventBus:
             web_server._clear_web_turn("alpha_session")
             web_server._clear_web_turn("bravo_session")
 
+    def test_session_migration_records_compaction_diagnostics(self, web_client):
+        import spark_cli.web_server as web_server
+
+        events = []
+        original_publish = web_server._publish_event
+
+        def capture_event(topic, data, session_id=None):
+            events.append((topic, data, session_id))
+            return original_publish(topic, data, session_id)
+
+        web_server._publish_event = capture_event
+        try:
+            loop = asyncio.new_event_loop()
+            try:
+                web_server._mark_web_turn_active("compact_parent")
+                callbacks = web_server._make_web_chat_callbacks("compact_parent", asyncio.Queue(), loop)
+                session_migrated_callback = callbacks[5]
+                session_migrated_callback("compact_parent", "compact_leaf", "context_compression")
+            finally:
+                loop.close()
+
+            status = web_client.get("/api/conversations/compact_leaf/turn-status")
+            assert status.status_code == 200
+            data = status.json()
+            assert data["turn_active"] is True
+            assert data["compaction"]["status"] == "completed"
+            assert data["compaction"]["old_session_id"] == "compact_parent"
+            assert data["compaction"]["new_session_id"] == "compact_leaf"
+            assert data["diagnostics"]["compaction"]["reason"] == "context_compression"
+            assert any(event[0] == "chat.session_migrated" for event in events)
+            assert any(event[0] == "chat.compaction" for event in events)
+        finally:
+            web_server._publish_event = original_publish
+            web_server._clear_web_turn("compact_parent")
+            web_server._clear_web_turn("compact_leaf")
+
     def test_multi_chat_streaming_stress_keeps_three_active_sessions_isolated(self, web_client):
         import spark_cli.web_server as web_server
 
@@ -598,7 +837,7 @@ class TestEventBus:
             web_server._event_subscribers.add(q)
             try:
                 callbacks = web_server._make_web_chat_callbacks("subagent_parent", asyncio.Queue(), loop)
-                subagent_callback = callbacks[-1]
+                subagent_callback = callbacks[6]
                 subagent_callback(
                     {
                         "schema": "spark.subagent.lifecycle.v1",
