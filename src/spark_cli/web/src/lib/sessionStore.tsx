@@ -118,6 +118,27 @@ export function sessionInfoFromDetail(
   };
 }
 
+export function filterSessionsLocally(sessions: SessionInfo[], query: string): SessionInfo[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return sessions;
+  return sessions.filter(
+    (session) => threadTitle(session).toLowerCase().includes(normalized)
+      || session.preview?.toLowerCase().includes(normalized),
+  );
+}
+
+export function mergeSearchRows(primary: SessionInfo[], secondary: SessionInfo[]): SessionInfo[] {
+  const seen = new Set(primary.map((session) => session.id));
+  return [
+    ...primary,
+    ...secondary.filter((session) => {
+      if (seen.has(session.id)) return false;
+      seen.add(session.id);
+      return true;
+    }),
+  ];
+}
+
 function loadPinnedIds(): Set<string> {
   try {
     return new Set(JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]") as string[]);
@@ -424,7 +445,10 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       return;
     }
 
-    // Server FTS remains authoritative even when only a recent page is loaded.
+    const localResults = filterSessionsLocally(sessionsRef.current, searchQ);
+    // Filtering the loaded page is immediate. Full-history FTS is deliberately
+    // debounced so normal typing cannot fan out one database query per key.
+    setSearchResults(localResults);
     setSearching(true);
     const requestId = ++searchRequestRef.current;
     searchDebounceRef.current = setTimeout(async () => {
@@ -448,18 +472,15 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
           return provisional;
         });
         if (requestId === searchRequestRef.current) {
-          setSearchResults(hydrated);
+          setSearchResults(mergeSearchRows(localResults, hydrated));
         }
       } catch {
-        // Fall back to client-side filter
-        const q = searchQ.toLowerCase();
-        setSearchResults(sessionsRef.current.filter(
-          (s) => threadTitle(s).toLowerCase().includes(q) || s.preview?.toLowerCase().includes(q),
-        ));
+        // The immediate loaded-page result remains useful if FTS is unavailable.
+        if (requestId === searchRequestRef.current) setSearchResults(localResults);
       } finally {
         if (requestId === searchRequestRef.current) setSearching(false);
       }
-    }, 0);
+    }, 250);
   }, [hydrateSession, searchQ]);
 
   // ── Selection / composing ──

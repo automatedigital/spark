@@ -59,6 +59,26 @@ async function waitFor(url, timeoutMs = 45_000) {
   throw new Error(`Timed out waiting for ${url}: ${lastError?.message ?? "unknown error"}`);
 }
 
+async function measureSearchResult(input, value, selector) {
+  return input.evaluate((element, args) => new Promise((resolve, reject) => {
+    const startedAt = performance.now();
+    const timeout = window.setTimeout(() => {
+      observer.disconnect();
+      reject(new Error(`Timed out waiting for search result ${args.selector}`));
+    }, 5000);
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector(args.selector)) return;
+      window.clearTimeout(timeout);
+      observer.disconnect();
+      resolve(performance.now() - startedAt);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    setter.call(element, args.value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }), { value, selector });
+}
+
 async function run() {
   const apiPort = await freePort();
   const webPort = await freePort();
@@ -129,6 +149,7 @@ db.close()
     });
     page = await context.newPage();
     const sessionRequests = [];
+    const searchRequests = [];
     page.on("request", (request) => {
       const url = new URL(request.url());
       if (url.pathname === "/api/sessions") {
@@ -137,6 +158,7 @@ db.close()
           offset: Number(url.searchParams.get("offset")),
         });
       }
+      if (url.pathname === "/api/sessions/search") searchRequests.push(url.searchParams.get("q"));
     });
 
     const startupAt = performance.now();
@@ -164,23 +186,18 @@ db.close()
     await page.getByText("Scale chat 000", { exact: true }).last().waitFor();
 
     const search = page.getByPlaceholder("Search projects and chats…");
-    const searchMs = await search.evaluate((element) => new Promise((resolve, reject) => {
-      const startedAt = performance.now();
-      const timeout = window.setTimeout(() => {
-        observer.disconnect();
-        reject(new Error("Timed out waiting for full-history search result"));
-      }, 5000);
-      const observer = new MutationObserver(() => {
-        if (!document.querySelector('[data-sidebar-session-row="scale-499"]')) return;
-        window.clearTimeout(timeout);
-        observer.disconnect();
-        resolve(performance.now() - startedAt);
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
-      setter.call(element, "ancient needle");
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-    }));
+    const localSearchMs = await measureSearchResult(
+      search,
+      "Scale chat 049",
+      '[data-sidebar-session-row="scale-049"]',
+    );
+    await search.fill("");
+    await page.getByRole("button", { name: /Scale chat 000/ }).waitFor();
+    const fullHistorySearchMs = await measureSearchResult(
+      search,
+      "ancient needle",
+      '[data-sidebar-session-row="scale-499"]',
+    );
     await page.getByRole("button", { name: /Scale chat 499/ }).waitFor({ timeout: 5000 });
     await page.getByRole("button", { name: /Scale chat 499/ }).click();
     await page.getByText("Scale chat 499", { exact: true }).last().waitFor();
@@ -270,10 +287,12 @@ db.close()
       mode: baseline ? "baseline" : "virtualized",
       firstUsefulMs: Math.round(firstUsefulMs),
       selectionMs: Math.round(selectionMs),
-      searchMs: Math.round(searchMs),
+      localSearchMs: Math.round(localSearchMs),
+      fullHistorySearchMs: Math.round(fullHistorySearchMs),
       mountedSessionRows,
       startupRequests,
       secondPageRequests: sessionRequests.filter((request) => request.offset === 50).length,
+      fullHistoryRequests: searchRequests,
     };
     process.stdout.write(`${JSON.stringify(metrics)}\n`);
 
@@ -285,8 +304,14 @@ db.close()
       if (metrics.secondPageRequests !== 1) {
         throw new Error(`Expected one single-flight second page request, got ${metrics.secondPageRequests}`);
       }
+      if (searchRequests.length !== 1 || searchRequests[0] !== "ancient needle") {
+        throw new Error(`Expected one latest full-history request, got ${JSON.stringify(searchRequests)}`);
+      }
       if (selectionMs >= 100) throw new Error(`Selection took ${selectionMs.toFixed(1)} ms`);
-      if (searchMs >= 100) throw new Error(`Search took ${searchMs.toFixed(1)} ms including hydration`);
+      if (localSearchMs >= 100) throw new Error(`Local search took ${localSearchMs.toFixed(1)} ms`);
+      if (fullHistorySearchMs >= 600) {
+        throw new Error(`Debounced full-history search took ${fullHistorySearchMs.toFixed(1)} ms`);
+      }
     }
   } catch (error) {
     const body = page ? await page.locator("body").innerText().catch(() => "") : "";

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   applySessionRows,
   coalesceSessionRows,
+  filterSessionsLocally,
   mergeSessionPage,
+  mergeSearchRows,
   mergeSessionRow,
   pendingInitialMessageForSession,
   sessionInfoFromDetail,
@@ -149,5 +151,26 @@ describe("pendingInitialMessageForSession", () => {
       last_active: 12,
       message_count: 4,
     });
+  });
+
+  it("filters loaded session titles and previews synchronously", () => {
+    const sessions = [
+      session({ id: "title", title: "Release checklist" }),
+      session({ id: "preview", title: "Other", preview: "Investigate sidebar latency" }),
+      session({ id: "miss", title: "Unrelated" }),
+    ];
+
+    expect(filterSessionsLocally(sessions, "SIDEBAR").map((row) => row.id)).toEqual(["preview"]);
+    expect(filterSessionsLocally(sessions, "release").map((row) => row.id)).toEqual(["title"]);
+  });
+
+  it("combines immediate local and server FTS rows without duplicates", () => {
+    const local = [session({ id: "local", last_active: 2 })];
+    const server = [
+      session({ id: "local", preview: "server duplicate" }),
+      session({ id: "history", last_active: 1 }),
+    ];
+
+    expect(mergeSearchRows(local, server).map((row) => row.id)).toEqual(["local", "history"]);
   });
 });
