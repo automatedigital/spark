@@ -33,6 +33,11 @@ const EXPANDED_KEY = "spark-chat-expanded";
 
 export type PendingInitialMessages = Record<string, string>;
 
+export interface ThreadCreatedMeta {
+  source?: string | null;
+  projectSlug?: string | null;
+}
+
 export function pendingInitialMessageForSession(
   pending: PendingInitialMessages,
   sessionId: string | null,
@@ -92,7 +97,7 @@ export interface SessionStoreValue {
   /** First message of a just-created thread, consumed by ChatPanel. */
   pendingInitialMessages: PendingInitialMessages;
   clearPendingInitialMessage: (sessionId?: string) => void;
-  threadCreated: (sessionId: string, initialMessage: string) => void;
+  threadCreated: (sessionId: string, initialMessage: string, meta?: ThreadCreatedMeta) => void;
 
   // Unread
   unreadSessionIds: Set<string>;
@@ -323,10 +328,48 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   const cancelCompose = useCallback(() => setComposingFor(null), []);
 
-  const threadCreated = useCallback((sessionId: string, initialMessage: string) => {
+  const threadCreated = useCallback((sessionId: string, initialMessage: string, meta?: ThreadCreatedMeta) => {
+    const source = meta?.source ?? (meta?.projectSlug ? `workspace:${meta.projectSlug}` : null);
+    const projectSlug = meta?.projectSlug ?? slugFromSource(source);
+    const now = Date.now() / 1000;
     setPendingInitialMessages((pending) => ({ ...pending, [sessionId]: initialMessage }));
     setComposingFor(null);
     setSelectedId(sessionId);
+    if (projectSlug) {
+      setExpandedProjects((prev) => {
+        const next = new Set(prev);
+        next.add(projectSlug);
+        localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+        return next;
+      });
+    }
+    setSessions((prev) => {
+      if (prev.some((session) => session.id === sessionId)) {
+        return prev.map((session) => (
+          session.id === sessionId
+            ? { ...session, source: source ?? session.source, last_active: now, is_active: true }
+            : session
+        ));
+      }
+      const optimistic: SessionInfo = {
+        id: sessionId,
+        source,
+        model: null,
+        title: initialMessage,
+        started_at: now,
+        ended_at: null,
+        last_active: now,
+        is_active: true,
+        message_count: 1,
+        tool_call_count: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        preview: initialMessage,
+        kanban_status: null,
+        estimated_cost_usd: null,
+      };
+      return [optimistic, ...prev];
+    });
     void reloadSessions();
   }, [reloadSessions]);
 

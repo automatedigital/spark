@@ -1015,7 +1015,7 @@ export function SidebarSessions({
           <Input
             ref={searchInputRef}
             className="h-7 pl-7 pr-8 text-[12px]"
-            placeholder="Search sessions…"
+            placeholder="Search projects and chats…"
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
           />
@@ -1077,10 +1077,10 @@ export function SidebarSessions({
           <p className="px-2.5 pt-1 text-[11px] text-destructive">{dragError}</p>
         )}
 
-        {/* SESSIONS */}
+        {/* PROJECTS */}
         <div className="pt-3">
           <SectionHeader
-            label="Sessions"
+            label="Projects"
             collapsed={collapsedSections.has("sessions")}
             onToggle={() => toggleSection("sessions")}
             actions={
@@ -1134,7 +1134,7 @@ export function SidebarSessions({
                 </p>
               )}
               {searchResults === null && !loadingSessions && ungrouped.length === 0 && projects.length === 0 && (
-                <p className="px-2.5 py-2 text-[11px] text-muted-foreground/40">No sessions yet</p>
+                <p className="px-2.5 py-2 text-[11px] text-muted-foreground/40">No projects yet</p>
               )}
             </>
           )}

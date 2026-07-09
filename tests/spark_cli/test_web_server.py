@@ -973,6 +973,46 @@ class TestWebServerEndpoints:
             "telegram": {"state": "connected", "updated_at": "2026-04-12T00:00:00+00:00"},
         }
 
+    def test_get_status_uses_embedded_gateway_runtime_when_pid_file_absent(self, monkeypatch):
+        import gateway.config as gateway_config
+        import spark_cli.web_server as web_server
+
+        class _Platform:
+            def __init__(self, value):
+                self.value = value
+
+        class _GatewayConfig:
+            def get_connected_platforms(self):
+                return [_Platform("feishu")]
+
+        runtime = {
+            "pid": 72472,
+            "kind": "spark-gateway",
+            "embedded": True,
+            "gateway_state": "running",
+            "updated_at": "2026-07-09T01:47:00+00:00",
+            "platforms": {
+                "feishu": {"state": "connected", "updated_at": "2026-07-09T01:47:00+00:00"},
+            },
+        }
+        monkeypatch.setattr(web_server, "get_running_pid", lambda: None)
+        monkeypatch.setattr(web_server, "read_runtime_status", lambda: runtime)
+        monkeypatch.setattr(web_server, "check_config_version", lambda: (1, 1))
+        monkeypatch.setattr(gateway_config, "load_gateway_config", lambda: _GatewayConfig())
+
+        status = self.client.get("/api/status")
+        admin_status = self.client.get("/api/gateway/status")
+
+        assert status.status_code == 200
+        assert status.json()["gateway_running"] is True
+        assert status.json()["gateway_pid"] == 72472
+        assert status.json()["gateway_state"] == "running"
+        assert status.json()["gateway_platforms"] == runtime["platforms"]
+        assert admin_status.status_code == 200
+        assert admin_status.json()["running"] is True
+        assert admin_status.json()["pid"] == 72472
+        assert admin_status.json()["state"] == "running"
+
     def test_get_status_hides_stale_platforms_when_gateway_not_running(self, monkeypatch):
         import gateway.config as gateway_config
         import spark_cli.web_server as web_server

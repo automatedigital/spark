@@ -1847,6 +1847,22 @@ def _configured_gateway_platforms() -> list[dict]:
         return []
 
 
+def _runtime_gateway_pid(runtime: dict | None) -> int | None:
+    if not runtime:
+        return None
+    pid = runtime.get("pid")
+    try:
+        return int(pid) if pid is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _runtime_gateway_running(runtime: dict | None) -> bool:
+    if not runtime:
+        return False
+    return runtime.get("gateway_state") == "running" and _runtime_gateway_pid(runtime) is not None
+
+
 @app.get("/api/status")
 async def get_status():
     current_ver, latest_ver = check_config_version()
@@ -1870,6 +1886,9 @@ async def get_status():
         configured_gateway_platforms = None
 
     runtime = read_runtime_status()
+    if not gateway_running and _runtime_gateway_running(runtime):
+        gateway_pid = _runtime_gateway_pid(runtime)
+        gateway_running = True
     if runtime:
         gateway_state = runtime.get("gateway_state")
         gateway_platforms = runtime.get("platforms") or {}
@@ -2328,16 +2347,20 @@ async def stream_admin_action_run(request: Request, run_id: str):
 async def gateway_admin_status():
     runtime = read_runtime_status() or {}
     pid = get_running_pid()
+    running = pid is not None
+    if not running and _runtime_gateway_running(runtime):
+        pid = _runtime_gateway_pid(runtime)
+        running = True
     return {
         "ok": True,
-        "running": pid is not None,
+        "running": running,
         "pid": pid,
         "runtime": runtime,
         "platforms": runtime.get("platforms") or {},
         "configured_platforms": _configured_gateway_platforms(),
         "service_system": platform.system(),
         "last_error": runtime.get("last_startup_error") or runtime.get("exit_reason"),
-        "state": runtime.get("gateway_state") if pid is not None else "stopped",
+        "state": runtime.get("gateway_state") if running else "stopped",
     }
 
 
@@ -7356,32 +7379,6 @@ async def create_conversation(body: ConversationCreate):
     model = turn_route["model"]
 
     try:
-        # Build the agent off the event loop: constructing AIAgent triggers
-        # heavy imports + (on a frozen app) dylib loads that can take seconds on
-        # first use. Running it inline would block the loop and freeze the whole
-        # UI (SSE pings, session list, animations) while a new thread spins up.
-        agent = await loop.run_in_executor(
-            None,
-            lambda: _new_web_agent(
-                session_id=session_id,
-                model=model,
-                runtime=turn_route["runtime"],
-                request_overrides=turn_route.get("request_overrides"),
-                signature=turn_route["signature"],
-                token_callback=token_callback,
-                tool_start_callback=tool_start_callback,
-                tool_complete_callback=tool_complete_callback,
-                reasoning_callback=reasoning_callback,
-                status_callback=status_callback,
-                session_migrated_callback=session_migrated_callback,
-                subagent_event_callback=subagent_event_callback,
-            ),
-        )
-    except (ValueError, Exception) as e:
-        _web_queues.pop(session_id, None)
-        raise HTTPException(status_code=400, detail=str(e))
-
-    try:
         from core.spark_state import SessionDB as _SessionDB
 
         _db = _SessionDB()
@@ -7409,21 +7406,44 @@ async def create_conversation(body: ConversationCreate):
         _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
 
     async def run_agent_task() -> None:
-        register_gateway_notify(session_id, _gw_notify)
-        _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
-        _, _active_turn = _get_web_turn(session_id)
-        eager_user_id = _persist_web_user_message(session_id, message)
-        if _active_turn is not None:
-            _active_turn.user_message_id = eager_user_id
+        agent = None
+        _active_turn = None
+        eager_user_id = None
         before_message_count = _session_message_count(session_id)
+        register_gateway_notify(session_id, _gw_notify)
         result = None
         try:
+            _touch_web_turn(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
+            _, _active_turn = _get_web_turn(session_id)
+            eager_user_id = _persist_web_user_message(session_id, message)
+            if _active_turn is not None:
+                _active_turn.user_message_id = eager_user_id
+            before_message_count = _session_message_count(session_id)
             slash_text = _execute_web_slash_command(session_id, message)
             if slash_text is not None:
                 _publish_web_status(session_id, "slash_command", "Running slash command…", phase="streaming")
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
+                _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
+                agent = await loop.run_in_executor(
+                    None,
+                    lambda: _new_web_agent(
+                        session_id=session_id,
+                        model=model,
+                        runtime=turn_route["runtime"],
+                        request_overrides=turn_route.get("request_overrides"),
+                        signature=turn_route["signature"],
+                        token_callback=token_callback,
+                        tool_start_callback=tool_start_callback,
+                        tool_complete_callback=tool_complete_callback,
+                        reasoning_callback=reasoning_callback,
+                        status_callback=status_callback,
+                        session_migrated_callback=session_migrated_callback,
+                        subagent_event_callback=subagent_event_callback,
+                    ),
+                )
+                _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 result = await _run_web_turn_in_executor(
@@ -7434,7 +7454,7 @@ async def create_conversation(body: ConversationCreate):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
+            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
             if _active_turn:
                 _checkpoint_web_turn(final_session_id, _active_turn, force=True)
             _persist_web_turn_if_missing(
@@ -7443,7 +7463,8 @@ async def create_conversation(body: ConversationCreate):
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
             _emit_web_session_updated(final_session_id)
-            _maybe_auto_title_web(agent, final_session_id, message, result)
+            if agent is not None:
+                _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _web_queues.pop(session_id, None)
             _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
@@ -7451,7 +7472,7 @@ async def create_conversation(body: ConversationCreate):
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
 
-    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
+    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True}
 
@@ -8586,7 +8607,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     except Exception:
         _log.debug("workspace session pre-insert failed", exc_info=True)
 
-    try:
+    def _build_workspace_agent():
         agent = _new_web_agent(
             session_id=session_id,
             model=model,
@@ -8615,9 +8636,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             "preview_screenshot or preview click/type/evaluate actions when visual or "
             "interactive verification matters."
         )
-    except (ValueError, Exception) as e:
-        _web_queues.pop(session_id, None)
-        raise HTTPException(status_code=400, detail=str(e))
+        return agent
 
     try:
         from core.spark_state import SessionDB as _SessionDB
@@ -8644,22 +8663,29 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     raw_message = body.message
 
     async def run_agent_task() -> None:
-        register_gateway_notify(session_id, _gw_notify)
-        _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
-        _, _active_turn = _get_web_turn(session_id)
-        eager_user_id = _persist_web_user_message(session_id, raw_message)
-        if _active_turn is not None:
-            _active_turn.user_message_id = eager_user_id
+        agent = None
+        _active_turn = None
+        eager_user_id = None
         before_message_count = _session_message_count(session_id)
+        register_gateway_notify(session_id, _gw_notify)
         result = None
         slash_text = None
         try:
+            _touch_web_turn(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
+            _, _active_turn = _get_web_turn(session_id)
+            eager_user_id = _persist_web_user_message(session_id, raw_message)
+            if _active_turn is not None:
+                _active_turn.user_message_id = eager_user_id
+            before_message_count = _session_message_count(session_id)
             slash_text = _execute_web_slash_command(session_id, raw_message)
             if slash_text is not None:
                 _publish_web_status(session_id, "slash_command", "Running slash command…", phase="streaming")
                 _publish_event("chat.token", {"t": slash_text}, session_id)
                 result = {"final_response": slash_text}
             else:
+                _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
+                agent = await loop.run_in_executor(None, _build_workspace_agent)
+                _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 result = await _run_web_turn_in_executor(
@@ -8671,7 +8697,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         finally:
             unregister_gateway_notify(session_id)
             _strip_user_message_prefix(session_id, context_prefix, raw_message)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
+            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
             if _active_turn:
                 _checkpoint_web_turn(final_session_id, _active_turn, force=True)
             _persist_web_turn_if_missing(
@@ -8680,7 +8706,8 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
             _emit_web_session_updated(final_session_id)
-            _maybe_auto_title_web(agent, final_session_id, raw_message, result)
+            if agent is not None:
+                _maybe_auto_title_web(agent, final_session_id, raw_message, result)
             try:
                 from spark_cli.workspace_routes import start_preview
 
@@ -8694,7 +8721,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
 
-    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
+    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True, "source": source}
 

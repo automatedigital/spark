@@ -1970,8 +1970,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/sidebar/SidebarSessions.tsx": {
-    "mtime": 1783290692.3399765,
-    "ast_hash": "e079f00145d2b94c8a350a87b21ca992",
+    "mtime": 1783562202.7898808,
+    "ast_hash": "4ba05b79f0475c9544aac92fc19e8741",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/components/ui/ConfirmDialog.tsx": {
@@ -2230,8 +2230,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/sessionStore.tsx": {
-    "mtime": 1783290692.3407726,
-    "ast_hash": "691f63d054736553fb4860c363ef0cfe",
+    "mtime": 1783562162.985863,
+    "ast_hash": "d893aa955843c54e6fac4efd0e8a2033",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/sidebarPrefs.test.ts": {
@@ -2315,8 +2315,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/pages/ChatPage.tsx": {
-    "mtime": 1782993643.3289142,
-    "ast_hash": "27ad6eb792cedacae8b5d1ebfb5b70fa",
+    "mtime": 1783562263.0790954,
+    "ast_hash": "fb09efed48225394f4895f7daf40d6e8",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/pages/ConfigPage.tsx": {
@@ -2465,8 +2465,8 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web_server.py": {
-    "mtime": 1783557197.1001215,
-    "ast_hash": "94381a5ece40d2d1d1c91586aacad541",
+    "mtime": 1783562618.5672896,
+    "ast_hash": "0c6061980d34edb0e81316b246e9f375",
     "semantic_hash": ""
   },
   "src/spark_cli/webhook.py": {
@@ -5130,13 +5130,13 @@
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server.py": {
-    "mtime": 1783000544.8165023,
-    "ast_hash": "fa71fc4dab734ae30d336764471b0442",
+    "mtime": 1783562235.5420222,
+    "ast_hash": "9580bc63399281b0bd56b7ec682ed1ff",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_web_server_events.py": {
-    "mtime": 1783557304.085155,
-    "ast_hash": "b944551f634425fec44c958c95d13f8b",
+    "mtime": 1783561040.7043827,
+    "ast_hash": "4c0e312466df0cba62c9d90caa84dced",
     "semantic_hash": ""
   },
   "tests/spark_cli/test_webhook_cli.py": {
@@ -9850,13 +9850,13 @@
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatRecovery.test.ts": {
-    "mtime": 1783336528.7872396,
-    "ast_hash": "4a508d11e67c9a2d8946168f307ed297",
+    "mtime": 1783559225.2779675,
+    "ast_hash": "a6c1d068c04ebf093fb82ab5c0992072",
     "semantic_hash": ""
   },
   "src/spark_cli/web/src/lib/chatRecovery.ts": {
-    "mtime": 1783336513.8971202,
-    "ast_hash": "8cd596d3459c4e3242e0cae1bd5e50d7",
+    "mtime": 1783559218.1207433,
+    "ast_hash": "a01034b129c7c6786050f0ea7a3fe921",
     "semantic_hash": ""
   }
 }

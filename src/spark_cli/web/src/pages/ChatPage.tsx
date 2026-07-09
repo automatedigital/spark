@@ -41,6 +41,7 @@ import {
   useSessionStore,
   slugFromSource,
 } from "@/lib/sessionStore";
+import type { ThreadCreatedMeta } from "@/lib/sessionStore";
 import { useSubagents } from "@/hooks/useSubagents";
 import { SubagentsPanel } from "@/components/chat/SubagentsPanel";
 import { preserveSelectedSubagentId } from "@/lib/subagents";
@@ -96,7 +97,7 @@ function NewSessionHero({
   onCreated,
   projects,
 }: {
-  onCreated: (sessionId: string, initialMessage: string) => void;
+  onCreated: (sessionId: string, initialMessage: string, meta?: ThreadCreatedMeta) => void;
   projects: WorkspaceProject[];
 }) {
   const [msg, setMsg] = useState("");
@@ -137,10 +138,13 @@ function NewSessionHero({
       // A selected project routes the new thread through the workspace endpoint
       // (reuses the same plumbing as NewThreadCompose) so it lands in that
       // project's sidebar group. Blank selection = plain chat thread.
-      const res = projectSlug
-        ? await api.startWorkspaceConversation(projectSlug, text)
-        : await api.postConversation(text);
-      onCreated(res.session_id, text);
+      if (projectSlug) {
+        const res = await api.startWorkspaceConversation(projectSlug, text);
+        onCreated(res.session_id, text, { source: res.source, projectSlug });
+      } else {
+        const res = await api.postConversation(text);
+        onCreated(res.session_id, text);
+      }
     } catch (e) {
       console.error("Failed to start conversation", e);
       setStarting(false);
@@ -235,7 +239,7 @@ function NewThreadCompose({
 }: {
   projectSlug: string;
   projectName: string | null;
-  onCreated: (sessionId: string, initialMessage: string) => void;
+  onCreated: (sessionId: string, initialMessage: string, meta?: ThreadCreatedMeta) => void;
   onCancel: () => void;
 }) {
   const [msg, setMsg] = useState("");
@@ -247,7 +251,7 @@ function NewThreadCompose({
     setStarting(true);
     try {
       const res = await api.startWorkspaceConversation(projectSlug, text);
-      onCreated(res.session_id, text);
+      onCreated(res.session_id, text, { source: res.source, projectSlug });
     } catch (e) {
       console.error("Failed to start conversation", e);
       setStarting(false);
