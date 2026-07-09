@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -15,6 +16,17 @@ from core import kanban_db as kb
 _log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/kanban", tags=["kanban"])
+_last_board_error_log_at = 0.0
+
+
+def _log_board_error(exc: Exception) -> None:
+    global _last_board_error_log_at
+    now = time.monotonic()
+    if now - _last_board_error_log_at >= 60.0:
+        _last_board_error_log_at = now
+        _log.exception("kanban board polling failed")
+    else:
+        _log.debug("kanban board polling failed: %s", exc)
 
 
 class TaskCreateBody(BaseModel):
@@ -126,7 +138,19 @@ async def board(
             search=q,
         )
     except Exception as e:
-        _log.exception("kanban board")
+        if isinstance(e, sqlite3.OperationalError) and "no such column" in str(e).lower():
+            try:
+                kb.ensure_kanban_schema()
+                return kb.get_board(
+                    board_slug=board,
+                    tenant=tenant,
+                    assignee=assignee,
+                    include_archived=archived,
+                    search=q,
+                )
+            except Exception as retry_error:
+                e = retry_error
+        _log_board_error(e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

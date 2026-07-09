@@ -1829,6 +1829,9 @@ export interface SessionMessagesResponse {
   messages: SessionMessage[];
   total?: number;
   has_earlier?: boolean;
+  page_start_index?: number | null;
+  page_end_index?: number | null;
+  next_before_id?: string | number | null;
   /**
    * Set when the requested session was a parent of a compression-driven
    * lineage; identifies the originally-requested ID. The returned messages

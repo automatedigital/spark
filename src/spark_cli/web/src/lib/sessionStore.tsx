@@ -50,6 +50,39 @@ export function slugFromSource(source: string | null | undefined): string | null
   return source.slice("workspace:".length);
 }
 
+export function mergeSessionRow(existing: SessionInfo | undefined, row: SessionInfo): SessionInfo {
+  if (!existing) return row;
+  return {
+    ...existing,
+    ...row,
+    preview: row.preview?.trim() ? row.preview : existing.preview,
+    message_count: Math.max(row.message_count ?? 0, existing.message_count ?? 0),
+    is_active: typeof row.is_active === "boolean" ? row.is_active : existing.is_active,
+  };
+}
+
+export function coalesceSessionRows(rows: SessionInfo[]): SessionInfo[] {
+  const byId = new Map<string, SessionInfo>();
+  rows.forEach((row) => {
+    byId.set(row.id, mergeSessionRow(byId.get(row.id), row));
+  });
+  return [...byId.values()];
+}
+
+export function applySessionRows(prev: SessionInfo[], rows: SessionInfo[]): SessionInfo[] {
+  if (rows.length === 0) return prev;
+  let next = [...prev];
+  coalesceSessionRows(rows).forEach((row) => {
+    const idx = next.findIndex((s) => s.id === row.id);
+    if (idx >= 0) {
+      next[idx] = mergeSessionRow(next[idx], row);
+    } else {
+      next = [row, ...next];
+    }
+  });
+  return next.sort((a, b) => b.last_active - a.last_active);
+}
+
 function loadPinnedIds(): Set<string> {
   try {
     return new Set(JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]") as string[]);
@@ -133,6 +166,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const [searching, setSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconcileSessionsRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queuedSessionRowsRef = useRef<Map<string, SessionInfo>>(new Map());
+  const queuedSessionRowsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(loadPinnedIds);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(loadExpanded);
@@ -184,6 +219,33 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     }, 750);
   }, [reloadSessions]);
 
+  const flushQueuedSessionRows = useCallback(() => {
+    if (queuedSessionRowsTimerRef.current) {
+      clearTimeout(queuedSessionRowsTimerRef.current);
+      queuedSessionRowsTimerRef.current = null;
+    }
+    const rows = [...queuedSessionRowsRef.current.values()];
+    queuedSessionRowsRef.current.clear();
+    if (rows.length > 0) {
+      setSessions((prev) => applySessionRows(prev, rows));
+    }
+  }, []);
+
+  const queueSessionRowPatch = useCallback((row: SessionInfo, immediate = false) => {
+    if (immediate) {
+      queuedSessionRowsRef.current.delete(row.id);
+      setSessions((prev) => applySessionRows(prev, [row]));
+      return;
+    }
+    queuedSessionRowsRef.current.set(
+      row.id,
+      mergeSessionRow(queuedSessionRowsRef.current.get(row.id), row),
+    );
+    if (!queuedSessionRowsTimerRef.current) {
+      queuedSessionRowsTimerRef.current = setTimeout(flushQueuedSessionRows, 150);
+    }
+  }, [flushQueuedSessionRows]);
+
   useEffect(() => {
     void reloadProjects();
     void reloadSessions();
@@ -191,6 +253,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => () => {
     if (reconcileSessionsRef.current) clearTimeout(reconcileSessionsRef.current);
+    if (queuedSessionRowsTimerRef.current) clearTimeout(queuedSessionRowsTimerRef.current);
+    queuedSessionRowsRef.current.clear();
   }, []);
 
   // ── Real-time updates (SSE) ──
@@ -203,6 +267,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       dismissSessionNotification(sid);
       lastMessageCountRef.current.delete(sid);
       notifiedMessageCountRef.current.delete(sid);
+      queuedSessionRowsRef.current.delete(sid);
       setSessions((prev) => prev.filter((s) => s.id !== sid));
       if (selectedIdRef.current === sid) {
         setSelectedId(null);
@@ -233,22 +298,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       }
       lastMessageCountRef.current.set(row.id, Math.max(lastCount, newCount));
 
-      setSessions((prev) => {
-        const idx = prev.findIndex((s) => s.id === row.id);
-        if (idx >= 0) {
-          const next = [...prev];
-          const existing = next[idx];
-          next[idx] = {
-            ...existing,
-            ...row,
-            preview: row.preview?.trim() ? row.preview : existing.preview,
-            message_count: Math.max(row.message_count ?? 0, existing.message_count ?? 0),
-            is_active: typeof row.is_active === "boolean" ? row.is_active : existing.is_active,
-          };
-          return next.sort((a, b) => b.last_active - a.last_active);
-        }
-        return [row, ...prev];
-      });
+      queueSessionRowPatch(row, isSelected);
     }
   });
 

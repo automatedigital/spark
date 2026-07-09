@@ -1,5 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { pendingInitialMessageForSession } from "./sessionStore";
+import {
+  applySessionRows,
+  coalesceSessionRows,
+  mergeSessionRow,
+  pendingInitialMessageForSession,
+} from "./sessionStore";
+import type { SessionInfo } from "./api";
+
+function session(overrides: Partial<SessionInfo>): SessionInfo {
+  return {
+    id: "s1",
+    source: "web",
+    model: "test",
+    title: "Thread",
+    started_at: 1,
+    ended_at: null,
+    last_active: 1,
+    is_active: false,
+    message_count: 0,
+    tool_call_count: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    preview: null,
+    kanban_status: null,
+    estimated_cost_usd: null,
+    ...overrides,
+  };
+}
 
 describe("pendingInitialMessageForSession", () => {
   it("returns the optimistic first message for its owning session", () => {
@@ -41,5 +68,45 @@ describe("pendingInitialMessageForSession", () => {
         null,
       ),
     ).toBeUndefined();
+  });
+
+  it("merges session rows without replacing useful previews or decreasing counts", () => {
+    const merged = mergeSessionRow(
+      session({ id: "s1", preview: "useful preview", message_count: 8, is_active: true }),
+      session({ id: "s1", preview: "   ", message_count: 4, is_active: false }),
+    );
+
+    expect(merged.preview).toBe("useful preview");
+    expect(merged.message_count).toBe(8);
+    expect(merged.is_active).toBe(false);
+  });
+
+  it("coalesces burst rows by session id before applying them", () => {
+    const rows = coalesceSessionRows([
+      session({ id: "s1", preview: "first", message_count: 1, last_active: 1 }),
+      session({ id: "s2", preview: "other", message_count: 1, last_active: 2 }),
+      session({ id: "s1", preview: "latest", message_count: 3, last_active: 3 }),
+    ]);
+
+    expect(rows.map((row) => [row.id, row.preview, row.message_count])).toEqual([
+      ["s1", "latest", 3],
+      ["s2", "other", 1],
+    ]);
+  });
+
+  it("applies coalesced session rows and keeps newest active rows first", () => {
+    const prev = [
+      session({ id: "older", preview: "old", last_active: 1 }),
+      session({ id: "s1", preview: "initial", last_active: 2 }),
+    ];
+
+    const next = applySessionRows(prev, [
+      session({ id: "s1", preview: "updated", message_count: 5, last_active: 5 }),
+      session({ id: "new", preview: "new thread", last_active: 4 }),
+    ]);
+
+    expect(next.map((row) => row.id)).toEqual(["s1", "new", "older"]);
+    expect(next.find((row) => row.id === "s1")?.preview).toBe("updated");
+    expect(next.find((row) => row.id === "s1")?.message_count).toBe(5);
   });
 });

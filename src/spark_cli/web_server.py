@@ -4755,6 +4755,7 @@ async def get_session_messages(
             if not _hide_from_web_history(m)
         ]
         total = len(indexed_messages)
+        page_end_index = total
         # Apply pagination: if limit > 0 and/or before_id specified, return a page
         if before_id:
             raw_before_id = before_id[3:] if before_id.startswith("db:") else before_id
@@ -4767,9 +4768,12 @@ async def get_session_messages(
                 None,
             )
             if idx is not None:
+                page_end_index = idx
                 indexed_messages = indexed_messages[:idx]
         if limit > 0:
             indexed_messages = indexed_messages[-limit:]
+        page_start_index = indexed_messages[0][0] if indexed_messages else page_end_index
+        page_last_index = indexed_messages[-1][0] if indexed_messages else None
         messages = [
             _message_for_history_response(
                 {**m, "message_index": message_index},
@@ -4777,12 +4781,15 @@ async def get_session_messages(
             )
             for message_index, m in indexed_messages
         ]
-        has_earlier = len(messages) < total
+        has_earlier = page_start_index > 0
         resp: dict[str, Any] = {
             "session_id": leaf_sid,
             "messages": messages,
             "total": total,
             "has_earlier": has_earlier,
+            "page_start_index": page_start_index if messages else None,
+            "page_end_index": page_last_index,
+            "next_before_id": messages[0].get("id") if has_earlier and messages else None,
         }
         if leaf_sid != sid:
             resp["migrated_from"] = sid

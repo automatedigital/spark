@@ -532,6 +532,11 @@ export function ChatPanel({
   // stream, but stop auto-scrolling as soon as they deliberately scroll upward.
   const followStreamRef = useRef(true);
   const scrollStateRef = useRef(initialChatScrollState());
+  const prependScrollAnchorRef = useRef<{
+    scrollHeight: number;
+    scrollTop: number;
+    anchorId: string | null;
+  } | null>(null);
   const [detachedFromBottom, setDetachedFromBottom] = useState(false);
 
   activeSessionRef.current = activeSessionId;
@@ -614,6 +619,7 @@ export function ChatPanel({
       reasoningRafRef.current = null;
       reasoningBufferRef.current = "";
     }
+    prependScrollAnchorRef.current = null;
     setActiveSessionId(sessionId);
     activeSessionRef.current = sessionId;
     resetActiveSessionAliases(sessionId);
@@ -1825,6 +1831,14 @@ export function ChatPanel({
     const firstMsg = chatMessages.find((m) => (m as { sessionIdx?: number }).sessionIdx != null);
     const firstId = (firstMsg as { id?: string })?.id;
     const beforeId = firstId?.startsWith("db:") ? firstId.slice(3) : firstId;
+    const scrollEl = scrollContainerRef.current;
+    prependScrollAnchorRef.current = scrollEl
+      ? {
+          scrollHeight: scrollEl.scrollHeight,
+          scrollTop: scrollEl.scrollTop,
+          anchorId: firstId ?? null,
+        }
+      : null;
     setLoadingEarlier(true);
     try {
       const resp = await api.getSessionMessages(sid, HISTORY_PAGE, beforeId);
@@ -1833,10 +1847,16 @@ export function ChatPanel({
       const mapped = sessionMessagesToChat(
         resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
       );
-      setChatMessages((prev) => [...mapped, ...prev]);
+      setChatMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const older = mapped.filter((m) => !existingIds.has(m.id));
+        if (older.length === 0) return prev;
+        return [...older, ...prev];
+      });
       setHasEarlier(resp.has_earlier ?? false);
     } catch {
       // silently ignore
+      prependScrollAnchorRef.current = null;
     } finally {
       setLoadingEarlier(false);
     }
@@ -2239,6 +2259,28 @@ export function ChatPanel({
     if (!el) return;
     const count = collapsedMessages.length;
     const countChanged = count !== prevCountRef.current;
+    const pendingPrepend = prependScrollAnchorRef.current;
+    if (pendingPrepend) {
+      prependScrollAnchorRef.current = null;
+      prevCountRef.current = count;
+      scrollStateRef.current = {
+        mode: "detached",
+        lastItemCount: count,
+        anchorId: pendingPrepend.anchorId,
+      };
+      followStreamRef.current = false;
+      setDetachedFromBottom(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const target = scrollContainerRef.current;
+          if (!target) return;
+          const delta = target.scrollHeight - pendingPrepend.scrollHeight;
+          target.scrollTop = pendingPrepend.scrollTop + delta;
+          virtualizer.measure();
+        });
+      });
+      return;
+    }
     if (countChanged) {
       scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
         type: "items-changed",
