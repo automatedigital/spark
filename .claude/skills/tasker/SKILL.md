@@ -118,8 +118,8 @@ equivalent per [Ticket Backends](#ticket-backends) and surface the mapping.
    assume — backends and even individual boards differ.
 2. For Notion (reference backend), prefer the `collection://...` data source for
    scoped searches. For other backends, use their native query/list tools.
-3. Use `graphify query "<ticket-specific question>"` before planning or
-   implementing tickets when `graphify-out/graph.json` exists.
+3. Use targeted `rg`, file reads, tests, and git history to identify real code
+   areas before planning or implementing tickets.
 4. Activate the Python environment before Python commands:
    `source venv/bin/activate`.
 
@@ -197,9 +197,9 @@ What parallelizes, by step:
 - **brainstorm** — spawn one subagent per independent research stream (each
   reference repo, the local-codebase survey, the backend dedupe check). The
   coordinator merges findings and creates the tickets.
-- **plan** — one subagent per selected ticket. Each does its own graphify/`rg`
-  research and writes that ticket's plan. Plans touch separate tickets, so there
-  are no write conflicts.
+- **plan** — one subagent per selected ticket. Each does its own targeted
+  repo research (`rg`, file reads, tests, and git history) and writes that
+  ticket's plan. Plans touch separate tickets, so there are no write conflicts.
 - **start / build** — one subagent per selected ticket, each implementing its
   ticket end-to-end on its own branch. This is the biggest win and has the
   strictest isolation rules below.
@@ -227,8 +227,8 @@ Rules for parallel work:
 - **Concurrency cap.** Keep concurrent subagents modest (about 3–4) to avoid
   ticket-backend API rate limits and local resource contention. Queue the rest.
 - **Each subagent gets the full contract.** Pass every subagent the ticket
-  context, the backend binding, the Engineering Rules, the graphify-first rule,
-  and instructions to update its own ticket's status/checkboxes as it goes.
+  context, the backend binding, the Engineering Rules, and instructions to
+  update its own ticket's status/checkboxes as it goes.
 - **Per-ticket status ownership.** A subagent owns its ticket's status and
   checkbox updates. Different tickets are different backend records, so these
   writes do not conflict; still fetch-before-write per the backend rules.
@@ -270,8 +270,8 @@ For selected unplanned tickets:
 1. Fetch the page including current body content.
 2. Read title, description, type, priority, reference URL, reference files, logs,
    comments/discussions if available.
-3. Use `graphify query` and targeted `rg`/file reads to identify real code areas,
-   tests, and risks.
+3. Use targeted `rg`, file reads, tests, and git history to identify real code
+   areas, tests, and risks.
 4. If the backend is Notion and the page body does not already start with a
    relevant image block, prepend a verified `image/*` URL as the first block so
    Gallery views configured with `page_content_first` render a useful cover.
@@ -449,8 +449,8 @@ concurrently, then merge their findings before creating tickets. See
 [Parallelism & Subagents](#parallelism--subagents).
 
 1. Survey the local codebase:
-   - `graphify query` / `graphify explain` for architecture hot spots, god
-     nodes, and under-tested areas.
+   - Targeted `rg`, file reads, tests, and recent git history for architecture
+     hot spots, large modules, and under-tested areas.
    - Recent git history (`git log --oneline -50`, recently merged PRs via
      `gh pr list --state merged`) for features that suggest follow-ups,
      missing polish, or regressions to guard against.
@@ -549,9 +549,9 @@ that is `Planned` with a plan, `In progress`, `PR created`, `Merged`,
 1. Fetch all candidate tickets from the Spark Planner data source, excluding
    the terminal/active statuses above.
 2. Judge each ticket's real value to *this* codebase — not surface novelty.
-   Use `graphify query`, git history, and the ticket body to weigh: does the
-   problem actually exist in the code today, user-visible impact, alignment
-   with recent direction, and effort vs. risk.
+   Use targeted repo inspection, git history, and the ticket body to weigh:
+   does the problem actually exist in the code today, user-visible impact,
+   alignment with recent direction, and effort vs. risk.
 3. Cluster tickets that overlap or would touch the same code path.
 
 ### Decide and act
@@ -617,7 +617,7 @@ Finish with a one-line tally: kept N, merged M into K survivors, pruned P.
 
 - Follow `AGENTS.md` for Spark-specific architecture, testing, profiles, and
   prompt-cache constraints.
-- Use `rg` for search and `graphify query` for codebase orientation.
+- Use `rg`, focused file reads, tests, and git history for codebase orientation.
 - Use `apply_patch` for manual file edits.
 - Run focused tests while iterating; run broader checks before PR/merge when
   practical.
@@ -642,7 +642,6 @@ Finish with a one-line tally: kept N, merged M into K survivors, pruned P.
   worktree, only fan out tickets that touch different areas, and let the
   coordinator serialize merges to `main` (rebase/retest between merges). See
   [Parallelism & Subagents](#parallelism--subagents).
-- After modifying code, run `graphify update .` before finishing.
 - Never hardcode `~/.spark`; use `get_spark_home()` and `display_spark_home()`.
 - Do not change toolsets, reload memories, or rebuild system prompts
   mid-conversation in ways that break prompt caching.

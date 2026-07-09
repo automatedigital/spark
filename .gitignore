@@ -85,12 +85,6 @@ src/spark_cli/web/src-tauri/resources/
 # DMG: built locally, uploaded via /release-mac — never commit (~400MB)
 Spark.dmg
 
-# graphify knowledge graph — commit the graph + report, but never the
-# regenerable AST cache or the dated backup snapshots (each ~50M).
-graphify-out/cache/
-graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
-graphify-out/transcripts/
-
 # Local release-signing config (Developer ID identity + notary profile name).
 # Sourced by build_desktop.sh. Never commit — use scripts/release.env.example.
 scripts/release.env
