@@ -124,7 +124,7 @@ def _apply_web_turn_active_state(rows: list[dict[str, Any]]) -> None:
 
 # Captured at startup — fan-out SSE events from sync agent threads
 _web_event_loop: Optional[asyncio.AbstractEventLoop] = None
-_event_subscribers: set = set()  # asyncio.Queue
+_event_subscribers: set = set()  # _EventSubscriber (raw queues remain test-compatible)
 _admin_runs: dict[str, dict[str, Any]] = {}
 _admin_run_queues: dict[str, thread_queue.Queue] = {}
 
@@ -148,6 +148,7 @@ class WebActiveTurn:
     checkpoint_session_id: str | None = None
     last_checkpoint_at: float = 0.0
     checkpointed_chars: int = 0
+    checkpointed_revision: int = 0
     session_aliases: set[str] = field(default_factory=set)
     timings: dict[str, float] = field(default_factory=dict)
     compaction: dict[str, Any] = field(default_factory=dict)
@@ -183,6 +184,10 @@ class _StreamingPipelineMetrics:
         self.checkpoint_write_seconds_total = 0.0
         self.checkpoint_write_seconds_max = 0.0
         self.checkpoint_write_errors = 0
+        self.checkpoint_retries = 0
+        self.checkpoint_coalesced = 0
+        self.checkpoint_pending_overflow = 0
+        self.checkpoint_flush_failures = 0
         self.turn_lock_wait_seconds_total = 0.0
         self.turn_lock_wait_seconds_max = 0.0
         self.turn_lock_wait_samples = 0
@@ -217,6 +222,22 @@ class _StreamingPipelineMetrics:
     def record_checkpoint_error(self) -> None:
         with self._lock:
             self.checkpoint_write_errors += 1
+
+    def record_checkpoint_retry(self) -> None:
+        with self._lock:
+            self.checkpoint_retries += 1
+
+    def record_checkpoint_coalesced(self) -> None:
+        with self._lock:
+            self.checkpoint_coalesced += 1
+
+    def record_checkpoint_pending_overflow(self) -> None:
+        with self._lock:
+            self.checkpoint_pending_overflow += 1
+
+    def record_checkpoint_flush_failure(self) -> None:
+        with self._lock:
+            self.checkpoint_flush_failures += 1
 
     def record_loop_lag(self, seconds: float) -> None:
         with self._lock:
@@ -279,6 +300,11 @@ class _StreamingPipelineMetrics:
             return {
                 "checkpoint_writes": self.checkpoint_writes,
                 "checkpoint_write_errors": self.checkpoint_write_errors,
+                "checkpoint_retries": self.checkpoint_retries,
+                "checkpoint_coalesced": self.checkpoint_coalesced,
+                "checkpoint_pending_overflow": self.checkpoint_pending_overflow,
+                "checkpoint_flush_failures": self.checkpoint_flush_failures,
+                "checkpoint_pending": _checkpoint_writer.pending_count,
                 "checkpoint_write_seconds_avg": avg_checkpoint,
                 "checkpoint_write_seconds_max": self.checkpoint_write_seconds_max,
                 "turn_lock_wait_seconds_avg": avg_lock,
@@ -317,12 +343,16 @@ def _with_web_turn_lock():
         _web_turn_lock.release()
 
 _EVENT_QUEUE_SIZE = 512
+_EVENT_PRIORITY_QUEUE_SIZE = 64
+_EVENT_DATA_QUEUE_SIZE = _EVENT_QUEUE_SIZE - _EVENT_PRIORITY_QUEUE_SIZE
 _PRIORITY_EVENT_TOPICS = {
     "chat.turn_done",
     "chat.interrupted",
     "chat.session_migrated",
     "chat.approval_requested",
     "chat.approval_resolved",
+    "chat.compaction",
+    "chat.error",
     "chat.subagent.created",
     "chat.subagent.completed",
     "chat.subagent.failed",
@@ -340,6 +370,166 @@ _DROPPABLE_EVENT_TOPICS = {
     "chat.subagent.tool_completed",
 }
 _event_drop_counts: dict[str, int] = {}
+_TOKEN_BATCH_MAX_CHARS = 64 * 1024
+_TOKEN_PENDING_MAX_SESSIONS = 128
+_pending_token_events: dict[str, dict[str, Any]] = {}
+_pending_token_gap_sessions: set[str] = set()
+_pending_token_lock = threading.Lock()
+_token_flush_scheduled = False
+_event_sequence = 0
+
+
+def _next_event_sequence() -> int:
+    global _event_sequence
+    with _pending_token_lock:
+        _event_sequence += 1
+        return _event_sequence
+
+
+@dataclass(eq=False)
+class _EventSubscriber:
+    """Bounded, pre-filtered delivery state for one SSE connection."""
+
+    prefixes: tuple[str, ...]
+    session_ids: frozenset[str] = frozenset()
+    priority_queue: asyncio.Queue = field(
+        default_factory=lambda: asyncio.Queue(maxsize=_EVENT_PRIORITY_QUEUE_SIZE)
+    )
+    data_queue: asyncio.Queue = field(
+        default_factory=lambda: asyncio.Queue(maxsize=_EVENT_DATA_QUEUE_SIZE)
+    )
+    gap_sessions: set[str] = field(default_factory=set)
+    local_sequence: int = 0
+
+    def accepts(self, topic: str, session_id: Optional[str]) -> bool:
+        topic_matches = _topic_allowed(topic, self.prefixes) or (
+            topic == "bus.gap" and _topic_allowed("chat", self.prefixes)
+        )
+        if not topic_matches:
+            return False
+        return not self.session_ids or session_id in self.session_ids
+
+    async def get(self) -> dict[str, Any]:
+        ready = self._get_earliest_ready()
+        if ready is not None:
+            return ready
+        priority = asyncio.create_task(self.priority_queue.get())
+        data = asyncio.create_task(self.data_queue.get())
+        done, pending = await asyncio.wait(
+            {priority, data}, return_when=asyncio.FIRST_COMPLETED
+        )
+        chosen = next(iter(done))
+        if priority in done and data in done:
+            priority_env = priority.result()
+            data_env = data.result()
+            if self._sequence_of(priority_env) < self._sequence_of(data_env):
+                chosen = priority
+                self.data_queue._queue.appendleft(data_env)  # type: ignore[attr-defined]
+            else:
+                chosen = data
+                self.priority_queue._queue.appendleft(priority_env)  # type: ignore[attr-defined]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        return chosen.result()
+
+    def _get_earliest_ready(self) -> dict[str, Any] | None:
+        priority_head = None
+        data_head = None
+        try:
+            priority_head = self.priority_queue._queue[0]  # type: ignore[attr-defined]
+        except (AttributeError, IndexError):
+            pass
+        try:
+            data_head = self.data_queue._queue[0]  # type: ignore[attr-defined]
+        except (AttributeError, IndexError):
+            pass
+        if priority_head is None:
+            return self.data_queue.get_nowait() if data_head is not None else None
+        if data_head is None:
+            return self.priority_queue.get_nowait()
+        if self._sequence_of(priority_head) < self._sequence_of(data_head):
+            return self.priority_queue.get_nowait()
+        return self.data_queue.get_nowait()
+
+    @staticmethod
+    def _sequence_of(envelope: dict[str, Any]) -> int:
+        return int(envelope.get("_seq") or 0)
+
+    def enqueue(self, envelope: dict[str, Any]) -> None:
+        # Every subscriber owns its queued envelope: token coalescing mutates
+        # the tail item and must never bleed into another subscriber's queue.
+        envelope = {**envelope, "data": dict(envelope.get("data") or {})}
+        if not envelope.get("_seq"):
+            self.local_sequence += 1
+            envelope["_seq"] = self.local_sequence
+        topic = str(envelope.get("topic") or "")
+        session_id = envelope.get("session_id")
+        if topic in _PRIORITY_EVENT_TOPICS or topic == "bus.gap":
+            self._enqueue_priority(envelope)
+            return
+        if topic == "chat.token" and self._coalesce_token(envelope):
+            return
+        try:
+            self.data_queue.put_nowait(envelope)
+        except asyncio.QueueFull:
+            self._record_gap(topic, session_id, self._sequence_of(envelope))
+
+    def _coalesce_token(self, envelope: dict[str, Any]) -> bool:
+        try:
+            tail = self.data_queue._queue[-1]  # type: ignore[attr-defined]
+        except (AttributeError, IndexError):
+            return False
+        if tail.get("topic") != "chat.token" or tail.get("session_id") != envelope.get("session_id"):
+            return False
+        old_text = tail.get("data", {}).get("t")
+        new_text = envelope.get("data", {}).get("t")
+        if not isinstance(old_text, str) or not isinstance(new_text, str):
+            return False
+        tail["data"] = {
+            **tail["data"],
+            "t": old_text + new_text,
+            "batch_size": int(tail["data"].get("batch_size") or 1) + 1,
+        }
+        tail["ts"] = envelope.get("ts", tail.get("ts"))
+        return True
+
+    def _enqueue_priority(self, envelope: dict[str, Any]) -> None:
+        try:
+            self.priority_queue.put_nowait(envelope)
+            return
+        except asyncio.QueueFull:
+            pass
+        # Priority capacity is reserved from token traffic. If lifecycle traffic
+        # itself fills it, replace the oldest item and surface a recovery gap.
+        try:
+            displaced = self.priority_queue.get_nowait()
+            _record_event_drop(
+                str(displaced.get("topic") or "unknown"), displaced.get("session_id")
+            )
+            self.priority_queue.put_nowait(envelope)
+        except (asyncio.QueueEmpty, asyncio.QueueFull):
+            _record_event_drop(str(envelope.get("topic") or "unknown"), envelope.get("session_id"))
+
+    def _record_gap(self, topic: str, session_id: Optional[str], sequence: int) -> None:
+        _record_event_drop(topic, session_id)
+        key = str(session_id or "-")
+        if key in self.gap_sessions:
+            return
+        self.gap_sessions.add(key)
+        self._enqueue_priority(
+            {
+                "topic": "bus.gap",
+                "_seq": sequence,
+                "session_id": session_id,
+                "ts": time.time(),
+                "data": {"dropped_topic": topic, "recovery": "stream_snapshot"},
+            }
+        )
+
+    def acknowledge_gap(self, session_id: Optional[str]) -> None:
+        self.gap_sessions.discard(str(session_id or "-"))
 
 # strip_ansi handles complete ECMA-48 sequences. Web streaming can occasionally
 # see a split/incomplete sequence, so remove any remaining control prefix too.
@@ -473,7 +663,16 @@ def _record_web_turn_timing(
 ) -> None:
     if not session_id or not name:
         return
-    _, turn = _get_web_turn(session_id)
+    candidates = _web_turn_candidate_keys(session_id, resolve=False)
+    with _with_web_turn_lock():
+        turn = next(
+            (
+                _web_active_turns.get(candidate)
+                for candidate in candidates
+                if _web_active_turns.get(candidate)
+            ),
+            None,
+        )
     if not turn:
         return
     with turn.lock:
@@ -557,12 +756,281 @@ def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
             turn.phase = "streaming"
             turn.stream_text += token
             turn.stream_revision += 1
-        _checkpoint_web_turn(candidate, turn)
+            checkpoint_enabled = (
+                turn.user_message_id is not None or turn.assistant_message_id is not None
+            )
+        if checkpoint_enabled:
+            _checkpoint_writer.mark_dirty(candidate, turn)
         return
 
 
 _WEB_TURN_CHECKPOINT_INTERVAL_S = 1.5
+_WEB_TURN_CHECKPOINT_FLUSH_TIMEOUT_S = 3.0
+_WEB_TURN_CHECKPOINT_MAX_PENDING = 128
+_WEB_TURN_CHECKPOINT_MAX_RETRIES = 4
 _WEB_TURN_STALE_AFTER_S = 45.0
+
+
+@dataclass
+class _CheckpointRequest:
+    session_id: str
+    turn: WebActiveTurn
+    expected_revision: int
+    due_at: float
+    db_path: Path
+    force: bool = False
+    attempts: int = 0
+    waiters: list[threading.Event] = field(default_factory=list)
+
+
+class _CheckpointWriter:
+    """Single bounded writer that coalesces superseded turn revisions."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._pending: dict[int, _CheckpointRequest] = {}
+        self._thread: threading.Thread | None = None
+        self._stopping = False
+
+    @property
+    def pending_count(self) -> int:
+        with self._condition:
+            return len(self._pending)
+
+    def mark_dirty(
+        self,
+        session_id: str,
+        turn: WebActiveTurn,
+        *,
+        force: bool = False,
+        waiter: threading.Event | None = None,
+    ) -> int:
+        with turn.lock:
+            revision = turn.stream_revision or len(turn.stream_text)
+            checkpointed_revision = turn.checkpointed_revision
+            last_checkpoint_at = turn.last_checkpoint_at
+        if revision <= checkpointed_revision:
+            if waiter:
+                waiter.set()
+            return revision
+        now = _steady_clock()
+        due_at = now if force else max(now, last_checkpoint_at + _WEB_TURN_CHECKPOINT_INTERVAL_S)
+        key = id(turn)
+        with self._condition:
+            request = self._pending.get(key)
+            if request is not None:
+                request.session_id = session_id
+                request.expected_revision = max(request.expected_revision, revision)
+                request.force = request.force or force
+                request.due_at = now if request.force else min(request.due_at, due_at)
+                if waiter:
+                    request.waiters.append(waiter)
+                _streaming_pipeline_metrics.record_checkpoint_coalesced()
+            elif len(self._pending) >= _WEB_TURN_CHECKPOINT_MAX_PENDING:
+                _streaming_pipeline_metrics.record_checkpoint_pending_overflow()
+                _log.error(
+                    "web checkpoint queue full session=%s revision=%s pending=%s",
+                    session_id,
+                    revision,
+                    len(self._pending),
+                )
+                if waiter:
+                    waiter.set()
+                return revision
+            else:
+                self._pending[key] = _CheckpointRequest(
+                    session_id=session_id,
+                    turn=turn,
+                    expected_revision=revision,
+                    due_at=due_at,
+                    db_path=get_spark_home() / "state.db",
+                    force=force,
+                    waiters=[waiter] if waiter else [],
+                )
+                if not force and due_at <= now:
+                    # Reserve this interval before the worker releases the
+                    # condition lock, preventing a burst from queuing a second
+                    # immediate write while the first is in flight.
+                    with turn.lock:
+                        turn.last_checkpoint_at = now
+            self._ensure_thread_locked()
+            self._condition.notify_all()
+        return revision
+
+    def flush(
+        self,
+        session_id: str,
+        turn: WebActiveTurn,
+        *,
+        timeout: float | None = None,
+    ) -> bool:
+        timeout = (
+            _WEB_TURN_CHECKPOINT_FLUSH_TIMEOUT_S
+            if timeout is None
+            else timeout
+        )
+        waiter = threading.Event()
+        expected = self.mark_dirty(session_id, turn, force=True, waiter=waiter)
+        waiter.wait(max(0.0, timeout))
+        with turn.lock:
+            success = turn.checkpointed_revision >= expected
+        if not success:
+            _streaming_pipeline_metrics.record_checkpoint_flush_failure()
+            _log.error(
+                "web checkpoint forced flush timed out session=%s revision=%s persisted=%s",
+                session_id,
+                expected,
+                turn.checkpointed_revision,
+            )
+        return success
+
+    def flush_all(self, timeout: float = _WEB_TURN_CHECKPOINT_FLUSH_TIMEOUT_S) -> bool:
+        with _with_web_turn_lock():
+            turns = list({id(turn): (sid, turn) for sid, turn in _web_active_turns.items()}.values())
+        deadline = _steady_clock() + max(0.0, timeout)
+        ok = True
+        for session_id, turn in turns:
+            remaining = max(0.0, deadline - _steady_clock())
+            ok = self.flush(session_id, turn, timeout=remaining) and ok
+        return ok
+
+    def shutdown(self, timeout: float = _WEB_TURN_CHECKPOINT_FLUSH_TIMEOUT_S) -> bool:
+        ok = self.flush_all(timeout)
+        with self._condition:
+            self._stopping = True
+            self._condition.notify_all()
+            thread = self._thread
+        if thread:
+            thread.join(max(0.0, timeout))
+        with self._condition:
+            stopped = self._thread is None or not self._thread.is_alive()
+            if stopped:
+                self._thread = None
+                self._stopping = False
+        return ok and stopped
+
+    def cancel(self, turn: WebActiveTurn) -> None:
+        """Discard a stale pending revision after its turn registry entry is removed."""
+        with self._condition:
+            request = self._pending.pop(id(turn), None)
+            self._condition.notify_all()
+        if request:
+            for waiter in request.waiters:
+                waiter.set()
+
+    def _ensure_thread_locked(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stopping = False
+        self._thread = threading.Thread(
+            target=self._run,
+            name="spark-web-checkpoint-writer",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self) -> None:
+        db = None
+        db_path: Path | None = None
+        try:
+            while True:
+                with self._condition:
+                    while not self._pending and not self._stopping:
+                        self._condition.wait()
+                    if self._stopping and not self._pending:
+                        return
+                    request = min(self._pending.values(), key=lambda item: item.due_at)
+                    delay = request.due_at - _steady_clock()
+                    if delay > 0 and not request.force:
+                        self._condition.wait(delay)
+                        continue
+                    self._pending.pop(id(request.turn), None)
+                try:
+                    if db is None or db_path != request.db_path:
+                        if db is not None:
+                            db.close()
+                        from core.spark_state import SessionDB
+
+                        db = SessionDB(request.db_path)
+                        db_path = request.db_path
+                    self._write_request(db, request)
+                except Exception:
+                    _streaming_pipeline_metrics.record_checkpoint_error()
+                    _log.warning(
+                        "web checkpoint write failed session=%s revision=%s attempt=%s",
+                        request.session_id,
+                        request.expected_revision,
+                        request.attempts + 1,
+                        exc_info=True,
+                    )
+                    if db is not None:
+                        try:
+                            db.close()
+                        except Exception:
+                            pass
+                        db = None
+                        db_path = None
+                    request.attempts += 1
+                    if request.attempts <= _WEB_TURN_CHECKPOINT_MAX_RETRIES:
+                        _streaming_pipeline_metrics.record_checkpoint_retry()
+                        request.due_at = _steady_clock() + min(0.8, 0.05 * (2 ** (request.attempts - 1)))
+                        request.force = False
+                        with self._condition:
+                            existing = self._pending.get(id(request.turn))
+                            if existing is not None:
+                                existing.expected_revision = max(
+                                    existing.expected_revision, request.expected_revision
+                                )
+                                existing.waiters.extend(request.waiters)
+                                existing.attempts = max(existing.attempts, request.attempts)
+                                existing.due_at = min(existing.due_at, request.due_at)
+                            else:
+                                self._pending[id(request.turn)] = request
+                            self._condition.notify_all()
+                        continue
+                    for waiter in request.waiters:
+                        waiter.set()
+                else:
+                    for waiter in request.waiters:
+                        waiter.set()
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _write_request(db: Any, request: _CheckpointRequest) -> None:
+        turn = request.turn
+        with turn.lock:
+            text = turn.stream_text
+            revision = turn.stream_revision or len(text)
+            if not text or revision <= turn.checkpointed_revision:
+                return
+            assistant_message_id = turn.assistant_message_id
+            target = (
+                turn.checkpoint_session_id
+                or turn.active_agent_session_id
+                or request.session_id
+            )
+        started = _steady_clock()
+        if assistant_message_id is None:
+            assistant_message_id = db.append_message(
+                target, "assistant", content=text, finish_reason="interrupted"
+            )
+        else:
+            db.update_message(assistant_message_id, content=text)
+        with turn.lock:
+            turn.checkpoint_session_id = target
+            turn.assistant_message_id = assistant_message_id
+            turn.checkpointed_chars = len(text)
+            turn.checkpointed_revision = revision
+            turn.last_checkpoint_at = _steady_clock()
+        _streaming_pipeline_metrics.record_checkpoint_write(_steady_clock() - started)
+
+
+_checkpoint_writer = _CheckpointWriter()
 
 
 def _web_turn_state(
@@ -601,52 +1069,92 @@ def _web_turn_state(
     return "running", phase or "active_turn", idle_for
 
 
-def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn, *, force: bool = False) -> None:
-    """Persist the streamed assistant text so a mid-turn crash keeps it.
-
-    The first checkpoint inserts an assistant row marked finish_reason
-    "interrupted"; later ones update it in place on each received stream
-    chunk. If the turn completes
-    normally, _persist_web_turn_if_missing either finalizes this row or
-    deletes it when the agent flushed its own copy.
-    """
+def _checkpoint_web_turn(session_id: str, turn: WebActiveTurn, *, force: bool = False) -> bool:
+    """Schedule a coalesced checkpoint, optionally waiting for a final flush."""
+    if force:
+        return _checkpoint_writer.flush(session_id, turn)
     with turn.lock:
-        now = time.time()
-        if (
-            not force
-            and _WEB_TURN_CHECKPOINT_INTERVAL_S > 0
-            and now - turn.last_checkpoint_at < _WEB_TURN_CHECKPOINT_INTERVAL_S
-        ):
-            return
-        text = turn.stream_text
-        if not text or len(text) <= turn.checkpointed_chars:
-            return
-        turn.last_checkpoint_at = now
-        assistant_message_id = turn.assistant_message_id
-        target = turn.checkpoint_session_id or turn.active_agent_session_id or session_id
-    started = _steady_clock()
-    try:
-        from core.spark_state import SessionDB
+        due_immediately = (
+            not turn.last_checkpoint_at
+            or _steady_clock() - turn.last_checkpoint_at >= _WEB_TURN_CHECKPOINT_INTERVAL_S
+        )
+    waiter = threading.Event() if due_immediately else None
+    _checkpoint_writer.mark_dirty(session_id, turn, waiter=waiter)
+    if waiter:
+        waiter.wait(_WEB_TURN_CHECKPOINT_FLUSH_TIMEOUT_S)
+    return True
 
-        db = SessionDB()
-        try:
-            if assistant_message_id is None:
-                assistant_message_id = db.append_message(
-                    target, "assistant", content=text, finish_reason="interrupted"
-                )
-            else:
-                db.update_message(assistant_message_id, content=text)
-        finally:
-            db.close()
-        with turn.lock:
-            turn.last_event_at = time.time()
-            turn.checkpoint_session_id = target
-            turn.assistant_message_id = assistant_message_id
-            turn.checkpointed_chars = len(text)
-        _streaming_pipeline_metrics.record_checkpoint_write(_steady_clock() - started)
-    except Exception:
-        _streaming_pipeline_metrics.record_checkpoint_error()
-        _log.debug("web turn checkpoint failed session=%s", session_id, exc_info=True)
+
+def _force_checkpoint_or_block(
+    session_id: str,
+    turn: WebActiveTurn,
+    *,
+    operation: str,
+) -> bool:
+    """Prevent finalization/migration from racing a timed-out checkpoint write."""
+    if _checkpoint_web_turn(session_id, turn, force=True):
+        return True
+    _mark_checkpoint_blocked(session_id, operation=operation)
+    return False
+
+
+def _mark_checkpoint_blocked(session_id: str, *, operation: str) -> None:
+    message = (
+        "Checkpoint persistence is still blocked; the turn remains active "
+        "to avoid corrupting its final transcript."
+    )
+    _touch_web_turn(
+        session_id,
+        status=message,
+        phase="checkpoint_blocked",
+    )
+    _publish_event(
+        "chat.error",
+        {
+            "kind": "checkpoint_flush_timeout",
+            "message": message,
+            "operation": operation,
+        },
+        session_id,
+    )
+    _publish_event(
+        "chat.status",
+        {
+            "kind": "checkpoint_flush_timeout",
+            "message": message,
+        },
+        session_id,
+    )
+
+
+def _wait_for_checkpoint_ready(
+    session_id: str,
+    turn: WebActiveTurn,
+    *,
+    operation: str,
+) -> None:
+    """Retry bounded flush attempts without allowing stale finalization."""
+    while not _force_checkpoint_or_block(session_id, turn, operation=operation):
+        time.sleep(0.05)
+
+
+async def _await_checkpoint_ready(
+    session_id: str,
+    turn: WebActiveTurn,
+    *,
+    operation: str,
+) -> None:
+    """Event-loop-safe checkpoint barrier used by async turn finalizers."""
+    while True:
+        ready = await asyncio.to_thread(
+            _force_checkpoint_or_block,
+            session_id,
+            turn,
+            operation=operation,
+        )
+        if ready:
+            return
+        await asyncio.sleep(0.05)
 
 
 def _persist_web_user_message(session_id: str, user_message: str) -> int | None:
@@ -673,6 +1181,7 @@ def _clear_web_turn(session_id: str) -> None:
         for turn in turns:
             if not turn:
                 continue
+            _checkpoint_writer.cancel(turn)
             for alias in list(turn.session_aliases):
                 if _web_turn_aliases.get(alias) in candidates:
                     _web_turn_aliases.pop(alias, None)
@@ -807,6 +1316,8 @@ async def _lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        if not await asyncio.to_thread(_checkpoint_writer.shutdown):
+            _log.error("web checkpoint writer did not flush cleanly during shutdown")
         try:
             from spark_cli.desktop_gateway import stop_desktop_gateway
             await loop.run_in_executor(None, stop_desktop_gateway)
@@ -817,6 +1328,9 @@ async def _lifespan(_app: FastAPI):
         _web_active_turns.clear()
         _web_turn_aliases.clear()
         _web_queues.clear()
+        with _pending_token_lock:
+            _pending_token_events.clear()
+            _pending_token_gap_sessions.clear()
         loop_lag_task.cancel()
         try:
             await loop_lag_task
@@ -984,6 +1498,7 @@ def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
 
 
 def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> None:
+    global _pending_token_events, _pending_token_gap_sessions, _token_flush_scheduled
     loop = _web_event_loop
     if loop is None:
         return
@@ -996,28 +1511,132 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         data = _sanitize_web_chat_value(data)
         data = {**data, "session_id": session_id}
     envelope = {"topic": topic, "session_id": session_id, "ts": time.time(), "data": data}
+    envelope["_seq"] = _next_event_sequence()
 
-    def _fanout() -> None:
-        _streaming_pipeline_metrics.record_fanout_latency(_steady_clock() - published_at)
-        for q in tuple(_event_subscribers):
-            try:
-                q.put_nowait(envelope)
-                continue
-            except asyncio.QueueFull:
-                if topic in _PRIORITY_EVENT_TOPICS and _make_room_for_priority_event(q):
-                    try:
-                        q.put_nowait(envelope)
-                        continue
-                    except asyncio.QueueFull:
-                        pass
+    # A semantic event is a hard token-batch boundary. Seal the current batch
+    # before scheduling it so a later token cannot jump across a tool/status/
+    # lifecycle event while the event loop is busy.
+    if topic != "chat.token" and topic.startswith("chat.") and session_id:
+        with _pending_token_lock:
+            if session_id in _pending_token_events:
+                _pending_token_events = {}
+                _pending_token_gap_sessions = set()
+                _token_flush_scheduled = False
+
+    if topic == "chat.token" and session_id:
+        should_schedule = False
+        with _pending_token_lock:
+            pending = _pending_token_events.get(session_id)
+            token = str(data.get("t") or "")
+            if pending is not None:
+                combined = str(pending["data"].get("t") or "") + token
+                if len(combined) > _TOKEN_BATCH_MAX_CHARS:
+                    pending["data"]["t"] = combined[-_TOKEN_BATCH_MAX_CHARS:]
+                    pending["overflow"] = True
+                    _record_event_drop(topic, session_id)
+                else:
+                    pending["data"]["t"] = combined
+                pending["data"]["batch_size"] = int(
+                    pending["data"].get("batch_size") or 1
+                ) + 1
+                pending["ts"] = envelope["ts"]
+            elif len(_pending_token_events) >= _TOKEN_PENDING_MAX_SESSIONS:
                 _record_event_drop(topic, session_id)
+                if len(_pending_token_gap_sessions) < _TOKEN_PENDING_MAX_SESSIONS:
+                    _pending_token_gap_sessions.add(session_id)
+                return
+            else:
+                envelope["data"] = {**data, "batch_size": 1}
+                envelope["published_at"] = published_at
+                _pending_token_events[session_id] = envelope
+            if not _token_flush_scheduled:
+                _token_flush_scheduled = True
+                should_schedule = True
+        if should_schedule:
+            try:
+                loop.call_soon_threadsafe(
+                    _flush_pending_token_events,
+                    _pending_token_events,
+                    _pending_token_gap_sessions,
+                )
             except Exception:
-                _event_subscribers.discard(q)
+                with _pending_token_lock:
+                    _token_flush_scheduled = False
+        return
 
     try:
-        loop.call_soon_threadsafe(_fanout)
+        loop.call_soon_threadsafe(_fanout_event_envelope, envelope, published_at)
     except Exception:
         pass
+
+
+def _flush_pending_token_events(
+    token_events: dict[str, dict[str, Any]],
+    gap_event_sessions: set[str],
+) -> None:
+    global _token_flush_scheduled
+    with _pending_token_lock:
+        pending = list(token_events.values())
+        gap_sessions = tuple(gap_event_sessions)
+        token_events.clear()
+        gap_event_sessions.clear()
+        if token_events is _pending_token_events:
+            _token_flush_scheduled = False
+    for envelope in pending:
+        published_at = float(envelope.pop("published_at", _steady_clock()))
+        overflow = bool(envelope.pop("overflow", False))
+        _fanout_event_envelope(envelope, published_at)
+        if overflow:
+            _fanout_event_envelope(
+                {
+                    "topic": "bus.gap",
+                    "_seq": _next_event_sequence(),
+                    "session_id": envelope.get("session_id"),
+                    "ts": time.time(),
+                    "data": {
+                        "dropped_topic": "chat.token",
+                        "recovery": "stream_snapshot",
+                    },
+                },
+                published_at,
+            )
+    for session_id in gap_sessions:
+        _fanout_event_envelope(
+            {
+                "topic": "bus.gap",
+                "_seq": _next_event_sequence(),
+                "session_id": session_id,
+                "ts": time.time(),
+                "data": {
+                    "dropped_topic": "chat.token",
+                    "recovery": "stream_snapshot",
+                },
+            },
+            _steady_clock(),
+        )
+
+
+def _fanout_event_envelope(envelope: dict[str, Any], published_at: float) -> None:
+    topic = str(envelope.get("topic") or "")
+    session_id = envelope.get("session_id")
+    _streaming_pipeline_metrics.record_fanout_latency(_steady_clock() - published_at)
+    for subscriber in tuple(_event_subscribers):
+        try:
+            if isinstance(subscriber, _EventSubscriber):
+                if subscriber.accepts(topic, session_id):
+                    subscriber.enqueue(envelope)
+                continue
+            subscriber.put_nowait(envelope)
+        except asyncio.QueueFull:
+            if topic in _PRIORITY_EVENT_TOPICS and _make_room_for_priority_event(subscriber):
+                try:
+                    subscriber.put_nowait(envelope)
+                    continue
+                except asyncio.QueueFull:
+                    pass
+            _record_event_drop(topic, session_id)
+        except Exception:
+            _event_subscribers.discard(subscriber)
 
 
 def _record_event_drop(topic: str, session_id: Optional[str]) -> None:
@@ -1214,13 +1833,18 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
 
 
 @app.get("/api/events")
-async def sse_events_bus(request: Request, topics: str = "sessions,chat"):
+async def sse_events_bus(
+    request: Request,
+    topics: str = "sessions,chat",
+    session_id: Optional[str] = None,
+):
     """Shared SSE bus for sessions.* and chat.* events."""
     from fastapi.responses import StreamingResponse as _StreamingResponse
 
     prefixes = tuple(p.strip() for p in topics.split(",") if p.strip())
-    queue: asyncio.Queue = asyncio.Queue(maxsize=_EVENT_QUEUE_SIZE)
-    _event_subscribers.add(queue)
+    session_ids = frozenset({session_id}) if session_id else frozenset()
+    subscriber = _EventSubscriber(prefixes=prefixes, session_ids=session_ids)
+    _event_subscribers.add(subscriber)
 
     async def event_generator():
         try:
@@ -1228,18 +1852,19 @@ async def sse_events_bus(request: Request, topics: str = "sessions,chat"):
                 if await request.is_disconnected():
                     break
                 try:
-                    env = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    env = await asyncio.wait_for(subscriber.get(), timeout=30.0)
                 except asyncio.TimeoutError:
                     yield "event: ping\ndata: {}\n\n"
                     continue
-                if not _topic_allowed(env.get("topic", ""), prefixes):
-                    continue
+                if env.get("topic") == "bus.gap":
+                    subscriber.acknowledge_gap(env.get("session_id"))
                 try:
-                    yield f"data: {json.dumps(env, default=str)}\n\n"
+                    public_env = {key: value for key, value in env.items() if key != "_seq"}
+                    yield f"data: {json.dumps(public_env, default=str)}\n\n"
                 except Exception:
                     continue
         finally:
-            _event_subscribers.discard(queue)
+            _event_subscribers.discard(subscriber)
 
     return _StreamingResponse(
         event_generator(),
@@ -5678,7 +6303,7 @@ def _publish_web_status(session_id: str, kind: str, message: str, *, phase: Opti
 
 def _make_web_chat_callbacks(
     session_id: str,
-    queue: asyncio.Queue,
+    _legacy_queue: asyncio.Queue,
     loop: asyncio.AbstractEventLoop,
 ):
     # Per-turn routing state. Compression can migrate a running turn to a new
@@ -5700,10 +6325,6 @@ def _make_web_chat_callbacks(
         current_session_id = turn_context.session_id
         _append_web_turn_token(current_session_id, token)
         _record_web_first_visible_event(current_session_id, "token")
-        try:
-            loop.call_soon_threadsafe(queue.put_nowait, token)
-        except Exception:
-            pass
         _publish_event("chat.token", {"t": token}, current_session_id)
 
     def tool_start_callback(tid: str, name: str, args: Any) -> None:
@@ -5753,6 +6374,7 @@ def _make_web_chat_callbacks(
         # following event because the filter would no longer match.
         old_key, turn = _get_web_turn(old_id)
         if old_key and turn:
+            _wait_for_checkpoint_ready(old_key, turn, operation="session_migration")
             turn.last_event_at = time.time()
             turn.phase = "streaming"
             turn.status = "Context compressed; continuing…"
@@ -5969,7 +6591,9 @@ def _run_fake_stream_task(
     finally:
         _, active_turn = _get_web_turn(session_id)
         if active_turn:
-            _checkpoint_web_turn(session_id, active_turn, force=True)
+            _wait_for_checkpoint_ready(
+                session_id, active_turn, operation="fake_stream_completion"
+            )
         _persist_web_turn_if_missing(
             session_id,
             message,
@@ -7838,7 +8462,9 @@ async def create_conversation(body: ConversationCreate):
             unregister_gateway_notify(session_id)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
             if _active_turn:
-                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
+                await _await_checkpoint_ready(
+                    final_session_id, _active_turn, operation="turn_completion"
+                )
             _persist_web_turn_if_missing(
                 final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
@@ -8272,7 +8898,9 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             unregister_gateway_notify(session_id)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
             if _active_turn:
-                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
+                await _await_checkpoint_ready(
+                    final_session_id, _active_turn, operation="turn_completion"
+                )
             _persist_web_turn_if_missing(
                 final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
@@ -8313,6 +8941,13 @@ async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
             active_agent_session_id=agent_session_id,
         )
         agent.interrupt(body.message)
+        _, active_turn = _get_web_turn(agent_session_id or session_id)
+        if active_turn is not None:
+            await _await_checkpoint_ready(
+                agent_session_id or session_id,
+                active_turn,
+                operation="interrupt",
+            )
         _persist_interrupted_turn_boundary(agent_session_id or session_id, body.message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -8707,7 +9342,9 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             loop.call_soon_threadsafe(queue.put_nowait, None)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
             if _active_turn:
-                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
+                await _await_checkpoint_ready(
+                    final_session_id, _active_turn, operation="turn_completion"
+                )
             _persist_web_turn_if_missing(
                 final_session_id,
                 user_msg,
@@ -8931,44 +9568,6 @@ def _conversation_stream_snapshot_payload(
     }
 
 
-@app.get("/api/conversations/{session_id}/stream")
-async def stream_conversation(session_id: str):
-    """SSE endpoint streaming agent response tokens for a web chat session."""
-    from fastapi.responses import StreamingResponse as _StreamingResponse
-
-    queue = _web_queues.get(session_id)
-    if queue is None:
-        raise HTTPException(status_code=404, detail="No active stream for this session")
-
-    async def event_generator():
-        try:
-            while True:
-                try:
-                    token = await asyncio.wait_for(queue.get(), timeout=30.0)
-                except asyncio.TimeoutError:
-                    yield "event: ping\ndata: {}\n\n"
-                    continue
-                if token is None:
-                    yield "event: done\ndata: {}\n\n"
-                    break
-                yield f"data: {json.dumps({'t': token})}\n\n"
-        except Exception:
-            yield "event: done\ndata: {}\n\n"
-        finally:
-            if not _is_web_turn_active(session_id):
-                _web_queues.pop(session_id, None)
-
-    return _StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
-
-
 def mount_spa(application: FastAPI):
     """Mount the built SPA. Falls back to index.html for client-side routing."""
     assets_dir = WEB_DIST / "assets"
@@ -9179,7 +9778,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             _strip_user_message_prefix(session_id, context_prefix, raw_message)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
             if _active_turn:
-                _checkpoint_web_turn(final_session_id, _active_turn, force=True)
+                await _await_checkpoint_ready(
+                    final_session_id,
+                    _active_turn,
+                    operation="workspace_turn_completion",
+                )
             _persist_web_turn_if_missing(
                 final_session_id, raw_message, result, before_message_count,
                 eager_user_id=eager_user_id,

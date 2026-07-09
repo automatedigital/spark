@@ -18,7 +18,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 // True once a connection has dropped, so the next successful open can notify
 // listeners that they may have missed events during the gap.
 let wasDisconnected = false;
-const topicsParam = "sessions,chat,workspace,canvas,skills,memory,notifications";
+const topicsParam = "sessions,chat,bus,workspace,canvas,skills,memory,notifications";
 
 /**
  * Synthetic topic emitted (not from the server) when the SSE connection
@@ -27,6 +27,7 @@ const topicsParam = "sessions,chat,workspace,canvas,skills,memory,notifications"
  * during the gap, whose `chat.turn_done` event was lost).
  */
 export const BUS_RECONNECTED_TOPIC = "bus.reconnected";
+export const BUS_GAP_TOPIC = "bus.gap";
 
 function notifyListeners(env: SparkEventEnvelope) {
   listeners.forEach((fn) => {
