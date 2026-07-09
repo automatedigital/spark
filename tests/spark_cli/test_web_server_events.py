@@ -120,6 +120,92 @@ def test_session_messages_page_large_thread_from_recent_tail(web_client):
     assert first_body["next_before_id"] is None
 
 
+def test_session_messages_10k_page_never_uses_full_history_loader(web_client, monkeypatch):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("bounded-route-10k", source="web")
+        db._conn.executemany(
+            """INSERT INTO messages (session_id, role, content, timestamp)
+               VALUES ('bounded-route-10k', ?, ?, ?)""",
+            (
+                ("user" if index % 2 == 0 else "assistant", f"message {index}", float(index))
+                for index in range(10_000)
+            ),
+        )
+        db._conn.execute(
+            "UPDATE sessions SET message_count = 10000 WHERE id = 'bounded-route-10k'"
+        )
+    finally:
+        db.close()
+
+    def fail_full_history(*_args, **_kwargs):
+        raise AssertionError("web history route must not call get_messages")
+
+    monkeypatch.setattr(SessionDB, "get_messages", fail_full_history)
+
+    response = web_client.get("/api/sessions/bounded-route-10k/messages?limit=50")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["messages"]) == 50
+    assert body["messages"][0]["content"] == "message 9950"
+    assert body["messages"][-1]["content"] == "message 9999"
+
+
+def test_session_messages_matching_etag_skips_page_materialization(web_client, monkeypatch):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("etag-history", source="web")
+        db.append_message("etag-history", "user", "hello")
+        db.append_message("etag-history", "assistant", "hi")
+    finally:
+        db.close()
+
+    first = web_client.get("/api/sessions/etag-history/messages?limit=50")
+    assert first.status_code == 200
+    etag = first.headers["etag"]
+
+    def fail_page_load(*_args, **_kwargs):
+        raise AssertionError("matching ETag must return before page materialization")
+
+    monkeypatch.setattr(SessionDB, "get_web_message_page", fail_page_load)
+    cached = web_client.get(
+        "/api/sessions/etag-history/messages?limit=50",
+        headers={"If-None-Match": etag},
+    )
+
+    assert cached.status_code == 304
+    assert cached.content == b""
+
+
+def test_session_messages_preserves_compression_leaf_contract(web_client):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("history-parent", source="web")
+        db.append_message("history-parent", "user", "old transcript")
+        db.create_session(
+            "history-leaf", source="web", parent_session_id="history-parent"
+        )
+        db.append_message("history-leaf", "assistant", "compressed transcript")
+        db.end_session("history-parent", end_reason="compression")
+    finally:
+        db.close()
+
+    response = web_client.get("/api/sessions/history-parent/messages?limit=50")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"] == "history-leaf"
+    assert body["migrated_from"] == "history-parent"
+    assert [message["content"] for message in body["messages"]] == ["compressed transcript"]
+
+
 def test_session_messages_hide_empty_assistant_placeholders(web_client):
     from core.spark_state import SessionDB
 

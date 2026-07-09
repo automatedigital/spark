@@ -1,5 +1,6 @@
 """Tests for spark_state.py — SessionDB SQLite CRUD, FTS5 search, export."""
 
+import json
 import time
 import pytest
 from pathlib import Path
@@ -130,6 +131,92 @@ class TestMessageStorage:
         assert messages[0]["role"] == "user"
         assert messages[0]["content"] == "Hello"
         assert messages[1]["role"] == "assistant"
+
+    def test_web_message_page_matches_visibility_and_preserves_raw_indices(self, db):
+        db.create_session(session_id="web-page", source="web")
+        visible_ids = [db.append_message("web-page", "user", "start")]
+        db.append_message("web-page", "assistant", "")  # hidden placeholder/checkpoint
+        visible_ids.append(
+            db.append_message(
+                "web-page",
+                "assistant",
+                "",
+                tool_calls=[{"id": "call-1", "function": {"name": "read", "arguments": "{}"}}],
+            )
+        )
+        visible_ids.append(
+            db.append_message("web-page", "assistant", "", finish_reason="interrupted")
+        )
+        visible_ids.append(db.append_message("web-page", "assistant", "done"))
+
+        page = db.get_web_message_page("web-page", limit=10)
+
+        assert [message["id"] for message in page["messages"]] == visible_ids
+        assert [message["message_index"] for message in page["messages"]] == [0, 2, 3, 4]
+        assert page["total"] == 4
+        assert page["has_earlier"] is False
+
+    def test_web_message_page_uses_id_as_tiebreaker_and_accepts_db_cursor(self, db):
+        db.create_session(session_id="same-time", source="web")
+        ids = [db.append_message("same-time", "user", f"message {index}") for index in range(5)]
+        db._conn.execute("UPDATE messages SET timestamp = 123 WHERE session_id = 'same-time'")
+
+        tail = db.get_web_message_page("same-time", limit=2)
+        older = db.get_web_message_page(
+            "same-time", limit=2, before_id=f"db:{tail['next_before_id']}"
+        )
+
+        assert [message["id"] for message in tail["messages"]] == ids[-2:]
+        assert [message["id"] for message in older["messages"]] == ids[1:3]
+        assert older["has_earlier"] is True
+        assert older["next_before_id"] == ids[1]
+
+    def test_web_message_page_decodes_only_limit_plus_one_rows(self, db, monkeypatch):
+        db.create_session(session_id="bounded-10k", source="web")
+        tool_calls = json.dumps([{"id": "call", "function": {"name": "noop", "arguments": "{}"}}])
+        db._conn.executemany(
+            """INSERT INTO messages
+               (session_id, role, content, tool_calls, timestamp)
+               VALUES ('bounded-10k', 'assistant', ?, ?, ?)""",
+            ((f"message {index}", tool_calls, float(index)) for index in range(10_000)),
+        )
+        db._conn.execute(
+            "UPDATE sessions SET message_count = 10000 WHERE id = 'bounded-10k'"
+        )
+        import core.spark_state as spark_state
+
+        original_loads = json.loads
+        decoded = 0
+
+        def counting_loads(value):
+            nonlocal decoded
+            decoded += 1
+            return original_loads(value)
+
+        monkeypatch.setattr(spark_state.json, "loads", counting_loads)
+
+        page = db.get_web_message_page("bounded-10k", limit=50)
+
+        assert len(page["messages"]) == 50
+        assert decoded == 50
+        assert page["messages"][0]["content"] == "message 9950"
+        assert page["messages"][-1]["content"] == "message 9999"
+
+    def test_web_message_page_does_not_select_full_tool_results(self, db):
+        db.create_session(session_id="lazy-tool", source="web")
+        full_result = "x" * 50_000
+        db.append_message(
+            "lazy-tool", "tool", full_result, tool_call_id="call-large", tool_name="terminal"
+        )
+
+        lazy = db.get_web_message_page("lazy-tool", limit=50)
+        eager = db.get_web_message_page(
+            "lazy-tool", limit=50, include_tool_results=True
+        )
+
+        assert len(lazy["messages"][0]["content"]) == 2001
+        assert lazy["messages"][0]["_content_chars"] == len(full_result)
+        assert eager["messages"][0]["content"] == full_result
 
     def test_message_increments_session_count(self, db):
         db.create_session(session_id="s1", source="cli")

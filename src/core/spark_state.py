@@ -120,6 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_source ON sessions(source);
 CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_messages_session_order ON messages(session_id, timestamp, id);
 
 CREATE TABLE IF NOT EXISTS context_items (
     id TEXT PRIMARY KEY,
@@ -1419,6 +1420,192 @@ class SessionDB:
                     msg["tool_calls"] = []
             result.append(msg)
         return result
+
+    # Keep this predicate aligned with spark_cli.web_server._hide_from_web_history.
+    # Structured fields are persisted as NULL when empty; tool_calls is JSON and
+    # needs explicit handling for false-y JSON containers.
+    _WEB_VISIBLE_MESSAGE_SQL = """
+        NOT (
+            role = 'assistant'
+            AND trim(COALESCE(content, '')) = ''
+            AND (
+                tool_calls IS NULL
+                OR trim(tool_calls) IN ('', '[]', '{}', 'null')
+            )
+            AND reasoning IS NULL
+            AND reasoning_details IS NULL
+            AND codex_reasoning_items IS NULL
+            AND finish_reason IS NULL
+        )
+    """
+
+    def get_web_message_validator(self, session_id: str) -> dict[str, Any]:
+        """Return cheap persisted aggregates for web-history revalidation.
+
+        This deliberately does not select or decode any message payloads, so a
+        matching HTTP ETag can return before the requested page is materialized.
+        """
+        with self._lock:
+            session = self._conn.execute(
+                "SELECT message_count FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+            latest = self._conn.execute(
+                """SELECT id, timestamp FROM messages
+                   WHERE session_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1""",
+                (session_id,),
+            ).fetchone()
+        return {
+            "message_count": int(session["message_count"] or 0) if session else 0,
+            "last_message_id": int(latest["id"]) if latest else 0,
+            "last_message_timestamp": float(latest["timestamp"]) if latest else 0,
+        }
+
+    def get_web_message_page(
+        self,
+        session_id: str,
+        *,
+        limit: int = 0,
+        before_id: int | str | None = None,
+        include_tool_results: bool = False,
+    ) -> dict[str, Any]:
+        """Load one web-history page using indexed keyset pagination.
+
+        Only ``limit + 1`` visible payload rows are fetched for bounded pages.
+        The extra row is a has-earlier probe. Absolute ``message_index`` values
+        retain the raw transcript ordering used by retry/fork endpoints.
+        """
+        visible_sql = self._WEB_VISIBLE_MESSAGE_SQL
+        cutoff: tuple[float, int] | None = None
+        if before_id is not None:
+            raw_before_id = str(before_id)
+            if raw_before_id.startswith("db:"):
+                raw_before_id = raw_before_id[3:]
+            try:
+                cursor_id = int(raw_before_id)
+            except (TypeError, ValueError):
+                cursor_id = -1
+            with self._lock:
+                cursor_row = self._conn.execute(
+                    f"""SELECT timestamp, id FROM messages
+                        WHERE session_id = ? AND id = ? AND {visible_sql}""",
+                    (session_id, cursor_id),
+                ).fetchone()
+            if cursor_row:
+                cutoff = (float(cursor_row["timestamp"]), int(cursor_row["id"]))
+
+        with self._lock:
+            total = int(
+                self._conn.execute(
+                    f"SELECT COUNT(*) FROM messages WHERE session_id = ? AND {visible_sql}",
+                    (session_id,),
+                ).fetchone()[0]
+            )
+
+            cutoff_sql = ""
+            params: list[Any] = [1 if include_tool_results else 0, session_id]
+            if cutoff is not None:
+                cutoff_sql = "AND (m.timestamp < ? OR (m.timestamp = ? AND m.id < ?))"
+                params.extend((cutoff[0], cutoff[0], cutoff[1]))
+
+            probe_limit = int(limit) + 1 if limit > 0 else None
+            limit_sql = ""
+            if probe_limit is not None:
+                limit_sql = "LIMIT ?"
+                params.append(probe_limit)
+
+            rows = self._conn.execute(
+                f"""SELECT
+                        m.id,
+                        m.role,
+                        CASE
+                            WHEN m.role = 'tool' AND ? = 0
+                            THEN substr(m.content, 1, 2001)
+                            ELSE m.content
+                        END AS content,
+                        CASE WHEN m.role = 'tool' THEN length(m.content) END AS _content_chars,
+                        m.tool_call_id,
+                        m.tool_calls,
+                        m.tool_name,
+                        m.timestamp,
+                        m.token_count,
+                        m.finish_reason,
+                        m.reasoning,
+                        m.reasoning_details,
+                        m.codex_reasoning_items
+                    FROM messages m
+                    WHERE m.session_id = ?
+                      AND {visible_sql}
+                      {cutoff_sql}
+                    ORDER BY m.timestamp DESC, m.id DESC
+                    {limit_sql}""",
+                tuple(params),
+            ).fetchall()
+            has_earlier = probe_limit is not None and len(rows) == probe_limit
+            if has_earlier:
+                rows = rows[:-1]
+
+            # Compute raw absolute indices with two small metadata queries,
+            # rather than a correlated full-history count for every page row.
+            message_indices: dict[int, int] = {}
+            if rows:
+                oldest = rows[-1]
+                newest = rows[0]
+                start_index = int(
+                    self._conn.execute(
+                        """SELECT COUNT(*) FROM messages
+                           WHERE session_id = ?
+                             AND (timestamp < ? OR (timestamp = ? AND id < ?))""",
+                        (
+                            session_id,
+                            oldest["timestamp"],
+                            oldest["timestamp"],
+                            oldest["id"],
+                        ),
+                    ).fetchone()[0]
+                )
+                ordered_ids = self._conn.execute(
+                    """SELECT id FROM messages
+                       WHERE session_id = ?
+                         AND (timestamp > ? OR (timestamp = ? AND id >= ?))
+                         AND (timestamp < ? OR (timestamp = ? AND id <= ?))
+                       ORDER BY timestamp, id""",
+                    (
+                        session_id,
+                        oldest["timestamp"],
+                        oldest["timestamp"],
+                        oldest["id"],
+                        newest["timestamp"],
+                        newest["timestamp"],
+                        newest["id"],
+                    ),
+                ).fetchall()
+                message_indices = {
+                    int(row["id"]): start_index + offset
+                    for offset, row in enumerate(ordered_ids)
+                }
+
+        messages = [dict(row) for row in reversed(rows)]
+        for msg in messages:
+            msg["message_index"] = message_indices[int(msg["id"])]
+            if msg.get("tool_calls"):
+                try:
+                    msg["tool_calls"] = json.loads(msg["tool_calls"])
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(
+                        "Corrupt JSON tool_calls in session %s message %s, falling back to []",
+                        session_id, msg.get("id"),
+                    )
+                    msg["tool_calls"] = []
+
+        return {
+            "messages": messages,
+            "total": total,
+            "has_earlier": has_earlier,
+            "page_start_index": messages[0]["message_index"] if messages else None,
+            "page_end_index": messages[-1]["message_index"] if messages else None,
+            "next_before_id": messages[0]["id"] if has_earlier and messages else None,
+        }
 
     def get_messages_as_conversation(self, session_id: str) -> list[dict[str, Any]]:
         """
