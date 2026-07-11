@@ -281,6 +281,27 @@ def _compute_grace_seconds(schedule: dict) -> int:
     return MIN_GRACE
 
 
+def _next_cron_run(expr: str, now: datetime) -> datetime | None:
+    """Return the next real, unique local-wall-time occurrence for ``expr``.
+
+    ``croniter`` preserves timezone information, but around DST it may return a
+    shifted time which no longer matches the expression (spring gap), or both
+    folds of the same local wall time (autumn overlap). Scheduled jobs should
+    skip nonexistent times and execute ambiguous wall times once.
+    """
+    cron = croniter(expr, now)
+    now_wall = now.replace(tzinfo=None)
+    for _ in range(370):
+        candidate = cron.get_next(datetime)
+        candidate_wall = candidate.replace(tzinfo=None)
+        if candidate_wall <= now_wall:
+            continue
+        if croniter.match(expr, candidate_wall):
+            return candidate
+    logger.error("Could not find a valid next occurrence for cron expression %s", expr)
+    return None
+
+
 def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -> str | None:
     """
     Compute the next run time for a schedule.
@@ -306,9 +327,8 @@ def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -
     elif schedule["kind"] == "cron":
         if not HAS_CRONITER:
             return None
-        cron = croniter(schedule["expr"], now)
-        next_run = cron.get_next(datetime)
-        return next_run.isoformat()
+        next_run = _next_cron_run(schedule["expr"], now)
+        return next_run.isoformat() if next_run else None
 
     return None
 
