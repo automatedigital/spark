@@ -106,10 +106,6 @@ function configProviderOptions(config: Record<string, unknown> | null) {
 const OAUTH_RECONNECT_PROVIDERS = new Set(["openai-codex", "qwen-oauth", "anthropic"]);
 
 const CODEX_MODEL_FALLBACKS = [
-  "gpt-5.6-sol",
-  "gpt-5.6-terra",
-  "gpt-5.6-luna",
-  "gpt-5.5",
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.3-codex",
@@ -329,12 +325,14 @@ function ModelField({
 }) {
   const [models, setModels] = useState<string[]>([]);
   const [strict, setStrict] = useState(false);
+  const [catalogWarning, setCatalogWarning] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     if (!provider) {
       setModels([]);
       setStrict(false);
+      setCatalogWarning("");
       return;
     }
     api
@@ -346,16 +344,21 @@ function ModelField({
           provider === "openai-codex" && apiModels.length === 0 ? CODEX_MODEL_FALLBACKS : [];
         setModels(apiModels.length > 0 ? apiModels : fallbackModels);
         setStrict(!!r.strict || fallbackModels.length > 0);
+        setCatalogWarning(r.warning || "");
       })
       .catch(() => {
         if (cancelled) return;
         if (provider === "openai-codex") {
           setModels(CODEX_MODEL_FALLBACKS);
           setStrict(true);
+          setCatalogWarning(
+            "The live Codex catalog could not be loaded. Conservative offline fallback models are shown.",
+          );
           return;
         }
         setModels([]);
         setStrict(false);
+        setCatalogWarning("");
       });
     return () => {
       cancelled = true;
@@ -365,7 +368,14 @@ function ModelField({
   if (strict && models.length > 0) {
     const options = value && !models.includes(value) ? [...models, value] : models;
     return (
-      <SearchableModelSelect value={value} options={options} onChange={onChange} />
+      <div className="space-y-1">
+        <SearchableModelSelect value={value} options={options} onChange={onChange} />
+        {catalogWarning && (
+          <p className="text-xs text-amber-600 dark:text-amber-400" role="status">
+            {catalogWarning}
+          </p>
+        )}
+      </div>
     );
   }
 

@@ -174,12 +174,44 @@ class TestWebServerEndpoints:
         data = resp.json()
         assert data["provider"] == "openai-codex"
         assert data["strict"] is True
-        assert "gpt-5.5" in data["models"]
-        assert {
-            "gpt-5.6-sol",
-            "gpt-5.6-terra",
-            "gpt-5.6-luna",
-        }.issubset(data["models"])
+        assert data["source"] in {"live", "offline-fallback"}
+        if not data["live"]:
+            assert "gpt-5.6-sol" not in data["models"]
+            assert data["warning"]
+
+    def test_available_models_codex_uses_exact_live_account_catalog(self):
+        with (
+            patch(
+                "spark_cli.auth.get_codex_auth_status",
+                return_value={"logged_in": True, "api_key": "token"},
+            ),
+            patch(
+                "spark_cli.codex_models._fetch_models_from_api",
+                return_value=["gpt-5.4"],
+            ),
+        ):
+            resp = self.client.get(
+                "/api/model/available", params={"provider": "openai-codex"}
+            )
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "provider": "openai-codex",
+            "models": ["gpt-5.4"],
+            "live": True,
+            "strict": True,
+            "source": "live",
+            "warning": "",
+        }
+
+    def test_direct_openai_catalog_keeps_documented_gpt_56_models_separate(self):
+        from spark_cli.web_server import _PROVIDER_MODEL_SUGGESTIONS
+
+        direct = _PROVIDER_MODEL_SUGGESTIONS["openai"]
+        codex = _PROVIDER_MODEL_SUGGESTIONS["openai-codex"]
+        for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
+            assert model in direct
+            assert model not in codex
 
     def test_available_models_open_providers_are_freetext(self):
         """Open-ended providers (ollama, openrouter) return strict=False so the

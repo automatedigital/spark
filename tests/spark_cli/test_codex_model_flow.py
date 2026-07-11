@@ -5,12 +5,10 @@ from __future__ import annotations
 from spark_cli.codex_models import DEFAULT_CODEX_MODELS
 
 
-def test_gpt_56_family_is_in_default_codex_catalog():
-    assert DEFAULT_CODEX_MODELS[:3] == [
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-    ]
+def test_direct_openai_models_are_not_in_codex_offline_fallback():
+    assert not {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}.intersection(
+        DEFAULT_CODEX_MODELS
+    )
 
 
 def test_openai_codex_model_flow_uses_quick_live_catalog(monkeypatch):
@@ -129,8 +127,35 @@ def test_get_codex_model_ids_forwards_api_timeout(monkeypatch):
 
     monkeypatch.setattr("spark_cli.codex_models._fetch_models_from_api", fake_fetch)
 
-    assert get_codex_model_ids(access_token="token", api_timeout=1.5) == [
-        "gpt-5.5",
-        "gpt-5.6-sol",
-    ]
+    assert get_codex_model_ids(access_token="token", api_timeout=1.5) == ["gpt-5.5"]
     assert seen == {"access_token": "token", "timeout": 1.5}
+
+
+def test_live_codex_catalog_is_authoritative(monkeypatch):
+    from spark_cli.codex_models import get_codex_model_catalog
+
+    monkeypatch.setattr(
+        "spark_cli.codex_models._fetch_models_from_api",
+        lambda access_token, timeout=10.0: ["gpt-5.4"],
+    )
+    assert get_codex_model_catalog("token") == {
+        "models": ["gpt-5.4"],
+        "source": "live",
+        "live": True,
+        "warning": "",
+    }
+
+
+def test_failed_codex_discovery_has_explicit_offline_fallback(monkeypatch, tmp_path):
+    from spark_cli.codex_models import get_codex_model_catalog
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    monkeypatch.setattr(
+        "spark_cli.codex_models._fetch_models_from_api",
+        lambda access_token, timeout=10.0: None,
+    )
+    catalog = get_codex_model_catalog("token")
+    assert catalog["source"] == "offline-fallback"
+    assert catalog["live"] is False
+    assert catalog["models"] == DEFAULT_CODEX_MODELS
+    assert "offline fallback" in str(catalog["warning"])
