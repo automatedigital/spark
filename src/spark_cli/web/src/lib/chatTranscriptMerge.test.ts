@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  LOCAL_CACHE_TEXT_CHARS,
   localTurnCache,
   mergeSyncedMessages,
+  rememberLocalTurn,
   type ChatMessage,
 } from "./chatTranscriptMerge";
 
@@ -10,6 +12,16 @@ afterEach(() => {
 });
 
 describe("chat transcript merge", () => {
+  it("bounds large completed responses and reasoning in the local recovery cache", () => {
+    rememberLocalTurn("large", [
+      { id: "a", role: "assistant", content: "a".repeat(LOCAL_CACHE_TEXT_CHARS * 2) },
+      { id: "r", role: "reasoning", text: "r".repeat(LOCAL_CACHE_TEXT_CHARS * 2) },
+    ]);
+    const cached = localTurnCache.get("large") ?? [];
+    expect((cached[0] as Extract<ChatMessage, { role: "assistant" }>).content).toHaveLength(LOCAL_CACHE_TEXT_CHARS);
+    expect((cached[1] as Extract<ChatMessage, { role: "reasoning" }>).text).toHaveLength(LOCAL_CACHE_TEXT_CHARS);
+  });
+
   it("trusts saved assistant rows after a completed turn instead of keeping duplicated local rows", () => {
     const sessionId = "session-dup";
     const saved: ChatMessage[] = [

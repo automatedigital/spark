@@ -26,7 +26,7 @@ export type ChatMessage =
       endedAt?: number;
       durationSeconds?: number;
     }
-  | { id: string; role: "reasoning"; text: string }
+  | { id: string; role: "reasoning"; text: string; totalChars?: number; omittedChars?: number }
   | {
       id: string;
       role: "approval";
@@ -40,11 +40,34 @@ const hasText = (value: string | null | undefined) => Boolean(value && value.len
 
 export const localTurnCache = new Map<string, ChatMessage[]>();
 
+export const LOCAL_CACHE_TEXT_CHARS = 64 * 1024;
+
+function boundedCacheMessage(msg: ChatMessage): ChatMessage {
+  if (msg.role === "assistant" && msg.content.length > LOCAL_CACHE_TEXT_CHARS) {
+    return {
+      ...msg,
+      content: msg.content.slice(-LOCAL_CACHE_TEXT_CHARS),
+      liveTotalChars: msg.liveTotalChars ?? msg.content.length,
+      liveOmittedChars: (msg.liveTotalChars ?? msg.content.length) - LOCAL_CACHE_TEXT_CHARS,
+    };
+  }
+  if (msg.role === "reasoning" && msg.text.length > LOCAL_CACHE_TEXT_CHARS) {
+    const totalChars = msg.totalChars ?? msg.text.length;
+    return {
+      ...msg,
+      text: msg.text.slice(-LOCAL_CACHE_TEXT_CHARS),
+      totalChars,
+      omittedChars: Math.max(0, totalChars - LOCAL_CACHE_TEXT_CHARS),
+    };
+  }
+  return { ...msg };
+}
+
 function cacheableTranscript(messages: ChatMessage[]): ChatMessage[] {
   return messages
     .filter((msg) => msg.role !== "feedback_form")
     .slice(-300)
-    .map((msg) => ({ ...msg }));
+    .map(boundedCacheMessage);
 }
 
 export function rememberLocalTurn(sessionId: string | null, messages: ChatMessage[]) {
