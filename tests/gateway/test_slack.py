@@ -590,6 +590,28 @@ class TestSendTyping:
             status="is thinking...",
         )
 
+    @pytest.mark.asyncio
+    async def test_stop_typing_clears_active_thread_status(self, adapter):
+        adapter._app.client.assistant_threads_setStatus = AsyncMock()
+        await adapter.send_typing("C123", metadata={"thread_id": "parent_ts"})
+        adapter._app.client.assistant_threads_setStatus.reset_mock()
+
+        await adapter.stop_typing("C123")
+
+        adapter._app.client.assistant_threads_setStatus.assert_called_once_with(
+            channel_id="C123",
+            thread_ts="parent_ts",
+            status="",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stop_typing_is_idempotent(self, adapter):
+        adapter._app.client.assistant_threads_setStatus = AsyncMock()
+
+        await adapter.stop_typing("C123")
+
+        adapter._app.client.assistant_threads_setStatus.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # TestFormatMessage — Markdown → mrkdwn conversion

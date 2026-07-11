@@ -113,6 +113,10 @@ class SlackAdapter(BasePlatformAdapter):
         # Cache for _fetch_thread_context results: cache_key → _ThreadContextCache
         self._thread_context_cache: Dict[str, _ThreadContextCache] = {}
         self._THREAD_CACHE_TTL = 60.0
+        # Slack Assistant statuses persist until explicitly cleared.  Keep the
+        # active thread per channel so BasePlatformAdapter.stop_typing() can
+        # clear the same status after processing completes.
+        self._typing_threads: Dict[str, str] = {}
 
     async def connect(self) -> bool:
         """Connect to Slack via Socket Mode."""
@@ -361,10 +365,28 @@ class SlackAdapter(BasePlatformAdapter):
                 thread_ts=thread_ts,
                 status="is thinking...",
             )
+            self._typing_threads[chat_id] = thread_ts
         except Exception as e:
             # Silently ignore — may lack assistant:write scope or not be
             # in an assistant-enabled context. Falls back to reactions.
             logger.debug("[Slack] assistant.threads.setStatus failed: %s", e)
+
+    async def stop_typing(self, chat_id: str) -> None:
+        """Clear the persistent Slack Assistant thread status."""
+        thread_ts = self._typing_threads.pop(chat_id, None)
+        if not self._app or not thread_ts:
+            return
+
+        try:
+            await self._get_client(chat_id).assistant_threads_setStatus(
+                channel_id=chat_id,
+                thread_ts=thread_ts,
+                status="",
+            )
+        except Exception as e:
+            # Status cleanup must not mask the completed response. A later
+            # refresh will still reconcile Slack's stale client-side state.
+            logger.debug("[Slack] assistant.threads.setStatus cleanup failed: %s", e)
 
     def _resolve_thread_ts(
         self,
