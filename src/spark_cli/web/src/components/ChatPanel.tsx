@@ -88,6 +88,7 @@ import {
 } from "@/lib/chatTranscriptMerge";
 import { isTauri } from "@/sidecar";
 import { liveStreamFlushInterval, snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
+import { copyExactAssistantContent, exactAssistantContent } from "@/lib/exactMessage";
 import {
   appendBoundedText,
   boundText,
@@ -341,11 +342,13 @@ const AssistantRow = memo(function AssistantRow({
   safeMode,
   defaultWrap,
   onPromoteToBrief,
+  onCopyExact,
 }: {
   msg: AssistantMsg;
   safeMode?: boolean;
   defaultWrap?: boolean;
-  onPromoteToBrief?: (text: string) => void;
+  onPromoteToBrief?: (msg: AssistantMsg) => void;
+  onCopyExact?: (msg: AssistantMsg) => void;
 }) {
   return (
     <div className="flex gap-2 group/amsg">
@@ -374,18 +377,26 @@ const AssistantRow = memo(function AssistantRow({
             <span className="text-xs">Thinking…</span>
           </span>
         )}
-        {!msg.streaming && msg.content && onPromoteToBrief && (
-          <div className="absolute -top-2 right-0 opacity-0 group-hover/amsg:opacity-100 transition-opacity">
+        {!msg.streaming && msg.content && (onPromoteToBrief || onCopyExact) && (
+          <div className="absolute -top-2 right-0 opacity-0 group-hover/amsg:opacity-100 transition-opacity flex gap-1">
+            {onCopyExact && (
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6"
+                title="Copy complete response" onClick={() => onCopyExact(msg)}>
+                <Copy className="h-3 w-3" />
+              </Button>
+            )}
+            {onPromoteToBrief && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-6 w-6"
               title="Promote to brief"
-              onClick={() => onPromoteToBrief(msg.content)}
+              onClick={() => onPromoteToBrief(msg)}
             >
               <FileText className="h-3 w-3" />
             </Button>
+            )}
           </div>
         )}
         {!msg.streaming && msg.usage && msg.usage.totalTokens > 0 && (
@@ -567,6 +578,10 @@ export function ChatPanel({
   // Guards against overlapping turn-status re-sync polls.
   const resyncInFlightRef = useRef(false);
   const recoverySignalBudgetRef = useRef(initialRecoverySignalBudget());
+  // Exact oversized messages live outside React render state. They are loaded
+  // only for explicit copy/search/artifact actions and never mounted in the DOM.
+  const exactAssistantContentRef = useRef<Map<string, string>>(new Map());
+  const exactSearchRequestKeyRef = useRef("");
   const resyncTurnStateRef = useRef<((options?: { allowIdle?: boolean }) => Promise<void>) | null>(null);
   // SSE is the fast path; the backend stream snapshot is the source of truth.
   // Track revisions so recovery polling only repaints when the server advanced.
@@ -711,6 +726,8 @@ export function ChatPanel({
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = latestAssistantContentLength(initialTranscript);
     recoverySignalBudgetRef.current = initialRecoverySignalBudget();
+    exactAssistantContentRef.current.clear();
+    exactSearchRequestKeyRef.current = "";
     prevCountRef.current = 0;
     lastAutoScrollAtRef.current = 0;
     scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
@@ -2043,6 +2060,33 @@ export function ChatPanel({
     void navigator.clipboard.writeText(t);
   }, []);
 
+  const fetchExactAssistant = useCallback(async (msg: AssistantMsg) => {
+    if (!msg.liveOmittedChars) return msg.content;
+    const cached = exactAssistantContentRef.current.get(msg.id);
+    if (cached != null) return cached;
+    const sid = activeSessionRef.current;
+    if (!sid) return msg.content;
+    const response = await api.getSessionMessages(sid);
+    const exact = exactAssistantContent(response.messages, msg.id) ?? msg.content;
+    exactAssistantContentRef.current.set(msg.id, exact);
+    return exact;
+  }, []);
+
+  const copyAssistant = useCallback((msg: AssistantMsg) => {
+    const sid = activeSessionRef.current;
+    if (!msg.liveOmittedChars || !sid) {
+      void navigator.clipboard.writeText(msg.content);
+      return;
+    }
+    void copyExactAssistantContent({
+      renderedId: msg.id,
+      visibleFallback: msg.content,
+      loadMessages: async () => (await api.getSessionMessages(sid)).messages,
+      writeText: (content) => navigator.clipboard.writeText(content),
+    })
+      .catch(() => navigator.clipboard.writeText(msg.content));
+  }, []);
+
   const uploadFiles = useCallback(async (files: File[]) => {
     const res = workspaceSlug
       ? await api.uploadWorkspaceFiles(workspaceSlug, files, "files")
@@ -2155,14 +2199,14 @@ export function ChatPanel({
     }
   }, [contextItems, workspaceSlug, updateContextMode]);
 
-  const handlePromoteToBrief = useCallback((text: string) => {
+  const handlePromoteToBrief = useCallback((msg: AssistantMsg) => {
     if (!activeSessionId) return;
-    briefApi.get(activeSessionId).then((r) => {
+    void fetchExactAssistant(msg).then((text) => briefApi.get(activeSessionId).then((r) => {
       const current = r.text.trim();
       const appended = current ? `${current}\n\n${text}` : text;
       return briefApi.set(activeSessionId, appended);
-    }).catch(() => {});
-  }, [activeSessionId]);
+    })).catch(() => {});
+  }, [activeSessionId, fetchExactAssistant]);
 
   // In-session search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -2224,6 +2268,44 @@ export function ChatPanel({
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
+  }, [chatMessages, searchQuery]);
+
+  // Search exact oversized saved responses on demand without putting their
+  // complete strings into React state or the rendered transcript.
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const sid = activeSessionRef.current;
+    const oversized = chatMessages.some(
+      (msg) => msg.role === "assistant" && Boolean(msg.liveOmittedChars),
+    );
+    if (!q) exactSearchRequestKeyRef.current = "";
+    if (!q || !sid || !oversized) return;
+    const requestKey = `${sid}:${q}`;
+    if (exactSearchRequestKeyRef.current === requestKey) return;
+    exactSearchRequestKeyRef.current = requestKey;
+    const recoverySeq = sessionRecoverySeqRef.current;
+    let cancelled = false;
+    void api.getSessionMessages(sid).then((response) => {
+      if (cancelled || recoverySeq !== sessionRecoverySeqRef.current) return;
+      for (const message of response.messages) {
+        if (message.role === "assistant" && message.id != null && message.content != null) {
+          exactAssistantContentRef.current.set(`db:${message.id}`, message.content);
+        }
+      }
+      const results: number[] = [];
+      chatMessages.forEach((msg, index) => {
+        const text = msg.role === "assistant"
+          ? exactAssistantContentRef.current.get(msg.id) ?? msg.content
+          : msg.role === "user" ? msg.content
+          : msg.role === "reasoning" ? msg.text
+          : "";
+        if (text.toLowerCase().includes(q)) results.push(index);
+      });
+      setSearchMatches(results);
+    }).catch(() => {
+      if (exactSearchRequestKeyRef.current === requestKey) exactSearchRequestKeyRef.current = "";
+    });
+    return () => { cancelled = true; };
   }, [chatMessages, searchQuery]);
 
   // Scroll active match into view using the virtualizer
@@ -2986,6 +3068,7 @@ export function ChatPanel({
                     safeMode={safeMode}
                     defaultWrap={chatWordWrap}
                     onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined}
+                    onCopyExact={copyAssistant}
                   />
                 );
               } else if (msg.role === "tool") {
