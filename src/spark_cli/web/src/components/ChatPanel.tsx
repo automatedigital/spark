@@ -83,6 +83,7 @@ import {
   type ChatMessage,
 } from "@/lib/chatTranscriptMerge";
 import { isTauri } from "@/sidecar";
+import { snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
@@ -338,14 +339,21 @@ const AssistantRow = memo(function AssistantRow({
       <SparkAgentAvatar />
       <div className="w-full max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
-          <Markdown
-            content={msg.content}
-            streaming={msg.streaming}
-            showStreamingCursor={msg.streaming}
-            safeMode={safeMode}
-            renderRevision={msg.renderRevision}
-            defaultWrap={defaultWrap}
-          />
+          <>
+            {Boolean(msg.streaming && msg.liveOmittedChars) && (
+              <div className="mb-2 text-[11px] text-muted-foreground/60">
+                Showing the latest {msg.content.length.toLocaleString()} of {msg.liveTotalChars?.toLocaleString()} streamed characters
+              </div>
+            )}
+            <Markdown
+              content={msg.content}
+              streaming={msg.streaming}
+              showStreamingCursor={msg.streaming}
+              safeMode={safeMode}
+              renderRevision={msg.renderRevision}
+              defaultWrap={defaultWrap}
+            />
+          </>
         ) : (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Loader2 className={`h-3 w-3 ${safeMode ? "" : "animate-spin"}`} />
@@ -521,7 +529,7 @@ export function ChatPanel({
   const activeSessionAliasesRef = useRef<Set<string>>(new Set(sessionId ? [sessionId] : []));
   const sessionRecoverySeqRef = useRef(0);
   // Token batching: accumulate tokens and flush once per animation frame
-  const tokenBufferRef = useRef("");
+  const tokenBufferRef = useRef<string[]>([]);
   const rafPendingRef = useRef<number | null>(null);
   const flushTimerRef = useRef<number | null>(null);
   // Reasoning batching: same rAF coalescing as tokens, so a model that streams
@@ -559,6 +567,17 @@ export function ChatPanel({
   streamingRef.current = streaming;
   turnStateRef.current = turnState;
   safeModeRef.current = safeMode;
+
+  useEffect(() => () => {
+    if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current);
+    if (rafPendingRef.current !== null) cancelAnimationFrame(rafPendingRef.current);
+    if (reasoningRafRef.current !== null) cancelAnimationFrame(reasoningRafRef.current);
+    flushTimerRef.current = null;
+    rafPendingRef.current = null;
+    reasoningRafRef.current = null;
+    tokenBufferRef.current = [];
+    reasoningBufferRef.current = "";
+  }, []);
 
   const rememberActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
     ids.forEach((id) => {
@@ -634,13 +653,13 @@ export function ChatPanel({
     if (flushTimerRef.current !== null) {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
-      tokenBufferRef.current = "";
+      tokenBufferRef.current = [];
     }
     if (rafPendingRef.current !== null) {
       cancelAnimationFrame(rafPendingRef.current);
       rafPendingRef.current = null;
-      tokenBufferRef.current = "";
     }
+    tokenBufferRef.current = [];
     if (reasoningRafRef.current !== null) {
       cancelAnimationFrame(reasoningRafRef.current);
       reasoningRafRef.current = null;
@@ -955,19 +974,33 @@ export function ChatPanel({
 
   const flushTokenBuffer = useCallback(() => {
     rafPendingRef.current = null;
-    const buffered = tokenBufferRef.current;
-    tokenBufferRef.current = "";
+    const buffered = tokenBufferRef.current.join("");
+    tokenBufferRef.current = [];
     if (!buffered) return;
     setChatMessages((prev) => {
       const next = [...prev];
       const last = next[next.length - 1];
       if (last?.role === "assistant" && last.streaming) {
-        const content = last.content + buffered;
-        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, content.length);
-        next[next.length - 1] = { ...last, content, renderRevision: (last.renderRevision ?? 0) + 1 };
+        const windowed = windowLiveStream({
+          content: last.content,
+          totalChars: last.liveTotalChars ?? last.content.length,
+          fenceCount: last.liveFenceCount ?? 0,
+        }, buffered);
+        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, windowed.totalChars);
+        next[next.length - 1] = {
+          ...last,
+          content: windowed.content,
+          liveTotalChars: windowed.totalChars,
+          liveOmittedChars: windowed.omittedChars,
+          liveFenceCount: windowed.fenceCount,
+          renderRevision: (last.renderRevision ?? 0) + 1,
+        };
       } else {
-        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, buffered.length);
-        next.push({ id: nid(), role: "assistant", content: buffered, streaming: true, renderRevision: 1 });
+        const windowed = snapshotLiveStream(buffered);
+        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, windowed.totalChars);
+        next.push({ id: nid(), role: "assistant", content: windowed.content, streaming: true,
+          liveTotalChars: windowed.totalChars, liveOmittedChars: windowed.omittedChars,
+          liveFenceCount: windowed.fenceCount, renderRevision: 1 });
       }
       return next;
     });
@@ -984,7 +1017,7 @@ export function ChatPanel({
         cancelAnimationFrame(rafPendingRef.current);
         rafPendingRef.current = null;
       }
-      tokenBufferRef.current = "";
+      tokenBufferRef.current = [];
 
       const nextRevision = typeof revision === "number" ? revision : streamRevisionRef.current + 1;
       const nextChars = start + text.length;
@@ -994,10 +1027,18 @@ export function ChatPanel({
         for (let i = next.length - 1; i >= 0; i--) {
           const msg = next[i];
           if (msg.role !== "assistant") continue;
-          if (msg.content.length !== start) return prev;
+          if ((msg.liveTotalChars ?? msg.content.length) !== start) return prev;
+          const windowed = windowLiveStream({
+            content: msg.content,
+            totalChars: msg.liveTotalChars ?? msg.content.length,
+            fenceCount: msg.liveFenceCount ?? 0,
+          }, text, nextChars);
           next[i] = {
             ...msg,
-            content: msg.content + text,
+            content: windowed.content,
+            liveTotalChars: windowed.totalChars,
+            liveOmittedChars: windowed.omittedChars,
+            liveFenceCount: windowed.fenceCount,
             streaming: true,
             renderRevision: nextRevision > 0 ? nextRevision : (msg.renderRevision ?? 0) + 1,
           };
@@ -1025,7 +1066,7 @@ export function ChatPanel({
       cancelAnimationFrame(rafPendingRef.current);
       rafPendingRef.current = null;
     }
-    tokenBufferRef.current = "";
+    tokenBufferRef.current = [];
 
     const nextState = applyStreamRenderSnapshotState(currentState, { text, revision });
     streamRevisionRef.current = nextState.revision;
@@ -1037,20 +1078,28 @@ export function ChatPanel({
       for (let i = next.length - 1; i >= 0; i--) {
         const msg = next[i];
         if (msg.role !== "assistant") continue;
-        if (msg.content === text) return prev;
+        const windowed = snapshotLiveStream(text, nextState.textChars);
+        if (msg.content === windowed.content && msg.liveTotalChars === windowed.totalChars) return prev;
         next[i] = {
           ...msg,
-          content: text,
+          content: windowed.content,
+          liveTotalChars: windowed.totalChars,
+          liveOmittedChars: windowed.omittedChars,
+          liveFenceCount: windowed.fenceCount,
           streaming: true,
           renderRevision: nextState.revision > 0 ? nextState.revision : (msg.renderRevision ?? 0) + 1,
         };
         applied = true;
         return next;
       }
+      const windowed = snapshotLiveStream(text, nextState.textChars);
       next.push({
         id: nid(),
         role: "assistant",
-        content: text,
+        content: windowed.content,
+        liveTotalChars: windowed.totalChars,
+        liveOmittedChars: windowed.omittedChars,
+        liveFenceCount: windowed.fenceCount,
         streaming: true,
         renderRevision: nextState.revision > 0 ? nextState.revision : 1,
       });
@@ -1064,7 +1113,7 @@ export function ChatPanel({
   // animation frame. Long markdown responses can otherwise spend the whole
   // stream re-rendering the live assistant row.
   const appendToken = useCallback((token: string) => {
-    tokenBufferRef.current += token;
+    tokenBufferRef.current.push(token);
     lastTokenAtRef.current = Date.now();
     if (flushTimerRef.current === null && rafPendingRef.current === null) {
       flushTimerRef.current = window.setTimeout(() => {
@@ -1108,6 +1157,8 @@ export function ChatPanel({
     }
     if (rafPendingRef.current !== null) {
       cancelAnimationFrame(rafPendingRef.current);
+      flushTokenBuffer();
+    } else if (tokenBufferRef.current.length > 0) {
       flushTokenBuffer();
     }
     if (reasoningRafRef.current !== null) {
@@ -2221,7 +2272,7 @@ export function ChatPanel({
   const streamingAssistantChars = useMemo(() => {
     for (let i = chatMessages.length - 1; i >= 0; i--) {
       const msg = chatMessages[i];
-      if (msg.role === "assistant" && msg.streaming) return msg.content.length;
+      if (msg.role === "assistant" && msg.streaming) return msg.liveTotalChars ?? msg.content.length;
     }
     return 0;
   }, [chatMessages]);
@@ -2233,7 +2284,10 @@ export function ChatPanel({
       case "user":
         return 72;
       case "assistant":
-        return estimateAssistantRowSize(item.msg.content);
+        return estimateAssistantRowSize(
+          item.msg.content,
+          item.msg.liveFenceCount,
+        );
       case "tool":
         return 44;
       case "reasoning":

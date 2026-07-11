@@ -2,7 +2,17 @@ import type { ContextItem } from "./context";
 
 export type ChatMessage =
   | { id: string; role: "user"; content: string; sessionIdx?: number; contextItems?: ContextItem[]; redirect?: boolean }
-  | { id: string; role: "assistant"; content: string; streaming?: boolean; renderRevision?: number; usage?: { totalTokens: number; costUsd?: number } }
+  | {
+      id: string;
+      role: "assistant";
+      content: string;
+      streaming?: boolean;
+      renderRevision?: number;
+      liveTotalChars?: number;
+      liveOmittedChars?: number;
+      liveFenceCount?: number;
+      usage?: { totalTokens: number; costUsd?: number };
+    }
   | {
       id: string;
       role: "tool";
