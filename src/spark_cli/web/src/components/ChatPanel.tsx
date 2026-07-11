@@ -81,6 +81,7 @@ import {
   shouldAutoScrollChat,
 } from "@/lib/chatScrollState";
 import {
+  currentTurnLiveAssistantIndex,
   localTurnCache,
   mergeSyncedMessages,
   rememberLocalTurn,
@@ -1062,9 +1063,10 @@ export function ChatPanel({
       lastTokenAtRef.current = Date.now();
       setChatMessages((prev) => {
         const next = [...prev];
-        for (let i = next.length - 1; i >= 0; i--) {
+        const i = currentTurnLiveAssistantIndex(next);
+        if (i >= 0) {
           const msg = next[i];
-          if (msg.role !== "assistant") continue;
+          if (msg.role !== "assistant") return prev;
           const windowed = canAppend
             ? windowLiveStream({
                 content: msg.content,
@@ -1112,9 +1114,10 @@ export function ChatPanel({
     let applied = false;
     setChatMessages((prev) => {
       const next = [...prev];
-      for (let i = next.length - 1; i >= 0; i--) {
+      const i = currentTurnLiveAssistantIndex(next);
+      if (i >= 0) {
         const msg = next[i];
-        if (msg.role !== "assistant") continue;
+        if (msg.role !== "assistant") return prev;
         const windowed = snapshotLiveStream(text, nextState.textChars);
         if (msg.content === windowed.content && msg.liveTotalChars === windowed.totalChars) return prev;
         next[i] = {

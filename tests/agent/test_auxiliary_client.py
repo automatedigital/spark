@@ -23,6 +23,30 @@ from agent.auxiliary_client import (
 )
 
 
+def test_codex_oauth_headers_include_official_client_identity():
+    import base64
+
+    from agent.auxiliary_client import codex_oauth_default_headers
+
+    payload = base64.urlsafe_b64encode(json.dumps({
+        "https://api.openai.com/auth": {"chatgpt_account_id": "acct_test"}
+    }).encode()).decode().rstrip("=")
+    headers = codex_oauth_default_headers(f"header.{payload}.signature")
+
+    assert headers["originator"] == "codex_cli_rs"
+    assert headers["User-Agent"].startswith("codex_cli_rs/")
+    assert headers["ChatGPT-Account-Id"] == "acct_test"
+
+
+def test_codex_oauth_headers_tolerate_opaque_token():
+    from agent.auxiliary_client import codex_oauth_default_headers
+
+    headers = codex_oauth_default_headers("opaque-token")
+
+    assert headers["originator"] == "codex_cli_rs"
+    assert "ChatGPT-Account-Id" not in headers
+
+
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     """Strip provider env vars so each test starts clean."""

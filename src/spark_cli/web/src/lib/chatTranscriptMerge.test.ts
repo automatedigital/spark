@@ -1,11 +1,34 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  currentTurnLiveAssistantIndex,
   LOCAL_CACHE_TEXT_CHARS,
   localTurnCache,
   mergeSyncedMessages,
   rememberLocalTurn,
   type ChatMessage,
 } from "./chatTranscriptMerge";
+
+describe("currentTurnLiveAssistantIndex", () => {
+  it("never reuses an assistant from before the latest user message", () => {
+    const messages: ChatMessage[] = [
+      { id: "a-old", role: "assistant", content: "previous answer" },
+      { id: "u-new", role: "user", content: "new question" },
+    ];
+
+    expect(currentTurnLiveAssistantIndex(messages)).toBe(-1);
+  });
+
+  it("finds the current live assistant across reasoning and tool rows", () => {
+    const messages: ChatMessage[] = [
+      { id: "u-new", role: "user", content: "new question" },
+      { id: "r", role: "reasoning", text: "thinking" },
+      { id: "a-live", role: "assistant", content: "partial", streaming: true },
+      { id: "t", role: "tool", toolId: "1", name: "lookup", args: {} },
+    ];
+
+    expect(currentTurnLiveAssistantIndex(messages)).toBe(2);
+  });
+});
 
 afterEach(() => {
   localTurnCache.clear();

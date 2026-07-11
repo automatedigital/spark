@@ -617,6 +617,33 @@ def _read_codex_access_token() -> Optional[str]:
         return None
 
 
+def codex_oauth_default_headers(access_token: str) -> dict[str, str]:
+    """Build the first-party headers required by the ChatGPT Codex backend.
+
+    Codex OAuth traffic is not interchangeable with an API-key request.  The
+    official Codex client identifies the product and, when present in the JWT,
+    sends the ChatGPT account that owns the subscription.
+    """
+    headers = {
+        "originator": "codex_cli_rs",
+        "User-Agent": "codex_cli_rs/1.0.0 (Spark Agent)",
+    }
+    try:
+        import base64
+
+        parts = access_token.split(".")
+        if len(parts) >= 2:
+            payload = parts[1] + "=" * (-len(parts[1]) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload))
+            auth_claims = claims.get("https://api.openai.com/auth", {})
+            account_id = auth_claims.get("chatgpt_account_id", "")
+            if isinstance(account_id, str) and account_id.strip():
+                headers["ChatGPT-Account-Id"] = account_id.strip()
+    except Exception:
+        logger.debug("Could not extract ChatGPT account ID from Codex OAuth token")
+    return headers
+
+
 def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
     """Try each API-key provider in PROVIDER_REGISTRY order.
 
@@ -1301,6 +1328,7 @@ def resolve_provider_client(
             raw_client = OpenAI(
                 api_key=codex_token,
                 base_url=_CODEX_AUX_BASE_URL,
+                default_headers=codex_oauth_default_headers(codex_token),
                 **httpx_client_kwargs(),
             )
             return (raw_client, final_model)

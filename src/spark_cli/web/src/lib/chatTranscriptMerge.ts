@@ -42,6 +42,22 @@ export const localTurnCache = new Map<string, ChatMessage[]>();
 
 export const LOCAL_CACHE_TEXT_CHARS = 64 * 1024;
 
+/**
+ * Return the live assistant row for the current turn only.
+ *
+ * A recovery snapshot may arrive after the optimistic user row but before the
+ * first token event. Never reuse an assistant from an earlier turn: doing so
+ * renders the new response above its user message until saved history lands.
+ */
+export function currentTurnLiveAssistantIndex(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role === "user") return -1;
+    if (message.role === "assistant" && message.streaming) return i;
+  }
+  return -1;
+}
+
 function boundedCacheMessage(msg: ChatMessage): ChatMessage {
   if (msg.role === "assistant" && msg.content.length > LOCAL_CACHE_TEXT_CHARS) {
     return {

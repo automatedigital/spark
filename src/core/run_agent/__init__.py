@@ -609,6 +609,10 @@ class AIAgent(_PromptCacheMixin):
                     }
                 elif "portal.qwen.ai" in effective_base.lower():
                     client_kwargs["default_headers"] = _qwen_portal_headers()
+                elif self.provider == "openai-codex":
+                    from agent.auxiliary_client import codex_oauth_default_headers
+
+                    client_kwargs["default_headers"] = codex_oauth_default_headers(api_key)
             else:
                 # No explicit creds — use the centralized provider router
                 from agent.auxiliary_client import resolve_provider_client
