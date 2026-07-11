@@ -2245,15 +2245,23 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
         )
     )
     canonical_order = ("minimal", "low", "medium", "high", "xhigh")
+    display_labels = {
+        "minimal": "light",
+        "low": "medium",
+        "medium": "high",
+        "high": "extra-high",
+        "xhigh": "ultra",
+    }
     ordered = [effort for effort in canonical_order if effort in deduped]
     ordered.extend(effort for effort in deduped if effort not in canonical_order)
     if not ordered:
         return None
 
     def _label(effort):
+        label = display_labels.get(effort, effort)
         if effort == current_effort:
-            return f"{effort}  ← currently in use"
-        return effort
+            return f"{label}  ← currently in use"
+        return label
 
     disable_label = "Disable reasoning"
     skip_label = "Skip (keep current)"
