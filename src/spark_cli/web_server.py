@@ -429,11 +429,13 @@ _DROPPABLE_EVENT_TOPICS = {
 }
 _event_drop_counts: dict[str, int] = {}
 _TOKEN_BATCH_MAX_CHARS = 64 * 1024
+_TOKEN_BATCH_MIN_INTERVAL_S = 0.025
 _TOKEN_PENDING_MAX_SESSIONS = 128
 _pending_token_events: dict[str, dict[str, Any]] = {}
 _pending_token_gap_sessions: set[str] = set()
 _pending_token_lock = threading.Lock()
 _token_flush_scheduled = False
+_token_last_flush_at = 0.0
 _event_sequence = 0
 
 
@@ -1597,12 +1599,25 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
     # A semantic event is a hard token-batch boundary. Seal the current batch
     # before scheduling it so a later token cannot jump across a tool/status/
     # lifecycle event while the event loop is busy.
+    sealed_token_events = None
+    sealed_gap_sessions = None
     if topic != "chat.token" and topic.startswith("chat.") and session_id:
         with _pending_token_lock:
             if session_id in _pending_token_events:
+                sealed_token_events = _pending_token_events
+                sealed_gap_sessions = _pending_token_gap_sessions
                 _pending_token_events = {}
                 _pending_token_gap_sessions = set()
                 _token_flush_scheduled = False
+        if sealed_token_events is not None:
+            try:
+                loop.call_soon_threadsafe(
+                    _flush_pending_token_events,
+                    sealed_token_events,
+                    sealed_gap_sessions,
+                )
+            except Exception:
+                pass
 
     if topic == "chat.token" and session_id:
         should_schedule = False
@@ -1636,7 +1651,8 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         if should_schedule:
             try:
                 loop.call_soon_threadsafe(
-                    _flush_pending_token_events,
+                    _schedule_pending_token_flush,
+                    loop,
                     _pending_token_events,
                     _pending_token_gap_sessions,
                 )
@@ -1651,11 +1667,32 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         pass
 
 
+def _schedule_pending_token_flush(
+    loop: asyncio.AbstractEventLoop,
+    token_events: dict[str, dict[str, Any]],
+    gap_event_sessions: set[str],
+) -> None:
+    """Coalesce sustained producer bursts to one fanout per frame budget."""
+    delay = max(
+        0.0,
+        _TOKEN_BATCH_MIN_INTERVAL_S - (_steady_clock() - _token_last_flush_at),
+    )
+    if delay <= 0:
+        _flush_pending_token_events(token_events, gap_event_sessions)
+    else:
+        loop.call_later(
+            delay,
+            _flush_pending_token_events,
+            token_events,
+            gap_event_sessions,
+        )
+
+
 def _flush_pending_token_events(
     token_events: dict[str, dict[str, Any]],
     gap_event_sessions: set[str],
 ) -> None:
-    global _token_flush_scheduled
+    global _token_flush_scheduled, _token_last_flush_at
     with _pending_token_lock:
         pending = list(token_events.values())
         gap_sessions = tuple(gap_event_sessions)
@@ -1663,6 +1700,8 @@ def _flush_pending_token_events(
         gap_event_sessions.clear()
         if token_events is _pending_token_events:
             _token_flush_scheduled = False
+    if pending:
+        _token_last_flush_at = _steady_clock()
     for envelope in pending:
         published_at = float(envelope.pop("published_at", _steady_clock()))
         overflow = bool(envelope.pop("overflow", False))
