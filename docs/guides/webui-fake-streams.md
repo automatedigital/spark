@@ -5,12 +5,29 @@ state bugs without provider keys, model latency, or token cost.
 
 ## Start
 
+For preview-pane testing, use the disposable runner:
+
+```bash
+source .venv/bin/activate
+python scripts/preview_webui_stress.py
+```
+
+Open the printed Preview URL, select **Disposable WebUI stress stream**, switch
+between chats, scroll, and press **Stop** while the response is growing. The
+runner binds both services to loopback, uses a temporary `SPARK_HOME`, and
+removes its processes, session database, logs, and other profile artifacts on
+exit, failure, SIGINT, or SIGTERM. Pass `--keep-home` only when those artifacts
+are intentionally needed for debugging.
+
+For a manually scripted stream, start the server directly:
+
 ```bash
 source .venv/bin/activate
 SPARK_WEB_FAKE_STREAMS=1 python -m spark_cli.main dashboard --port 9119
 ```
 
-The endpoint is disabled unless `SPARK_WEB_FAKE_STREAMS=1` is set.
+The endpoint is disabled unless `SPARK_WEB_FAKE_STREAMS=1` is set and rejects
+non-loopback clients even when the dashboard itself is exposed on the network.
 
 ## Create A Stream
 
@@ -43,6 +60,7 @@ Stop the dashboard process and unset the flag:
 unset SPARK_WEB_FAKE_STREAMS
 ```
 
-Fake sessions are normal web sessions in the active `SPARK_HOME`. Remove them
-from the UI like any other test chat, or use a temporary `SPARK_HOME` while
-stress testing.
+Fake sessions are normal web sessions in the active `SPARK_HOME`. Prefer the
+disposable runner above. If the dashboard was started manually, remove fake
+sessions from the UI or delete only the temporary `SPARK_HOME` you created for
+the test; never point destructive cleanup at a real profile.

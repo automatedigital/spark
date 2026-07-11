@@ -391,6 +391,71 @@ def test_fake_stream_endpoint_is_disabled_by_default(web_client, monkeypatch):
     assert resp.status_code == 404
 
 
+def test_fake_stream_endpoint_requires_loopback_client():
+    import spark_cli.web_server as web_server
+
+    assert web_server._is_loopback_client_host("127.0.0.1") is True
+    assert web_server._is_loopback_client_host("::1") is True
+    assert web_server._is_loopback_client_host("203.0.113.10") is False
+    assert web_server._is_loopback_client_host("example.com") is False
+
+
+def test_fake_stream_interrupt_cancels_delayed_worker_promptly(web_client, monkeypatch):
+    import spark_cli.web_server as web_server
+    from core.spark_state import SessionDB
+
+    monkeypatch.setenv("SPARK_WEB_FAKE_STREAMS", "1")
+    published = []
+    original_publish = web_server._publish_event
+
+    def capture_event(topic, data, session_id=None):
+        published.append((topic, data, session_id))
+        return original_publish(topic, data, session_id)
+
+    monkeypatch.setattr(web_server, "_publish_event", capture_event)
+    started = time.monotonic()
+    resp = web_client.post(
+        "/api/dev/fake-streams",
+        json={
+            "session_id": "fake_interrupt",
+            "message": "stop this fake stream",
+            "events": [
+                {"type": "token", "text": "partial "},
+                {"type": "token", "text": "must-not-appear", "delay_ms": 30_000},
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    assert _wait_for(
+        lambda: web_client.get("/api/conversations/fake_interrupt/stream-snapshot").json()[
+            "stream_text"
+        ]
+        == "partial "
+    )
+
+    interrupted = web_client.post(
+        "/api/conversations/fake_interrupt/interrupt",
+        json={"message": None},
+    )
+    assert interrupted.status_code == 200
+    assert _wait_for(
+        lambda: web_client.get("/api/conversations/fake_interrupt/turn-status").json()[
+            "turn_active"
+        ]
+        is False
+    )
+    assert time.monotonic() - started < 2.0
+
+    db = SessionDB()
+    try:
+        messages = db.get_messages("fake_interrupt")
+    finally:
+        db.close()
+    assert "must-not-appear" not in "".join(str(item.get("content") or "") for item in messages)
+    done = [item for item in published if item[0] == "chat.turn_done"]
+    assert done[-1][1]["interrupted"] is True
+
+
 def test_fake_stream_routes_through_turn_status_snapshot_and_persistence(web_client, monkeypatch):
     import spark_cli.web_server as web_server
     from core.spark_state import SessionDB
