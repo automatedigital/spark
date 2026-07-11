@@ -636,3 +636,29 @@ class TestEndOfTurnReconciliation:
             ("assistant", "full answer after compaction"),
         ]
         assert [m for m in parent_msgs if m["role"] == "assistant"] == []
+def test_chunked_stream_ingests_and_recovers_ten_megabytes_linearly():
+    """Regression: token ingestion must not rebuild the accumulated response."""
+    from spark_cli import web_server
+
+    turn = web_server.WebActiveTurn(
+        started_at=time.time(),
+        last_event_at=time.time(),
+        status="Streaming",
+        interrupt_requested=False,
+        active_agent_session_id="large-stream",
+        phase="streaming",
+    )
+    chunk = "0123456789" * 100
+    started = time.perf_counter()
+    for _ in range(10_000):
+        turn.stream_text.append(chunk)
+    append_seconds = time.perf_counter() - started
+
+    assert len(turn.stream_text) == 10_000_000
+    assert append_seconds < 2.0
+    snapshot = turn.stream_text.snapshot()
+    assert len(snapshot[0]) == 10_000
+    recovered = web_server._ChunkedStreamText.materialize(snapshot)
+    assert len(recovered) == 10_000_000
+    assert recovered[:1000] == chunk
+    assert recovered[-1000:] == chunk

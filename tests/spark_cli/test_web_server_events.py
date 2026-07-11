@@ -8,6 +8,28 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def test_event_subscriber_cancellation_reaps_queue_get_tasks():
+    from spark_cli import web_server
+
+    async def exercise():
+        subscriber = web_server._EventSubscriber(prefixes=("chat",))
+        before = set(asyncio.all_tasks())
+        waiting = asyncio.create_task(subscriber.get())
+        await asyncio.sleep(0)
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        await asyncio.sleep(0)
+        leaked = [
+            task
+            for task in asyncio.all_tasks()
+            if task not in before and task is not asyncio.current_task() and not task.done()
+        ]
+        assert leaked == []
+
+    asyncio.run(exercise())
+
+
 @pytest.fixture
 def web_client(monkeypatch, tmp_path):
     try:

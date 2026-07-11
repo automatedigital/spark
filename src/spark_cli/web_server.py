@@ -129,6 +129,64 @@ _admin_runs: dict[str, dict[str, Any]] = {}
 _admin_run_queues: dict[str, thread_queue.Queue] = {}
 
 
+class _ChunkedStreamText:
+    """Append-only text with O(1) token ingestion and bounded slicing.
+
+    The web stream can contain millions of characters. Keeping it as one
+    immutable ``str`` made each token copy the entire response. This small
+    rope-like container keeps chunks untouched until a checkpoint or recovery
+    snapshot actually needs text.
+    """
+
+    __slots__ = ("_chunks", "_length")
+
+    def __init__(self, text: str = "") -> None:
+        self._chunks: list[str] = [text] if text else []
+        self._length = len(text)
+
+    def append(self, text: str) -> None:
+        if text:
+            self._chunks.append(text)
+            self._length += len(text)
+
+    def __len__(self) -> int:
+        return self._length
+
+    def __bool__(self) -> bool:
+        return bool(self._length)
+
+    def snapshot(self) -> tuple[tuple[str, ...], int]:
+        return tuple(self._chunks), self._length
+
+    @staticmethod
+    def materialize(snapshot: tuple[tuple[str, ...], int]) -> str:
+        chunks, _length = snapshot
+        return "".join(chunks)
+
+    def slice(self, start: int = 0) -> str:
+        start = max(0, min(start, self._length))
+        if start == 0:
+            return "".join(self._chunks)
+        skipped = 0
+        selected: list[str] = []
+        for chunk in self._chunks:
+            next_skipped = skipped + len(chunk)
+            if next_skipped > start:
+                selected.append(chunk[start - skipped :])
+                start = next_skipped
+            elif selected:
+                selected.append(chunk)
+            skipped = next_skipped
+        return "".join(selected)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return self.slice() == other
+        if isinstance(other, _ChunkedStreamText):
+            return self.snapshot() == other.snapshot()
+        return NotImplemented
+
+
 @dataclass
 class WebActiveTurn:
     started_at: float
@@ -137,7 +195,7 @@ class WebActiveTurn:
     interrupt_requested: bool
     active_agent_session_id: Optional[str]
     phase: str
-    stream_text: str = ""
+    stream_text: str | _ChunkedStreamText = field(default_factory=_ChunkedStreamText)
     stream_revision: int = 0
     # Incremental persistence: the user message is written to SQLite at turn
     # start and the streamed assistant text is checkpointed periodically, so a
@@ -415,24 +473,30 @@ class _EventSubscriber:
             return ready
         priority = asyncio.create_task(self.priority_queue.get())
         data = asyncio.create_task(self.data_queue.get())
-        done, pending = await asyncio.wait(
-            {priority, data}, return_when=asyncio.FIRST_COMPLETED
-        )
-        chosen = next(iter(done))
-        if priority in done and data in done:
-            priority_env = priority.result()
-            data_env = data.result()
-            if self._sequence_of(priority_env) < self._sequence_of(data_env):
-                chosen = priority
-                self.data_queue._queue.appendleft(data_env)  # type: ignore[attr-defined]
-            else:
-                chosen = data
-                self.priority_queue._queue.appendleft(priority_env)  # type: ignore[attr-defined]
-        for task in pending:
-            task.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-        return chosen.result()
+        tasks = {priority, data}
+        try:
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            chosen = next(iter(done))
+            if priority in done and data in done:
+                priority_env = priority.result()
+                data_env = data.result()
+                if self._sequence_of(priority_env) < self._sequence_of(data_env):
+                    chosen = priority
+                    self.data_queue._queue.appendleft(data_env)  # type: ignore[attr-defined]
+                else:
+                    chosen = data
+                    self.priority_queue._queue.appendleft(priority_env)  # type: ignore[attr-defined]
+            return chosen.result()
+        finally:
+            # Cancellation can arrive while asyncio.wait itself is suspended.
+            # Always reap both Queue.get tasks or interpreter shutdown reports
+            # them as destroyed-but-pending.
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def _get_earliest_ready(self) -> dict[str, Any] | None:
         priority_head = None
@@ -754,7 +818,10 @@ def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
         with turn.lock:
             turn.last_event_at = time.time()
             turn.phase = "streaming"
-            turn.stream_text += token
+            if isinstance(turn.stream_text, str):
+                # Compatibility for callers/tests which seed partial text.
+                turn.stream_text = _ChunkedStreamText(turn.stream_text)
+            turn.stream_text.append(token)
             turn.stream_revision += 1
             checkpoint_enabled = (
                 turn.user_message_id is not None or turn.assistant_message_id is not None
@@ -1004,16 +1071,30 @@ class _CheckpointWriter:
     def _write_request(db: Any, request: _CheckpointRequest) -> None:
         turn = request.turn
         with turn.lock:
-            text = turn.stream_text
-            revision = turn.stream_revision or len(text)
-            if not text or revision <= turn.checkpointed_revision:
+            stream_text = turn.stream_text
+            text_length = len(stream_text)
+            revision = turn.stream_revision or text_length
+            if not stream_text or revision <= turn.checkpointed_revision:
                 return
+            text_snapshot = (
+                stream_text.snapshot()
+                if isinstance(stream_text, _ChunkedStreamText)
+                else stream_text
+            )
             assistant_message_id = turn.assistant_message_id
             target = (
                 turn.checkpoint_session_id
                 or turn.active_agent_session_id
                 or request.session_id
             )
+        # Joining can be expensive for multi-megabyte responses. The immutable
+        # chunk references make it safe to materialize without holding the
+        # token-ingestion lock.
+        text = (
+            _ChunkedStreamText.materialize(text_snapshot)
+            if not isinstance(text_snapshot, str)
+            else text_snapshot
+        )
         started = _steady_clock()
         if assistant_message_id is None:
             assistant_message_id = db.append_message(
@@ -9521,18 +9602,31 @@ async def conversation_stream_snapshot(
 
 
 def _bounded_stream_snapshot_text(
-    stream_text: str,
+    stream_text: str | _ChunkedStreamText | tuple[tuple[str, ...], int],
     *,
     after_chars: Optional[int] = None,
     tail_chars: Optional[int] = None,
 ) -> tuple[str, int, str, bool]:
+    if isinstance(stream_text, tuple):
+        chunks, total_chars = stream_text
+        chunked = _ChunkedStreamText()
+        chunked._chunks = list(chunks)
+        chunked._length = total_chars
+        stream_text = chunked
     total_chars = len(stream_text)
+
+    def _slice(start: int = 0) -> str:
+        return (
+            stream_text.slice(start)
+            if isinstance(stream_text, _ChunkedStreamText)
+            else stream_text[start:]
+        )
     if after_chars is not None and 0 <= after_chars <= total_chars:
-        return stream_text[after_chars:], after_chars, "delta", after_chars == 0
+        return _slice(after_chars), after_chars, "delta", after_chars == 0
     if tail_chars is not None and tail_chars > 0 and total_chars > tail_chars:
         start = total_chars - tail_chars
-        return stream_text[start:], start, "tail", False
-    return stream_text, 0, "full", True
+        return _slice(start), start, "tail", False
+    return _slice(), 0, "full", True
 
 
 def _conversation_stream_snapshot_payload(
@@ -9546,7 +9640,11 @@ def _conversation_stream_snapshot_payload(
     state, reason, idle_for = _web_turn_state(turn)
     if turn:
         with turn.lock:
-            stream_text = turn.stream_text
+            stream_text = (
+                turn.stream_text.snapshot()
+                if isinstance(turn.stream_text, _ChunkedStreamText)
+                else turn.stream_text
+            )
             stream_revision = turn.stream_revision
     else:
         stream_text = ""
@@ -9566,7 +9664,9 @@ def _conversation_stream_snapshot_payload(
         "reason": reason,
         "idle_for_seconds": idle_for,
         "stream_revision": stream_revision,
-        "stream_text_chars": len(stream_text),
+        "stream_text_chars": (
+            stream_text[1] if isinstance(stream_text, tuple) else len(stream_text)
+        ),
         "returned_text_start": text_start,
         "returned_text_mode": text_mode,
         "timings": _web_turn_timing_payload(turn),
@@ -9584,7 +9684,9 @@ def _conversation_stream_snapshot_payload(
         "idle_for_seconds": idle_for,
         "stream_text": returned_text,
         "stream_revision": stream_revision,
-        "stream_text_chars": len(stream_text),
+        "stream_text_chars": (
+            stream_text[1] if isinstance(stream_text, tuple) else len(stream_text)
+        ),
         "stream_text_start": text_start,
         "stream_text_mode": text_mode,
         "stream_text_complete": text_complete,
