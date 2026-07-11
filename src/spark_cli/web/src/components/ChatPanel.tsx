@@ -54,7 +54,11 @@ import {
   recoverTurnStateFromBackend,
   type ChatTurnState,
 } from "@/lib/chatTurnState";
-import { decideRecoveryPoll } from "@/lib/chatRecovery";
+import {
+  consumeRecoverySignal,
+  decideRecoveryPoll,
+  initialRecoverySignalBudget,
+} from "@/lib/chatRecovery";
 import {
   recoveryActionsForTurn,
   readChatDiagnosticCounters,
@@ -84,6 +88,12 @@ import {
 } from "@/lib/chatTranscriptMerge";
 import { isTauri } from "@/sidecar";
 import { liveStreamFlushInterval, snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
+import {
+  appendBoundedText,
+  boundText,
+  COMPLETED_TEXT_WINDOW_CHARS,
+  REASONING_WINDOW_CHARS,
+} from "@/lib/textWindow";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
@@ -146,10 +156,14 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
     } else if (m.role === "assistant") {
       const reasoning = m.reasoning?.trim();
       if (reasoning) {
-        out.push({ id: `${baseId}:reasoning`, role: "reasoning", text: reasoning });
+        const bounded = boundText(reasoning, REASONING_WINDOW_CHARS);
+        out.push({ id: `${baseId}:reasoning`, role: "reasoning", text: bounded.text,
+          totalChars: bounded.totalChars, omittedChars: bounded.omittedChars });
       }
       if (hasText(m.content)) {
-        out.push({ id: baseId, role: "assistant", content: m.content ?? "" });
+        const bounded = boundText(m.content ?? "", COMPLETED_TEXT_WINDOW_CHARS);
+        out.push({ id: baseId, role: "assistant", content: bounded.text,
+          liveTotalChars: bounded.totalChars, liveOmittedChars: bounded.omittedChars });
       }
     } else if (m.role === "tool") {
       const toolId = m.tool_call_id ?? "";
@@ -172,7 +186,7 @@ function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
 function latestAssistantContentLength(messages: ChatMessage[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg.role === "assistant" && msg.content) return msg.content.length;
+    if (msg.role === "assistant" && msg.content) return msg.liveTotalChars ?? msg.content.length;
   }
   return 0;
 }
@@ -339,9 +353,10 @@ const AssistantRow = memo(function AssistantRow({
       <div className="w-full max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
         {msg.content ? (
           <>
-            {Boolean(msg.streaming && msg.liveOmittedChars) && (
+            {Boolean(msg.liveOmittedChars) && (
               <div className="mb-2 text-[11px] text-muted-foreground/60">
-                Showing the latest {msg.content.length.toLocaleString()} of {msg.liveTotalChars?.toLocaleString()} streamed characters
+                Showing the latest {msg.content.length.toLocaleString()} of {msg.liveTotalChars?.toLocaleString()} characters
+                {!msg.streaming && "; the complete response remains saved in this session"}
               </div>
             )}
             <Markdown
@@ -417,7 +432,12 @@ const ToolRow = memo(function ToolRow({
 });
 
 const ReasoningRow = memo(function ReasoningRow({ msg, isActive, safeMode }: { msg: ReasoningMsg; isActive?: boolean; safeMode?: boolean }) {
-  return <div className="pl-9"><ReasoningBubble text={msg.text} isActive={isActive} safeMode={safeMode} /></div>;
+  return <div className="pl-9">
+    {Boolean(msg.omittedChars) && (
+      <p className="mb-1 text-[10px] text-muted-foreground">Earlier reasoning hidden to keep this chat responsive.</p>
+    )}
+    <ReasoningBubble text={msg.text} isActive={isActive} safeMode={safeMode} />
+  </div>;
 });
 
 const ApprovalRow = memo(function ApprovalRow({
@@ -535,6 +555,7 @@ export function ChatPanel({
   // reasoning in many small deltas triggers at most one re-render per frame
   // instead of one per delta.
   const reasoningBufferRef = useRef("");
+  const reasoningBufferedCharsRef = useRef(0);
   const reasoningRafRef = useRef<number | null>(null);
   // Timestamp of the last chat event received for the active turn. Drives the
   // stall watchdog that recovers from a silently-dropped turn (lost SSE).
@@ -545,6 +566,7 @@ export function ChatPanel({
   const lastIdleRecoveryPollAtRef = useRef<number>(0);
   // Guards against overlapping turn-status re-sync polls.
   const resyncInFlightRef = useRef(false);
+  const recoverySignalBudgetRef = useRef(initialRecoverySignalBudget());
   const resyncTurnStateRef = useRef<((options?: { allowIdle?: boolean }) => Promise<void>) | null>(null);
   // SSE is the fast path; the backend stream snapshot is the source of truth.
   // Track revisions so recovery polling only repaints when the server advanced.
@@ -576,6 +598,7 @@ export function ChatPanel({
     reasoningRafRef.current = null;
     tokenBufferRef.current = [];
     reasoningBufferRef.current = "";
+    reasoningBufferedCharsRef.current = 0;
   }, []);
 
   const rememberActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
@@ -663,6 +686,7 @@ export function ChatPanel({
       cancelAnimationFrame(reasoningRafRef.current);
       reasoningRafRef.current = null;
       reasoningBufferRef.current = "";
+      reasoningBufferedCharsRef.current = 0;
     }
     prependScrollAnchorRef.current = null;
     setActiveSessionId(sessionId);
@@ -686,6 +710,7 @@ export function ChatPanel({
     lastTokenAtRef.current = initialMessage ? Date.now() : 0;
     streamRevisionRef.current = 0;
     streamTextCharsRef.current = latestAssistantContentLength(initialTranscript);
+    recoverySignalBudgetRef.current = initialRecoverySignalBudget();
     prevCountRef.current = 0;
     lastAutoScrollAtRef.current = 0;
     scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
@@ -759,17 +784,11 @@ export function ChatPanel({
               ? snapshot.active_turn_session_id ?? snapshotSessionId
               : null;
             if (snapshot.stream_text) {
-              const applied = syncLiveAssistantSnapshot(
+              syncLiveAssistantSnapshot(
                 snapshot.stream_text,
                 snapshot.stream_revision,
                 snapshot.stream_text_start ?? 0,
               );
-              if (!applied && (snapshot.stream_text_start ?? 0) > 0) {
-                const fullSnapshot = await api.getStreamSnapshot(snapshotSessionId);
-                if (fullSnapshot.stream_text) {
-                  syncLiveAssistantSnapshot(fullSnapshot.stream_text, fullSnapshot.stream_revision);
-                }
-              }
             }
             if (!snapshot.turn_active) {
               setTurnState("idle");
@@ -1020,18 +1039,22 @@ export function ChatPanel({
 
       const nextRevision = typeof revision === "number" ? revision : streamRevisionRef.current + 1;
       const nextChars = start + text.length;
-      let applied = false;
+      const canAppend = streamTextCharsRef.current === start;
+      streamRevisionRef.current = nextRevision;
+      streamTextCharsRef.current = Math.max(streamTextCharsRef.current, nextChars);
+      lastTokenAtRef.current = Date.now();
       setChatMessages((prev) => {
         const next = [...prev];
         for (let i = next.length - 1; i >= 0; i--) {
           const msg = next[i];
           if (msg.role !== "assistant") continue;
-          if ((msg.liveTotalChars ?? msg.content.length) !== start) return prev;
-          const windowed = windowLiveStream({
-            content: msg.content,
-            totalChars: msg.liveTotalChars ?? msg.content.length,
-            fenceCount: msg.liveFenceCount ?? 0,
-          }, text, nextChars);
+          const windowed = canAppend
+            ? windowLiveStream({
+                content: msg.content,
+                totalChars: msg.liveTotalChars ?? msg.content.length,
+                fenceCount: msg.liveFenceCount ?? 0,
+              }, text, nextChars)
+            : snapshotLiveStream(text, nextChars);
           next[i] = {
             ...msg,
             content: windowed.content,
@@ -1041,17 +1064,15 @@ export function ChatPanel({
             streaming: true,
             renderRevision: nextRevision > 0 ? nextRevision : (msg.renderRevision ?? 0) + 1,
           };
-          applied = true;
           return next;
         }
-        return prev;
+        const windowed = snapshotLiveStream(text, nextChars);
+        next.push({ id: nid(), role: "assistant", content: windowed.content, streaming: true,
+          liveTotalChars: windowed.totalChars, liveOmittedChars: windowed.omittedChars,
+          liveFenceCount: windowed.fenceCount, renderRevision: nextRevision });
+        return next;
       });
-      if (applied) {
-        streamRevisionRef.current = nextRevision;
-        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, nextChars);
-        lastTokenAtRef.current = Date.now();
-      }
-      return applied;
+      return true;
     }
 
     const currentState = { revision: streamRevisionRef.current, textChars: streamTextCharsRef.current };
@@ -1126,15 +1147,27 @@ export function ChatPanel({
   const flushReasoningBuffer = useCallback(() => {
     reasoningRafRef.current = null;
     const buffered = reasoningBufferRef.current;
+    const bufferedChars = reasoningBufferedCharsRef.current;
     reasoningBufferRef.current = "";
+    reasoningBufferedCharsRef.current = 0;
     if (!buffered) return;
     setChatMessages((prev) => {
       const next = [...prev];
       const last = next[next.length - 1];
       if (last?.role === "reasoning") {
-        next[next.length - 1] = { ...last, text: last.text ? `${last.text}${buffered}` : buffered };
+        const windowed = appendBoundedText({
+          text: last.text,
+          totalChars: last.totalChars ?? last.text.length,
+          omittedChars: last.omittedChars ?? 0,
+        }, buffered, REASONING_WINDOW_CHARS);
+        windowed.totalChars += Math.max(0, bufferedChars - buffered.length);
+        windowed.omittedChars = Math.max(0, windowed.totalChars - windowed.text.length);
+        next[next.length - 1] = { ...last, text: windowed.text,
+          totalChars: windowed.totalChars, omittedChars: windowed.omittedChars };
       } else {
-        next.push({ id: nid(), role: "reasoning", text: buffered });
+        const windowed = boundText(buffered, REASONING_WINDOW_CHARS, bufferedChars);
+        next.push({ id: nid(), role: "reasoning", text: windowed.text,
+          totalChars: windowed.totalChars, omittedChars: windowed.omittedChars });
       }
       return next;
     });
@@ -1142,7 +1175,8 @@ export function ChatPanel({
 
   // Accumulate reasoning deltas and flush once per animation frame, mirroring tokens.
   const appendReasoning = useCallback((text: string) => {
-    reasoningBufferRef.current += text;
+    reasoningBufferRef.current = `${reasoningBufferRef.current}${text}`.slice(-REASONING_WINDOW_CHARS);
+    reasoningBufferedCharsRef.current += text.length;
     if (reasoningRafRef.current === null) {
       reasoningRafRef.current = requestAnimationFrame(flushReasoningBuffer);
     }
@@ -1270,17 +1304,11 @@ export function ChatPanel({
             ? snapshot.active_turn_session_id ?? snapshotSessionId
             : null;
           if (snapshot.stream_text) {
-            const applied = syncLiveAssistantSnapshot(
+            syncLiveAssistantSnapshot(
               snapshot.stream_text,
               snapshot.stream_revision,
               snapshot.stream_text_start ?? 0,
             );
-            if (!applied && (snapshot.stream_text_start ?? 0) > 0) {
-              const fullSnapshot = await api.getStreamSnapshot(snapshotSessionId);
-              if (fullSnapshot.stream_text) {
-                syncLiveAssistantSnapshot(fullSnapshot.stream_text, fullSnapshot.stream_revision);
-              }
-            }
           }
           if (!snapshot.turn_active) {
             activeTurnSessionIdRef.current = null;
@@ -1336,13 +1364,17 @@ export function ChatPanel({
     // so reconcile against the backend's turn-status.
     if (env.topic === BUS_RECONNECTED_TOPIC) {
       setSseReconnectCount((count) => count + 1);
-      void resyncTurnState({ allowIdle: true });
+      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
+      recoverySignalBudgetRef.current = result.budget;
+      if (result.allowed) void resyncTurnState({ allowIdle: true });
       return;
     }
     const sid = env.session_id ?? undefined;
     if (!sid || !activeSessionAliasesRef.current.has(sid)) return;
     if (env.topic === BUS_GAP_TOPIC) {
-      void resyncTurnState({ allowIdle: true });
+      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
+      recoverySignalBudgetRef.current = result.budget;
+      if (result.allowed) void resyncTurnState({ allowIdle: true });
       return;
     }
     const eventNow = Date.now();
@@ -1657,12 +1689,16 @@ export function ChatPanel({
         setStatusLabel(decision.statusLabel);
       }
       if (decision.poll) {
-        void resyncTurnState({ allowIdle: !streamingRef.current });
+        const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
+        recoverySignalBudgetRef.current = result.budget;
+        if (result.allowed) void resyncTurnState({ allowIdle: !streamingRef.current });
       }
     };
     const handleVisibility = () => {
       if (document.hidden) return;
-      void resyncTurnState({ allowIdle: !streamingRef.current });
+      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
+      recoverySignalBudgetRef.current = result.budget;
+      if (result.allowed) void resyncTurnState({ allowIdle: !streamingRef.current });
     };
     const interval = setInterval(tick, 2_000);
     document.addEventListener("visibilitychange", handleVisibility);
@@ -2651,9 +2687,20 @@ export function ChatPanel({
   const diagnosticsMessageCount = typeof conversationDiagnostics?.message_count === "number"
     ? conversationDiagnostics.message_count
     : null;
+  const stressReasoningVisibleChars = chatMessages.reduce(
+    (total, msg) => total + (msg.role === "reasoning" ? msg.text.length : 0),
+    0,
+  );
 
   return (
     <div
+      data-testid="chat-panel"
+      data-session-id={activeSessionId ?? ""}
+      data-turn-state={turnState}
+      data-streaming={streaming ? "true" : "false"}
+      data-stream-visible-chars={streamingAssistantVisibleChars}
+      data-reasoning-visible-chars={stressReasoningVisibleChars}
+      data-recovery-polls={recoveryPollCount}
       className={cn("flex min-h-0 w-full flex-1 flex-col bg-background/45 relative", className)}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
