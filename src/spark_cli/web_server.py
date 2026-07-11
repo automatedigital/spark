@@ -7898,6 +7898,25 @@ def _persist_web_turn_if_missing(
         try:
             messages = db.get_messages(session_id)
             final_response = _extract_final_response(result)
+            interrupted = bool(
+                isinstance(result, dict) and result.get("interrupted")
+            )
+
+            # AIAgent returns a diagnostic ``final_response`` when an in-flight
+            # provider call is interrupted (for example, "Operation
+            # interrupted: waiting for model response...").  That string is a
+            # lifecycle note, not assistant output.  Never let it replace the
+            # checkpointed text the user already saw streaming in the browser.
+            if interrupted and checkpoint_assistant_id is not None:
+                final_response = ""
+            elif (
+                not final_response.strip()
+                and isinstance(result, dict)
+                and result.get("failed")
+                and str(result.get("error") or "").strip()
+            ):
+                error = str(result["error"]).strip()
+                final_response = f"Model request failed: {error}"
 
             display_response = (
                 _maybe_materialize_large_assistant_response(
@@ -7974,8 +7993,15 @@ def _persist_web_turn_if_missing(
                     db.append_message(session_id, "user", content=user_message)
                 # else: the turn-start eager row already persisted it.
             elif eager_user_id is not None:
-                # The agent flushed its own copy — drop the eager duplicate.
-                db.delete_message(eager_user_id)
+                # Keep the turn-start row in its original chronological
+                # position.  A streaming assistant checkpoint may have been
+                # inserted before the agent flushes its own copy of the user
+                # message; deleting the eager row would then reorder history
+                # as assistant -> user after reload.
+                for duplicate in user_messages:
+                    duplicate_id = duplicate.get("id")
+                    if duplicate_id is not None and duplicate_id != eager_user_id:
+                        db.delete_message(duplicate_id)
 
             if display_response:
                 if has_assistant:

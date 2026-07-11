@@ -156,6 +156,38 @@ class TestStreamingCheckpoint:
         finally:
             web_server._clear_web_turn(sid)
 
+    def test_interrupted_turn_keeps_streamed_checkpoint_instead_of_diagnostic(self, db):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "interrupted-partial")
+        eager_id = web_server._persist_web_user_message(sid, "question")
+        turn = web_server._mark_web_turn_active(sid, active_agent_session_id=sid)
+        turn.user_message_id = eager_id
+        try:
+            web_server._append_web_turn_token(sid, "partial answer already shown")
+            assert web_server._checkpoint_writer.flush(sid, turn, timeout=1.0)
+            checkpoint_id = turn.assistant_message_id
+
+            web_server._persist_web_turn_if_missing(
+                sid,
+                "question",
+                {
+                    "interrupted": True,
+                    "final_response": "Operation interrupted: waiting for model response.",
+                },
+                before_message_count=1,
+                eager_user_id=eager_id,
+                checkpoint_assistant_id=checkpoint_id,
+            )
+
+            messages = db.get_messages(sid)
+            assistant = [message for message in messages if message["role"] == "assistant"]
+            assert len(assistant) == 1
+            assert assistant[0]["content"] == "partial answer already shown"
+            assert assistant[0]["finish_reason"] == "interrupted"
+        finally:
+            web_server._clear_web_turn(sid)
+
     def test_shutdown_forces_pending_checkpoint_before_interval(self, db, monkeypatch):
         from spark_cli import web_server
 
@@ -529,6 +561,63 @@ class TestEndOfTurnReconciliation:
         msgs = db.get_messages(sid)
         assert len([m for m in msgs if m["role"] == "user"]) == 1
         assert len([m for m in msgs if m["role"] == "assistant"]) == 1
+        assert [(m["role"], m["content"]) for m in msgs] == [
+            ("user", "the question"),
+            ("assistant", "the full final answer"),
+        ]
+
+    def test_agent_user_flush_cannot_move_question_after_partial_checkpoint(self, db):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "checkpoint-order")
+        eager_id, turn, before = self._start_turn(db, sid)
+
+        # The agent flush happens after the checkpoint has already inserted
+        # the assistant row. This is the ordering seen in real stopped turns.
+        duplicate_user_id = db.append_message(sid, "user", content="the question")
+
+        web_server._persist_web_turn_if_missing(
+            sid,
+            "the question",
+            {"interrupted": True, "final_response": "Operation interrupted."},
+            before,
+            eager_user_id=eager_id,
+            checkpoint_assistant_id=turn.assistant_message_id,
+        )
+
+        msgs = db.get_messages(sid)
+        assert [(m["role"], m["content"]) for m in msgs] == [
+            ("user", "the question"),
+            ("assistant", "partial"),
+        ]
+        assert all(m["id"] != duplicate_user_id for m in msgs)
+
+    def test_provider_failure_is_saved_as_actionable_assistant_error(self, db):
+        from spark_cli import web_server
+
+        sid = _make_session(db, "provider-model-failure")
+        eager_id = web_server._persist_web_user_message(sid, "Hey")
+
+        web_server._persist_web_turn_if_missing(
+            sid,
+            "Hey",
+            {
+                "failed": True,
+                "final_response": None,
+                "error": "HTTP 404: Model not found gpt-5.6-luna",
+            },
+            before_message_count=1,
+            eager_user_id=eager_id,
+        )
+
+        messages = db.get_messages(sid)
+        assert [(message["role"], message["content"]) for message in messages] == [
+            ("user", "Hey"),
+            (
+                "assistant",
+                "Model request failed: HTTP 404: Model not found gpt-5.6-luna",
+            ),
+        ]
 
     def test_interrupted_turn_keeps_partial_checkpoint(self, db):
         from spark_cli import web_server

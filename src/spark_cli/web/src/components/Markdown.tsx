@@ -491,7 +491,10 @@ function Block({
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";
       return (
-        <Tag className={`space-y-0.5 ${block.ordered ? "list-decimal" : "list-disc"} pl-5 text-sm`}>
+        <Tag
+          start={block.ordered ? block.start : undefined}
+          className={`space-y-0.5 ${block.ordered ? "list-decimal" : "list-disc"} pl-5 text-sm`}
+        >
           {block.items.map((item, i) => {
             // Task list: "[ ] ..." or "[x] ..."
             const taskMatch = item.match(/^\[([ xX])\]\s+(.*)/);

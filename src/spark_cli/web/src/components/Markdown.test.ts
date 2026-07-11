@@ -89,6 +89,16 @@ describe("parseInline hardening (no catastrophic backtracking)", () => {
 });
 
 describe("streaming markdown parser regression coverage", () => {
+  it("preserves ordered-list numbering across blank-line-separated items", () => {
+    const blocks = parseBlocks("1. first\n\n2. second\n\n10. tenth");
+
+    expect(blocks).toEqual([
+      { type: "list", ordered: true, items: ["first"], start: 1 },
+      { type: "list", ordered: true, items: ["second"], start: 2 },
+      { type: "list", ordered: true, items: ["tenth"], start: 10 },
+    ]);
+  });
+
   it("parses the screenshot shape as markdown blocks while content is still streaming", () => {
     const content = [
       "## Heading",

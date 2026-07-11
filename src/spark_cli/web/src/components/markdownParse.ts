@@ -14,7 +14,7 @@ export type BlockNode =
   | { type: "code"; lang: string; content: string }
   | { type: "heading"; level: number; content: string }
   | { type: "hr" }
-  | { type: "list"; ordered: boolean; items: string[] }
+  | { type: "list"; ordered: boolean; items: string[]; start?: number }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "blockquote"; content: string }
   | { type: "paragraph"; content: string };
@@ -147,11 +147,12 @@ export function parseBlocks(text: string): BlockNode[] {
     // Ordered list
     if (/^\d+[.)]\s/.test(line)) {
       const items: string[] = [];
+      const start = Number.parseInt(line.match(/^(\d+)/)?.[1] ?? "1", 10);
       while (i < lines.length && /^\d+[.)]\s/.test(lines[i])) {
         items.push(lines[i].replace(/^\d+[.)]\s/, ""));
         i++;
       }
-      blocks.push({ type: "list", ordered: true, items });
+      blocks.push({ type: "list", ordered: true, items, start });
       continue;
     }
 
