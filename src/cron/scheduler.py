@@ -47,12 +47,13 @@ def _build_known_delivery_platforms() -> frozenset:
 
 _KNOWN_DELIVERY_PLATFORMS = _build_known_delivery_platforms()
 
-from cron.jobs import get_due_jobs, mark_job_run, save_job_output, advance_next_run
+from cron.jobs import advance_next_run, get_due_jobs, get_job, mark_job_run, save_job_output
 
 # Sentinel: when a cron agent has nothing new to report, it can start its
 # response with this marker to suppress delivery.  Output is still saved
 # locally for audit.
 SILENT_MARKER = "[SILENT]"
+JOB_CANCELLED_ERROR = "Cron job cancelled"
 
 # Resolve Spark home directory (respects SPARK_HOME override)
 _spark_home = get_spark_home()
@@ -751,7 +752,7 @@ def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session
     )
 
 
-def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict) -> dict:
+def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict, is_cancelled=None) -> dict:
     """Run the agent with an inactivity-based timeout. Returns the result dict."""
     job_name = job["name"]
     _cron_inactivity_limit = env.get("cron_timeout", 600.0) or None
@@ -769,6 +770,10 @@ def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict) -> dict:
                 if done:
                     result = _cron_future.result()
                     break
+                if is_cancelled and is_cancelled():
+                    if hasattr(agent, "interrupt"):
+                        agent.interrupt(JOB_CANCELLED_ERROR)
+                    raise RuntimeError(JOB_CANCELLED_ERROR)
                 _idle_secs = 0.0
                 if hasattr(agent, "get_activity_summary"):
                     try:
@@ -830,7 +835,7 @@ def _format_job_output(result: dict, job: dict, prompt: str) -> tuple[str, str]:
     return output, final_response
 
 
-def run_job(job: dict) -> tuple[bool, str, str, str | None]:
+def run_job(job: dict, is_cancelled=None) -> tuple[bool, str, str, str | None]:
     """Execute a single cron job.
 
     Returns:
@@ -852,9 +857,11 @@ def run_job(job: dict) -> tuple[bool, str, str, str | None]:
     logger.info("Prompt: %s", prompt[:100])
 
     try:
+        if is_cancelled and is_cancelled():
+            raise RuntimeError(JOB_CANCELLED_ERROR)
         env = _setup_job_environment(job)
         agent = _initialize_job_agent(job, env, prompt, _session_db, _cron_session_id)
-        result = _execute_job_with_timeout(agent, job, prompt, env)
+        result = _execute_job_with_timeout(agent, job, prompt, env, is_cancelled=is_cancelled)
         output, final_response = _format_job_output(result, job, prompt)
         logger.info("Job '%s' completed successfully", job_name)
         return True, output, final_response, None
@@ -937,13 +944,20 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
         executed = 0
         for job in due_jobs:
             try:
+                tracked_at_start = get_job(job["id"]) is not None
                 # For recurring jobs (cron/interval), advance next_run_at to the
                 # next future occurrence BEFORE execution.  This way, if the
                 # process crashes mid-run, the job won't re-fire on restart.
                 # One-shot jobs are left alone so they can retry on restart.
                 advance_next_run(job["id"])
 
-                success, output, final_response, error = run_job(job)
+                def job_cancelled() -> bool:
+                    current = get_job(job["id"])
+                    if current is None:
+                        return tracked_at_start
+                    return not current.get("enabled", True) or current.get("state") == "paused"
+
+                success, output, final_response, error = run_job(job, is_cancelled=job_cancelled)
 
                 output_file = save_job_output(job["id"], output)
                 if verbose:
@@ -952,6 +966,11 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
                 # Deliver the final response to the origin/target chat.
                 # If the agent responded with [SILENT], skip delivery (but
                 # output is already saved above).  Failed jobs always deliver.
+                if job_cancelled() or error == f"RuntimeError: {JOB_CANCELLED_ERROR}":
+                    logger.info("Job '%s' was cancelled; suppressing delivery and run marking", job["id"])
+                    executed += 1
+                    continue
+
                 deliver_content = final_response if success else f"⚠️ Cron job '{job.get('name', job['id'])}' failed:\n{error}"
                 should_deliver = bool(deliver_content)
                 if should_deliver and success and SILENT_MARKER in deliver_content.strip().upper():
