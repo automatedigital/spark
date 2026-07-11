@@ -307,7 +307,14 @@ export const api = {
   getModelStatus: () => fetchJSON<ModelStatusResponse>("/api/model/status"),
   getModelSuggestions: () => fetchJSON<ModelSuggestionsResponse>("/api/model/suggestions"),
   getAvailableModels: (provider: string, baseUrl?: string) =>
-    fetchJSON<{ provider: string; models: string[]; live: boolean; strict: boolean }>(
+    fetchJSON<{
+      provider: string;
+      models: string[];
+      live: boolean;
+      strict: boolean;
+      source: string;
+      warning: string;
+    }>(
       `/api/model/available?provider=${encodeURIComponent(provider)}` +
         (baseUrl ? `&base_url=${encodeURIComponent(baseUrl)}` : ""),
     ),

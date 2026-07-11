@@ -10,9 +10,6 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 DEFAULT_CODEX_MODELS: list[str] = [
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
     "gpt-5.4-mini",
     "gpt-5.4",
     "gpt-5.3-codex",
@@ -21,42 +18,7 @@ DEFAULT_CODEX_MODELS: list[str] = [
     "gpt-5.1-codex-mini",
 ]
 
-_FORWARD_COMPAT_TEMPLATE_MODELS: list[tuple[str, tuple[str, ...]]] = [
-    ("gpt-5.6-sol", ("gpt-5.5", "gpt-5.4")),
-    ("gpt-5.6-terra", ("gpt-5.4-mini", "gpt-5.4")),
-    ("gpt-5.6-luna", ("gpt-5.4-mini", "gpt-5.4-nano")),
-    ("gpt-5.4-mini", ("gpt-5.3-codex", "gpt-5.2-codex")),
-    ("gpt-5.4", ("gpt-5.3-codex", "gpt-5.2-codex")),
-    ("gpt-5.3-codex", ("gpt-5.2-codex",)),
-    ("gpt-5.3-codex-spark", ("gpt-5.3-codex", "gpt-5.2-codex")),
-]
-
-
-def _add_forward_compat_models(model_ids: list[str]) -> list[str]:
-    """Add Clawdbot-style synthetic forward-compat Codex models.
-
-    If a newer Codex slug isn't returned by live discovery, surface it when an
-    older compatible template model is present. This mirrors Clawdbot's
-    synthetic catalog / forward-compat behavior for GPT-5 Codex variants.
-    """
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for model_id in model_ids:
-        if model_id not in seen:
-            ordered.append(model_id)
-            seen.add(model_id)
-
-    for synthetic_model, template_models in _FORWARD_COMPAT_TEMPLATE_MODELS:
-        if synthetic_model in seen:
-            continue
-        if any(template in seen for template in template_models):
-            ordered.append(synthetic_model)
-            seen.add(synthetic_model)
-
-    return ordered
-
-
-def _fetch_models_from_api(access_token: str, timeout: float = 10.0) -> list[str]:
+def _fetch_models_from_api(access_token: str, timeout: float = 10.0) -> list[str] | None:
     """Fetch available models from the Codex API. Returns visible models sorted by priority."""
     try:
         import httpx
@@ -66,12 +28,13 @@ def _fetch_models_from_api(access_token: str, timeout: float = 10.0) -> list[str
             timeout=timeout,
         )
         if resp.status_code != 200:
-            return []
+            logger.debug("Codex model discovery returned HTTP %s", resp.status_code)
+            return None
         data = resp.json()
         entries = data.get("models", []) if isinstance(data, dict) else []
     except Exception as exc:
         logger.debug("Failed to fetch Codex models from API: %s", exc)
-        return []
+        return None
 
     sortable = []
     for item in entries:
@@ -91,7 +54,9 @@ def _fetch_models_from_api(access_token: str, timeout: float = 10.0) -> list[str
         sortable.append((rank, slug))
 
     sortable.sort(key=lambda x: (x[0], x[1]))
-    return _add_forward_compat_models([slug for _, slug in sortable])
+    # A successful account-scoped response is authoritative. Never append
+    # models merely because they exist in the direct OpenAI API catalog.
+    return list(dict.fromkeys(slug for _, slug in sortable))
 
 
 def _read_default_model(codex_home: Path) -> str | None:
@@ -162,11 +127,12 @@ def get_codex_model_ids(
     codex_home = Path(codex_home_str).expanduser()
     ordered: list[str] = []
 
-    # Try live API if we have a token
+    # A non-empty account-scoped result is authoritative. Synthesizing slugs
+    # here creates options the user's Codex subscription may not expose.
     if access_token:
         api_models = _fetch_models_from_api(access_token, timeout=api_timeout)
         if api_models:
-            return _add_forward_compat_models(api_models)
+            return api_models
 
     # Fall back to local sources
     default_model = _read_default_model(codex_home)
@@ -181,4 +147,31 @@ def get_codex_model_ids(
         if model_id not in ordered:
             ordered.append(model_id)
 
-    return _add_forward_compat_models(ordered)
+    return ordered
+
+
+def get_codex_model_catalog(
+    access_token: str | None = None,
+    *,
+    api_timeout: float = 10.0,
+) -> dict[str, object]:
+    """Return Codex models with discovery provenance for user-facing clients."""
+    if access_token:
+        live = _fetch_models_from_api(access_token, timeout=api_timeout)
+        if live:
+            return {"models": live, "source": "live", "live": True, "warning": ""}
+        warning = (
+            "Could not load this account's live Codex model catalog; "
+            "showing the offline fallback."
+        )
+    else:
+        warning = (
+            "OpenAI Codex is not authenticated; showing the offline fallback. "
+            "Connect Codex to load the models available to this account."
+        )
+    return {
+        "models": get_codex_model_ids(),
+        "source": "offline-fallback",
+        "live": False,
+        "warning": warning,
+    }

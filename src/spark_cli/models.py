@@ -63,13 +63,13 @@ _openrouter_catalog_cache: list[tuple[str, str]] | None = None
 def _codex_curated_models() -> list[str]:
     """Derive the openai-codex curated list from codex_models.py.
 
-    Single source of truth: DEFAULT_CODEX_MODELS + forward-compat synthesis.
+    Single source of truth: the conservative Codex offline fallback.
     This keeps the gateway /model picker in sync with the CLI `spark model`
     flow without maintaining a separate static list.
     """
-    from spark_cli.codex_models import DEFAULT_CODEX_MODELS, _add_forward_compat_models
+    from spark_cli.codex_models import DEFAULT_CODEX_MODELS
 
-    return _add_forward_compat_models(list(DEFAULT_CODEX_MODELS))
+    return list(DEFAULT_CODEX_MODELS)
 
 
 _PROVIDER_MODELS: dict[str, list[str]] = {

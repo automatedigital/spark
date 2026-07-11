@@ -3965,8 +3965,7 @@ def get_model_status():
 # (/api/model/suggestions) and the Config editor dropdown (/api/model/available).
 _PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
     "openai-codex": [
-        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-        "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini", "o3-mini",
+        "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2-codex",
     ],
     "qwen-oauth": ["qwen3-coder-plus", "qwen3-coder-flash"],
     "openai": [
@@ -4063,9 +4062,13 @@ def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, b
 
     if provider == "openai-codex":
         try:
-            from spark_cli.codex_models import get_codex_model_ids
+            from spark_cli.auth import get_codex_auth_status
+            from spark_cli.codex_models import get_codex_model_catalog
 
-            return get_codex_model_ids(), False
+            status = get_codex_auth_status()
+            token = str(status.get("api_key", "") or "") if status.get("logged_in") else ""
+            catalog = get_codex_model_catalog(access_token=token, api_timeout=2.0)
+            return list(catalog["models"]), bool(catalog["live"])
         except Exception:
             return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
 
@@ -4116,7 +4119,22 @@ def get_available_models(provider: str = "", base_url: str = ""):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     models, live = _resolve_provider_models(provider, normalized_base_url)
     strict = provider in _STRICT_MODEL_PROVIDERS
-    return {"provider": provider, "models": models, "live": live, "strict": strict}
+    warning = ""
+    source = "live" if live else "curated"
+    if provider == "openai-codex" and not live:
+        source = "offline-fallback"
+        warning = (
+            "The live Codex catalog is unavailable. Only conservative offline "
+            "fallback models are shown; reconnect Codex to refresh account availability."
+        )
+    return {
+        "provider": provider,
+        "models": models,
+        "live": live,
+        "strict": strict,
+        "source": source,
+        "warning": warning,
+    }
 
 
 @app.get("/api/model/suggestions")
