@@ -41,6 +41,30 @@ describe("chat transcript merge", () => {
     expect(merged.at(-1)).toEqual({ id: "feedback", role: "feedback_form" });
   });
 
+  it("replaces a bounded live tail with the exact saved final response", () => {
+    const sessionId = "session-windowed-final";
+    const finalContent = Array.from({ length: 20_000 }, (_, index) => `line-${index}\n`).join("");
+    const tail = finalContent.slice(-65_536);
+    const live: ChatMessage[] = [{
+      id: "local-live",
+      role: "assistant",
+      content: tail,
+      streaming: false,
+      liveTotalChars: finalContent.length,
+      liveOmittedChars: finalContent.length - tail.length,
+      liveFenceCount: 0,
+    }];
+    const saved: ChatMessage[] = [{ id: "db:final", role: "assistant", content: finalContent }];
+
+    const merged = mergeSyncedMessages(saved, live, sessionId, {
+      preferSyncedAssistants: true,
+      syncedComplete: true,
+    });
+
+    expect(merged).toEqual(saved);
+    expect((merged[0] as Extract<ChatMessage, { role: "assistant" }>).content.length).toBe(finalContent.length);
+  });
+
   it("still keeps cached assistant progress while the saved transcript is behind", () => {
     const sessionId = "session-streaming";
     const saved: ChatMessage[] = [

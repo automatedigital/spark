@@ -51,11 +51,13 @@ export function shouldSkipRowMeasurement(
  * exceed 900px) and code-fence aware: fenced blocks render taller per
  * character than prose (monospace lines, padding, header chrome).
  */
-export function estimateAssistantRowSize(content: string): number {
+export function estimateAssistantRowSize(content: string, knownFenceCount?: number): number {
   const base = Math.ceil(content.length / 95) * 22 + 48;
-  let fenceCount = 0;
-  for (let i = content.indexOf("```"); i !== -1; i = content.indexOf("```", i + 3)) {
-    fenceCount += 1;
+  let fenceCount = knownFenceCount ?? 0;
+  if (knownFenceCount === undefined) {
+    for (let i = content.indexOf("```"); i !== -1; i = content.indexOf("```", i + 3)) {
+      fenceCount += 1;
+    }
   }
   const fencePairs = Math.floor(fenceCount / 2);
   return Math.min(20_000, Math.max(96, base + fencePairs * 120));
