@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+from spark_cli.codex_models import DEFAULT_CODEX_MODELS
+
+
+def test_gpt_56_family_is_in_default_codex_catalog():
+    assert DEFAULT_CODEX_MODELS[:3] == [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ]
+
 
 def test_openai_codex_model_flow_uses_quick_live_catalog(monkeypatch):
     """The picker should use live discovery with a short timeout."""
@@ -119,5 +129,8 @@ def test_get_codex_model_ids_forwards_api_timeout(monkeypatch):
 
     monkeypatch.setattr("spark_cli.codex_models._fetch_models_from_api", fake_fetch)
 
-    assert get_codex_model_ids(access_token="token", api_timeout=1.5) == ["gpt-5.5"]
+    assert get_codex_model_ids(access_token="token", api_timeout=1.5) == [
+        "gpt-5.5",
+        "gpt-5.6-sol",
+    ]
     assert seen == {"access_token": "token", "timeout": 1.5}

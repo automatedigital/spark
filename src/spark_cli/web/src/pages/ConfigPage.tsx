@@ -57,11 +57,9 @@ const MODEL_EDITOR_KEYS = new Set([
 
 const REASONING_EFFORT_OPTIONS = [
   { value: "", label: "Default" },
-  { value: "minimal", label: "Minimal" },
-  { value: "low", label: "Low" },
+  { value: "low", label: "Light" },
   { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "Max" },
+  { value: "high", label: "Hard" },
 ];
 
 const MODEL_PROVIDER_OPTIONS = [
@@ -108,6 +106,9 @@ function configProviderOptions(config: Record<string, unknown> | null) {
 const OAUTH_RECONNECT_PROVIDERS = new Set(["openai-codex", "qwen-oauth", "anthropic"]);
 
 const CODEX_MODEL_FALLBACKS = [
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
   "gpt-5.5",
   "gpt-5.4",
   "gpt-5.4-mini",

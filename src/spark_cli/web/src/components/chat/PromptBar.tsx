@@ -208,10 +208,9 @@ function renderMirror(text: string, cursorPos: number, showCursor: boolean): Rea
 
 const REASONING_OPTIONS = [
   { value: "none", label: "Off" },
-  { value: "low", label: "Low" },
+  { value: "low", label: "Light" },
   { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "Max" },
+  { value: "high", label: "Hard" },
 ] as const;
 
 // ── Project picker ────────────────────────────────────────────────────────────

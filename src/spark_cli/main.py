@@ -1065,10 +1065,14 @@ def _save_reasoning_effort(effort: str) -> bool:
     from spark_cli.config import load_config, save_config
 
     normalized = str(effort or "").strip().lower()
-    if parse_reasoning_effort(normalized) is None:
+    parsed = parse_reasoning_effort(normalized)
+    if parsed is None:
         print("Invalid reasoning effort.")
-        print("Valid levels: none, minimal, low, medium, high, xhigh")
+        print("Valid phases: light, medium, hard (API aliases: low, high)")
         return False
+
+    if parsed.get("enabled") and parsed.get("effort"):
+        normalized = str(parsed["effort"])
 
     config = load_config()
     _set_reasoning_effort(config, normalized)

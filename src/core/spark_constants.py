@@ -165,6 +165,8 @@ def parse_reasoning_effort(effort: str) -> dict | None:
     if not effort or not effort.strip():
         return None
     effort = effort.strip().lower()
+    # Friendly Spark phases map to the canonical OpenAI API values.
+    effort = {"light": "low", "hard": "high"}.get(effort, effort)
     if effort == "none":
         return {"enabled": False}
     if effort in VALID_REASONING_EFFORTS:

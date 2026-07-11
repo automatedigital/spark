@@ -175,6 +175,11 @@ class TestWebServerEndpoints:
         assert data["provider"] == "openai-codex"
         assert data["strict"] is True
         assert "gpt-5.5" in data["models"]
+        assert {
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+        }.issubset(data["models"])
 
     def test_available_models_open_providers_are_freetext(self):
         """Open-ended providers (ollama, openrouter) return strict=False so the

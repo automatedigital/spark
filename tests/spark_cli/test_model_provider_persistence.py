@@ -78,6 +78,19 @@ class TestSaveModelChoiceAlwaysDict:
         assert config["agent"]["reasoning_effort"] == "high"
         assert "Reasoning effort set to: high" in capsys.readouterr().out
 
+    def test_spark_model_reasoning_accepts_friendly_phase_names(self, config_home):
+        import yaml
+
+        from spark_cli.main import cmd_model_reasoning
+
+        cmd_model_reasoning("light")
+        config = yaml.safe_load((config_home / "config.yaml").read_text())
+        assert config["agent"]["reasoning_effort"] == "low"
+
+        cmd_model_reasoning("hard")
+        config = yaml.safe_load((config_home / "config.yaml").read_text())
+        assert config["agent"]["reasoning_effort"] == "high"
+
     def test_spark_model_reasoning_rejects_invalid_effort(self, config_home, capsys):
         import yaml
 

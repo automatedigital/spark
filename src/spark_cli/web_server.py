@@ -3964,9 +3964,16 @@ def get_model_status():
 # Provider-aware model name catalogs. Used by both the quick-settings popover
 # (/api/model/suggestions) and the Config editor dropdown (/api/model/available).
 _PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
-    "openai-codex": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini", "o3-mini"],
+    "openai-codex": [
+        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+        "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini", "o3-mini",
+    ],
     "qwen-oauth": ["qwen3-coder-plus", "qwen3-coder-flash"],
-    "openai": ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini"],
+    "openai": [
+        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+        "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+        "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini",
+    ],
     "anthropic": [
         "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
         "claude-opus-4-5", "claude-sonnet-4-5",
