@@ -44,6 +44,22 @@ def test_installer_migrates_config_and_checks_dashboard_health():
     assert "verify_dashboard_health || true" not in content
 
 
+def test_installer_discards_generated_web_assets_before_autostash():
+    content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    function_start = content.index("discard_generated_web_assets()")
+    clone_start = content.index("clone_repo()", function_start)
+    clone_end = content.index("setup_venv()", clone_start)
+    function_body = content[function_start:clone_start]
+    clone_body = content[clone_start:clone_end]
+
+    assert "git restore --source=HEAD --staged --worktree -- src/spark_cli/web_dist" in function_body
+    assert "git clean -fd -- src/spark_cli/web_dist" in function_body
+    assert clone_body.index("discard_generated_web_assets") < clone_body.index(
+        "git stash push --include-untracked"
+    )
+
+
 def test_legacy_setup_script_syncs_missing_bundled_skills():
     content = SETUP_SCRIPT.read_text(encoding="utf-8")
 

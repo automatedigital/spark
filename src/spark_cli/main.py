@@ -3813,6 +3813,11 @@ def _sync_bundled_skills_to_dashboard_homes_for_update(
 
 
 def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
+    # Dashboard bundles are generated output, not user customizations. Clean
+    # them before inspecting/stashing so stale or unmerged web_dist files can
+    # never block either the terminal updater or the Web UI update button.
+    _reset_generated_web_assets(git_cmd, cwd)
+
     status = subprocess.run(
         git_cmd + ["status", "--porcelain"],
         cwd=cwd,
@@ -3836,6 +3841,15 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
     if unmerged.stdout.strip():
         print("→ Clearing unmerged index entries from a previous conflict...")
         subprocess.run(git_cmd + ["reset"], cwd=cwd, capture_output=True)
+        status = subprocess.run(
+            git_cmd + ["status", "--porcelain"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        if not status.stdout.strip():
+            return None
 
     from datetime import datetime, timezone
 

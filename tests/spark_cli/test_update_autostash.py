@@ -168,6 +168,86 @@ def test_reset_generated_web_assets_restores_tracked_bundle_and_cleans_untracked
     assert not (assets / "index-old.js").exists()
 
 
+def test_stash_discards_generated_changes_but_preserves_real_edits(tmp_path):
+    repo = tmp_path
+    subprocess = spark_main.subprocess
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+
+    web_dist = repo / "src" / "spark_cli" / "web_dist"
+    web_dist.mkdir(parents=True)
+    generated = web_dist / "index.html"
+    source = repo / "source.py"
+    generated.write_text("current bundle", encoding="utf-8")
+    source.write_text("current source", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=repo, check=True, capture_output=True)
+
+    generated.write_text("stale bundle", encoding="utf-8")
+    source.write_text("local source edit", encoding="utf-8")
+
+    stash_ref = spark_main._stash_local_changes_if_needed(["git"], repo)
+
+    assert stash_ref
+    assert generated.read_text(encoding="utf-8") == "current bundle"
+    assert source.read_text(encoding="utf-8") == "current source"
+    stashed_paths = subprocess.run(
+        ["git", "stash", "show", "--name-only", stash_ref],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert "source.py" in stashed_paths
+    assert "src/spark_cli/web_dist/index.html" not in stashed_paths
+
+
+def test_stash_recovers_from_unmerged_generated_web_asset(tmp_path):
+    repo = tmp_path
+    subprocess = spark_main.subprocess
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+
+    web_dist = repo / "src" / "spark_cli" / "web_dist"
+    web_dist.mkdir(parents=True)
+    index = web_dist / "index.html"
+    index.write_text("base bundle", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+
+    subprocess.run(["git", "checkout", "-b", "incoming"], cwd=repo, check=True, capture_output=True)
+    index.write_text("incoming bundle", encoding="utf-8")
+    subprocess.run(["git", "commit", "-am", "incoming"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True, capture_output=True)
+    index.write_text("local bundle", encoding="utf-8")
+    subprocess.run(["git", "commit", "-am", "local"], cwd=repo, check=True, capture_output=True)
+    merge = subprocess.run(
+        ["git", "merge", "incoming"], cwd=repo, capture_output=True, text=True
+    )
+    assert merge.returncode != 0
+    assert subprocess.run(
+        ["git", "ls-files", "--unmerged"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    stash_ref = spark_main._stash_local_changes_if_needed(["git"], repo)
+
+    assert stash_ref is None
+    assert index.read_text(encoding="utf-8") == "local bundle"
+    assert not subprocess.run(
+        ["git", "ls-files", "--unmerged"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
 
 def test_print_stash_cleanup_guidance_with_selector(capsys):
     spark_main._print_stash_cleanup_guidance("abc123", "stash@{2}")
