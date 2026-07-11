@@ -11,6 +11,7 @@ Usage:
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import mimetypes
@@ -210,6 +211,10 @@ class WebActiveTurn:
     session_aliases: set[str] = field(default_factory=set)
     timings: dict[str, float] = field(default_factory=dict)
     compaction: dict[str, Any] = field(default_factory=dict)
+    # Provider-free fake streams run in a worker thread without an AIAgent.
+    # This event gives the normal interrupt route the same prompt cancellation
+    # semantics without coupling production agents to the dev harness.
+    fake_stream_cancel: threading.Event | None = field(default=None, repr=False)
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
@@ -6605,6 +6610,15 @@ def _web_fake_streams_enabled() -> bool:
     }
 
 
+def _is_loopback_client_host(host: str) -> bool:
+    if host == "testclient":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _create_fake_stream_session(
     session_id: str,
     *,
@@ -6647,6 +6661,7 @@ def _run_fake_stream_task(
     loop: asyncio.AbstractEventLoop,
     before_message_count: int,
     eager_user_id: int | None,
+    cancel_event: threading.Event,
 ) -> None:
     callbacks = _make_web_chat_callbacks(session_id, queue, loop)
     token_callback = callbacks[0]
@@ -6660,6 +6675,7 @@ def _run_fake_stream_task(
     explicit_final: Optional[str] = None
     result: dict[str, Any] = {"final_response": ""}
     failed = False
+    interrupted = False
     tool_args_by_id: dict[str, Any] = {}
 
     try:
@@ -6668,8 +6684,12 @@ def _run_fake_stream_task(
         _record_web_turn_timing(session_id, "user_message_persisted")
         for index, event in enumerate(events):
             delay = _event_delay_seconds(event)
-            if delay:
-                time.sleep(delay)
+            if delay and cancel_event.wait(delay):
+                interrupted = True
+                break
+            if cancel_event.is_set():
+                interrupted = True
+                break
             event_type = str(event.type or "").strip().lower()
             if event_type in {"status", "recover"}:
                 status_callback(event.kind or event_type, event.text or "Fake stream status")
@@ -6728,7 +6748,9 @@ def _run_fake_stream_task(
                     f"Ignored fake stream event: {event_type or 'unknown'}",
                     phase="streaming",
                 )
-        if not failed:
+        if interrupted:
+            result = {"final_response": ""}
+        elif not failed:
             result = {"final_response": explicit_final or "".join(final_text_chunks)}
     except Exception as exc:
         _log.exception("fake web stream error session=%s", session_id)
@@ -6753,7 +6775,11 @@ def _run_fake_stream_task(
         except Exception:
             pass
         _web_queues.pop(session_id, None)
-        _publish_event("chat.turn_done", _turn_done_payload(result, session_id), session_id)
+        _publish_event(
+            "chat.turn_done",
+            _turn_done_payload(result, session_id, interrupted=interrupted),
+            session_id,
+        )
         _clear_web_turn(session_id)
 
 
@@ -8633,12 +8659,15 @@ async def create_conversation(body: ConversationCreate):
 
 
 @app.post("/api/dev/fake-streams")
-async def create_fake_stream(body: FakeStreamStart):
+async def create_fake_stream(body: FakeStreamStart, request: Request):
     """Start a scripted, provider-free stream through the production web chat pipeline."""
     from datetime import datetime
 
     if not _web_fake_streams_enabled():
         raise HTTPException(status_code=404, detail="Fake web streams are disabled")
+    client_host = request.client.host if request.client else ""
+    if not _is_loopback_client_host(client_host):
+        raise HTTPException(status_code=404, detail="Fake web streams are loopback-only")
 
     request_received_at = time.time()
     session_id = (
@@ -8667,6 +8696,7 @@ async def create_fake_stream(body: FakeStreamStart):
     )
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
+        turn.fake_stream_cancel = threading.Event()
     eager_user_id = _persist_web_user_message(session_id, body.message)
     with turn.lock:
         turn.user_message_id = eager_user_id
@@ -8681,6 +8711,7 @@ async def create_fake_stream(body: FakeStreamStart):
             "loop": loop,
             "before_message_count": before_message_count,
             "eager_user_id": eager_user_id,
+            "cancel_event": turn.fake_stream_cancel,
         },
         name=f"spark-fake-web-stream-{session_id}",
         daemon=True,
@@ -9074,7 +9105,29 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
 async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
     agent_session_id, agent = _get_web_agent_for_turn(session_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Session not in active memory.")
+        turn_key, active_turn = _get_web_turn(session_id)
+        cancel_event = active_turn.fake_stream_cancel if active_turn else None
+        if cancel_event is None:
+            raise HTTPException(status_code=404, detail="Session not in active memory.")
+        status = "Stopping…"
+        _touch_web_turn(
+            turn_key or session_id,
+            status=status,
+            phase="stopping",
+            interrupt_requested=True,
+        )
+        cancel_event.set()
+        _publish_event(
+            "chat.status",
+            {"kind": "interrupt_requested", "message": status},
+            turn_key or session_id,
+        )
+        _publish_event(
+            "chat.interrupted",
+            {"message": "", "interrupt_requested": True, "phase": "stopping"},
+            turn_key or session_id,
+        )
+        return {"ok": True, "session_id": turn_key or session_id}
     try:
         phase = "redirecting" if body.message else "stopping"
         status = "Redirecting…" if body.message else "Stopping…"
