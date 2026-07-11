@@ -15,6 +15,7 @@ import { CronCardSkeleton } from "@/components/Skeleton";
 import { timeUntil } from "@/lib/format";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { cn } from "@/lib/utils";
+import { CRON_REFRESH_INTERVAL_MS, shouldRefreshCronJobs } from "@/lib/cronRefresh";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -147,10 +148,10 @@ export default function CronPage() {
   useEffect(() => {
     loadJobs();
     const refresh = window.setInterval(() => {
-      if (document.visibilityState === "visible") loadJobs();
-    }, 15_000);
+      if (shouldRefreshCronJobs(document.visibilityState)) loadJobs();
+    }, CRON_REFRESH_INTERVAL_MS);
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") loadJobs();
+      if (shouldRefreshCronJobs(document.visibilityState)) loadJobs();
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {

@@ -7,7 +7,17 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from cron.scheduler import _resolve_origin, _resolve_delivery_target, _deliver_result, _send_media_via_adapter, run_job, SILENT_MARKER, _build_job_prompt
+from cron.scheduler import (
+    JOB_CANCELLED_ERROR,
+    SILENT_MARKER,
+    _build_job_prompt,
+    _deliver_result,
+    _execute_job_with_timeout,
+    _resolve_delivery_target,
+    _resolve_origin,
+    _send_media_via_adapter,
+    run_job,
+)
 
 
 class TestResolveOrigin:
@@ -1137,7 +1147,7 @@ class TestTickAdvanceBeforeRun:
             call_order.append(("advance", job_id))
             return True
 
-        def fake_run_job(job):
+        def fake_run_job(job, is_cancelled=None):
             call_order.append(("run", job["id"]))
             return True, "output", "response", None
 
@@ -1162,6 +1172,57 @@ class TestTickAdvanceBeforeRun:
         adv_mock.assert_called_once_with("test-advance")
         # advance must happen before run
         assert call_order == [("advance", "test-advance"), ("run", "test-advance")]
+
+
+class TestCancellationPhases:
+    def test_cancel_after_script_prevents_model_start(self):
+        job = {"id": "cancel-script", "name": "cancel", "schedule_display": "daily"}
+        with patch("core.spark_state.SessionDB"), \
+             patch("cron.scheduler._build_job_prompt", return_value="script output"), \
+             patch("cron.scheduler._initialize_job_agent") as initialize:
+            success, _output, _response, error = run_job(job, is_cancelled=lambda: True)
+
+        assert success is False
+        assert error == f"RuntimeError: {JOB_CANCELLED_ERROR}"
+        initialize.assert_not_called()
+
+    def test_cancel_during_model_interrupts_agent(self, monkeypatch):
+        import threading
+
+        release = threading.Event()
+
+        class Agent:
+            def run_conversation(self, _prompt):
+                release.wait(2)
+                return {"final_response": "late"}
+
+            def interrupt(self, _reason):
+                release.set()
+
+        monkeypatch.setattr("cron.scheduler.SCHEDULER_POLL_INTERVAL_SECS", 0.01)
+        with pytest.raises(RuntimeError, match=JOB_CANCELLED_ERROR):
+            _execute_job_with_timeout(
+                Agent(),
+                {"name": "cancel"},
+                "prompt",
+                {"cron_timeout": 60},
+                is_cancelled=lambda: True,
+            )
+
+    def test_cancel_before_delivery_suppresses_delivery_and_marking(self, tmp_path):
+        job = {"id": "cancel-delivery", "name": "cancel", "enabled": True, "schedule": {"kind": "interval"}}
+        with patch("cron.scheduler.get_due_jobs", return_value=[job]), \
+             patch("cron.scheduler.get_job", return_value={"enabled": False, "state": "paused"}), \
+             patch("cron.scheduler.advance_next_run"), \
+             patch("cron.scheduler.run_job", return_value=(True, "output", "response", None)), \
+             patch("cron.scheduler.save_job_output", return_value=tmp_path / "out.md"), \
+             patch("cron.scheduler._deliver_result") as deliver, \
+             patch("cron.scheduler.mark_job_run") as mark:
+            from cron.scheduler import tick
+            assert tick(verbose=False) == 1
+
+        deliver.assert_not_called()
+        mark.assert_not_called()
 
 
 class TestSendMediaViaAdapter:

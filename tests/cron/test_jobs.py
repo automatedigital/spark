@@ -487,6 +487,18 @@ class TestAdvanceNextRun:
         due_after = get_due_jobs()
         assert len(due_after) == 0, "Job should not be due after advance_next_run"
 
+    def test_restart_after_run_marking_does_not_duplicate(self, tmp_cron_dir):
+        job = create_job(prompt="Completed before restart", schedule="every 1h")
+        jobs = load_jobs()
+        jobs[0]["next_run_at"] = (datetime.now() - timedelta(minutes=5)).isoformat()
+        save_jobs(jobs)
+
+        advance_next_run(job["id"])
+        mark_job_run(job["id"], success=True)
+
+        assert get_due_jobs() == []
+        assert get_job(job["id"])["repeat"]["completed"] == 1
+
 
 class TestGetDueJobs:
     def test_past_due_within_window_returned(self, tmp_cron_dir):
