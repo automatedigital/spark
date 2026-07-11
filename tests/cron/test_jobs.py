@@ -5,6 +5,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from cron.jobs import (
     parse_duration,
@@ -118,6 +119,26 @@ class TestParseSchedule:
 # =========================================================================
 
 class TestComputeNextRun:
+    def test_cron_skips_nonexistent_dst_wall_time(self, monkeypatch):
+        pytest.importorskip("croniter")
+        london = ZoneInfo("Europe/London")
+        now = datetime(2026, 3, 28, 3, 0, tzinfo=london)
+        monkeypatch.setattr("cron.jobs._spark_now", lambda: now)
+
+        result = compute_next_run({"kind": "cron", "expr": "30 1 * * *"})
+
+        assert datetime.fromisoformat(result) == datetime(2026, 3, 30, 1, 30, tzinfo=london)
+
+    def test_cron_runs_ambiguous_dst_wall_time_once(self, monkeypatch):
+        pytest.importorskip("croniter")
+        london = ZoneInfo("Europe/London")
+        first_fold = datetime(2026, 10, 25, 1, 30, tzinfo=london, fold=0)
+        monkeypatch.setattr("cron.jobs._spark_now", lambda: first_fold)
+
+        result = compute_next_run({"kind": "cron", "expr": "30 1 * * *"})
+
+        assert datetime.fromisoformat(result) == datetime(2026, 10, 26, 1, 30, tzinfo=london)
+
     def test_once_future_returns_time(self):
         future = (datetime.now() + timedelta(hours=1)).isoformat()
         schedule = {"kind": "once", "run_at": future}

@@ -146,6 +146,17 @@ export default function CronPage() {
 
   useEffect(() => {
     loadJobs();
+    const refresh = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadJobs();
+    }, 15_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadJobs();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   const focusJob = (id: string) => {
