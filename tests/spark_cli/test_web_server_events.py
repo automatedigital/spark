@@ -8,6 +8,70 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def test_event_subscriber_cancellation_reaps_queue_get_tasks():
+    from spark_cli import web_server
+
+    async def exercise():
+        subscriber = web_server._EventSubscriber(prefixes=("chat",))
+        before = set(asyncio.all_tasks())
+        waiting = asyncio.create_task(subscriber.get())
+        await asyncio.sleep(0)
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        await asyncio.sleep(0)
+        leaked = [
+            task
+            for task in asyncio.all_tasks()
+            if task not in before and task is not asyncio.current_task() and not task.done()
+        ]
+        assert leaked == []
+
+    asyncio.run(exercise())
+
+
+def test_fast_token_burst_has_frame_bounded_fanout(monkeypatch):
+    from spark_cli import web_server
+
+    monkeypatch.setattr(web_server, "_TOKEN_BATCH_MAX_CHARS", 1_000_000)
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+        web_server._web_event_loop = loop
+        q: asyncio.Queue = asyncio.Queue()
+        web_server._event_subscribers.add(q)
+        with web_server._pending_token_lock:
+            web_server._pending_token_events.clear()
+            web_server._pending_token_gap_sessions.clear()
+            web_server._token_flush_scheduled = False
+            web_server._token_last_flush_at = 0.0
+
+        started = time.perf_counter()
+        producer = asyncio.create_task(
+            asyncio.to_thread(
+                lambda: [
+                    web_server._publish_event("chat.token", {"t": "x"}, "burst")
+                    for _ in range(25_000)
+                ]
+            )
+        )
+        first = await asyncio.wait_for(q.get(), timeout=1.0)
+        first_latency = time.perf_counter() - started
+        await producer
+        await asyncio.sleep(web_server._TOKEN_BATCH_MIN_INTERVAL_S * 2)
+        events = [first]
+        while not q.empty():
+            events.append(q.get_nowait())
+        web_server._event_subscribers.discard(q)
+        return first_latency, events
+
+    first_latency, events = asyncio.run(exercise())
+    token_events = [event for event in events if event["topic"] == "chat.token"]
+    assert first_latency < 0.25
+    assert len(token_events) < 50
+    assert sum(len(event["data"]["t"]) for event in token_events) == 25_000
+
+
 @pytest.fixture
 def web_client(monkeypatch, tmp_path):
     try:
