@@ -83,12 +83,11 @@ import {
   type ChatMessage,
 } from "@/lib/chatTranscriptMerge";
 import { isTauri } from "@/sidecar";
-import { snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
+import { liveStreamFlushInterval, snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
 const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
-const STREAM_FLUSH_INTERVAL_MS = 80;
 const CHAT_WORD_WRAP_CHANGED_EVENT = "spark:chat-word-wrap-changed";
 const CHAT_RECOVERY_DEBUG_KEY = "spark:chat-recovery-debug";
 
@@ -1114,12 +1113,13 @@ export function ChatPanel({
   // stream re-rendering the live assistant row.
   const appendToken = useCallback((token: string) => {
     tokenBufferRef.current.push(token);
-    lastTokenAtRef.current = Date.now();
+    const tokenNow = Date.now();
+    if (tokenNow - lastTokenAtRef.current >= 250) lastTokenAtRef.current = tokenNow;
     if (flushTimerRef.current === null && rafPendingRef.current === null) {
       flushTimerRef.current = window.setTimeout(() => {
         flushTimerRef.current = null;
         rafPendingRef.current = requestAnimationFrame(flushTokenBuffer);
-      }, STREAM_FLUSH_INTERVAL_MS);
+      }, liveStreamFlushInterval(streamTextCharsRef.current + token.length));
     }
   }, [flushTokenBuffer]);
 
@@ -1345,14 +1345,21 @@ export function ChatPanel({
       void resyncTurnState({ allowIdle: true });
       return;
     }
-    lastEventAtRef.current = Date.now();
+    const eventNow = Date.now();
+    if (eventNow - lastEventAtRef.current >= 250) lastEventAtRef.current = eventNow;
     const data = env.data as Record<string, unknown>;
 
     switch (env.topic) {
       case "chat.token": {
         const t = data.t;
         if (typeof t === "string" && t) appendToken(t);
-        setTurnState((prev) => nextChatTurnState(prev, { type: "token" }));
+        // A token stream can deliver thousands of events per second. Do not
+        // enqueue an identical React state update for every event.
+        if (turnStateRef.current !== "streaming") {
+          const next = nextChatTurnState(turnStateRef.current, { type: "token" });
+          turnStateRef.current = next;
+          setTurnState(next);
+        }
         break;
       }
       case "chat.tool_start": {
@@ -2269,10 +2276,10 @@ export function ChatPanel({
 
   const liveRowIndex = useMemo(() => findLiveRowIndex(collapsedMessages), [collapsedMessages]);
 
-  const streamingAssistantChars = useMemo(() => {
+  const streamingAssistantVisibleChars = useMemo(() => {
     for (let i = chatMessages.length - 1; i >= 0; i--) {
       const msg = chatMessages[i];
-      if (msg.role === "assistant" && msg.streaming) return msg.liveTotalChars ?? msg.content.length;
+      if (msg.role === "assistant" && msg.streaming) return msg.content.length;
     }
     return 0;
   }, [chatMessages]);
@@ -2583,7 +2590,7 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [activeSessionId, collapsedMessages.length, streamingAssistantChars, streaming, safeMode, virtualizer]);
+  }, [activeSessionId, collapsedMessages.length, streamingAssistantVisibleChars, streaming, safeMode, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;

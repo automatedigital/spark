@@ -2,11 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   LIVE_STREAM_WINDOW_CHARS,
+  LARGE_STREAM_FLUSH_MS,
+  LARGE_STREAM_THRESHOLD_CHARS,
+  NORMAL_STREAM_FLUSH_MS,
+  liveStreamFlushInterval,
   snapshotLiveStream,
   windowLiveStream,
 } from "./liveStreamWindow";
 
 describe("live stream window", () => {
+  it("reduces repaint cadence once a stream becomes large", () => {
+    expect(liveStreamFlushInterval(LARGE_STREAM_THRESHOLD_CHARS - 1)).toBe(NORMAL_STREAM_FLUSH_MS);
+    expect(liveStreamFlushInterval(LARGE_STREAM_THRESHOLD_CHARS)).toBe(LARGE_STREAM_FLUSH_MS);
+    expect(liveStreamFlushInterval(10_000_000)).toBe(LARGE_STREAM_FLUSH_MS);
+  });
   it("keeps render state bounded while retaining the absolute stream offset", () => {
     let state = snapshotLiveStream("");
     const chunk = "0123456789".repeat(1_000);

@@ -1,4 +1,13 @@
-export const LIVE_STREAM_WINDOW_CHARS = 64 * 1024;
+export const LIVE_STREAM_WINDOW_CHARS = 8 * 1024;
+export const LARGE_STREAM_THRESHOLD_CHARS = 32 * 1024;
+export const NORMAL_STREAM_FLUSH_MS = 80;
+export const LARGE_STREAM_FLUSH_MS = 250;
+
+export function liveStreamFlushInterval(totalChars: number): number {
+  return totalChars >= LARGE_STREAM_THRESHOLD_CHARS
+    ? LARGE_STREAM_FLUSH_MS
+    : NORMAL_STREAM_FLUSH_MS;
+}
 
 export interface LiveStreamWindow {
   content: string;
