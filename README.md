@@ -136,7 +136,38 @@ Remote API calls require the token in `~/.spark/dashboard.token` or
 `SPARK_DASHBOARD_TOKEN`. Use it for status, config, API keys, logs, the task
 board, and Admin controls.
 
-### 5. Diagnose any issues
+### 5. Update safely
+
+Update from the terminal or use **Admin → Update** in the Web UI:
+
+```bash
+spark update
+```
+
+Spark updates the code and Python dependencies, rebuilds the current Web UI,
+and verifies that every content-hashed JavaScript and CSS file referenced by
+`index.html` exists before restarting the gateway. A complete production Web UI
+bundle also ships with each update so existing VPS installations receive a
+coherent dashboard during the upgrade. If a compatible Node.js runtime is not
+available, Spark installs a checksum-verified managed Node.js 22 runtime under
+your Spark home and uses it for the build.
+
+An update that cannot produce a valid Web UI fails explicitly and does not
+report success or restart Spark with an incomplete dashboard. Fix the reported
+Node.js/npm or network error, then rerun `spark update`.
+
+If a VPS was left on a blank dashboard by an older Spark version, SSH into the
+server and run:
+
+```bash
+spark update
+spark gateway restart
+```
+
+Then reload the dashboard. If the browser retained the old page, perform a hard
+refresh once.
+
+### 6. Diagnose any issues
 
 ```bash
 spark doctor            # Diagnose environment and config issues
