@@ -4715,7 +4715,12 @@ def cmd_update(args):
         else:
             spark_home = get_spark_home()
             install_cmd = (
-                "curl -fsSL https://raw.githubusercontent.com/automatedigital/spark/main/scripts/install.sh "
+                # raw.githubusercontent.com may briefly serve a cached installer
+                # after main advances. A unique query forces the migration
+                # bootstrap to run the same installer revision it is fetching.
+                "curl -fsSL "
+                "'https://raw.githubusercontent.com/automatedigital/spark/main/"
+                "scripts/install.sh?cachebust='$(date +%s%N) "
                 "| bash -s -- --skip-setup"
             )
             can_prompt = gateway_mode or (sys.stdin.isatty() and sys.stdout.isatty())

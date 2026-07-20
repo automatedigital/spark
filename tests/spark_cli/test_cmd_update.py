@@ -186,6 +186,9 @@ class TestCmdUpdateBranchFallback:
             c for c in mock_run.call_args_list
             if "curl -fsSL" in " ".join(str(a) for a in c.args[0])
         )
+        installer_command = " ".join(str(a) for a in installer_call.args[0])
+        assert "install.sh?cachebust=" in installer_command
+        assert "$(date +%s%N)" in installer_command
         assert installer_call.kwargs["env"]["SPARK_HOME"] == str(fake_home)
         assert sync_calls == [True]
         captured = capsys.readouterr()
