@@ -811,7 +811,10 @@ discard_generated_web_assets() {
         git reset -q HEAD -- src/spark_cli/web_dist 2>/dev/null || true
         git checkout -q HEAD -- src/spark_cli/web_dist 2>/dev/null || true
     fi
-    git clean -fd -- src/spark_cli/web_dist >/dev/null 2>&1 || true
+    # Include ignored files (-x): older releases ignored web_dist, so stale
+    # hashed bundles would otherwise survive and get captured by autostash.
+    # This is safe because web_dist contains generated/released output only.
+    git clean -fdx -- src/spark_cli/web_dist >/dev/null 2>&1 || true
 }
 
 clone_repo() {
@@ -829,7 +832,10 @@ clone_repo() {
                 local stash_name
                 stash_name="spark-install-autostash-$(date -u +%Y%m%d-%H%M%S)"
                 log_info "Local changes detected, stashing before update..."
-                git stash push --include-untracked -m "$stash_name"
+                # web_dist is release output, never user state. Exclude it at
+                # the stash operation itself as well as resetting it above.
+                git stash push --include-untracked -m "$stash_name" -- \
+                    . ':(exclude)src/spark_cli/web_dist'
                 autostash_ref="$(git rev-parse --verify refs/stash)"
             fi
 
@@ -854,7 +860,24 @@ clone_repo() {
                 if [ "$restore_now" = "yes" ]; then
                     log_info "Restoring local changes..."
                     if git stash apply "$autostash_ref"; then
-                        git stash drop "$autostash_ref" >/dev/null
+                        # `stash apply` accepts a commit hash, but `stash drop`
+                        # only accepts selectors such as stash@{0}. Resolve the
+                        # exact entry by commit so intervening stashes cannot
+                        # make us drop the wrong one.
+                        local autostash_selector
+                        autostash_selector="$(
+                            git stash list --format='%gd %H' |
+                                awk -v commit="$autostash_ref" '$2 == commit { print $1; exit }'
+                        )"
+                        if [ -n "$autostash_selector" ]; then
+                            if ! git stash drop "$autostash_selector" >/dev/null; then
+                                log_warn "Local changes were restored, but the installer could not remove $autostash_selector."
+                                log_info "Review it later with: git stash list"
+                            fi
+                        else
+                            log_warn "Local changes were restored, but their saved stash entry could not be located for cleanup."
+                            log_info "Review it later with: git stash list"
+                        fi
                         log_warn "Local changes were restored on top of the updated codebase."
                         log_warn "Review git diff / git status if Spark behaves unexpectedly."
                     else

@@ -3957,7 +3957,17 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
     )
     print("→ Local changes detected — stashing before update...")
     subprocess.run(
-        git_cmd + ["stash", "push", "--include-untracked", "-m", stash_name],
+        git_cmd
+        + [
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            stash_name,
+            "--",
+            ".",
+            ":(exclude)src/spark_cli/web_dist",
+        ],
         cwd=cwd,
         check=True,
     )
@@ -4023,7 +4033,7 @@ def _reset_generated_web_assets(git_cmd: list[str], cwd: Path) -> bool:
     if restore.returncode != 0:
         return False
     clean = subprocess.run(
-        git_cmd + ["clean", "-fd", "--", "src/spark_cli/web_dist"],
+        git_cmd + ["clean", "-fdx", "--", "src/spark_cli/web_dist"],
         cwd=cwd,
         capture_output=True,
         text=True,

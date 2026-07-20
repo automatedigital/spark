@@ -54,10 +54,14 @@ def test_installer_discards_generated_web_assets_before_autostash():
     clone_body = content[clone_start:clone_end]
 
     assert "git restore --source=HEAD --staged --worktree -- src/spark_cli/web_dist" in function_body
-    assert "git clean -fd -- src/spark_cli/web_dist" in function_body
+    assert "git clean -fdx -- src/spark_cli/web_dist" in function_body
     assert clone_body.index("discard_generated_web_assets") < clone_body.index(
         "git stash push --include-untracked"
     )
+    assert "':(exclude)src/spark_cli/web_dist'" in clone_body
+    assert "git stash list --format='%gd %H'" in clone_body
+    assert 'git stash drop "$autostash_selector"' in clone_body
+    assert 'git stash drop "$autostash_ref"' not in clone_body
 
 
 def test_installer_validates_exact_hashed_web_assets():

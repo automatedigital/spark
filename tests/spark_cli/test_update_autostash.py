@@ -46,6 +46,11 @@ def test_stash_local_changes_if_needed_returns_specific_stash_commit(monkeypatch
     assert stash_ref == "abc123"
     assert calls[1][0][-2:] == ["ls-files", "--unmerged"]
     assert calls[2][0][1:4] == ["stash", "push", "--include-untracked"]
+    assert calls[2][0][-3:] == [
+        "--",
+        ".",
+        ":(exclude)src/spark_cli/web_dist",
+    ]
     assert calls[3][0][-3:] == ["rev-parse", "--verify", "refs/stash"]
 
 
@@ -406,6 +411,7 @@ def _setup_update_mocks(monkeypatch, tmp_path):
     monkeypatch.setattr(spark_main, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(spark_main, "_stash_local_changes_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(spark_main, "_restore_stashed_changes", lambda *a, **kw: True)
+    monkeypatch.setattr(spark_main, "_build_web_ui", lambda *a, **kw: True)
     monkeypatch.setattr(spark_config, "get_missing_env_vars", lambda required_only=True: [])
     monkeypatch.setattr(spark_config, "get_missing_config_fields", lambda: [])
     monkeypatch.setattr(spark_config, "check_config_version", lambda: (5, 5))
