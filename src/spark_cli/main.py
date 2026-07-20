@@ -3331,7 +3331,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     return default
 
 
-def _find_npm() -> Optional[str]:
+def _find_npm(*, require_compatible: bool = False) -> Optional[str]:
     """Find npm, preferring a Node.js version ≥20 (required by Vite 7).
 
     Checks nvm-managed versions newest-first, then PATH, then Homebrew/system
@@ -3377,8 +3377,79 @@ def _find_npm() -> Optional[str]:
         if _node_major(c) >= 20:
             return c
 
-    # Fallback: return any npm rather than nothing
-    return candidates[0] if candidates else None
+    # Some non-Vite uses can tolerate an older runtime; dashboard builds cannot.
+    return None if require_compatible else (candidates[0] if candidates else None)
+
+
+def _install_managed_node() -> Optional[str]:
+    """Install a verified Node.js 22 runtime under SPARK_HOME without sudo."""
+    import hashlib
+    import json
+    import platform
+    import shutil
+    import tarfile
+    import tempfile
+    from urllib.request import urlopen
+
+    system = {"linux": "linux", "darwin": "darwin"}.get(sys.platform)
+    machine = {
+        "x86_64": "x64",
+        "amd64": "x64",
+        "aarch64": "arm64",
+        "arm64": "arm64",
+        "armv7l": "armv7l",
+    }.get(platform.machine().lower())
+    if not system or not machine:
+        return None
+
+    try:
+        with urlopen("https://nodejs.org/dist/index.json", timeout=20) as response:
+            releases = json.load(response)
+        version = next(
+            item["version"]
+            for item in releases
+            if str(item.get("version", "")).startswith("v22.")
+        )
+        filename = f"node-{version}-{system}-{machine}.tar.xz"
+        base_url = f"https://nodejs.org/dist/{version}"
+        with urlopen(f"{base_url}/SHASUMS256.txt", timeout=20) as response:
+            checksums = response.read().decode("utf-8")
+        expected = next(
+            line.split()[0]
+            for line in checksums.splitlines()
+            if line.split()[-1] == filename
+        )
+
+        spark_home = get_spark_home()
+        spark_home.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".node-update-", dir=spark_home
+        ) as temp_raw:
+            temp = Path(temp_raw)
+            archive = temp / filename
+            with urlopen(f"{base_url}/{filename}", timeout=60) as response:
+                with archive.open("wb") as output:
+                    shutil.copyfileobj(response, output)
+            actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+            if actual != expected:
+                raise RuntimeError("Node.js archive checksum mismatch")
+
+            extract_root = temp / "extract"
+            extract_root.mkdir()
+            with tarfile.open(archive, "r:xz") as tar:
+                tar.extractall(extract_root, filter="data")
+            extracted = extract_root / filename.removesuffix(".tar.xz")
+            managed = spark_home / "node"
+            replacement = spark_home / ".node-replacement"
+            shutil.rmtree(replacement, ignore_errors=True)
+            extracted.replace(replacement)
+            shutil.rmtree(managed, ignore_errors=True)
+            replacement.replace(managed)
+        npm = managed / "bin" / "npm"
+        return str(npm) if npm.is_file() else None
+    except Exception as exc:
+        print(f"  ✗ Could not install Spark-managed Node.js: {exc}")
+        return None
 
 
 def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
@@ -3394,7 +3465,10 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     if not (web_dir / "package.json").exists():
         return True
 
-    npm = _find_npm()
+    npm = _find_npm(require_compatible=True)
+    if not npm and fatal:
+        print("→ Installing a compatible Spark-managed Node.js runtime...")
+        npm = _install_managed_node()
     if not npm:
         if fatal:
             print("Web UI frontend not built and npm is not available.")
@@ -3402,8 +3476,17 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
         else:
             print("  ⚠ npm not found — web UI not rebuilt (install Node.js to enable)")
         return not fatal
+    npm_env = {
+        **os.environ,
+        "PATH": f"{Path(npm).parent}{os.pathsep}{os.environ.get('PATH', '')}",
+    }
     print("→ Building web UI...")
-    r1 = subprocess.run([npm, "install", "--silent"], cwd=web_dir, capture_output=True)
+    r1 = subprocess.run(
+        [npm, "install", "--silent"],
+        cwd=web_dir,
+        capture_output=True,
+        env=npm_env,
+    )
     if r1.returncode != 0:
         print(
             f"  {'✗' if fatal else '⚠'} Web UI npm install failed"
@@ -3412,7 +3495,12 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
         if fatal:
             print("  Run manually:  cd web && npm install && npm run build")
         return False
-    r2 = subprocess.run([npm, "run", "build"], cwd=web_dir, capture_output=True)
+    r2 = subprocess.run(
+        [npm, "run", "build"],
+        cwd=web_dir,
+        capture_output=True,
+        env=npm_env,
+    )
     if r2.returncode != 0:
         print(
             f"  {'✗' if fatal else '⚠'} Web UI build failed"
@@ -3535,8 +3623,19 @@ def _update_via_zip(args):
             )
         _install_python_dependencies_with_optional_fallback(pip_cmd)
 
-    # Build web UI frontend (optional — requires npm)
-    _build_web_ui(Path(__file__).parent / "web")
+    # The ZIP update is not complete until the matching hashed dashboard
+    # bundle has been rebuilt.
+    web_dir = Path(__file__).parent / "web"
+    web_dist = Path(__file__).parent / "web_dist"
+    if not _build_web_ui(web_dir, fatal=True):
+        print("✗ ZIP update stopped: the Web UI could not be rebuilt.")
+        sys.exit(1)
+    from spark_cli.dashboard_health import dashboard_frontend_assets_ready
+
+    web_assets_ok, web_assets_error = dashboard_frontend_assets_ready(web_dist)
+    if not web_assets_ok:
+        print(f"✗ ZIP update stopped: {web_assets_error}")
+        sys.exit(1)
 
     # Sync skills
     try:
@@ -4587,6 +4686,7 @@ def cmd_update(args):
         return
 
     gateway_mode = getattr(args, "gateway", False)
+    web_dist = Path(__file__).parent / "web_dist"
     # In gateway mode, use file-based IPC for prompts instead of stdin
     gw_input_fn = (
         (lambda prompt, default="": _gateway_prompt(prompt, default))
@@ -4939,8 +5039,22 @@ def cmd_update(args):
                 except Exception as exc:
                     print(f"  ⚠ agent-browser setup skipped: {exc}")
 
-        # Build web UI frontend (optional — requires npm)
-        _build_web_ui(Path(__file__).parent / "web")
+        # A mismatched index.html and hashed asset set makes the dashboard a
+        # blank white page. Never complete/restart an update in that state.
+        web_build_ok = _build_web_ui(Path(__file__).parent / "web", fatal=True)
+        from spark_cli.dashboard_health import dashboard_frontend_assets_ready
+
+        web_assets_ok, web_assets_error = dashboard_frontend_assets_ready(web_dist)
+        if not web_build_ok or not web_assets_ok:
+            print()
+            print("✗ Update stopped because the Web UI bundle could not be rebuilt.")
+            if web_assets_error:
+                print(f"  {web_assets_error}")
+            print("  The updated dashboard must be rebuilt before Spark can restart.")
+            print("  Fix Node.js/npm, then run `spark update` again.")
+            if gateway_mode:
+                _write_update_exit_code(1)
+            sys.exit(1)
 
         # Ensure cua-driver install on macOS if not yet installed.
         _maybe_offer_cua_driver(gateway_mode=gateway_mode, input_fn=gw_input_fn)

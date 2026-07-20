@@ -135,6 +135,7 @@ def patch_project_root(tmp_path, monkeypatch):
     # Patch the imported function's globals too so this file stays isolated.
     monkeypatch.setitem(cmd_update.__globals__, "PROJECT_ROOT", tmp_path)
     monkeypatch.setitem(cmd_update.__globals__, "_maybe_offer_cua_driver", lambda **kw: None)
+    monkeypatch.setitem(cmd_update.__globals__, "_build_web_ui", lambda *args, **kwargs: True)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
 

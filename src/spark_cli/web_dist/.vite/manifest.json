@@ -1,0 +1,527 @@
+{
+  "_card-7_wZPzwh.js": {
+    "file": "assets/card-7_wZPzwh.js",
+    "name": "card",
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html"
+    ]
+  },
+  "_feature-canvas-C5ap-Sga.css": {
+    "file": "assets/feature-canvas-C5ap-Sga.css",
+    "src": "_feature-canvas-C5ap-Sga.css"
+  },
+  "_feature-canvas-C6xHI0Bh.js": {
+    "file": "assets/feature-canvas-C6xHI0Bh.js",
+    "name": "feature-canvas",
+    "imports": [
+      "_vendor-react-BEIHmq5h.js"
+    ],
+    "css": [
+      "assets/feature-canvas-C5ap-Sga.css"
+    ]
+  },
+  "_feature-editor-core-BYyzI_jA.js": {
+    "file": "assets/feature-editor-core-BYyzI_jA.js",
+    "name": "feature-editor-core",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "_feature-terminal-CKOUgNd1.js": {
+    "file": "assets/feature-terminal-CKOUgNd1.js",
+    "name": "feature-terminal",
+    "css": [
+      "assets/feature-terminal-DDGTF8rc.css"
+    ]
+  },
+  "_feature-terminal-DDGTF8rc.css": {
+    "file": "assets/feature-terminal-DDGTF8rc.css",
+    "src": "_feature-terminal-DDGTF8rc.css"
+  },
+  "_index-CH9AIf-m.js": {
+    "file": "assets/index-CH9AIf-m.js",
+    "name": "index",
+    "imports": [
+      "_feature-editor-core-BYyzI_jA.js"
+    ]
+  },
+  "_label-fhrPFe6K.js": {
+    "file": "assets/label-fhrPFe6K.js",
+    "name": "label",
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html"
+    ]
+  },
+  "_log-out-DPoW0hV7.js": {
+    "file": "assets/log-out-DPoW0hV7.js",
+    "name": "log-out",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_network-C4oExnXt.js": {
+    "file": "assets/network-C4oExnXt.js",
+    "name": "network",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_plug-PbJs10jp.js": {
+    "file": "assets/plug-PbJs10jp.js",
+    "name": "plug",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_save-Dc9vGEsN.js": {
+    "file": "assets/save-Dc9vGEsN.js",
+    "name": "save",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_select-CHXazVs8.js": {
+    "file": "assets/select-CHXazVs8.js",
+    "name": "select",
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html"
+    ]
+  },
+  "_server-3_HNw38S.js": {
+    "file": "assets/server-3_HNw38S.js",
+    "name": "server",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_switch-BNRg9njY.js": {
+    "file": "assets/switch-BNRg9njY.js",
+    "name": "switch",
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html"
+    ]
+  },
+  "_vendor-react-BEIHmq5h.js": {
+    "file": "assets/vendor-react-BEIHmq5h.js",
+    "name": "vendor-react"
+  },
+  "index.html": {
+    "file": "assets/index-skVsmkNh.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js"
+    ],
+    "dynamicImports": [
+      "node_modules/@tauri-apps/api/event.js",
+      "node_modules/@tauri-apps/api/event.js",
+      "src/components/workspace/WorkspaceTerminalPanel.tsx",
+      "node_modules/highlight.js/es/common.js",
+      "src/pages/CronPage.tsx",
+      "src/pages/FilesPage.tsx",
+      "src/pages/KanbanPage.tsx",
+      "src/pages/CanvasPage.tsx",
+      "src/pages/SkillsPage.tsx",
+      "src/pages/ConnectorsPage.tsx",
+      "src/pages/SkillsToolsPage.tsx",
+      "src/pages/MessagingPage.tsx",
+      "src/components/SettingsPanel.tsx",
+      "src/components/CommandPalette.tsx",
+      "src/components/KeyboardShortcutsModal.tsx",
+      "src/components/OnboardingWizard.tsx"
+    ],
+    "css": [
+      "assets/index-BKi_LwRC.css"
+    ]
+  },
+  "node_modules/@codemirror/lang-cpp/dist/index.js": {
+    "file": "assets/index-pLoU98zc.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-cpp/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-css/dist/index.js": {
+    "file": "assets/index-C8nnZ8V7.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-css/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-go/dist/index.js": {
+    "file": "assets/index-D85ZQTfe.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-go/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-html/dist/index.js": {
+    "file": "assets/index-BK0O0z-X.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-html/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "node_modules/@codemirror/lang-css/dist/index.js",
+      "node_modules/@codemirror/lang-javascript/dist/index.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-java/dist/index.js": {
+    "file": "assets/index-DMp9GPdS.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-java/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-javascript/dist/index.js": {
+    "file": "assets/index-d9EQcneJ.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-javascript/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-json/dist/index.js": {
+    "file": "assets/index-CTG0WC87.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-json/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-markdown/dist/index.js": {
+    "file": "assets/index-D7zxnqW0.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-markdown/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_feature-editor-core-BYyzI_jA.js",
+      "node_modules/@codemirror/lang-html/dist/index.js",
+      "_vendor-react-BEIHmq5h.js",
+      "_index-CH9AIf-m.js",
+      "node_modules/@codemirror/lang-css/dist/index.js",
+      "node_modules/@codemirror/lang-javascript/dist/index.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-python/dist/index.js": {
+    "file": "assets/index-CXONAO6B.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-python/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-rust/dist/index.js": {
+    "file": "assets/index-CzpXzZE8.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-rust/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-sql/dist/index.js": {
+    "file": "assets/index-F07x9mW-.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-sql/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_feature-editor-core-BYyzI_jA.js",
+      "_index-CH9AIf-m.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-xml/dist/index.js": {
+    "file": "assets/index-Xz3aArGs.js",
+    "name": "index",
+    "src": "node_modules/@codemirror/lang-xml/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-CH9AIf-m.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/@codemirror/legacy-modes/mode/shell.js": {
+    "file": "assets/shell-CjFT_Tl9.js",
+    "name": "shell",
+    "src": "node_modules/@codemirror/legacy-modes/mode/shell.js",
+    "isDynamicEntry": true
+  },
+  "node_modules/@codemirror/legacy-modes/mode/toml.js": {
+    "file": "assets/toml-Bm5Em-hy.js",
+    "name": "toml",
+    "src": "node_modules/@codemirror/legacy-modes/mode/toml.js",
+    "isDynamicEntry": true
+  },
+  "node_modules/@codemirror/legacy-modes/mode/yaml.js": {
+    "file": "assets/yaml-DsCXHVTH.js",
+    "name": "yaml",
+    "src": "node_modules/@codemirror/legacy-modes/mode/yaml.js",
+    "isDynamicEntry": true
+  },
+  "node_modules/@tauri-apps/api/event.js": {
+    "file": "assets/event-BiW3qQxl.js",
+    "name": "event",
+    "src": "node_modules/@tauri-apps/api/event.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-BEIHmq5h.js"
+    ]
+  },
+  "node_modules/highlight.js/es/common.js": {
+    "file": "assets/common-CrbiPh3n.js",
+    "name": "common",
+    "src": "node_modules/highlight.js/es/common.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html"
+    ]
+  },
+  "src/components/CommandPalette.tsx": {
+    "file": "assets/CommandPalette-xLF6wlvb.js",
+    "name": "CommandPalette",
+    "src": "src/components/CommandPalette.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_plug-PbJs10jp.js"
+    ]
+  },
+  "src/components/KeyboardShortcutsModal.tsx": {
+    "file": "assets/KeyboardShortcutsModal-LqHUd_QC.js",
+    "name": "KeyboardShortcutsModal",
+    "src": "src/components/KeyboardShortcutsModal.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html"
+    ]
+  },
+  "src/components/OnboardingWizard.tsx": {
+    "file": "assets/OnboardingWizard-DtZj98TO.js",
+    "name": "OnboardingWizard",
+    "src": "src/components/OnboardingWizard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_network-C4oExnXt.js",
+      "_server-3_HNw38S.js"
+    ]
+  },
+  "src/components/SettingsPanel.tsx": {
+    "file": "assets/SettingsPanel-BEf4A9NN.js",
+    "name": "SettingsPanel",
+    "src": "src/components/SettingsPanel.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_card-7_wZPzwh.js",
+      "_network-C4oExnXt.js",
+      "_switch-BNRg9njY.js",
+      "_label-fhrPFe6K.js",
+      "_server-3_HNw38S.js",
+      "_plug-PbJs10jp.js",
+      "_select-CHXazVs8.js",
+      "_save-Dc9vGEsN.js",
+      "_log-out-DPoW0hV7.js"
+    ]
+  },
+  "src/components/files/CodeEditor.tsx": {
+    "file": "assets/CodeEditor-C2rlD6Kh.js",
+    "name": "CodeEditor",
+    "src": "src/components/files/CodeEditor.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-BEIHmq5h.js",
+      "_feature-editor-core-BYyzI_jA.js"
+    ],
+    "dynamicImports": [
+      "node_modules/@codemirror/lang-python/dist/index.js",
+      "node_modules/@codemirror/lang-javascript/dist/index.js",
+      "node_modules/@codemirror/lang-javascript/dist/index.js",
+      "node_modules/@codemirror/lang-javascript/dist/index.js",
+      "node_modules/@codemirror/lang-javascript/dist/index.js",
+      "node_modules/@codemirror/lang-markdown/dist/index.js",
+      "node_modules/@codemirror/lang-json/dist/index.js",
+      "node_modules/@codemirror/lang-html/dist/index.js",
+      "node_modules/@codemirror/lang-css/dist/index.js",
+      "node_modules/@codemirror/lang-sql/dist/index.js",
+      "node_modules/@codemirror/lang-rust/dist/index.js",
+      "node_modules/@codemirror/lang-go/dist/index.js",
+      "node_modules/@codemirror/lang-java/dist/index.js",
+      "node_modules/@codemirror/lang-cpp/dist/index.js",
+      "node_modules/@codemirror/lang-cpp/dist/index.js",
+      "node_modules/@codemirror/lang-cpp/dist/index.js",
+      "node_modules/@codemirror/lang-xml/dist/index.js",
+      "node_modules/@codemirror/lang-xml/dist/index.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "node_modules/@codemirror/legacy-modes/mode/shell.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "node_modules/@codemirror/legacy-modes/mode/shell.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "node_modules/@codemirror/legacy-modes/mode/yaml.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "node_modules/@codemirror/legacy-modes/mode/yaml.js",
+      "_feature-editor-core-BYyzI_jA.js",
+      "node_modules/@codemirror/legacy-modes/mode/toml.js"
+    ]
+  },
+  "src/components/workspace/WorkspaceTerminalPanel.tsx": {
+    "file": "assets/WorkspaceTerminalPanel-CMVfTVY_.js",
+    "name": "WorkspaceTerminalPanel",
+    "src": "src/components/workspace/WorkspaceTerminalPanel.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "_feature-terminal-CKOUgNd1.js",
+      "index.html"
+    ]
+  },
+  "src/pages/CanvasPage.tsx": {
+    "file": "assets/CanvasPage-Dd7L-dMM.js",
+    "name": "CanvasPage",
+    "src": "src/pages/CanvasPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "_feature-canvas-C6xHI0Bh.js",
+      "index.html",
+      "_save-Dc9vGEsN.js"
+    ]
+  },
+  "src/pages/ConnectorsPage.tsx": {
+    "file": "assets/ConnectorsPage-C8M3q_IX.js",
+    "name": "ConnectorsPage",
+    "src": "src/pages/ConnectorsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_card-7_wZPzwh.js",
+      "_label-fhrPFe6K.js",
+      "_plug-PbJs10jp.js",
+      "_log-out-DPoW0hV7.js",
+      "_server-3_HNw38S.js"
+    ]
+  },
+  "src/pages/CronPage.tsx": {
+    "file": "assets/CronPage-CmMzE8_R.js",
+    "name": "CronPage",
+    "src": "src/pages/CronPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_card-7_wZPzwh.js",
+      "_label-fhrPFe6K.js",
+      "_select-CHXazVs8.js"
+    ]
+  },
+  "src/pages/FilesPage.tsx": {
+    "file": "assets/FilesPage-6F8aqwfp.js",
+    "name": "FilesPage",
+    "src": "src/pages/FilesPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-BEIHmq5h.js",
+      "_save-Dc9vGEsN.js"
+    ],
+    "dynamicImports": [
+      "src/components/files/CodeEditor.tsx"
+    ]
+  },
+  "src/pages/KanbanPage.tsx": {
+    "file": "assets/KanbanPage-CMs_mEOm.js",
+    "name": "KanbanPage",
+    "src": "src/pages/KanbanPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html"
+    ]
+  },
+  "src/pages/MessagingPage.tsx": {
+    "file": "assets/MessagingPage-B1NL3c9-.js",
+    "name": "MessagingPage",
+    "src": "src/pages/MessagingPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_switch-BNRg9njY.js",
+      "_save-Dc9vGEsN.js"
+    ]
+  },
+  "src/pages/SkillsPage.tsx": {
+    "file": "assets/SkillsPage-D12pn9tV.js",
+    "name": "SkillsPage",
+    "src": "src/pages/SkillsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_card-7_wZPzwh.js",
+      "_switch-BNRg9njY.js"
+    ]
+  },
+  "src/pages/SkillsToolsPage.tsx": {
+    "file": "assets/SkillsToolsPage-Cm8b7aWT.js",
+    "name": "SkillsToolsPage",
+    "src": "src/pages/SkillsToolsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-BEIHmq5h.js",
+      "index.html",
+      "_switch-BNRg9njY.js",
+      "src/pages/ConnectorsPage.tsx",
+      "_card-7_wZPzwh.js",
+      "_label-fhrPFe6K.js",
+      "_plug-PbJs10jp.js",
+      "_log-out-DPoW0hV7.js",
+      "_server-3_HNw38S.js"
+    ]
+  }
+}

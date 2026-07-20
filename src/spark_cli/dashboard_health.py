@@ -10,11 +10,28 @@ import argparse
 import json
 import time
 from dataclasses import asdict, dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib import error, request
 
 _WILDCARD_HOSTS = {"", "*", "0.0.0.0", "::", "[::]"}
+
+
+class _FrontendAssetParser(HTMLParser):
+    """Collect local assets that must exist for the dashboard to boot."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.paths: set[str] = set()
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        values = dict(attrs)
+        candidate = values.get("src") if tag == "script" else values.get("href")
+        if candidate and candidate.startswith("/assets/"):
+            self.paths.add(candidate.split("?", 1)[0].split("#", 1)[0])
 
 
 @dataclass
@@ -29,7 +46,7 @@ class DashboardHealthResult:
 
 
 def dashboard_frontend_assets_ready(web_dist: Path | None = None) -> tuple[bool, str]:
-    """Return whether the built React dashboard bundle is present."""
+    """Return whether ``index.html`` and its exact hashed assets are coherent."""
     dist = web_dist or (Path(__file__).parent / "web_dist")
     if not dist.exists():
         return False, f"Dashboard frontend bundle is missing: {dist}"
@@ -42,6 +59,25 @@ def dashboard_frontend_assets_ready(web_dist: Path | None = None) -> tuple[bool,
         return False, f"Dashboard frontend JavaScript assets are missing: {assets_dir}"
     if not any(assets_dir.glob("*.css")):
         return False, f"Dashboard frontend CSS assets are missing: {assets_dir}"
+
+    try:
+        parser = _FrontendAssetParser()
+        parser.feed((dist / "index.html").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError) as exc:
+        return False, f"Dashboard frontend index cannot be read: {exc}"
+    if not parser.paths:
+        return False, "Dashboard frontend index does not reference any bundled assets"
+
+    missing = [
+        path
+        for path in sorted(parser.paths)
+        if not (dist / path.removeprefix("/")).is_file()
+    ]
+    if missing:
+        return False, (
+            "Dashboard frontend index references missing assets: "
+            + ", ".join(missing)
+        )
     return True, ""
 
 

@@ -60,6 +60,16 @@ def test_installer_discards_generated_web_assets_before_autostash():
     )
 
 
+def test_installer_validates_exact_hashed_web_assets():
+    content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+    function_start = content.index("web_ui_bundle_ready()")
+    function_end = content.index("\nbuild_web_ui_bundle()", function_start)
+    function_body = content[function_start:function_end]
+
+    assert "grep -oE '/assets/" in function_body
+    assert '[ -f "$web_dist/${asset_ref#/}" ] || return 1' in function_body
+
+
 def test_legacy_setup_script_syncs_missing_bundled_skills():
     content = SETUP_SCRIPT.read_text(encoding="utf-8")
 

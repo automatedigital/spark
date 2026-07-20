@@ -1269,11 +1269,17 @@ install_node_deps() {
 web_ui_bundle_ready() {
     local web_dist="$INSTALL_DIR/src/spark_cli/web_dist"
     local assets_dir="$web_dist/assets"
+    local asset_refs asset_ref
 
     [ -f "$web_dist/index.html" ] || return 1
     [ -d "$assets_dir" ] || return 1
     find "$assets_dir" -maxdepth 1 -type f -name '*.js' -print -quit 2>/dev/null | grep -q . || return 1
     find "$assets_dir" -maxdepth 1 -type f -name '*.css' -print -quit 2>/dev/null | grep -q . || return 1
+    asset_refs="$(grep -oE '/assets/[^"'"'"'?# ]+' "$web_dist/index.html" 2>/dev/null | sort -u)"
+    [ -n "$asset_refs" ] || return 1
+    for asset_ref in $asset_refs; do
+        [ -f "$web_dist/${asset_ref#/}" ] || return 1
+    done
     return 0
 }
 

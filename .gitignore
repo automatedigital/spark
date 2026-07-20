@@ -65,8 +65,9 @@ build/
 coverage.xml
 htmlcov/
 
-# Web UI build output
-src/spark_cli/web_dist/
+# The production Web UI bundle is intentionally committed. Existing Spark
+# versions load their updater before `git pull`, so carrying a complete,
+# coherent bundle is what makes the first upgrade to newer updater logic safe.
 
 # Release script temp files
 .release_notes.md

@@ -9815,18 +9815,21 @@ def _conversation_stream_snapshot_payload(
 
 def mount_spa(application: FastAPI):
     """Mount the built SPA. Falls back to index.html for client-side routing."""
+    from spark_cli.dashboard_health import dashboard_frontend_assets_ready
+
     assets_dir = WEB_DIST / "assets"
-    if (
-        not WEB_DIST.exists()
-        or not (WEB_DIST / "index.html").is_file()
-        or not assets_dir.is_dir()
-    ):
+    frontend_ready, frontend_error = dashboard_frontend_assets_ready(WEB_DIST)
+    if not frontend_ready:
 
         @application.get("/{full_path:path}")
         async def no_frontend(full_path: str):
             return JSONResponse(
-                {"error": "Frontend not built. Run: cd web && npm run build"},
-                status_code=404,
+                {
+                    "error": "Frontend bundle is incomplete.",
+                    "detail": frontend_error,
+                    "recovery": "Run: spark update",
+                },
+                status_code=503,
             )
 
         return

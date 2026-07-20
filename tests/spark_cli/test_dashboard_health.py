@@ -86,7 +86,11 @@ def test_dashboard_frontend_assets_ready_requires_js_and_css(tmp_path):
     web_dist = tmp_path / "web_dist"
     assets = web_dist / "assets"
     assets.mkdir(parents=True)
-    (web_dist / "index.html").write_text("<html></html>", encoding="utf-8")
+    (web_dist / "index.html").write_text(
+        '<script src="/assets/app.js"></script>'
+        '<link rel="stylesheet" href="/assets/app.css">',
+        encoding="utf-8",
+    )
 
     ok, error = dashboard_frontend_assets_ready(web_dist)
     assert ok is False
@@ -101,3 +105,23 @@ def test_dashboard_frontend_assets_ready_requires_js_and_css(tmp_path):
     ok, error = dashboard_frontend_assets_ready(web_dist)
     assert ok is True
     assert error == ""
+
+
+def test_dashboard_frontend_assets_ready_rejects_stale_hashed_assets(tmp_path):
+    web_dist = tmp_path / "web_dist"
+    assets = web_dist / "assets"
+    assets.mkdir(parents=True)
+    (web_dist / "index.html").write_text(
+        '<script type="module" src="/assets/index-new.js"></script>'
+        '<link rel="modulepreload" href="/assets/vendor-new.js">'
+        '<link rel="stylesheet" href="/assets/index-new.css">',
+        encoding="utf-8",
+    )
+    (assets / "index-old.js").write_text("old", encoding="utf-8")
+    (assets / "index-old.css").write_text("old", encoding="utf-8")
+
+    ok, error = dashboard_frontend_assets_ready(web_dist)
+
+    assert ok is False
+    assert "/assets/index-new.js" in error
+    assert "/assets/vendor-new.js" in error
