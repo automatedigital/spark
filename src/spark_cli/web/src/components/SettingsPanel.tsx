@@ -38,6 +38,7 @@ import {
   setLocalConnection,
 } from "@/lib/api";
 import { validateRemoteConnection, displayHost } from "@/lib/connection";
+import { localDeviceLabel } from "@/lib/localDevice";
 import { isTauri } from "@/sidecar";
 import type { McpServersResponse } from "@/lib/api";
 import { getNestedValue, setNestedValue } from "@/lib/nested";
@@ -746,6 +747,7 @@ function VoiceSection() {
  * remote instance (VPS). Mirrors the onboarding remote-connect flow and is
  * the single place to edit/clear the remote URL + token after setup. */
 function ConnectionSection() {
+  const localDevice = localDeviceLabel();
   const [mode, setMode] = useState(getConnectionMode());
   const [url, setUrl] = useState(getRemoteBaseUrl() ?? "");
   const [token, setToken] = useState("");
@@ -777,7 +779,7 @@ function ConnectionSection() {
     setMode("local");
     setUrl("");
     setToken("");
-    showToast("Switched to Local Mac. Reloading…", "success");
+    showToast(`Switched to local ${localDevice}. Reloading…`, "success");
     setTimeout(() => window.location.reload(), 600);
   };
 
@@ -790,7 +792,7 @@ function ConnectionSection() {
         <p className="mt-1 text-xs text-muted-foreground">
           {mode === "remote"
             ? `Currently connected to a remote Spark instance${currentHost ? ` @ ${currentHost}` : ""}.`
-            : "Currently running Spark locally on this Mac."}
+            : `Currently running Spark locally on this ${localDevice}.`}
         </p>
       </div>
 
@@ -800,7 +802,7 @@ function ConnectionSection() {
           size="sm"
           onClick={mode === "local" ? undefined : switchToLocal}
         >
-          <Cpu className="mr-1.5 h-4 w-4" /> Local Mac
+          <Cpu className="mr-1.5 h-4 w-4" /> Local {localDevice}
         </Button>
         <Button
           variant={mode === "remote" ? "default" : "outline"}

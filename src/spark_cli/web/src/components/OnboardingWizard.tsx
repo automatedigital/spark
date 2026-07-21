@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api, openExternal, setRemoteConnection, type OAuthStartResponse } from "@/lib/api";
 import { validateRemoteConnection } from "@/lib/connection";
+import { localDeviceLabel } from "@/lib/localDevice";
 import {
   normalizeHttpBaseUrl,
   validateHttpBaseUrl,
@@ -503,6 +504,7 @@ function InlineOAuth({
 }
 
 export function OnboardingWizard({ onComplete }: Props) {
+  const localDevice = localDeviceLabel();
   // Desktop-only "choose how to connect" gate shown before the provider flow.
   // On web there is no local-sidecar choice, so we skip straight to step 1.
   const desktop = isTauri();
@@ -797,7 +799,7 @@ export function OnboardingWizard({ onComplete }: Props) {
                 How do you want to run Spark?
               </h1>
               <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-                Run Spark locally on this Mac, or connect this app to an existing
+                Run Spark locally on this {localDevice}, or connect this app to an existing
                 Spark instance running elsewhere (for example, a VPS).
               </p>
               <div className="mt-2 flex w-full flex-col gap-2">
@@ -811,7 +813,7 @@ export function OnboardingWizard({ onComplete }: Props) {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-foreground">
-                      Run locally on this Mac
+                      Run locally on this {localDevice}
                     </span>
                     <span className="block text-xs text-muted-foreground">
                       Uses the built-in agent on this computer

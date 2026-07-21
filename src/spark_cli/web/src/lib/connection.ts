@@ -1,7 +1,7 @@
 // Pure, React-free connection-mode + remote-base-URL logic.
 //
 // Spark can run two ways from the desktop app:
-//   - "local":  talk to the bundled sidecar on this Mac (same-origin, base "").
+//   - "local":  talk to the bundled sidecar on this computer (same-origin, base "").
 //   - "remote": talk to an existing Spark instance (e.g. a VPS dashboard) by
 //               prepending a configurable base URL to every API call and
 //               authenticating with that instance's dashboard token.
