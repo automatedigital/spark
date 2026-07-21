@@ -37,7 +37,10 @@ const AGENT_CURSOR_LABEL: &str = "spark-agent-cursor";
 fn data_store_id(slug: &str) -> [u8; 16] {
     use std::hash::{Hash, Hasher};
     let mut out = [0u8; 16];
-    for (i, salt) in [0x9e3779b97f4a7c15u64, 0xc2b2ae3d27d4eb4fu64].iter().enumerate() {
+    for (i, salt) in [0x9e3779b97f4a7c15u64, 0xc2b2ae3d27d4eb4fu64]
+        .iter()
+        .enumerate()
+    {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         salt.hash(&mut h);
         slug.hash(&mut h);
@@ -108,7 +111,26 @@ fn preview_create(
     // Persistent: partitioned per-workspace cookie/storage jar so logins survive
     // restarts. Ephemeral: incognito (nothing written to disk).
     if persistent {
-        builder = builder.data_store_identifier(data_store_id(&slug));
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder.data_store_identifier(data_store_id(&slug));
+        }
+        #[cfg(target_os = "windows")]
+        {
+            // WebView2 partitions persistent browser state by data directory.
+            // Use the same stable workspace hash as the WKWebView implementation.
+            let partition = data_store_id(&slug)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| e.to_string())?
+                .join("preview-data")
+                .join(partition);
+            builder = builder.data_directory(data_dir);
+        }
     } else {
         builder = builder.incognito(true);
     }
@@ -210,7 +232,9 @@ fn preview_cookies(app: tauri::AppHandle) -> Result<Vec<CookieInfo>, String> {
 #[tauri::command]
 fn preview_clear_data(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(webview) = app.get_webview(PREVIEW_LABEL) {
-        webview.clear_all_browsing_data().map_err(|e| e.to_string())?;
+        webview
+            .clear_all_browsing_data()
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -427,9 +451,11 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&status, &new_chat, &toggle, &quit])?;
 
     TrayIconBuilder::with_id(TrayIconId::new(TRAY_ID))
-        .icon(app.default_window_icon().cloned().ok_or_else(|| {
-            tauri::Error::AssetNotFound("default window icon".into())
-        })?)
+        .icon(
+            app.default_window_icon()
+                .cloned()
+                .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?,
+        )
         .tooltip("Spark — idle")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -559,11 +585,16 @@ pub fn run() {
                 });
             }
             // Resource layout: Contents/Resources/spark-server/spark-server
+            let sidecar_name = if cfg!(target_os = "windows") {
+                "spark-server.exe"
+            } else {
+                "spark-server"
+            };
             let exe = app
                 .path()
                 .resource_dir()?
                 .join("spark-server")
-                .join("spark-server");
+                .join(sidecar_name);
             let bundled_skills = app.path().resource_dir()?.join("skills");
 
             if exe.exists() {

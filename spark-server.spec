@@ -12,6 +12,7 @@ Output:
 """
 
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -118,7 +119,10 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    # The Tauri app has no console on Windows; suppress a stray terminal window
+    # when it launches the backend sidecar. Keep stderr available on Unix where
+    # it is useful for local diagnostics and captured desktop launch logs.
+    console=sys.platform != "win32",
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
