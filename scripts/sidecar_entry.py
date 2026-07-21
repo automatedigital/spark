@@ -40,7 +40,23 @@ def _watch_parent(initial_ppid: int) -> None:
             os._exit(0)
 
 
+def _configure_output_encoding() -> None:
+    """Use UTF-8 for redirected sidecar logs on every desktop platform.
+
+    Windows otherwise defaults redirected output to a legacy code page such as
+    CP-1252. A single Unicode character in a startup message can then terminate
+    the server before Uvicorn starts. Windowed PyInstaller executables may also
+    expose no output streams, so keep this deliberately defensive.
+    """
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main() -> None:
+    _configure_output_encoding()
+
     # Only arm the watchdog under the desktop sidecar (frozen + a real parent).
     if getattr(sys, "frozen", False):
         initial_ppid = os.getppid()
