@@ -4,6 +4,7 @@
 *.pyc*
 __pycache__/
 .venv/
+.venv-desktop/
 .vscode/
 .DS_Store
 .env
