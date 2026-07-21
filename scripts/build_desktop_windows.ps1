@@ -34,10 +34,14 @@ $PortProbe.Start()
 $SmokePort = $PortProbe.LocalEndpoint.Port
 $PortProbe.Stop()
 $PreviousSparkHome = $env:SPARK_HOME
+$PreviousSparkDesktop = $env:SPARK_DESKTOP
 $SmokeProcess = $null
 New-Item $SmokeHome -ItemType Directory -Force | Out-Null
 try {
     $env:SPARK_HOME = $SmokeHome
+    # Match the environment Tauri supplies to the bundled sidecar. Without
+    # this flag the backend correctly skips desktop gateway autostart.
+    $env:SPARK_DESKTOP = "1"
     $SmokeProcess = Start-Process `
         -FilePath (Join-Path $RepoRoot "dist/spark-server/spark-server.exe") `
         -ArgumentList $SmokePort `
@@ -91,6 +95,7 @@ finally {
         $SmokeProcess.WaitForExit()
     }
     $env:SPARK_HOME = $PreviousSparkHome
+    $env:SPARK_DESKTOP = $PreviousSparkDesktop
     Remove-Item $SmokeHome -Recurse -Force -ErrorAction SilentlyContinue
 }
 
