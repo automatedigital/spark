@@ -23,7 +23,6 @@ Design:
 - Frozen snapshot pattern: system prompt is stable, tool responses show live state
 """
 
-import fcntl
 import json
 import logging
 import os
@@ -31,8 +30,19 @@ import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from core.spark_constants import get_spark_home
-from typing import Dict, Any, List, Optional
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised by Windows CI
+    fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - Unix
+    msvcrt = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +151,22 @@ class MemoryStore:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with open(lock_path, "w") as fd:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX)
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_EX)
+                else:
+                    assert msvcrt is not None
+                    fd.write("\0")
+                    fd.flush()
+                    fd.seek(0)
+                    msvcrt.locking(fd.fileno(), msvcrt.LK_LOCK, 1)
                 yield
             finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                else:
+                    assert msvcrt is not None
+                    fd.seek(0)
+                    msvcrt.locking(fd.fileno(), msvcrt.LK_UNLCK, 1)
 
     @staticmethod
     def _path_for(target: str) -> Path:
@@ -556,7 +578,3 @@ registry.register(
     check_fn=check_memory_requirements,
     emoji="🧠",
 )
-
-
-
-

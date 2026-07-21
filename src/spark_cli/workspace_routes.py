@@ -5,13 +5,11 @@ from __future__ import annotations
 import asyncio
 import atexit
 import base64
-import fcntl
 import ipaddress
 import json
 import logging
 import mimetypes
 import os
-import pty
 import queue
 import re
 import shutil
@@ -19,7 +17,6 @@ import signal
 import socket
 import struct
 import subprocess
-import termios
 import threading
 import time
 import urllib.parse
@@ -27,6 +24,19 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any
+
+# These modules only exist on Unix. Workspace file and preview routes are
+# cross-platform, so importing this module must not make the entire Windows
+# desktop backend fail before it starts. Interactive PTY routes report a clear
+# error on platforms where the Unix PTY implementation is unavailable.
+try:
+    import fcntl
+    import pty
+    import termios
+except ImportError:  # pragma: no cover - exercised by Windows CI
+    fcntl = None  # type: ignore[assignment]
+    pty = None  # type: ignore[assignment]
+    termios = None  # type: ignore[assignment]
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -1204,6 +1214,8 @@ def _run_terminal_shell(run_id: str) -> None:
     master_fd: int | None = None
 
     try:
+        if pty is None or fcntl is None or termios is None:
+            raise RuntimeError("Interactive workspace terminals are not yet supported on Windows")
         master_fd, slave_fd = pty.openpty()
         try:
             fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
@@ -1300,6 +1312,8 @@ def resize_terminal(slug: str, run_id: str, body: TerminalResize):
         raise HTTPException(status_code=400, detail="Terminal is not running")
     rows = max(2, min(200, int(body.rows)))
     cols = max(10, min(400, int(body.cols)))
+    if fcntl is None or termios is None:
+        raise HTTPException(status_code=501, detail="Terminal resizing is not supported on Windows")
     try:
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     except OSError as exc:
