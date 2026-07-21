@@ -916,6 +916,18 @@ class TestWebServerEndpoints:
         assert "spark_home" in data
         assert "active_sessions" in data
 
+    def test_desktop_status_reports_windows_platform(self, monkeypatch):
+        import spark_cli.web_server as web_server
+
+        monkeypatch.setenv("SPARK_DESKTOP", "1")
+        monkeypatch.setattr(web_server.sys, "platform", "win32")
+        resp = self.client.get("/api/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["desktop"] is True
+        assert data["desktop_platform"] == "windows"
+        assert data["mac_update_available"] is False
+
     def test_admin_actions_metadata_and_confirmation_gate(self):
         resp = self.client.get("/api/admin/actions")
         assert resp.status_code == 200

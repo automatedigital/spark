@@ -3,6 +3,8 @@ import { Download, RefreshCw } from "lucide-react";
 import { api, sseUrl, type AdminActionMeta } from "@/lib/api";
 import { useUpdateModal } from "@/lib/updateModal";
 
+const PLATFORM_LABELS = { macos: "macOS", windows: "Windows", linux: "Linux" } as const;
+
 export default function UpdatesPage() {
   const { openUpdateModal, macUpdateAvailable, macLatestVersion, openMacUpdateModal } = useUpdateModal();
   const [checkAction, setCheckAction] = useState<AdminActionMeta | null>(null);
@@ -11,6 +13,7 @@ export default function UpdatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [desktopVersion, setDesktopVersion] = useState<string | null>(null);
+  const [desktopPlatform, setDesktopPlatform] = useState<keyof typeof PLATFORM_LABELS | null>(null);
 
   useEffect(() => {
     void api
@@ -18,6 +21,7 @@ export default function UpdatesPage() {
       .then((s) => {
         setIsDesktop(Boolean(s.desktop));
         setDesktopVersion(s.desktop_version ?? null);
+        setDesktopPlatform(s.desktop_platform ?? null);
       })
       .catch(() => {});
   }, []);
@@ -104,16 +108,16 @@ export default function UpdatesPage() {
       {isDesktop && (
         <section className="border border-border bg-background/70 p-4 flex flex-col gap-3">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">
-            macOS App{desktopVersion ? ` · v${desktopVersion}` : ""}
+            {desktopPlatform ? PLATFORM_LABELS[desktopPlatform] : "Desktop"} App
+            {desktopVersion ? ` · v${desktopVersion}` : ""}
           </div>
           <p className="text-xs text-muted-foreground">
-            Downloads and installs the desktop app shell from the latest GitHub release.{" "}
-            {macUpdateAvailable
-              ? `Version v${macLatestVersion} is available.`
-              : "You're on the latest version."}
+            {desktopPlatform === "macos"
+              ? `Downloads and installs the desktop app shell from the latest GitHub release. ${macUpdateAvailable ? `Version v${macLatestVersion} is available.` : "You're on the latest version."}`
+              : "Desktop app updates are available from Spark's GitHub releases."}
           </p>
           <div className="flex flex-wrap gap-3 items-center">
-            <button
+            {desktopPlatform === "macos" && <button
               type="button"
               className="px-2.5 py-1.5 text-xs uppercase tracking-wider border border-amber-500/50 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
               onClick={openMacUpdateModal}
@@ -122,6 +126,7 @@ export default function UpdatesPage() {
               <Download className="h-3.5 w-3.5" />
               Update macOS App
             </button>
+            }
           </div>
         </section>
       )}

@@ -1630,6 +1630,7 @@ export interface StatusResponse {
   commits_behind?: number | null;
   desktop?: boolean;
   desktop_version?: string | null;
+  desktop_platform?: "macos" | "windows" | "linux" | null;
   mac_update_available?: boolean;
   mac_latest_version?: string | null;
   dashboard_auth?: {

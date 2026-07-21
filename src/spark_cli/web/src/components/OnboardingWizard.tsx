@@ -58,18 +58,10 @@ interface ProviderMeta {
   keyPlaceholder?: string;
   /** Provider key page (shown below the key field). */
   keyUrl?: string;
+  recommended?: boolean;
 }
 
 const PROVIDERS: ProviderMeta[] = [
-  {
-    id: "anthropic",
-    name: "Anthropic (Claude)",
-    tagline: "Best for coding and reasoning",
-    icon: Sparkles,
-    auth: "oauth",
-    oauthId: "anthropic",
-    defaultModel: "claude-sonnet-4-6",
-  },
   {
     id: "openai-codex",
     name: "OpenAI Codex",
@@ -78,6 +70,7 @@ const PROVIDERS: ProviderMeta[] = [
     auth: "oauth",
     oauthId: "openai-codex",
     defaultModel: "gpt-5.4",
+    recommended: true,
   },
   {
     id: "openai",
@@ -111,6 +104,15 @@ const PROVIDERS: ProviderMeta[] = [
     defaultModel: "anthropic/claude-sonnet-4-6",
     keyPlaceholder: "sk-or-…",
     keyUrl: "https://openrouter.ai/keys",
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic (Claude)",
+    tagline: "Log in with your Claude account",
+    icon: Sparkles,
+    auth: "oauth",
+    oauthId: "anthropic",
+    defaultModel: "claude-sonnet-4-6",
   },
   {
     id: "ollama",
@@ -948,7 +950,14 @@ export function OnboardingWizard({ onComplete }: Props) {
                         <Icon className="h-5 w-5" />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-foreground">{p.name}</span>
+                        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          {p.name}
+                          {p.recommended && (
+                            <span className="border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              Recommended
+                            </span>
+                          )}
+                        </span>
                         <span className="block text-xs text-muted-foreground">{p.tagline}</span>
                       </span>
                     </button>

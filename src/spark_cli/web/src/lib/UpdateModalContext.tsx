@@ -29,9 +29,11 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       let isDesktop = false;
+      let desktopPlatform: string | null = null;
       try {
         const s = await api.getStatus();
         isDesktop = Boolean(s.desktop);
+        desktopPlatform = s.desktop_platform ?? null;
         if (!cancelled && s.update_available) {
           setUpdateAvailable(true);
           if (s.commits_behind != null)
@@ -47,8 +49,8 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
           } catch { /* ignore */ }
         }
       } catch { /* ignore */ }
-      // Only the bundled macOS app can update its own .app shell.
-      if (isDesktop) {
+      // The in-app installer currently applies only to the bundled macOS shell.
+      if (isDesktop && desktopPlatform === "macos") {
         try {
           const mac = await api.checkMacUpdate();
           if (!cancelled && mac.update_available) {

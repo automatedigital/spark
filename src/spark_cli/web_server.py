@@ -1320,7 +1320,7 @@ def _prefetch_update_check() -> None:
 def _prefetch_mac_update_check() -> None:
     """Warm the macOS release-update cache at startup (desktop app only)."""
     try:
-        if _is_desktop_app():
+        if _is_desktop_app() and sys.platform == "darwin":
             _check_mac_update(force=True)
     except Exception:
         pass
@@ -2809,14 +2809,15 @@ async def get_status():
         "update_available": bool(commits_behind and commits_behind > 0),
         "desktop": _is_desktop_app(),
         "desktop_version": _desktop_app_version(),
+        "desktop_platform": _desktop_platform(),
         "mac_update_available": bool(
-            _is_desktop_app()
+            _desktop_platform() == "macos"
             and _mac_update_cache.get("result")
             and _mac_update_cache["result"].get("update_available")
         ),
         "mac_latest_version": (
             (_mac_update_cache.get("result") or {}).get("latest_version")
-            if _is_desktop_app()
+            if _desktop_platform() == "macos"
             else None
         ),
         "dashboard_auth": {
@@ -2864,13 +2865,24 @@ MAC_APP_INSTALL_PATH = Path("/Applications/Spark.app")
 
 
 def _is_desktop_app() -> bool:
-    """True when running as the bundled macOS desktop sidecar."""
+    """True when running as a bundled desktop sidecar."""
     return os.environ.get("SPARK_DESKTOP") == "1"
 
 
 def _desktop_app_version() -> str | None:
     """Version of the running .app shell, injected by Tauri at spawn time."""
     return os.environ.get("SPARK_DESKTOP_VERSION") or None
+
+
+def _desktop_platform() -> str | None:
+    """Return the platform name used by the bundled desktop UI."""
+    if not _is_desktop_app():
+        return None
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("win"):
+        return "windows"
+    return "linux"
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
@@ -3058,7 +3070,7 @@ log "Spark desktop update install finished"
 @app.get("/api/mac/update/check")
 async def check_mac_update():
     """Check whether a newer macOS desktop app release is available."""
-    if not _is_desktop_app():
+    if not _is_desktop_app() or sys.platform != "darwin":
         return {
             "update_available": False,
             "latest_version": None,
@@ -3072,7 +3084,7 @@ async def check_mac_update():
 @app.post("/api/mac/update/run")
 async def run_mac_update():
     """Download the latest macOS DMG and start a detached automatic installer."""
-    if not _is_desktop_app():
+    if not _is_desktop_app() or sys.platform != "darwin":
         raise HTTPException(status_code=400, detail="Not running as the macOS desktop app")
     info = await asyncio.to_thread(_check_mac_update, True)
     download_url = info.get("download_url")
