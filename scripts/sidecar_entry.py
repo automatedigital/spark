@@ -50,7 +50,13 @@ def _configure_output_encoding() -> None:
     """
     for stream_name in ("stdout", "stderr"):
         stream = getattr(sys, stream_name, None)
-        if stream is not None and hasattr(stream, "reconfigure"):
+        if stream is None:
+            # PyInstaller's Windows ``windowed`` bootloader deliberately sets
+            # these to None. Uvicorn's default formatter unconditionally calls
+            # ``sys.stdout.isatty()``, so provide a real file-like sink.
+            stream = open(os.devnull, "w", encoding="utf-8", errors="backslashreplace")
+            setattr(sys, stream_name, stream)
+        elif hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
 

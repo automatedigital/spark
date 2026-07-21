@@ -29,8 +29,6 @@ finally {
 
 Write-Host "==> Smoke-testing frozen Python backend"
 $SmokeHome = Join-Path ([System.IO.Path]::GetTempPath()) ("spark-desktop-smoke-" + [guid]::NewGuid())
-$SmokeOut = Join-Path $SmokeHome "spark-server.out.log"
-$SmokeErr = Join-Path $SmokeHome "spark-server.err.log"
 $PortProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
 $PortProbe.Start()
 $SmokePort = $PortProbe.LocalEndpoint.Port
@@ -44,9 +42,7 @@ try {
         -FilePath (Join-Path $RepoRoot "dist/spark-server/spark-server.exe") `
         -ArgumentList $SmokePort `
         -PassThru `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $SmokeOut `
-        -RedirectStandardError $SmokeErr
+        -WindowStyle Hidden
 
     $SmokePassed = $false
     for ($Attempt = 0; $Attempt -lt 60; $Attempt++) {
@@ -66,10 +62,6 @@ try {
     }
 
     if (-not $SmokePassed) {
-        Write-Host "Frozen backend stdout:"
-        if (Test-Path $SmokeOut) { Get-Content $SmokeOut }
-        Write-Host "Frozen backend stderr:"
-        if (Test-Path $SmokeErr) { Get-Content $SmokeErr }
         throw "Frozen Windows backend failed its startup smoke test"
     }
     Write-Host "Frozen Windows backend started successfully on port $SmokePort"
