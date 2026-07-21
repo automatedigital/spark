@@ -97,3 +97,17 @@ def test_stop_noop_when_not_owner():
     # Never started -> stop must be a safe no-op.
     sup.stop(timeout=0.1)
     assert sup.started_by_us is False
+
+
+def test_restart_desktop_gateway_stops_then_starts(monkeypatch):
+    calls = []
+    monkeypatch.setenv("SPARK_DESKTOP", "1")
+    monkeypatch.setattr(desktop_gateway._supervisor, "stop", lambda: calls.append("stop"))
+    monkeypatch.setattr(
+        desktop_gateway._supervisor,
+        "maybe_start",
+        lambda: calls.append("start") or True,
+    )
+
+    assert desktop_gateway.restart_desktop_gateway() is True
+    assert calls == ["stop", "start"]

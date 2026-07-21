@@ -101,6 +101,40 @@ class TestGatewayPidState:
 
         assert status.get_running_pid() == os.getpid()
 
+    def test_windows_get_running_pid_uses_nondestructive_process_query(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+        (tmp_path / "gateway.pid").write_text(json.dumps({
+            "pid": 4242,
+            "kind": "spark-gateway",
+            "argv": ["spark-server.exe"],
+            "start_time": 987654,
+            "embedded": True,
+        }))
+        monkeypatch.setattr(status, "_IS_WINDOWS", True)
+        monkeypatch.setattr(status, "_windows_process_info", lambda pid: (True, 987654))
+        monkeypatch.setattr(
+            status.os,
+            "kill",
+            lambda *_args: (_ for _ in ()).throw(AssertionError("os.kill must not probe Windows PIDs")),
+        )
+
+        assert status.get_running_pid() == 4242
+
+    def test_windows_get_running_pid_removes_exited_process(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+        pid_path = tmp_path / "gateway.pid"
+        pid_path.write_text(json.dumps({
+            "pid": 4242,
+            "kind": "spark-gateway",
+            "argv": ["spark-server.exe"],
+            "embedded": True,
+        }))
+        monkeypatch.setattr(status, "_IS_WINDOWS", True)
+        monkeypatch.setattr(status, "_windows_process_info", lambda pid: (False, None))
+
+        assert status.get_running_pid() is None
+        assert not pid_path.exists()
+
 
 class TestGatewayRuntimeStatus:
     def test_write_runtime_status_overwrites_stale_pid_on_restart(self, tmp_path, monkeypatch):

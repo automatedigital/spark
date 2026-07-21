@@ -178,3 +178,11 @@ def start_desktop_gateway() -> bool:
 def stop_desktop_gateway() -> None:
     """Entry point called from the web server lifespan on shutdown."""
     _supervisor.stop()
+
+
+def restart_desktop_gateway() -> bool:
+    """Restart the embedded gateway so newly saved platform config is loaded."""
+    if not is_desktop_app():
+        return False
+    _supervisor.stop()
+    return _supervisor.maybe_start()

@@ -35,7 +35,7 @@ jobs:
           workspaces: src/spark_cli/web/src-tauri
 
       - name: Install Spark and build dependencies
-        run: python -m pip install -e ".[web,pty,dev]"
+        run: python -m pip install -e ".[web,pty,messaging,dev]"
 
       - name: Build unsigned Windows beta
         shell: pwsh

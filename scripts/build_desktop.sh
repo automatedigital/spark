@@ -62,10 +62,10 @@ fi
 echo "==> Installing desktop Python dependencies"
 if command -v uv >/dev/null 2>&1; then
   uv pip install --python "$DESKTOP_VENV/bin/python" \
-    -e "$REPO_ROOT[web,pty]" "pyinstaller>=6.0,<7"
+    -e "$REPO_ROOT[web,pty,messaging]" "pyinstaller>=6.0,<7"
 else
   "$DESKTOP_VENV/bin/python" -m pip install \
-    -e "$REPO_ROOT[web,pty]" "pyinstaller>=6.0,<7"
+    -e "$REPO_ROOT[web,pty,messaging]" "pyinstaller>=6.0,<7"
 fi
 echo "==> Desktop Python: $($DESKTOP_VENV/bin/python -c 'import sys; print(sys.executable)')"
 

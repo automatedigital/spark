@@ -184,6 +184,19 @@ def _trigger_gateway_restart() -> dict[str, Any]:
     The gateway installs a SIGUSR1 handler that drains in-flight work and
     restarts with fresh config/env (see ``gateway/run.py``).
     """
+    if os.environ.get("SPARK_DESKTOP") == "1":
+        try:
+            from spark_cli.desktop_gateway import restart_desktop_gateway
+
+            restarted = restart_desktop_gateway()
+        except Exception as exc:
+            return {"ok": False, "running": True, "detail": f"Desktop gateway restart failed: {exc}"}
+        return {
+            "ok": restarted,
+            "running": restarted,
+            "detail": "Desktop gateway restarted." if restarted else "Desktop gateway did not restart.",
+        }
+
     try:
         from gateway.status import get_running_pid
 

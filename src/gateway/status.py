@@ -20,8 +20,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from core.spark_constants import get_spark_home
 from typing import Any, Optional
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -93,12 +94,91 @@ def _get_scope_lock_path(scope: str, identity: str) -> Path:
 
 def _get_process_start_time(pid: int) -> Optional[int]:
     """Return the kernel start time for a process when available."""
+    if _IS_WINDOWS:
+        _alive, start_time = _windows_process_info(pid)
+        return start_time
     stat_path = Path(f"/proc/{pid}/stat")
     try:
         # Field 22 in /proc/<pid>/stat is process start time (clock ticks).
         return int(stat_path.read_text().split()[21])
     except (FileNotFoundError, IndexError, PermissionError, ValueError, OSError):
         return None
+
+
+def _windows_process_info(pid: int) -> tuple[bool, Optional[int]]:
+    """Return Windows process liveness and creation time without signalling it."""
+    if not _IS_WINDOWS:
+        return False, None
+
+    import ctypes
+    from ctypes import wintypes
+
+    class FILETIME(ctypes.Structure):
+        _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.GetProcessTimes.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(FILETIME),
+        ctypes.POINTER(FILETIME),
+        ctypes.POINTER(FILETIME),
+        ctypes.POINTER(FILETIME),
+    ]
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        # Access denied still proves the PID exists; other failures mean it is
+        # unavailable or has already exited.
+        return ctypes.get_last_error() == 5, None
+
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return False, None
+        if exit_code.value != STILL_ACTIVE:
+            return False, None
+
+        created = FILETIME()
+        exited = FILETIME()
+        kernel = FILETIME()
+        user = FILETIME()
+        if not kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(created),
+            ctypes.byref(exited),
+            ctypes.byref(kernel),
+            ctypes.byref(user),
+        ):
+            return True, None
+        start_time = (created.dwHighDateTime << 32) | created.dwLowDateTime
+        return True, start_time
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _is_process_alive(pid: int) -> bool:
+    """Check process liveness without sending a destructive Windows signal."""
+    if _IS_WINDOWS:
+        alive, _start_time = _windows_process_info(pid)
+        return alive
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def _read_process_cmdline(pid: int) -> Optional[str]:
@@ -327,10 +407,11 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
         stale = existing_pid is None
         if not stale:
             try:
-                os.kill(existing_pid, 0)
-            except (ProcessLookupError, PermissionError):
+                process_alive = _is_process_alive(existing_pid)
+            except OSError:
                 stale = True
             else:
+                stale = not process_alive
                 current_start = _get_process_start_time(existing_pid)
                 if (
                     existing.get("start_time") is not None
@@ -429,9 +510,7 @@ def get_running_pid() -> Optional[int]:
         remove_pid_file()
         return None
 
-    try:
-        os.kill(pid, 0)  # signal 0 = existence check, no actual signal sent
-    except (ProcessLookupError, PermissionError):
+    if not _is_process_alive(pid):
         remove_pid_file()
         return None
 

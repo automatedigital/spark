@@ -308,6 +308,23 @@ def test_restart_endpoint_best_effort_when_gateway_down(client):
     assert body["platform"] == "telegram"
 
 
+def test_restart_endpoint_restarts_embedded_desktop_gateway(client, monkeypatch):
+    import spark_cli.desktop_gateway as desktop_gateway
+
+    monkeypatch.setenv("SPARK_DESKTOP", "1")
+    monkeypatch.setattr(desktop_gateway, "restart_desktop_gateway", lambda: True)
+
+    resp = client.post("/api/messaging/platforms/slack/restart")
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": True,
+        "running": True,
+        "detail": "Desktop gateway restarted.",
+        "platform": "slack",
+    }
+
+
 def test_save_succeeds_even_when_restart_fails(client, monkeypatch):
     import spark_cli.messaging_routes as mr
 

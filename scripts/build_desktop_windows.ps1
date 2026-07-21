@@ -65,6 +65,25 @@ try {
         throw "Frozen Windows backend failed its startup smoke test"
     }
     Write-Host "Frozen Windows backend started successfully on port $SmokePort"
+
+    $GatewayPassed = $false
+    for ($Attempt = 0; $Attempt -lt 60; $Attempt++) {
+        try {
+            $Status = Invoke-RestMethod "http://127.0.0.1:$SmokePort/api/status" -TimeoutSec 2
+            if ($Status.gateway_running -eq $true -and $Status.gateway_state -eq "running") {
+                $GatewayPassed = $true
+                break
+            }
+        }
+        catch {
+            # The embedded gateway starts just after the web server; retry.
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not $GatewayPassed) {
+        throw "Frozen Windows backend started, but its embedded gateway did not become healthy"
+    }
+    Write-Host "Embedded Windows gateway reported healthy"
 }
 finally {
     if ($SmokeProcess -and -not $SmokeProcess.HasExited) {
