@@ -3965,7 +3965,10 @@ def get_codex_usage():
             if account_id:
                 wham_headers["ChatGPT-Account-Id"] = account_id
 
-            with _httpx.Client(http2=True, timeout=10.0) as _hc:
+            # Do not require HTTP/2 here. It is an optional httpx dependency
+            # and is intentionally absent from the frozen desktop sidecar;
+            # chatgpt.com serves this endpoint correctly over HTTP/1.1.
+            with _httpx.Client(timeout=10.0) as _hc:
                 wham = _hc.get("https://chatgpt.com/backend-api/wham/usage", headers=wham_headers)
 
             if wham.status_code == 200:
