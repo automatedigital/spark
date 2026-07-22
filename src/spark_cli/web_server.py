@@ -3852,6 +3852,47 @@ _EMPTY_MODEL_INFO: dict = {
 }
 
 
+def _codex_usage_windows(rate_limit: Any) -> list[dict[str, Any]]:
+    """Build displayable Codex usage windows from the live response.
+
+    Codex can independently omit or null either window (for example, while a
+    plan has no weekly limit).  Keep every window that is actually present
+    instead of letting one absent window discard the entire usage meter.
+    """
+    if not isinstance(rate_limit, dict):
+        return []
+
+    windows: list[dict[str, Any]] = []
+    for key in ("primary_window", "secondary_window"):
+        window = rate_limit.get(key)
+        if not isinstance(window, dict):
+            continue
+        used_percent = window.get("used_percent")
+        if not isinstance(used_percent, (int, float)):
+            continue
+        window_seconds = window.get("limit_window_seconds")
+        if not isinstance(window_seconds, (int, float)) or window_seconds <= 0:
+            continue
+        if window_seconds == 604800:
+            label = "Weekly limit"
+        elif window_seconds == 18000:
+            label = "5h limit"
+        elif window_seconds % 86400 == 0:
+            label = f"{int(window_seconds / 86400)}d limit"
+        elif window_seconds % 3600 == 0:
+            label = f"{int(window_seconds / 3600)}h limit"
+        else:
+            label = "Usage limit"
+        windows.append({
+            "label": label,
+            "used_percent": used_percent,
+            "reset_at": window.get("reset_at"),
+            "reset_after_seconds": window.get("reset_after_seconds"),
+            "window_seconds": window_seconds,
+        })
+    return windows
+
+
 @app.get("/api/model/codex-usage")
 def get_codex_usage():
     """Return Codex provider status and any captured usage-limit state.
@@ -3929,31 +3970,16 @@ def get_codex_usage():
 
             if wham.status_code == 200:
                 wham_data = wham.json()
-                rl = wham_data.get("rate_limit", {})
-                pw = rl.get("primary_window", {})    # 5-hour window
-                sw = rl.get("secondary_window", {})  # weekly window
+                rl = wham_data.get("rate_limit")
+                if not isinstance(rl, dict):
+                    rl = {}
                 return {
                     "available": True,
                     "provider_connected": True,
                     "active_model": active_model,
                     "plan_type": wham_data.get("plan_type"),
                     "limit_reached": rl.get("limit_reached", False),
-                    "windows": [
-                        {
-                            "label": "5h Limit",
-                            "used_percent": pw.get("used_percent", 0),
-                            "reset_at": pw.get("reset_at"),
-                            "reset_after_seconds": pw.get("reset_after_seconds"),
-                            "window_seconds": pw.get("limit_window_seconds", 18000),
-                        },
-                        {
-                            "label": "Weekly limit",
-                            "used_percent": sw.get("used_percent", 0),
-                            "reset_at": sw.get("reset_at"),
-                            "reset_after_seconds": sw.get("reset_after_seconds"),
-                            "window_seconds": sw.get("limit_window_seconds", 604800),
-                        },
-                    ],
+                    "windows": _codex_usage_windows(rl),
                 }
         except Exception as exc:
             _log.debug("wham/usage fetch failed: %s", exc)

@@ -716,6 +716,9 @@ export function ChatPanel({
     const initialTranscript = cachedTranscript.length > 0 ? cachedTranscript : optimistic;
     setChatMessages(initialTranscript);
     setError(null);
+    setDiagnosticsOpen(false);
+    setConversationDiagnostics(null);
+    setDiagnosticsError(null);
     // Mounting with an initialMessage means the composer just started a turn for
     // this new thread (its postConversation already kicked off the agent). Show
     // the typing indicator right away instead of waiting for the first token —
@@ -2039,7 +2042,9 @@ export function ChatPanel({
     turnState,
   ]);
 
-  const shouldShowRecoveryPanel = Boolean(activeSessionId) && (diagnosticsOpen || turnState === "stalled");
+  // A stalled turn may show its compact warning and Diagnostics button, but
+  // the full panel is controlled exclusively by that button.
+  const shouldShowRecoveryPanel = Boolean(activeSessionId) && diagnosticsOpen;
 
   useEffect(() => {
     if (!shouldShowRecoveryPanel) return;
