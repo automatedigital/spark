@@ -182,6 +182,9 @@ export interface SessionStoreValue {
   selectedSession: SessionInfo | null;
   /** Workspace project slug being composed into, or null. */
   composingFor: string | null;
+  /** Project filter selected in the inbox sidebar; seeds the new-chat composer. */
+  sidebarProjectScope: string | null;
+  setSidebarProjectScope: (slug: string | null) => void;
   selectSession: (id: string | null) => void;
   newSession: () => void;
   newProjectThread: (slug: string) => void;
@@ -224,6 +227,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composingFor, setComposingFor] = useState<string | null>(null);
+  const [sidebarProjectScope, setSidebarProjectScope] = useState<string | null>(null);
   const [pendingInitialMessages, setPendingInitialMessages] = useState<PendingInitialMessages>({});
 
   const [searchQ, setSearchQ] = useState("");
@@ -392,6 +396,20 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   // ── Real-time updates (SSE) ──
   useEventBus((env: SparkEventEnvelope) => {
+    // chat.turn_done is the authoritative live completion edge. The sessions
+    // projection can arrive a little later, which previously left the inbox
+    // card saying Working until a full page refresh reconciled it.
+    if (env.topic === "chat.turn_done") {
+      const data = env.data as { session_id?: string };
+      const sid = data.session_id ?? env.session_id ?? "";
+      if (sid) {
+        queuedSessionRowsRef.current.delete(sid);
+        setSessions((prev) => prev.map((session) => (
+          session.id === sid ? { ...session, is_active: false } : session
+        )));
+      }
+      return;
+    }
     if (env.topic !== "sessions.changed") return;
     const data = env.data as { action?: string; session_id?: string; session?: SessionInfo };
     const sid = data.session_id ?? "";
@@ -770,6 +788,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     selectedId,
     selectedSession,
     composingFor,
+    sidebarProjectScope,
+    setSidebarProjectScope,
     selectSession,
     newSession,
     newProjectThread,

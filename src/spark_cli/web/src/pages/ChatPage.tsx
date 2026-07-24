@@ -101,9 +101,11 @@ const HERO_PROJECT_KEY = "spark-hero-last-project";
 function NewSessionHero({
   onCreated,
   projects,
+  initialProjectSlug,
 }: {
   onCreated: (sessionId: string, initialMessage: string, meta?: ThreadCreatedMeta) => void;
   projects: WorkspaceProject[];
+  initialProjectSlug: string | null;
 }) {
   const [msg, setMsg] = useState("");
   const [starting, setStarting] = useState(false);
@@ -111,6 +113,7 @@ function NewSessionHero({
   // Restore the last-used selection so "new chat in the same project" is a
   // single click — but only if that project still exists.
   const [projectSlug, setProjectSlug] = useState<string>(() => {
+    if (initialProjectSlug) return initialProjectSlug;
     try {
       return localStorage.getItem(HERO_PROJECT_KEY) ?? "";
     } catch {
@@ -134,6 +137,12 @@ function NewSessionHero({
       /* ignore */
     }
   };
+
+  // A scoped sidebar acts as the destination context for New chat. Reflect it
+  // in the visible composer picker instead of silently routing the message.
+  useEffect(() => {
+    setProjectSlug(initialProjectSlug ?? "");
+  }, [initialProjectSlug]);
 
   const handleSend = async () => {
     const text = msg.trim();
@@ -210,9 +219,6 @@ function NewSessionHero({
             Spark
           </h1>
         </div>
-        <p className="mt-5 max-w-md text-sm leading-relaxed text-muted-foreground/70">
-          Type a task, question, or snippet…
-        </p>
       </div>
       <div className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-6 sm:pb-8">
         <PromptBar
@@ -223,7 +229,7 @@ function NewSessionHero({
           onStop={() => {}}
           onUploadFiles={handleUpload}
           disabled={starting}
-          placeholder="Start with a goal"
+          placeholder="Describe a task or ask a question"
           workspaceSlug={projectSlug || undefined}
           projectOptions={projects}
           selectedProjectSlug={projectSlug}
@@ -858,6 +864,7 @@ export default function ChatPage() {
     selectedId,
     selectedSession,
     composingFor,
+    sidebarProjectScope,
     cancelCompose,
     selectSession,
     threadCreated,
@@ -948,6 +955,17 @@ export default function ChatPage() {
     setRightTab(tab);
     saveRightTab(activeWorkspaceSlug, selectedId, tab);
   }, [activeWorkspaceSlug, selectedId]);
+
+  useEffect(() => {
+    if (!rightPanelWorkspaceSlug) return;
+    const openPreview = () => {
+      setRightPanelOpen(true);
+      saveRightPanelOpen(activeWorkspaceSlug, selectedId, true);
+      selectRightTab("preview");
+    };
+    window.addEventListener("spark:preview-open", openPreview);
+    return () => window.removeEventListener("spark:preview-open", openPreview);
+  }, [activeWorkspaceSlug, rightPanelWorkspaceSlug, selectedId, selectRightTab]);
 
   // ── Real-time updates ──
   useEventBus((env: SparkEventEnvelope) => {
@@ -1100,7 +1118,11 @@ export default function ChatPage() {
               />
             </div>
           ) : (
-            <NewSessionHero onCreated={threadCreated} projects={projects} />
+            <NewSessionHero
+              onCreated={threadCreated}
+              projects={projects}
+              initialProjectSlug={sidebarProjectScope}
+            />
           )}
         </div>
 

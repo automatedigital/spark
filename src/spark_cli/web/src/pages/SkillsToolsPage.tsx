@@ -8,6 +8,7 @@ import { Toast } from "@/components/Toast";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import ConnectorsPage from "@/pages/ConnectorsPage";
+import EnvPage from "@/pages/EnvPage";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 
 /* ------------------------------------------------------------------ */
@@ -33,7 +34,7 @@ function prettyCategory(raw: string | null | undefined): string {
     .join("-");
 }
 
-type Tab = "skills" | "toolsets" | "tools";
+type Tab = "skills" | "toolsets" | "tools" | "keys";
 
 interface CategoryGroup {
   key: string;
@@ -195,6 +196,9 @@ export default function SkillsToolsPage() {
           <button type="button" className={tabClass(tab === "tools")} onClick={() => setTab("tools")}>
             Tools
           </button>
+          <button type="button" className={tabClass(tab === "keys")} onClick={() => setTab("keys")}>
+            Keys
+          </button>
         </div>
         {tab !== "tools" && (
           <div className="flex items-center gap-2">
@@ -345,6 +349,15 @@ export default function SkillsToolsPage() {
           <div className="mx-auto max-w-5xl">
             {/* Connectors page owns all app/tool connections, including MCP. */}
             <ConnectorsPage />
+          </div>
+        </div>
+      )}
+
+      {/* ── Keys tab: provider credentials and optional integrations ── */}
+      {tab === "keys" && (
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-4">
+          <div className="mx-auto max-w-5xl">
+            <EnvPage />
           </div>
         </div>
       )}

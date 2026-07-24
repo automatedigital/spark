@@ -10,7 +10,6 @@ describe("WebUI deferred feature boundaries", () => {
 
     expect(app).toContain('import ChatPage from "@/pages/ChatPage"');
     for (const feature of [
-      "CanvasPage",
       "FilesPage",
       "SettingsPanel",
       "OnboardingWizard",

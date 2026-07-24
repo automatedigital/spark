@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, LayoutGrid, MessageSquare, MessageCircle, Clock, Package, Plug, Settings, FolderOpen, ListTodo, Loader2, Square, Brain, Blocks } from "lucide-react";
+import { Search, MessageSquare, MessageCircle, Clock, Package, Plug, Settings, FolderOpen, Loader2, Brain, Blocks } from "lucide-react";
 import { api } from "@/lib/api";
-import type { CronJob, KanbanTaskRow, SessionInfo, SkillInfo, WorkspaceProject } from "@/lib/api";
+import type { CronJob, SessionInfo, SkillInfo, WorkspaceProject } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { cn } from "@/lib/utils";
 import { threadTitle } from "@/components/chat/ThreadRow";
@@ -27,8 +27,6 @@ const PAGE_ITEMS = [
   { id: "messaging", label: "Messaging", description: "Connect messaging platforms", icon: MessageCircle },
   { id: "chat", label: "Chat", description: "Projects and conversations", icon: MessageSquare },
   { id: "files", label: "Files", description: "Workspace files", icon: FolderOpen },
-  { id: "canvas", label: "Canvas", description: "Visual board", icon: Square },
-  { id: "kanban", label: "Tasks", description: "Task board", icon: LayoutGrid },
   { id: "cron", label: "Schedule", description: "Scheduled jobs", icon: Clock },
   { id: "skills", label: "Skills", description: "Skill manager", icon: Package },
   { id: "connectors", label: "Connectors", description: "External app connectors", icon: Plug },
@@ -43,7 +41,6 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [tasks, setTasks] = useState<KanbanTaskRow[]>([]);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
 
@@ -56,15 +53,11 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       Promise.allSettled([
         api.listWorkspaceProjects(),
         api.getSessions(500, 0),
-        api.getKanbanBoard({ board: "default", tenant: null, assignee: null, q: null }),
         api.getCronJobs(),
         api.getSkills(),
-      ]).then(([projectRes, sessionRes, taskRes, jobRes, skillRes]) => {
+      ]).then(([projectRes, sessionRes, jobRes, skillRes]) => {
         if (projectRes.status === "fulfilled") setProjects(projectRes.value.projects);
         if (sessionRes.status === "fulfilled") setSessions(sessionRes.value.sessions);
-        if (taskRes.status === "fulfilled") {
-          setTasks(Object.values(taskRes.value.columns).flat());
-        }
         if (jobRes.status === "fulfilled") setJobs(jobRes.value);
         if (skillRes.status === "fulfilled") setSkills(skillRes.value);
       }).finally(() => setLoading(false));
@@ -93,18 +86,6 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       action: () => {
         setGlobalNavTarget({ type: "thread", id: session.id });
         onNavigate("chat");
-        onClose();
-      },
-    })),
-    ...tasks.map((task) => ({
-      id: `task:${task.id}`,
-      label: task.title,
-      description: [task.status, task.assignee, task.tenant].filter(Boolean).join(" · ") || task.id,
-      group: "Tasks",
-      icon: ListTodo,
-      action: () => {
-        setGlobalNavTarget({ type: "task", id: task.id });
-        onNavigate("kanban");
         onClose();
       },
     })),
@@ -145,7 +126,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       icon: Settings,
       action: () => { onOpenSettings(); onClose(); },
     },
-  ], [jobs, onClose, onNavigate, onOpenSettings, projects, sessions, skills, tasks]);
+  ], [jobs, onClose, onNavigate, onOpenSettings, projects, sessions, skills]);
 
   const filtered = query.trim()
     ? allItems.filter((item) => {
@@ -194,7 +175,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
           <input
             ref={inputRef}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            placeholder="Search projects, threads, tasks, schedules, skills…"
+            placeholder="Search projects, threads, schedules, skills…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             role="combobox"

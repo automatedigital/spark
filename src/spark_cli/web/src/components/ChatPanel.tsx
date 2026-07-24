@@ -930,7 +930,12 @@ export function ChatPanel({
             }
           }, 400);
         })
-        .catch(() => setError("Failed to load conversation history."))
+        .catch(() => {
+          // A just-created thread may mount before its first persisted message
+          // is visible. Its optimistic user message is already the complete
+          // initial transcript, so an unavailable history page is not an error.
+          if (!initialMessage) setError("Failed to load conversation history.");
+        })
         .finally(() => setLoadingHistory(false));
     }
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3118,11 +3123,6 @@ export function ChatPanel({
             </div>
             </>
           )}
-          {error && (
-            <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
-              <p className="text-xs text-destructive">{error}</p>
-            </div>
-          )}
         </div>
         <TimelineMinimap
           items={timelineItems}
@@ -3143,6 +3143,15 @@ export function ChatPanel({
           </Button>
         )}
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="mx-4 mb-2 shrink-0 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2"
+        >
+          <p className="text-xs text-destructive">{error}</p>
+        </div>
+      )}
 
       {editingUser && (
         <div className="border-t border-border px-4 py-2 bg-card/24 shrink-0 space-y-2">

@@ -10,6 +10,7 @@ import {
   FolderOpen,
   GripVertical,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
@@ -19,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { api, mediaFileUrl } from "@/lib/api";
-import type { FileListEntry } from "@/lib/api";
+import type { FileListEntry, WorkspaceProject } from "@/lib/api";
 import {
   GLOBAL_NAV_EVENT,
   setGlobalNavTarget,
@@ -30,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
+import { useSessionStore } from "@/lib/sessionStore";
 import { ROOT_PATH, fileEntryFromPath, parentDirForFile } from "./filesPathUtils";
 
 const CodeEditor = lazy(() => import("@/components/files/CodeEditor"));
@@ -187,12 +189,18 @@ function FileBrowser({
   onNavigate,
   onSelectFile,
   onRefresh,
+  projects,
+  onRenameProject,
+  onDeleteProject,
 }: {
   currentPath: string;
   selectedFile: string | null;
   onNavigate: (path: string) => void;
   onSelectFile: (entry: FileListEntry) => void;
   onRefresh: () => void;
+  projects: WorkspaceProject[];
+  onRenameProject: (slug: string, name: string) => Promise<string>;
+  onDeleteProject: (slug: string) => Promise<void>;
 }) {
   const [entries, setEntries] = useState<FileListEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -200,6 +208,11 @@ function FileBrowser({
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmProjectDelete, setConfirmProjectDelete] = useState<WorkspaceProject | null>(null);
+  const [renamingProject, setRenamingProject] = useState<WorkspaceProject | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [projectActionPending, setProjectActionPending] = useState(false);
+  const [projectActionError, setProjectActionError] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -244,6 +257,53 @@ function FileBrowser({
       onRefresh();
     } catch (e) {
       console.error("Delete failed", e);
+    }
+  };
+
+  const projectForEntry = (entry: FileListEntry) => (
+    currentPath === ROOT_PATH
+      ? projects.find((project) => project.slug === entry.name || project.name === entry.name) ?? null
+      : null
+  );
+
+  const commitProjectRename = async () => {
+    const project = renamingProject;
+    const nextName = renameValue.trim();
+    if (!project) return;
+    if (!nextName || nextName === project.name) {
+      setRenamingProject(null);
+      setRenameValue("");
+      return;
+    }
+    setProjectActionPending(true);
+    setProjectActionError(null);
+    try {
+      await onRenameProject(project.slug, nextName);
+      setRenamingProject(null);
+      setRenameValue("");
+      await load();
+      onRefresh();
+    } catch (error) {
+      setProjectActionError(error instanceof Error ? error.message : "Could not rename project");
+    } finally {
+      setProjectActionPending(false);
+    }
+  };
+
+  const deleteConfirmedProject = async () => {
+    const project = confirmProjectDelete;
+    if (!project) return;
+    setProjectActionPending(true);
+    setProjectActionError(null);
+    try {
+      await onDeleteProject(project.slug);
+      setConfirmProjectDelete(null);
+      await load();
+      onRefresh();
+    } catch (error) {
+      setProjectActionError(error instanceof Error ? error.message : "Could not delete project");
+    } finally {
+      setProjectActionPending(false);
     }
   };
 
@@ -377,18 +437,106 @@ function FileBrowser({
           </div>
         )}
 
-        {/* Directories */}
-        {dirs.map((entry) => (
-          <div
-            key={entry.path}
-            className="spark-list-row group flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition select-none"
-            onClick={() => onNavigate(entry.path)}
-          >
-            <FolderOpen className="h-4 w-4 shrink-0 text-amber-300/80" />
-            <span className="flex-1 truncate">{entry.name}</span>
-            <ChevronRight className="h-3.5 w-3.5 opacity-30 group-hover:opacity-60" />
+        {confirmProjectDelete && (
+          <div className="mx-3 mt-3 rounded-md border border-destructive/40 bg-background p-3" role="alertdialog" aria-label="Confirm project deletion">
+            <p className="mb-1 text-xs font-medium text-foreground">
+              Delete project <span className="font-semibold text-destructive">{confirmProjectDelete.name}</span>?
+            </p>
+            <p className="mb-2 text-[11px] leading-4 text-muted-foreground">
+              This permanently removes the project folder and all files inside it. This cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="destructive" disabled={projectActionPending} className="h-7 flex-1 text-xs" onClick={() => void deleteConfirmedProject()}>
+                {projectActionPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                Delete project
+              </Button>
+              <Button size="sm" variant="ghost" disabled={projectActionPending} className="h-7 px-2" onClick={() => setConfirmProjectDelete(null)}>
+                Cancel
+              </Button>
+            </div>
           </div>
-        ))}
+        )}
+
+        {projectActionError && (
+          <p className="mx-3 mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive">
+            {projectActionError}
+          </p>
+        )}
+
+        {/* Directories */}
+        {dirs.map((entry) => {
+          const project = projectForEntry(entry);
+          const isRenaming = project !== null && renamingProject?.slug === project.slug;
+          return (
+            <div
+              key={entry.path}
+              className="spark-list-row group flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground select-none"
+              onClick={() => !isRenaming && onNavigate(entry.path)}
+            >
+              <FolderOpen className="h-4 w-4 shrink-0 text-amber-300/80" />
+              {isRenaming ? (
+                <form
+                  className="flex min-w-0 flex-1 items-center gap-1.5"
+                  onSubmit={(event) => { event.preventDefault(); void commitProjectRename(); }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Input
+                    autoFocus
+                    value={renameValue}
+                    disabled={projectActionPending}
+                    aria-label="Project name"
+                    className="h-7 min-w-0 flex-1 px-2 text-xs"
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setRenamingProject(null);
+                        setRenameValue("");
+                      }
+                    }}
+                  />
+                  {projectActionPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                </form>
+              ) : (
+                <span className="flex-1 truncate">{project?.name ?? entry.name}</span>
+              )}
+              {project && !isRenaming ? (
+                <div className="ml-1 hidden shrink-0 items-center gap-1 group-hover:flex group-focus-within:flex">
+                  <button
+                    type="button"
+                    title="Rename project"
+                    aria-label={`Rename ${project.name}`}
+                    className="rounded p-0.5 text-muted-foreground/50 hover:bg-background/70 hover:text-foreground"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setProjectActionError(null);
+                      setRenameValue(project.name);
+                      setRenamingProject(project);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Delete project"
+                    aria-label={`Delete ${project.name}`}
+                    className="rounded p-0.5 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setProjectActionError(null);
+                      setConfirmProjectDelete(project);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : !isRenaming ? (
+                <ChevronRight className="h-3.5 w-3.5 opacity-30 group-hover:opacity-60" />
+              ) : null}
+            </div>
+          );
+        })}
 
         {/* Files */}
         {files.map((entry) => (
@@ -452,6 +600,7 @@ function FileBrowser({
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function FilesPage() {
+  const { projects, renameProject, deleteProject } = useSessionStore();
   const [currentPath, setCurrentPath] = useState(ROOT_PATH);
   const [selectedFile, setSelectedFile] = useState<OpenFile | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -546,6 +695,9 @@ export default function FilesPage() {
           onNavigate={handleNavigate}
           onSelectFile={handleSelectFile}
           onRefresh={() => setRefreshKey((k) => k + 1)}
+          projects={projects}
+          onRenameProject={renameProject}
+          onDeleteProject={deleteProject}
           key={refreshKey}
         />
       </div>

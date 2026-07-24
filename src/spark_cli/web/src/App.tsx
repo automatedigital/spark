@@ -1,25 +1,19 @@
 import { lazy, memo, useState, useEffect, useRef } from "react";
 import {
-  Blocks,
   Clock,
   Download,
   FolderOpen,
-  LayoutGrid,
-  MessageCircle,
-  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Settings,
-  Square,
 } from "lucide-react";
 import ChatPage from "@/pages/ChatPage";
-import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
+import { InboxSidebarSessions } from "@/components/sidebar/InboxSidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
-import { api, getDashboardToken, setDashboardToken, getConnectionMode, getRemoteBaseUrl, getApiBase } from "@/lib/api";
+import { api, getDashboardToken, setDashboardToken, getApiBase } from "@/lib/api";
 import type { StatusResponse } from "@/lib/api";
-import { displayHost } from "@/lib/connection";
 import { useUpdateModal } from "@/lib/updateModal";
 import { GlobalToasts } from "@/components/GlobalToasts";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -43,22 +37,12 @@ import {
 
 // Primary sections shown after the "New chat" action.
 const PRIMARY_NAV = [
-  { id: "skillsTools", labelKey: "skillsAndTools" as const, icon: Blocks },
-  { id: "messaging", labelKey: "messaging" as const, icon: MessageCircle },
   { id: "files", labelKey: "files" as const, icon: FolderOpen },
   { id: "cron", labelKey: "cron" as const, icon: Clock },
 ] as const;
 
-// Demoted pages — reachable via the "More" menu + command palette.
-const MORE_NAV = [
-  { id: "canvas", labelKey: "canvas" as const, icon: Square },
-  { id: "kanban", labelKey: "kanban" as const, icon: LayoutGrid },
-] as const;
-
 const CronPage = lazy(() => import("@/pages/CronPage"));
 const FilesPage = lazy(() => import("@/pages/FilesPage"));
-const KanbanPage = lazy(() => import("@/pages/KanbanPage"));
-const CanvasPage = lazy(() => import("@/pages/CanvasPage"));
 const SkillsPage = lazy(() => import("@/pages/SkillsPage"));
 const ConnectorsPage = lazy(() => import("@/pages/ConnectorsPage"));
 const SkillsToolsPage = lazy(() => import("@/pages/SkillsToolsPage"));
@@ -76,11 +60,9 @@ const OnboardingWizard = lazy(() =>
 
 const PAGE_COMPONENTS = {
   chat: ChatPage,
-  kanban: KanbanPage,
   cron: CronPage,
   skills: SkillsPage,
   files: FilesPage,
-  canvas: CanvasPage,
   connectors: ConnectorsPage,
   skillsTools: SkillsToolsPage,
   messaging: MessagingPage,
@@ -90,17 +72,16 @@ type PageId = keyof typeof PAGE_COMPONENTS;
 
 type NavLabelKey =
   | (typeof PRIMARY_NAV)[number]["labelKey"]
-  | (typeof MORE_NAV)[number]["labelKey"]
   | "chat"
   | "newSession"
   | "skills"
-  | "connectors";
+  | "connectors"
+  | "skillsAndTools"
+  | "messaging";
 
 const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
   chat: "chat",
   files: "files",
-  canvas: "canvas",
-  kanban: "kanban",
   cron: "cron",
   skills: "skills",
   connectors: "connectors",
@@ -108,7 +89,7 @@ const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
   messaging: "messaging",
 };
 
-const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "canvas", "messaging", "skillsTools"]);
+const FULL_WIDTH_PAGES = new Set<PageId>(["chat", "files", "messaging", "skillsTools"]);
 
 const ActivePageOutlet = memo(function ActivePageOutlet({
   page,
@@ -130,12 +111,10 @@ const ActivePageOutlet = memo(function ActivePageOutlet({
 
 function pageForGlobalNavTarget(target: GlobalNavTarget): PageId {
   switch (target.type) {
-    case "canvas":
-      return "canvas";
     case "file":
       return "files";
     case "task":
-      return "kanban";
+      return "chat";
     case "scheduled-task":
       return "cron";
     case "skill":
@@ -208,90 +187,6 @@ function SparkLogo({ className = "" }: { className?: string }) {
   return <BrandLogo className={`h-7 w-7 ${className}`} />;
 }
 
-// ── More menu (demoted pages: Chat, Canvas, Kanban) ──────────────────────────
-
-function MoreMenu({
-  page,
-  navigateTo,
-  runningTaskCount,
-  sidebarOpen,
-  direction,
-  navLabel,
-}: {
-  page: PageId;
-  navigateTo: (id: PageId) => void;
-  runningTaskCount: number;
-  sidebarOpen: boolean;
-  direction: "up" | "down";
-  navLabel: (key: NavLabelKey) => string;
-}) {
-  const [open, setOpen] = useState(false);
-  const moreActive = MORE_NAV.some((item) => item.id === page);
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        title="More"
-        aria-label="More pages"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className={`group relative flex h-8 items-center rounded-md transition ${
-          moreActive || open
-            ? "bg-foreground/10 text-foreground"
-            : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
-        } ${sidebarOpen ? "w-full justify-start gap-2.5 px-2.5" : "w-8 justify-center"}`}
-      >
-        <div className="relative shrink-0">
-          <MoreHorizontal className="h-4 w-4" />
-          {runningTaskCount > 0 && (
-            <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white ring-2 ring-background">
-              {runningTaskCount > 9 ? "9+" : runningTaskCount}
-            </span>
-          )}
-        </div>
-        {sidebarOpen && <span className="truncate text-[13px] font-medium">More</span>}
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
-          <div
-            className={`z-50 w-44 rounded-md border border-border bg-popover/95 p-1 shadow-xl backdrop-blur-xl ${
-              direction === "up" ? "absolute bottom-full left-0 mb-1" : "fixed right-2 top-12"
-            }`}
-            role="menu"
-          >
-            {MORE_NAV.map(({ id, labelKey, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  navigateTo(id);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left text-[13px] transition ${
-                  page === id
-                    ? "bg-foreground/10 text-foreground"
-                    : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="flex-1 truncate">{navLabel(labelKey)}</span>
-                {id === "kanban" && runningTaskCount > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">
-                    {runningTaskCount > 9 ? "9+" : runningTaskCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 export default function App() {
   return (
     <SessionStoreProvider>
@@ -310,10 +205,19 @@ function AppShell() {
   });
   const [navHovered, setNavHovered] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState("model");
+
+  const openSettings = (tab = "model") => {
+    setSettingsInitialTab(tab);
+    setSettingsOpen(true);
+  };
 
   // Pages (e.g. Skills & Tools → "Manage MCP servers") can open Settings.
   useEffect(() => {
-    const handler = () => setSettingsOpen(true);
+    const handler = () => {
+      setSettingsInitialTab("model");
+      setSettingsOpen(true);
+    };
     window.addEventListener("spark-open-settings", handler);
     return () => window.removeEventListener("spark-open-settings", handler);
   }, []);
@@ -323,6 +227,7 @@ function AppShell() {
   const [tokenInput, setTokenInput] = useState("");
   const [authChecking, setAuthChecking] = useState(true);
   const [versionLabel, setVersionLabel] = useState(`v${formatVersionDate()}`);
+  const [commitUrl, setCommitUrl] = useState<string | null>(null);
   const [statusSnapshot, setStatusSnapshot] = useState<StatusResponse | null>(null);
   const [statusPollFailed, setStatusPollFailed] = useState(false);
   const [scheduledJobCount, setScheduledJobCount] = useState(0);
@@ -333,9 +238,6 @@ function AppShell() {
   const lastAgentCursorRef = useRef<{ screenX: number; screenY: number } | null>(null);
   const { updateAvailable, latestVersion, openUpdateModal, macUpdateAvailable, macLatestVersion, openMacUpdateModal } = useUpdateModal();
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
-
-  // ── Activity badge counts ──
-  const [runningTaskCount, setRunningTaskCount] = useState(0);
 
   // ── Shared session store (global sidebar + ChatPage) ──
   const { selectSession, newProjectThread } = useSessionStore();
@@ -510,7 +412,13 @@ function AppShell() {
           api.getCronJobs().catch(() => []),
         ]);
         if (!cancelled) {
-          setVersionLabel(`v${status.version}_${formatVersionDate()}`);
+          const shortCommit = status.commit?.slice(0, 7) ?? null;
+          setVersionLabel(`v${status.version}_${formatVersionDate()}${shortCommit ? ` · ${shortCommit}` : ""}`);
+          setCommitUrl(
+            status.commit && status.repository_url
+              ? `${status.repository_url}/commit/${status.commit}`
+              : null,
+          );
           setStatusSnapshot(status);
           setStatusPollFailed(false);
           setScheduledJobCount(cronJobs.length);
@@ -610,19 +518,6 @@ function AppShell() {
     };
   }, []);
 
-  // ── Activity counts: initial fetch ──
-  useEffect(() => {
-    // Running kanban tasks — poll every 30s (kanban has its own SSE in KanbanPage)
-    const fetchKanban = () => {
-      api.getKanbanBoard({ board: "default", tenant: null, assignee: null, q: null })
-        .then((b) => setRunningTaskCount(b.columns?.running?.length ?? 0))
-        .catch(() => {});
-    };
-    fetchKanban();
-    const interval = setInterval(fetchKanban, 30_000);
-    return () => clearInterval(interval);
-  }, []);
-
   const sidebarOpen = navExpanded || navHovered;
 
   const gatewayFooter = gatewayFooterState(statusSnapshot, statusPollFailed);
@@ -652,7 +547,7 @@ function AppShell() {
             open
             onClose={() => setPaletteOpen(false)}
             onNavigate={(id) => navigateTo(id as PageId)}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => openSettings()}
           />
         </LazyLoadBoundary>
       )}
@@ -668,15 +563,15 @@ function AppShell() {
       <div className="noise-overlay" />
       <div className="warm-glow" />
 
-      <div className={`relative z-2 grid h-full grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:224px]" : "[--sidebar-width:58px]"}`}>
+      <div className={`relative z-2 grid h-full grid-cols-1 transition-[grid-template-columns] duration-200 md:grid-cols-[var(--sidebar-width)_1fr] ${navExpanded ? "[--sidebar-width:288px]" : "[--sidebar-width:58px]"}`}>
         <aside
           onMouseEnter={() => !navExpanded && setNavHovered(true)}
           onMouseLeave={() => setNavHovered(false)}
           className={`hidden min-h-0 min-w-0 overflow-hidden border-r border-border bg-card/58 backdrop-blur-xl md:flex md:flex-col transition-[width] duration-200 ease-in-out${
             navHovered && !navExpanded
-              ? " absolute left-0 top-0 bottom-0 z-50 w-[224px] shadow-2xl shadow-black/35"
+              ? " absolute left-0 top-0 bottom-0 z-50 w-[288px] shadow-2xl shadow-black/35"
               : sidebarOpen
-              ? " w-[224px]"
+              ? " w-[288px]"
               : " w-[58px]"
           }`}
         >
@@ -699,7 +594,11 @@ function AppShell() {
             </button>
             <button
               type="button"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/7 hover:text-foreground"
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/7 hover:text-foreground ${
+                navExpanded || navHovered
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0"
+              }`}
               title={navExpanded ? "Collapse sidebar (⌘\\)" : "Expand sidebar (⌘\\)"}
               aria-label={navExpanded ? "Collapse sidebar" : "Expand sidebar"}
               onClick={() => toggleNav(!navExpanded)}
@@ -753,7 +652,7 @@ function AppShell() {
 
           {/* Search + Pinned + Sessions (hidden when collapsed; hover-expand reveals) */}
           {sidebarOpen ? (
-            <SidebarSessions
+            <InboxSidebarSessions
               onOpenSession={openSidebarSession}
               onNewProjectThread={openProjectCompose}
             />
@@ -761,16 +660,8 @@ function AppShell() {
             <div className="flex-1" />
           )}
 
-          {/* More + Settings + Update buttons */}
+          {/* Settings + update buttons */}
           <div className={`border-t border-border px-2 py-2 flex flex-col gap-1 ${sidebarOpen ? "items-stretch" : "items-center"}`}>
-            <MoreMenu
-              page={page}
-              navigateTo={navigateTo}
-              runningTaskCount={runningTaskCount}
-              sidebarOpen={sidebarOpen}
-              direction="up"
-              navLabel={navLabel}
-            />
             {!isTauri() && updateAvailable && (
               <button
                 type="button"
@@ -809,7 +700,7 @@ function AppShell() {
               type="button"
               title="Settings"
               aria-label="Settings"
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => openSettings()}
               className={`group relative flex h-8 items-center rounded-md transition ${
                 settingsOpen
                   ? "bg-foreground/10 text-foreground"
@@ -863,19 +754,11 @@ function AppShell() {
                     <Icon className="h-4 w-4" />
                   </button>
                 ))}
-                <MoreMenu
-                  page={page}
-                  navigateTo={navigateTo}
-                  runningTaskCount={runningTaskCount}
-                  sidebarOpen={false}
-                  direction="down"
-                  navLabel={navLabel}
-                />
                 {/* Settings button for mobile */}
                 <button
                   type="button"
                   title="Settings"
-                  onClick={() => setSettingsOpen(true)}
+                  onClick={() => openSettings()}
                   className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
                     settingsOpen ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/7 hover:text-foreground"
                   }`}
@@ -886,7 +769,6 @@ function AppShell() {
               <div className="ml-auto hidden items-center gap-2 md:flex">
                 <CodexUsageBadge />
                 <NotificationBell />
-                <span className="text-xs text-muted-foreground">{versionLabel}</span>
               </div>
             </div>
           </header>
@@ -963,29 +845,44 @@ function AppShell() {
           </main>
           {!authChecking && !authWall && (
             <footer className="hidden h-7 shrink-0 items-center gap-3 border-t border-border/60 bg-card/35 px-3 text-[11px] text-muted-foreground backdrop-blur md:flex">
-              <span className="inline-flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => openSettings("gateway")}
+                className="inline-flex items-center gap-1.5 rounded-sm transition hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                title={gatewayFooter.title}
+              >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${gatewayFooter.dot}`}
                 />
-                <span title={gatewayFooter.title}>{gatewayFooter.label}</span>
-              </span>
+                <span>{gatewayFooter.label}</span>
+              </button>
               <span className="text-border">·</span>
-              <span>
-                {getConnectionMode() === "remote"
-                  ? `Remote @ ${displayHost(getRemoteBaseUrl()) || "remote"}`
-                  : "Local"}
-              </span>
-              <span className="text-border">·</span>
-              <span>Agents {runningTaskCount}</span>
-              <span className="text-border">·</span>
-              <span>Cron {scheduledJobCount}</span>
+              <button
+                type="button"
+                onClick={() => navigateTo("cron")}
+                className="rounded-sm transition hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                Schedule {scheduledJobCount}
+              </button>
               {activeModel && (
                 <>
                   <span className="text-border">·</span>
                   <span className="max-w-48 truncate">{activeModel}</span>
                 </>
               )}
-              <span className="ml-auto">{versionLabel}</span>
+              {commitUrl ? (
+                <a
+                  className="ml-auto rounded-sm transition hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  href={commitUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open this commit on GitHub"
+                >
+                  {versionLabel}
+                </a>
+              ) : (
+                <span className="ml-auto">{versionLabel}</span>
+              )}
             </footer>
           )}
         </div>
@@ -993,7 +890,7 @@ function AppShell() {
 
       {settingsOpen && (
         <LazyLoadBoundary label="settings" overlay>
-          <SettingsPanel onClose={() => setSettingsOpen(false)} />
+          <SettingsPanel onClose={() => setSettingsOpen(false)} initialTab={settingsInitialTab} />
         </LazyLoadBoundary>
       )}
     </div>

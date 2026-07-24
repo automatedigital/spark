@@ -85,6 +85,7 @@ _terminal_runs: dict[str, dict[str, Any]] = {}
 _terminal_run_queues: dict[str, queue.Queue[dict[str, Any] | None]] = {}
 _terminal_lock = threading.Lock()
 _preview_sessions: dict[str, dict[str, Any]] = {}
+_active_streamed_previews: set[str] = set()
 _preview_queues: dict[str, list[queue.Queue[dict[str, Any] | None]]] = {}
 _preview_lock = threading.Lock()
 
@@ -1619,52 +1620,14 @@ def _loopback_probe_url(url: str) -> str:
 
 
 def _client_facing_preview_url(url: str) -> str:
-    """Rewrite a dev-server URL to a host the *WebUI client* can reach.
+    """Return the same loopback URL the preview process actually serves.
 
-    The server always probes on loopback (see ``_canonical_probe_url``), but the
-    URL we advertise to the browser must be reachable from where that browser
-    runs:
-
-    * **Desktop / local** → keep ``127.0.0.1`` (the default); the native webview
-      and a same-machine browser both reach loopback fine.
-    * **VPS / server** (``dashboard.public_url`` set, or a server environment) →
-      swap loopback/wildcard for ``dashboard.public_url``'s host or the machine
-      hostname, so a remote browser can actually load the dev server.
-
-    Only the host is rewritten; the dev server's own port/path/query are kept.
+    Preview processes are deliberately bound to ``127.0.0.1``. Advertising a
+    LAN/mDNS hostname while retaining that loopback-only bind creates a URL
+    that neither the embedded panel nor the system browser can reach. Remote
+    dashboards need a real reverse proxy rather than a hostname substitution.
     """
-    parsed = urllib.parse.urlparse(url)
-    host = (parsed.hostname or "").lower()
-    # Only loopback and wildcard binds are non-routable for a remote client. A
-    # concrete LAN/public host (private IP, hostname, .local) is already
-    # reachable, so leave it untouched.
-    _loopback = {"127.0.0.1", "localhost", "::1"}
-    if host not in _loopback and host not in _WILDCARD_HOSTS:
-        return url
-    port = parsed.port
-    if port is None:
-        return _canonical_probe_url(url)
-    try:
-        from core.spark_constants import (
-            get_public_base_url,
-            get_server_hostname,
-            is_server_environment,
-        )
-    except Exception:
-        return _canonical_probe_url(url)
-
-    # In a server environment, derive the externally reachable host. We reuse
-    # get_public_base_url for the dashboard's own host then graft the dev
-    # server's port onto it (the dashboard URL points at the dashboard port).
-    if not is_server_environment():
-        return _canonical_probe_url(url)
-    try:
-        base = get_public_base_url("0.0.0.0", port, parsed.scheme or "http")
-        base_host = urllib.parse.urlparse(base).hostname or get_server_hostname()
-    except Exception:
-        base_host = get_server_hostname()
-    netloc = f"{base_host}:{port}"
-    return urllib.parse.urlunparse(parsed._replace(netloc=netloc))
+    return _canonical_probe_url(url)
 
 
 def _process_cwd(pid: int) -> Path | None:
@@ -2059,17 +2022,37 @@ def _detect_preview(
 
 def _stop_preview_session(slug: str) -> dict[str, Any]:
     session = _preview_sessions.get(slug)
-    if not session:
-        return _preview_status_payload(slug)
-    proc = session.get("process")
-    if proc is not None and proc.poll() is None:
+    if session:
+        proc = session.get("process")
+        if proc is not None and proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except Exception:
+                proc.terminate()
+        session["status"] = "stopped"
+        session["updated_at"] = time.time()
+        _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+
+    # A web preview may have used the streamed-browser fallback. Stop both
+    # possible backends with the app server so a closed/restarted preview
+    # cannot leave Chromium and its polling process running in the background.
+    def _close_preview_browsers() -> None:
+        from spark_cli.preview_agent_browser import close_agent_browser_session
+        from spark_cli.preview_browser import close_streamed_session
+
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
+            _active_streamed_previews.discard(slug)
+            close_streamed_session(slug)
+            close_agent_browser_session(slug)
         except Exception:
-            proc.terminate()
-    session["status"] = "stopped"
-    session["updated_at"] = time.time()
-    _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
+            # Preview shutdown must still succeed when an optional browser
+            # runtime is absent or already gone.
+            pass
+
+    # Closing agent-browser can wait for an in-flight screenshot/navigation
+    # command. Never make the preview stop/restart request wait on that lock.
+    threading.Thread(target=_close_preview_browsers, daemon=True).start()
+
     return _preview_status_payload(slug, session)
 
 
@@ -2155,11 +2138,6 @@ def _await_preview_ready(slug: str, session: dict[str, Any]) -> None:
                 session["status"] = "running"
                 session["updated_at"] = time.time()
             _append_preview_log(slug, session, f"Preview ready at {url}\n", "server")
-            browser_result = _run_agent_browser(slug, ["open", str(url)])
-            if browser_result and browser_result.get("success"):
-                _append_preview_log(slug, session, f"agent-browser opened {url}", "browser")
-            elif browser_result:
-                _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
             ready_payload = {"type": "state", **_preview_status_payload(slug, session)}
             _preview_emit(slug, ready_payload)
             _publish_workspace_event("workspace.preview.ready", ready_payload)
@@ -2288,11 +2266,6 @@ def start_preview(slug: str, body: PreviewStart | None = None):
         session["status"] = "running"
         session["updated_at"] = time.time()
         _append_preview_log(slug, session, f"Using existing app at {session['url']}\n", "server")
-        browser_result = _run_agent_browser(slug, ["open", str(session["url"])])
-        if browser_result and browser_result.get("success"):
-            _append_preview_log(slug, session, f"agent-browser opened {session['url']}", "browser")
-        elif browser_result:
-            _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
         ready_payload = {"type": "state", **_preview_status_payload(slug, session)}
         _preview_emit(slug, ready_payload)
         _publish_workspace_event("workspace.preview.ready", ready_payload)
@@ -2376,11 +2349,10 @@ def navigate_preview(slug: str, body: PreviewNavigate):
         if session.get("process") is None:
             session["status"] = "running"
         session["updated_at"] = time.time()
-    browser_result = _run_agent_browser(slug, ["open", url])
-    if browser_result and browser_result.get("success"):
-        _append_preview_log(slug, session, f"agent-browser opened {url}", "browser")
-    elif browser_result:
-        _append_preview_log(slug, session, f"agent-browser unavailable: {browser_result.get('error')}", "error")
+    # The client decides whether to embed a local page or explicitly start the
+    # streamed-browser fallback for an external origin. Starting agent-browser
+    # here as well duplicates navigation and can leak a Chromium process when
+    # the panel remounts or the request is interrupted.
     _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
     return _preview_status_payload(slug, session)
 
@@ -2676,7 +2648,7 @@ def _resolve_preview_backend() -> str:
     return "playwright"
 
 
-def _streamed_session(slug: str, *, persistent: bool = True):
+def _streamed_session(slug: str, *, persistent: bool = True, create: bool = False):
     """Resolve the per-workspace streamed browser session, mapping errors to HTTP.
 
     Selects the agent-browser-backed session (shared with the agent's browser
@@ -2685,6 +2657,8 @@ def _streamed_session(slug: str, *, persistent: bool = True):
     session interface the streamed endpoints call.
     """
     _project_dir(slug)
+    if not create and slug not in _active_streamed_previews:
+        raise HTTPException(status_code=409, detail="Preview browser is not running")
     backend = _resolve_preview_backend()
     session: Any
     if backend == "agent-browser":
@@ -2721,13 +2695,16 @@ def _streamed_session(slug: str, *, persistent: bool = True):
 async def stream_browser_navigate(slug: str, body: StreamNavigate):
     url = _normalize_browser_url(body.url)
     _remember_last_url(slug, url)
-    session, browser_unavailable = _streamed_session(slug, persistent=body.persistent)
+    session, browser_unavailable = _streamed_session(
+        slug, persistent=body.persistent, create=True
+    )
     try:
         result = await asyncio.to_thread(session.navigate, url)
     except browser_unavailable as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Navigation failed: {exc}")
+    _active_streamed_previews.add(slug)
     return {"slug": slug, **result}
 
 
@@ -3151,6 +3128,7 @@ def stream_browser_stop(slug: str):
     from spark_cli.preview_browser import close_streamed_session
 
     # Stop whichever backend(s) hold a live session for this workspace.
+    _active_streamed_previews.discard(slug)
     stopped = close_streamed_session(slug)
     stopped = close_agent_browser_session(slug) or stopped
     return {"slug": slug, "stopped": stopped}

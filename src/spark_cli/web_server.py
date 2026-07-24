@@ -93,6 +93,49 @@ except ImportError:
 WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
+
+def _github_repository_url(remote: str) -> str | None:
+    """Normalize an HTTPS or SSH GitHub remote to its browser repository URL."""
+    value = remote.strip()
+    match = re.match(r"^(?:https://github\.com/|git@github\.com:)([^/]+/[^/]+?)(?:\.git)?$", value)
+    return f"https://github.com/{match.group(1)}" if match else None
+
+
+def _build_git_metadata() -> tuple[str | None, str | None]:
+    """Resolve build provenance once; status polling must never repeatedly spawn git."""
+    commit = os.environ.get("SPARK_COMMIT_SHA", "").strip() or None
+    repository_url = _github_repository_url(os.environ.get("SPARK_REPOSITORY_URL", ""))
+    repo_root = PROJECT_ROOT.parent
+    if commit is None:
+        try:
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.strip() or None
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if repository_url is None:
+        try:
+            remote = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.strip()
+            repository_url = _github_repository_url(remote)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return commit, repository_url
+
+
+_BUILD_COMMIT, _BUILD_REPOSITORY_URL = _build_git_metadata()
+
 _WEB_SESSION_LIST_FIELDS = {
     "id",
     "source",
@@ -2792,6 +2835,8 @@ async def get_status():
     return {
         "server_instance_id": _SERVER_INSTANCE_ID,
         "version": __version__,
+        "commit": _BUILD_COMMIT,
+        "repository_url": _BUILD_REPOSITORY_URL,
         "release_date": __release_date__,
         "spark_home": str(get_spark_home()),
         "config_path": str(get_config_path()),
@@ -9916,6 +9961,28 @@ class WorkspaceConvCreate(BaseModel):
     context_items: list = []
 
 
+def _preinsert_workspace_session(session_id: str, source: str, model: str) -> dict | None:
+    """Create the project-scoped row before the frontend selects the thread.
+
+    The raw prompt must not be inserted as ``title`` here. Session titles are
+    unique in existing databases, so a repeated prompt could reject the whole
+    insert and let AIAgent recreate the row later with source ``web``.
+    """
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db._conn.execute(
+            "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
+            "VALUES (?, ?, ?, ?, 'active')",
+            (session_id, source, model, time.time()),
+        )
+        db._conn.commit()
+        return db.get_session(session_id)
+    finally:
+        db.close()
+
+
 @app.post("/api/workspace/projects/{slug}/conversations")
 async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     """Start a Spark agent conversation scoped to a workspace project."""
@@ -9954,27 +10021,6 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     turn_route = _resolve_web_turn_route(body.message)
     model = turn_route["model"]
 
-    # Pre-insert the session with the correct workspace source BEFORE creating the
-    # agent. AIAgent.__init__ calls create_session(source="web") via INSERT OR IGNORE,
-    # so we must claim the row first to ensure list_workspace_conversations can find it.
-    try:
-        from core.spark_state import SessionDB as _SessionDB
-
-        _db = _SessionDB()
-        try:
-            raw_title = body.message.strip()
-            title = raw_title[:60] + ("…" if len(raw_title) > 60 else "")
-            _db._conn.execute(
-                "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status, title) "
-                "VALUES (?, ?, ?, ?, 'active', ?)",
-                (session_id, source, model, time.time(), title),
-            )
-            _db._conn.commit()
-        finally:
-            _db.close()
-    except Exception:
-        _log.debug("workspace session pre-insert failed", exc_info=True)
-
     def _build_workspace_agent():
         agent = _new_web_agent(
             session_id=session_id,
@@ -10006,16 +10052,13 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         )
         return agent
 
+    # Pre-insert the session with the correct workspace source BEFORE creating the
+    # agent. AIAgent.__init__ calls create_session(source="web") via INSERT OR IGNORE,
+    # so we must claim the row first to ensure list_workspace_conversations can find it.
     try:
-        from core.spark_state import SessionDB as _SessionDB
-
-        _db = _SessionDB()
-        try:
-            row = _db.get_session(session_id)
-            if row:
-                _emit_sessions_changed("created", session_id, row)
-        finally:
-            _db.close()
+        row = _preinsert_workspace_session(session_id, source, model)
+        if row:
+            _emit_sessions_changed("created", session_id, row)
     except Exception:
         _log.debug("workspace session create emit failed", exc_info=True)
 

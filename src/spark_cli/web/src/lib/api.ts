@@ -1626,6 +1626,8 @@ export interface StatusResponse {
   release_date: string;
   server_instance_id?: string;
   version: string;
+  commit?: string | null;
+  repository_url?: string | null;
   update_available?: boolean;
   commits_behind?: number | null;
   desktop?: boolean;

@@ -118,6 +118,32 @@ class TestWebServerEndpoints:
         assert "triage" in data["columns"]
         assert "user_review" in data["columns"]
 
+    def test_workspace_session_preinsert_survives_repeated_prompt_title(self):
+        """A repeated prompt title must not make a new project task fall back to source=web."""
+        from core.spark_state import SessionDB
+        from spark_cli.web_server import _preinsert_workspace_session
+
+        db = SessionDB()
+        try:
+            db._conn.execute(
+                "INSERT INTO sessions (id, source, model, started_at, title) "
+                "VALUES ('existing-title', 'web', 'test', ?, 'Repeated prompt')",
+                (time.time(),),
+            )
+            db._conn.commit()
+        finally:
+            db.close()
+
+        row = _preinsert_workspace_session(
+            "new-project-thread",
+            "workspace:Particles",
+            "test",
+        )
+
+        assert row is not None
+        assert row["source"] == "workspace:Particles"
+        assert row["title"] is None
+
     def test_stream_screencast_501_when_backend_unsupported(self):
         """A backend without start_screencast → 501 so the pane keeps polling
         the /frame source (Item 2b graceful fallback)."""

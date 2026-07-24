@@ -122,12 +122,12 @@ def test_client_facing_url_keeps_loopback_on_desktop(monkeypatch):
     assert w._client_facing_preview_url("http://127.0.0.1:5173/") == "http://127.0.0.1:5173/"
 
 
-def test_client_facing_url_uses_hostname_in_server_env(monkeypatch):
+def test_client_facing_url_keeps_real_bind_address_in_server_env(monkeypatch):
     monkeypatch.setattr("core.spark_constants.is_server_environment", lambda: True)
     monkeypatch.setattr("core.spark_constants.get_public_base_url", lambda h, p, s="http": f"http://vps.example.com:{p}")
     monkeypatch.setattr("core.spark_constants.get_server_hostname", lambda: "vps.example.com")
     out = w._client_facing_preview_url("http://0.0.0.0:5173/dashboard")
-    assert out == "http://vps.example.com:5173/dashboard"
+    assert out == "http://127.0.0.1:5173/dashboard"
 
 
 def test_client_facing_url_leaves_concrete_host_alone(monkeypatch):

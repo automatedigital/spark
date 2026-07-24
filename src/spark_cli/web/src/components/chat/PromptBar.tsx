@@ -330,8 +330,8 @@ function ProjectPicker({
         onClick={() => setOpen((v) => !v)}
         className={`flex h-7 max-w-[190px] items-center gap-1.5 rounded-md border border-transparent px-2 text-[11px] font-medium transition select-none disabled:pointer-events-none disabled:opacity-50 sm:max-w-[230px] ${
           open
-            ? "bg-foreground/10 text-foreground"
-            : "bg-foreground/[0.045] text-muted-foreground/70 hover:bg-foreground/7 hover:text-foreground"
+            ? "text-foreground"
+            : "bg-transparent text-muted-foreground/70 hover:text-foreground"
         }`}
       >
         <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground/45" />

@@ -5,6 +5,7 @@ import type { StreamBrowserInput } from "@/lib/api";
 import { mapToViewport } from "@/lib/browserCoords";
 
 const FRAME_INTERVAL_MS = 500;
+const START_TIMEOUT_MS = 15_000;
 
 // Map a DOM KeyboardEvent into agent-browser's `press` combo syntax
 // (e.g. "Control+c", "Meta+a", "Shift+Tab") for keyboard-shortcut parity.
@@ -41,6 +42,7 @@ export function StreamedBrowser({
   // polling /frame entirely. On 501/error we fall back to the polled source.
   const [screencast, setScreencast] = useState(false);
   const objectUrlRef = useRef<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const refetchFrame = useCallback(() => {
     if (unavailable || screencast) return;
@@ -50,20 +52,30 @@ export function StreamedBrowser({
   // Start the session at the target URL, then begin polling frames.
   useEffect(() => {
     let cancelled = false;
+    let completed = false;
     setLoading(true);
     setError(null);
     setUnavailable(null);
     setScreencast(false);
     setFrameSrc("");
+    const timeout = window.setTimeout(() => {
+      if (cancelled || completed) return;
+      setLoading(false);
+      setError("The preview browser did not start. Retry it, or open the page in your browser.");
+    }, START_TIMEOUT_MS);
     api
       .streamBrowserNavigate(slug, url, persistent)
       .then((res) => {
         if (cancelled) return;
+        completed = true;
+        window.clearTimeout(timeout);
         if (res?.title) onTitle?.(res.title);
         refetchFrame();
       })
       .catch((e) => {
         if (cancelled) return;
+        completed = true;
+        window.clearTimeout(timeout);
         // 501 => backend missing: show the install/error state, hide the frame.
         const status = (e as { status?: number })?.status;
         const message = String((e as { message?: string })?.message ?? e);
@@ -73,11 +85,12 @@ export function StreamedBrowser({
           setError(message);
         }
       })
-      .finally(() => !cancelled && setLoading(false));
+      .finally(() => !cancelled && completed && setLoading(false));
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
-  }, [slug, url, persistent, onTitle, refetchFrame]);
+  }, [slug, url, persistent, onTitle, refetchFrame, retryKey]);
 
   // Preferred frame source: CDP screencast over SSE (push). Each base64 JPEG
   // frame is turned into a blob URL and shown in the <img>. If the stream
@@ -243,8 +256,27 @@ export function StreamedBrowser({
         </div>
       )}
       {error && (
-        <div className="absolute bottom-2 left-2 right-2 rounded-sm border border-red-500/40 bg-red-950/60 px-2 py-1 font-mono-ui text-[10px] text-red-200">
-          {error}
+        <div className="absolute inset-0 flex items-center justify-center bg-background/95 px-6 text-center">
+          <div className="max-w-sm space-y-3">
+            <div className="text-sm font-medium text-foreground">Preview unavailable</div>
+            <div className="text-xs leading-relaxed text-muted-foreground">{error}</div>
+            <div className="flex justify-center gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:bg-accent"
+                onClick={() => setRetryKey((key) => key + 1)}
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:bg-accent"
+                onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+              >
+                Open in browser
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

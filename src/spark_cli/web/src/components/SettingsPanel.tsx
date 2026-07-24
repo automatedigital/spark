@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Cpu,
   Info,
-  KeyRound,
   Loader2,
   MessageCircle,
   Mic,
@@ -26,10 +25,11 @@ import AnalyticsPage from "@/pages/AnalyticsPage";
 import LogsPage from "@/pages/LogsPage";
 import AdminPage from "@/pages/AdminPage";
 import ConfigPage from "@/pages/ConfigPage";
-import EnvPage from "@/pages/EnvPage";
 import UpdatesPage from "@/pages/UpdatesPage";
 import AppearancePage from "@/pages/AppearancePage";
 import MemoryPage from "@/pages/MemoryPage";
+import MessagingPage from "@/pages/MessagingPage";
+import SkillsToolsPage from "@/pages/SkillsToolsPage";
 import {
   api,
   getConnectionMode,
@@ -866,6 +866,7 @@ interface SectionDef {
   icon: React.ComponentType<{ className?: string }>;
   component?: React.ComponentType;
   children?: SectionChild[];
+  fullBleed?: boolean;
 }
 
 const SECTION_GROUPS: SectionDef[][] = [
@@ -893,7 +894,8 @@ const SECTION_GROUPS: SectionDef[][] = [
     // Desktop-only — filtered out on web (no local-sidecar choice there).
     { id: "connection", label: "Connection", icon: Network, component: ConnectionSection },
     { id: "gateway", label: "Gateway", icon: Radio, component: StatusPage },
-    { id: "tools-keys", label: "Tools & Keys", icon: KeyRound, component: EnvPage },
+    { id: "messaging", label: "Messaging Connections", icon: MessageCircle, component: MessagingPage, fullBleed: true },
+    { id: "skills-tools", label: "Skills & Tools", icon: Wrench, component: SkillsToolsPage, fullBleed: true },
     { id: "mcp", label: "MCP", icon: Plug, component: McpSection },
     { id: "archived", label: "Archived Chats", icon: Archive, component: ArchivedChatsSection },
   ],
@@ -917,7 +919,7 @@ const LEGACY_TAB_MAP: Record<string, SettingsTabId> = {
   logs: "advanced",
   admin: "advanced",
   config: "advanced",
-  keys: "tools-keys",
+  keys: "skills-tools",
   updates: "about",
   providers: "model", // Providers merged into the Model section.
 };
@@ -1091,10 +1093,10 @@ export default function SettingsPanel({ onClose, initialTab = "model" }: Setting
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className={activeSection.fullBleed ? "flex min-h-0 flex-1 overflow-hidden" : "flex-1 overflow-y-auto"}>
               <div
                 key={animKey}
-                className="mx-auto w-full px-4 py-5 sm:px-8 sm:py-8"
+                className={activeSection.fullBleed ? "min-h-0 w-full" : "mx-auto w-full px-4 py-5 sm:px-8 sm:py-8"}
                 style={{ animation: "fade-in 120ms ease-out" }}
               >
                 <ActiveComponent />

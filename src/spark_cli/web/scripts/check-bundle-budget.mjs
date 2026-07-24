@@ -28,7 +28,6 @@ const rows = initialAssets.map((file) => {
 const initialGzipBytes = rows.reduce((total, row) => total + row.gzipBytes, 0);
 
 const requiredDeferredSources = [
-  "src/pages/CanvasPage.tsx",
   "src/pages/FilesPage.tsx",
   "src/components/files/CodeEditor.tsx",
   "src/components/workspace/WorkspaceTerminalPanel.tsx",

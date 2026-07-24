@@ -16,6 +16,7 @@ import { Copy, CheckCheck, X, FileText, ExternalLink, FolderOpen, Loader2, WrapT
 import { api, mediaFileUrl, openExternal } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
+import { isDirectPreviewUrl } from "@/lib/previewUrl";
 import {
   type BlockNode,
   type BlockProps,
@@ -723,6 +724,11 @@ function FilePathAction({ path }: { path: string }) {
 }
 
 function openLinkInDesktop(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  if (isDirectPreviewUrl(href)) {
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent("spark:preview-open", { detail: { url: href } }));
+    return;
+  }
   if (!isTauri() || !/^https?:\/\//i.test(href)) return;
   event.preventDefault();
   void openExternal(href);

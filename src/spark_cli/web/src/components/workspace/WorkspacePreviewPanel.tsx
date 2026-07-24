@@ -46,16 +46,7 @@ import { isTauri } from "@/sidecar";
 import { StreamedBrowser } from "./StreamedBrowser";
 import { NativePreview } from "./NativePreview";
 import { nativePreview } from "@/lib/nativePreview";
-
-/** Loopback URLs render fine in an iframe; external origins are blocked by X-Frame-Options/CSP. */
-function isLoopbackUrl(url: string): boolean {
-  try {
-    const host = new URL(url).hostname;
-    return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
-  } catch {
-    return false;
-  }
-}
+import { isDirectPreviewUrl } from "@/lib/previewUrl";
 
 function hostOf(url: string): string {
   try {
@@ -138,7 +129,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   const previewPending = status?.status === "starting";
   const deviceWidth = DEVICES.find((d) => d.id === device)?.width ?? null;
   // Streamed (server-side browser) mode: external origin, not native/iframe.
-  const streamedMode = !isTauri() && !!frameSrc && !isLoopbackUrl(frameSrc);
+  const streamedMode = !isTauri() && !!frameSrc && !isDirectPreviewUrl(frameSrc);
 
   // Push the selected device preset to the streamed backend so the server-side
   // viewport (and click-coordinate mapping) matches what the pane renders.
@@ -371,9 +362,13 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   );
 
   useEffect(() => {
-    setFrameSrc(activeUrl);
+    // An iframe keeps an already-loaded JavaScript app alive even after its
+    // backing dev server has stopped. Remove the browsing context when the
+    // backend says the preview is no longer running so the panel cannot look
+    // active while the toolbar correctly shows Start.
+    setFrameSrc(status?.status === "running" ? activeUrl : "");
     setPageTitle("");
-  }, [activeUrl]);
+  }, [activeUrl, status?.status]);
 
   useEffect(() => {
     if (!showMenu) return;
@@ -461,10 +456,31 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
     }
   };
 
+  useEffect(() => {
+    const openFromChat = () => {
+      // Chat responses can contain a port from an earlier preview run. Start
+      // (or reuse) the project instead of navigating to that potentially stale
+      // address; the returned status supplies the live URL to this panel.
+      setLoading(true);
+      void api
+        .startWorkspacePreview(slug, {})
+        .then((next) => {
+          setStatus(next);
+          setUrlInput(next.url ?? "");
+        })
+        .finally(() => setLoading(false));
+    };
+    window.addEventListener("spark:preview-open", openFromChat);
+    return () => window.removeEventListener("spark:preview-open", openFromChat);
+  }, [slug]);
+
   const stop = async () => {
     setLoading(true);
     try {
-      setStatus(await api.stopWorkspacePreview(slug));
+      const next = await api.stopWorkspacePreview(slug);
+      setStatus(next);
+      setFrameSrc("");
+      setPageTitle("");
     } finally {
       setLoading(false);
     }
@@ -483,7 +499,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
 
   const goBack = () => {
     if (isTauri()) return void nativePreview.back().catch(() => {});
-    if (frameSrc && !isLoopbackUrl(frameSrc)) return void api.streamBrowserInput(slug, { type: "back" }).catch(() => {});
+    if (frameSrc && !isDirectPreviewUrl(frameSrc)) return void api.streamBrowserInput(slug, { type: "back" }).catch(() => {});
     try {
       iframeRef.current?.contentWindow?.history.back();
     } catch {
@@ -493,7 +509,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
 
   const goForward = () => {
     if (isTauri()) return void nativePreview.forward().catch(() => {});
-    if (frameSrc && !isLoopbackUrl(frameSrc)) return void api.streamBrowserInput(slug, { type: "forward" }).catch(() => {});
+    if (frameSrc && !isDirectPreviewUrl(frameSrc)) return void api.streamBrowserInput(slug, { type: "forward" }).catch(() => {});
     try {
       iframeRef.current?.contentWindow?.history.forward();
     } catch {
@@ -517,7 +533,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
     // Guard against silently driving the browser to an arbitrary external
     // origin: confirm before navigating anywhere that isn't local loopback.
     const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    if (!isLoopbackUrl(withScheme)) {
+    if (!isDirectPreviewUrl(withScheme)) {
       let host = withScheme;
       try {
         host = new URL(withScheme).host;
@@ -683,14 +699,26 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             ) : (
               <Globe className="h-3 w-3 shrink-0 text-muted-foreground/50" />
             ))}
-          <input
-            ref={urlInputRef}
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            placeholder="Search or enter URL"
-            list={devServers.length ? `dev-servers-${slug}` : undefined}
-            className="h-6 w-full rounded-sm border border-input bg-muted/40 px-2 font-mono-ui text-[11px] text-foreground outline-none transition focus:border-primary/60"
-          />
+          <div className="group/address relative min-w-0 flex-1">
+            <input
+              ref={urlInputRef}
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="Search or enter URL"
+              list={devServers.length ? `dev-servers-${slug}` : undefined}
+              className="h-7 w-full rounded-md border border-transparent bg-transparent px-2 pr-7 font-mono-ui text-[11px] text-foreground outline-none transition-colors hover:bg-muted/40 focus:border-border focus:bg-background"
+            />
+            {activeUrl && (
+              <button
+                type="button"
+                className="absolute inset-y-0 right-1 my-auto flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/address:opacity-100 focus:opacity-100"
+                title="Open in browser"
+                onClick={() => void api.openExternalUrl(activeUrl)}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </button>
+            )}
+          </div>
           {devServers.length > 0 && (
             <datalist id={`dev-servers-${slug}`}>
               {devServers.map((s) => (
@@ -878,7 +906,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             {isTauri() ? (
               // Desktop: a real native child webview overlays this region.
               <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} visible={visible} />
-            ) : !isLoopbackUrl(frameSrc) ? (
+            ) : !isDirectPreviewUrl(frameSrc) ? (
               // Web: external sites can't be iframed; stream a server-side browser.
               <StreamedBrowser slug={slug} url={frameSrc} persistent={!privateMode} onTitle={setPageTitle} />
             ) : (
@@ -897,9 +925,12 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
               {status?.kind ? (
                 <>Detected <span className="text-foreground">{status.kind}</span> app{status?.command ? <> — <span className="text-foreground">{status.command}</span></> : null}</>
               ) : (
-                "No browser page"
+                "No preview yet"
               )}
             </div>
+            <p className="max-w-xs text-[11px] leading-relaxed text-muted-foreground/60">
+              Start the app, enter a URL above, or select a detected local server.
+            </p>
             <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={() => void start()} disabled={loading}>
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
               Start App
