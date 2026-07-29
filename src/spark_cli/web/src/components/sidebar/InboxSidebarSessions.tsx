@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   Check,
   CircleCheck,
@@ -15,6 +15,7 @@ import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 import { cn, timeAgo } from "@/lib/utils";
 
 const SETTLED_KEY = "spark.sidebar-beta.settled";
+const SESSION_DRAG_MIME = "application/x-spark-session-id";
 
 type SettledRecord = Record<string, number>;
 
@@ -51,6 +52,9 @@ function InboxCard({
   project,
   onOpen,
   onSettle,
+  dragging,
+  onDragStart,
+  onDragEnd,
 }: {
   session: SessionInfo;
   active: boolean;
@@ -58,6 +62,9 @@ function InboxCard({
   project: string;
   onOpen: () => void;
   onSettle: () => void;
+  dragging: boolean;
+  onDragStart: (event: DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
 }) {
   const working = session.is_active && session.ended_at === null;
   return (
@@ -65,6 +72,11 @@ function InboxCard({
       <div
         role="button"
         tabIndex={0}
+        draggable
+        aria-grabbed={dragging}
+        title="Drag to move thread"
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         onClick={onOpen}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -77,6 +89,7 @@ function InboxCard({
           active
             ? "bg-foreground/[0.11] text-foreground"
             : "bg-foreground/[0.035] hover:bg-foreground/[0.07]",
+          dragging && "opacity-45 ring-1 ring-foreground/20",
         )}
       >
         <div className="px-2.5 py-2">
@@ -134,18 +147,29 @@ function SlimRow({
   settled,
   onOpen,
   onToggleSettled,
+  dragging,
+  onDragStart,
+  onDragEnd,
 }: {
   session: SessionInfo;
   active: boolean;
   settled: boolean;
   onOpen: () => void;
   onToggleSettled: () => void;
+  dragging: boolean;
+  onDragStart: (event: DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
 }) {
   return (
     <li className="list-none">
       <div
         role="button"
         tabIndex={0}
+        draggable
+        aria-grabbed={dragging}
+        title="Drag to move thread"
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         onClick={onOpen}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -156,6 +180,7 @@ function SlimRow({
         className={cn(
           "group/slim flex h-[34px] cursor-pointer items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-foreground/[0.06]",
           active && "bg-foreground/[0.1] text-foreground",
+          dragging && "opacity-45 ring-1 ring-foreground/20",
         )}
       >
         <MessageSquare className={cn("h-3.5 w-3.5 shrink-0", settled ? "text-muted-foreground/30" : "text-muted-foreground/50")} />
@@ -201,10 +226,14 @@ export function InboxSidebarSessions({
     unreadSessionIds,
     sidebarProjectScope: projectScope,
     setSidebarProjectScope: setProjectScope,
+    moveSessionToProject,
   } = useSessionStore();
   const searchRef = useRef<HTMLInputElement>(null);
   const [settled, setSettled] = useState<SettledRecord>(readSettled);
   const [showSettled, setShowSettled] = useState(10);
+  const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dragError, setDragError] = useState<string | null>(null);
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.slug, project.name])), [projects]);
   const visible = useMemo(
@@ -254,6 +283,40 @@ export function InboxSidebarSessions({
     });
   };
 
+  const startSessionDrag = (sessionId: string, event: DragEvent<HTMLDivElement>) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(SESSION_DRAG_MIME, sessionId);
+    event.dataTransfer.setData("text/plain", sessionId);
+    setDraggingSessionId(sessionId);
+    setDragError(null);
+  };
+
+  const endSessionDrag = () => {
+    setDraggingSessionId(null);
+    setDropTarget(null);
+  };
+
+  const allowProjectDrop = (target: string, event: DragEvent<HTMLButtonElement>) => {
+    if (!draggingSessionId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget(target);
+  };
+
+  const dropSession = async (slug: string | null, event: DragEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const sessionId = event.dataTransfer.getData(SESSION_DRAG_MIME)
+      || event.dataTransfer.getData("text/plain")
+      || draggingSessionId;
+    endSessionDrag();
+    if (!sessionId) return;
+    try {
+      await moveSessionToProject(sessionId, slug);
+    } catch (error) {
+      setDragError(error instanceof Error ? error.message : "Could not move thread");
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-2 pb-1 pt-2">
@@ -290,14 +353,46 @@ export function InboxSidebarSessions({
                 type="button"
                 onClick={() => setProjectScope(project.slug)}
                 onDoubleClick={() => onNewProjectThread(project.slug)}
-                title="Double-click to start a thread"
-                className={cn("shrink-0 rounded-full border px-2.5 py-1 text-[11px] transition", projectScope === project.slug ? "border-foreground/20 bg-foreground/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
+                onDragOver={(event) => allowProjectDrop(project.slug, event)}
+                onDragLeave={() => setDropTarget((current) => current === project.slug ? null : current)}
+                onDrop={(event) => void dropSession(project.slug, event)}
+                title={draggingSessionId ? `Move thread to ${project.name}` : "Double-click to start a thread"}
+                className={cn(
+                  "shrink-0 rounded-full border px-2.5 py-1 text-[11px] transition",
+                  projectScope === project.slug
+                    ? "border-foreground/20 bg-foreground/10 text-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                  dropTarget === project.slug && "border-emerald-400/60 bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-400/25",
+                )}
               >
                 {project.name}
               </button>
             ))}
+            {draggingSessionId && (
+              <button
+                type="button"
+                onDragOver={(event) => allowProjectDrop("__unfiled__", event)}
+                onDragLeave={() => setDropTarget((current) => current === "__unfiled__" ? null : current)}
+                onDrop={(event) => void dropSession(null, event)}
+                title="Remove thread from its project"
+                className={cn(
+                  "shrink-0 rounded-full border border-dashed px-2.5 py-1 text-[11px] text-muted-foreground transition",
+                  dropTarget === "__unfiled__"
+                    ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-400/25"
+                    : "border-border hover:text-foreground",
+                )}
+              >
+                No project
+              </button>
+            )}
           </div>
         </div>
+      )}
+
+      {dragError && (
+        <p role="alert" className="shrink-0 px-3 pb-1 text-[11px] text-destructive">
+          {dragError}
+        </p>
       )}
 
       <div className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1.5 pb-3" data-testid="session-sidebar-scroll">
@@ -308,7 +403,18 @@ export function InboxSidebarSessions({
             </div>
             <ul>
               {active.map((session) => (
-                <InboxCard key={session.id} session={session} active={selectedId === session.id} unread={unreadSessionIds.has(session.id)} project={projectName(session.source, projectNames)} onOpen={() => onOpenSession(session.id)} onSettle={() => toggleSettled(session)} />
+                <InboxCard
+                  key={session.id}
+                  session={session}
+                  active={selectedId === session.id}
+                  unread={unreadSessionIds.has(session.id)}
+                  project={projectName(session.source, projectNames)}
+                  onOpen={() => onOpenSession(session.id)}
+                  onSettle={() => toggleSettled(session)}
+                  dragging={draggingSessionId === session.id}
+                  onDragStart={(event) => startSessionDrag(session.id, event)}
+                  onDragEnd={endSessionDrag}
+                />
               ))}
             </ul>
           </section>
@@ -319,7 +425,21 @@ export function InboxSidebarSessions({
             <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/30">
               <span>Done</span><span>{settledSessions.length}</span>
             </div>
-            <ul>{settledSessions.slice(0, showSettled).map((session) => <SlimRow key={session.id} session={session} active={selectedId === session.id} settled onOpen={() => onOpenSession(session.id)} onToggleSettled={() => toggleSettled(session)} />)}</ul>
+            <ul>
+              {settledSessions.slice(0, showSettled).map((session) => (
+                <SlimRow
+                  key={session.id}
+                  session={session}
+                  active={selectedId === session.id}
+                  settled
+                  onOpen={() => onOpenSession(session.id)}
+                  onToggleSettled={() => toggleSettled(session)}
+                  dragging={draggingSessionId === session.id}
+                  onDragStart={(event) => startSessionDrag(session.id, event)}
+                  onDragEnd={endSessionDrag}
+                />
+              ))}
+            </ul>
             {settledSessions.length > showSettled && <button type="button" onClick={() => setShowSettled((count) => count + 25)} className="w-full py-2 text-[11px] text-muted-foreground/45 hover:text-foreground">Show more</button>}
           </section>
         )}

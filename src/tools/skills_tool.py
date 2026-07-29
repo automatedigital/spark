@@ -587,6 +587,18 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
     return skills
 
 
+def canonical_skill_metadata(*, include_duplicates: bool = True) -> List[Dict[str, Any]]:
+    """Return provenance-aware records from the shared metadata resolver.
+
+    Legacy agent callers continue using ``_find_all_skills`` for its compact
+    prompt-facing shape; management surfaces should use this adapter so CLI
+    and web classification cannot drift.
+    """
+    from tools.skills_metadata import iter_skill_records, public_record
+
+    return [public_record(row) for row in iter_skill_records(include_duplicates=include_duplicates)]
+
+
 def _load_category_description(category_dir: Path) -> Optional[str]:
     """
     Load category description from DESCRIPTION.md if it exists.

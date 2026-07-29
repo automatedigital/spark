@@ -260,7 +260,15 @@ class ProcessRegistry:
     def _terminate_host_pid(pid: int) -> None:
         """Terminate a host-visible PID without requiring the original process handle."""
         if _IS_WINDOWS:
-            os.kill(pid, signal.SIGTERM)
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            except (FileNotFoundError, OSError):
+                os.kill(pid, signal.SIGTERM)
             return
 
         try:
@@ -321,8 +329,12 @@ class ProcessRegistry:
                 user_shell = _find_shell()
                 pty_env = _sanitize_subprocess_env(os.environ, env_vars)
                 pty_env["PYTHONUNBUFFERED"] = "1"
+                pty_args = (
+                    [user_shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
+                    if _IS_WINDOWS else [user_shell, "-lic", command]
+                )
                 pty_proc = _PtyProcessCls.spawn(
-                    [user_shell, "-lic", command],
+                    pty_args,
                     cwd=session.cwd,
                     env=pty_env,
                     dimensions=(30, 120),
@@ -362,8 +374,12 @@ class ProcessRegistry:
         # stdout is a pipe, hiding output from process(action="poll")).
         bg_env = _sanitize_subprocess_env(os.environ, env_vars)
         bg_env["PYTHONUNBUFFERED"] = "1"
+        shell_args = (
+            [user_shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
+            if _IS_WINDOWS else [user_shell, "-lic", command]
+        )
         proc = subprocess.Popen(
-            [user_shell, "-lic", command],
+            shell_args,
             text=True,
             cwd=session.cwd,
             env=bg_env,
@@ -373,6 +389,7 @@ class ProcessRegistry:
             stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE,
             preexec_fn=None if _IS_WINDOWS else os.setsid,
+            creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if _IS_WINDOWS else 0),
         )
 
         session.process = proc
@@ -774,16 +791,27 @@ class ProcessRegistry:
         try:
             if session._pty:
                 # PTY process -- terminate via ptyprocess
-                try:
-                    session._pty.terminate(force=True)
-                except Exception:
-                    if session.pid:
-                        os.kill(session.pid, signal.SIGTERM)
+                if _IS_WINDOWS and session.pid:
+                    self._terminate_host_pid(session.pid)
+                else:
+                    try:
+                        session._pty.terminate(force=True)
+                    except Exception:
+                        if session.pid:
+                            os.kill(session.pid, signal.SIGTERM)
             elif session.process:
                 # Local process -- kill the process group
                 try:
                     if _IS_WINDOWS:
-                        session.process.terminate()
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/PID", str(session.process.pid), "/T", "/F"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=False,
+                            )
+                        except (FileNotFoundError, OSError):
+                            session.process.terminate()
                     else:
                         os.killpg(os.getpgid(session.process.pid), signal.SIGTERM)
                 except (ProcessLookupError, PermissionError):

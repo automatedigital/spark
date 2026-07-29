@@ -12,11 +12,13 @@ import mimetypes
 import os
 import queue
 import re
+import shlex
 import shutil
 import signal
 import socket
 import struct
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
@@ -88,6 +90,136 @@ _preview_sessions: dict[str, dict[str, Any]] = {}
 _active_streamed_previews: set[str] = set()
 _preview_queues: dict[str, list[queue.Queue[dict[str, Any] | None]]] = {}
 _preview_lock = threading.Lock()
+
+
+def _preview_is_windows() -> bool:
+    """Return whether preview processes should use the Windows process contract.
+
+    This is a function (rather than a module constant) so platform-specific
+    tests can exercise both launch paths without reloading this module.
+    """
+    return sys.platform == "win32"
+
+
+def _resolve_preview_executable(name: str) -> str | None:
+    """Resolve a command shim in the host platform's PATH.
+
+    npm-family tools are installed as ``.cmd`` shims on Windows.  ``cmd.exe``
+    can resolve those shims itself, but resolving them here makes the launch
+    contract explicit and also gives us useful diagnostics in tests/logs.
+    """
+    candidates = [name]
+    if _preview_is_windows() and not name.lower().endswith(('.cmd', '.exe', '.bat')):
+        candidates.insert(0, f"{name}.cmd")
+        candidates.append(f"{name}.exe")
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    return None
+
+
+def _replace_preview_command_executable(command: str) -> str:
+    """Resolve the first executable in a preview command where possible."""
+    if not _preview_is_windows() or not command.strip():
+        return command
+    try:
+        tokens = shlex.split(command, posix=False)
+    except ValueError:
+        return command
+    if not tokens:
+        return command
+    raw = tokens[0].strip('"')
+    # Keep explicit paths and shell builtins untouched.  npm-family commands
+    # are the common case where a Windows .cmd shim must be selected.
+    if any(sep in raw for sep in ("\\", "/")):
+        return command
+    resolved = _resolve_preview_executable(raw)
+    if not resolved:
+        return command
+    # Preserve the original command's argument dialect while safely quoting a
+    # resolved path that contains spaces.
+    replacement = f'"{resolved}"' if " " in resolved else resolved
+    return replacement + command[len(tokens[0]):]
+
+
+def _preview_launch_argv(command: str) -> list[str]:
+    """Build the native shell argv for a preview command.
+
+    Unix retains the login-shell behaviour used by existing custom previews.
+    Windows uses COMSPEC's native ``/d /s /c`` contract; it never attempts to
+    invoke Bash/WSL and therefore works for npm ``.cmd`` shims and Python
+    launchers installed on Windows.
+    """
+    if _preview_is_windows():
+        shell = os.environ.get("COMSPEC") or os.environ.get("ComSpec") or "cmd.exe"
+        return [shell, "/d", "/s", "/c", _replace_preview_command_executable(command)]
+    shell = os.environ.get("SHELL") or "/bin/bash"
+    return [shell, "-lc", command]
+
+
+def _preview_popen_kwargs(env: dict[str, str]) -> dict[str, Any]:
+    """Return platform-safe Popen options for preview process groups."""
+    kwargs: dict[str, Any] = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "stdin": subprocess.DEVNULL,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "bufsize": 1,
+        "env": env,
+    }
+    if _preview_is_windows():
+        # CREATE_NEW_PROCESS_GROUP lets callers send CTRL_BREAK, while the
+        # taskkill fallback below handles descendants that ignore it.
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    else:
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+def _terminate_preview_process(proc: subprocess.Popen[Any]) -> None:
+    """Terminate a preview and its descendants on the current platform."""
+    if proc.poll() is not None:
+        return
+    if _preview_is_windows():
+        try:
+            result = subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if result.returncode == 0:
+                return
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            pass
+        try:
+            proc.terminate()
+        except Exception:
+            proc.kill()
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        try:
+            proc.terminate()
+        except Exception:
+            proc.kill()
+    wait = getattr(proc, "wait", None)
+    if wait is not None:
+        try:
+            wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+            except (ProcessLookupError, OSError):
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
 
 def _workspace_root() -> Path:
@@ -1996,9 +2128,10 @@ def _detect_preview(
         if isinstance(scripts, dict):
             for script in ("dev", "start", "serve", "preview"):
                 if script in scripts:
+                    npm = (_resolve_preview_executable("npm") or "npm") if _preview_is_windows() else "npm"
                     return {
                         "kind": "node",
-                        "command": f"npm run {script} -- --host 127.0.0.1 --port {port}",
+                        "command": f"{npm} run {script} -- --host 127.0.0.1 --port {port}",
                         "url": requested_url or f"http://127.0.0.1:{port}",
                         "port": port,
                         "auto_refresh": False,
@@ -2007,9 +2140,21 @@ def _detect_preview(
 
     if (project_dir / "index.html").exists() or (project_dir / "public" / "index.html").exists():
         serve_dir = project_dir if (project_dir / "index.html").exists() else project_dir / "public"
+        python = (
+            (_resolve_preview_executable("python") or _resolve_preview_executable("python3"))
+            if _preview_is_windows()
+            else (shutil.which("python3") or shutil.which("python"))
+        )
+        if python:
+            python_command = f'"{python}"' if " " in python else python
+        elif _preview_is_windows() and (_resolve_preview_executable("py") or ""):
+            py = _resolve_preview_executable("py") or "py"
+            python_command = f'"{py}" -3'
+        else:
+            python_command = "python3"
         return {
             "kind": "static",
-            "command": f"{shutil.which('python3') or shutil.which('python') or 'python3'} -m http.server {port} --bind 127.0.0.1",
+            "command": f"{python_command} -m http.server {port} --bind 127.0.0.1",
             "url": requested_url or f"http://127.0.0.1:{port}",
             "port": port,
             "cwd": serve_dir,
@@ -2025,10 +2170,7 @@ def _stop_preview_session(slug: str) -> dict[str, Any]:
     if session:
         proc = session.get("process")
         if proc is not None and proc.poll() is None:
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except Exception:
-                proc.terminate()
+            _terminate_preview_process(proc)
         session["status"] = "stopped"
         session["updated_at"] = time.time()
         _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
@@ -2273,16 +2415,9 @@ def start_preview(slug: str, body: PreviewStart | None = None):
 
     try:
         proc = subprocess.Popen(
-            [os.environ.get("SHELL") or "/bin/bash", "-lc", command],
+            _preview_launch_argv(command),
             cwd=str(cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-            errors="replace",
-            env=env,
-            start_new_session=True,
+            **_preview_popen_kwargs(env),
         )
         session["process"] = proc
         # Stay "starting" until an HTTP probe succeeds — see _await_preview_ready.

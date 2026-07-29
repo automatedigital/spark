@@ -3659,6 +3659,7 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
                 offset=offset,
                 include_children=False,
             )
+            _canonicalize_workspace_session_sources(db, sessions)
             total = db.session_count(source=source, include_children=False)
             _apply_web_turn_active_state(sessions)
             return {
@@ -5831,6 +5832,42 @@ def _normalize_web_session_source(source: Optional[str]) -> str:
     return f"workspace:{slug}"
 
 
+def _canonicalize_workspace_session_sources(db, sessions: list[dict]) -> None:
+    """Repair legacy project sources whose casing differs from the folder.
+
+    Older UI flows could persist ``workspace:particles`` for a ``Particles``
+    project. That assignment is still meaningful, but it cannot match a
+    case-sensitive project slug. Only unambiguous case-insensitive matches are
+    repaired and persisted.
+    """
+    root = _get_workspace_root()
+    try:
+        project_slugs = [
+            path.name
+            for path in root.iterdir()
+            if path.is_dir() and not path.name.startswith(".")
+        ]
+    except OSError:
+        return
+
+    by_folded: dict[str, str | None] = {}
+    for slug in project_slugs:
+        folded = slug.casefold()
+        by_folded[folded] = slug if folded not in by_folded else None
+
+    for session in sessions:
+        source = str(session.get("source") or "")
+        if not source.startswith("workspace:"):
+            continue
+        slug = source.split(":", 1)[1]
+        canonical = by_folded.get(slug.casefold())
+        if not canonical or canonical == slug:
+            continue
+        canonical_source = f"workspace:{canonical}"
+        if db.update_session_source(str(session.get("id") or ""), canonical_source):
+            session["source"] = canonical_source
+
+
 @app.patch("/api/sessions/{session_id}/source")
 async def update_session_source(session_id: str, body: SessionSourceUpdate):
     from core.spark_state import SessionDB
@@ -6137,8 +6174,26 @@ async def delete_cron_job(job_id: str):
 
 
 class SkillToggle(BaseModel):
-    name: str
+    name: str | None = None
     enabled: bool
+    skill_id: str | None = None
+
+
+class SkillSave(BaseModel):
+    content: str = Field(..., min_length=1)
+
+
+def _skill_public_records() -> list[dict[str, Any]]:
+    """Return canonical skill records while keeping legacy list semantics."""
+    from tools.skills_tool import canonical_skill_metadata
+    from spark_cli.skills_config import get_disabled_skills
+
+    config = load_config()
+    disabled = get_disabled_skills(config)
+    records = canonical_skill_metadata(include_duplicates=True)
+    for record in records:
+        record["enabled"] = record["name"] not in disabled
+    return records
 
 
 @app.get("/api/skills")
@@ -6152,9 +6207,24 @@ async def get_skills():
     except Exception:
         pass
 
-    config = load_config()
-    disabled = get_disabled_skills(config)
-    skills = _find_all_skills(skip_disabled=True)
+    # The metadata resolver is the source of truth for the web API.  Keep the
+    # old fallback shape when a test/plugin provides synthetic skill rows that
+    # do not correspond to files on disk.
+    legacy_skills = _find_all_skills(skip_disabled=True)
+    skills = _skill_public_records()
+    metadata_names = {str(item.get("name")) for item in skills}
+    legacy_names = {str(item.get("name")) for item in legacy_skills}
+    has_external_metadata = any(item.get("provenance") == "external" for item in skills)
+    has_metadata_overlap = bool(legacy_names & metadata_names)
+    has_non_bundled_metadata = any(item.get("provenance") != "bundled" for item in skills)
+    if not skills or (not legacy_names.issubset(metadata_names) and not has_external_metadata and not has_metadata_overlap and not has_non_bundled_metadata):
+        # Synthetic/plugin-provided rows may not have backing files. Preserve
+        # the established response shape for those callers.
+        config = load_config()
+        disabled = get_disabled_skills(config)
+        skills = legacy_skills
+    else:
+        disabled = get_disabled_skills(load_config())
 
     usage_by_name: dict = {}
     try:
@@ -6164,7 +6234,7 @@ async def get_skills():
         pass
 
     for s in skills:
-        s["enabled"] = s["name"] not in disabled
+        s["enabled"] = s.get("enabled", s["name"] not in disabled)
         rec = usage_by_name.get(s["name"])
         if rec:
             s["use_count"] = int(rec.get("use_count") or 0)
@@ -6179,18 +6249,169 @@ async def get_skills():
     return skills
 
 
+def _skill_record_or_404(skill_id: str) -> dict[str, Any]:
+    from tools.skills_metadata import find_skill_by_id
+
+    record = find_skill_by_id(skill_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Skill not found.")
+    return record
+
+
 @app.put("/api/skills/toggle")
 async def toggle_skill(body: SkillToggle):
     from spark_cli.skills_config import get_disabled_skills, save_disabled_skills
 
+    name = body.name
+    if body.skill_id:
+        record = _skill_record_or_404(body.skill_id)
+        name = record["name"]
+    elif name:
+        from tools.skills_metadata import iter_skill_records
+
+        matches = [row for row in iter_skill_records(include_duplicates=True) if row["name"] == name]
+        if len(matches) > 1:
+            raise HTTPException(status_code=409, detail="Skill name is ambiguous; use skill_id.")
+    if not name:
+        raise HTTPException(status_code=422, detail="name or skill_id is required.")
     config = load_config()
     disabled = get_disabled_skills(config)
     if body.enabled:
-        disabled.discard(body.name)
+        disabled.discard(name)
     else:
-        disabled.add(body.name)
+        disabled.add(name)
     save_disabled_skills(config, disabled)
-    return {"ok": True, "name": body.name, "enabled": body.enabled}
+    return {"ok": True, "name": name, "skill_id": body.skill_id, "enabled": body.enabled}
+
+
+@app.get("/api/skills/{skill_id}")
+async def get_skill_detail(skill_id: str):
+    """Return one skill's bounded detail by opaque server-generated ID."""
+    record = _skill_record_or_404(skill_id)
+    skill_dir = record["_path"]
+    skill_md = skill_dir / "SKILL.md"
+    try:
+        size = skill_md.stat().st_size
+        if size > 1_048_576:
+            raise HTTPException(status_code=413, detail="SKILL.md exceeds the 1 MiB view limit.")
+        content = skill_md.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="SKILL.md is not valid UTF-8.")
+    except OSError:
+        raise HTTPException(status_code=404, detail="Skill content is unavailable.")
+
+    supporting_files: list[dict[str, Any]] = []
+    allowed_roots = {"references", "templates", "scripts", "assets"}
+    try:
+        for path in sorted(skill_dir.rglob("*")):
+            if len(supporting_files) >= 100:
+                break
+            if not path.is_file() or path.name == "SKILL.md" or path.is_symlink():
+                continue
+            relative = path.relative_to(skill_dir)
+            if not relative.parts or relative.parts[0] not in allowed_roots:
+                continue
+            supporting_files.append({
+                "path": relative.as_posix(),
+                "size": min(path.stat().st_size, 10_000_000),
+                "file_type": path.suffix,
+            })
+    except OSError:
+        # Supporting metadata is best-effort; never expose an arbitrary path.
+        supporting_files = []
+
+    from tools.skills_metadata import public_record
+
+    return {
+        **public_record(record),
+        "content": content,
+        "supporting_files": supporting_files,
+        "future_context": "Changes apply to a future conversation context; active cached prompts are unchanged.",
+    }
+
+
+@app.put("/api/skills/{skill_id}")
+async def save_skill(skill_id: str, body: SkillSave):
+    record = _skill_record_or_404(skill_id)
+    if not record["capabilities"].get("editable"):
+        raise HTTPException(status_code=403, detail="External skills are read-only.")
+    from tools.skill_manager_tool import save_skill_content
+
+    result = save_skill_content(record["_path"], body.content)
+    if not result.get("success"):
+        status = 422 if "limit" not in str(result.get("error", "")).lower() else 413
+        raise HTTPException(status_code=status, detail=result.get("error", "Skill save failed."))
+    _publish_event("skills.updated", {"skill_id": skill_id, "action": "edit", "future_context": True})
+    return {"ok": True, "skill": (await get_skill_detail(skill_id))}
+
+
+@app.delete("/api/skills/{skill_id}")
+async def delete_skill(skill_id: str):
+    record = _skill_record_or_404(skill_id)
+    provenance = record["provenance"]
+    if provenance == "external":
+        raise HTTPException(status_code=409, detail="External skills can only be detached from Spark; files are not deleted.")
+
+    if provenance == "bundled":
+        from tools.skills_sync import tombstone_bundled_skill
+
+        result = tombstone_bundled_skill(record["name"])
+    elif provenance == "hub_installed":
+        from tools.skills_hub import HubLockFile, uninstall_skill
+
+        entry = HubLockFile(path=get_spark_home() / "skills" / ".hub" / "lock.json").get_installed(record["name"])
+        if not entry:
+            raise HTTPException(status_code=409, detail="Hub metadata is stale; skill was not removed.")
+        result_ok, message = uninstall_skill(record["name"])
+        result = {"success": result_ok, "message": message, "error": None if result_ok else message}
+    else:
+        skill_dir = record["_path"]
+        try:
+            profile_root = get_spark_home() / "skills"
+            skill_dir.resolve().relative_to(profile_root.resolve())
+            if skill_dir.is_symlink():
+                raise ValueError("Refusing to delete a symlinked skill directory.")
+            shutil.rmtree(skill_dir)
+            try:
+                from tools.skill_usage import set_state
+
+                set_state(record["name"], "archived")
+            except Exception:
+                pass
+            result = {"success": True, "name": record["name"]}
+        except (OSError, ValueError) as exc:
+            result = {"success": False, "error": str(exc)}
+
+    if not result.get("success"):
+        raise HTTPException(status_code=409, detail=result.get("error") or "Skill removal failed.")
+    try:
+        from tools.skill_usage import set_state
+
+        set_state(record["name"], "archived")
+    except Exception:
+        pass
+    _publish_event("skills.updated", {"skill_id": skill_id, "action": "delete", "future_context": True})
+    return {"ok": True, "name": record["name"], "future_context": True}
+
+
+@app.post("/api/skills/{skill_id}/restore")
+async def restore_skill(skill_id: str):
+    record = _skill_record_or_404(skill_id)
+    if record["provenance"] != "bundled":
+        raise HTTPException(status_code=409, detail="Only bundled skills can be restored.")
+    from tools.skills_sync import restore_bundled_skill
+
+    result = restore_bundled_skill(record["name"])
+    if not result.get("success"):
+        raise HTTPException(status_code=409, detail=result.get("error") or "Skill restore failed.")
+    try:
+        from tools.skill_usage import set_state
+
+        set_state(record["name"], "active")
+    except Exception:
+        pass
+    _publish_event("skills.updated", {"skill_id": skill_id, "action": "restore", "future_context": True})
+    return {"ok": True, "skill": (await get_skill_detail(skill_id)), "future_context": True}
 
 
 @app.get("/api/tools/toolsets")

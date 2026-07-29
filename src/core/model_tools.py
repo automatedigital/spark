@@ -308,6 +308,29 @@ def get_tool_definitions(
     # Ask the registry for schemas (only returns tools whose check_fn passes)
     filtered_tools = registry.get_definitions(tools_to_include, quiet=quiet_mode)
 
+    # The terminal backend is selected per host/configuration.  Clone only
+    # the terminal schema's description for this resolution so native Windows
+    # local runs receive PowerShell guidance while POSIX/remote runs retain
+    # Bash guidance.  No registry mutation or mid-conversation prompt change
+    # occurs: callers receive an isolated schema list for this turn.
+    for i, td in enumerate(filtered_tools):
+        if td.get("function", {}).get("name") != "terminal":
+            continue
+        try:
+            from tools.terminal_tool import _terminal_tool_description
+
+            terminal_fn = td["function"]
+            filtered_tools[i] = {
+                "type": td.get("type", "function"),
+                "function": {
+                    **terminal_fn,
+                    "description": _terminal_tool_description(),
+                },
+            }
+        except Exception:
+            logger.debug("Could not build dynamic terminal description", exc_info=True)
+        break
+
     # The set of tool names that actually passed check_fn filtering.
     # Use this (not tools_to_include) for any downstream schema that references
     # other tools by name — otherwise the model sees tools mentioned in

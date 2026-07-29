@@ -400,11 +400,27 @@ export const api = {
 
   // Skills & Toolsets
   getSkills: () => fetchJSON<SkillInfo[]>("/api/skills"),
-  toggleSkill: (name: string, enabled: boolean) =>
+  getSkill: (skillId: string) =>
+    fetchJSON<SkillDetail>(`/api/skills/${encodeURIComponent(skillId)}`),
+  saveSkill: (skillId: string, content: string) =>
+    fetchJSON<{ ok: boolean; skill: SkillDetail }>(`/api/skills/${encodeURIComponent(skillId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }),
+  deleteSkill: (skillId: string) =>
+    fetchJSON<{ ok: boolean; name: string }>(`/api/skills/${encodeURIComponent(skillId)}`, {
+      method: "DELETE",
+    }),
+  restoreSkill: (skillId: string) =>
+    fetchJSON<{ ok: boolean; skill: SkillDetail }>(`/api/skills/${encodeURIComponent(skillId)}/restore`, {
+      method: "POST",
+    }),
+  toggleSkill: (name: string, enabled: boolean, skillId?: string) =>
     fetchJSON<{ ok: boolean }>("/api/skills/toggle", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, enabled }),
+      body: JSON.stringify({ name, enabled, ...(skillId ? { skill_id: skillId } : {}) }),
     }),
   getToolsets: () => fetchJSON<ToolsetInfo[]>("/api/tools/toolsets"),
 
@@ -1914,6 +1930,31 @@ export interface SkillInfo {
   view_count: number;
   patch_count: number;
   skill_state: string;
+  skill_id?: string;
+  provenance?: "bundled" | "spark_created" | "hub_installed" | "local" | "external";
+  provenance_detail?: { label: string; source: string };
+  trust_level?: string;
+  modified?: boolean;
+  removed?: boolean;
+  location?: string;
+  capabilities?: {
+    editable: boolean;
+    deletable: boolean;
+    restorable: boolean;
+    removal_mode: "tombstone" | "delete" | "hub_uninstall" | "detach";
+  };
+}
+
+export interface SkillSupportingFile {
+  path: string;
+  size: number;
+  file_type: string;
+}
+
+export interface SkillDetail extends SkillInfo {
+  content: string;
+  supporting_files: SkillSupportingFile[];
+  future_context?: string;
 }
 
 export interface SkillUsageEntry {

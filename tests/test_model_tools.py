@@ -7,12 +7,24 @@ import pytest
 
 from core.model_tools import (
     handle_function_call,
+    get_tool_definitions,
     get_all_tool_names,
     get_toolset_for_tool,
     _AGENT_LOOP_TOOLS,
     _LEGACY_TOOLSET_MAP,
     TOOL_TO_TOOLSET_MAP,
 )
+
+
+def test_terminal_schema_description_is_cloned_per_resolution(monkeypatch):
+    monkeypatch.setattr(
+        "tools.terminal_tool._terminal_tool_description",
+        lambda: "PowerShell guidance for this host",
+    )
+    definitions = get_tool_definitions(enabled_toolsets=["terminal"], quiet_mode=True)
+    terminal = next(item for item in definitions if item["function"]["name"] == "terminal")
+    assert terminal["function"]["description"] == "PowerShell guidance for this host"
+
 
 
 # =========================================================================

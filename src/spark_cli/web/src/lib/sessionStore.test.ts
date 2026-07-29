@@ -85,6 +85,15 @@ describe("pendingInitialMessageForSession", () => {
     expect(merged.is_active).toBe(false);
   });
 
+  it("does not erase a project assignment with a partial live row", () => {
+    const merged = mergeSessionRow(
+      session({ id: "project-thread", source: "workspace:Particles" }),
+      session({ id: "project-thread", source: null, is_active: true }),
+    );
+
+    expect(merged.source).toBe("workspace:Particles");
+  });
+
   it("coalesces burst rows by session id before applying them", () => {
     const rows = coalesceSessionRows([
       session({ id: "s1", preview: "first", message_count: 1, last_active: 1 }),

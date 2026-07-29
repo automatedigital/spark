@@ -28,6 +28,11 @@ Usage:
 import os
 import re
 import difflib
+import fnmatch
+import shutil
+import subprocess
+import tempfile
+import shlex
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
@@ -1117,6 +1122,207 @@ class ShellFileOperations(FileOperations):
                 total_count=total,
                 truncated=total > offset + limit
             )
+
+
+class NativeFileOperations(ShellFileOperations):
+    """Native filesystem implementation for a local host.
+
+    Local file tools must not depend on POSIX utilities (``cat``, ``wc``,
+    ``mkdir -p``), because native Windows installations do not provide them.
+    Remote/container environments continue using :class:`ShellFileOperations`.
+    """
+
+    def resolve_path(self, path: str) -> Path:
+        expanded = os.path.expandvars(os.path.expanduser(str(path)))
+        candidate = Path(expanded)
+        was_relative = not candidate.is_absolute()
+        if was_relative:
+            candidate = Path(self.cwd) / candidate
+        resolved = candidate.resolve(strict=False)
+        # Relative paths are task-workspace scoped.  This prevents a symlink
+        # inside the workspace from escaping to an unrelated host directory.
+        if was_relative:
+            root = Path(self.cwd).resolve(strict=False)
+            try:
+                resolved.relative_to(root)
+            except ValueError as exc:
+                raise ValueError(f"Path escapes task working directory: {path}") from exc
+        return resolved
+
+    def _expand_path(self, path: str) -> str:
+        return str(self.resolve_path(path))
+
+    @staticmethod
+    def _decode(data: bytes) -> str:
+        return data.decode("utf-8", errors="replace")
+
+    def _read_bytes(self, path: str) -> tuple[Path, bytes] | tuple[None, None]:
+        try:
+            resolved = self.resolve_path(path)
+            return resolved, resolved.read_bytes()
+        except (OSError, ValueError):
+            return None, None
+
+    def read_file(self, path: str, offset: int = 1, limit: int = 500) -> ReadResult:
+        resolved, data = self._read_bytes(path)
+        if resolved is None or data is None:
+            return ReadResult(error=f"File not found: {path}")
+        file_size = len(data)
+        if self._is_image(str(resolved)):
+            return ReadResult(is_image=True, is_binary=True, file_size=file_size)
+        text = self._decode(data)
+        if self._is_likely_binary(str(resolved), text[:1000]):
+            return ReadResult(is_binary=True, file_size=file_size, error="Binary file - cannot display as text. Use appropriate tools to handle this file type.")
+        limit = min(max(int(limit), 0), MAX_LINES)
+        offset = max(int(offset), 1)
+        lines = text.splitlines()
+        total_lines = len(lines)
+        selected = lines[offset - 1: offset - 1 + limit]
+        selected_text = "\n".join(selected)
+        if selected and (offset - 1 + len(selected) < total_lines):
+            selected_text += "\n"
+        end_line = offset + limit - 1
+        return ReadResult(
+            content=self._add_line_numbers(selected_text, offset) if selected_text else "",
+            total_lines=total_lines,
+            file_size=file_size,
+            truncated=total_lines > end_line,
+            hint=(f"Use offset={end_line + 1} to continue reading (showing {offset}-{end_line} of {total_lines} lines)" if total_lines > end_line else None),
+        )
+
+    def read_file_raw(self, path: str) -> ReadResult:
+        resolved, data = self._read_bytes(path)
+        if resolved is None or data is None:
+            return ReadResult(error=f"File not found: {path}")
+        if self._is_image(str(resolved)):
+            return ReadResult(is_image=True, is_binary=True, file_size=len(data))
+        text = self._decode(data)
+        if self._is_likely_binary(str(resolved), text[:1000]):
+            return ReadResult(is_binary=True, file_size=len(data), error="Binary file — cannot display as text.")
+        return ReadResult(content=text, file_size=len(data))
+
+    def _guard_write(self, path: Path) -> WriteResult | None:
+        if _is_write_denied(str(path)):
+            return WriteResult(error=f"Write denied: '{path}' is a protected system/credential file.")
+        return None
+
+    def write_file(self, path: str, content: str) -> WriteResult:
+        try:
+            resolved = self.resolve_path(path)
+        except ValueError as exc:
+            return WriteResult(error=str(exc))
+        denied = self._guard_write(resolved)
+        if denied:
+            return denied
+        parent = resolved.parent
+        dirs_created = not parent.exists()
+        temp_name = None
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+            encoded = content.encode("utf-8")
+            with tempfile.NamedTemporaryFile(mode="wb", dir=str(parent), prefix=f".{resolved.name}.", suffix=".tmp", delete=False) as handle:
+                temp_name = handle.name
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, resolved)
+            temp_name = None
+            return WriteResult(bytes_written=len(encoded), dirs_created=dirs_created)
+        except OSError as exc:
+            return WriteResult(error=f"Failed to write file: {exc}")
+        finally:
+            if temp_name:
+                try:
+                    os.unlink(temp_name)
+                except OSError:
+                    pass
+
+    def delete_file(self, path: str) -> WriteResult:
+        try:
+            resolved = self.resolve_path(path)
+        except ValueError as exc:
+            return WriteResult(error=str(exc))
+        denied = self._guard_write(resolved)
+        if denied:
+            return WriteResult(error=denied.error.replace("Write denied", "Delete denied", 1))
+        try:
+            resolved.unlink(missing_ok=True)
+            return WriteResult()
+        except OSError as exc:
+            return WriteResult(error=f"Failed to delete {path}: {exc}")
+
+    def move_file(self, src: str, dst: str) -> WriteResult:
+        try:
+            source = self.resolve_path(src)
+            target = self.resolve_path(dst)
+        except ValueError as exc:
+            return WriteResult(error=str(exc))
+        for path in (source, target):
+            denied = self._guard_write(path)
+            if denied:
+                return WriteResult(error=denied.error.replace("Write denied", "Move denied", 1))
+        try:
+            shutil.move(str(source), str(target))
+            return WriteResult()
+        except OSError as exc:
+            return WriteResult(error=f"Failed to move {src} -> {dst}: {exc}")
+
+    def patch_replace(self, path: str, old_string: str, new_string: str, replace_all: bool = False) -> PatchResult:
+        current = self.read_file_raw(path)
+        if current.error:
+            return PatchResult(error=current.error)
+        from tools.fuzzy_match import fuzzy_find_and_replace
+        new_content, match_count, _strategy, error = fuzzy_find_and_replace(current.content, old_string, new_string, replace_all)
+        if error:
+            return PatchResult(error=error)
+        if match_count == 0:
+            return PatchResult(error=f"Could not find match for old_string in {path}")
+        written = self.write_file(path, new_content)
+        if written.error:
+            return PatchResult(error=f"Failed to write changes: {written.error}")
+        lint = self._check_lint(path)
+        return PatchResult(success=True, diff=self._unified_diff(current.content, new_content, path), files_modified=[self._expand_path(path)], lint=lint.to_dict())
+
+    def _check_lint(self, path: str) -> LintResult:
+        ext = Path(path).suffix.lower()
+        command = LINTERS.get(ext)
+        if not command:
+            return LintResult(skipped=True, message=f"No linter for {ext} files")
+        executable = command.split()[0]
+        if not shutil.which(executable):
+            return LintResult(skipped=True, message=f"{executable} not available")
+        try:
+            lint_path = str(self.resolve_path(path))
+            parts = shlex.split(command.replace("{file}", shlex.quote(lint_path)))
+            result = subprocess.run(parts, shell=False, capture_output=True, text=True, timeout=30)
+            return LintResult(success=result.returncode == 0, output=(result.stdout + result.stderr).strip())
+        except (OSError, subprocess.SubprocessError) as exc:
+            return LintResult(success=False, output=str(exc))
+
+    def search(self, pattern: str, path: str = ".", target: str = "content", file_glob: Optional[str] = None, limit: int = 50, offset: int = 0, output_mode: str = "content", context: int = 0) -> SearchResult:
+        try:
+            root = self.resolve_path(path)
+        except ValueError as exc:
+            return SearchResult(error=str(exc))
+        candidates = [root] if root.is_file() else [p for p in root.rglob(file_glob or "*") if p.is_file()]
+        if target == "files":
+            matched = [str(p) for p in candidates if fnmatch.fnmatch(p.name, pattern)]
+            return SearchResult(files=matched[offset:offset + limit], total_count=len(matched), truncated=len(matched) > offset + limit)
+        matches: list[SearchMatch] = []
+        try:
+            regex = re.compile(pattern)
+        except re.error as exc:
+            return SearchResult(error=f"Invalid pattern: {exc}")
+        for candidate in candidates:
+            try:
+                text = candidate.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for number, line in enumerate(text.splitlines(), 1):
+                if regex.search(line):
+                    matches.append(SearchMatch(path=str(candidate), line_number=number, content=line[:500], mtime=candidate.stat().st_mtime))
+        page = matches[offset:offset + limit]
+        return SearchResult(matches=page, total_count=len(matches), truncated=len(matches) > offset + limit)
     
     def _search_with_grep(self, pattern: str, path: str, file_glob: Optional[str],
                           limit: int, offset: int, output_mode: str, context: int) -> SearchResult:

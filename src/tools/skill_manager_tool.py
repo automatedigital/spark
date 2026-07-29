@@ -379,6 +379,72 @@ def _edit_skill(name: str, content: str) -> Dict[str, Any]:
     }
 
 
+def save_skill_content(skill_dir: Path, content: str, *, allow_external: bool = False) -> Dict[str, Any]:
+    """Validate and atomically replace a resolved skill's ``SKILL.md``.
+
+    Web callers resolve an opaque skill ID before entering this helper.  Keep
+    the path and symlink checks here as a second boundary before writing.
+    """
+    try:
+        skill_dir = skill_dir.resolve()
+        skill_md = skill_dir / "SKILL.md"
+        if not skill_dir.is_dir() or not skill_md.is_file():
+            return {"success": False, "error": "Skill directory or SKILL.md is missing."}
+        if skill_dir.is_symlink() or skill_md.is_symlink():
+            return {"success": False, "error": "Refusing to edit a symlinked skill."}
+
+        try:
+            skill_dir.relative_to((get_spark_home() / "skills").resolve())
+            in_profile = True
+        except ValueError:
+            in_profile = False
+        if not in_profile and not allow_external:
+            return {"success": False, "error": "External skills are read-only."}
+
+        if not isinstance(content, str):
+            return {"success": False, "error": "Content must be a UTF-8 string."}
+        err = _validate_frontmatter(content)
+        if err:
+            return {"success": False, "error": err}
+        try:
+            from agent.skill_utils import parse_frontmatter
+
+            new_frontmatter, _ = parse_frontmatter(content)
+            name_error = _validate_name(str(new_frontmatter.get("name") or ""))
+            if name_error:
+                return {"success": False, "error": name_error}
+            old_frontmatter, _ = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
+            old_name = str(old_frontmatter.get("name") or skill_dir.name)
+            if str(new_frontmatter.get("name")) != old_name:
+                return {"success": False, "error": "Skill name cannot change during an edit."}
+        except UnicodeError:
+            return {"success": False, "error": "SKILL.md must be valid UTF-8."}
+        err = _validate_content_size(content)
+        if err:
+            return {"success": False, "error": err}
+        if len(content.encode("utf-8")) > MAX_SKILL_FILE_BYTES:
+            return {"success": False, "error": "SKILL.md exceeds the 1 MiB file limit."}
+
+        original = skill_md.read_text(encoding="utf-8")
+        _atomic_write_text(skill_md, content)
+        scan_error = _security_scan_skill(skill_dir)
+        if scan_error:
+            _atomic_write_text(skill_md, original)
+            return {"success": False, "error": scan_error}
+
+        try:
+            from tools.skill_usage import bump_patch
+            from agent.skill_utils import parse_frontmatter
+
+            frontmatter, _ = parse_frontmatter(content)
+            bump_patch(str(frontmatter.get("name") or skill_dir.name))
+        except Exception:
+            pass
+        return {"success": True, "message": f"Skill '{skill_dir.name}' updated."}
+    except (OSError, UnicodeError) as exc:
+        return {"success": False, "error": f"Failed to save skill: {exc}"}
+
+
 def _patch_skill(
     name: str,
     old_string: str,

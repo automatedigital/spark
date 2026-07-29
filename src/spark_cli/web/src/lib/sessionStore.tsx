@@ -62,6 +62,10 @@ export function mergeSessionRow(existing: SessionInfo | undefined, row: SessionI
   return {
     ...existing,
     ...row,
+    // Live session projections can be partial while a turn is starting.
+    // Project-less sessions use the explicit "web" source, so null here
+    // means "unknown" and must not erase a durable project assignment.
+    source: row.source ?? existing.source,
     preview: row.preview?.trim() ? row.preview : existing.preview,
     message_count: Math.max(row.message_count ?? 0, existing.message_count ?? 0),
     is_active: typeof row.is_active === "boolean" ? row.is_active : existing.is_active,

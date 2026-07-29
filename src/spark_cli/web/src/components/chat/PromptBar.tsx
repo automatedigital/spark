@@ -8,6 +8,7 @@ import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 import { AtFileMenu } from "@/components/chat/AtFileMenu";
 import { useTokenEstimate } from "@/hooks/useTokenEstimate";
 import type { ContextItem, ContextEstimate } from "@/lib/context";
+import { emitOpenSettings } from "@/lib/navigationEvents";
 
 interface PromptBarProps {
   input: string;
@@ -624,7 +625,7 @@ function ModelQuickSettings({
       <div className="border-t border-border px-3 py-1.5 flex items-center justify-end">
         <button
           type="button"
-          onClick={() => { onClose(); document.dispatchEvent(new CustomEvent("spark:open-settings")); }}
+          onClick={() => { onClose(); emitOpenSettings(); }}
           className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition"
         >
           <Settings className="h-3 w-3" />

@@ -251,6 +251,9 @@ class BaseEnvironment(ABC):
 
     # Snapshot creation timeout (override for slow cold-starts).
     _snapshot_timeout: int = 30
+    # Local native Windows overrides this with ``powershell``.  All remote
+    # environments retain the POSIX/Bash contract.
+    shell_family: str = "posix"
 
     def get_temp_dir(self) -> str:
         """Return the backend temp directory used for session artifacts.
@@ -267,9 +270,10 @@ class BaseEnvironment(ABC):
         self.env = env or {}
 
         self._session_id = uuid.uuid4().hex[:12]
-        temp_dir = self.get_temp_dir().rstrip("/") or "/"
-        self._snapshot_path = f"{temp_dir}/spark-snap-{self._session_id}.sh"
-        self._cwd_file = f"{temp_dir}/spark-cwd-{self._session_id}.txt"
+        temp_dir = self.get_temp_dir().rstrip("/\\") or os.path.sep
+        suffix = ".json" if self.shell_family == "powershell" else ".sh"
+        self._snapshot_path = os.path.join(temp_dir, f"spark-snap-{self._session_id}{suffix}")
+        self._cwd_file = os.path.join(temp_dir, f"spark-cwd-{self._session_id}.txt")
         self._cwd_marker = _cwd_marker(self._session_id)
         self._snapshot_ready = False
 
@@ -308,6 +312,21 @@ class BaseEnvironment(ABC):
         ``_snapshot_ready = True`` so subsequent commands source the snapshot
         instead of running with ``bash -l``.
         """
+        if self.shell_family == "powershell":
+            bootstrap = self._powershell_session_bootstrap()
+            try:
+                proc = self._run_bash(bootstrap, login=True, timeout=self._snapshot_timeout)
+                result = self._wait_for_process(proc, timeout=self._snapshot_timeout)
+                self._snapshot_ready = result.get("returncode", 1) == 0
+                self._update_cwd(result)
+                if self._snapshot_ready:
+                    logger.info("PowerShell session snapshot created (session=%s, cwd=%s)", self._session_id, self.cwd)
+                return
+            except Exception as exc:
+                logger.warning("PowerShell init_session failed (session=%s): %s", self._session_id, exc)
+                self._snapshot_ready = False
+                return
+
         # Full capture: env vars, functions (filtered), aliases, shell options.
         bootstrap = (
             f"export -p > {self._snapshot_path}\n"
@@ -345,6 +364,9 @@ class BaseEnvironment(ABC):
     def _wrap_command(self, command: str, cwd: str) -> str:
         """Build the full bash script that sources snapshot, cd's, runs command,
         re-dumps env vars, and emits CWD markers."""
+        if self.shell_family == "powershell":
+            return self._wrap_powershell(command, cwd)
+
         escaped = command.replace("'", "'\\''")
 
         parts = []
@@ -379,6 +401,63 @@ class BaseEnvironment(ABC):
         parts.append("exit $__spark_ec")
 
         return "\n".join(parts)
+
+    def _powershell_session_bootstrap(self) -> str:
+        """Return a PowerShell script that captures env and CWD once."""
+        snap = self._ps_quote(self._snapshot_path)
+        cwd_file = self._ps_quote(self._cwd_file)
+        marker = self._cwd_marker
+        return f"""
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+[Console]::InputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
+Get-ChildItem Env: | ForEach-Object {{ [ordered]@{{ Name=$_.Name; Value=$_.Value }} }} | ConvertTo-Json -Compress | Set-Content -LiteralPath {snap} -Encoding UTF8
+$cwd = (Get-Location).Path
+Set-Content -LiteralPath {cwd_file} -Value $cwd -Encoding UTF8
+Write-Output "{marker}$cwd{marker}"
+exit 0
+""".strip()
+
+    @staticmethod
+    def _ps_quote(value: str) -> str:
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def _wrap_powershell(self, command: str, cwd: str) -> str:
+        """Build a spawn-per-call PowerShell script with session persistence."""
+        snap = self._ps_quote(self._snapshot_path)
+        cwd_file = self._ps_quote(self._cwd_file)
+        quoted_cwd = self._ps_quote(cwd)
+        quoted_command = self._ps_quote(command)
+        marker = self._cwd_marker
+        restore = ""
+        if self._snapshot_ready:
+            restore = f"""
+$snapshot = Get-Content -LiteralPath {snap} -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+if ($snapshot) {{
+  foreach ($entry in @($snapshot)) {{ if ($entry.Name) {{ Set-Item -Path ("Env:" + $entry.Name) -Value ([string]$entry.Value) }} }}
+}}
+"""
+        return f"""
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+[Console]::InputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
+{restore}
+try {{ Set-Location -LiteralPath {quoted_cwd} -ErrorAction Stop }} catch {{ exit 126 }}
+$spark_ec = 0
+try {{
+  & ([scriptblock]::Create({quoted_command}))
+  if ($LASTEXITCODE -is [int]) {{ $spark_ec = $LASTEXITCODE }} elseif (-not $?) {{ $spark_ec = 1 }}
+}} catch {{ Write-Error $_; $spark_ec = 1 }}
+if (${"$true" if self._snapshot_ready else "$false"}) {{
+  Get-ChildItem Env: | ForEach-Object {{ [ordered]@{{ Name=$_.Name; Value=$_.Value }} }} | ConvertTo-Json -Compress | Set-Content -LiteralPath {snap} -Encoding UTF8
+}}
+$cwd = (Get-Location).Path
+Set-Content -LiteralPath {cwd_file} -Value $cwd -Encoding UTF8
+Write-Output "{marker}$cwd{marker}"
+exit $spark_ec
+""".strip()
 
     # ------------------------------------------------------------------
     # Stdin heredoc embedding (for SDK backends)
@@ -597,4 +676,3 @@ class BaseEnvironment(ABC):
         from tools.terminal_tool import _transform_sudo_command
 
         return _transform_sudo_command(command)
-

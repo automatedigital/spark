@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import base64
 
 from tools.env_passthrough import build_tool_subprocess_env
 from tools.environments.base import BaseEnvironment, _pipe_stdin
@@ -128,31 +129,38 @@ def _find_bash() -> str:
             or "/bin/sh"
         )
 
-    custom = os.environ.get("SPARK_GIT_BASH_PATH")
-    if custom and os.path.isfile(custom):
-        return custom
+    # Native Windows uses PowerShell.  Keep this function as the historical
+    # POSIX-shell lookup used by remote backends and third-party callers, but
+    # never silently route native commands through Git Bash/WSL.
+    return _find_windows_shell()
 
-    found = shutil.which("bash")
-    if found:
-        return found
 
-    for candidate in (
-        os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Git", "bin", "bash.exe"),
-        os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Git", "bin", "bash.exe"),
-        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Git", "bin", "bash.exe"),
-    ):
-        if candidate and os.path.isfile(candidate):
+def _find_windows_shell() -> str:
+    """Resolve PowerShell 7 first, then the inbox Windows PowerShell.
+
+    ``shutil.which`` handles installations in paths containing spaces.  The
+    explicit fallback is useful in minimal Windows environments where PATH is
+    incomplete, and deliberately excludes ``bash.exe``/``wsl.exe``.
+    """
+    for name in ("pwsh", "pwsh.exe", "powershell", "powershell.exe"):
+        found = shutil.which(name)
+        if found and os.path.basename(found).lower() not in {"bash.exe", "wsl.exe"}:
+            return found
+    candidates = [
+        os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "PowerShell", "7", "pwsh.exe"),
+        os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
             return candidate
-
     raise RuntimeError(
-        "Git Bash not found. Spark Agent requires Git for Windows on Windows.\n"
-        "Install it from: https://git-scm.com/download/win\n"
-        "Or set SPARK_GIT_BASH_PATH to your bash.exe location."
+        "PowerShell was not found. Install PowerShell 7 or enable Windows PowerShell 5.1."
     )
 
 
-# Backward compat — process_registry.py imports this name
-_find_shell = _find_bash
+def _find_shell() -> str:
+    """Resolve the shell for native local process execution."""
+    return _find_windows_shell() if _IS_WINDOWS else _find_bash()
 
 
 # Standard PATH entries for environments with minimal PATH.
@@ -170,7 +178,7 @@ def _make_run_env(env: dict) -> dict:
         force_prefix=_SPARK_PROVIDER_ENV_FORCE_PREFIX,
     )
     existing_path = run_env.get("PATH", "")
-    if "/usr/bin" not in existing_path.split(os.pathsep):
+    if not _IS_WINDOWS and "/usr/bin" not in existing_path.split(os.pathsep):
         run_env["PATH"] = f"{existing_path}{os.pathsep}{_SANE_PATH}" if existing_path else _SANE_PATH
 
     return run_env
@@ -183,6 +191,7 @@ class LocalEnvironment(BaseEnvironment):
     Session snapshot preserves env vars across calls.
     CWD persists via file-based read after each command.
     """
+    shell_family = "powershell" if _IS_WINDOWS else "posix"
 
     def __init__(self, cwd: str = "", timeout: int = 60, env: dict = None):
         super().__init__(cwd=cwd or os.getcwd(), timeout=timeout, env=env)
@@ -200,6 +209,13 @@ class LocalEnvironment(BaseEnvironment):
         override the temp root explicitly (for example via terminal.env or a
         custom TMPDIR), then fall back to the host process environment.
         """
+        if _IS_WINDOWS:
+            for env_var in ("TEMP", "TMP", "TMPDIR"):
+                candidate = self.env.get(env_var) or os.environ.get(env_var)
+                if candidate:
+                    return candidate
+            return tempfile.gettempdir()
+
         for env_var in ("TMPDIR", "TMP", "TEMP"):
             candidate = self.env.get(env_var) or os.environ.get(env_var)
             if candidate and candidate.startswith("/"):
@@ -217,8 +233,18 @@ class LocalEnvironment(BaseEnvironment):
     def _run_bash(self, cmd_string: str, *, login: bool = False,
                   timeout: int = 120,
                   stdin_data: str | None = None) -> subprocess.Popen:
-        bash = _find_bash()
-        args = [bash, "-l", "-c", cmd_string] if login else [bash, "-c", cmd_string]
+        if _IS_WINDOWS:
+            shell = _find_windows_shell()
+            # EncodedCommand is understood by both PowerShell 7 and 5.1 and
+            # avoids quoting/escaping bugs for paths and multiline commands.
+            encoded = base64.b64encode(cmd_string.encode("utf-16le")).decode("ascii")
+            args = [
+                shell, "-NoLogo", "-NoProfile", "-NonInteractive",
+                "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded,
+            ]
+        else:
+            bash = _find_bash()
+            args = [bash, "-l", "-c", cmd_string] if login else [bash, "-c", cmd_string]
         run_env = _make_run_env(self.env)
 
         proc = subprocess.Popen(
@@ -231,6 +257,7 @@ class LocalEnvironment(BaseEnvironment):
             stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
             preexec_fn=None if _IS_WINDOWS else os.setsid,
+            creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if _IS_WINDOWS else 0),
         )
 
         if stdin_data is not None:
@@ -242,7 +269,17 @@ class LocalEnvironment(BaseEnvironment):
         """Kill the entire process group (all children)."""
         try:
             if _IS_WINDOWS:
-                proc.terminate()
+                # taskkill /T is the only reliable way to terminate a
+                # PowerShell process tree (TerminateProcess leaves children).
+                try:
+                    subprocess.run(
+                        ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    )
+                except (FileNotFoundError, OSError):
+                    proc.terminate()
             else:
                 pgid = os.getpgid(proc.pid)
                 os.killpg(pgid, signal.SIGTERM)

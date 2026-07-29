@@ -150,6 +150,7 @@ def _check_all_guards(command: str, env_type: str) -> dict:
 # Covers alphanumeric, path separators, tilde, dot, hyphen, underscore, space,
 # plus, at, equals, and comma.  Everything else is rejected.
 _WORKDIR_SAFE_RE = re.compile(r'^[A-Za-z0-9/_\-.~ +@=,]+$')
+_WINDOWS_WORKDIR_SAFE_RE = re.compile(r'^[A-Za-z0-9_\\/:\-.~ +@=,]+$')
 
 
 def _validate_workdir(workdir: str) -> str | None:
@@ -162,10 +163,11 @@ def _validate_workdir(workdir: str) -> str | None:
     """
     if not workdir:
         return None
-    if not _WORKDIR_SAFE_RE.match(workdir):
+    safe_re = _WINDOWS_WORKDIR_SAFE_RE if platform.system() == "Windows" else _WORKDIR_SAFE_RE
+    if not safe_re.match(workdir):
         # Find the first offending character for a helpful message.
         for ch in workdir:
-            if not _WORKDIR_SAFE_RE.match(ch):
+            if not safe_re.match(ch):
                 return (
                     f"Blocked: workdir contains disallowed character {repr(ch)}. "
                     "Use a simple filesystem path without shell metacharacters."
@@ -508,7 +510,19 @@ from tools.managed_tool_gateway import is_managed_tool_gateway_ready
 
 
 # Tool description for LLM
-TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem usually persists between calls.
+def _terminal_tool_description() -> str:
+    """Build backend-aware guidance without mutating an active conversation."""
+    native_windows = platform.system() == "Windows" and os.getenv("TERMINAL_ENV", "local").lower() == "local"
+    if native_windows:
+        shell_guidance = (
+            "Native Windows local execution uses PowerShell (pwsh, with Windows PowerShell 5.1 fallback). "
+            "Emit PowerShell syntax; do not use POSIX source/eval/export/pwd or Git Bash/WSL launchers."
+        )
+    else:
+        shell_guidance = "Use POSIX shell syntax for Unix local hosts and container/SSH/cloud backends."
+    return f"""Execute shell commands in the selected Spark environment. Filesystem usually persists between calls.
+
+{shell_guidance}
 
 Do NOT use cat/head/tail to read files — use read_file instead.
 Do NOT use grep/rg/find to search — use search_files instead.
@@ -527,6 +541,9 @@ PTY mode: Set pty=true for interactive CLI tools (Codex, Claude Code, Python REP
 
 Do NOT use vim/nano/interactive tools without pty=true — they hang without a pseudo-terminal. Pipe git output to cat if it might page.
 """
+
+
+TERMINAL_TOOL_DESCRIPTION = _terminal_tool_description()
 
 # Global state for environment lifecycle management
 _active_environments: Dict[str, Any] = {}

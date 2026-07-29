@@ -9,7 +9,7 @@ import tempfile
 import threading
 from pathlib import Path
 from tools.binary_extensions import has_binary_extension
-from tools.file_operations import ShellFileOperations
+from tools.file_operations import ShellFileOperations, NativeFileOperations
 from agent.redact import redact_sensitive_text
 
 logger = logging.getLogger(__name__)
@@ -178,6 +178,25 @@ _read_tracker_lock = threading.Lock()
 _read_tracker: dict = {}
 
 
+def _resolve_task_path(filepath: str, task_id: str = "default") -> Path:
+    """Resolve a path using the terminal task CWD for local operations."""
+    expanded = os.path.expanduser(os.path.expandvars(str(filepath)))
+    candidate = Path(expanded)
+    if candidate.is_absolute():
+        return candidate.resolve(strict=False)
+    cwd = None
+    try:
+        from tools.terminal_tool import _active_environments, _get_env_config, _task_env_overrides
+        env = _active_environments.get(task_id)
+        cwd = getattr(env, "cwd", None) if env is not None else None
+        if not cwd:
+            overrides = _task_env_overrides.get(task_id, {})
+            cwd = overrides.get("cwd") or _get_env_config().get("cwd")
+    except Exception:
+        cwd = None
+    return (Path(cwd) / candidate if cwd else candidate).resolve(strict=False)
+
+
 def _get_file_ops(task_id: str = "default") -> ShellFileOperations:
     """Get or create ShellFileOperations for a terminal environment.
 
@@ -301,7 +320,15 @@ def _get_file_ops(task_id: str = "default") -> ShellFileOperations:
             logger.info("%s environment ready for task %s", env_type, task_id[:8])
 
     # Build file_ops from the (guaranteed live) environment and cache it
-    file_ops = ShellFileOperations(terminal_env)
+    # Native local hosts use pathlib-based operations so Windows does not
+    # depend on POSIX utilities.  Every remote/container backend retains the
+    # shell transport and its existing command semantics.
+    file_ops = (
+        NativeFileOperations(terminal_env)
+        if getattr(terminal_env, "shell_family", "") == "powershell"
+        or terminal_env.__class__.__name__ == "LocalEnvironment"
+        else ShellFileOperations(terminal_env)
+    )
     with _file_ops_lock:
         _file_ops_cache[task_id] = file_ops
     return file_ops
@@ -334,7 +361,7 @@ def read_file_tool(
                 }
             )
 
-        _resolved = Path(path).expanduser().resolve()
+        _resolved = _resolve_task_path(path, task_id)
 
         # ── Binary file guard ─────────────────────────────────────────
         # Block binary files by extension (no I/O).
@@ -412,6 +439,11 @@ def read_file_tool(
 
         # ── Perform the read ──────────────────────────────────────────
         file_ops = _get_file_ops(task_id)
+        # A newly-created local environment may provide the authoritative CWD
+        # when config was not explicit; recompute before tracker bookkeeping.
+        _resolved = _resolve_task_path(path, task_id)
+        resolved_str = str(_resolved)
+        dedup_key = (resolved_str, offset, limit)
         result = file_ops.read_file(path, offset, limit)
         result_dict = result.to_dict()
 
@@ -561,7 +593,7 @@ def _update_read_timestamp(filepath: str, task_id: str) -> None:
     refreshes the stored timestamp to match the file's new state.
     """
     try:
-        resolved = str(Path(filepath).expanduser().resolve())
+        resolved = str(_resolve_task_path(filepath, task_id))
         current_mtime = os.path.getmtime(resolved)
     except (OSError, ValueError):
         return
@@ -579,7 +611,7 @@ def _check_file_staleness(filepath: str, task_id: str) -> str | None:
     or was never read.  Does not block — the write still proceeds.
     """
     try:
-        resolved = str(Path(filepath).expanduser().resolve())
+        resolved = str(_resolve_task_path(filepath, task_id))
     except (OSError, ValueError):
         return None
     with _read_tracker_lock:
@@ -608,8 +640,8 @@ def write_file_tool(path: str, content: str, task_id: str = "default") -> str:
     if sensitive_err:
         return tool_error(sensitive_err)
     try:
-        stale_warning = _check_file_staleness(path, task_id)
         file_ops = _get_file_ops(task_id)
+        stale_warning = _check_file_staleness(path, task_id)
         result = file_ops.write_file(path, content)
         result_dict = result.to_dict()
         if stale_warning:
@@ -652,14 +684,13 @@ def patch_tool(
         if sensitive_err:
             return tool_error(sensitive_err)
     try:
+        file_ops = _get_file_ops(task_id)
         # Check staleness for all files this patch will touch.
         stale_warnings = []
         for _p in _paths_to_check:
             _sw = _check_file_staleness(_p, task_id)
             if _sw:
                 stale_warnings.append(_sw)
-
-        file_ops = _get_file_ops(task_id)
 
         if mode == "replace":
             if not path:

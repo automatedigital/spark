@@ -347,6 +347,33 @@ def test_session_source_patch_moves_chat_between_project_and_chats(web_client):
         db.close()
 
 
+def test_session_list_repairs_legacy_project_source_casing(web_client):
+    from core.spark_state import SessionDB
+    from spark_cli.config import get_spark_home
+
+    (get_spark_home() / "workspace" / "Particles").mkdir(parents=True)
+    db = SessionDB()
+    try:
+        db.create_session("legacy-project-case", source="workspace:particles")
+    finally:
+        db.close()
+
+    response = web_client.get("/api/sessions?limit=100")
+
+    assert response.status_code == 200
+    listed = next(
+        row for row in response.json()["sessions"]
+        if row["id"] == "legacy-project-case"
+    )
+    assert listed["source"] == "workspace:Particles"
+
+    db = SessionDB()
+    try:
+        assert db.get_session("legacy-project-case")["source"] == "workspace:Particles"
+    finally:
+        db.close()
+
+
 def test_create_conversation_can_preclaim_workspace_source(web_client, monkeypatch):
     import spark_cli.web_server as web_server
     from core.spark_state import SessionDB

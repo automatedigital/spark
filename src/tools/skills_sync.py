@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 SPARK_HOME = get_spark_home()
 SKILLS_DIR = SPARK_HOME / "skills"
 MANIFEST_FILE = SKILLS_DIR / ".bundled_manifest"
+TOMBSTONE_FILE = SKILLS_DIR / ".bundled_tombstones"
 
 
 def _get_bundled_dir() -> Path:
@@ -114,6 +115,128 @@ def _write_manifest(entries: Dict[str, str]):
             raise
     except Exception as e:
         logger.debug("Failed to write skills manifest %s: %s", MANIFEST_FILE, e, exc_info=True)
+
+
+def _read_tombstones() -> set[str]:
+    """Read names deliberately removed from the active bundled skill tree."""
+    try:
+        return {
+            line.strip()
+            for line in TOMBSTONE_FILE.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+    except (OSError, IOError):
+        return set()
+
+
+def _write_tombstones(names: set[str]) -> None:
+    """Persist bundled removal tombstones atomically."""
+    TOMBSTONE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    data = "\n".join(sorted(names)) + ("\n" if names else "")
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(TOMBSTONE_FILE.parent), prefix=".bundled_tombstones_", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, TOMBSTONE_FILE)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _find_bundled_skill(name: str) -> tuple[Path, Path] | None:
+    """Return ``(source_dir, destination_dir)`` for a bundled skill name."""
+    bundled_dir = _get_bundled_dir()
+    for skill_name, source_dir in _discover_bundled_skills(bundled_dir):
+        if skill_name == name:
+            return source_dir, _compute_relative_dest(source_dir, bundled_dir)
+    return None
+
+
+def tombstone_bundled_skill(name: str) -> dict:
+    """Remove a bundled skill from the active profile and remember the choice.
+
+    The manifest entry remains so provenance is retained.  A later restore
+    explicitly copies the current bundled version back into the profile.
+    """
+    found = _find_bundled_skill(name)
+    if found is None:
+        return {"success": False, "error": f"Bundled skill '{name}' not found."}
+    _source, destination = found
+    backup = destination.with_name(destination.name + ".tombstone-backup")
+    try:
+        if destination.exists():
+            # Refuse symlinked destinations; deleting through one could affect
+            # a user-controlled tree outside the active profile.
+            if destination.is_symlink():
+                return {"success": False, "error": "Refusing to remove a symlinked skill directory."}
+            if backup.exists():
+                return {"success": False, "error": "A previous bundled removal is still being finalized."}
+            shutil.move(str(destination), str(backup))
+        tombstones = _read_tombstones()
+        tombstones.add(name)
+        try:
+            _write_tombstones(tombstones)
+        except Exception:
+            if backup.exists() and not destination.exists():
+                shutil.move(str(backup), str(destination))
+            raise
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+        return {"success": True, "name": name, "removed": True}
+    except OSError as exc:
+        return {"success": False, "error": f"Failed to remove bundled skill '{name}': {exc}"}
+
+
+def restore_bundled_skill(name: str) -> dict:
+    """Clear a tombstone and restore the current bundled copy atomically-ish."""
+    found = _find_bundled_skill(name)
+    if found is None:
+        return {"success": False, "error": f"Bundled skill '{name}' not found."}
+    source, destination = found
+    backup = destination.with_name(destination.name + ".restore-backup")
+    try:
+        if destination.is_symlink():
+            return {"success": False, "error": "Refusing to restore over a symlinked skill directory."}
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+        if destination.exists():
+            shutil.move(str(destination), str(backup))
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source, destination)
+        except OSError:
+            if destination.exists():
+                shutil.rmtree(destination, ignore_errors=True)
+            if backup.exists():
+                shutil.move(str(backup), str(destination))
+            raise
+        tombstones = _read_tombstones()
+        tombstones.discard(name)
+        try:
+            _write_tombstones(tombstones)
+        except Exception:
+            if destination.exists():
+                shutil.rmtree(destination, ignore_errors=True)
+            if backup.exists():
+                shutil.move(str(backup), str(destination))
+            raise
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+        manifest = _read_manifest()
+        manifest[name] = _dir_hash(source)
+        _write_manifest(manifest)
+        return {"success": True, "name": name, "restored": True}
+    except OSError as exc:
+        return {"success": False, "error": f"Failed to restore bundled skill '{name}': {exc}"}
 
 
 def _read_skill_name(skill_md: Path, fallback: str) -> str:
@@ -201,6 +324,7 @@ def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
 
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     manifest = _read_manifest()
+    tombstones = _read_tombstones()
     bundled_skills = _discover_bundled_skills(bundled_dir)
     if only is not None:
         bundled_skills = [(n, s) for n, s in bundled_skills if n in only]
@@ -212,6 +336,10 @@ def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
     skipped = 0
 
     for skill_name, skill_src in bundled_skills:
+        if skill_name in tombstones:
+            # A deliberate removal must survive list/refresh/restart.  Keep
+            # its manifest entry so it remains identifiable as bundled.
+            continue
         dest = _compute_relative_dest(skill_src, bundled_dir)
         bundled_hash = _dir_hash(skill_src)
 

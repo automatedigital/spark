@@ -49,6 +49,7 @@ HUB_DIR = SKILLS_DIR / ".hub"
 LOCK_FILE = HUB_DIR / "lock.json"
 QUARANTINE_DIR = HUB_DIR / "quarantine"
 AUDIT_LOG = HUB_DIR / "audit.log"
+_DEFAULT_AUDIT_LOG = AUDIT_LOG
 TAPS_FILE = HUB_DIR / "taps.json"
 INDEX_CACHE_DIR = HUB_DIR / "index-cache"
 
@@ -2491,14 +2492,19 @@ class TapsManager:
 def append_audit_log(action: str, skill_name: str, source: str,
                      trust_level: str, verdict: str, extra: str = "") -> None:
     """Append a line to the audit log."""
-    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    # Keep explicit test/embedding overrides working while resolving the
+    # normal default against the active profile at call time.
+    audit_log = AUDIT_LOG
+    if audit_log == _DEFAULT_AUDIT_LOG:
+        audit_log = get_spark_home() / "skills" / ".hub" / "audit.log"
+    audit_log.parent.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     parts = [timestamp, action, skill_name, f"{source}:{trust_level}", verdict]
     if extra:
         parts.append(extra)
     line = " ".join(parts) + "\n"
     try:
-        with open(AUDIT_LOG, "a") as f:
+        with open(audit_log, "a") as f:
             f.write(line)
     except OSError as e:
         logger.debug("Could not write audit log: %s", e)
@@ -2613,12 +2619,15 @@ def install_from_quarantine(
 
 def uninstall_skill(skill_name: str) -> Tuple[bool, str]:
     """Remove a hub-installed skill. Refuses to remove builtins."""
-    lock = HubLockFile()
+    # Resolve profile state at call time so isolated profiles (and tests) do
+    # not accidentally read or mutate the process-startup profile.
+    profile_skills = get_spark_home() / "skills"
+    lock = HubLockFile(path=profile_skills / ".hub" / "lock.json")
     entry = lock.get_installed(skill_name)
     if not entry:
         return False, f"'{skill_name}' is not a hub-installed skill (may be a builtin)"
 
-    install_path = SKILLS_DIR / entry["install_path"]
+    install_path = profile_skills / entry["install_path"]
     if install_path.exists():
         shutil.rmtree(install_path)
 

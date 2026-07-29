@@ -27,6 +27,7 @@ import { isTauri } from "@/sidecar";
 import { useEventBus } from "@/hooks/useEventBus";
 import { gatewayFooterState } from "@/lib/gatewayFooterState";
 import { recordActivePageRender } from "@/lib/renderHealth";
+import { OPEN_SETTINGS_EVENT } from "@/lib/navigationEvents";
 import {
   isEditableShortcutTarget,
   isSidebarToggleShortcut,
@@ -218,8 +219,8 @@ function AppShell() {
       setSettingsInitialTab("model");
       setSettingsOpen(true);
     };
-    window.addEventListener("spark-open-settings", handler);
-    return () => window.removeEventListener("spark-open-settings", handler);
+    window.addEventListener(OPEN_SETTINGS_EVENT, handler);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, handler);
   }, []);
   const { t } = useI18n();
   const [authWall, setAuthWall] = useState(false);

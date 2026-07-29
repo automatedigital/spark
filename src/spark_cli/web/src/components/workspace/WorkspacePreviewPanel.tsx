@@ -922,18 +922,23 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-muted-foreground/70">
             <div className="rounded-sm border border-border bg-card/50 px-3 py-2 text-center font-mono-ui text-[11px]">
-              {status?.kind ? (
+              {status?.status === "failed" ? (
+                <>
+                  <div className="font-semibold text-red-300">Preview failed</div>
+                  {status.error ? <div className="mt-1 max-w-md whitespace-pre-wrap break-words text-red-200/80">{status.error}</div> : null}
+                </>
+              ) : status?.kind ? (
                 <>Detected <span className="text-foreground">{status.kind}</span> app{status?.command ? <> — <span className="text-foreground">{status.command}</span></> : null}</>
               ) : (
                 "No preview yet"
               )}
             </div>
             <p className="max-w-xs text-[11px] leading-relaxed text-muted-foreground/60">
-              Start the app, enter a URL above, or select a detected local server.
+              {status?.status === "failed" ? "Check the preview logs for the command output, then try again." : "Start the app, enter a URL above, or select a detected local server."}
             </p>
             <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={() => void start()} disabled={loading}>
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
-              Start App
+              {status?.status === "failed" ? "Retry Preview" : "Start App"}
             </Button>
           </div>
         )}
