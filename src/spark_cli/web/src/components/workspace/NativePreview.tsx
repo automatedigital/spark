@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { nativePreview, rectFromElement } from "@/lib/nativePreview";
 
 /**
@@ -8,16 +8,31 @@ import { nativePreview, rectFromElement } from "@/lib/nativePreview";
  */
 export function NativePreview({ slug, url, persistent = true, visible = true }: { slug: string; url: string; persistent?: boolean; visible?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
 
   // Create (or re-navigate) the native webview for the current URL. Toggling
   // persistence recreates the webview with a different data store.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    nativePreview.destroy().catch(() => {});
-    nativePreview
-      .create(slug, url, rectFromElement(el), persistent)
-      .catch((e) => console.error("preview_create", e));
+    let cancelled = false;
+    setReady(false);
+    // The preview panel can be mounted while its right-hand split is still
+    // settling. Creating a child webview against that first zero-sized rect
+    // leaves WKWebView alive but visually black. Wait for layout, then keep
+    // the existing child webview alive for subsequent navigations.
+    const frame = requestAnimationFrame(() => {
+      const rect = rectFromElement(el);
+      if (cancelled || rect.width < 2 || rect.height < 2) return;
+      nativePreview
+        .create(slug, url, rect, persistent)
+        .then(() => !cancelled && setReady(true))
+        .catch((e) => console.error("preview_create", e));
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [slug, url, persistent]);
 
   // The native webview overlays the panel rect, so CSS `hidden` on the React
@@ -56,5 +71,13 @@ export function NativePreview({ slug, url, persistent = true, visible = true }: 
     };
   }, []);
 
-  return <div ref={ref} className="h-full w-full" />;
+  return (
+    <div ref={ref} className="relative h-full w-full bg-white">
+      {!ready && (
+        <div className="absolute inset-0 z-0 flex items-center justify-center bg-[#101112] text-[11px] text-white/45">
+          Loading preview…
+        </div>
+      )}
+    </div>
+  );
 }

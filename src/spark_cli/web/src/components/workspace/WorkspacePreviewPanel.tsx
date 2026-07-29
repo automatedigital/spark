@@ -893,7 +893,9 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
         </div>
       )}
 
-      <div className="relative min-h-0 flex-1 bg-black/20">
+      {/* Browser surface: a stable canvas gives native/web/streamed previews the
+          same geometry and makes an unavailable browser state visible. */}
+      <div className="relative min-h-0 flex-1 overflow-auto bg-[#090a0b] p-2">
         {previewPending ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-muted-foreground/70">
             <Loader2 className="h-5 w-5 animate-spin text-amber-300" />
@@ -902,7 +904,13 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             </div>
           </div>
         ) : frameSrc ? (
-          <div className="mx-auto h-full" style={deviceWidth ? { maxWidth: deviceWidth } : undefined}>
+          <div
+            className={cn(
+              "relative mx-auto h-full min-h-[240px] overflow-hidden rounded-md border border-white/10 bg-white shadow-2xl",
+              deviceWidth ? "w-full" : "w-full",
+            )}
+            style={deviceWidth ? { maxWidth: deviceWidth } : undefined}
+          >
             {isTauri() ? (
               // Desktop: a real native child webview overlays this region.
               <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} visible={visible} />
