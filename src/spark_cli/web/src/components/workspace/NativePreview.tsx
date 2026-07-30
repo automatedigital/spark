@@ -8,6 +8,8 @@ import { nativePreview, rectFromElement } from "@/lib/nativePreview";
  */
 export function NativePreview({ slug, url, persistent = true, visible = true }: { slug: string; url: string; persistent?: boolean; visible?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  const creatingRef = useRef(false);
+  const createdKeyRef = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
 
   // Create (or re-navigate) the native webview for the current URL. Toggling
@@ -17,23 +19,38 @@ export function NativePreview({ slug, url, persistent = true, visible = true }: 
     if (!el) return;
     let cancelled = false;
     setReady(false);
-    // The preview panel can be mounted while its right-hand split is still
-    // settling. Creating a child webview against that first zero-sized rect
-    // leaves WKWebView alive but visually black. Wait for layout, then keep
-    // the existing child webview alive for subsequent navigations.
-    const frame = requestAnimationFrame(() => {
+    const createKey = `${slug}:${url}:${persistent}`;
+    createdKeyRef.current = null;
+    const sync = () => {
       const rect = rectFromElement(el);
-      if (cancelled || rect.width < 2 || rect.height < 2) return;
+      if (cancelled || rect.width < 2 || rect.height < 2 || creatingRef.current || createdKeyRef.current === createKey) return;
+      creatingRef.current = true;
       nativePreview
         .create(slug, url, rect, persistent)
-        .then(() => !cancelled && setReady(true))
-        .catch((e) => console.error("preview_create", e));
-    });
+        .then(async () => {
+          if (cancelled) return;
+          createdKeyRef.current = createKey;
+          setReady(true);
+          // The visibility call can race the first mount before the native
+          // child exists. Repeat it after creation, matching T3's surface
+          // presentation lifecycle.
+          await nativePreview.setVisible(visible).catch(() => {});
+        })
+        .catch((e) => console.error("preview_create", e))
+        .finally(() => {
+          creatingRef.current = false;
+        });
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    const frame = requestAnimationFrame(sync);
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
+      observer.disconnect();
     };
-  }, [slug, url, persistent]);
+  }, [slug, url, persistent, visible]);
 
   // The native webview overlays the panel rect, so CSS `hidden` on the React
   // pane can't conceal it — explicitly toggle visibility when the tab/panel

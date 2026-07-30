@@ -911,7 +911,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
             )}
             style={deviceWidth ? { maxWidth: deviceWidth } : undefined}
           >
-            {isTauri() ? (
+            {isTauri() && !isDirectPreviewUrl(frameSrc) ? (
               // Desktop: a real native child webview overlays this region.
               <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} visible={visible} />
             ) : !isDirectPreviewUrl(frameSrc) ? (
