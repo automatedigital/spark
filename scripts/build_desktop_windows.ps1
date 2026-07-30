@@ -7,6 +7,12 @@ $WebDir = Join-Path $RepoRoot "src/spark_cli/web"
 $TauriDir = Join-Path $WebDir "src-tauri"
 $ResourcesDir = Join-Path $TauriDir "resources"
 
+Write-Host "==> Checking desktop version consistency"
+python (Join-Path $RepoRoot "scripts/check_desktop_version.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Desktop version consistency check failed"
+}
+
 Push-Location $WebDir
 try {
     Write-Host "==> Installing web frontend dependencies"

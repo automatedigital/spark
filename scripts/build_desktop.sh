@@ -28,6 +28,9 @@ DMG_DIR="$BUNDLE_DIR/dmg"
 DESKTOP_VENV="${SPARK_DESKTOP_VENV:-$REPO_ROOT/.venv-desktop}"
 DESKTOP_PYTHON="${SPARK_DESKTOP_PYTHON:-python3.11}"
 
+echo "==> Checking desktop version consistency"
+python3 "$REPO_ROOT/scripts/check_desktop_version.py"
+
 # 0. Load local release-signing config so every build is Developer ID signed +
 #    Apple-notarized by default (no manual `export` needed before each build).
 #    scripts/release.env is gitignored and holds only non-secret config:
@@ -111,11 +114,13 @@ echo "==> Smoke-testing frozen Python backend"
     "$SMOKE_PORT" >"$SMOKE_LOG" 2>&1 &
   SMOKE_PID=$!
 
+  SMOKE_PASSED=false
   for _ in {1..60}; do
     if curl --fail --silent --show-error \
       "http://127.0.0.1:$SMOKE_PORT/" >/dev/null 2>&1; then
       echo "  Frozen backend started successfully on port $SMOKE_PORT"
-      exit 0
+      SMOKE_PASSED=true
+      break
     fi
     if ! kill -0 "$SMOKE_PID" 2>/dev/null; then
       break
@@ -123,9 +128,11 @@ echo "==> Smoke-testing frozen Python backend"
     sleep 0.5
   done
 
-  echo "Frozen backend failed its startup smoke test" >&2
-  sed -n '1,200p' "$SMOKE_LOG" >&2
-  exit 1
+  if [ "$SMOKE_PASSED" != true ]; then
+    echo "Frozen backend failed its startup smoke test" >&2
+    sed -n '1,200p' "$SMOKE_LOG" >&2
+    exit 1
+  fi
 )
 
 # 5. Build the Tauri .app (sidecar injected afterwards) --------------------
