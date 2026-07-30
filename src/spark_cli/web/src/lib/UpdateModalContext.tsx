@@ -146,7 +146,6 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
     try {
       await api.runMacUpdate();
       setMacStatus("installing");
-      setMacUpdateAvailable(false);
     } catch (e) {
       setMacError(e instanceof Error ? e.message : String(e));
       setMacStatus("failed");

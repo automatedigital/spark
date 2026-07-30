@@ -72,7 +72,13 @@ hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$OUT" >/dev/nu
 
 if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   echo "==> Signing DMG with Developer ID identity: $APPLE_SIGNING_IDENTITY"
-  codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$OUT"
+  if ! codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$OUT"; then
+    # A DMG can still be distributed and notarized later when Apple's
+    # timestamp service is temporarily unavailable. Never leave the build
+    # half-finished or silently publish an unsigned image.
+    echo "  (timestamp service unavailable; signing DMG without timestamp)"
+    codesign --force --timestamp=none --sign "$APPLE_SIGNING_IDENTITY" "$OUT"
+  fi
 fi
 
 echo "  DMG written: $OUT"

@@ -3012,6 +3012,7 @@ def _build_mac_update_installer_script(
     log_path: Path,
     install_path: Path = MAC_APP_INSTALL_PATH,
     bundle_id: str = MAC_APP_BUNDLE_ID,
+    expected_version: str = "",
 ) -> str:
     """Build a detached macOS installer script for the downloaded Spark DMG."""
 
@@ -3032,6 +3033,7 @@ STAGED_APP={_shell_quote(staged_app)}
 INSTALL_PATH={_shell_quote(install_path)}
 LOG_PATH={_shell_quote(log_path)}
 BUNDLE_ID={_shell_quote(bundle_id)}
+EXPECTED_VERSION={_shell_quote(expected_version)}
 TMP_INSTALL_PATH={_shell_quote(tmp_install_path)}
 BACKUP_PATH={_shell_quote(backup_path)}
 
@@ -3073,6 +3075,8 @@ if [ "${{1:-}}" = "--install-only" ]; then
 fi
 
 log "Starting Spark desktop update install"
+EXPECTED_VERSION="${{EXPECTED_VERSION#desktop-v}}"
+EXPECTED_VERSION="${{EXPECTED_VERSION#v}}"
 /bin/mkdir -p "$MOUNT_DIR"
 /usr/bin/hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT_DIR" "$DMG" >> "$LOG_PATH" 2>&1
 
@@ -3088,23 +3092,41 @@ if [ "$FOUND_BUNDLE_ID" != "$BUNDLE_ID" ]; then
   exit 3
 fi
 
+SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SOURCE_APP/Contents/Info.plist" 2>/dev/null || true)"
+if [ -n "$EXPECTED_VERSION" ] && [ "$SOURCE_VERSION" != "$EXPECTED_VERSION" ]; then
+  log "Unexpected DMG version: $SOURCE_VERSION (expected $EXPECTED_VERSION)"
+  exit 4
+fi
+
 /bin/rm -rf "$STAGED_APP"
 /usr/bin/ditto "$SOURCE_APP" "$STAGED_APP" >> "$LOG_PATH" 2>&1
 cleanup
 
 /usr/bin/osascript -e 'tell application id "{bundle_id}" to quit' >> "$LOG_PATH" 2>&1 || true
+APP_PROCESS_PATTERN="$INSTALL_PATH/Contents/MacOS/spark"
 for _ in {{1..30}}; do
-  if ! /usr/bin/pgrep -x Spark >/dev/null 2>&1; then
+  if ! /usr/bin/pgrep -f "$APP_PROCESS_PATTERN" >/dev/null 2>&1; then
     break
   fi
   /bin/sleep 1
 done
+if /usr/bin/pgrep -f "$APP_PROCESS_PATTERN" >/dev/null 2>&1; then
+  log "Spark process did not exit; refusing to replace the running app"
+  exit 5
+fi
 
 log "Installing Spark.app into Applications"
 if ! perform_install >> "$LOG_PATH" 2>&1; then
   log "Direct install failed; requesting administrator privileges"
   /usr/bin/osascript -e "do shell script \\"{privileged_install_cmd}\\" with administrator privileges" >> "$LOG_PATH" 2>&1
 fi
+
+INSTALLED_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INSTALL_PATH/Contents/Info.plist" 2>/dev/null || true)"
+if [ -n "$EXPECTED_VERSION" ] && [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
+  log "Install verification failed: $INSTALLED_VERSION (expected $EXPECTED_VERSION)"
+  exit 6
+fi
+log "Verified installed Spark.app version $INSTALLED_VERSION"
 
 /usr/bin/xattr -cr "$INSTALL_PATH" >> "$LOG_PATH" 2>&1 || true
 /usr/bin/open "$INSTALL_PATH" >> "$LOG_PATH" 2>&1 || true
@@ -3148,6 +3170,7 @@ async def run_mac_update():
                 dmg_path=dest,
                 work_dir=work_dir,
                 log_path=log_path,
+                expected_version=info.get("latest_version") or "",
             )
         )
         script_path.chmod(0o700)

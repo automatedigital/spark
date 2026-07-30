@@ -342,6 +342,7 @@ class TestWebServerEndpoints:
             dmg_path=tmp_path / "Spark-1.3.11.dmg",
             work_dir=tmp_path,
             log_path=tmp_path / "install.log",
+            expected_version="desktop-v1.3.29",
         )
 
         assert "/usr/bin/hdiutil attach" in script
@@ -353,6 +354,9 @@ class TestWebServerEndpoints:
         assert "/Applications/Spark.app" in script
         assert "with administrator privileges" in script
         assert "/usr/bin/open \"$INSTALL_PATH\"" in script
+        assert 'EXPECTED_VERSION="${EXPECTED_VERSION#desktop-v}"' in script
+        assert 'pgrep -f "$APP_PROCESS_PATTERN"' in script
+        assert "Install verification failed" in script
 
     def test_run_mac_update_downloads_and_starts_detached_installer(self, monkeypatch, tmp_path):
         import spark_cli.web_server as ws
@@ -399,6 +403,7 @@ class TestWebServerEndpoints:
         script = (work_dir / "install-spark-update.zsh").read_text()
         assert "/usr/bin/hdiutil attach" in script
         assert "/Applications/Spark.app" in script
+        assert "expected_version=info.get" in script or "EXPECTED_VERSION" in script
 
     def test_run_mac_update_requires_downloadable_release_asset(self, monkeypatch):
         import spark_cli.web_server as ws
