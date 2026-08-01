@@ -33,6 +33,14 @@ finally {
     Pop-Location
 }
 
+Write-Host "==> Auditing frozen resources"
+python (Join-Path $RepoRoot "scripts/audit_desktop_resources.py") `
+    --sidecar-dir (Join-Path $RepoRoot "dist/spark-server") `
+    --web-dist (Join-Path $RepoRoot "src/spark_cli/web_dist")
+if ($LASTEXITCODE -ne 0) {
+    throw "Desktop resource audit failed"
+}
+
 Write-Host "==> Smoke-testing frozen Python backend"
 $SmokeHome = Join-Path ([System.IO.Path]::GetTempPath()) ("spark-desktop-smoke-" + [guid]::NewGuid())
 $PortProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)

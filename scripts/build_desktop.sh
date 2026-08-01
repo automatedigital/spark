@@ -90,6 +90,11 @@ echo "==> Building web frontend"
 echo "==> Freezing Python backend with PyInstaller"
 (cd "$REPO_ROOT" && "$DESKTOP_VENV/bin/python" -m PyInstaller spark-server.spec --noconfirm)
 
+echo "==> Auditing frozen resources"
+"$DESKTOP_VENV/bin/python" "$REPO_ROOT/scripts/audit_desktop_resources.py" \
+  --sidecar-dir "$REPO_ROOT/dist/spark-server" \
+  --web-dist "$REPO_ROOT/src/spark_cli/web_dist"
+
 # 4. Smoke-test the frozen sidecar -----------------------------------------
 # Run the artifact rather than the source interpreter. This catches runtime
 # dependencies that PyInstaller or the desktop dependency extra omitted before
