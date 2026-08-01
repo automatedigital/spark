@@ -29,6 +29,30 @@ def test_unix_preview_argv_preserves_login_shell(monkeypatch):
     assert w._preview_launch_argv("npm run dev") == ["/usr/bin/zsh", "-lc", "npm run dev"]
 
 
+def test_windows_terminal_argv_uses_native_comspec(monkeypatch):
+    monkeypatch.setattr(w.sys, "platform", "win32")
+    monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
+
+    assert w._terminal_command_argv("echo spark") == [
+        r"C:\Windows\System32\cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+        "echo spark",
+    ]
+
+
+def test_unix_terminal_argv_preserves_login_shell(monkeypatch):
+    monkeypatch.setattr(w.sys, "platform", "linux")
+    monkeypatch.setenv("SHELL", "/usr/bin/zsh")
+
+    assert w._terminal_command_argv("printf spark") == [
+        "/usr/bin/zsh",
+        "-lc",
+        "printf spark",
+    ]
+
+
 def test_windows_popen_options_use_utf8_and_process_group(monkeypatch):
     monkeypatch.setattr(w.sys, "platform", "win32")
     options = w._preview_popen_kwargs({"PORT": "4173"})

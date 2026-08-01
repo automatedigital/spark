@@ -19,6 +19,8 @@ import logging
 import threading
 from collections.abc import Callable
 
+from tools.effects import NETWORK, ToolEffects, infer_tool_effects
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,11 +31,13 @@ class ToolEntry:
         "name", "toolset", "schema", "handler", "check_fn",
         "requires_env", "is_async", "description", "emoji",
         "max_result_size_chars", "normalize", "screen",
+        "effects",
     )
 
     def __init__(self, name, toolset, schema, handler, check_fn,
                  requires_env, is_async, description, emoji,
-                 max_result_size_chars=None, normalize=True, screen=True):
+                 max_result_size_chars=None, normalize=True, screen=True,
+                 effects=None):
         self.name = name
         self.toolset = toolset
         self.schema = schema
@@ -46,6 +50,7 @@ class ToolEntry:
         self.max_result_size_chars = max_result_size_chars
         self.normalize = normalize
         self.screen = screen
+        self.effects = effects or infer_tool_effects(name, toolset)
 
 
 class ToolRegistry:
@@ -116,6 +121,7 @@ class ToolRegistry:
         max_result_size_chars: int | float | None = None,
         normalize: bool = True,
         screen: bool = True,
+        effects: ToolEffects | None = None,
     ):
         """Register a tool.  Called at module-import time by each tool file."""
         with self._lock:
@@ -139,6 +145,7 @@ class ToolRegistry:
                 max_result_size_chars=max_result_size_chars,
                 normalize=normalize,
                 screen=screen,
+                effects=effects,
             )
             if check_fn and toolset not in self._toolset_checks:
                 self._toolset_checks[toolset] = check_fn
@@ -215,6 +222,16 @@ class ToolRegistry:
             if entry.is_async:
                 from core.model_tools import _run_async
                 raw = _run_async(entry.handler(args, **kwargs))
+            elif NETWORK in entry.effects.effects and not threading.current_thread().name.startswith(
+                "spark-tool-worker"
+            ):
+                # Keep the synchronous registry API while moving blocking
+                # network handlers (web, Skills Hub, connectors, HA, MCP) to
+                # the bounded process tool pool.  Scheduler workers already
+                # run in that pool and execute directly to avoid nested waits.
+                from core.async_runtime import get_async_runtime
+
+                raw = get_async_runtime().submit_tool(entry.handler, args, **kwargs).result()
             else:
                 raw = entry.handler(args, **kwargs)
         except (KeyboardInterrupt, SystemExit):
@@ -261,6 +278,17 @@ class ToolRegistry:
         """Return the emoji for a tool, or *default* if unset."""
         entry = self.get_entry(name)
         return (entry.emoji if entry and entry.emoji else default)
+
+    def get_effects(self, name: str) -> ToolEffects:
+        """Return the complete scheduling contract for *name*.
+
+        Unknown names receive a strict global contract so callers never turn
+        missing metadata into unsafe parallelism.
+        """
+        entry = self.get_entry(name)
+        if entry is not None:
+            return entry.effects
+        return infer_tool_effects(name, "unknown")
 
     def get_tool_to_toolset_map(self) -> dict[str, str]:
         """Return ``{tool_name: toolset_name}`` for every registered tool."""

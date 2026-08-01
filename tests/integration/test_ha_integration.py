@@ -215,8 +215,8 @@ class TestToolRest:
 
     @pytest.mark.asyncio
     async def test_get_state_not_found(self, monkeypatch):
-        """Non-existent entity raises an aiohttp error (404)."""
-        import aiohttp as _aiohttp
+        """Non-existent entity raises an HTTP status error (404)."""
+        import httpx
 
         async with FakeHAServer() as server:
             monkeypatch.setattr(
@@ -226,9 +226,9 @@ class TestToolRest:
                 "tools.homeassistant_tool._HASS_TOKEN", server.token,
             )
 
-            with pytest.raises(_aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 await _async_get_state("light.nonexistent")
-            assert exc_info.value.status == 404
+            assert exc_info.value.response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_call_service_turn_on(self, monkeypatch):
@@ -308,7 +308,7 @@ class TestAuthAndErrors:
     @pytest.mark.asyncio
     async def test_rest_unauthorized(self, monkeypatch):
         """Async function raises on 401 when token is wrong."""
-        import aiohttp as _aiohttp
+        import httpx
 
         async with FakeHAServer() as server:
             monkeypatch.setattr(
@@ -318,14 +318,14 @@ class TestAuthAndErrors:
                 "tools.homeassistant_tool._HASS_TOKEN", "bad-token",
             )
 
-            with pytest.raises(_aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 await _async_list_entities()
-            assert exc_info.value.status == 401
+            assert exc_info.value.response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_rest_server_error(self, monkeypatch):
         """Async function raises on 500 response."""
-        import aiohttp as _aiohttp
+        import httpx
 
         async with FakeHAServer() as server:
             server.force_500 = True
@@ -336,6 +336,6 @@ class TestAuthAndErrors:
                 "tools.homeassistant_tool._HASS_TOKEN", server.token,
             )
 
-            with pytest.raises(_aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 await _async_list_entities()
-            assert exc_info.value.status == 500
+            assert exc_info.value.response.status_code == 500

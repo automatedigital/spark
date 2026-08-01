@@ -31,7 +31,6 @@ import urllib.request
 import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager, contextmanager
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic as _steady_clock
@@ -76,6 +75,7 @@ from spark_cli.kanban_routes import register_kanban_routes
 from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
 from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
+from core.async_runtime import get_async_runtime
 
 try:
     from fastapi import FastAPI, HTTPException, Request
@@ -92,6 +92,11 @@ except ImportError:
 
 WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
+
+
+async def _run_blocking(function, /, *args, **kwargs):
+    """Run web-server blocking work in Spark's bounded process worker pool."""
+    return await get_async_runtime().run_blocking(function, *args, **kwargs)
 
 
 def _github_repository_url(remote: str) -> str | None:
@@ -1298,7 +1303,7 @@ async def _await_checkpoint_ready(
 ) -> None:
     """Event-loop-safe checkpoint barrier used by async turn finalizers."""
     while True:
-        ready = await asyncio.to_thread(
+        ready = await _run_blocking(
             _force_checkpoint_or_block,
             session_id,
             turn,
@@ -1452,11 +1457,15 @@ async def _lifespan(_app: FastAPI):
     ensure_dashboard_token_file()
     loop_lag_task = asyncio.create_task(_monitor_web_loop_lag())
     # Warm the update cache in the background so /api/status has it immediately
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _prefetch_update_check)
-    loop.run_in_executor(None, _prefetch_mac_update_check)
-    loop.run_in_executor(None, _init_memory_store)
-    loop.run_in_executor(None, _prewarm_agent_stack)
+    warmup_tasks = [
+        asyncio.create_task(_run_blocking(function))
+        for function in (
+            _prefetch_update_check,
+            _prefetch_mac_update_check,
+            _init_memory_store,
+            _prewarm_agent_stack,
+        )
+    ]
     # Desktop app: keep the messaging gateway running in the background so
     # platforms stay reachable while the app is open. No-ops outside the
     # desktop sidecar or when disabled via config. Only stops a gateway we own.
@@ -1468,11 +1477,11 @@ async def _lifespan(_app: FastAPI):
     try:
         yield
     finally:
-        if not await asyncio.to_thread(_checkpoint_writer.shutdown):
+        if not await _run_blocking(_checkpoint_writer.shutdown):
             _log.error("web checkpoint writer did not flush cleanly during shutdown")
         try:
             from spark_cli.desktop_gateway import stop_desktop_gateway
-            await loop.run_in_executor(None, stop_desktop_gateway)
+            await _run_blocking(stop_desktop_gateway)
         except Exception:
             _log.debug("desktop gateway shutdown skipped", exc_info=True)
         _web_event_loop = None
@@ -1484,6 +1493,9 @@ async def _lifespan(_app: FastAPI):
             _pending_token_events.clear()
             _pending_token_gap_sessions.clear()
         loop_lag_task.cancel()
+        for task in warmup_tasks:
+            if not task.done():
+                task.cancel()
         try:
             await loop_lag_task
         except asyncio.CancelledError:
@@ -3073,6 +3085,7 @@ async def get_status():
             "subagents_sidebar": bool(_dash.get("subagents_sidebar", True)),
         },
         "streaming_health": _streaming_pipeline_metrics.snapshot(),
+        "async_runtime": get_async_runtime().telemetry(),
     }
 
 
@@ -3092,13 +3105,10 @@ def get_efficiency_report(reset: bool = False):
 @app.get("/api/update/check")
 async def check_update_available():
     """Check whether a Spark update is available (commits behind origin/main)."""
-    import asyncio
-
     try:
         from spark_cli.banner import check_for_updates
 
-        loop = asyncio.get_event_loop()
-        behind = await loop.run_in_executor(None, check_for_updates)
+        behind = await _run_blocking(check_for_updates)
         return {
             "update_available": bool(behind and behind > 0),
             "commits_behind": behind,
@@ -3358,7 +3368,7 @@ async def check_mac_update():
             "download_url": None,
             "release_url": None,
         }
-    return await asyncio.to_thread(_check_mac_update, True)
+    return await _run_blocking(_check_mac_update, True)
 
 
 @app.post("/api/mac/update/run")
@@ -3366,7 +3376,7 @@ async def run_mac_update():
     """Download the latest macOS DMG and start a detached automatic installer."""
     if not _is_desktop_app() or sys.platform != "darwin":
         raise HTTPException(status_code=400, detail="Not running as the macOS desktop app")
-    info = await asyncio.to_thread(_check_mac_update, True)
+    info = await _run_blocking(_check_mac_update, True)
     download_url = info.get("download_url")
     if not download_url:
         raise HTTPException(status_code=400, detail="No downloadable macOS release found")
@@ -3397,7 +3407,7 @@ async def run_mac_update():
             )
 
     try:
-        await asyncio.to_thread(_download_and_start_installer)
+        await _run_blocking(_download_and_start_installer)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to start macOS update installer: {exc}") from exc
     return {
@@ -3458,7 +3468,7 @@ async def stream_admin_action_run(request: Request, run_id: str):
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await asyncio.to_thread(queue.get, True, 20)
+                    event = await _run_blocking(queue.get, True, 20)
                 except thread_queue.Empty:
                     yield "event: ping\ndata: {}\n\n"
                     if run.get("status") in ("done", "failed"):
@@ -3826,7 +3836,7 @@ def _conversation_diagnostics_payload(session_id: str) -> dict[str, Any]:
 
 @app.get("/api/conversations/{session_id}/diagnostics")
 async def conversation_diagnostics(session_id: str):
-    return await asyncio.to_thread(_conversation_diagnostics_payload, session_id)
+    return await _run_blocking(_conversation_diagnostics_payload, session_id)
 
 
 @app.get("/api/dashboard/auth/info")
@@ -4049,7 +4059,7 @@ async def setup_onboarding_skills(req: OnboardingSkillsRequest):
         from tools.skills_sync import sync_skills
 
         only = _MINIMAL_SKILLS if mode == "minimal" else None
-        result = await asyncio.to_thread(sync_skills, True, only)
+        result = await _run_blocking(sync_skills, True, only)
 
     # Persist the choice so re-running setup / diagnostics knows the intent.
     try:
@@ -5836,11 +5846,8 @@ async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Re
     if not _reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     if provider_id == "anthropic":
-        return await asyncio.get_event_loop().run_in_executor(
-            None,
-            _submit_anthropic_pkce,
-            body.session_id,
-            body.code,
+        return await _run_blocking(
+            _submit_anthropic_pkce, body.session_id, body.code
         )
     raise HTTPException(
         status_code=400, detail=f"submit not supported for {provider_id}"
@@ -5958,7 +5965,7 @@ async def get_session_messages(
         finally:
             db.close()
 
-    etag, resp = await asyncio.to_thread(_load_page)
+    etag, resp = await _run_blocking(_load_page)
     headers = {"ETag": etag, "Cache-Control": "no-cache"}
     if resp is None:
         return Response(status_code=304, headers=headers)
@@ -6221,8 +6228,7 @@ async def warm_session_agent(session_id: str):
         finally:
             _web_warm_inflight.discard(sid)
 
-    loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _warm_in_thread)
+    asyncio.create_task(_run_blocking(_warm_in_thread))
     return {"ok": True, "warm": False}
 
 
@@ -6827,12 +6833,6 @@ def _web_turn_worker_count() -> int:
         return 4
 
 
-_WEB_TURN_EXECUTOR = ThreadPoolExecutor(
-    max_workers=_web_turn_worker_count(),
-    thread_name_prefix="spark-web-turn",
-)
-
-
 def _web_agent_cache_limit() -> int:
     raw = os.getenv("SPARK_WEB_AGENT_CACHE_SIZE", "").strip()
     if raw:
@@ -6858,7 +6858,9 @@ async def _run_web_turn_in_executor(loop: asyncio.AbstractEventLoop, fn: Callabl
         finally:
             _streaming_pipeline_metrics.record_executor_completed()
 
-    return await loop.run_in_executor(_WEB_TURN_EXECUTOR, _wrapped)
+    return await get_async_runtime().run_named_blocking(
+        "web-turn", _web_turn_worker_count(), _wrapped
+    )
 
 
 def _touch_web_agent_cache(session_id: str) -> None:
@@ -9075,9 +9077,8 @@ async def canvas_chat(body: CanvasChatBody):
         )
         return agent.chat(body.message)
 
-    loop = asyncio.get_running_loop()
     try:
-        reply = await loop.run_in_executor(None, _run)
+        reply = await _run_blocking(_run)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "reply": reply, "model": turn_route["model"]}
@@ -9172,8 +9173,7 @@ async def create_conversation(body: ConversationCreate):
             else:
                 _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
                 _record_web_turn_timing(session_id, "agent_init_start")
-                agent = await loop.run_in_executor(
-                    None,
+                agent = await _run_blocking(
                     lambda: _new_web_agent(
                         session_id=session_id,
                         model=model,
@@ -10180,7 +10180,7 @@ async def conversation_turn_status(session_id: str):
     Lightweight source of truth the UI can poll to recover from a lost
     ``chat.turn_done`` event (e.g. the SSE bus dropped mid-turn).
     """
-    return await asyncio.to_thread(_conversation_turn_status_payload, session_id)
+    return await _run_blocking(_conversation_turn_status_payload, session_id)
 
 
 def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
@@ -10256,7 +10256,7 @@ async def conversation_stream_snapshot(
     calls this heavier endpoint only during stall/reconnect recovery so it can
     patch a partial assistant bubble without waiting for final persistence.
     """
-    return await asyncio.to_thread(
+    return await _run_blocking(
         _conversation_stream_snapshot_payload,
         session_id,
         after_chars=after_chars,
@@ -10554,7 +10554,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 result = {"final_response": slash_text}
             else:
                 _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
-                agent = await loop.run_in_executor(None, _build_workspace_agent)
+                agent = await _run_blocking(_build_workspace_agent)
                 _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")

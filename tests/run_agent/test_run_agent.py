@@ -1264,8 +1264,8 @@ class TestConcurrentToolExecution:
                 mock_seq.assert_called_once()
                 mock_con.assert_not_called()
 
-    def test_clarify_forces_sequential(self, agent):
-        """Batch containing clarify should use sequential path."""
+    def test_clarify_uses_dependency_scheduler(self, agent):
+        """Clarification is represented as a full-batch DAG barrier."""
         tc1 = _mock_tool_call(name="web_search", arguments='{}', call_id="c1")
         tc2 = _mock_tool_call(name="clarify", arguments='{"question":"ok?"}', call_id="c2")
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc1, tc2])
@@ -1273,8 +1273,8 @@ class TestConcurrentToolExecution:
         with patch.object(agent, "_execute_tool_calls_sequential") as mock_seq:
             with patch.object(agent, "_execute_tool_calls_concurrent") as mock_con:
                 agent._execute_tool_calls(mock_msg, messages, "task-1")
-                mock_seq.assert_called_once()
-                mock_con.assert_not_called()
+                mock_con.assert_called_once()
+                mock_seq.assert_not_called()
 
     def test_multiple_tools_uses_concurrent_path(self, agent):
         """Multiple read-only tools should use concurrent path."""
@@ -1288,8 +1288,8 @@ class TestConcurrentToolExecution:
                 mock_con.assert_called_once()
                 mock_seq.assert_not_called()
 
-    def test_terminal_batch_forces_sequential(self, agent):
-        """Stateful tools should not share the concurrent execution path."""
+    def test_terminal_batch_uses_dependency_scheduler(self, agent):
+        """Terminal state is serialized by effect edges, not batch fallback."""
         tc1 = _mock_tool_call(name="web_search", arguments='{}', call_id="c1")
         tc2 = _mock_tool_call(name="terminal", arguments='{"command":"pwd"}', call_id="c2")
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc1, tc2])
@@ -1297,11 +1297,11 @@ class TestConcurrentToolExecution:
         with patch.object(agent, "_execute_tool_calls_sequential") as mock_seq:
             with patch.object(agent, "_execute_tool_calls_concurrent") as mock_con:
                 agent._execute_tool_calls(mock_msg, messages, "task-1")
-                mock_seq.assert_called_once()
-                mock_con.assert_not_called()
+                mock_con.assert_called_once()
+                mock_seq.assert_not_called()
 
-    def test_write_batch_forces_sequential(self, agent):
-        """File mutations should stay ordered within a turn."""
+    def test_write_batch_uses_dependency_scheduler(self, agent):
+        """Overlapping file reads/writes are ordered by resource edges."""
         tc1 = _mock_tool_call(name="read_file", arguments='{"path":"x.py"}', call_id="c1")
         tc2 = _mock_tool_call(name="write_file", arguments='{"path":"x.py","content":"print(1)"}', call_id="c2")
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc1, tc2])
@@ -1309,8 +1309,8 @@ class TestConcurrentToolExecution:
         with patch.object(agent, "_execute_tool_calls_sequential") as mock_seq:
             with patch.object(agent, "_execute_tool_calls_concurrent") as mock_con:
                 agent._execute_tool_calls(mock_msg, messages, "task-1")
-                mock_seq.assert_called_once()
-                mock_con.assert_not_called()
+                mock_con.assert_called_once()
+                mock_seq.assert_not_called()
 
     def test_disjoint_write_batch_uses_concurrent_path(self, agent):
         """Independent file writes should still run concurrently."""
@@ -1332,8 +1332,8 @@ class TestConcurrentToolExecution:
                 mock_con.assert_called_once()
                 mock_seq.assert_not_called()
 
-    def test_overlapping_write_batch_forces_sequential(self, agent):
-        """Writes to the same file must stay ordered."""
+    def test_overlapping_write_batch_uses_dependency_scheduler(self, agent):
+        """Writes to the same file remain ordered inside the DAG."""
         tc1 = _mock_tool_call(
             name="write_file",
             arguments='{"path":"src/a.py","content":"print(1)"}',
@@ -1349,8 +1349,8 @@ class TestConcurrentToolExecution:
         with patch.object(agent, "_execute_tool_calls_sequential") as mock_seq:
             with patch.object(agent, "_execute_tool_calls_concurrent") as mock_con:
                 agent._execute_tool_calls(mock_msg, messages, "task-1")
-                mock_seq.assert_called_once()
-                mock_con.assert_not_called()
+                mock_con.assert_called_once()
+                mock_seq.assert_not_called()
 
     def test_malformed_json_args_forces_sequential(self, agent):
         """Unparseable tool arguments should fall back to sequential."""

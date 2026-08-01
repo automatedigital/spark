@@ -78,6 +78,8 @@ class ContextCompressor(ContextEngine):
         self._context_probed = False
         self._context_probe_persistable = False
         self._previous_summary = None
+        self._typed_checkpoint = None
+        self._last_shadow_checkpoint = None
 
     def update_model(
         self,
@@ -114,12 +116,14 @@ class ContextCompressor(ContextEngine):
         config_context_length: int | None = None,
         provider: str = "",
         api_mode: str = "",
+        checkpoint_mode: str = "legacy",
     ):
         self.model = model
         self.base_url = base_url
         self.api_key = api_key
         self.provider = provider
         self.api_mode = api_mode
+        self.checkpoint_mode = checkpoint_mode if checkpoint_mode in {"legacy", "typed"} else "legacy"
         self.threshold_percent = threshold_percent
         self.protect_first_n = protect_first_n
         self.protect_last_n = protect_last_n
@@ -172,7 +176,23 @@ class ContextCompressor(ContextEngine):
 
         # Stores the previous compaction summary for iterative updates
         self._previous_summary: Optional[str] = None
+        self._typed_checkpoint = None
+        self._last_shadow_checkpoint = None
+        self._deterministic_plan: list[dict[str, Any]] = []
+        self._task_identity = ""
+        self._context_epoch = 0
         self._summary_failure_cooldown_until: float = 0.0
+
+    def set_deterministic_state(
+        self,
+        *,
+        current_plan: List[Dict[str, Any]] | None = None,
+        task_identity: str = "",
+        context_epoch: int = 0,
+    ) -> None:
+        self._deterministic_plan = [dict(item) for item in (current_plan or [])]
+        self._task_identity = task_identity
+        self._context_epoch = int(context_epoch)
 
     def update_from_response(self, usage: Dict[str, Any]):
         """Update tracked token usage from API response."""
@@ -745,8 +765,46 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                 tail_msgs,
             )
 
-        # Phase 3: Generate structured summary
-        summary = self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
+        # Phase 3: capture deterministic state first, then summarize only prose.
+        from agent.context_checkpoint import (
+            assemble_checkpoint_context,
+            build_context_checkpoint,
+            narrative_delta,
+        )
+
+        narrative_turns = narrative_delta(turns_to_summarize)
+        summary = self._generate_summary(narrative_turns, focus_topic=focus_topic) if narrative_turns else None
+        checkpoint = build_context_checkpoint(
+            messages[:compress_end],
+            checkpoint_sequence=self.compression_count + 1,
+            context_epoch=getattr(self, "_context_epoch", 0) + 1,
+            task_identity=getattr(self, "_task_identity", ""),
+            current_plan=getattr(self, "_deterministic_plan", []),
+            prior=getattr(self, "_typed_checkpoint", None),
+            narrative=summary or "",
+            last_included_sequence=compress_end - 1,
+        )
+        # Shadow data is available even in legacy mode so fixture replays can
+        # compare continuation state without a second model call.
+        self._last_shadow_checkpoint = checkpoint
+
+        if getattr(self, "checkpoint_mode", "legacy") == "typed":
+            self._typed_checkpoint = checkpoint
+            compressed = assemble_checkpoint_context(
+                checkpoint,
+                messages[compress_end:],
+                context_window=self.context_length,
+                max_ratio=0.20,
+            )
+            self.compression_count += 1
+            compressed = self._sanitize_tool_pairs(compressed)
+            if not self.quiet_mode:
+                new_estimate = estimate_messages_tokens_rough(compressed)
+                logger.info(
+                    "Typed checkpoint compression: %d -> %d messages (~%d tokens saved)",
+                    n_messages, len(compressed), display_tokens - new_estimate,
+                )
+            return compressed
 
         # Phase 4: Assemble compressed message list
         compressed = []

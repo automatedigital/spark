@@ -41,7 +41,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000
@@ -145,6 +145,28 @@ CREATE TABLE IF NOT EXISTS context_items (
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_context_items_session ON context_items(session_id);
+
+CREATE TABLE IF NOT EXISTS session_context_epochs (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    epoch INTEGER NOT NULL,
+    schema_fingerprint TEXT NOT NULL,
+    prompt_fingerprints_json TEXT,
+    prompt_sources_json TEXT,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (session_id, epoch)
+);
+
+CREATE TABLE IF NOT EXISTS context_checkpoints (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    checkpoint_sequence INTEGER NOT NULL,
+    context_epoch INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (session_id, checkpoint_sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_context_checkpoints_epoch
+    ON context_checkpoints(session_id, context_epoch, checkpoint_sequence);
 
 CREATE TABLE IF NOT EXISTS session_briefs (
     session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
@@ -589,9 +611,82 @@ class SessionDB:
                     );
                     CREATE INDEX IF NOT EXISTS idx_session_checkpoints_latest
                         ON session_checkpoints(session_id, sequence DESC);
+                    CREATE TABLE IF NOT EXISTS session_context_epochs (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        epoch INTEGER NOT NULL,
+                        schema_fingerprint TEXT NOT NULL,
+                        prompt_fingerprints_json TEXT,
+                        prompt_sources_json TEXT,
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY (session_id, epoch)
+                    );
+                    CREATE TABLE IF NOT EXISTS context_checkpoints (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        checkpoint_sequence INTEGER NOT NULL,
+                        context_epoch INTEGER NOT NULL,
+                        version INTEGER NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY (session_id, checkpoint_sequence)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_context_checkpoints_epoch
+                        ON context_checkpoints(session_id, context_epoch, checkpoint_sequence);
                     """
                 )
                 cursor.execute("UPDATE schema_version SET version = 10")
+            if current_version < 11:
+                # Both the event-log and context-ledger work were developed
+                # from schema v9. Recreate their idempotent tables here so a
+                # database produced by either pre-integration v10 branch is
+                # safely completed during upgrade.
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS session_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL,
+                        idempotency_key TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        payload_json TEXT NOT NULL DEFAULT '{}',
+                        timestamp REAL NOT NULL,
+                        UNIQUE(session_id, sequence),
+                        UNIQUE(session_id, idempotency_key)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_session_events_sequence
+                        ON session_events(session_id, sequence);
+                    CREATE TABLE IF NOT EXISTS session_checkpoints (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL,
+                        projection_version INTEGER NOT NULL DEFAULT 1,
+                        projection_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY (session_id, sequence)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_session_checkpoints_latest
+                        ON session_checkpoints(session_id, sequence DESC);
+                    CREATE TABLE IF NOT EXISTS session_context_epochs (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        epoch INTEGER NOT NULL,
+                        schema_fingerprint TEXT NOT NULL,
+                        prompt_fingerprints_json TEXT,
+                        prompt_sources_json TEXT,
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY (session_id, epoch)
+                    );
+                    CREATE TABLE IF NOT EXISTS context_checkpoints (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        checkpoint_sequence INTEGER NOT NULL,
+                        context_epoch INTEGER NOT NULL,
+                        version INTEGER NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY (session_id, checkpoint_sequence)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_context_checkpoints_epoch
+                        ON context_checkpoints(session_id, context_epoch, checkpoint_sequence);
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 11")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -688,6 +783,107 @@ class SessionDB:
                 (system_prompt, session_id),
             )
         self._execute_write(_do)
+
+    def record_context_epoch(
+        self,
+        session_id: str,
+        *,
+        epoch: int,
+        schema_fingerprint: str,
+        prompt_fingerprints: dict[str, Any] | None = None,
+        prompt_sources: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist immutable schema/prompt identities for one context epoch."""
+
+        def _do(conn):
+            conn.execute(
+                """INSERT INTO session_context_epochs
+                   (session_id, epoch, schema_fingerprint,
+                    prompt_fingerprints_json, prompt_sources_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(session_id, epoch) DO UPDATE SET
+                     schema_fingerprint = excluded.schema_fingerprint,
+                     prompt_fingerprints_json = COALESCE(
+                         excluded.prompt_fingerprints_json,
+                         session_context_epochs.prompt_fingerprints_json
+                     ),
+                     prompt_sources_json = COALESCE(
+                         excluded.prompt_sources_json,
+                         session_context_epochs.prompt_sources_json
+                     )""",
+                (
+                    session_id,
+                    int(epoch),
+                    schema_fingerprint,
+                    json.dumps(prompt_fingerprints, sort_keys=True) if prompt_fingerprints else None,
+                    json.dumps(prompt_sources, sort_keys=True) if prompt_sources else None,
+                    time.time(),
+                ),
+            )
+        self._execute_write(_do)
+
+    def get_context_epoch(self, session_id: str, epoch: int | None = None) -> dict[str, Any] | None:
+        with self._lock:
+            if epoch is None:
+                row = self._conn.execute(
+                    """SELECT * FROM session_context_epochs
+                       WHERE session_id = ? ORDER BY epoch DESC LIMIT 1""",
+                    (session_id,),
+                ).fetchone()
+            else:
+                row = self._conn.execute(
+                    """SELECT * FROM session_context_epochs
+                       WHERE session_id = ? AND epoch = ?""",
+                    (session_id, int(epoch)),
+                ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        for column in ("prompt_fingerprints_json", "prompt_sources_json"):
+            raw = result.get(column)
+            if raw:
+                try:
+                    result[column.removesuffix("_json")] = json.loads(raw)
+                except (TypeError, json.JSONDecodeError):
+                    result[column.removesuffix("_json")] = None
+        return result
+
+    def save_context_checkpoint(
+        self,
+        session_id: str,
+        *,
+        checkpoint_sequence: int,
+        context_epoch: int,
+        version: int,
+        payload: dict[str, Any],
+    ) -> None:
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+        def _do(conn):
+            conn.execute(
+                """INSERT OR REPLACE INTO context_checkpoints
+                   (session_id, checkpoint_sequence, context_epoch, version,
+                    payload_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    session_id, int(checkpoint_sequence), int(context_epoch),
+                    int(version), encoded, time.time(),
+                ),
+            )
+        self._execute_write(_do)
+
+    def get_latest_context_checkpoint(self, session_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT * FROM context_checkpoints WHERE session_id = ?
+                   ORDER BY checkpoint_sequence DESC LIMIT 1""",
+                (session_id,),
+            ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result["payload"] = json.loads(result["payload_json"])
+        return result
 
     def update_token_counts(
         self,
