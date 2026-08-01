@@ -14,8 +14,8 @@ Import chain (circular-import safe):
     run_agent.py, cli.py, batch_runner.py, etc.
 """
 
-import json
 import importlib
+import json
 import logging
 import threading
 from collections.abc import Callable
@@ -459,7 +459,7 @@ class ToolRegistry:
 
     def check_tool_availability(self, quiet: bool = False):
         """Return (available_toolsets, unavailable_info) like the old function."""
-        available = []
+        available_toolsets = []
         unavailable = []
         seen = set()
         entries, toolset_checks = self._snapshot_state()
@@ -468,20 +468,20 @@ class ToolRegistry:
             if ts in seen:
                 continue
             seen.add(ts)
-            available = (
+            is_available = (
                 self._evaluate_toolset_check(ts, toolset_checks.get(ts))
                 if toolset_checks.get(ts) is not None
                 else any(self._entry_available(e) for e in entries if e.toolset == ts)
             )
-            if available:
-                available.append(ts)
+            if is_available:
+                available_toolsets.append(ts)
             else:
                 unavailable.append({
                     "name": ts,
                     "env_vars": entry.requires_env,
                     "tools": [e.name for e in entries if e.toolset == ts],
                 })
-        return available, unavailable
+        return available_toolsets, unavailable
 
 
 # Module-level singleton
@@ -595,7 +595,7 @@ def _post_process(name: str, entry: "ToolEntry", raw: str, args: dict | None) ->
 
     if entry.screen and _pipeline_settings.injection_mode != "off":
         try:
-            from tools.injection_guard import screen_tool_output, blocked_stub
+            from tools.injection_guard import blocked_stub, screen_tool_output
             text, decision = screen_tool_output(
                 text, name,
                 block_threshold=_pipeline_settings.block_threshold,

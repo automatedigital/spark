@@ -37,12 +37,17 @@ import threading
 from types import SimpleNamespace
 import uuid
 from typing import List, Dict, Any, Optional
-from openai import OpenAI
-import fire
 from datetime import datetime
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
+
+
+def OpenAI(*args, **kwargs):
+    """Lazy, patchable constructor preserving the historic module contract."""
+    from openai import OpenAI as implementation
+
+    return implementation(*args, **kwargs)
 
 # Load .env from ~/.spark/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
@@ -66,18 +71,44 @@ from core.model_tools import (
     handle_function_call,
     check_toolset_requirements,
 )
-from tools.terminal_tool import cleanup_vm, get_active_env, is_persistent_env
 from tools.budget_config import BudgetConfig
 from tools.tool_result_storage import maybe_persist_tool_result, enforce_turn_budget
 from tools.interrupt import set_interrupt as _set_interrupt
-from tools.browser_tool import cleanup_browser
+
+
+def cleanup_vm(*args, **kwargs):
+    """Lazy terminal cleanup boundary (kept patchable for compatibility)."""
+    from tools.terminal_tool import cleanup_vm as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def get_active_env(*args, **kwargs):
+    """Resolve a terminal environment only when a tool turn needs it."""
+    from tools.terminal_tool import get_active_env as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def is_persistent_env(*args, **kwargs):
+    """Query terminal persistence without loading terminal support at import."""
+    from tools.terminal_tool import is_persistent_env as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def cleanup_browser(*args, **kwargs):
+    """Lazy browser cleanup boundary (kept patchable for compatibility)."""
+    from tools.browser_tool import cleanup_browser as implementation
+
+    return implementation(*args, **kwargs)
 
 
 from core.spark_constants import OPENROUTER_BASE_URL
 
 # Agent internals extracted to agent/ package for modularity
 from agent.memory_manager import build_memory_context_block
-from agent.retry_utils import jittered_backoff
+from core.run_agent.retry_policy import jittered_backoff
 from agent.error_classifier import classify_api_error, FailoverReason
 # Most prompt-content helpers/constants moved with _build_system_prompt into
 # run_agent/prompt_cache.py (Phase 4). DEFAULT_AGENT_IDENTITY is still used
@@ -2089,14 +2120,13 @@ class AIAgent(_PromptCacheMixin):
         in-memory messages list in place so both persistence and returned
         history stay clean.
         """
-        idx = getattr(self, "_persist_user_message_idx", None)
-        override = getattr(self, "_persist_user_message_override", None)
-        if override is None or idx is None:
-            return
-        if 0 <= idx < len(messages):
-            msg = messages[idx]
-            if isinstance(msg, dict) and msg.get("role") == "user":
-                msg["content"] = override
+        from core.run_agent.persistence import apply_user_message_override
+
+        apply_user_message_override(
+            messages,
+            getattr(self, "_persist_user_message_idx", None),
+            getattr(self, "_persist_user_message_override", None),
+        )
 
     def _persist_session(self, messages: List[Dict], conversation_history: List[Dict] = None):
         """Save session state to both JSON log and SQLite on any exit path.
@@ -3456,37 +3486,9 @@ class AIAgent(_PromptCacheMixin):
                 raise ValueError("Codex Responses request 'tools' must be a list when provided.")
             normalized_tools = []
             for idx, tool in enumerate(tools):
-                if not isinstance(tool, dict):
-                    raise ValueError(f"Codex Responses tools[{idx}] must be an object.")
-                if tool.get("type") != "function":
-                    raise ValueError(f"Codex Responses tools[{idx}] has unsupported type {tool.get('type')!r}.")
+                from core.run_agent.provider_payloads import normalize_responses_tool
 
-                name = tool.get("name")
-                parameters = tool.get("parameters")
-                if not isinstance(name, str) or not name.strip():
-                    raise ValueError(f"Codex Responses tools[{idx}] is missing a valid name.")
-                if not isinstance(parameters, dict):
-                    raise ValueError(f"Codex Responses tools[{idx}] is missing valid parameters.")
-
-                description = tool.get("description", "")
-                if description is None:
-                    description = ""
-                if not isinstance(description, str):
-                    description = str(description)
-
-                strict = tool.get("strict", False)
-                if not isinstance(strict, bool):
-                    strict = bool(strict)
-
-                normalized_tools.append(
-                    {
-                        "type": "function",
-                        "name": name.strip(),
-                        "description": description,
-                        "strict": strict,
-                        "parameters": parameters,
-                    }
-                )
+                normalized_tools.append(normalize_responses_tool(tool, idx))
 
         store = api_kwargs.get("store", False)
         if store is not False:
@@ -4699,9 +4701,9 @@ class AIAgent(_PromptCacheMixin):
 
     @staticmethod
     def _normalize_interim_visible_text(text: str) -> str:
-        if not isinstance(text, str):
-            return ""
-        return re.sub(r"\s+", " ", text).strip()
+        from core.run_agent.response_normalization import normalize_visible_text
+
+        return normalize_visible_text(text)
 
     def _interim_content_was_streamed(self, content: str) -> bool:
         visible_content = self._normalize_interim_visible_text(
@@ -7853,17 +7855,11 @@ class AIAgent(_PromptCacheMixin):
         # Generate unique task_id if not provided to isolate VMs between concurrent tasks
         effective_task_id = task_id or str(uuid.uuid4())
         
-        # Reset retry counters and iteration budget at the start of each turn
-        # so subagent usage from a previous turn doesn't eat into the next one.
-        self._invalid_tool_retries = 0
-        self._invalid_json_retries = 0
-        self._empty_content_retries = 0
-        self._incomplete_scratchpad_retries = 0
-        self._codex_incomplete_retries = 0
-        self._thinking_prefill_retries = 0
-        self._last_content_with_tools = None
-        self._mute_post_response = False
-        self._unicode_sanitization_passes = 0
+        # Reset turn-scoped state without mixing it into provider execution.
+        from core.run_agent.turn_orchestration import reset_turn_state
+
+        reset_turn_state(self)
+        self.iteration_budget = IterationBudget(self.max_iterations)
 
         # Pre-turn connection health check: detect and clean up dead TCP
         # connections left over from provider outages or dropped streams.
@@ -7887,8 +7883,6 @@ class AIAgent(_PromptCacheMixin):
         # NOTE: _turns_since_memory and _iters_since_skill are NOT reset here.
         # They are initialized in __init__ and must persist across run_conversation
         # calls so that nudge logic accumulates correctly in CLI mode.
-        self.iteration_budget = IterationBudget(self.max_iterations)
-
         # Log conversation turn start for debugging/observability
         _msg_preview = (user_message[:80] + "...") if len(user_message) > 80 else user_message
         _msg_preview = _msg_preview.replace("\n", " ")
@@ -11217,4 +11211,6 @@ def main(
 
 
 if __name__ == "__main__":
+    import fire
+
     fire.Fire(main)

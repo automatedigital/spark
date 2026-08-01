@@ -43,6 +43,15 @@ MODULE_EXTRAS = {
     "tools.web_tools": "web",
 }
 
+# SDK roots that must remain optional at module-import time. The generator
+# blocks these in isolated subprocesses and requires an identical schema set.
+OPTIONAL_GUARD_ROOTS = {
+    "tools.browser_tool": ("browser_use", "playwright"),
+    "tools.image_generation_tool": ("fal_client",),
+    "tools.tts_tool": ("edge_tts", "elevenlabs"),
+    "tools.web_tools": ("firecrawl",),
+}
+
 CHECK_SPECS = {
     "tools.browser_tool:check_browser_active": "browser_active",
     "tools.browser_tool:check_browser_requirements": "browser_requirements",

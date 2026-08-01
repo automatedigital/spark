@@ -22,10 +22,11 @@ Public API (signatures preserved from the original 2,400-line version):
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+import threading
+from typing import Any, Dict, List, Optional, Tuple
 
-from tools.registry import registry
 from core.toolsets import resolve_toolset, validate_toolset
+from tools.registry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,24 @@ def _has_configured_mcp_servers() -> bool:
 
 _dynamic_discovery_lock = threading.Lock()
 _dynamic_discovery_complete = False
+_mcp_discovered = False
+
+
+def _discover_configured_mcp() -> None:
+    """Preserve eager discovery only for profiles that explicitly configure MCP."""
+    global _mcp_discovered
+    if _mcp_discovered or not _has_configured_mcp_servers():
+        return
+    try:
+        from tools.mcp_tool import discover_mcp_tools
+
+        discover_mcp_tools()
+    except Exception as exc:
+        logger.debug("MCP tool discovery failed: %s", exc)
+    _mcp_discovered = True
+
+
+_discover_configured_mcp()
 
 
 def _ensure_dynamic_tools_discovered() -> None:
@@ -105,13 +124,7 @@ def _ensure_dynamic_tools_discovered() -> None:
     with _dynamic_discovery_lock:
         if _dynamic_discovery_complete:
             return
-        if _has_configured_mcp_servers():
-            try:
-                from tools.mcp_tool import discover_mcp_tools
-
-                discover_mcp_tools()
-            except Exception as exc:
-                logger.debug("MCP tool discovery failed: %s", exc)
+        _discover_configured_mcp()
         try:
             from spark_cli.plugins import discover_plugins
 
@@ -251,14 +264,23 @@ def get_tool_definitions(
     for i, td in enumerate(filtered_tools):
         if td.get("function", {}).get("name") != "terminal":
             continue
+        import sys
+
         from core.run_agent.schema_overrides import terminal_description
 
         terminal_fn = td["function"]
+        terminal_module = sys.modules.get("tools.terminal_tool")
+        description_builder = getattr(terminal_module, "_terminal_tool_description", None)
+        description = (
+            description_builder()
+            if callable(description_builder)
+            else terminal_description(terminal_fn.get("description", ""))
+        )
         filtered_tools[i] = {
             "type": td.get("type", "function"),
             "function": {
                 **terminal_fn,
-                "description": terminal_description(terminal_fn.get("description", "")),
+                "description": description,
             },
         }
         break

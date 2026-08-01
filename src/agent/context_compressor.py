@@ -21,15 +21,21 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from agent.auxiliary_client import call_llm
 from agent.context_engine import ContextEngine
 from agent.model_metadata import (
     MINIMUM_CONTEXT_LENGTH,
-    get_model_context_length,
     estimate_messages_tokens_rough,
+    get_model_context_length,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def call_llm(*args, **kwargs):
+    """Lazy, patchable auxiliary-provider boundary used by compressor tests."""
+    from agent.auxiliary_client import call_llm as implementation
+
+    return implementation(*args, **kwargs)
 
 SUMMARY_PREFIX = (
     "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted "

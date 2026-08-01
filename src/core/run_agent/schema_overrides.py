@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+from collections.abc import Set
 
 SANDBOX_ALLOWED_TOOLS = frozenset(
     {"web_search", "web_extract", "read_file", "write_file", "search_files", "patch", "terminal"}
@@ -31,7 +32,7 @@ def terminal_description(default: str) -> str:
     return default.replace(unix, windows)
 
 
-def build_execute_code_schema(enabled_sandbox_tools: set[str]) -> dict:
+def build_execute_code_schema(enabled_sandbox_tools: Set[str]) -> dict:
     tool_lines = "\n".join(line for name, line in _TOOL_DOC_LINES if name in enabled_sandbox_tools)
     examples = [name for name in ("web_search", "terminal") if name in enabled_sandbox_tools]
     if not examples:
