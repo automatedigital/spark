@@ -143,6 +143,22 @@ class TestBudgetConfigCustom:
         assert cfg.tool_overrides == {"my_tool": 42}
         assert cfg.result_budget_tokens == DEFAULT_RESULT_BUDGET_TOKENS
 
+    def test_request_budget_adapts_to_remaining_context_and_phase(self):
+        work = BudgetConfig.for_request(
+            remaining_context_tokens=40_000,
+            task_phase="work",
+            result_kind="text",
+        )
+        final = BudgetConfig.for_request(
+            remaining_context_tokens=40_000,
+            task_phase="final",
+            result_kind="structured",
+        )
+        assert work.turn_budget_tokens == 8_000
+        assert work.result_budget_tokens == 4_000
+        assert final.turn_budget_tokens < work.turn_budget_tokens
+        assert final.result_budget_tokens <= final.turn_budget_tokens // 2
+
 
 # ---------------------------------------------------------------------------
 # resolve_threshold() priority chain

@@ -408,6 +408,9 @@ DEFAULT_CONFIG = {
         # (force on/off for all models), or a list of model-name substrings
         # to match (e.g. ["gpt", "codex", "gemini", "qwen"]).
         "tool_use_enforcement": "auto",
+        # Dependency-aware effect scheduler. Set false to restore the
+        # conservative sequential executor for newly created agent runs.
+        "dependency_scheduler": True,
         # Staged inactivity warning: send a warning to the user at this
         # threshold before escalating to a full timeout.  The warning fires
         # once per run and does not interrupt the agent.  0 = disable warning.
@@ -502,6 +505,12 @@ DEFAULT_CONFIG = {
             "base_url": "",
             "api_mode": "",
         },
+    },
+    "response_budget": {
+        # Cache-stable action-first guidance. Adaptive model routing remains
+        # independently controlled by smart_model_routing.enabled.
+        "style_enabled": True,
+        "soft_output_caps": True,
     },
     # Auxiliary model config — provider:model for each side task.
     # Format: provider is the provider name, model is the model slug.
@@ -852,7 +861,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 27,
+    "_config_version": 28,
 }
 
 # =============================================================================

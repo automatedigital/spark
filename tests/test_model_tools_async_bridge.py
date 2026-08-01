@@ -7,14 +7,14 @@ Root cause: asyncio.run() creates and *closes* a fresh event loop on every
 call.  Cached httpx/AsyncOpenAI clients that were bound to the now-dead loop
 would crash with RuntimeError("Event loop is closed") when garbage-collected.
 
-The fix replaces asyncio.run() with a persistent event loop in _run_async().
+The bridge now submits every caller to one process-owned persistent runtime.
 """
 
 import asyncio
 import json
 import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -85,10 +85,10 @@ class TestRunAsyncLoopLifecycle:
 
 
 class TestRunAsyncWorkerThread:
-    """Verify worker threads get persistent per-thread loops (delegate_task fix)."""
+    """Verify worker threads share the process-owned runtime loop."""
 
     def test_worker_thread_loop_not_closed(self):
-        """A worker thread's loop must stay open after _run_async returns,
+        """The process loop must stay open after a worker bridge returns,
         so cached httpx/AsyncOpenAI clients don't crash on GC."""
         from concurrent.futures import ThreadPoolExecutor
         from core.model_tools import _run_async
@@ -108,7 +108,7 @@ class TestRunAsyncWorkerThread:
 
     def test_worker_thread_reuses_loop_across_calls(self):
         """Multiple _run_async calls on the same worker thread should
-        reuse the same persistent loop (not create-and-destroy each time)."""
+        reuse the process loop (not create-and-destroy each time)."""
         from concurrent.futures import ThreadPoolExecutor
         from core.model_tools import _run_async
 
@@ -126,10 +126,8 @@ class TestRunAsyncWorkerThread:
         )
         assert not loop1.is_closed()
 
-    def test_parallel_workers_get_separate_loops(self):
-        """Different worker threads must get their own loops to avoid
-        contention (the original reason for the worker-thread branch)."""
-        import time
+    def test_parallel_workers_share_one_runtime_loop(self):
+        """Different worker threads submit safely to one owned loop."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from core.model_tools import _run_async
 
@@ -153,17 +151,12 @@ class TestRunAsyncWorkerThread:
         assert all_open, "At least one worker thread's loop was closed"
         # The barrier guarantees 3 distinct threads were used
         assert len(thread_ids) == 3, f"Expected 3 threads, got {len(thread_ids)}"
-        # Each thread should have its own loop
-        assert len(loop_ids) == 3, (
-            f"Expected 3 distinct loops for 3 parallel workers, "
-            f"got {len(loop_ids)} — workers may be contending on a shared loop"
-        )
+        assert len(loop_ids) == 1, f"Expected one process loop, got {len(loop_ids)}"
 
-    def test_worker_loop_separate_from_main_loop(self):
-        """Worker thread loops must be different from the main thread's
-        persistent loop to avoid cross-thread contention."""
+    def test_worker_loop_is_main_process_runtime_loop(self):
+        """Worker and main bridges target the same process runtime."""
         from concurrent.futures import ThreadPoolExecutor
-        from core.model_tools import _run_async, _get_tool_loop
+        from core.model_tools import _get_tool_loop, _run_async
 
         main_loop = _get_tool_loop()
 
@@ -174,10 +167,7 @@ class TestRunAsyncWorkerThread:
         with ThreadPoolExecutor(max_workers=1) as pool:
             worker_loop_id = pool.submit(_get_worker_loop_id).result()
 
-        assert worker_loop_id != id(main_loop), (
-            "Worker thread used the main thread's loop — this would cause "
-            "cross-thread contention on the event loop"
-        )
+        assert worker_loop_id == id(main_loop)
 
 
 class TestRunAsyncWithRunningLoop:
@@ -217,7 +207,7 @@ class TestVisionDispatchLoopSafety:
     def test_vision_dispatch_keeps_loop_alive(self, tmp_path):
         """After dispatching vision_analyze via the registry, the event
         loop must remain open so cached async clients don't crash on GC."""
-        from core.model_tools import _run_async, _get_tool_loop
+        from core.model_tools import _get_tool_loop
         from tools.registry import registry
 
         fake_response = _mock_vision_response()

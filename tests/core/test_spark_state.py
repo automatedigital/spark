@@ -13,7 +13,6 @@ import pytest
 
 from core.spark_state import SessionDB
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -125,11 +124,203 @@ class TestSchemaInit:
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()
             }
-            assert version == 9
+            from core.spark_state import SCHEMA_VERSION
+            assert version == SCHEMA_VERSION
+            assert "session_events" in tables
+            assert "session_checkpoints" in tables
             assert "subagent_runs" in tables
             assert "subagent_events" in tables
+            assert "session_context_epochs" in tables
+            assert "context_checkpoints" in tables
         finally:
             migrated.close()
+
+
+class TestOrderedSessionEvents:
+    def test_iteration_is_one_transaction_and_idempotent(self, db):
+        sid = _sid()
+        db.create_session(sid, source="cli")
+        before_writes = db._write_count
+        messages = [
+            {"role": "assistant", "content": "calling", "tool_calls": [{"name": "terminal"}]},
+            {"role": "tool", "content": "done", "tool_call_id": "t1"},
+            {"role": "assistant", "content": "complete"},
+        ]
+        first = db.append_iteration(
+            sid,
+            messages,
+            idempotency_prefix="iteration-1",
+            usage={"input_tokens": 10, "output_tokens": 5},
+            status="settled",
+        )
+        second = db.append_iteration(
+            sid,
+            messages,
+            idempotency_prefix="iteration-1",
+            usage={"input_tokens": 10, "output_tokens": 5},
+            status="settled",
+        )
+        assert first == second
+        assert db._write_count - before_writes == 1
+        assert len(db.get_messages(sid)) == 3
+        assert [event["sequence"] for event in db.get_session_events(sid)] == [1, 2, 3, 4, 5, 6]
+        session = db.get_session(sid)
+        assert session["input_tokens"] == 10
+        assert session["output_tokens"] == 5
+
+    def test_subscribers_only_observe_committed_projection(self, db):
+        sid = _sid()
+        db.create_session(sid, source="web")
+        observed = []
+        db.subscribe_session_events(
+            lambda event: observed.append((event["sequence"], len(db.get_messages(sid))))
+        )
+        db.append_iteration(
+            sid,
+            [{"role": "user", "content": "one"}, {"role": "assistant", "content": "two"}],
+            idempotency_prefix="committed",
+        )
+        assert observed == [(2, 2), (3, 2)]
+
+    def test_transaction_failure_leaves_no_partial_projection(self, db):
+        sid = _sid()
+        db.create_session(sid, source="cli")
+        db._conn.execute(
+            """CREATE TRIGGER reject_boom BEFORE INSERT ON messages
+               WHEN NEW.content = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END"""
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.append_iteration(
+                sid,
+                [{"role": "user", "content": "first"}, {"role": "assistant", "content": "boom"}],
+                idempotency_prefix="crash",
+            )
+        assert db.get_messages(sid) == []
+        assert [event["event_type"] for event in db.get_session_events(sid)] == ["session.started"]
+
+    def test_checkpoint_failure_does_not_damage_committed_events(self, db):
+        sid = _sid()
+        db.create_session(sid, source="cli")
+        db.append_iteration(
+            sid,
+            [{"role": "user", "content": "safe"}],
+            idempotency_prefix="safe",
+        )
+        db._conn.execute(
+            """CREATE TRIGGER reject_checkpoint BEFORE INSERT ON session_checkpoints
+               BEGIN SELECT RAISE(ABORT, 'checkpoint fault'); END"""
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.create_session_checkpoint(sid)
+        assert db.get_latest_session_checkpoint(sid) is None
+        assert db.get_messages(sid)[0]["content"] == "safe"
+        assert [event["event_type"] for event in db.get_session_events(sid)] == [
+            "session.started",
+            "message.appended",
+        ]
+
+    def test_legacy_backfill_is_restart_safe_and_export_equivalent(self, db):
+        sid = _sid()
+        db.create_session(sid, source="cli")
+        db._conn.execute(
+            """INSERT INTO messages (session_id, role, content, timestamp)
+               VALUES (?, 'user', 'legacy', ?)""",
+            (sid, time.time()),
+        )
+        db._conn.execute(
+            "UPDATE sessions SET message_count = 1 WHERE id = ?", (sid,)
+        )
+        assert db.backfill_session_events(sid) == 1
+        assert db.backfill_session_events(sid) == 0
+        event = db.get_session_events(sid)[1]
+        exported = db.export_session(sid)
+        assert event["payload"]["content"] == exported["messages"][0]["content"]
+
+    def test_migration_failure_rolls_back_and_can_restart(self, db):
+        sid = _sid()
+        db.create_session(sid, source="cli")
+        now = time.time()
+        db._conn.executemany(
+            """INSERT INTO messages (session_id, role, content, timestamp)
+               VALUES (?, 'user', ?, ?)""",
+            [(sid, "one", now), (sid, "two", now + 1)],
+        )
+        db._conn.execute(
+            """CREATE TRIGGER fail_legacy BEFORE INSERT ON session_events
+               WHEN NEW.idempotency_key LIKE 'legacy-message:%'
+               BEGIN SELECT RAISE(ABORT, 'migration fault'); END"""
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.backfill_session_events(sid)
+        event_types = [
+            row[0]
+            for row in db._conn.execute(
+                "SELECT event_type FROM session_events WHERE session_id = ? ORDER BY sequence",
+                (sid,),
+            ).fetchall()
+        ]
+        assert event_types == ["session.started"]
+        db._conn.execute("DROP TRIGGER fail_legacy")
+        assert db.backfill_session_events(sid) == 2
+        assert db.backfill_session_events(sid) == 0
+
+    def test_checkpoint_and_after_sequence_resume(self, db):
+        sid = _sid()
+        db.create_session(sid, source="gateway")
+        db.append_iteration(
+            sid,
+            [{"role": "user", "content": "one"}, {"role": "assistant", "content": "two"}],
+            idempotency_prefix="before",
+        )
+        checkpoint = db.create_session_checkpoint(sid)
+        db.append_iteration(
+            sid,
+            [{"role": "user", "content": "three"}],
+            idempotency_prefix="after",
+        )
+        assert checkpoint["sequence"] == 3
+        assert db.get_latest_session_checkpoint(sid)["projection"]["message_count"] == 2
+        deltas = db.get_session_events(sid, after_sequence=checkpoint["sequence"])
+        assert [event["payload"]["content"] for event in deltas] == ["three"]
+
+    def test_batch_reduces_write_transactions_and_encoded_bytes(self, db):
+        sid = _sid()
+        db.create_session(sid, source="cli")
+        messages = [
+            {"role": "user" if index % 2 == 0 else "assistant", "content": f"turn-{index}"}
+            for index in range(100)
+        ]
+        baseline_snapshot_bytes = sum(
+            len(str(messages[:index])) for index in range(1, len(messages) + 1)
+        )
+        event_bytes = sum(len(str(message)) for message in messages)
+        before = db._write_count
+        db.append_iteration(sid, messages, idempotency_prefix="hundred")
+        assert db._write_count - before == 1
+        assert event_bytes <= baseline_snapshot_bytes * 0.5
+
+    def test_concurrent_writers_have_unique_deterministic_sequence(self, db):
+        sid = _sid()
+        db.create_session(sid, source="gateway")
+
+        def append(index):
+            return db.append_iteration(
+                sid,
+                [{"role": "tool", "content": f"result-{index}", "tool_call_id": str(index)}],
+                idempotency_prefix=f"writer-{index}",
+            )
+
+        threads = [threading.Thread(target=append, args=(index,)) for index in range(20)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        events = db.get_session_events(sid)
+        assert [event["sequence"] for event in events] == list(range(1, 22))
+        events = [event for event in events if event["event_type"] == "message.appended"]
+        assert {event["payload"]["content"] for event in events} == {
+            f"result-{index}" for index in range(20)
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +328,21 @@ class TestSchemaInit:
 # ---------------------------------------------------------------------------
 
 class TestSessionLifecycle:
+    def test_lifecycle_projection_and_events_share_transactions(self, db):
+        sid = _sid()
+        before_writes = db._write_count
+
+        db.create_session(sid, source="cli")
+        db.end_session(sid, end_reason="user_exit")
+        db.reopen_session(sid)
+
+        assert db._write_count - before_writes == 3
+        assert [event["event_type"] for event in db.get_session_events(sid)] == [
+            "session.started",
+            "session.ended",
+            "status.changed",
+        ]
+
     def test_create_and_get(self, db):
         sid = _sid()
         db.create_session(sid, source="cli", model="test/model")

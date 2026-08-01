@@ -139,7 +139,10 @@ function ParsedMarkdown({
   defaultWrap: boolean;
 }) {
   const segments = useMemo(
-    () => buildMarkdownRenderSegments(content, streaming),
+    () => {
+      void renderRevision;
+      return buildMarkdownRenderSegments(content, streaming);
+    },
     [content, streaming, renderRevision],
   );
 

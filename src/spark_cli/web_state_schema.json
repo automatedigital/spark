@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "spark.web-state-event.v1",
+  "type": "object",
+  "required": ["schema_version", "topic", "entity_id", "sequence", "projection_version", "timestamp", "payload", "server_epoch"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "topic": {"type": "string", "minLength": 1},
+    "entity_id": {"type": ["string", "null"]},
+    "sequence": {"type": "integer", "minimum": 1},
+    "sequence_start": {"type": "integer", "minimum": 1},
+    "projection_version": {"const": 1},
+    "timestamp": {"type": "number"},
+    "payload": {"type": "object"},
+    "server_epoch": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}

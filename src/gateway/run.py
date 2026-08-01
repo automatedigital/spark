@@ -76,8 +76,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Resolve Spark home directory (respects SPARK_HOME override)
 from core.spark_constants import get_spark_home, get_spark_workspace
+from core.async_runtime import get_async_runtime
 from core.utils import atomic_yaml_write, is_truthy_value
 _spark_home = get_spark_home()
+
+
+async def _run_blocking(function, /, *args, **kwargs):
+    """Run gateway blocking work in Spark's bounded process worker pool."""
+    return await get_async_runtime().run_blocking(function, *args, **kwargs)
 
 # Load environment variables from ~/.spark/.env first.
 # User-managed env files should override stale shell exports on restart.
@@ -828,12 +834,8 @@ class GatewayRunner:
         session_key: Optional[str] = None,
     ):
         """Run the sync memory flush in a thread pool so it won't block the event loop."""
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None,
-            self._flush_memories_for_session,
-            old_session_id,
-            session_key,
+        await _run_blocking(
+            self._flush_memories_for_session, old_session_id, session_key
         )
 
     @property
@@ -952,7 +954,7 @@ class GatewayRunner:
             logger.debug("Live config refresh partially failed: %s", exc)
 
     def _resolve_turn_agent_config(self, user_message: str, model: str, runtime_kwargs: dict) -> dict:
-        from agent.smart_model_routing import resolve_turn_route
+        from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
         from spark_cli.models import resolve_fast_mode_overrides
 
         primary = {
@@ -968,16 +970,16 @@ class GatewayRunner:
         route = resolve_turn_route(user_message, getattr(self, "_smart_model_routing", {}), primary)
 
         service_tier = getattr(self, "_service_tier", None)
-        if not service_tier:
-            route["request_overrides"] = None
-            return route
-
+        overrides = None
         try:
-            overrides = resolve_fast_mode_overrides(route.get("model"))
+            if service_tier:
+                overrides = resolve_fast_mode_overrides(route.get("model"))
         except Exception:
-            overrides = None
-        route["request_overrides"] = overrides
-        return route
+            pass
+        budget_cfg = (getattr(self, "_smart_model_routing", {}) or {}).get("_response_budget", {}) or {}
+        return merge_route_request_overrides(
+            route, overrides, soft_caps_enabled=bool(budget_cfg.get("soft_output_caps", True))
+        )
 
     async def _handle_adapter_fatal_error(self, adapter: BasePlatformAdapter) -> None:
         """React to an adapter failure after startup.
@@ -1340,7 +1342,9 @@ class GatewayRunner:
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
-                return cfg.get("smart_model_routing", {}) or {}
+                routing = dict(cfg.get("smart_model_routing", {}) or {})
+                routing["_response_budget"] = cfg.get("response_budget", {}) or {}
+                return routing
         except Exception:
             pass
         return {}
@@ -3686,13 +3690,11 @@ class GatewayRunner:
                                 )
                                 _hyg_agent._print_fn = lambda *a, **kw: None
 
-                                loop = asyncio.get_event_loop()
-                                _compressed, _ = await loop.run_in_executor(
-                                    None,
-                                    lambda: _hyg_agent._compress_context(
-                                        _hyg_msgs, "",
-                                        approx_tokens=_approx_tokens,
-                                    ),
+                                _compressed, _ = await _run_blocking(
+                                    _hyg_agent._compress_context,
+                                    _hyg_msgs,
+                                    "",
+                                    approx_tokens=_approx_tokens,
                                 )
 
                                 # _compress_context ends the old session and creates
@@ -5245,7 +5247,7 @@ class GatewayRunner:
             )
             os.makedirs(os.path.dirname(audio_path), exist_ok=True)
 
-            result_json = await asyncio.to_thread(
+            result_json = await _run_blocking(
                 text_to_speech_tool, text=tts_text, output_path=audio_path
             )
             result = json.loads(result_json)
@@ -5817,8 +5819,7 @@ class GatewayRunner:
                     task_id=task_id,
                 )
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_sync)
+            result = await _run_blocking(run_sync)
 
             response = result.get("final_response", "") if result else ""
             if not response and result and result.get("error"):
@@ -6001,8 +6002,7 @@ class GatewayRunner:
                     task_id=task_id,
                 )
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_sync)
+            result = await _run_blocking(run_sync)
 
             response = (result.get("final_response") or "") if result else ""
             if not response and result and result.get("error"):
@@ -6084,11 +6084,11 @@ class GatewayRunner:
             return _status_text()
 
         if sub == "schedule":
-            sched = await asyncio.to_thread(dream_mod.configure_schedule, True)
+            sched = await _run_blocking(dream_mod.configure_schedule, True)
             return f"✅ Daily dreams scheduled (hour={sched['hour']:02d}). Use /dream unschedule to disable."
 
         if sub == "unschedule":
-            await asyncio.to_thread(dream_mod.configure_schedule, False)
+            await _run_blocking(dream_mod.configure_schedule, False)
             return "✅ Daily dreams disabled."
 
         if sub == "review":
@@ -6110,7 +6110,7 @@ class GatewayRunner:
             return "\n".join(lines)
 
         if sub == "now":
-            result = await asyncio.to_thread(dream_mod.run_dream)
+            result = await _run_blocking(dream_mod.run_dream)
             if result.error:
                 return f"❌ Dream failed: {result.error}"
             out = [
@@ -6146,8 +6146,8 @@ class GatewayRunner:
         """
         from core import dream as dream_mod
 
-        recent = await asyncio.to_thread(dream_mod.list_recent_dreams, 5)
-        pending = await asyncio.to_thread(dream_mod.get_pending_removals)
+        recent = await _run_blocking(dream_mod.list_recent_dreams, 5)
+        pending = await _run_blocking(dream_mod.get_pending_removals)
 
         if not recent and not pending:
             return "🧠 No learnings yet. Run /dream to reflect on past sessions."
@@ -6548,10 +6548,12 @@ class GatewayRunner:
             if compress_start >= compress_end:
                 return "Nothing to compress yet (the transcript is still all protected context)."
 
-            loop = asyncio.get_event_loop()
-            compressed, _ = await loop.run_in_executor(
-                None,
-                lambda: tmp_agent._compress_context(msgs, "", approx_tokens=approx_tokens, focus_topic=focus_topic)
+            compressed, _ = await _run_blocking(
+                tmp_agent._compress_context,
+                msgs,
+                "",
+                approx_tokens=approx_tokens,
+                focus_topic=focus_topic,
             )
 
             # _compress_context already calls end_session() on the old session
@@ -6898,8 +6900,6 @@ class GatewayRunner:
 
     async def _handle_insights_command(self, event: MessageEvent) -> str:
         """Handle /insights command -- show usage insights and analytics."""
-        import asyncio as _asyncio
-
         args = event.get_command_args().strip()
         days = 30
         source = None
@@ -6928,8 +6928,6 @@ class GatewayRunner:
             from core.spark_state import SessionDB
             from agent.insights import InsightsEngine
 
-            loop = _asyncio.get_event_loop()
-
             def _run_insights():
                 db = SessionDB()
                 engine = InsightsEngine(db)
@@ -6938,7 +6936,7 @@ class GatewayRunner:
                 db.close()
                 return result
 
-            return await loop.run_in_executor(None, _run_insights)
+            return await _run_blocking(_run_insights)
         except Exception as e:
             logger.error("Insights command error: %s", e, exc_info=True)
             return f"Error generating insights: {e}"
@@ -7014,7 +7012,6 @@ class GatewayRunner:
 
     async def _handle_reload_mcp_command(self, event: MessageEvent) -> str:
         """Handle /reload-mcp command -- disconnect and reconnect all MCP servers."""
-        loop = asyncio.get_event_loop()
         try:
             from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools, _servers, _lock
 
@@ -7024,10 +7021,10 @@ class GatewayRunner:
 
             # Read new config before shutting down, so we know what will be added/removed
             # Shutdown existing connections
-            await loop.run_in_executor(None, shutdown_mcp_servers)
+            await _run_blocking(shutdown_mcp_servers)
 
             # Reconnect by discovering tools (reads config.yaml fresh)
-            new_tools = await loop.run_in_executor(None, discover_mcp_tools)
+            new_tools = await _run_blocking(discover_mcp_tools)
 
             # Compute what changed
             with _lock:
@@ -7253,13 +7250,10 @@ class GatewayRunner:
 
     async def _handle_debug_command(self, event: MessageEvent) -> str:
         """Handle /debug — upload debug report + logs and return paste URLs."""
-        import asyncio
         from spark_cli.debug import (
             _capture_dump, collect_debug_report, _read_full_log,
             upload_to_pastebin,
         )
-
-        loop = asyncio.get_running_loop()
 
         # Run blocking I/O (dump capture, log reads, uploads) in a thread.
         def _collect_and_upload():
@@ -7304,7 +7298,7 @@ class GatewayRunner:
             lines.append("\nShare these links with the Spark team for support.")
             return "\n".join(lines)
 
-        return await loop.run_in_executor(None, _collect_and_upload)
+        return await _run_blocking(_collect_and_upload)
 
     async def _handle_update_command(self, event: MessageEvent) -> str:
         """Handle /update command — update Spark Agent to the latest version.
@@ -7865,13 +7859,11 @@ class GatewayRunner:
             return disabled_note
 
         from tools.transcription_tools import transcribe_audio
-        import asyncio
-
         enriched_parts = []
         for path in audio_paths:
             try:
                 logger.debug("Transcribing user voice: %s", path)
-                result = await asyncio.to_thread(transcribe_audio, path)
+                result = await _run_blocking(transcribe_audio, path)
                 if result["success"]:
                     transcript = result["transcript"]
                     enriched_parts.append(
@@ -9139,10 +9131,7 @@ class GatewayRunner:
             _agent_warning_raw = float(os.getenv("SPARK_AGENT_TIMEOUT_WARNING", 900))
             _agent_warning = _agent_warning_raw if _agent_warning_raw > 0 else None
             _warning_fired = False
-            loop = asyncio.get_event_loop()
-            _executor_task = asyncio.ensure_future(
-                loop.run_in_executor(None, run_sync)
-            )
+            _executor_task = asyncio.create_task(_run_blocking(run_sync))
 
             _inactivity_timeout = False
             _POLL_INTERVAL = 5.0

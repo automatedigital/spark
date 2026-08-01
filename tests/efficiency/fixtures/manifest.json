@@ -1,0 +1,14 @@
+{
+  "fixture_version": "1.0.0",
+  "redaction": "synthetic-only",
+  "cases_file": "v1/cases.jsonl",
+  "web_fixtures": [
+    "../../../src/spark_cli/web/e2e/fixtures/efficiency-reconnect-v1.json",
+    "../../../src/spark_cli/web/e2e/fixtures/efficiency-concurrent-chats-v1.json"
+  ],
+  "pinned_runtime": {
+    "provider": "fixture",
+    "model": "deterministic-replay-v1",
+    "reasoning_effort": "medium"
+  }
+}

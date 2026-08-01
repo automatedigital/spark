@@ -105,7 +105,82 @@ def web_client(monkeypatch, tmp_path):
         web_server._pending_token_gap_sessions.clear()
         web_server._token_flush_scheduled = False
 
+    from spark_cli.web_state import web_state_journal
+
+    web_state_journal.reset_for_test()
+
     return TestClient(web_server.app)
+
+
+def test_web_state_snapshot_splits_shell_from_selected_detail(web_client):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("selected", source="web")
+        db.append_message("selected", "user", "selected question")
+        db.append_message("selected", "assistant", "selected answer")
+        db.create_session("unselected", source="web")
+        db.append_message("unselected", "user", "must not be in detail")
+    finally:
+        db.close()
+
+    response = web_client.get(
+        "/api/web-state/snapshot?selected_session_id=selected&session_limit=10&message_limit=10"
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == body["projection_version"] == 1
+    assert {row["id"] for row in body["shells"]} == {"selected", "unselected"}
+    assert body["detail"]["session_id"] == "selected"
+    assert [row["content"] for row in body["detail"]["messages"]] == [
+        "selected question",
+        "selected answer",
+    ]
+    assert "must not be in detail" not in json.dumps(body["detail"])
+
+
+def test_web_state_delta_resume_and_restart_fallback(web_client):
+    from spark_cli.web_state import web_state_journal
+
+    snapshot = web_client.get("/api/web-state/snapshot").json()
+    web_state_journal.append("sessions.changed", {"action": "updated"}, "s1")
+    web_state_journal.append("chat.turn_done", {"ok": True}, "s1")
+
+    response = web_client.get(
+        "/api/web-state/deltas",
+        params={
+            "after_sequence": snapshot["sequence"],
+            "projection_version": snapshot["projection_version"],
+            "server_epoch": snapshot["server_epoch"],
+            "session_id": "s1",
+        },
+    )
+    body = response.json()
+    assert body["requires_snapshot"] is False
+    assert [row["topic"] for row in body["events"]] == [
+        "sessions.changed",
+        "chat.turn_done",
+    ]
+    assert [row["sequence"] for row in body["events"]] == sorted(
+        row["sequence"] for row in body["events"]
+    )
+
+    restarted = web_client.get(
+        "/api/web-state/deltas",
+        params={
+            "after_sequence": body["latest_sequence"],
+            "projection_version": 1,
+            "server_epoch": "stale-process",
+        },
+    ).json()
+    assert restarted == {
+        "events": [],
+        "requires_snapshot": True,
+        "reason": "server_restarted",
+        "latest_sequence": body["latest_sequence"],
+        "server_epoch": snapshot["server_epoch"],
+    }
 
 
 def _wait_for(predicate, timeout: float = 2.0) -> bool:
@@ -619,7 +694,17 @@ def test_fake_stream_compaction_failure_clears_active_turn(web_client, monkeypat
 
 
 def test_fake_stream_supports_multiple_simultaneous_sessions(web_client, monkeypatch):
+    import spark_cli.web_server as web_server
+
     monkeypatch.setenv("SPARK_WEB_FAKE_STREAMS", "1")
+    published = []
+    original_publish = web_server._publish_event
+
+    def capture_event(topic, data, session_id=None):
+        published.append((topic, data, session_id))
+        return original_publish(topic, data, session_id)
+
+    monkeypatch.setattr(web_server, "_publish_event", capture_event)
 
     session_events = {
         "fake_multi_a": ["A1 ", "A2"],
@@ -669,6 +754,16 @@ def test_fake_stream_supports_multiple_simultaneous_sessions(web_client, monkeyp
             assert messages[-1]["content"] == "".join(chunks)
     finally:
         db.close()
+
+    for session_id in session_events:
+        lifecycle = [
+            event for event in published
+            if event[2] == session_id
+            and event[0] in {"chat.turn_done", "sessions.changed"}
+        ]
+        assert lifecycle[-2][0] == "chat.turn_done"
+        assert lifecycle[-1][0] == "sessions.changed"
+        assert lifecycle[-1][1]["session"]["is_active"] is False
 
 
 class TestEventBus:
@@ -806,6 +901,28 @@ class TestEventBus:
 
         assert first.data_queue.get_nowait()["data"]["t"] == "abc"
         assert second.data_queue.get_nowait()["data"]["t"] == "abc"
+
+    def test_token_coalescing_advances_public_resume_cursor(self, web_client):
+        import spark_cli.web_server as web_server
+
+        subscriber = web_server._EventSubscriber(prefixes=("chat",))
+        for sequence, token in ((10, "a"), (11, "b")):
+            subscriber.enqueue(
+                {
+                    "topic": "chat.token",
+                    "session_id": "cursor",
+                    "sequence": sequence,
+                    "_seq": sequence,
+                    "ts": time.time(),
+                    "data": {"t": token},
+                }
+            )
+
+        combined = subscriber.data_queue.get_nowait()
+        assert combined["data"]["t"] == "ab"
+        assert combined["sequence_start"] == 10
+        assert combined["sequence"] == 11
+        assert combined["_seq"] == 11
 
     def test_lifecycle_event_cannot_overtake_earlier_token(self, web_client):
         import spark_cli.web_server as web_server
@@ -2465,11 +2582,11 @@ class TestConversationControl:
 
         calls = []
 
-        async def fake_to_thread(fn, *args, **kwargs):
+        async def fake_run_blocking(fn, *args, **kwargs):
             calls.append(fn.__name__)
             return fn(*args, **kwargs)
 
-        monkeypatch.setattr(web_server.asyncio, "to_thread", fake_to_thread)
+        monkeypatch.setattr(web_server, "_run_blocking", fake_run_blocking)
         resp = web_client.get("/api/conversations/snapshot-threaded/stream-snapshot")
         assert resp.status_code == 200
         assert calls == ["_conversation_stream_snapshot_payload"]

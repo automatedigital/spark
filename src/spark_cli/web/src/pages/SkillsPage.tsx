@@ -85,7 +85,7 @@ export default function SkillsPage() {
       })
       .catch(() => showToast(t.common.loading, "error"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [showToast, t.common.loading]);
 
   // Live-refresh + toast when the agent creates/updates a skill (incl. the
   // background self-improvement review).
@@ -233,7 +233,7 @@ export default function SkillsPage() {
       skills: list.sort((a, b) => a.name.localeCompare(b.name)),
       enabledCount: list.filter((s) => s.enabled).length,
     }));
-  }, [filteredSkills]);
+  }, [filteredSkills, t.common.general]);
 
   const allCategories = useMemo(() => {
     const cats = new Map<string, number>();
@@ -248,7 +248,7 @@ export default function SkillsPage() {
         return a[0].localeCompare(b[0]);
       })
       .map(([key, count]) => ({ key, name: prettyCategory(key === "__none__" ? null : key, t.common.general), count }));
-  }, [skills]);
+  }, [skills, t.common.general]);
 
   const enabledCount = skills.filter((s) => s.enabled).length;
 

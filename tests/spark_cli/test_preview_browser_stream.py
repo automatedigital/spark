@@ -6,6 +6,7 @@ command plumbing, dispatch, and per-workspace profile isolation.
 
 from __future__ import annotations
 
+import sys
 import threading
 
 import pytest
@@ -226,9 +227,9 @@ def test_clear_browsing_data_removes_profiles(monkeypatch, tmp_path):
     assert not ephemeral.exists()
 
 
-def test_missing_playwright_surfaces_clear_error():
-    # Real constructor: no Playwright installed in this env -> BrowserUnavailable.
-    pytest.importorskip  # keep import used
+def test_missing_playwright_surfaces_clear_error(monkeypatch):
+    # Simulate the optional dependency being absent regardless of the dev env.
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", None)
     session = pb.StreamedBrowserSession("nope")
     with pytest.raises(pb.BrowserUnavailable):
         session.navigate("https://example.com")

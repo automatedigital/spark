@@ -1,36 +1,211 @@
 {
-  "_ConnectorsPage-D_GUEWJf.js": {
-    "file": "assets/ConnectorsPage-D_GUEWJf.js",
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-cpp/dist/index.js": {
+    "file": "assets/index-C21zs7IS.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-cpp/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-css/dist/index.js": {
+    "file": "assets/index-DkcKCf_s.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-css/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-go/dist/index.js": {
+    "file": "assets/index-fb4oTK9h.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-go/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-html/dist/index.js": {
+    "file": "assets/index-_bQcArY9.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-html/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-css/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-java/dist/index.js": {
+    "file": "assets/index-BYB3sg_S.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-java/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js": {
+    "file": "assets/index-BCqVsHpW.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-json/dist/index.js": {
+    "file": "assets/index-DboFWREA.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-json/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-markdown/dist/index.js": {
+    "file": "assets/index-D-T27LXR.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-markdown/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_feature-editor-core-DHV48i40.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-html/dist/index.js",
+      "_vendor-react-Dc-lrgX9.js",
+      "_index-DsfnTY5x.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-css/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-python/dist/index.js": {
+    "file": "assets/index-CmRJ0PkS.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-python/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-rust/dist/index.js": {
+    "file": "assets/index-D8xKoTj8.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-rust/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-sql/dist/index.js": {
+    "file": "assets/index-CnOsduOS.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-sql/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_feature-editor-core-DHV48i40.js",
+      "_index-DsfnTY5x.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-xml/dist/index.js": {
+    "file": "assets/index-CAmFLQEr.js",
+    "name": "index",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-xml/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-DsfnTY5x.js",
+      "_feature-editor-core-DHV48i40.js",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/shell.js": {
+    "file": "assets/shell-CjFT_Tl9.js",
+    "name": "shell",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/shell.js",
+    "isDynamicEntry": true
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/toml.js": {
+    "file": "assets/toml-Bm5Em-hy.js",
+    "name": "toml",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/toml.js",
+    "isDynamicEntry": true
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/yaml.js": {
+    "file": "assets/yaml-DsCXHVTH.js",
+    "name": "yaml",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/yaml.js",
+    "isDynamicEntry": true
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@tauri-apps/api/event.js": {
+    "file": "assets/event-DvHOOuKf.js",
+    "name": "event",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@tauri-apps/api/event.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-Dc-lrgX9.js"
+    ]
+  },
+  "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/highlight.js/es/common.js": {
+    "file": "assets/common-M9uU2fCB.js",
+    "name": "common",
+    "src": "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/highlight.js/es/common.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-Dc-lrgX9.js",
+      "index.html"
+    ]
+  },
+  "_ConnectorsPage-857piDYB.js": {
+    "file": "assets/ConnectorsPage-857piDYB.js",
     "name": "ConnectorsPage",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-Brp6GAKQ.js",
-      "_input-_FjMwJgS.js",
-      "_label-DY4Mnldf.js",
-      "_plug-BmHNF_zS.js",
-      "_server-BQOp2i8V.js"
+      "_badge-BFFlsK4G.js",
+      "_input-wHvGQt-D.js",
+      "_label-BhJ2qVNS.js",
+      "_plug-Cus5qHv6.js",
+      "_server-D99107av.js"
     ]
   },
-  "_SkillsToolsPage-CXZBv4xX.js": {
-    "file": "assets/SkillsToolsPage-CXZBv4xX.js",
+  "_SkillsToolsPage-zqnNx1zG.js": {
+    "file": "assets/SkillsToolsPage-zqnNx1zG.js",
     "name": "SkillsToolsPage",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-Brp6GAKQ.js",
-      "_switch-D0UdFVc5.js",
-      "_ConnectorsPage-D_GUEWJf.js",
-      "_input-_FjMwJgS.js",
-      "_label-DY4Mnldf.js",
-      "_server-BQOp2i8V.js",
-      "_save-pyuDj_gP.js"
+      "_badge-BFFlsK4G.js",
+      "_switch--o0mnjHP.js",
+      "_ConnectorsPage-857piDYB.js",
+      "_input-wHvGQt-D.js",
+      "_label-BhJ2qVNS.js",
+      "_server-D99107av.js",
+      "_save-DFGiQLlp.js"
     ]
   },
-  "_badge-Brp6GAKQ.js": {
-    "file": "assets/badge-Brp6GAKQ.js",
+  "_badge-BFFlsK4G.js": {
+    "file": "assets/badge-BFFlsK4G.js",
     "name": "badge",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
@@ -63,74 +238,74 @@
       "_feature-editor-core-DHV48i40.js"
     ]
   },
-  "_input-_FjMwJgS.js": {
-    "file": "assets/input-_FjMwJgS.js",
+  "_input-wHvGQt-D.js": {
+    "file": "assets/input-wHvGQt-D.js",
     "name": "input",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html"
     ]
   },
-  "_label-DY4Mnldf.js": {
-    "file": "assets/label-DY4Mnldf.js",
+  "_label-BhJ2qVNS.js": {
+    "file": "assets/label-BhJ2qVNS.js",
     "name": "label",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html"
     ]
   },
-  "_localDevice-DH9H7MQ0.js": {
-    "file": "assets/localDevice-DH9H7MQ0.js",
+  "_localDevice-GybFqY_F.js": {
+    "file": "assets/localDevice-GybFqY_F.js",
     "name": "localDevice",
     "imports": [
       "index.html"
     ]
   },
-  "_message-circle-i2LJDDhI.js": {
-    "file": "assets/message-circle-i2LJDDhI.js",
+  "_message-circle-Di0d4z3z.js": {
+    "file": "assets/message-circle-Di0d4z3z.js",
     "name": "message-circle",
     "imports": [
       "index.html"
     ]
   },
-  "_package-BVlaPJMA.js": {
-    "file": "assets/package-BVlaPJMA.js",
+  "_package-CEbSZTi1.js": {
+    "file": "assets/package-CEbSZTi1.js",
     "name": "package",
     "imports": [
       "index.html"
     ]
   },
-  "_plug-BmHNF_zS.js": {
-    "file": "assets/plug-BmHNF_zS.js",
+  "_plug-Cus5qHv6.js": {
+    "file": "assets/plug-Cus5qHv6.js",
     "name": "plug",
     "imports": [
       "index.html"
     ]
   },
-  "_save-pyuDj_gP.js": {
-    "file": "assets/save-pyuDj_gP.js",
+  "_save-DFGiQLlp.js": {
+    "file": "assets/save-DFGiQLlp.js",
     "name": "save",
     "imports": [
       "index.html"
     ]
   },
-  "_select-Bkki2zbF.js": {
-    "file": "assets/select-Bkki2zbF.js",
+  "_select-n1Cq9C6q.js": {
+    "file": "assets/select-n1Cq9C6q.js",
     "name": "select",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html"
     ]
   },
-  "_server-BQOp2i8V.js": {
-    "file": "assets/server-BQOp2i8V.js",
+  "_server-D99107av.js": {
+    "file": "assets/server-D99107av.js",
     "name": "server",
     "imports": [
       "index.html"
     ]
   },
-  "_switch-D0UdFVc5.js": {
-    "file": "assets/switch-D0UdFVc5.js",
+  "_switch--o0mnjHP.js": {
+    "file": "assets/switch--o0mnjHP.js",
     "name": "switch",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
@@ -142,7 +317,7 @@
     "name": "vendor-react"
   },
   "index.html": {
-    "file": "assets/index-BBV7-JH4.js",
+    "file": "assets/index-CpvASUXh.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -150,15 +325,15 @@
       "_vendor-react-Dc-lrgX9.js"
     ],
     "dynamicImports": [
-      "node_modules/@tauri-apps/api/event.js",
-      "node_modules/@tauri-apps/api/event.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@tauri-apps/api/event.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@tauri-apps/api/event.js",
       "src/components/workspace/WorkspaceTerminalPanel.tsx",
-      "node_modules/highlight.js/es/common.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/highlight.js/es/common.js",
       "src/pages/CronPage.tsx",
       "src/pages/FilesPage.tsx",
       "src/pages/SkillsPage.tsx",
-      "_ConnectorsPage-D_GUEWJf.js",
-      "_SkillsToolsPage-CXZBv4xX.js",
+      "_ConnectorsPage-857piDYB.js",
+      "_SkillsToolsPage-zqnNx1zG.js",
       "src/pages/MessagingPage.tsx",
       "src/components/SettingsPanel.tsx",
       "src/components/CommandPalette.tsx",
@@ -166,199 +341,24 @@
       "src/components/OnboardingWizard.tsx"
     ],
     "css": [
-      "assets/index-BlXGe1Gg.css"
-    ]
-  },
-  "node_modules/@codemirror/lang-cpp/dist/index.js": {
-    "file": "assets/index-C21zs7IS.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-cpp/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-css/dist/index.js": {
-    "file": "assets/index-DkcKCf_s.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-css/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-go/dist/index.js": {
-    "file": "assets/index-fb4oTK9h.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-go/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-html/dist/index.js": {
-    "file": "assets/index-_bQcArY9.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-html/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "node_modules/@codemirror/lang-css/dist/index.js",
-      "node_modules/@codemirror/lang-javascript/dist/index.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-java/dist/index.js": {
-    "file": "assets/index-BYB3sg_S.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-java/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-javascript/dist/index.js": {
-    "file": "assets/index-BCqVsHpW.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-javascript/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-json/dist/index.js": {
-    "file": "assets/index-DboFWREA.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-json/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-markdown/dist/index.js": {
-    "file": "assets/index-D-T27LXR.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-markdown/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_feature-editor-core-DHV48i40.js",
-      "node_modules/@codemirror/lang-html/dist/index.js",
-      "_vendor-react-Dc-lrgX9.js",
-      "_index-DsfnTY5x.js",
-      "node_modules/@codemirror/lang-css/dist/index.js",
-      "node_modules/@codemirror/lang-javascript/dist/index.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-python/dist/index.js": {
-    "file": "assets/index-CmRJ0PkS.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-python/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-rust/dist/index.js": {
-    "file": "assets/index-D8xKoTj8.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-rust/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-sql/dist/index.js": {
-    "file": "assets/index-CnOsduOS.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-sql/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_feature-editor-core-DHV48i40.js",
-      "_index-DsfnTY5x.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/lang-xml/dist/index.js": {
-    "file": "assets/index-CAmFLQEr.js",
-    "name": "index",
-    "src": "node_modules/@codemirror/lang-xml/dist/index.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_index-DsfnTY5x.js",
-      "_feature-editor-core-DHV48i40.js",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/@codemirror/legacy-modes/mode/shell.js": {
-    "file": "assets/shell-CjFT_Tl9.js",
-    "name": "shell",
-    "src": "node_modules/@codemirror/legacy-modes/mode/shell.js",
-    "isDynamicEntry": true
-  },
-  "node_modules/@codemirror/legacy-modes/mode/toml.js": {
-    "file": "assets/toml-Bm5Em-hy.js",
-    "name": "toml",
-    "src": "node_modules/@codemirror/legacy-modes/mode/toml.js",
-    "isDynamicEntry": true
-  },
-  "node_modules/@codemirror/legacy-modes/mode/yaml.js": {
-    "file": "assets/yaml-DsCXHVTH.js",
-    "name": "yaml",
-    "src": "node_modules/@codemirror/legacy-modes/mode/yaml.js",
-    "isDynamicEntry": true
-  },
-  "node_modules/@tauri-apps/api/event.js": {
-    "file": "assets/event-DgZQpO2X.js",
-    "name": "event",
-    "src": "node_modules/@tauri-apps/api/event.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "index.html",
-      "_vendor-react-Dc-lrgX9.js"
-    ]
-  },
-  "node_modules/highlight.js/es/common.js": {
-    "file": "assets/common-ID_DN9Jt.js",
-    "name": "common",
-    "src": "node_modules/highlight.js/es/common.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_vendor-react-Dc-lrgX9.js",
-      "index.html"
+      "assets/index-CrL3irmS.css"
     ]
   },
   "src/components/CommandPalette.tsx": {
-    "file": "assets/CommandPalette-BGZawhAy.js",
+    "file": "assets/CommandPalette-C_kKObBz.js",
     "name": "CommandPalette",
     "src": "src/components/CommandPalette.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_package-BVlaPJMA.js",
-      "_message-circle-i2LJDDhI.js",
-      "_plug-BmHNF_zS.js"
+      "_package-CEbSZTi1.js",
+      "_message-circle-Di0d4z3z.js",
+      "_plug-Cus5qHv6.js"
     ]
   },
   "src/components/KeyboardShortcutsModal.tsx": {
-    "file": "assets/KeyboardShortcutsModal-UGYVgYCg.js",
+    "file": "assets/KeyboardShortcutsModal-Cdtc1_xv.js",
     "name": "KeyboardShortcutsModal",
     "src": "src/components/KeyboardShortcutsModal.tsx",
     "isDynamicEntry": true,
@@ -368,43 +368,43 @@
     ]
   },
   "src/components/OnboardingWizard.tsx": {
-    "file": "assets/OnboardingWizard-ZbWKXVdB.js",
+    "file": "assets/OnboardingWizard-R7LHvAY6.js",
     "name": "OnboardingWizard",
     "src": "src/components/OnboardingWizard.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_localDevice-DH9H7MQ0.js",
-      "_input-_FjMwJgS.js",
-      "_server-BQOp2i8V.js"
+      "_localDevice-GybFqY_F.js",
+      "_input-wHvGQt-D.js",
+      "_server-D99107av.js"
     ]
   },
   "src/components/SettingsPanel.tsx": {
-    "file": "assets/SettingsPanel-Dxo48jdc.js",
+    "file": "assets/SettingsPanel-5LI_pelL.js",
     "name": "SettingsPanel",
     "src": "src/components/SettingsPanel.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-Brp6GAKQ.js",
-      "_localDevice-DH9H7MQ0.js",
-      "_switch-D0UdFVc5.js",
-      "_label-DY4Mnldf.js",
-      "_server-BQOp2i8V.js",
-      "_plug-BmHNF_zS.js",
-      "_SkillsToolsPage-CXZBv4xX.js",
-      "_input-_FjMwJgS.js",
-      "_select-Bkki2zbF.js",
-      "_ConnectorsPage-D_GUEWJf.js",
-      "_save-pyuDj_gP.js",
+      "_badge-BFFlsK4G.js",
+      "_localDevice-GybFqY_F.js",
+      "_switch--o0mnjHP.js",
+      "_label-BhJ2qVNS.js",
+      "_server-D99107av.js",
+      "_plug-Cus5qHv6.js",
+      "_SkillsToolsPage-zqnNx1zG.js",
+      "_input-wHvGQt-D.js",
+      "_select-n1Cq9C6q.js",
+      "_ConnectorsPage-857piDYB.js",
+      "_save-DFGiQLlp.js",
       "src/pages/MessagingPage.tsx",
-      "_message-circle-i2LJDDhI.js"
+      "_message-circle-Di0d4z3z.js"
     ]
   },
   "src/components/files/CodeEditor.tsx": {
-    "file": "assets/CodeEditor-Dc-fYQpH.js",
+    "file": "assets/CodeEditor-B8YKJq5F.js",
     "name": "CodeEditor",
     "src": "src/components/files/CodeEditor.tsx",
     "isDynamicEntry": true,
@@ -414,38 +414,38 @@
       "_feature-editor-core-DHV48i40.js"
     ],
     "dynamicImports": [
-      "node_modules/@codemirror/lang-python/dist/index.js",
-      "node_modules/@codemirror/lang-javascript/dist/index.js",
-      "node_modules/@codemirror/lang-javascript/dist/index.js",
-      "node_modules/@codemirror/lang-javascript/dist/index.js",
-      "node_modules/@codemirror/lang-javascript/dist/index.js",
-      "node_modules/@codemirror/lang-markdown/dist/index.js",
-      "node_modules/@codemirror/lang-json/dist/index.js",
-      "node_modules/@codemirror/lang-html/dist/index.js",
-      "node_modules/@codemirror/lang-css/dist/index.js",
-      "node_modules/@codemirror/lang-sql/dist/index.js",
-      "node_modules/@codemirror/lang-rust/dist/index.js",
-      "node_modules/@codemirror/lang-go/dist/index.js",
-      "node_modules/@codemirror/lang-java/dist/index.js",
-      "node_modules/@codemirror/lang-cpp/dist/index.js",
-      "node_modules/@codemirror/lang-cpp/dist/index.js",
-      "node_modules/@codemirror/lang-cpp/dist/index.js",
-      "node_modules/@codemirror/lang-xml/dist/index.js",
-      "node_modules/@codemirror/lang-xml/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-python/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-javascript/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-markdown/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-json/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-html/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-css/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-sql/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-rust/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-go/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-java/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-cpp/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-cpp/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-cpp/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-xml/dist/index.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/lang-xml/dist/index.js",
       "_feature-editor-core-DHV48i40.js",
-      "node_modules/@codemirror/legacy-modes/mode/shell.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/shell.js",
       "_feature-editor-core-DHV48i40.js",
-      "node_modules/@codemirror/legacy-modes/mode/shell.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/shell.js",
       "_feature-editor-core-DHV48i40.js",
-      "node_modules/@codemirror/legacy-modes/mode/yaml.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/yaml.js",
       "_feature-editor-core-DHV48i40.js",
-      "node_modules/@codemirror/legacy-modes/mode/yaml.js",
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/yaml.js",
       "_feature-editor-core-DHV48i40.js",
-      "node_modules/@codemirror/legacy-modes/mode/toml.js"
+      "../../../../../../../Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/@codemirror/legacy-modes/mode/toml.js"
     ]
   },
   "src/components/workspace/WorkspaceTerminalPanel.tsx": {
-    "file": "assets/WorkspaceTerminalPanel-BwcnsHCA.js",
+    "file": "assets/WorkspaceTerminalPanel-CKPS9Y2l.js",
     "name": "WorkspaceTerminalPanel",
     "src": "src/components/workspace/WorkspaceTerminalPanel.tsx",
     "isDynamicEntry": true,
@@ -456,58 +456,58 @@
     ]
   },
   "src/pages/CronPage.tsx": {
-    "file": "assets/CronPage-BHzmBt_W.js",
+    "file": "assets/CronPage-Ci2O7pQz.js",
     "name": "CronPage",
     "src": "src/pages/CronPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-Brp6GAKQ.js",
-      "_input-_FjMwJgS.js",
-      "_label-DY4Mnldf.js",
-      "_select-Bkki2zbF.js"
+      "_badge-BFFlsK4G.js",
+      "_input-wHvGQt-D.js",
+      "_label-BhJ2qVNS.js",
+      "_select-n1Cq9C6q.js"
     ]
   },
   "src/pages/FilesPage.tsx": {
-    "file": "assets/FilesPage-kqjhXGid.js",
+    "file": "assets/FilesPage-CxVE6tGS.js",
     "name": "FilesPage",
     "src": "src/pages/FilesPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
       "_vendor-react-Dc-lrgX9.js",
-      "_input-_FjMwJgS.js",
-      "_save-pyuDj_gP.js"
+      "_input-wHvGQt-D.js",
+      "_save-DFGiQLlp.js"
     ],
     "dynamicImports": [
       "src/components/files/CodeEditor.tsx"
     ]
   },
   "src/pages/MessagingPage.tsx": {
-    "file": "assets/MessagingPage-CFwpPtMX.js",
+    "file": "assets/MessagingPage-jz-wQvQv.js",
     "name": "MessagingPage",
     "src": "src/pages/MessagingPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_switch-D0UdFVc5.js",
-      "_save-pyuDj_gP.js"
+      "_switch--o0mnjHP.js",
+      "_save-DFGiQLlp.js"
     ]
   },
   "src/pages/SkillsPage.tsx": {
-    "file": "assets/SkillsPage-BNU2SODK.js",
+    "file": "assets/SkillsPage-oN8-mqrG.js",
     "name": "SkillsPage",
     "src": "src/pages/SkillsPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-Brp6GAKQ.js",
-      "_input-_FjMwJgS.js",
-      "_switch-D0UdFVc5.js",
-      "_package-BVlaPJMA.js"
+      "_badge-BFFlsK4G.js",
+      "_input-wHvGQt-D.js",
+      "_switch--o0mnjHP.js",
+      "_package-CEbSZTi1.js"
     ]
   }
 }

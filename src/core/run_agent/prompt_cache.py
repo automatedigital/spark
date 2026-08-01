@@ -20,9 +20,17 @@ prompt assembly must update the caching golden test (tests/run_agent/
 test_caching_golden.py) in the same commit, never silently.
 """
 
+import logging
 import os
 
+from agent.prompt_blocks import (
+    PromptBlock,
+    PromptBundle,
+    StabilityScope,
+    lint_prompt_blocks,
+)
 from agent.prompt_builder import (
+    ACTION_FIRST_RESPONSE_GUIDANCE,
     APP_CREATION_GUIDANCE,
     COMPUTER_USE_GUIDANCE,
     DEFAULT_AGENT_IDENTITY,
@@ -41,6 +49,8 @@ from agent.prompt_builder import (
     load_soul_md,
 )
 from core.model_tools import get_toolset_for_tool
+
+logger = logging.getLogger(__name__)
 
 
 class _PromptCacheMixin:
@@ -63,23 +73,45 @@ class _PromptCacheMixin:
         #   6. Current date & time (frozen at build time)
         #   7. Platform-specific formatting hint
 
+        prompt_blocks: list[PromptBlock] = []
+        _order = 0
+
+        def add(kind: str, content: str | None, scope: StabilityScope, source: str) -> None:
+            nonlocal _order
+            if content and content.strip():
+                prompt_blocks.append(PromptBlock.create(
+                    kind=kind,
+                    content=content,
+                    scope=scope,
+                    source=source,
+                    order=_order,
+                ))
+                _order += 1
+
         # Try SOUL.md as primary identity (unless context files are skipped)
         _soul_loaded = False
         if not self.skip_context_files:
             _soul_content = load_soul_md()
             if _soul_content:
-                prompt_parts = [_soul_content]
+                add("identity", _soul_content, StabilityScope.PROJECT, "context:SOUL.md")
                 _soul_loaded = True
 
         if not _soul_loaded:
             # Fallback to hardcoded identity
-            prompt_parts = [DEFAULT_AGENT_IDENTITY]
+            add("identity", DEFAULT_AGENT_IDENTITY, StabilityScope.RELEASE, "spark:identity")
 
-        prompt_parts.append(build_soul_guidance())
+        add("behavior", build_soul_guidance(), StabilityScope.RELEASE, "spark:soul-guidance")
         _name_guidance = build_name_guidance()
         if _name_guidance:
-            prompt_parts.append(_name_guidance)
-        prompt_parts.append(build_workspace_guidance())
+            add("profile", _name_guidance, StabilityScope.PROFILE, "profile:name")
+        add("workspace", build_workspace_guidance(), StabilityScope.PROJECT, "project:workspace")
+        if self._response_style_enabled:
+            add(
+                "behavior",
+                ACTION_FIRST_RESPONSE_GUIDANCE,
+                StabilityScope.RELEASE,
+                "spark:action-first-response",
+            )
 
         # Tool-aware behavioral guidance: only inject when the tools are loaded.
         # MEMORY_GUIDANCE and SKILLS_GUIDANCE are intentionally omitted — their
@@ -93,9 +125,9 @@ class _PromptCacheMixin:
         if "computer_use" in self.valid_tool_names:
             tool_guidance.append(COMPUTER_USE_GUIDANCE)
         if tool_guidance:
-            prompt_parts.append(" ".join(tool_guidance))
-        if any(name in self.valid_tool_names for name in ("terminal", "write_file", "patch_file")):
-            prompt_parts.append(APP_CREATION_GUIDANCE)
+            add("tool-guidance", " ".join(tool_guidance), StabilityScope.PROFILE, "profile:tools")
+        if any(name in self.valid_tool_names for name in ("terminal", "write_file", "patch_file", "files")):
+            add("tool-guidance", APP_CREATION_GUIDANCE, StabilityScope.PROFILE, "profile:app-creation")
 
         # Tool-use enforcement: tells the model to actually call tools instead
         # of describing intended actions.  Controlled by config.yaml
@@ -119,41 +151,41 @@ class _PromptCacheMixin:
                 model_lower = (self.model or "").lower()
                 _inject = any(p in model_lower for p in TOOL_USE_ENFORCEMENT_MODELS)
             if _inject:
-                prompt_parts.append(TOOL_USE_ENFORCEMENT_GUIDANCE)
+                add("behavior", TOOL_USE_ENFORCEMENT_GUIDANCE, StabilityScope.RELEASE, "spark:tool-enforcement")
                 _model_lower = (self.model or "").lower()
                 # Google model operational guidance (conciseness, absolute
                 # paths, parallel tool calls, verify-before-edit, etc.)
                 if "gemini" in _model_lower or "gemma" in _model_lower:
-                    prompt_parts.append(GOOGLE_MODEL_OPERATIONAL_GUIDANCE)
+                    add("provider", GOOGLE_MODEL_OPERATIONAL_GUIDANCE, StabilityScope.PROFILE, "provider:google")
                 # OpenAI GPT/Codex execution discipline (tool persistence,
                 # prerequisite checks, verification, anti-hallucination).
                 if "gpt" in _model_lower or "codex" in _model_lower:
-                    prompt_parts.append(OPENAI_MODEL_EXECUTION_GUIDANCE)
+                    add("provider", OPENAI_MODEL_EXECUTION_GUIDANCE, StabilityScope.PROFILE, "provider:openai")
 
         # so it can refer the user to them rather than reinventing answers.
 
         # Note: ephemeral_system_prompt is NOT included here. It's injected at
         # API-call time only so it stays out of the cached/stored system prompt.
         if system_message is not None:
-            prompt_parts.append(system_message)
+            add("user-system", system_message, StabilityScope.SESSION, "session:user-system")
 
         if self._memory_store:
             if self._memory_enabled:
                 mem_block = self._memory_store.format_for_system_prompt("memory")
                 if mem_block:
-                    prompt_parts.append(mem_block)
+                    add("memory", mem_block, StabilityScope.PROFILE, "profile:memory")
             # USER.md is always included when enabled.
             if self._user_profile_enabled:
                 user_block = self._memory_store.format_for_system_prompt("user")
                 if user_block:
-                    prompt_parts.append(user_block)
+                    add("user-profile", user_block, StabilityScope.PROFILE, "profile:user")
 
         # Active goal — injected so every turn is aware of the durable objective
         try:
             from core.goal import get_goal_block
             _goal_block = get_goal_block()
             if _goal_block:
-                prompt_parts.append(_goal_block)
+                add("goal", _goal_block, StabilityScope.SESSION, "session:goal")
         except Exception:
             pass
 
@@ -162,11 +194,11 @@ class _PromptCacheMixin:
             try:
                 _ext_mem_block = self._memory_manager.build_system_prompt()
                 if _ext_mem_block:
-                    prompt_parts.append(_ext_mem_block)
+                    add("memory-provider", _ext_mem_block, StabilityScope.PROFILE, "profile:memory-provider")
             except Exception:
                 pass
 
-        has_skills_tools = any(name in self.valid_tool_names for name in ['skills_list', 'skill_view', 'skill_manage'])
+        has_skills_tools = any(name in self.valid_tool_names for name in ['skills_list', 'skill_view', 'skill_manage', 'skills'])
         if has_skills_tools:
             avail_toolsets = {
                 toolset
@@ -184,7 +216,7 @@ class _PromptCacheMixin:
         else:
             skills_prompt = ""
         if skills_prompt:
-            prompt_parts.append(skills_prompt)
+            add("skills", skills_prompt, StabilityScope.PROFILE, "profile:skills")
 
         if not self.skip_context_files:
             # Use TERMINAL_CWD for context file discovery when set (gateway
@@ -195,7 +227,12 @@ class _PromptCacheMixin:
             context_files_prompt = build_context_files_prompt(
                 cwd=_context_cwd, skip_soul=_soul_loaded)
             if context_files_prompt:
-                prompt_parts.append(context_files_prompt)
+                add(
+                    "context-files",
+                    context_files_prompt,
+                    StabilityScope.PROJECT,
+                    f"context:{_context_cwd or os.getcwd()}",
+                )
 
         from core.spark_time import now as _spark_now
         now = _spark_now()
@@ -206,31 +243,42 @@ class _PromptCacheMixin:
             timestamp_line += f"\nModel: {self.model}"
         if self.provider:
             timestamp_line += f"\nProvider: {self.provider}"
-        prompt_parts.append(timestamp_line)
+        add("session-metadata", timestamp_line, StabilityScope.SESSION, "session:metadata")
 
         # Alibaba Coding Plan API always returns "glm-4.7" as model name regardless
         # of the requested model. Inject explicit model identity into the system prompt
         # so the agent can correctly report which model it is (workaround for API bug).
         if self.provider == "alibaba":
             _model_short = self.model.split("/")[-1] if "/" in self.model else self.model
-            prompt_parts.append(
+            add("provider-identity",
                 f"You are powered by the model named {_model_short}. "
                 f"The exact model ID is {self.model}. "
                 f"When asked what model you are, always answer based on this information, "
-                f"not on any model name returned by the API."
+                f"not on any model name returned by the API.",
+                StabilityScope.SESSION,
+                "session:alibaba-model",
             )
 
         # Environment hints (WSL, Termux, etc.) — tell the agent about the
         # execution environment so it can translate paths and adapt behavior.
         _env_hints = build_environment_hints()
         if _env_hints:
-            prompt_parts.append(_env_hints)
+            add("environment", _env_hints, StabilityScope.PROFILE, "profile:environment")
 
         platform_key = (self.platform or "").lower().strip()
         if platform_key in PLATFORM_HINTS:
-            prompt_parts.append(PLATFORM_HINTS[platform_key])
+            add("platform", PLATFORM_HINTS[platform_key], StabilityScope.PROFILE, f"profile:platform:{platform_key}")
 
-        return "\n\n".join(p.strip() for p in prompt_parts if p.strip())
+        bundle = PromptBundle.build(prompt_blocks)
+        issues = lint_prompt_blocks(bundle.blocks, self.tools)
+        if issues:
+            logger.warning(
+                "Prompt lint reported %d issue(s): %s",
+                len(issues), ", ".join(issue.code for issue in issues),
+            )
+        self._prompt_bundle = bundle
+        self._prompt_lint_issues = issues
+        return bundle.render()
 
     def _invalidate_system_prompt(self):
         """
@@ -240,5 +288,21 @@ class _PromptCacheMixin:
         so the rebuilt prompt captures any writes from this session.
         """
         self._cached_system_prompt = None
+        self._prompt_bundle = None
         if self._memory_store:
             self._memory_store.load_from_disk()
+
+    def _assert_tool_surface_stable(self) -> None:
+        """Reject accidental schema mutation inside a context epoch."""
+
+        frozen = getattr(self, "_frozen_tool_schema_json", None)
+        if frozen is None:
+            return
+        from tools.facades import canonical_schema_json
+
+        current = canonical_schema_json(self.tools or [])
+        if current != frozen:
+            raise RuntimeError(
+                "Model-visible tool schema changed inside context epoch; "
+                "start a new session/profile instead"
+            )

@@ -31,7 +31,6 @@ import urllib.request
 import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager, contextmanager
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic as _steady_clock
@@ -76,6 +75,7 @@ from spark_cli.kanban_routes import register_kanban_routes
 from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
 from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
+from core.async_runtime import get_async_runtime
 
 try:
     from fastapi import FastAPI, HTTPException, Request
@@ -92,6 +92,11 @@ except ImportError:
 
 WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
+
+
+async def _run_blocking(function, /, *args, **kwargs):
+    """Run web-server blocking work in Spark's bounded process worker pool."""
+    return await get_async_runtime().run_blocking(function, *args, **kwargs)
 
 
 def _github_repository_url(remote: str) -> str | None:
@@ -500,6 +505,7 @@ class _EventSubscriber:
 
     prefixes: tuple[str, ...]
     session_ids: frozenset[str] = frozenset()
+    detail_session_ids: frozenset[str] = frozenset()
     priority_queue: asyncio.Queue = field(
         default_factory=lambda: asyncio.Queue(maxsize=_EVENT_PRIORITY_QUEUE_SIZE)
     )
@@ -516,6 +522,26 @@ class _EventSubscriber:
         if not topic_matches:
             return False
         return not self.session_ids or session_id in self.session_ids
+
+    def public_view(self, envelope: dict[str, Any]) -> dict[str, Any]:
+        """Hide unmounted chat detail while preserving the global cursor."""
+        topic = str(envelope.get("topic") or "")
+        session_id = envelope.get("session_id") or envelope.get("entity_id")
+        if (
+            topic.startswith("chat.")
+            and self.detail_session_ids
+            and session_id not in self.detail_session_ids
+        ):
+            payload = {"filtered_topic": topic}
+            return {
+                **envelope,
+                "topic": "bus.cursor",
+                "entity_id": None,
+                "session_id": None,
+                "payload": payload,
+                "data": payload,
+            }
+        return envelope
 
     async def get(self) -> dict[str, Any]:
         ready = self._get_earliest_ready()
@@ -578,6 +604,8 @@ class _EventSubscriber:
         if not envelope.get("_seq"):
             self.local_sequence += 1
             envelope["_seq"] = self.local_sequence
+        if envelope.get("sequence") is not None and envelope.get("sequence_start") is None:
+            envelope["sequence_start"] = envelope["sequence"]
         topic = str(envelope.get("topic") or "")
         session_id = envelope.get("session_id")
         if topic in _PRIORITY_EVENT_TOPICS or topic == "bus.gap":
@@ -607,6 +635,10 @@ class _EventSubscriber:
             "batch_size": int(tail["data"].get("batch_size") or 1) + 1,
         }
         tail["ts"] = envelope.get("ts", tail.get("ts"))
+        if envelope.get("_seq") is not None:
+            tail["_seq"] = envelope["_seq"]
+        if envelope.get("sequence") is not None:
+            tail["sequence"] = envelope["sequence"]
         return True
 
     def _enqueue_priority(self, envelope: dict[str, Any]) -> None:
@@ -1277,7 +1309,7 @@ async def _await_checkpoint_ready(
 ) -> None:
     """Event-loop-safe checkpoint barrier used by async turn finalizers."""
     while True:
-        ready = await asyncio.to_thread(
+        ready = await _run_blocking(
             _force_checkpoint_or_block,
             session_id,
             turn,
@@ -1431,11 +1463,15 @@ async def _lifespan(_app: FastAPI):
     ensure_dashboard_token_file()
     loop_lag_task = asyncio.create_task(_monitor_web_loop_lag())
     # Warm the update cache in the background so /api/status has it immediately
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _prefetch_update_check)
-    loop.run_in_executor(None, _prefetch_mac_update_check)
-    loop.run_in_executor(None, _init_memory_store)
-    loop.run_in_executor(None, _prewarm_agent_stack)
+    warmup_tasks = [
+        asyncio.create_task(_run_blocking(function))
+        for function in (
+            _prefetch_update_check,
+            _prefetch_mac_update_check,
+            _init_memory_store,
+            _prewarm_agent_stack,
+        )
+    ]
     # Desktop app: keep the messaging gateway running in the background so
     # platforms stay reachable while the app is open. No-ops outside the
     # desktop sidecar or when disabled via config. Only stops a gateway we own.
@@ -1447,11 +1483,11 @@ async def _lifespan(_app: FastAPI):
     try:
         yield
     finally:
-        if not await asyncio.to_thread(_checkpoint_writer.shutdown):
+        if not await _run_blocking(_checkpoint_writer.shutdown):
             _log.error("web checkpoint writer did not flush cleanly during shutdown")
         try:
             from spark_cli.desktop_gateway import stop_desktop_gateway
-            await loop.run_in_executor(None, stop_desktop_gateway)
+            await _run_blocking(stop_desktop_gateway)
         except Exception:
             _log.debug("desktop gateway shutdown skipped", exc_info=True)
         _web_event_loop = None
@@ -1463,6 +1499,9 @@ async def _lifespan(_app: FastAPI):
             _pending_token_events.clear()
             _pending_token_gap_sessions.clear()
         loop_lag_task.cancel()
+        for task in warmup_tasks:
+            if not task.done():
+                task.cancel()
         try:
             await loop_lag_task
         except asyncio.CancelledError:
@@ -1494,6 +1533,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class EfficiencyCounterMiddleware(BaseHTTPMiddleware):
+    """Count API polling and response bytes without retaining paths or content."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        response = await call_next(request)
+        try:
+            from core.runtime_metrics import increment
+
+            if request.method == "GET" and request.url.path.startswith("/api/"):
+                if request.url.path == "/api/events":
+                    increment("event_stream_connections")
+                else:
+                    increment("http_get_requests")
+                    if request.url.path.endswith(("/status", "/turn-status", "/stream-snapshot")):
+                        increment("http_poll_requests")
+            size = response.headers.get("content-length")
+            if size and size.isdigit():
+                increment("json_snapshot_bytes", int(size))
+        except Exception:
+            pass
+        return response
+
+
+app.add_middleware(EfficiencyCounterMiddleware)
 
 
 class DashboardAPIAuthMiddleware(BaseHTTPMiddleware):
@@ -1642,6 +1707,13 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         data = _sanitize_web_chat_value(data)
         data = {**data, "session_id": session_id}
     envelope = {"topic": topic, "session_id": session_id, "ts": time.time(), "data": data}
+    try:
+        from core.runtime_metrics import detailed_enabled, increment
+        increment("event_payloads")
+        if detailed_enabled():
+            increment("event_payload_bytes", len(json.dumps(envelope, default=str).encode("utf-8")))
+    except Exception:
+        pass
     envelope["_seq"] = _next_event_sequence()
 
     # A semantic event is a hard token-batch boundary. Seal the current batch
@@ -1785,8 +1857,20 @@ def _flush_pending_token_events(
 
 
 def _fanout_event_envelope(envelope: dict[str, Any], published_at: float) -> None:
+    from spark_cli.web_state import web_state_journal
+
     topic = str(envelope.get("topic") or "")
     session_id = envelope.get("session_id")
+    # The replay journal is the commit boundary for browser delivery.  Assign
+    # the public sequence here, after token batching and before any subscriber
+    # can observe the event.
+    envelope = web_state_journal.append(
+        topic,
+        dict(envelope.get("data") or {}),
+        str(session_id) if session_id is not None else None,
+        timestamp=float(envelope.get("ts") or time.time()),
+    )
+    envelope["_seq"] = envelope["sequence"]
     _streaming_pipeline_metrics.record_fanout_latency(_steady_clock() - published_at)
     for subscriber in tuple(_event_subscribers):
         try:
@@ -1864,7 +1948,7 @@ def _emit_sessions_changed(
 ) -> None:
     payload: Dict[str, Any] = {"action": action, "session_id": session_id}
     if session is not None:
-        payload["session"] = session
+        payload["session"] = _web_session_list_row(session)
     _publish_event("sessions.changed", payload, session_id)
 
 
@@ -2005,17 +2089,59 @@ async def sse_events_bus(
     request: Request,
     topics: str = "sessions,chat",
     session_id: Optional[str] = None,
+    detail_session_id: Optional[str] = None,
+    after_sequence: int = 0,
+    projection_version: int = 1,
+    server_epoch: Optional[str] = None,
 ):
-    """Shared SSE bus for sessions.* and chat.* events."""
+    """Shared SSE bus with an optional v1 snapshot-plus-delta resume cursor."""
+    from spark_cli.web_state import web_state_journal
     from fastapi.responses import StreamingResponse as _StreamingResponse
 
     prefixes = tuple(p.strip() for p in topics.split(",") if p.strip())
     session_ids = frozenset({session_id}) if session_id else frozenset()
-    subscriber = _EventSubscriber(prefixes=prefixes, session_ids=session_ids)
+    detail_session_ids = (
+        frozenset({detail_session_id}) if detail_session_id else frozenset()
+    )
+    subscriber = _EventSubscriber(
+        prefixes=prefixes,
+        session_ids=session_ids,
+        detail_session_ids=detail_session_ids,
+    )
     _event_subscribers.add(subscriber)
 
     async def event_generator():
         try:
+            if after_sequence:
+                resume = web_state_journal.resume(
+                    after_sequence,
+                    projection_version=projection_version,
+                    server_epoch=server_epoch or "",
+                    entity_ids=None,
+                )
+                if resume.requires_snapshot:
+                    payload = {"reason": resume.reason}
+                    control = {
+                        "schema_version": 1,
+                        "topic": "bus.snapshot_required",
+                        "entity_id": session_id,
+                        "session_id": session_id,
+                        "sequence": max(1, after_sequence + 1),
+                        "projection_version": 1,
+                        "timestamp": time.time(),
+                        "ts": time.time(),
+                        "payload": payload,
+                        "data": payload,
+                        "server_epoch": web_state_journal.server_epoch,
+                    }
+                    yield f"data: {json.dumps(control, default=str)}\n\n"
+                else:
+                    for replayed in resume.events:
+                        if subscriber.accepts(
+                            str(replayed.get("topic") or ""), replayed.get("entity_id")
+                        ):
+                            projected = subscriber.public_view(replayed)
+                            yield f"data: {json.dumps(projected, default=str)}\n\n"
             while True:
                 if await request.is_disconnected():
                     break
@@ -2027,7 +2153,11 @@ async def sse_events_bus(
                 if env.get("topic") == "bus.gap":
                     subscriber.acknowledge_gap(env.get("session_id"))
                 try:
-                    public_env = {key: value for key, value in env.items() if key != "_seq"}
+                    public_env = {
+                        key: value
+                        for key, value in subscriber.public_view(env).items()
+                        if key != "_seq"
+                    }
                     yield f"data: {json.dumps(public_env, default=str)}\n\n"
                 except Exception:
                     continue
@@ -2043,6 +2173,93 @@ async def sse_events_bus(
             "Connection": "keep-alive",
         },
     )
+
+
+@app.get("/api/web-state/snapshot")
+async def get_web_state_snapshot(
+    selected_session_id: Optional[str] = None,
+    session_limit: int = 50,
+    message_limit: int = 200,
+):
+    """Return bounded shell state plus detail for only the selected session."""
+    from core.spark_state import SessionDB
+    from spark_cli.web_state import (
+        WEB_STATE_PROJECTION_VERSION,
+        WEB_STATE_SCHEMA_VERSION,
+        web_state_journal,
+    )
+
+    def _load() -> dict[str, Any]:
+        db = SessionDB()
+        try:
+            # Capture the cursor before reading projections. Any concurrent
+            # commit is then replayed after this sequence (possibly as a safe
+            # duplicate), never skipped by a cursor newer than the snapshot.
+            snapshot_sequence = web_state_journal.latest_sequence
+            bounded_sessions = min(max(1, session_limit), 200)
+            bounded_messages = min(max(1, message_limit), 500)
+            sessions = db.list_sessions_rich(limit=bounded_sessions, offset=0)
+            _canonicalize_workspace_session_sources(db, sessions)
+            _apply_web_turn_active_state(sessions)
+            shells = [_web_session_list_row(row) for row in sessions]
+            detail = None
+            if selected_session_id:
+                resolved = db.resolve_session_id(selected_session_id)
+                if resolved:
+                    leaf = db.resolve_latest_descendant(resolved)
+                    page = db.get_web_message_page(leaf, limit=bounded_messages)
+                    detail = {
+                        "session_id": leaf,
+                        "messages": [
+                            _message_for_history_response(message)
+                            for message in page.pop("messages")
+                        ],
+                        **page,
+                        "turn": _conversation_turn_status_payload(leaf),
+                    }
+            return {
+                "schema_version": WEB_STATE_SCHEMA_VERSION,
+                "projection_version": WEB_STATE_PROJECTION_VERSION,
+                "server_epoch": web_state_journal.server_epoch,
+                "sequence": snapshot_sequence,
+                "timestamp": time.time(),
+                "shells": shells,
+                "detail": detail,
+                "limits": {
+                    "sessions": bounded_sessions,
+                    "messages": bounded_messages,
+                    "detail_idle_ttl_ms": 120_000,
+                },
+            }
+        finally:
+            db.close()
+
+    return await _run_blocking(_load)
+
+
+@app.get("/api/web-state/deltas")
+async def get_web_state_deltas(
+    after_sequence: int,
+    projection_version: int,
+    server_epoch: str,
+    session_id: Optional[str] = None,
+):
+    """Return ordered retained deltas or an explicit snapshot requirement."""
+    from spark_cli.web_state import web_state_journal
+
+    resume = web_state_journal.resume(
+        after_sequence,
+        projection_version=projection_version,
+        server_epoch=server_epoch,
+        entity_ids=(session_id,) if session_id else None,
+    )
+    return {
+        "events": list(resume.events),
+        "requires_snapshot": resume.requires_snapshot,
+        "reason": resume.reason,
+        "latest_sequence": web_state_journal.latest_sequence,
+        "server_epoch": web_state_journal.server_epoch,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2103,6 +2320,16 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     },
     "smart_model_routing.enabled": {
         "description": "Enable Multi-model routing: keep the SMART model for complex work and route simple turns to the configured FAST model.",
+        "category": "general",
+    },
+    "response_budget.style_enabled": {
+        "type": "boolean",
+        "description": "Lead direct, status, and action responses with the outcome while preserving requested detail and safety exceptions.",
+        "category": "general",
+    },
+    "response_budget.soft_output_caps": {
+        "type": "boolean",
+        "description": "Apply request-class output ceilings when adaptive routing is enabled; truncated answers continue automatically.",
         "category": "general",
     },
     "smart_model_routing.max_simple_chars": {
@@ -2873,19 +3100,30 @@ async def get_status():
             "subagents_sidebar": bool(_dash.get("subagents_sidebar", True)),
         },
         "streaming_health": _streaming_pipeline_metrics.snapshot(),
+        "async_runtime": get_async_runtime().telemetry(),
+    }
+
+
+@app.get("/api/efficiency/report")
+def get_efficiency_report(reset: bool = False):
+    """Return count-only process metrics suitable for automated replays."""
+    from core.runtime_metrics import snapshot
+
+    return {
+        "version": "1.0",
+        "runtime": snapshot(reset=reset),
+        "streaming": _streaming_pipeline_metrics.snapshot(),
+        "event_drops": sum(_event_drop_counts.values()),
     }
 
 
 @app.get("/api/update/check")
 async def check_update_available():
     """Check whether a Spark update is available (commits behind origin/main)."""
-    import asyncio
-
     try:
         from spark_cli.banner import check_for_updates
 
-        loop = asyncio.get_event_loop()
-        behind = await loop.run_in_executor(None, check_for_updates)
+        behind = await _run_blocking(check_for_updates)
         return {
             "update_available": bool(behind and behind > 0),
             "commits_behind": behind,
@@ -3145,7 +3383,7 @@ async def check_mac_update():
             "download_url": None,
             "release_url": None,
         }
-    return await asyncio.to_thread(_check_mac_update, True)
+    return await _run_blocking(_check_mac_update, True)
 
 
 @app.post("/api/mac/update/run")
@@ -3153,7 +3391,7 @@ async def run_mac_update():
     """Download the latest macOS DMG and start a detached automatic installer."""
     if not _is_desktop_app() or sys.platform != "darwin":
         raise HTTPException(status_code=400, detail="Not running as the macOS desktop app")
-    info = await asyncio.to_thread(_check_mac_update, True)
+    info = await _run_blocking(_check_mac_update, True)
     download_url = info.get("download_url")
     if not download_url:
         raise HTTPException(status_code=400, detail="No downloadable macOS release found")
@@ -3184,7 +3422,7 @@ async def run_mac_update():
             )
 
     try:
-        await asyncio.to_thread(_download_and_start_installer)
+        await _run_blocking(_download_and_start_installer)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to start macOS update installer: {exc}") from exc
     return {
@@ -3245,7 +3483,7 @@ async def stream_admin_action_run(request: Request, run_id: str):
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await asyncio.to_thread(queue.get, True, 20)
+                    event = await _run_blocking(queue.get, True, 20)
                 except thread_queue.Empty:
                     yield "event: ping\ndata: {}\n\n"
                     if run.get("status") in ("done", "failed"):
@@ -3613,7 +3851,7 @@ def _conversation_diagnostics_payload(session_id: str) -> dict[str, Any]:
 
 @app.get("/api/conversations/{session_id}/diagnostics")
 async def conversation_diagnostics(session_id: str):
-    return await asyncio.to_thread(_conversation_diagnostics_payload, session_id)
+    return await _run_blocking(_conversation_diagnostics_payload, session_id)
 
 
 @app.get("/api/dashboard/auth/info")
@@ -3836,7 +4074,7 @@ async def setup_onboarding_skills(req: OnboardingSkillsRequest):
         from tools.skills_sync import sync_skills
 
         only = _MINIMAL_SKILLS if mode == "minimal" else None
-        result = await asyncio.to_thread(sync_skills, True, only)
+        result = await _run_blocking(sync_skills, True, only)
 
     # Persist the choice so re-running setup / diagnostics knows the intent.
     try:
@@ -5623,11 +5861,8 @@ async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Re
     if not _reveal_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     if provider_id == "anthropic":
-        return await asyncio.get_event_loop().run_in_executor(
-            None,
-            _submit_anthropic_pkce,
-            body.session_id,
-            body.code,
+        return await _run_blocking(
+            _submit_anthropic_pkce, body.session_id, body.code
         )
     raise HTTPException(
         status_code=400, detail=f"submit not supported for {provider_id}"
@@ -5745,7 +5980,7 @@ async def get_session_messages(
         finally:
             db.close()
 
-    etag, resp = await asyncio.to_thread(_load_page)
+    etag, resp = await _run_blocking(_load_page)
     headers = {"ETag": etag, "Cache-Control": "no-cache"}
     if resp is None:
         return Response(status_code=304, headers=headers)
@@ -6008,8 +6243,7 @@ async def warm_session_agent(session_id: str):
         finally:
             _web_warm_inflight.discard(sid)
 
-    loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _warm_in_thread)
+    asyncio.create_task(_run_blocking(_warm_in_thread))
     return {"ok": True, "warm": False}
 
 
@@ -6614,12 +6848,6 @@ def _web_turn_worker_count() -> int:
         return 4
 
 
-_WEB_TURN_EXECUTOR = ThreadPoolExecutor(
-    max_workers=_web_turn_worker_count(),
-    thread_name_prefix="spark-web-turn",
-)
-
-
 def _web_agent_cache_limit() -> int:
     raw = os.getenv("SPARK_WEB_AGENT_CACHE_SIZE", "").strip()
     if raw:
@@ -6645,7 +6873,9 @@ async def _run_web_turn_in_executor(loop: asyncio.AbstractEventLoop, fn: Callabl
         finally:
             _streaming_pipeline_metrics.record_executor_completed()
 
-    return await loop.run_in_executor(_WEB_TURN_EXECUTOR, _wrapped)
+    return await get_async_runtime().run_named_blocking(
+        "web-turn", _web_turn_worker_count(), _wrapped
+    )
 
 
 def _touch_web_agent_cache(session_id: str) -> None:
@@ -6961,10 +7191,10 @@ def _create_fake_stream_session(
 
         db = SessionDB()
         try:
+            db.create_session(session_id, source=source, model=model)
             db._conn.execute(
-                "INSERT OR IGNORE INTO sessions (id, source, model, title, started_at, kanban_status) "
-                "VALUES (?, ?, ?, ?, ?, 'active')",
-                (session_id, source, model, title, time.time()),
+                "UPDATE sessions SET title = ?, kanban_status = 'active' WHERE id = ?",
+                (title, session_id),
             )
             db._conn.commit()
             return db.get_session(session_id)
@@ -7099,7 +7329,6 @@ def _run_fake_stream_task(
             eager_user_id=eager_user_id,
             checkpoint_assistant_id=active_turn.assistant_message_id if active_turn else None,
         )
-        _emit_web_session_updated(session_id)
         try:
             loop.call_soon_threadsafe(queue.put_nowait, None)
         except Exception:
@@ -7111,6 +7340,7 @@ def _run_fake_stream_task(
             session_id,
         )
         _clear_web_turn(session_id)
+        _emit_web_session_updated(session_id)
 
 
 def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
@@ -7914,7 +8144,7 @@ def _default_web_chat_model() -> str:
 
 def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
-    from agent.smart_model_routing import resolve_turn_route
+    from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
     from spark_cli.model_config import read_global_model_config
     from spark_cli.runtime_provider import resolve_runtime_provider
 
@@ -7945,8 +8175,10 @@ def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
         cfg.get("smart_model_routing", {}) or {},
         primary,
     )
-    route["request_overrides"] = None
-    return route
+    budget_cfg = cfg.get("response_budget", {}) or {}
+    return merge_route_request_overrides(
+        route, soft_caps_enabled=bool(budget_cfg.get("soft_output_caps", True))
+    )
 
 
 def _update_web_session_model(session_id: str, model: str) -> None:
@@ -8023,6 +8255,10 @@ def _emit_web_session_updated(session_id: str) -> None:
         try:
             row = db.get_session(session_id)
             if row:
+                # SessionDB rows describe durable sessions, not the transient
+                # web turn registry. Project the authoritative live state so a
+                # background thread cannot remain "Working" after turn_done.
+                row["is_active"] = _is_web_turn_active(session_id)
                 _emit_sessions_changed("updated", session_id, row)
         finally:
             db.close()
@@ -8860,9 +9096,8 @@ async def canvas_chat(body: CanvasChatBody):
         )
         return agent.chat(body.message)
 
-    loop = asyncio.get_running_loop()
     try:
-        reply = await loop.run_in_executor(None, _run)
+        reply = await _run_blocking(_run)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "reply": reply, "model": turn_route["model"]}
@@ -8957,8 +9192,7 @@ async def create_conversation(body: ConversationCreate):
             else:
                 _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
                 _record_web_turn_timing(session_id, "agent_init_start")
-                agent = await loop.run_in_executor(
-                    None,
+                agent = await _run_blocking(
                     lambda: _new_web_agent(
                         session_id=session_id,
                         model=model,
@@ -8997,7 +9231,6 @@ async def create_conversation(body: ConversationCreate):
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -9006,6 +9239,7 @@ async def create_conversation(body: ConversationCreate):
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
     with turn.lock:
@@ -9038,8 +9272,9 @@ async def create_fake_stream(body: FakeStreamStart, request: Request):
         model=body.model or "fake-stream",
         title=(body.title or body.message[:80] or "Fake stream"),
     )
-    if row:
-        _emit_sessions_changed("created", session_id, row)
+    if not row:
+        raise HTTPException(status_code=500, detail="Unable to create fake stream session")
+    _emit_sessions_changed("created", session_id, row)
 
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue
@@ -9438,7 +9673,6 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _web_queues.pop(session_id, None)
@@ -9446,6 +9680,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     with turn.lock:
@@ -9906,13 +10141,13 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
                 before_message_count,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             _maybe_auto_title_web(agent, final_session_id, user_msg, result)
             _web_queues.pop(session_id, None)
             _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     _mark_web_turn_active(session_id, status="Retrying…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
@@ -9965,7 +10200,7 @@ async def conversation_turn_status(session_id: str):
     Lightweight source of truth the UI can poll to recover from a lost
     ``chat.turn_done`` event (e.g. the SSE bus dropped mid-turn).
     """
-    return await asyncio.to_thread(_conversation_turn_status_payload, session_id)
+    return await _run_blocking(_conversation_turn_status_payload, session_id)
 
 
 def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
@@ -10041,7 +10276,7 @@ async def conversation_stream_snapshot(
     calls this heavier endpoint only during stall/reconnect recovery so it can
     patch a partial assistant bubble without waiting for final persistence.
     """
-    return await asyncio.to_thread(
+    return await _run_blocking(
         _conversation_stream_snapshot_payload,
         session_id,
         after_chars=after_chars,
@@ -10339,7 +10574,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 result = {"final_response": slash_text}
             else:
                 _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
-                agent = await loop.run_in_executor(None, _build_workspace_agent)
+                agent = await _run_blocking(_build_workspace_agent)
                 _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
@@ -10364,7 +10599,6 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, raw_message, result)
             try:
@@ -10379,6 +10613,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
     asyncio.create_task(run_agent_task())

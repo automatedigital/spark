@@ -74,7 +74,7 @@ export function validateModelName(raw: string, label = "Model name"): Validation
   const trimmed = (raw ?? "").trim();
   if (!trimmed) return { ok: false, error: `${label} is required.` };
   if (trimmed.length > 200) return { ok: false, error: `${label} must be 200 characters or fewer.` };
-  if (/\s|[\x00-\x1F]/.test(trimmed)) {
+  if (/\s/.test(trimmed) || [...trimmed].some((char) => char.charCodeAt(0) <= 0x1f)) {
     return { ok: false, error: `${label} must not contain spaces or control characters.` };
   }
   return { ok: true, value: trimmed };

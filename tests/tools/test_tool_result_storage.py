@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tools.artifact_store import clear_artifacts
 from tools.budget_config import (
     DEFAULT_PREVIEW_SIZE_CHARS,
     DEFAULT_RESULT_SIZE_CHARS,
@@ -23,6 +24,13 @@ from tools.tool_result_storage import (
     generate_preview,
     maybe_persist_tool_result,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_artifact_records():
+    clear_artifacts()
+    yield
+    clear_artifacts()
 
 # ── generate_preview ──────────────────────────────────────────────────
 
@@ -242,7 +250,8 @@ class TestMaybePersistToolResult:
             threshold=30_000,
         )
         assert PERSISTED_OUTPUT_TAG in result
-        assert "tc_456.txt" in result
+        assert "Artifact handle: artifact://" in result
+        assert "Full output saved to:" not in result
         assert len(result) < len(content)
         env.execute.assert_called_once()
 
@@ -426,7 +435,7 @@ class TestMaybePersistToolResult:
         )
         assert result == content
 
-    def test_file_path_uses_tool_use_id(self):
+    def test_storage_path_uses_content_identity(self):
         env = MagicMock()
         env.execute.return_value = {"output": "", "returncode": 0}
         content = "x" * 60_000
@@ -437,7 +446,10 @@ class TestMaybePersistToolResult:
             env=env,
             threshold=30_000,
         )
-        assert "unique_id_abc.txt" in result
+        assert "Artifact handle: artifact://" in result
+        cmd = env.execute.call_args[0][0]
+        assert "unique_id_abc.txt" not in cmd
+        assert "/spark-results/" in cmd
 
     def test_preview_included_in_persisted_output(self):
         env = MagicMock()
@@ -465,7 +477,8 @@ class TestMaybePersistToolResult:
             env=env,
             threshold=30_000,
         )
-        assert "/data/data/com.termux/files/usr/tmp/spark-results/tc_termux.txt" in result
+        assert "Artifact handle: artifact://" in result
+        assert "/data/data/com.termux/files/usr/tmp" not in result
         cmd = env.execute.call_args[0][0]
         assert "mkdir -p /data/data/com.termux/files/usr/tmp/spark-results" in cmd
 
@@ -645,7 +658,8 @@ class TestEnforceTurnBudget:
         ]
         enforce_turn_budget(msgs, env=env)
         assert "Unchanged duplicate of artifact sha256:" in msgs[1]["content"]
-        assert len(msgs[1]["content"]) < len(second) * 0.2
+        assert len(msgs[1]["content"]) < len(first) * 0.2
+        env.execute.assert_called_once()
 
 
 # ── Per-tool threshold integration ────────────────────────────────────

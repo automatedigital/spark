@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "session_id": "fixture-session-reconnect",
+  "sequence": [
+    {"seq": 1, "topic": "chat.status", "data": {"phase": "api"}},
+    {"seq": 2, "topic": "chat.token", "data": {"t": "Synthetic partial"}},
+    {"action": "disconnect"},
+    {"action": "reconnect", "last_seen_seq": 2},
+    {"seq": 3, "topic": "chat.token", "data": {"t": " response"}},
+    {"seq": 4, "topic": "chat.turn_done", "data": {"completed": true}}
+  ],
+  "expected": {"reconnects": 1, "recovery_actions": 1, "http_polls_while_healthy": 0}
+}

@@ -29,8 +29,9 @@ import {
   subscribeToUnreadSessions,
 } from "@/lib/unreadSessionStore";
 import { threadTitle } from "@/components/chat/ThreadRow";
-import { useEventBus } from "@/hooks/useEventBus";
+import { STATE_SNAPSHOT_TOPIC, useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
+import { normalizedWebState, type WebStateSnapshotV1 } from "@/lib/webState";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { recordChatDiagnosticCounter } from "@/lib/chatDiagnostics";
 
@@ -239,7 +240,6 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const [searching, setSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestRef = useRef(0);
-  const reconcileSessionsRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedSessionRowsRef = useRef<Map<string, SessionInfo>>(new Map());
   const queuedSessionRowsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextSessionsOffsetRef = useRef(0);
@@ -341,14 +341,6 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     return request;
   }, []);
 
-  const scheduleSessionsReconcile = useCallback(() => {
-    if (reconcileSessionsRef.current) clearTimeout(reconcileSessionsRef.current);
-    reconcileSessionsRef.current = setTimeout(() => {
-      reconcileSessionsRef.current = null;
-      void reloadSessions();
-    }, 750);
-  }, [reloadSessions]);
-
   const flushQueuedSessionRows = useCallback(() => {
     if (queuedSessionRowsTimerRef.current) {
       clearTimeout(queuedSessionRowsTimerRef.current);
@@ -380,8 +372,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     void reloadProjects();
-    void reloadSessions();
-  }, [reloadProjects, reloadSessions]);
+  }, [reloadProjects]);
 
   // Pins are durable across reloads and may point outside the recent page.
   useEffect(() => {
@@ -393,13 +384,33 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   }, [hydrateSession, loadingSessions, sessions]);
 
   useEffect(() => () => {
-    if (reconcileSessionsRef.current) clearTimeout(reconcileSessionsRef.current);
     if (queuedSessionRowsTimerRef.current) clearTimeout(queuedSessionRowsTimerRef.current);
     queuedSessionRowsRef.current.clear();
   }, []);
 
   // ── Real-time updates (SSE) ──
   useEventBus((env: SparkEventEnvelope) => {
+    if (env.topic === STATE_SNAPSHOT_TOPIC) {
+      const snapshot = env.data.snapshot as WebStateSnapshotV1 | undefined;
+      if (snapshot?.shells) {
+        normalizedWebState.replaceShells(snapshot.shells);
+        if (snapshot.detail) {
+          const now = Date.now();
+          normalizedWebState.setDetail({
+            sessionId: snapshot.detail.session_id,
+            messages: snapshot.detail.messages,
+            status: snapshot.detail.turn?.turn_active ? "streaming" : "idle",
+            mountedAt: now,
+            lastAccessedAt: now,
+            settled: !snapshot.detail.turn?.turn_active,
+          });
+          normalizedWebState.expireIdleDetails(snapshot.detail.session_id, now);
+        }
+        setSessions(normalizedWebState.selectShells() as SessionInfo[]);
+        nextSessionsOffsetRef.current = snapshot.shells.length;
+      }
+      return;
+    }
     // chat.turn_done is the authoritative live completion edge. The sessions
     // projection can arrive a little later, which previously left the inbox
     // card saying Working until a full page refresh reconciled it.
@@ -419,6 +430,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     const sid = data.session_id ?? "";
 
     if (data.action === "deleted" && sid) {
+      normalizedWebState.removeShell(sid);
       dismissSessionNotification(sid);
       lastMessageCountRef.current.delete(sid);
       notifiedMessageCountRef.current.delete(sid);
@@ -433,6 +445,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
     if (data.session) {
       const row = data.session;
+      normalizedWebState.upsertShell(row);
       const newCount = row.message_count ?? 0;
       const lastCount = lastMessageCountRef.current.get(row.id) ?? 0;
       const notifiedCount = notifiedMessageCountRef.current.get(row.id) ?? 0;
@@ -597,8 +610,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       };
       return [optimistic, ...prev];
     });
-    scheduleSessionsReconcile();
-  }, [scheduleSessionsReconcile]);
+  }, []);
 
   const clearPendingInitialMessage = useCallback((sessionId?: string) => {
     setPendingInitialMessages((pending) => {

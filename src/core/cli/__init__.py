@@ -819,6 +819,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
 
         # Optional cheap-vs-strong routing for simple turns
         self._smart_model_routing = CLI_CONFIG.get("smart_model_routing", {}) or {}
+        self._response_budget_config = CLI_CONFIG.get("response_budget", {}) or {}
         self._active_agent_route_signature = None
 
         # Agent will be initialized on first use

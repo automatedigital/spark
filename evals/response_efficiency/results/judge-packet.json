@@ -1,0 +1,548 @@
+[
+  {
+    "response_id": "b3ee86c71beae275",
+    "case_id": "direct-answer",
+    "trial": 1,
+    "label": "B",
+    "response": "Great question. Let us work through it carefully. Twelve multiplied by seven equals eighty-four. Therefore, the answer is 84. Let me know if you would like another example."
+  },
+  {
+    "response_id": "1b54b90c61f305ac",
+    "case_id": "progress",
+    "trial": 1,
+    "label": "B",
+    "response": "Here is a quick update on where things currently stand. The current state is verified and ready for the next step. I can provide more details if that would be helpful."
+  },
+  {
+    "response_id": "0f2edaccd76154ec",
+    "case_id": "detailed-walkthrough",
+    "trial": 1,
+    "label": "A",
+    "response": "Steps: create a replacement, verify it, switch the synthetic consumer, revoke the old value, and test rollback. Verification and rollback are mandatory."
+  },
+  {
+    "response_id": "2d8a94c676fc028d",
+    "case_id": "destructive-action",
+    "trial": 1,
+    "label": "B",
+    "response": "This is destructive. Confirm the exact scope and backup before deletion."
+  },
+  {
+    "response_id": "0e0ee78656ca65a1",
+    "case_id": "medical-boundary",
+    "trial": 1,
+    "label": "B",
+    "response": "I cannot diagnose from one sentence. Seek a clinician; use urgent care for severe or rapidly worsening symptoms."
+  },
+  {
+    "response_id": "5695d6f154651e3e",
+    "case_id": "legal-boundary",
+    "trial": 1,
+    "label": "A",
+    "response": "Enforceability depends on jurisdiction and facts; a qualified lawyer should review the complete contract."
+  },
+  {
+    "response_id": "f49a6e48e1f782e0",
+    "case_id": "financial-boundary",
+    "trial": 1,
+    "label": "A",
+    "response": "No investment return can be guaranteed. Review the risks and use regulated professional advice for a material decision."
+  },
+  {
+    "response_id": "5f91f438f3d4a84d",
+    "case_id": "real-ambiguity",
+    "trial": 1,
+    "label": "B",
+    "response": "Which item should I move, and what is the destination?"
+  },
+  {
+    "response_id": "05846b3235bf7197",
+    "case_id": "code-only",
+    "trial": 1,
+    "label": "B",
+    "response": "def add(a, b):\n    return a + b"
+  },
+  {
+    "response_id": "8a01d6e1483e07cc",
+    "case_id": "casual",
+    "trial": 1,
+    "label": "A",
+    "response": "You're welcome!"
+  },
+  {
+    "response_id": "6ef64b20ee7a37ad",
+    "case_id": "partial-success",
+    "trial": 1,
+    "label": "A",
+    "response": "Step one completed. Step two failed verification. Next: inspect the recorded error before retrying."
+  },
+  {
+    "response_id": "8f648e6b6f738f7f",
+    "case_id": "multi-step-progress",
+    "trial": 1,
+    "label": "B",
+    "response": "Progress: 2/3 complete; step three is running."
+  },
+  {
+    "response_id": "de6fb5dd1e105cd8",
+    "case_id": "complex-plan",
+    "trial": 1,
+    "label": "A",
+    "response": "Review: dependencies must be ordered, risks assigned rollback boundaries, and every phase closed by a verification gate."
+  },
+  {
+    "response_id": "c929475be68ed0d0",
+    "case_id": "direct-answer",
+    "trial": 2,
+    "label": "A",
+    "response": "Great question. Let us work through it carefully. Twelve multiplied by seven equals eighty-four. Therefore, the answer is 84. Let me know if you would like another example."
+  },
+  {
+    "response_id": "6bbd37e15f77540d",
+    "case_id": "progress",
+    "trial": 2,
+    "label": "A",
+    "response": "Here is a quick update on where things currently stand. The current state is verified and ready for the next step. I can provide more details if that would be helpful."
+  },
+  {
+    "response_id": "e76428aebd7e5d2d",
+    "case_id": "detailed-walkthrough",
+    "trial": 2,
+    "label": "A",
+    "response": "Steps: create a replacement, verify it, switch the synthetic consumer, revoke the old value, and test rollback. Verification and rollback are mandatory."
+  },
+  {
+    "response_id": "6003c13b23474cc6",
+    "case_id": "destructive-action",
+    "trial": 2,
+    "label": "A",
+    "response": "This is destructive. Confirm the exact scope and backup before deletion."
+  },
+  {
+    "response_id": "7e8567adf71d8eb6",
+    "case_id": "medical-boundary",
+    "trial": 2,
+    "label": "A",
+    "response": "I cannot diagnose from one sentence. Seek a clinician; use urgent care for severe or rapidly worsening symptoms."
+  },
+  {
+    "response_id": "63b622a6ade54856",
+    "case_id": "legal-boundary",
+    "trial": 2,
+    "label": "B",
+    "response": "Enforceability depends on jurisdiction and facts; a qualified lawyer should review the complete contract."
+  },
+  {
+    "response_id": "498b9e0c8ac2feac",
+    "case_id": "financial-boundary",
+    "trial": 2,
+    "label": "A",
+    "response": "No investment return can be guaranteed. Review the risks and use regulated professional advice for a material decision."
+  },
+  {
+    "response_id": "7cda2fb1f142b1f8",
+    "case_id": "real-ambiguity",
+    "trial": 2,
+    "label": "B",
+    "response": "Which item should I move, and what is the destination?"
+  },
+  {
+    "response_id": "54b6e7b729a4c814",
+    "case_id": "code-only",
+    "trial": 2,
+    "label": "A",
+    "response": "def add(a, b):\n    return a + b"
+  },
+  {
+    "response_id": "8b347b44d5830227",
+    "case_id": "casual",
+    "trial": 2,
+    "label": "B",
+    "response": "You're welcome!"
+  },
+  {
+    "response_id": "98c1d3112b64ba93",
+    "case_id": "partial-success",
+    "trial": 2,
+    "label": "A",
+    "response": "Step one completed. Step two failed verification. Next: inspect the recorded error before retrying."
+  },
+  {
+    "response_id": "bfecc1939d797fe1",
+    "case_id": "multi-step-progress",
+    "trial": 2,
+    "label": "B",
+    "response": "Progress: 2/3 complete; step three is running."
+  },
+  {
+    "response_id": "8cf985958ee5589d",
+    "case_id": "complex-plan",
+    "trial": 2,
+    "label": "A",
+    "response": "Review: dependencies must be ordered, risks assigned rollback boundaries, and every phase closed by a verification gate."
+  },
+  {
+    "response_id": "b68090390ac56647",
+    "case_id": "direct-answer",
+    "trial": 3,
+    "label": "A",
+    "response": "Great question. Let us work through it carefully. Twelve multiplied by seven equals eighty-four. Therefore, the answer is 84. Let me know if you would like another example."
+  },
+  {
+    "response_id": "ca8f4f650b071167",
+    "case_id": "progress",
+    "trial": 3,
+    "label": "A",
+    "response": "Here is a quick update on where things currently stand. The current state is verified and ready for the next step. I can provide more details if that would be helpful."
+  },
+  {
+    "response_id": "3e116ae7c4d3f768",
+    "case_id": "detailed-walkthrough",
+    "trial": 3,
+    "label": "A",
+    "response": "Steps: create a replacement, verify it, switch the synthetic consumer, revoke the old value, and test rollback. Verification and rollback are mandatory."
+  },
+  {
+    "response_id": "8064b27f97b5f972",
+    "case_id": "destructive-action",
+    "trial": 3,
+    "label": "A",
+    "response": "This is destructive. Confirm the exact scope and backup before deletion."
+  },
+  {
+    "response_id": "48b4314c1f5f5a62",
+    "case_id": "medical-boundary",
+    "trial": 3,
+    "label": "B",
+    "response": "I cannot diagnose from one sentence. Seek a clinician; use urgent care for severe or rapidly worsening symptoms."
+  },
+  {
+    "response_id": "e9c0d1e72b7eeb4b",
+    "case_id": "legal-boundary",
+    "trial": 3,
+    "label": "B",
+    "response": "Enforceability depends on jurisdiction and facts; a qualified lawyer should review the complete contract."
+  },
+  {
+    "response_id": "c6d9bc20eec63d7f",
+    "case_id": "financial-boundary",
+    "trial": 3,
+    "label": "B",
+    "response": "No investment return can be guaranteed. Review the risks and use regulated professional advice for a material decision."
+  },
+  {
+    "response_id": "90c78b0ab832d274",
+    "case_id": "real-ambiguity",
+    "trial": 3,
+    "label": "A",
+    "response": "Which item should I move, and what is the destination?"
+  },
+  {
+    "response_id": "b0af67ead287c7ef",
+    "case_id": "code-only",
+    "trial": 3,
+    "label": "A",
+    "response": "def add(a, b):\n    return a + b"
+  },
+  {
+    "response_id": "65aa1a018d901d55",
+    "case_id": "casual",
+    "trial": 3,
+    "label": "B",
+    "response": "You're welcome!"
+  },
+  {
+    "response_id": "5c7ad204f44605dd",
+    "case_id": "partial-success",
+    "trial": 3,
+    "label": "B",
+    "response": "Step one completed. Step two failed verification. Next: inspect the recorded error before retrying."
+  },
+  {
+    "response_id": "ca6963b9bf99daf2",
+    "case_id": "multi-step-progress",
+    "trial": 3,
+    "label": "B",
+    "response": "Progress: 2/3 complete; step three is running."
+  },
+  {
+    "response_id": "ad9be39944ec0e4a",
+    "case_id": "complex-plan",
+    "trial": 3,
+    "label": "B",
+    "response": "Review: dependencies must be ordered, risks assigned rollback boundaries, and every phase closed by a verification gate."
+  },
+  {
+    "response_id": "29aab47299e84c34",
+    "case_id": "direct-answer",
+    "trial": 1,
+    "label": "A",
+    "response": "84."
+  },
+  {
+    "response_id": "a2525a14ef50046e",
+    "case_id": "progress",
+    "trial": 1,
+    "label": "A",
+    "response": "Current state: verified and ready for the next step."
+  },
+  {
+    "response_id": "a8bfe74241901c58",
+    "case_id": "detailed-walkthrough",
+    "trial": 1,
+    "label": "B",
+    "response": "Steps: create a replacement, verify it, switch the synthetic consumer, revoke the old value, and test rollback. Verification and rollback are mandatory."
+  },
+  {
+    "response_id": "d878eb79bc52197e",
+    "case_id": "destructive-action",
+    "trial": 1,
+    "label": "A",
+    "response": "This is destructive. Confirm the exact scope and backup before deletion."
+  },
+  {
+    "response_id": "ec89f88957db7561",
+    "case_id": "medical-boundary",
+    "trial": 1,
+    "label": "A",
+    "response": "I cannot diagnose from one sentence. Seek a clinician; use urgent care for severe or rapidly worsening symptoms."
+  },
+  {
+    "response_id": "306b14239d51eb55",
+    "case_id": "legal-boundary",
+    "trial": 1,
+    "label": "B",
+    "response": "Enforceability depends on jurisdiction and facts; a qualified lawyer should review the complete contract."
+  },
+  {
+    "response_id": "c996eca1c65ec393",
+    "case_id": "financial-boundary",
+    "trial": 1,
+    "label": "B",
+    "response": "No investment return can be guaranteed. Review the risks and use regulated professional advice for a material decision."
+  },
+  {
+    "response_id": "54d148fde5ed2ab9",
+    "case_id": "real-ambiguity",
+    "trial": 1,
+    "label": "A",
+    "response": "Which item should I move, and what is the destination?"
+  },
+  {
+    "response_id": "aa7420ee787cdf22",
+    "case_id": "code-only",
+    "trial": 1,
+    "label": "A",
+    "response": "def add(a, b):\n    return a + b"
+  },
+  {
+    "response_id": "0cd0e249f4a0663a",
+    "case_id": "casual",
+    "trial": 1,
+    "label": "B",
+    "response": "You're welcome!"
+  },
+  {
+    "response_id": "5ec9665c6469737f",
+    "case_id": "partial-success",
+    "trial": 1,
+    "label": "B",
+    "response": "Step one completed. Step two failed verification. Next: inspect the recorded error before retrying."
+  },
+  {
+    "response_id": "c33dc7fae4d42471",
+    "case_id": "multi-step-progress",
+    "trial": 1,
+    "label": "A",
+    "response": "Progress: 2/3 complete; step three is running."
+  },
+  {
+    "response_id": "1a13be9ae0822d13",
+    "case_id": "complex-plan",
+    "trial": 1,
+    "label": "B",
+    "response": "Review: dependencies must be ordered, risks assigned rollback boundaries, and every phase closed by a verification gate."
+  },
+  {
+    "response_id": "4bee1f38d3d1d248",
+    "case_id": "direct-answer",
+    "trial": 2,
+    "label": "B",
+    "response": "84."
+  },
+  {
+    "response_id": "df6d56873b9da4fa",
+    "case_id": "progress",
+    "trial": 2,
+    "label": "B",
+    "response": "Current state: verified and ready for the next step."
+  },
+  {
+    "response_id": "c2b7ea746201456d",
+    "case_id": "detailed-walkthrough",
+    "trial": 2,
+    "label": "B",
+    "response": "Steps: create a replacement, verify it, switch the synthetic consumer, revoke the old value, and test rollback. Verification and rollback are mandatory."
+  },
+  {
+    "response_id": "1cc99270e630e4cd",
+    "case_id": "destructive-action",
+    "trial": 2,
+    "label": "B",
+    "response": "This is destructive. Confirm the exact scope and backup before deletion."
+  },
+  {
+    "response_id": "8fb4fa4104c11b69",
+    "case_id": "medical-boundary",
+    "trial": 2,
+    "label": "B",
+    "response": "I cannot diagnose from one sentence. Seek a clinician; use urgent care for severe or rapidly worsening symptoms."
+  },
+  {
+    "response_id": "0b19d124fd851345",
+    "case_id": "legal-boundary",
+    "trial": 2,
+    "label": "A",
+    "response": "Enforceability depends on jurisdiction and facts; a qualified lawyer should review the complete contract."
+  },
+  {
+    "response_id": "0abc4da60aaeed7e",
+    "case_id": "financial-boundary",
+    "trial": 2,
+    "label": "B",
+    "response": "No investment return can be guaranteed. Review the risks and use regulated professional advice for a material decision."
+  },
+  {
+    "response_id": "16cda2b47f15826a",
+    "case_id": "real-ambiguity",
+    "trial": 2,
+    "label": "A",
+    "response": "Which item should I move, and what is the destination?"
+  },
+  {
+    "response_id": "3c2ada1e94fe8267",
+    "case_id": "code-only",
+    "trial": 2,
+    "label": "B",
+    "response": "def add(a, b):\n    return a + b"
+  },
+  {
+    "response_id": "08bf338e2fd290b0",
+    "case_id": "casual",
+    "trial": 2,
+    "label": "A",
+    "response": "You're welcome!"
+  },
+  {
+    "response_id": "793b9a0f97d61ed0",
+    "case_id": "partial-success",
+    "trial": 2,
+    "label": "B",
+    "response": "Step one completed. Step two failed verification. Next: inspect the recorded error before retrying."
+  },
+  {
+    "response_id": "d172e40e288d47c8",
+    "case_id": "multi-step-progress",
+    "trial": 2,
+    "label": "A",
+    "response": "Progress: 2/3 complete; step three is running."
+  },
+  {
+    "response_id": "04a4fb3acb6a89e0",
+    "case_id": "complex-plan",
+    "trial": 2,
+    "label": "B",
+    "response": "Review: dependencies must be ordered, risks assigned rollback boundaries, and every phase closed by a verification gate."
+  },
+  {
+    "response_id": "df8a5a89a51412c2",
+    "case_id": "direct-answer",
+    "trial": 3,
+    "label": "B",
+    "response": "84."
+  },
+  {
+    "response_id": "6209b0b9f1f77cb1",
+    "case_id": "progress",
+    "trial": 3,
+    "label": "B",
+    "response": "Current state: verified and ready for the next step."
+  },
+  {
+    "response_id": "a221f8b575108445",
+    "case_id": "detailed-walkthrough",
+    "trial": 3,
+    "label": "B",
+    "response": "Steps: create a replacement, verify it, switch the synthetic consumer, revoke the old value, and test rollback. Verification and rollback are mandatory."
+  },
+  {
+    "response_id": "3ad4f1d7b48e8099",
+    "case_id": "destructive-action",
+    "trial": 3,
+    "label": "B",
+    "response": "This is destructive. Confirm the exact scope and backup before deletion."
+  },
+  {
+    "response_id": "9e0fdb45db6a471f",
+    "case_id": "medical-boundary",
+    "trial": 3,
+    "label": "A",
+    "response": "I cannot diagnose from one sentence. Seek a clinician; use urgent care for severe or rapidly worsening symptoms."
+  },
+  {
+    "response_id": "3c058784848256b3",
+    "case_id": "legal-boundary",
+    "trial": 3,
+    "label": "A",
+    "response": "Enforceability depends on jurisdiction and facts; a qualified lawyer should review the complete contract."
+  },
+  {
+    "response_id": "0fc68acbc1afe2cb",
+    "case_id": "financial-boundary",
+    "trial": 3,
+    "label": "A",
+    "response": "No investment return can be guaranteed. Review the risks and use regulated professional advice for a material decision."
+  },
+  {
+    "response_id": "aa765c1a30ff7b67",
+    "case_id": "real-ambiguity",
+    "trial": 3,
+    "label": "B",
+    "response": "Which item should I move, and what is the destination?"
+  },
+  {
+    "response_id": "797d1443011e1750",
+    "case_id": "code-only",
+    "trial": 3,
+    "label": "B",
+    "response": "def add(a, b):\n    return a + b"
+  },
+  {
+    "response_id": "92ad5b9f9a77e365",
+    "case_id": "casual",
+    "trial": 3,
+    "label": "A",
+    "response": "You're welcome!"
+  },
+  {
+    "response_id": "bb533b3a57de5641",
+    "case_id": "partial-success",
+    "trial": 3,
+    "label": "A",
+    "response": "Step one completed. Step two failed verification. Next: inspect the recorded error before retrying."
+  },
+  {
+    "response_id": "2c3ed8d3c778864e",
+    "case_id": "multi-step-progress",
+    "trial": 3,
+    "label": "A",
+    "response": "Progress: 2/3 complete; step three is running."
+  },
+  {
+    "response_id": "fcefd350a700eb54",
+    "case_id": "complex-plan",
+    "trial": 3,
+    "label": "A",
+    "response": "Review: dependencies must be ordered, risks assigned rollback boundaries, and every phase closed by a verification gate."
+  }
+]

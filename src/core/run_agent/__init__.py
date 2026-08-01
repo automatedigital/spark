@@ -22,7 +22,6 @@ Usage:
 
 import asyncio
 import base64
-import concurrent.futures
 import copy
 import hashlib
 import json
@@ -37,13 +36,21 @@ import time
 import threading
 from types import SimpleNamespace
 import uuid
-from typing import List, Dict, Any, Optional
-from openai import OpenAI
-import fire
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
+
+if TYPE_CHECKING:
+    from agent.rate_limit_tracker import RateLimitState
+
+
+def OpenAI(*args, **kwargs):
+    """Lazy, patchable constructor preserving the historic module contract."""
+    from openai import OpenAI as implementation
+
+    return implementation(*args, **kwargs)
 
 # Load .env from ~/.spark/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
@@ -67,17 +74,44 @@ from core.model_tools import (
     handle_function_call,
     check_toolset_requirements,
 )
-from tools.terminal_tool import cleanup_vm, get_active_env, is_persistent_env
+from tools.budget_config import BudgetConfig
 from tools.tool_result_storage import maybe_persist_tool_result, enforce_turn_budget
 from tools.interrupt import set_interrupt as _set_interrupt
-from tools.browser_tool import cleanup_browser
+
+
+def cleanup_vm(*args, **kwargs):
+    """Lazy terminal cleanup boundary (kept patchable for compatibility)."""
+    from tools.terminal_tool import cleanup_vm as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def get_active_env(*args, **kwargs):
+    """Resolve a terminal environment only when a tool turn needs it."""
+    from tools.terminal_tool import get_active_env as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def is_persistent_env(*args, **kwargs):
+    """Query terminal persistence without loading terminal support at import."""
+    from tools.terminal_tool import is_persistent_env as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def cleanup_browser(*args, **kwargs):
+    """Lazy browser cleanup boundary (kept patchable for compatibility)."""
+    from tools.browser_tool import cleanup_browser as implementation
+
+    return implementation(*args, **kwargs)
 
 
 from core.spark_constants import OPENROUTER_BASE_URL
 
 # Agent internals extracted to agent/ package for modularity
 from agent.memory_manager import build_memory_context_block
-from agent.retry_utils import jittered_backoff
+from core.run_agent.retry_policy import jittered_backoff
 from agent.error_classifier import classify_api_error, FailoverReason
 # Most prompt-content helpers/constants moved with _build_system_prompt into
 # run_agent/prompt_cache.py (Phase 4). DEFAULT_AGENT_IDENTITY is still used
@@ -96,6 +130,13 @@ from agent.subdirectory_hints import SubdirectoryHintTracker
 from agent.prompt_caching import apply_anthropic_cache_control
 from agent.prompt_builder import DEVELOPER_ROLE_MODELS
 from agent.usage_pricing import estimate_usage_cost, normalize_usage
+from agent.efficiency_metrics import (
+    EfficiencyRecorder,
+    ModelIterationAccounting,
+    ToolRuntimeAccounting,
+    estimate_response_tokens,
+    measure_request,
+)
 from agent.display import (
     KawaiiSpinner, build_tool_preview as _build_tool_preview,
     get_cute_tool_message as _get_cute_tool_message_impl,
@@ -127,6 +168,11 @@ from core.run_agent.stdio import (  # noqa: E402,I001
 # obvious place to live. noqa: import sits mid-module so the mixin is bound
 # before the AIAgent class statement.
 from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
+from core.tool_scheduler import (  # noqa: E402,I001
+    OrderedCallbackDispatcher,
+    ToolBatchScheduler,
+    build_tool_dag,
+)
 
 
 # Tool-batch parallelism heuristics live in run_agent/parallelism.py (Phase 4
@@ -232,6 +278,63 @@ class AIAgent(_PromptCacheMixin):
         self._base_url = value
         self._base_url_lower = value.lower() if value else ""
 
+    @property
+    def request_overrides(self) -> dict[str, Any]:
+        return self._request_overrides
+
+    @request_overrides.setter
+    def request_overrides(self, value: Optional[Dict[str, Any]]) -> None:
+        raw = dict(value or {})
+        self._soft_max_output_tokens = raw.pop("_soft_max_output_tokens", None)
+        self._budget_reasoning_effort = raw.pop("_budget_reasoning_effort", None)
+        self._routing_reason = raw.pop("_routing_reason", None)
+        self._request_class = raw.pop("_request_class", None)
+        self._request_overrides = raw
+
+    def _effective_max_tokens(self) -> int | None:
+        configured = self.max_tokens
+        soft = self._soft_max_output_tokens
+        if not isinstance(soft, int) or soft <= 0:
+            return configured
+        if not isinstance(configured, int) or configured <= 0:
+            return soft
+        return min(configured, soft)
+
+    def _effective_reasoning_config(self) -> dict[str, Any] | None:
+        if self.reasoning_config is not None:
+            return self.reasoning_config
+        effort = self._budget_reasoning_effort
+        if isinstance(effort, str) and effort:
+            return {"enabled": True, "effort": effort}
+        return None
+
+    def _apply_response_contract(self, api_messages: list) -> list:
+        """Add a turn-local compactness contract without mutating persisted history."""
+        contracts = {
+            "direct_answer": (
+                "Response constraint: answer in at most 60 words unless more detail is "
+                "required for correctness or safety."
+            ),
+            "status_progress": (
+                "Response constraint: give at most two short bullets unless more detail "
+                "is required for correctness or safety."
+            ),
+        }
+        contract = contracts.get(self._request_class)
+        if not contract:
+            return api_messages
+        prepared = copy.deepcopy(api_messages)
+        for message in reversed(prepared):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                message["content"] = f"{content}\n\n[{contract}]"
+            elif isinstance(content, list):
+                content.append({"type": "text", "text": f"[{contract}]"})
+            break
+        return prepared
+
     def __init__(
         self,
         base_url: str = None,
@@ -245,6 +348,7 @@ class AIAgent(_PromptCacheMixin):
         model: str = "",
         max_iterations: int = 90,  # Default tool-calling iterations (shared with subagents)
         tool_delay: float = 0.0,
+        dependency_scheduler: bool | None = None,
         enabled_toolsets: List[str] = None,
         disabled_toolsets: List[str] = None,
         save_trajectories: bool = False,
@@ -340,6 +444,19 @@ class AIAgent(_PromptCacheMixin):
         # Consumed by every LLM turn across parent + all subagents.
         self.iteration_budget = iteration_budget or IterationBudget(max_iterations)
         self.tool_delay = tool_delay
+        if dependency_scheduler is None:
+            dependency_scheduler = True
+            try:
+                from spark_cli.config import load_config
+
+                agent_cfg = (load_config() or {}).get("agent") or {}
+                dependency_scheduler = bool(agent_cfg.get("dependency_scheduler", True))
+            except Exception:
+                pass
+        self.dependency_scheduler = bool(dependency_scheduler) and not env_var_enabled(
+            "SPARK_CONSERVATIVE_TOOL_SCHEDULER"
+        )
+        self._tool_callback_dispatcher: OrderedCallbackDispatcher | None = None
         self.save_trajectories = save_trajectories
         self.verbose_logging = verbose_logging
         self.quiet_mode = quiet_mode
@@ -770,12 +887,17 @@ class AIAgent(_PromptCacheMixin):
         self.logs_dir = spark_home / "sessions"
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.session_log_file = self.logs_dir / f"session_{self.session_id}.json"
+        self._efficiency_recorder = EfficiencyRecorder(self.session_id)
+        self._efficiency_schema_tokens: int | None = None
         
         # Track conversation messages for session logging
         self._session_messages: List[Dict[str, Any]] = []
         
         # Cached system prompt -- built once per session, only rebuilt on compression
         self._cached_system_prompt: Optional[str] = None
+        self._prompt_bundle = None
+        self._prompt_lint_issues = ()
+        self._restored_prompt_cache_key = None
         
         # Filesystem checkpoint manager (transparent — not a tool)
         from tools.checkpoint_manager import CheckpointManager
@@ -788,6 +910,7 @@ class AIAgent(_PromptCacheMixin):
         self._session_db = session_db
         self._parent_session_id = parent_session_id
         self._last_flushed_db_idx = 0  # tracks DB-write cursor to prevent duplicate writes
+        self._typed_compression_applied = False
         if self._session_db:
             try:
                 self._session_db.create_session(
@@ -941,6 +1064,10 @@ class AIAgent(_PromptCacheMixin):
         if not isinstance(_agent_section, dict):
             _agent_section = {}
         self._tool_use_enforcement = _agent_section.get("tool_use_enforcement", "auto")
+        _response_budget_cfg = _agent_cfg.get("response_budget", {})
+        if not isinstance(_response_budget_cfg, dict):
+            _response_budget_cfg = {}
+        self._response_style_enabled = bool(_response_budget_cfg.get("style_enabled", True))
 
         # Initialize context compressor for automatic context management
         # Compresses conversation when approaching model's context limit
@@ -1066,6 +1193,7 @@ class AIAgent(_PromptCacheMixin):
                 config_context_length=_config_context_length,
                 provider=self.provider,
                 api_mode=self.api_mode,
+                checkpoint_mode=str(_compression_cfg.get("checkpoint_mode", "typed")).lower(),
             )
         self.compression_enabled = compression_enabled
 
@@ -1092,6 +1220,24 @@ class AIAgent(_PromptCacheMixin):
                 if _tname:
                     self.valid_tool_names.add(_tname)
                     self._context_engine_tool_names.add(_tname)
+
+        # Freeze the ordered model-visible surface after all profile/plugin
+        # contributions and before the first model call.  Any later mutation is
+        # a cache-invalidating programming error, not a dynamic feature.
+        from tools.facades import canonical_schema_json, schema_fingerprint
+        self._frozen_tool_schema_json = canonical_schema_json(self.tools or [])
+        self._schema_fingerprint = schema_fingerprint(self.tools or [])
+        self._context_epoch = 0
+        if self._session_db:
+            try:
+                self._session_db.record_context_epoch(
+                    self.session_id,
+                    epoch=0,
+                    schema_fingerprint=self._schema_fingerprint,
+                    prompt_sources={"tool_schemas": self.tools or []},
+                )
+            except Exception as exc:
+                logger.debug("Could not persist initial schema fingerprint: %s", exc)
 
         # Notify context engine of session start
         if hasattr(self, "context_compressor") and self.context_compressor:
@@ -2004,14 +2150,13 @@ class AIAgent(_PromptCacheMixin):
         in-memory messages list in place so both persistence and returned
         history stay clean.
         """
-        idx = getattr(self, "_persist_user_message_idx", None)
-        override = getattr(self, "_persist_user_message_override", None)
-        if override is None or idx is None:
-            return
-        if 0 <= idx < len(messages):
-            msg = messages[idx]
-            if isinstance(msg, dict) and msg.get("role") == "user":
-                msg["content"] = override
+        from core.run_agent.persistence import apply_user_message_override
+
+        apply_user_message_override(
+            messages,
+            getattr(self, "_persist_user_message_idx", None),
+            getattr(self, "_persist_user_message_override", None),
+        )
 
     def _persist_session(self, messages: List[Dict], conversation_history: List[Dict] = None):
         """Save session state to both JSON log and SQLite on any exit path.
@@ -2023,8 +2168,8 @@ class AIAgent(_PromptCacheMixin):
             return
         self._apply_persist_user_message_override(messages)
         self._session_messages = messages
-        self._save_session_log(messages)
         self._flush_messages_to_session_db(messages, conversation_history)
+        self._save_session_log(messages, settled_only=True)
 
     def _flush_messages_to_session_db(self, messages: List[Dict], conversation_history: List[Dict] = None):
         """Persist any un-flushed messages to the SQLite session store.
@@ -2045,8 +2190,12 @@ class AIAgent(_PromptCacheMixin):
                 source=self.platform or "cli",
                 model=self.model,
             )
-            start_idx = len(conversation_history) if conversation_history else 0
+            start_idx = (
+                0 if self._typed_compression_applied
+                else len(conversation_history) if conversation_history else 0
+            )
             flush_from = max(start_idx, self._last_flushed_db_idx)
+            pending_messages = []
             for msg in messages[flush_from:]:
                 if msg.get("_internal"):
                     continue
@@ -2060,19 +2209,30 @@ class AIAgent(_PromptCacheMixin):
                     ]
                 elif isinstance(msg.get("tool_calls"), list):
                     tool_calls_data = msg["tool_calls"]
-                self._session_db.append_message(
-                    session_id=self.session_id,
-                    role=role,
-                    content=content,
-                    tool_name=msg.get("tool_name"),
-                    tool_calls=tool_calls_data,
-                    tool_call_id=msg.get("tool_call_id"),
-                    finish_reason=msg.get("finish_reason"),
-                    reasoning=msg.get("reasoning") if role == "assistant" else None,
-                    reasoning_details=msg.get("reasoning_details") if role == "assistant" else None,
-                    codex_reasoning_items=msg.get("codex_reasoning_items") if role == "assistant" else None,
+                pending_messages.append(
+                    {
+                        "role": role,
+                        "content": content,
+                        "tool_name": msg.get("tool_name"),
+                        "tool_calls": tool_calls_data,
+                        "tool_call_id": msg.get("tool_call_id"),
+                        "finish_reason": msg.get("finish_reason"),
+                        "reasoning": msg.get("reasoning") if role == "assistant" else None,
+                        "reasoning_details": msg.get("reasoning_details") if role == "assistant" else None,
+                        "codex_reasoning_items": msg.get("codex_reasoning_items") if role == "assistant" else None,
+                    }
                 )
+            if pending_messages:
+                self._session_db.append_iteration(
+                    self.session_id,
+                    pending_messages,
+                    idempotency_prefix=f"flush:{flush_from}:{len(messages)}",
+                    status="settled" if self._session_is_settled(messages) else "working",
+                )
+                if self._session_is_settled(messages):
+                    self._session_db.create_session_checkpoint(self.session_id)
             self._last_flushed_db_idx = len(messages)
+            self._typed_compression_applied = False
         except Exception as e:
             logger.warning("Session DB append_message failed: %s", e)
 
@@ -2558,7 +2718,24 @@ class AIAgent(_PromptCacheMixin):
         content = re.sub(r'(</think>)\n+', r'\1\n', content)
         return content.strip()
 
-    def _save_session_log(self, messages: List[Dict[str, Any]] = None):
+    @staticmethod
+    def _session_is_settled(messages: List[Dict[str, Any]]) -> bool:
+        visible = [message for message in messages if not message.get("_internal")]
+        if not visible:
+            return False
+        last = visible[-1]
+        return (
+            last.get("role") == "assistant"
+            and not last.get("tool_calls")
+            and last.get("finish_reason") not in {"tool_calls", "in_progress"}
+        )
+
+    def _save_session_log(
+        self,
+        messages: List[Dict[str, Any]] = None,
+        *,
+        settled_only: bool = False,
+    ):
         """
         Save the full raw session to a JSON file.
 
@@ -2572,6 +2749,12 @@ class AIAgent(_PromptCacheMixin):
         """
         messages = messages or self._session_messages
         if not messages:
+            return
+
+        # SQLite events are the crash-recovery authority while a turn is
+        # active.  Materialize the legacy JSON export only once the turn
+        # settles, avoiding quadratic full-document rewrites.
+        if settled_only and not self._session_is_settled(messages):
             return
 
         try:
@@ -2799,6 +2982,16 @@ class AIAgent(_PromptCacheMixin):
             if client is not None:
                 self._close_openai_client(client, reason="agent_close", shared=True)
                 self.client = None
+        except Exception:
+            pass
+
+        # 6. Drain and close the ordered display queue.  The scheduler joins
+        # tool workers before this point, so no callback can arrive afterwards.
+        try:
+            dispatcher = self._tool_callback_dispatcher
+            if dispatcher is not None:
+                dispatcher.close()
+                self._tool_callback_dispatcher = None
         except Exception:
             pass
 
@@ -3323,37 +3516,9 @@ class AIAgent(_PromptCacheMixin):
                 raise ValueError("Codex Responses request 'tools' must be a list when provided.")
             normalized_tools = []
             for idx, tool in enumerate(tools):
-                if not isinstance(tool, dict):
-                    raise ValueError(f"Codex Responses tools[{idx}] must be an object.")
-                if tool.get("type") != "function":
-                    raise ValueError(f"Codex Responses tools[{idx}] has unsupported type {tool.get('type')!r}.")
+                from core.run_agent.provider_payloads import normalize_responses_tool
 
-                name = tool.get("name")
-                parameters = tool.get("parameters")
-                if not isinstance(name, str) or not name.strip():
-                    raise ValueError(f"Codex Responses tools[{idx}] is missing a valid name.")
-                if not isinstance(parameters, dict):
-                    raise ValueError(f"Codex Responses tools[{idx}] is missing valid parameters.")
-
-                description = tool.get("description", "")
-                if description is None:
-                    description = ""
-                if not isinstance(description, str):
-                    description = str(description)
-
-                strict = tool.get("strict", False)
-                if not isinstance(strict, bool):
-                    strict = bool(strict)
-
-                normalized_tools.append(
-                    {
-                        "type": "function",
-                        "name": name.strip(),
-                        "description": description,
-                        "strict": strict,
-                        "parameters": parameters,
-                    }
-                )
+                normalized_tools.append(normalize_responses_tool(tool, idx))
 
         store = api_kwargs.get("store", False)
         if store is not False:
@@ -4566,9 +4731,9 @@ class AIAgent(_PromptCacheMixin):
 
     @staticmethod
     def _normalize_interim_visible_text(text: str) -> str:
-        if not isinstance(text, str):
-            return ""
-        return re.sub(r"\s+", " ", text).strip()
+        from core.run_agent.response_normalization import normalize_visible_text
+
+        return normalize_visible_text(text)
 
     def _interim_content_was_streamed(self, content: str) -> bool:
         visible_content = self._normalize_interim_visible_text(
@@ -5732,6 +5897,8 @@ class AIAgent(_PromptCacheMixin):
 
     def _build_api_kwargs(self, api_messages: list) -> dict:
         """Build the keyword arguments dict for the active API mode."""
+        self._assert_tool_surface_stable()
+        api_messages = self._apply_response_contract(api_messages)
         if self.api_mode == "anthropic_messages":
             from agent.anthropic_adapter import build_anthropic_kwargs
             anthropic_messages = self._prepare_anthropic_messages_for_api(api_messages)
@@ -5746,18 +5913,30 @@ class AIAgent(_PromptCacheMixin):
             ephemeral_out = getattr(self, "_ephemeral_max_output_tokens", None)
             if ephemeral_out is not None:
                 self._ephemeral_max_output_tokens = None  # consume immediately
-            return build_anthropic_kwargs(
+            kwargs = build_anthropic_kwargs(
                 model=self.model,
                 messages=anthropic_messages,
                 tools=self.tools,
-                max_tokens=ephemeral_out if ephemeral_out is not None else self.max_tokens,
-                reasoning_config=self.reasoning_config,
+                max_tokens=ephemeral_out if ephemeral_out is not None else self._effective_max_tokens(),
+                reasoning_config=self._effective_reasoning_config(),
                 is_oauth=self._is_anthropic_oauth,
                 preserve_dots=self._anthropic_preserve_dots(),
                 context_length=ctx_len,
                 base_url=getattr(self, "_anthropic_base_url", None),
                 fast_mode=(self.request_overrides or {}).get("speed") == "fast",
             )
+            # Native Anthropic can cache typed release/project segments
+            # independently.  Unsupported endpoints retain the ordinary
+            # single-system-message payload produced above.
+            bundle = getattr(self, "_prompt_bundle", None)
+            if bundle is not None and self.provider == "anthropic":
+                from agent.prompt_blocks import anthropic_system_segments
+                kwargs["system"] = anthropic_system_segments(
+                    bundle,
+                    cache_ttl=self._cache_ttl,
+                    ephemeral_suffix=self.ephemeral_system_prompt or "",
+                )
+            return kwargs
 
         if self.api_mode == "codex_responses":
             instructions = ""
@@ -5780,11 +5959,12 @@ class AIAgent(_PromptCacheMixin):
             # Resolve reasoning effort: config > default (medium)
             reasoning_effort = "medium"
             reasoning_enabled = True
-            if self.reasoning_config and isinstance(self.reasoning_config, dict):
-                if self.reasoning_config.get("enabled") is False:
+            _effective_reasoning = self._effective_reasoning_config()
+            if _effective_reasoning and isinstance(_effective_reasoning, dict):
+                if _effective_reasoning.get("enabled") is False:
                     reasoning_enabled = False
-                elif self.reasoning_config.get("effort"):
-                    reasoning_effort = self.reasoning_config["effort"]
+                elif _effective_reasoning.get("effort"):
+                    reasoning_effort = _effective_reasoning["effort"]
 
             # Clamp effort levels not supported by the Responses API model.
             # GPT-5.4 supports none/low/medium/high/xhigh but not "minimal".
@@ -5803,7 +5983,11 @@ class AIAgent(_PromptCacheMixin):
             }
 
             if not is_github_responses:
-                kwargs["prompt_cache_key"] = self.session_id
+                bundle = getattr(self, "_prompt_bundle", None)
+                kwargs["prompt_cache_key"] = (
+                    bundle.reusable_fingerprint if bundle is not None
+                    else self._restored_prompt_cache_key or self.session_id
+                )
 
             if reasoning_enabled:
                 if is_github_responses:
@@ -5822,8 +6006,9 @@ class AIAgent(_PromptCacheMixin):
             if self.request_overrides:
                 kwargs.update(self.request_overrides)
 
-            if self.max_tokens is not None and not is_codex_backend:
-                kwargs["max_output_tokens"] = self.max_tokens
+            _effective_max = self._effective_max_tokens()
+            if _effective_max is not None and not is_codex_backend:
+                kwargs["max_output_tokens"] = _effective_max
 
             return kwargs
 
@@ -5914,8 +6099,9 @@ class AIAgent(_PromptCacheMixin):
         if self.tools:
             api_kwargs["tools"] = self.tools
 
-        if self.max_tokens is not None:
-            api_kwargs.update(self._max_tokens_param(self.max_tokens))
+        _effective_max = self._effective_max_tokens()
+        if _effective_max is not None:
+            api_kwargs.update(self._max_tokens_param(_effective_max))
         elif self._is_qwen_portal():
             # Qwen Portal defaults to a very low max_tokens when omitted.
             # Reasoning models (qwen3-coder-plus) exhaust that budget on
@@ -5961,8 +6147,9 @@ class AIAgent(_PromptCacheMixin):
                 if github_reasoning is not None:
                     extra_body["reasoning"] = github_reasoning
             else:
-                if self.reasoning_config is not None:
-                    rc = dict(self.reasoning_config)
+                _effective_reasoning = self._effective_reasoning_config()
+                if _effective_reasoning is not None:
+                    rc = dict(_effective_reasoning)
                     # Legacy hosted endpoints rejected enabled=false; omit it.
                     if _is_spark and rc.get("enabled") is False:
                         pass  # omit reasoning entirely for legacy hosted endpoints
@@ -6420,11 +6607,22 @@ class AIAgent(_PromptCacheMixin):
             except Exception:
                 pass
 
+        _typed_mode = getattr(self.context_compressor, "checkpoint_mode", "legacy") == "typed"
+        if hasattr(self.context_compressor, "set_deterministic_state"):
+            self.context_compressor.set_deterministic_state(
+                current_plan=self._todo_store.read(),
+                task_identity=self.session_id or task_id,
+                context_epoch=getattr(self, "_context_epoch", 0),
+            )
         compressed = self.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=focus_topic)
 
-        todo_snapshot = self._todo_store.format_for_injection()
-        if todo_snapshot:
-            compressed.append({"role": "user", "content": todo_snapshot})
+        # Legacy compression injected a synthetic user todo snapshot.  Typed
+        # checkpoints carry the plan as durable state without creating a fake
+        # user turn.
+        if not _typed_mode:
+            todo_snapshot = self._todo_store.format_for_injection()
+            if todo_snapshot:
+                compressed.append({"role": "user", "content": todo_snapshot})
 
         self._invalidate_system_prompt()
         new_system_prompt = self._build_system_prompt(system_message)
@@ -6432,38 +6630,59 @@ class AIAgent(_PromptCacheMixin):
 
         if self._session_db:
             try:
-                # Propagate title to the new session with auto-numbering
-                old_title = self._session_db.get_session_title(self.session_id)
-                self._session_db.end_session(self.session_id, "compression")
-                old_session_id = self.session_id
-                self.session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-                # Update session_log_file to point to the new session's JSON file
-                self.session_log_file = self.logs_dir / f"session_{self.session_id}.json"
-                self._session_db.create_session(
-                    session_id=self.session_id,
-                    source=self.platform or os.environ.get("SPARK_SESSION_SOURCE", "cli"),
-                    model=self.model,
-                    parent_session_id=old_session_id,
-                )
-                # Auto-number the title for the continuation session
-                if old_title:
-                    try:
-                        new_title = self._session_db.get_next_title_in_lineage(old_title)
-                        self._session_db.set_session_title(self.session_id, new_title)
-                    except (ValueError, Exception) as e:
-                        logger.debug("Could not propagate title on compression: %s", e)
-                self._session_db.update_system_prompt(self.session_id, new_system_prompt)
-                # Reset flush cursor — new session starts with no messages written
-                self._last_flushed_db_idx = 0
-                # Notify subscribers (web UI, gateway) that the session has migrated
-                # so they can update their session_id pointer to follow the agent.
-                if self.session_migrated_callback:
-                    try:
-                        self.session_migrated_callback(old_session_id, self.session_id, "compression")
-                    except Exception:
-                        logger.debug("session_migrated_callback raised", exc_info=True)
+                if _typed_mode:
+                    checkpoint = getattr(self.context_compressor, "_typed_checkpoint", None)
+                    self._context_epoch = getattr(self, "_context_epoch", 0) + 1
+                    if checkpoint is not None:
+                        self._session_db.save_context_checkpoint(
+                            self.session_id,
+                            checkpoint_sequence=checkpoint.checkpoint_sequence,
+                            context_epoch=self._context_epoch,
+                            version=checkpoint.version,
+                            payload=checkpoint.to_dict(),
+                        )
+                    bundle = getattr(self, "_prompt_bundle", None)
+                    self._session_db.record_context_epoch(
+                        self.session_id,
+                        epoch=self._context_epoch,
+                        schema_fingerprint=self._schema_fingerprint,
+                        prompt_fingerprints=bundle.metadata() if bundle else None,
+                        prompt_sources={"tool_schemas": self.tools or []},
+                    )
+                    self._session_db.update_system_prompt(self.session_id, new_system_prompt)
+                    # The typed row is authoritative for resume. The internal
+                    # checkpoint message stays out of the visible transcript;
+                    # future messages flush after the compact in-memory tail.
+                    self._last_flushed_db_idx = len(compressed)
+                    self._typed_compression_applied = True
+                else:
+                    # Legacy rollback path: preserve compression-split behavior.
+                    old_title = self._session_db.get_session_title(self.session_id)
+                    self._session_db.end_session(self.session_id, "compression")
+                    old_session_id = self.session_id
+                    self.session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+                    self.session_log_file = self.logs_dir / f"session_{self.session_id}.json"
+                    self._session_db.create_session(
+                        session_id=self.session_id,
+                        source=self.platform or os.environ.get("SPARK_SESSION_SOURCE", "cli"),
+                        model=self.model,
+                        parent_session_id=old_session_id,
+                    )
+                    if old_title:
+                        try:
+                            new_title = self._session_db.get_next_title_in_lineage(old_title)
+                            self._session_db.set_session_title(self.session_id, new_title)
+                        except (ValueError, Exception) as e:
+                            logger.debug("Could not propagate title on compression: %s", e)
+                    self._session_db.update_system_prompt(self.session_id, new_system_prompt)
+                    self._last_flushed_db_idx = 0
+                    if self.session_migrated_callback:
+                        try:
+                            self.session_migrated_callback(old_session_id, self.session_id, "compression")
+                        except Exception:
+                            logger.debug("session_migrated_callback raised", exc_info=True)
             except Exception as e:
-                logger.warning("Session DB compression split failed — new session will NOT be indexed: %s", e)
+                logger.warning("Session DB compression persistence failed: %s", e)
 
         # Warn on repeated compressions (quality degrades with each pass)
         _cc = self.context_compressor.compression_count
@@ -6525,7 +6744,25 @@ class AIAgent(_PromptCacheMixin):
         # Allow _vprint during tool execution even with stream consumers
         self._executing_tools = True
         try:
-            if not _should_parallelize_tool_batch(tool_calls):
+            valid_batch = True
+            for tool_call in tool_calls:
+                try:
+                    parsed = json.loads(tool_call.function.arguments)
+                except (json.JSONDecodeError, TypeError):
+                    valid_batch = False
+                    break
+                if not isinstance(parsed, dict):
+                    valid_batch = False
+                    break
+            if (
+                len(tool_calls) <= 1
+                or not self.dependency_scheduler
+                or (
+                    isinstance(self.tool_delay, (int, float))
+                    and self.tool_delay > 0
+                )
+                or not valid_batch
+            ):
                 return self._execute_tool_calls_sequential(
                     assistant_message, messages, effective_task_id, api_call_count
                 )
@@ -6536,15 +6773,27 @@ class AIAgent(_PromptCacheMixin):
         finally:
             self._executing_tools = False
 
+    def _queue_tool_callback(self, callback, *args, **kwargs) -> None:
+        """Queue a display/state callback without delaying tool scheduling."""
+        if callback is None:
+            return
+        if self._tool_callback_dispatcher is None:
+            self._tool_callback_dispatcher = OrderedCallbackDispatcher()
+        self._tool_callback_dispatcher.emit(callback, *args, **kwargs)
+
     def _on_tool_dispatched(self, function_name: str) -> None:
         """Hook fired once a tool finishes dispatching.
 
-        Currently used by ``browser_open`` to swap the slimmed default tool
-        set for the full browser toolset for the remainder of the session.
-        Safe to call after every tool — it's a no-op unless activation state
-        has actually changed since the last refresh.
+        Browser actions now live behind one stable facade, so activation must
+        never mutate the model-visible schema within a context epoch. Explicit
+        legacy/granular API profiles retain their old activation behavior.
         """
         if function_name != "browser_open":
+            return
+        if any(
+            tool.get("function", {}).get("name") == "browser"
+            for tool in (self.tools or [])
+        ):
             return
         try:
             from tools.browser_tool import _browser_session_active
@@ -6552,9 +6801,10 @@ class AIAgent(_PromptCacheMixin):
             return
         if not _browser_session_active:
             return
-        # Cheap idempotency check: only rebuild self.tools if a browser
-        # sub-tool isn't already present.
-        if any(t.get("function", {}).get("name") == "browser_snapshot" for t in (self.tools or [])):
+        if any(
+            tool.get("function", {}).get("name") == "browser_snapshot"
+            for tool in (self.tools or [])
+        ):
             return
         try:
             refreshed = get_tool_definitions(
@@ -6565,7 +6815,14 @@ class AIAgent(_PromptCacheMixin):
         except Exception:
             return
         self.tools = refreshed
-        self.valid_tool_names = {t["function"]["name"] for t in refreshed}
+        self.valid_tool_names = {
+            tool["function"]["name"] for tool in refreshed
+        }
+        # Legacy rollback profiles intentionally preserve their historical
+        # schema swap; update the development guard to that new legacy epoch.
+        from tools.facades import canonical_schema_json, schema_fingerprint
+        self._frozen_tool_schema_json = canonical_schema_json(refreshed)
+        self._schema_fingerprint = schema_fingerprint(refreshed)
 
     def _inject_working_dir(self, function_name: str, function_args: dict) -> dict:
         """Prepend self.working_dir to relative paths in tool args for workspace sessions."""
@@ -6593,6 +6850,11 @@ class AIAgent(_PromptCacheMixin):
         tools. Used by the concurrent execution path; the sequential path retains
         its own inline invocation for backward-compatible display handling.
         """
+        try:
+            from tools.facades import normalize_facade_call
+            function_name, function_args = normalize_facade_call(function_name, function_args)
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
         function_args = self._inject_working_dir(function_name, function_args)
         # Check plugin hooks for a block directive before executing anything.
         block_message: Optional[str] = None
@@ -6676,6 +6938,27 @@ class AIAgent(_PromptCacheMixin):
         finally:
             self._on_tool_dispatched(function_name)
 
+    def _tool_budget_config(self, tool_name: str | None = None) -> BudgetConfig:
+        """Allocate tool-result context from the current model/request state."""
+        compressor = getattr(self, "context_compressor", None)
+        context_length = int(getattr(compressor, "context_length", 0) or 0)
+        prompt_tokens = int(getattr(compressor, "last_prompt_tokens", 0) or 0)
+        remaining = max(0, context_length - prompt_tokens) if context_length else None
+        phase = str(getattr(self, "_request_phase", "work") or "work")
+        result_kind = "text"
+        if tool_name in {"web_search", "search_files", "session_search"}:
+            result_kind = "search"
+        elif tool_name in {"terminal", "process"}:
+            result_kind = "terminal"
+        elif tool_name in {"connectors", "artifact_read"}:
+            result_kind = "structured"
+        return BudgetConfig.for_request(
+            remaining_context_tokens=remaining,
+            task_phase=phase,
+            result_kind=result_kind,
+            provider_count_tokens=getattr(self, "_provider_token_counter", None),
+        )
+
     def _execute_tool_calls_concurrent(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
         """Execute multiple tool calls concurrently using a thread pool.
 
@@ -6713,6 +6996,15 @@ class AIAgent(_PromptCacheMixin):
                 function_args = {}
             if not isinstance(function_args, dict):
                 function_args = {}
+            try:
+                from tools.facades import normalize_facade_call
+                function_name, function_args = normalize_facade_call(function_name, function_args)
+            except ValueError:
+                # Let _invoke_tool produce the aligned error result.  Retain
+                # the facade call here so invalid calls cannot trigger legacy
+                # checkpoints or bookkeeping.
+                parsed_calls.append((tool_call, function_name, function_args))
+                continue
 
             # Checkpoint for file-mutating tools
             if function_name in ("write_file", "patch") and self._checkpoint_mgr.enabled:
@@ -6753,39 +7045,21 @@ class AIAgent(_PromptCacheMixin):
 
         for tc, name, args in parsed_calls:
             if self.tool_progress_callback:
-                try:
-                    preview = _build_tool_preview(name, args)
-                    self.tool_progress_callback("tool.started", name, preview, args)
-                except Exception as cb_err:
-                    logging.debug(f"Tool progress callback error: {cb_err}")
+                preview = _build_tool_preview(name, args)
+                self._queue_tool_callback(
+                    self.tool_progress_callback, "tool.started", name, preview, args
+                )
 
         for tc, name, args in parsed_calls:
             if self.tool_start_callback:
                 try:
                     self.tool_start_callback(tc.id, name, args)
                 except Exception as cb_err:
-                    logging.debug(f"Tool start callback error: {cb_err}")
+                    logging.debug("Tool start callback error: %s", cb_err)
 
         # ── Concurrent execution ─────────────────────────────────────────
         # Each slot holds (function_name, function_args, function_result, duration, error_flag)
         results = [None] * num_tools
-
-        def _run_tool(index, tool_call, function_name, function_args):
-            """Worker function executed in a thread."""
-            start = time.time()
-            try:
-                result = self._invoke_tool(function_name, function_args, effective_task_id, tool_call.id)
-            except Exception as tool_error:
-                result = f"Error executing tool '{function_name}': {tool_error}"
-                logger.error("_invoke_tool raised for %s: %s", function_name, tool_error, exc_info=True)
-            duration = time.time() - start
-            is_error, _ = _detect_tool_failure(function_name, result)
-            if is_error:
-                logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
-            else:
-                logger.info("tool %s completed (%.2fs, %d chars)", function_name, duration, len(result))
-            results[index] = (function_name, function_args, result, duration, is_error)
-
         # Start spinner for CLI mode (skip when TUI handles tool progress)
         spinner = None
         if self._should_emit_quiet_tool_messages() and self._should_start_quiet_spinner():
@@ -6794,15 +7068,52 @@ class AIAgent(_PromptCacheMixin):
             spinner.start()
 
         try:
-            max_workers = min(num_tools, _MAX_TOOL_WORKERS)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                for i, (tc, name, args) in enumerate(parsed_calls):
-                    f = executor.submit(_run_tool, i, tc, name, args)
-                    futures.append(f)
-
-                # Wait for all to complete (exceptions are captured inside _run_tool)
-                concurrent.futures.wait(futures)
+            nodes = build_tool_dag(tool_calls)
+            timeout_raw = os.environ.get("SPARK_TOOL_BATCH_TIMEOUT", "")
+            try:
+                timeout = float(timeout_raw) if timeout_raw else None
+            except ValueError:
+                timeout = None
+            deadline = time.monotonic() + timeout if timeout and timeout > 0 else None
+            scheduled = ToolBatchScheduler(max_workers=_MAX_TOOL_WORKERS).execute(
+                nodes,
+                lambda node: self._invoke_tool(
+                    node.name, node.args, effective_task_id, node.tool_call_id
+                ),
+                interrupted=lambda: self._interrupt_requested,
+                batch_deadline=deadline,
+            )
+            for item in scheduled:
+                is_error, _ = _detect_tool_failure(item.name, item.content)
+                results[item.index] = (
+                    item.name, item.args, item.content, item.duration, is_error
+                )
+                if is_error:
+                    logger.info(
+                        "tool %s failed (%.2fs): %s",
+                        item.name, item.duration, item.content[:200],
+                    )
+                else:
+                    logger.info(
+                        "tool %s completed (%.2fs, %d chars)",
+                        item.name, item.duration, len(item.content),
+                    )
+                try:
+                    self._efficiency_recorder.record_tool_call(
+                        ToolRuntimeAccounting(
+                            session_id=self.session_id,
+                            iteration=api_call_count,
+                            tool_name=item.name,
+                            queue_wait_ms=round(item.queue_wait * 1000, 3),
+                            execution_ms=round(item.duration * 1000, 3),
+                            result_bytes=len(
+                                str(item.content).encode("utf-8", errors="replace")
+                            ),
+                            failed=is_error,
+                        )
+                    )
+                except Exception:
+                    logger.debug("Efficiency tool accounting failed", exc_info=True)
         finally:
             if spinner:
                 # Build a summary message for the spinner stop
@@ -6824,17 +7135,14 @@ class AIAgent(_PromptCacheMixin):
                     result_preview = function_result[:200] if len(function_result) > 200 else function_result
                     logger.warning("Tool %s returned error (%.2fs): %s", function_name, tool_duration, result_preview)
 
-                if self.tool_progress_callback:
-                    try:
-                        self.tool_progress_callback(
-                            "tool.completed", function_name, None, None,
-                            duration=tool_duration, is_error=is_error,
-                            result_lines=sum(
-                                1 for ln in str(function_result or "").splitlines() if ln.strip()
-                            ),
-                        )
-                    except Exception as cb_err:
-                        logging.debug(f"Tool progress callback error: {cb_err}")
+                self._queue_tool_callback(
+                    self.tool_progress_callback,
+                    "tool.completed", function_name, None, None,
+                    duration=tool_duration, is_error=is_error,
+                    result_lines=sum(
+                        1 for ln in str(function_result or "").splitlines() if ln.strip()
+                    ),
+                )
 
                 if self.verbose_logging:
                     logging.debug(f"Tool {function_name} completed in {tool_duration:.2f}s")
@@ -6859,13 +7167,15 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     self.tool_complete_callback(tc.id, name, args, function_result)
                 except Exception as cb_err:
-                    logging.debug(f"Tool complete callback error: {cb_err}")
+                    logging.debug("Tool complete callback error: %s", cb_err)
 
             function_result = maybe_persist_tool_result(
                 content=function_result,
                 tool_name=name,
                 tool_use_id=tc.id,
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(name),
+                task_id=effective_task_id,
             )
 
             subdir_hints = self._subdirectory_hints.check_tool_call(name, args)
@@ -6886,7 +7196,9 @@ class AIAgent(_PromptCacheMixin):
             enforce_turn_budget(
                 turn_tool_msgs,
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(),
                 tool_names=[function_name for _, function_name, _ in parsed_calls],
+                task_id=effective_task_id,
             )
 
     def _execute_tool_calls_sequential(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
@@ -6918,6 +7230,16 @@ class AIAgent(_PromptCacheMixin):
                 function_args = {}
             if not isinstance(function_args, dict):
                 function_args = {}
+            try:
+                from tools.facades import normalize_facade_call
+                function_name, function_args = normalize_facade_call(function_name, function_args)
+            except ValueError as exc:
+                function_result = json.dumps({"error": str(exc)}, ensure_ascii=False)
+                messages.append({
+                    "role": "tool", "content": function_result,
+                    "tool_call_id": tool_call.id,
+                })
+                continue
             function_args = self._inject_working_dir(function_name, function_args)
 
             # Check plugin hooks for a block directive before executing.
@@ -7204,6 +7526,20 @@ class AIAgent(_PromptCacheMixin):
             # Log tool errors to the persistent error log so [error] tags
             # in the UI always have a corresponding detailed entry on disk.
             _is_error_result, _ = _detect_tool_failure(function_name, function_result)
+            try:
+                self._efficiency_recorder.record_tool_call(
+                    ToolRuntimeAccounting(
+                        session_id=self.session_id,
+                        iteration=api_call_count,
+                        tool_name=function_name,
+                        queue_wait_ms=0.0,
+                        execution_ms=round(tool_duration * 1000, 3),
+                        result_bytes=len(str(function_result).encode("utf-8", errors="replace")),
+                        failed=_is_error_result,
+                    )
+                )
+            except Exception:
+                logger.debug("Efficiency tool accounting failed", exc_info=True)
             if _is_error_result:
                 logger.warning("Tool %s returned error (%.2fs): %s", function_name, tool_duration, result_preview)
             else:
@@ -7239,6 +7575,8 @@ class AIAgent(_PromptCacheMixin):
                 tool_name=function_name,
                 tool_use_id=tool_call.id,
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(function_name),
+                task_id=effective_task_id,
             )
 
             # Discover subdirectory context files from tool arguments
@@ -7274,7 +7612,11 @@ class AIAgent(_PromptCacheMixin):
                     messages.append(skip_msg)
                 break
 
-            if self.tool_delay > 0 and i < len(assistant_message.tool_calls):
+            if (
+                isinstance(self.tool_delay, (int, float))
+                and self.tool_delay > 0
+                and i < len(assistant_message.tool_calls)
+            ):
                 time.sleep(self.tool_delay)
 
         # ── Per-turn aggregate budget enforcement ─────────────────────────
@@ -7283,7 +7625,9 @@ class AIAgent(_PromptCacheMixin):
             enforce_turn_budget(
                 messages[-num_tools_seq:],
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(),
                 tool_names=[tool_call.function.name for tool_call in assistant_message.tool_calls],
+                task_id=effective_task_id,
             )
 
 
@@ -7538,17 +7882,11 @@ class AIAgent(_PromptCacheMixin):
         # Generate unique task_id if not provided to isolate VMs between concurrent tasks
         effective_task_id = task_id or str(uuid.uuid4())
         
-        # Reset retry counters and iteration budget at the start of each turn
-        # so subagent usage from a previous turn doesn't eat into the next one.
-        self._invalid_tool_retries = 0
-        self._invalid_json_retries = 0
-        self._empty_content_retries = 0
-        self._incomplete_scratchpad_retries = 0
-        self._codex_incomplete_retries = 0
-        self._thinking_prefill_retries = 0
-        self._last_content_with_tools = None
-        self._mute_post_response = False
-        self._unicode_sanitization_passes = 0
+        # Reset turn-scoped state without mixing it into provider execution.
+        from core.run_agent.turn_orchestration import reset_turn_state
+
+        reset_turn_state(self)
+        self.iteration_budget = IterationBudget(self.max_iterations)
 
         # Pre-turn connection health check: detect and clean up dead TCP
         # connections left over from provider outages or dropped streams.
@@ -7572,8 +7910,6 @@ class AIAgent(_PromptCacheMixin):
         # NOTE: _turns_since_memory and _iters_since_skill are NOT reset here.
         # They are initialized in __init__ and must persist across run_conversation
         # calls so that nudge logic accumulates correctly in CLI mode.
-        self.iteration_budget = IterationBudget(self.max_iterations)
-
         # Log conversation turn start for debugging/observability
         _msg_preview = (user_message[:80] + "...") if len(user_message) > 80 else user_message
         _msg_preview = _msg_preview.replace("\n", " ")
@@ -7592,6 +7928,48 @@ class AIAgent(_PromptCacheMixin):
             messages = list(conversation_history)
         else:
             messages = list(self._session_messages)
+
+        if getattr(self.context_compressor, "checkpoint_mode", "legacy") == "typed":
+            from agent.context_checkpoint import CHECKPOINT_PREFIX
+
+            _restored_compact_context = False
+            checkpoint_idx = next(
+                (
+                    idx for idx in range(len(messages) - 1, -1, -1)
+                    if str(messages[idx].get("content") or "").startswith(CHECKPOINT_PREFIX)
+                ),
+                None,
+            )
+            if checkpoint_idx is not None:
+                messages = messages[checkpoint_idx:]
+                _restored_compact_context = True
+            elif self._session_db:
+                # Crash-safe recovery: the typed row is authoritative even if
+                # the process stopped before its marker/tail append completed.
+                try:
+                    checkpoint_row = self._session_db.get_latest_context_checkpoint(self.session_id)
+                    if checkpoint_row:
+                        from agent.context_checkpoint import (
+                            ContextCheckpoint,
+                            assemble_checkpoint_context,
+                        )
+                        checkpoint = ContextCheckpoint.from_dict(checkpoint_row["payload"])
+                        messages = assemble_checkpoint_context(
+                            checkpoint,
+                            messages[-getattr(self.context_compressor, "protect_last_n", 20):],
+                            context_window=getattr(self.context_compressor, "context_length", 0) or 100_000,
+                        )
+                        if checkpoint.current_plan and not self._todo_store.has_items():
+                            self._todo_store.write(list(checkpoint.current_plan))
+                        _restored_compact_context = True
+                except Exception:
+                    logger.exception("Could not reconstruct persisted typed checkpoint")
+            if _restored_compact_context:
+                # The caller's DB history is longer than the compact model
+                # context. Reset persistence offsets to the compact list so new
+                # user/assistant messages are not skipped by the old length.
+                self._last_flushed_db_idx = len(messages)
+                self._typed_compression_applied = True
 
         # Hydrate todo store from conversation history (gateway creates a fresh
         # AIAgent per message, so the in-memory store is empty -- we need to
@@ -7650,8 +8028,35 @@ class AIAgent(_PromptCacheMixin):
                     session_row = self._session_db.get_session(self.session_id)
                     if session_row:
                         stored_prompt = session_row.get("system_prompt") or None
+                    epoch_row = self._session_db.get_context_epoch(self.session_id)
+                    if epoch_row:
+                        self._context_epoch = int(epoch_row.get("epoch", 0))
+                        stored_sources = epoch_row.get("prompt_sources") or {}
+                        stored_tools = stored_sources.get("tool_schemas")
+                        if isinstance(stored_tools, list):
+                            from tools.facades import canonical_schema_json, schema_fingerprint
+                            stored_fingerprint = schema_fingerprint(stored_tools)
+                            if stored_fingerprint != epoch_row.get("schema_fingerprint"):
+                                raise RuntimeError("Stored tool schema fingerprint is corrupt")
+                            self.tools = stored_tools
+                            self.valid_tool_names = {
+                                tool.get("function", {}).get("name", "")
+                                for tool in stored_tools
+                                if tool.get("function", {}).get("name")
+                            }
+                            self._frozen_tool_schema_json = canonical_schema_json(stored_tools)
+                            self._schema_fingerprint = stored_fingerprint
+                        fingerprints = epoch_row.get("prompt_fingerprints") or {}
+                        self._restored_prompt_cache_key = fingerprints.get("reusable_fingerprint")
+                    checkpoint_row = self._session_db.get_latest_context_checkpoint(self.session_id)
+                    if checkpoint_row and hasattr(self.context_compressor, "_typed_checkpoint"):
+                        from agent.context_checkpoint import ContextCheckpoint
+                        self.context_compressor._typed_checkpoint = ContextCheckpoint.from_dict(
+                            checkpoint_row["payload"]
+                        )
                 except Exception:
-                    pass  # Fall through to build fresh
+                    logger.exception("Could not restore frozen context epoch")
+                    raise
 
             if stored_prompt:
                 # Continuing session — reuse the exact system prompt from
@@ -7679,6 +8084,15 @@ class AIAgent(_PromptCacheMixin):
                 if self._session_db:
                     try:
                         self._session_db.update_system_prompt(self.session_id, self._cached_system_prompt)
+                        bundle = getattr(self, "_prompt_bundle", None)
+                        if bundle is not None:
+                            self._session_db.record_context_epoch(
+                                self.session_id,
+                                epoch=self._context_epoch,
+                                schema_fingerprint=self._schema_fingerprint,
+                                prompt_fingerprints=bundle.metadata(),
+                                prompt_sources={"tool_schemas": self.tools or []},
+                            )
                     except Exception as e:
                         logger.debug("Session DB update_system_prompt failed: %s", e)
 
@@ -8000,6 +8414,17 @@ class AIAgent(_PromptCacheMixin):
             # Calculate approximate request size for logging
             total_chars = sum(len(str(msg)) for msg in api_messages)
             approx_tokens = estimate_messages_tokens_rough(api_messages)
+            _injected_context_text = "\n".join(
+                part for part in (_ext_prefetch_cache or "", _plugin_user_context or "") if part
+            )
+            _request_breakdown = measure_request(
+                api_messages,
+                self.tools,
+                injected_context=_injected_context_text,
+                schema_tokens=self._efficiency_schema_tokens,
+            )
+            if self._efficiency_schema_tokens is None:
+                self._efficiency_schema_tokens = _request_breakdown.schema_tokens
             
             # Thinking spinner for quiet mode (animated during API call)
             thinking_spinner = None
@@ -8452,7 +8877,7 @@ class AIAgent(_PromptCacheMixin):
                                     }
                                     messages.append(continue_msg)
                                     self._session_messages = messages
-                                    self._save_session_log(messages)
+                                    self._save_session_log(messages, settled_only=True)
                                     restart_with_length_continuation = True
                                     break
 
@@ -8628,6 +9053,53 @@ class AIAgent(_PromptCacheMixin):
                             if not self.quiet_mode:
                                 self._vprint(f"{self.log_prefix}   💾 Cache: {canonical_usage.cache_read_tokens:,}/{prompt:,} tokens ({hit_pct:.0f}% hit, {canonical_usage.cache_write_tokens:,} written)")
                     
+                    try:
+                        _raw_usage = getattr(response, "usage", None)
+                        if _raw_usage:
+                            _accounting_usage = normalize_usage(
+                                _raw_usage, provider=self.provider, api_mode=self.api_mode
+                            )
+                            _usage_source = "provider"
+                            _prompt_tokens = _accounting_usage.prompt_tokens
+                            _output_tokens = _accounting_usage.output_tokens
+                            _cache_read = _accounting_usage.cache_read_tokens
+                            _cache_write = _accounting_usage.cache_write_tokens
+                            _reasoning_tokens = _accounting_usage.reasoning_tokens
+                            _delta = _prompt_tokens - _request_breakdown.estimated_prompt_tokens
+                        else:
+                            _usage_source = "estimator"
+                            _prompt_tokens = _request_breakdown.estimated_prompt_tokens
+                            _output_tokens = estimate_response_tokens(response)
+                            _cache_read = _cache_write = _reasoning_tokens = 0
+                            _delta = None
+                        self._efficiency_recorder.record_model_iteration(
+                            ModelIterationAccounting(
+                                version="1.0",
+                                session_id=self.session_id,
+                                iteration=api_call_count,
+                                provider=self.provider or "unknown",
+                                model=self.model,
+                                api_mode=self.api_mode,
+                                request_latency_ms=round(api_duration * 1000, 3),
+                                system_prompt_tokens=_request_breakdown.system_prompt_tokens,
+                                conversation_tokens=_request_breakdown.conversation_tokens,
+                                injected_context_tokens=_request_breakdown.injected_context_tokens,
+                                tool_result_tokens=_request_breakdown.tool_result_tokens,
+                                schema_tokens=_request_breakdown.schema_tokens,
+                                prompt_tokens=_prompt_tokens,
+                                cache_read_tokens=_cache_read,
+                                cache_write_tokens=_cache_write,
+                                output_tokens=_output_tokens,
+                                reasoning_tokens=_reasoning_tokens,
+                                usage_source=_usage_source,
+                                estimator_delta_tokens=_delta,
+                                routing_reason=self._routing_reason,
+                                request_class=self._request_class,
+                            )
+                        )
+                    except Exception:
+                        logger.debug("Efficiency model accounting failed", exc_info=True)
+
                     has_retried_429 = False  # Reset on success
                     self._consecutive_auth_refreshes = 0  # Reset auth-refresh budget on success
                     self._touch_activity(f"API call #{api_call_count} completed")
@@ -9605,7 +10077,7 @@ class AIAgent(_PromptCacheMixin):
                         if not self.quiet_mode:
                             self._vprint(f"{self.log_prefix}↻ Codex response incomplete; continuing turn ({self._codex_incomplete_retries}/3)")
                         self._session_messages = messages
-                        self._save_session_log(messages)
+                        self._save_session_log(messages, settled_only=True)
                         continue
 
                     self._codex_incomplete_retries = 0
@@ -10026,7 +10498,7 @@ class AIAgent(_PromptCacheMixin):
                     
                     # Save session log incrementally (so progress is visible even if interrupted)
                     self._session_messages = messages
-                    self._save_session_log(messages)
+                    self._save_session_log(messages, settled_only=True)
                     
                     # Continue loop for next response
                     continue
@@ -10115,7 +10587,7 @@ class AIAgent(_PromptCacheMixin):
                             interim_msg["_thinking_prefill"] = True
                             messages.append(interim_msg)
                             self._session_messages = messages
-                            self._save_session_log(messages)
+                            self._save_session_log(messages, settled_only=True)
                             continue
 
                         # ── Empty response retry ──────────────────────
@@ -10243,7 +10715,7 @@ class AIAgent(_PromptCacheMixin):
                         }
                         messages.append(continue_msg)
                         self._session_messages = messages
-                        self._save_session_log(messages)
+                        self._save_session_log(messages, settled_only=True)
                         continue
 
                     codex_ack_continuations = 0
@@ -10457,6 +10929,7 @@ class AIAgent(_PromptCacheMixin):
             "estimated_cost_usd": self.session_estimated_cost_usd,
             "cost_status": self.session_cost_status,
             "cost_source": self.session_cost_source,
+            "efficiency": self._efficiency_recorder.snapshot(),
         }
         self._response_was_previewed = False
         
@@ -10765,4 +11238,6 @@ def main(
 
 
 if __name__ == "__main__":
+    import fire
+
     fire.Fire(main)

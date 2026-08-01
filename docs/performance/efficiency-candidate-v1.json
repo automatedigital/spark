@@ -1,0 +1,1002 @@
+{
+  "fixture_version": "1.0.0",
+  "import_core_run_agent_ms": {
+    "median": 113.221,
+    "p95": 125.097,
+    "raw": [
+      125.097,
+      114.077,
+      112.967,
+      111.968,
+      113.221
+    ]
+  },
+  "import_spark_cli_main_ms": {
+    "median": 84.118,
+    "p95": 86.212,
+    "raw": [
+      84.287,
+      86.212,
+      84.118,
+      78.084,
+      75.789
+    ]
+  },
+  "pinned_runtime": {
+    "model": "deterministic-replay-v1",
+    "provider": "fixture",
+    "reasoning_effort": "medium"
+  },
+  "raw_trials": [
+    {
+      "case_id": "direct-answer",
+      "elapsed_ms": 7.21,
+      "json_snapshot_bytes": 57,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 15,
+        "estimated_prompt_tokens": 16,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5948749603703618,
+        "db_write_transactions": 2.0
+      },
+      "trial": 1,
+      "web_expected": {},
+      "workload": "direct_answer"
+    },
+    {
+      "case_id": "direct-answer",
+      "elapsed_ms": 6.928,
+      "json_snapshot_bytes": 57,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 15,
+        "estimated_prompt_tokens": 16,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5714589788112789,
+        "db_write_transactions": 2.0
+      },
+      "trial": 2,
+      "web_expected": {},
+      "workload": "direct_answer"
+    },
+    {
+      "case_id": "direct-answer",
+      "elapsed_ms": 6.403,
+      "json_snapshot_bytes": 57,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 15,
+        "estimated_prompt_tokens": 16,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5202080064918846,
+        "db_write_transactions": 2.0
+      },
+      "trial": 3,
+      "web_expected": {},
+      "workload": "direct_answer"
+    },
+    {
+      "case_id": "direct-answer",
+      "elapsed_ms": 6.217,
+      "json_snapshot_bytes": 57,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 15,
+        "estimated_prompt_tokens": 16,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5418329674284905,
+        "db_write_transactions": 2.0
+      },
+      "trial": 4,
+      "web_expected": {},
+      "workload": "direct_answer"
+    },
+    {
+      "case_id": "direct-answer",
+      "elapsed_ms": 6.643,
+      "json_snapshot_bytes": 57,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 15,
+        "estimated_prompt_tokens": 16,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5777079786639661,
+        "db_write_transactions": 2.0
+      },
+      "trial": 5,
+      "web_expected": {},
+      "workload": "direct_answer"
+    },
+    {
+      "case_id": "code-edit",
+      "elapsed_ms": 6.173,
+      "json_snapshot_bytes": 114,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 29,
+        "estimated_prompt_tokens": 127,
+        "injected_context_tokens": 0,
+        "schema_tokens": 98,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.49145802040584385,
+        "db_write_transactions": 2.0
+      },
+      "trial": 1,
+      "web_expected": {},
+      "workload": "code_edit"
+    },
+    {
+      "case_id": "code-edit",
+      "elapsed_ms": 6.854,
+      "json_snapshot_bytes": 114,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 29,
+        "estimated_prompt_tokens": 127,
+        "injected_context_tokens": 0,
+        "schema_tokens": 98,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5445839778985828,
+        "db_write_transactions": 2.0
+      },
+      "trial": 2,
+      "web_expected": {},
+      "workload": "code_edit"
+    },
+    {
+      "case_id": "code-edit",
+      "elapsed_ms": 6.482,
+      "json_snapshot_bytes": 114,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 29,
+        "estimated_prompt_tokens": 127,
+        "injected_context_tokens": 0,
+        "schema_tokens": 98,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.4631670017261058,
+        "db_write_transactions": 2.0
+      },
+      "trial": 3,
+      "web_expected": {},
+      "workload": "code_edit"
+    },
+    {
+      "case_id": "code-edit",
+      "elapsed_ms": 5.803,
+      "json_snapshot_bytes": 114,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 29,
+        "estimated_prompt_tokens": 127,
+        "injected_context_tokens": 0,
+        "schema_tokens": 98,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.44604099821299314,
+        "db_write_transactions": 2.0
+      },
+      "trial": 4,
+      "web_expected": {},
+      "workload": "code_edit"
+    },
+    {
+      "case_id": "code-edit",
+      "elapsed_ms": 6.378,
+      "json_snapshot_bytes": 114,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 29,
+        "estimated_prompt_tokens": 127,
+        "injected_context_tokens": 0,
+        "schema_tokens": 98,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.6575830047950149,
+        "db_write_transactions": 2.0
+      },
+      "trial": 5,
+      "web_expected": {},
+      "workload": "code_edit"
+    },
+    {
+      "case_id": "multi-tool-research",
+      "elapsed_ms": 6.68,
+      "json_snapshot_bytes": 94,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 24,
+        "estimated_prompt_tokens": 115,
+        "injected_context_tokens": 0,
+        "schema_tokens": 91,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5919579998590052,
+        "db_write_transactions": 2.0
+      },
+      "trial": 1,
+      "web_expected": {},
+      "workload": "multi_tool_research"
+    },
+    {
+      "case_id": "multi-tool-research",
+      "elapsed_ms": 6.016,
+      "json_snapshot_bytes": 94,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 24,
+        "estimated_prompt_tokens": 115,
+        "injected_context_tokens": 0,
+        "schema_tokens": 91,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.46275000204332173,
+        "db_write_transactions": 2.0
+      },
+      "trial": 2,
+      "web_expected": {},
+      "workload": "multi_tool_research"
+    },
+    {
+      "case_id": "multi-tool-research",
+      "elapsed_ms": 7.103,
+      "json_snapshot_bytes": 94,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 24,
+        "estimated_prompt_tokens": 115,
+        "injected_context_tokens": 0,
+        "schema_tokens": 91,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5013329791836441,
+        "db_write_transactions": 2.0
+      },
+      "trial": 3,
+      "web_expected": {},
+      "workload": "multi_tool_research"
+    },
+    {
+      "case_id": "multi-tool-research",
+      "elapsed_ms": 6.503,
+      "json_snapshot_bytes": 94,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 24,
+        "estimated_prompt_tokens": 115,
+        "injected_context_tokens": 0,
+        "schema_tokens": 91,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5138329870533198,
+        "db_write_transactions": 2.0
+      },
+      "trial": 4,
+      "web_expected": {},
+      "workload": "multi_tool_research"
+    },
+    {
+      "case_id": "multi-tool-research",
+      "elapsed_ms": 7.41,
+      "json_snapshot_bytes": 94,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 24,
+        "estimated_prompt_tokens": 115,
+        "injected_context_tokens": 0,
+        "schema_tokens": 91,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5381670198403299,
+        "db_write_transactions": 2.0
+      },
+      "trial": 5,
+      "web_expected": {},
+      "workload": "multi_tool_research"
+    },
+    {
+      "case_id": "large-file-read",
+      "elapsed_ms": 6.738,
+      "json_snapshot_bytes": 104,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 27,
+        "estimated_prompt_tokens": 88,
+        "injected_context_tokens": 0,
+        "schema_tokens": 61,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.4716239927802235,
+        "db_write_transactions": 2.0
+      },
+      "trial": 1,
+      "web_expected": {},
+      "workload": "large_file_read"
+    },
+    {
+      "case_id": "large-file-read",
+      "elapsed_ms": 6.595,
+      "json_snapshot_bytes": 104,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 27,
+        "estimated_prompt_tokens": 88,
+        "injected_context_tokens": 0,
+        "schema_tokens": 61,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.4877910250797868,
+        "db_write_transactions": 2.0
+      },
+      "trial": 2,
+      "web_expected": {},
+      "workload": "large_file_read"
+    },
+    {
+      "case_id": "large-file-read",
+      "elapsed_ms": 7.458,
+      "json_snapshot_bytes": 104,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 27,
+        "estimated_prompt_tokens": 88,
+        "injected_context_tokens": 0,
+        "schema_tokens": 61,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.6773750064894557,
+        "db_write_transactions": 2.0
+      },
+      "trial": 3,
+      "web_expected": {},
+      "workload": "large_file_read"
+    },
+    {
+      "case_id": "large-file-read",
+      "elapsed_ms": 6.868,
+      "json_snapshot_bytes": 104,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 27,
+        "estimated_prompt_tokens": 88,
+        "injected_context_tokens": 0,
+        "schema_tokens": 61,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5554589733947068,
+        "db_write_transactions": 2.0
+      },
+      "trial": 4,
+      "web_expected": {},
+      "workload": "large_file_read"
+    },
+    {
+      "case_id": "large-file-read",
+      "elapsed_ms": 6.931,
+      "json_snapshot_bytes": 104,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 27,
+        "estimated_prompt_tokens": 88,
+        "injected_context_tokens": 0,
+        "schema_tokens": 61,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5858330114278942,
+        "db_write_transactions": 2.0
+      },
+      "trial": 5,
+      "web_expected": {},
+      "workload": "large_file_read"
+    },
+    {
+      "case_id": "long-session",
+      "elapsed_ms": 7.124,
+      "json_snapshot_bytes": 11865,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 2671,
+        "estimated_prompt_tokens": 3087,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 415
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.6176669849082828,
+        "db_write_transactions": 2.0
+      },
+      "trial": 1,
+      "web_expected": {},
+      "workload": "long_session"
+    },
+    {
+      "case_id": "long-session",
+      "elapsed_ms": 7.196,
+      "json_snapshot_bytes": 11865,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 2671,
+        "estimated_prompt_tokens": 3087,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 415
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5068329919595271,
+        "db_write_transactions": 2.0
+      },
+      "trial": 2,
+      "web_expected": {},
+      "workload": "long_session"
+    },
+    {
+      "case_id": "long-session",
+      "elapsed_ms": 6.82,
+      "json_snapshot_bytes": 11865,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 2671,
+        "estimated_prompt_tokens": 3087,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 415
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5002499965485185,
+        "db_write_transactions": 2.0
+      },
+      "trial": 3,
+      "web_expected": {},
+      "workload": "long_session"
+    },
+    {
+      "case_id": "long-session",
+      "elapsed_ms": 6.93,
+      "json_snapshot_bytes": 11865,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 2671,
+        "estimated_prompt_tokens": 3087,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 415
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5975000094622374,
+        "db_write_transactions": 2.0
+      },
+      "trial": 4,
+      "web_expected": {},
+      "workload": "long_session"
+    },
+    {
+      "case_id": "long-session",
+      "elapsed_ms": 7.156,
+      "json_snapshot_bytes": 11865,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 2671,
+        "estimated_prompt_tokens": 3087,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 415
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.49516698345541954,
+        "db_write_transactions": 2.0
+      },
+      "trial": 5,
+      "web_expected": {},
+      "workload": "long_session"
+    },
+    {
+      "case_id": "reconnect",
+      "elapsed_ms": 7.394,
+      "json_snapshot_bytes": 86,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 22,
+        "estimated_prompt_tokens": 23,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5851250025443733,
+        "db_write_transactions": 2.0
+      },
+      "trial": 1,
+      "web_expected": {
+        "http_polls_while_healthy": 0,
+        "reconnects": 1,
+        "recovery_actions": 1
+      },
+      "workload": "reconnect"
+    },
+    {
+      "case_id": "reconnect",
+      "elapsed_ms": 7.527,
+      "json_snapshot_bytes": 86,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 22,
+        "estimated_prompt_tokens": 23,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5803329695481807,
+        "db_write_transactions": 2.0
+      },
+      "trial": 2,
+      "web_expected": {
+        "http_polls_while_healthy": 0,
+        "reconnects": 1,
+        "recovery_actions": 1
+      },
+      "workload": "reconnect"
+    },
+    {
+      "case_id": "reconnect",
+      "elapsed_ms": 6.746,
+      "json_snapshot_bytes": 86,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 22,
+        "estimated_prompt_tokens": 23,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5054170032963157,
+        "db_write_transactions": 2.0
+      },
+      "trial": 3,
+      "web_expected": {
+        "http_polls_while_healthy": 0,
+        "reconnects": 1,
+        "recovery_actions": 1
+      },
+      "workload": "reconnect"
+    },
+    {
+      "case_id": "reconnect",
+      "elapsed_ms": 7.189,
+      "json_snapshot_bytes": 86,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 22,
+        "estimated_prompt_tokens": 23,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5810010188724846,
+        "db_write_transactions": 2.0
+      },
+      "trial": 4,
+      "web_expected": {
+        "http_polls_while_healthy": 0,
+        "reconnects": 1,
+        "recovery_actions": 1
+      },
+      "workload": "reconnect"
+    },
+    {
+      "case_id": "reconnect",
+      "elapsed_ms": 7.127,
+      "json_snapshot_bytes": 86,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 22,
+        "estimated_prompt_tokens": 23,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5757079925388098,
+        "db_write_transactions": 2.0
+      },
+      "trial": 5,
+      "web_expected": {
+        "http_polls_while_healthy": 0,
+        "reconnects": 1,
+        "recovery_actions": 1
+      },
+      "workload": "reconnect"
+    },
+    {
+      "case_id": "concurrent-chats",
+      "elapsed_ms": 7.143,
+      "json_snapshot_bytes": 67,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 17,
+        "estimated_prompt_tokens": 18,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.4871249839197844,
+        "db_write_transactions": 2.0
+      },
+      "trial": 1,
+      "web_expected": {
+        "completed_sessions": 4,
+        "cross_session_events": 0,
+        "http_polls_while_healthy": 0
+      },
+      "workload": "concurrent_chats"
+    },
+    {
+      "case_id": "concurrent-chats",
+      "elapsed_ms": 7.863,
+      "json_snapshot_bytes": 67,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 17,
+        "estimated_prompt_tokens": 18,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.7392919796984643,
+        "db_write_transactions": 2.0
+      },
+      "trial": 2,
+      "web_expected": {
+        "completed_sessions": 4,
+        "cross_session_events": 0,
+        "http_polls_while_healthy": 0
+      },
+      "workload": "concurrent_chats"
+    },
+    {
+      "case_id": "concurrent-chats",
+      "elapsed_ms": 7.78,
+      "json_snapshot_bytes": 67,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 17,
+        "estimated_prompt_tokens": 18,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.617832993157208,
+        "db_write_transactions": 2.0
+      },
+      "trial": 3,
+      "web_expected": {
+        "completed_sessions": 4,
+        "cross_session_events": 0,
+        "http_polls_while_healthy": 0
+      },
+      "workload": "concurrent_chats"
+    },
+    {
+      "case_id": "concurrent-chats",
+      "elapsed_ms": 7.838,
+      "json_snapshot_bytes": 67,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 17,
+        "estimated_prompt_tokens": 18,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.5959999980404973,
+        "db_write_transactions": 2.0
+      },
+      "trial": 4,
+      "web_expected": {
+        "completed_sessions": 4,
+        "cross_session_events": 0,
+        "http_polls_while_healthy": 0
+      },
+      "workload": "concurrent_chats"
+    },
+    {
+      "case_id": "concurrent-chats",
+      "elapsed_ms": 8.21,
+      "json_snapshot_bytes": 67,
+      "model": "deterministic-replay-v1",
+      "provider": "fixture",
+      "reasoning_effort": "medium",
+      "request": {
+        "conversation_tokens": 17,
+        "estimated_prompt_tokens": 18,
+        "injected_context_tokens": 0,
+        "schema_tokens": 1,
+        "system_prompt_tokens": 0,
+        "tool_result_tokens": 0
+      },
+      "runtime": {
+        "db_bytes_growth": 90640.0,
+        "db_lock_retries": 0.0,
+        "db_write_elapsed_ms": 0.7374580309260637,
+        "db_write_transactions": 2.0
+      },
+      "trial": 5,
+      "web_expected": {
+        "completed_sessions": 4,
+        "cross_session_events": 0,
+        "http_polls_while_healthy": 0
+      },
+      "workload": "concurrent_chats"
+    }
+  ],
+  "report_version": "1.0.0",
+  "source_commit": "718da7a9f85c67bcadcd3012f05ad98c9db5139b",
+  "source_dirty": true,
+  "summary": [
+    {
+      "case_id": "direct-answer",
+      "elapsed_ms_median": 6.643,
+      "elapsed_ms_p95": 7.21,
+      "prompt_tokens_median": 16,
+      "snapshot_bytes_median": 57
+    },
+    {
+      "case_id": "code-edit",
+      "elapsed_ms_median": 6.378,
+      "elapsed_ms_p95": 6.854,
+      "prompt_tokens_median": 127,
+      "snapshot_bytes_median": 114
+    },
+    {
+      "case_id": "multi-tool-research",
+      "elapsed_ms_median": 6.68,
+      "elapsed_ms_p95": 7.41,
+      "prompt_tokens_median": 115,
+      "snapshot_bytes_median": 94
+    },
+    {
+      "case_id": "large-file-read",
+      "elapsed_ms_median": 6.868,
+      "elapsed_ms_p95": 7.458,
+      "prompt_tokens_median": 88,
+      "snapshot_bytes_median": 104
+    },
+    {
+      "case_id": "long-session",
+      "elapsed_ms_median": 7.124,
+      "elapsed_ms_p95": 7.196,
+      "prompt_tokens_median": 3087,
+      "snapshot_bytes_median": 11865
+    },
+    {
+      "case_id": "reconnect",
+      "elapsed_ms_median": 7.189,
+      "elapsed_ms_p95": 7.527,
+      "prompt_tokens_median": 23,
+      "snapshot_bytes_median": 86
+    },
+    {
+      "case_id": "concurrent-chats",
+      "elapsed_ms_median": 7.838,
+      "elapsed_ms_p95": 8.21,
+      "prompt_tokens_median": 18,
+      "snapshot_bytes_median": 67
+    }
+  ],
+  "trials_per_fixture": 5
+}

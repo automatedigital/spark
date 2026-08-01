@@ -1,7 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TimelineMinimap, buildTimelineMinimapItems } from "./TimelineMinimap";
+import { TimelineMinimap } from "./TimelineMinimap";
+import { buildTimelineMinimapItems } from "./timelineMinimapModel";
 
 describe("TimelineMinimap", () => {
   it("derives lightweight markers without reading message content", () => {

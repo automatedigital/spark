@@ -96,6 +96,15 @@ def _should_parallelize_tool_batch(tool_calls) -> bool:
             )
             return False
 
+        # Compact model-visible facades map to the same legacy effect/path
+        # semantics as their handlers.  Normalize before conflict analysis so
+        # facades do not accidentally force safe batches back to sequential.
+        try:
+            from tools.facades import normalize_facade_call
+            tool_name, function_args = normalize_facade_call(tool_name, function_args)
+        except ValueError:
+            return False
+
         if tool_name in _PATH_SCOPED_TOOLS:
             scoped_path = _extract_parallel_scope_path(tool_name, function_args)
             if scoped_path is None:

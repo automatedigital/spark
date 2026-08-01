@@ -10,8 +10,8 @@ Authentication uses a Long-Lived Access Token via ``HASS_TOKEN`` env var.
 The HA instance URL is read from ``HASS_URL`` (default: http://homeassistant.local:8123).
 """
 
-import asyncio
 import json
+import asyncio
 import logging
 import os
 import re
@@ -102,33 +102,60 @@ def _filter_and_summarize(
     return {"count": len(entities), "entities": entities}
 
 
+async def _get_ha_client():
+    """Return the credential/profile-scoped pooled Home Assistant client."""
+    from core.async_runtime import TransportKey, get_async_runtime
+    from core.network_tls import httpx_verify_value
+    from core.spark_constants import get_spark_home
+
+    hass_url, hass_token = _get_config()
+    ca_bundle = httpx_verify_value()
+    key = TransportKey.scoped(
+        "homeassistant",
+        profile=str(get_spark_home()),
+        base_url=hass_url,
+        credential=hass_token,
+        tls_policy=f"ca:{ca_bundle}" if ca_bundle else "default",
+    )
+    return await get_async_runtime().get_http_client(
+        key,
+        headers=_get_headers(hass_token),
+        timeout=15.0,
+    )
+
+
+async def _ha_request(method: str, path: str, **kwargs):
+    """Execute a request on the client-owning runtime from any async caller."""
+    from core.async_runtime import get_async_runtime
+
+    runtime = get_async_runtime()
+
+    async def _request():
+        client = await _get_ha_client()
+        response = await client.request(method, path, **kwargs)
+        response.raise_for_status()
+        return response
+
+    if asyncio.get_running_loop() is runtime.loop:
+        return await _request()
+    return await asyncio.wrap_future(runtime.submit(_request()))
+
+
 async def _async_list_entities(
     domain: Optional[str] = None,
     area: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Fetch entity states from HA and optionally filter by domain/area."""
-    import aiohttp
-
-    hass_url, hass_token = _get_config()
-    url = f"{hass_url}/api/states"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=_get_headers(hass_token), timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            resp.raise_for_status()
-            states = await resp.json()
+    resp = await _ha_request("GET", "/api/states")
+    states = resp.json()
 
     return _filter_and_summarize(states, domain, area)
 
 
 async def _async_get_state(entity_id: str) -> Dict[str, Any]:
     """Fetch detailed state of a single entity."""
-    import aiohttp
-
-    hass_url, hass_token = _get_config()
-    url = f"{hass_url}/api/states/{entity_id}"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=_get_headers(hass_token), timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
+    resp = await _ha_request("GET", f"/api/states/{entity_id}", timeout=10.0)
+    data = resp.json()
 
     return {
         "entity_id": data["entity_id"],
@@ -181,21 +208,9 @@ async def _async_call_service(
     data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Call a Home Assistant service."""
-    import aiohttp
-
-    hass_url, hass_token = _get_config()
-    url = f"{hass_url}/api/services/{domain}/{service}"
     payload = _build_service_payload(entity_id, data)
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            url,
-            headers=_get_headers(hass_token),
-            json=payload,
-            timeout=aiohttp.ClientTimeout(total=15),
-        ) as resp:
-            resp.raise_for_status()
-            result = await resp.json()
+    resp = await _ha_request("POST", f"/api/services/{domain}/{service}", json=payload)
+    result = resp.json()
 
     return _parse_service_response(domain, service, result)
 
@@ -204,21 +219,18 @@ async def _async_call_service(
 # Sync wrappers (handler signature: (args, **kw) -> str)
 # ---------------------------------------------------------------------------
 
-def _run_async(coro):
-    """Run an async coroutine from a sync handler."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
+def _run_async(coro_or_factory):
+    """Run an async coroutine on Spark's process-owned runtime."""
+    from core.async_runtime import get_async_runtime
+    from core.tool_scheduler import execution_cancelled
+    from tools.interrupt import is_interrupted
 
-    if loop and loop.is_running():
-        # Already inside an event loop -- create a new thread
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result(timeout=30)
-    else:
-        return asyncio.run(coro)
+    coro = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
+    return get_async_runtime().run(
+        coro,
+        timeout=30,
+        cancelled=lambda: execution_cancelled() or is_interrupted(),
+    )
 
 
 def _handle_list_entities(args: dict, **kw) -> str:
@@ -226,7 +238,7 @@ def _handle_list_entities(args: dict, **kw) -> str:
     domain = args.get("domain")
     area = args.get("area")
     try:
-        result = _run_async(_async_list_entities(domain=domain, area=area))
+        result = _run_async(lambda: _async_list_entities(domain=domain, area=area))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_list_entities error: %s", e)
@@ -241,7 +253,7 @@ def _handle_get_state(args: dict, **kw) -> str:
     if not _ENTITY_ID_RE.match(entity_id):
         return tool_error(f"Invalid entity_id format: {entity_id}")
     try:
-        result = _run_async(_async_get_state(entity_id))
+        result = _run_async(lambda: _async_get_state(entity_id))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_get_state error: %s", e)
@@ -281,7 +293,7 @@ def _handle_call_service(args: dict, **kw) -> str:
             return tool_error(f"Invalid JSON string in 'data' parameter: {e}")
 
     try:
-        result = _run_async(_async_call_service(domain, service, entity_id, data))
+        result = _run_async(lambda: _async_call_service(domain, service, entity_id, data))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_call_service error: %s", e)
@@ -294,15 +306,8 @@ def _handle_call_service(args: dict, **kw) -> str:
 
 async def _async_list_services(domain: Optional[str] = None) -> Dict[str, Any]:
     """Fetch available services from HA and optionally filter by domain."""
-    import aiohttp
-
-    hass_url, hass_token = _get_config()
-    url = f"{hass_url}/api/services"
-    headers = {"Authorization": f"Bearer {hass_token}", "Content-Type": "application/json"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            resp.raise_for_status()
-            services = await resp.json()
+    resp = await _ha_request("GET", "/api/services")
+    services = resp.json()
 
     if domain:
         services = [s for s in services if s.get("domain") == domain]
@@ -330,7 +335,7 @@ def _handle_list_services(args: dict, **kw) -> str:
     """Handler for ha_list_services tool."""
     domain = args.get("domain")
     try:
-        result = _run_async(_async_list_services(domain=domain))
+        result = _run_async(lambda: _async_list_services(domain=domain))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_list_services error: %s", e)

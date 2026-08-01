@@ -26,7 +26,14 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
-import { useEventBus, BUS_GAP_TOPIC, BUS_RECONNECTED_TOPIC } from "@/hooks/useEventBus";
+import {
+  useEventBus,
+  BUS_GAP_TOPIC,
+  BUS_RECONNECTED_TOPIC,
+  BUS_STALE_TOPIC,
+  BUS_WAKE_TOPIC,
+  useSelectedDetailSubscription,
+} from "@/hooks/useEventBus";
 import {
   estimateAssistantRowSize,
   findLiveRowIndex,
@@ -42,7 +49,8 @@ import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
-import { TimelineMinimap, buildTimelineMinimapItems, type TimelineSourceItem } from "@/components/chat/TimelineMinimap";
+import { TimelineMinimap } from "@/components/chat/TimelineMinimap";
+import { buildTimelineMinimapItems, type TimelineSourceItem } from "@/components/chat/timelineMinimapModel";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
 import { tokenizeUserBubbleText } from "@/lib/userBubbleTokens";
@@ -54,11 +62,7 @@ import {
   recoverTurnStateFromBackend,
   type ChatTurnState,
 } from "@/lib/chatTurnState";
-import {
-  consumeRecoverySignal,
-  decideRecoveryPoll,
-  initialRecoverySignalBudget,
-} from "@/lib/chatRecovery";
+import { consumeRecoverySignal, initialRecoverySignalBudget } from "@/lib/chatRecovery";
 import {
   recoveryActionsForTurn,
   readChatDiagnosticCounters,
@@ -90,6 +94,12 @@ import {
 import { isTauri } from "@/sidecar";
 import { liveStreamFlushInterval, snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
 import { copyExactAssistantContent, exactAssistantContent } from "@/lib/exactMessage";
+import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
+import {
+  clearUnsettledOrInvalidDetailCache,
+  readSettledDetail,
+  schedulePersistSettledDetail,
+} from "@/lib/webState";
 import {
   appendBoundedText,
   boundText,
@@ -506,6 +516,10 @@ export function ChatPanel({
   workspaceSlug,
   className,
 }: ChatPanelProps) {
+  useSelectedDetailSubscription(sessionId);
+  useEffect(() => {
+    recordWebEfficiency("reactCommits");
+  });
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState(() => {
     // First-run "try this" prompt seeded by onboarding — pre-fill once.
@@ -551,6 +565,8 @@ export function ChatPanel({
   const [sseReconnectCount, setSseReconnectCount] = useState(0);
   const [recoveryPollCount, setRecoveryPollCount] = useState(0);
 
+  useEffect(() => clearUnsettledOrInvalidDetailCache(), []);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef<string | null>(sessionId);
   const streamingRef = useRef(false);
@@ -575,7 +591,6 @@ export function ChatPanel({
   // Timestamp of the last visible assistant token. Status/reasoning events can
   // keep the backend heartbeat alive while the rendered answer itself is stuck.
   const lastTokenAtRef = useRef<number>(0);
-  const lastIdleRecoveryPollAtRef = useRef<number>(0);
   // Guards against overlapping turn-status re-sync polls.
   const resyncInFlightRef = useRef(false);
   const recoverySignalBudgetRef = useRef(initialRecoverySignalBudget());
@@ -712,7 +727,11 @@ export function ChatPanel({
     const optimistic: ChatMessage[] = initialMessage
       ? [{ id: nid(), role: "user", content: initialMessage }]
       : [];
-    const cachedTranscript = sessionId ? localTurnCache.get(sessionId) ?? [] : [];
+    const settledCache = sessionId ? readSettledDetail(sessionId) : null;
+    const cachedTranscript = sessionId
+      ? localTurnCache.get(sessionId)
+        ?? (settledCache ? sessionMessagesToChat(settledCache.messages) : [])
+      : [];
     const initialTranscript = cachedTranscript.length > 0 ? cachedTranscript : optimistic;
     setChatMessages(initialTranscript);
     setError(null);
@@ -1240,6 +1259,8 @@ export function ChatPanel({
     const recoverySeq = sessionRecoverySeqRef.current;
     resyncInFlightRef.current = true;
     setRecoveryPollCount((count) => count + 1);
+    recordWebEfficiency("httpPolls");
+    recordWebEfficiency("streamRecoveryActions");
     try {
       const status = await api.getTurnStatus(sid);
       debugChatRecovery("resync-turn-status", status.diagnostics ?? status);
@@ -1392,6 +1413,12 @@ export function ChatPanel({
     // so reconcile against the backend's turn-status.
     if (env.topic === BUS_RECONNECTED_TOPIC) {
       setSseReconnectCount((count) => count + 1);
+      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
+      recoverySignalBudgetRef.current = result.budget;
+      if (result.allowed) void resyncTurnState({ allowIdle: true });
+      return;
+    }
+    if (env.topic === BUS_STALE_TOPIC || env.topic === BUS_WAKE_TOPIC) {
       const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
       recoverySignalBudgetRef.current = result.budget;
       if (result.allowed) void resyncTurnState({ allowIdle: true });
@@ -1638,6 +1665,12 @@ export function ChatPanel({
             .getSessionMessages(finalHistorySessionId, HISTORY_PAGE)
             .then((resp) => {
               applyFinalHistory(resp);
+              schedulePersistSettledDetail(
+                resp.session_id ?? finalHistorySessionId,
+                resp.messages,
+                env.sequence,
+                true,
+              );
               window.setTimeout(() => {
                 void api
                   .getSessionMessages(finalHistorySessionId, HISTORY_PAGE)
@@ -1696,45 +1729,6 @@ export function ChatPanel({
         break;
     }
   });
-
-  // One recovery poller covers both active stalls and idle app-resume checks.
-  // It stays quiet while SSE is fresh and pauses while the window is hidden.
-  useEffect(() => {
-    if (!activeSessionId) return;
-    if (!lastEventAtRef.current) lastEventAtRef.current = Date.now();
-    if (streaming && !lastTokenAtRef.current) lastTokenAtRef.current = Date.now();
-    const tick = () => {
-      const decision = decideRecoveryPoll({
-        streaming: streamingRef.current,
-        hidden: typeof document !== "undefined" && document.hidden,
-        now: Date.now(),
-        lastEventAt: lastEventAtRef.current,
-        lastTokenAt: lastTokenAtRef.current,
-        lastIdlePollAt: lastIdleRecoveryPollAtRef.current,
-      });
-      lastIdleRecoveryPollAtRef.current = decision.nextIdlePollAt;
-      if (decision.statusLabel) {
-        setStatusLabel(decision.statusLabel);
-      }
-      if (decision.poll) {
-        const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
-        recoverySignalBudgetRef.current = result.budget;
-        if (result.allowed) void resyncTurnState({ allowIdle: !streamingRef.current });
-      }
-    };
-    const handleVisibility = () => {
-      if (document.hidden) return;
-      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
-      recoverySignalBudgetRef.current = result.budget;
-      if (result.allowed) void resyncTurnState({ allowIdle: !streamingRef.current });
-    };
-    const interval = setInterval(tick, 2_000);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [activeSessionId, streaming, resyncTurnState]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -1828,7 +1822,7 @@ export function ChatPanel({
     }
   };
 
-  const stop = async () => {
+  const stop = useCallback(async () => {
     const sid = activeTurnSessionIdRef.current ?? activeSessionId;
     if (!sid) return;
     if (turnStateRef.current === "stopping" || turnStateRef.current === "redirecting") return;
@@ -1840,7 +1834,7 @@ export function ChatPanel({
       setStatusLabel("Stop requested; waiting for backend state…");
       void resyncTurnState();
     }
-  };
+  }, [activeSessionId, resyncTurnState]);
 
   // Use refs for values that change so useCallback deps stay empty → stable identities
   const onSessionCreatedRef = useRef(onSessionCreated);
@@ -2029,6 +2023,7 @@ export function ChatPanel({
     latestUserMessage,
     recoveryActionBusy,
     reloadLatestTranscript,
+    stop,
   ]);
 
   const recoveryActions = useMemo(() => recoveryActionsForTurn({
@@ -2721,7 +2716,7 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [activeSessionId, collapsedMessages.length, streamingAssistantVisibleChars, streaming, safeMode, virtualizer]);
+  }, [activeSessionId, collapsedMessages.length, streamingAssistantVisibleChars, streaming, safeMode, virtualizer, runBottomClamp]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;
