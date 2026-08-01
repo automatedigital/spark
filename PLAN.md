@@ -196,6 +196,13 @@ the model-visible surface byte-stable for prompt caching.
 
 ### Implementation
 
+- [x] **EFF-01-P1 - Compact the two highest-cost default schemas.** Reduce the
+  model-visible `delegate_task` and `execute_code` descriptions without
+  changing tool names, parameters, limits, helper guidance, or web result
+  envelopes.
+  **Evidence:** compact JSON fell from 6,665 to 3,887 characters, saving about
+  695 estimated input tokens per model request.
+
 - [ ] **EFF-01-01 - Define the stable facade contract.** Group related actions
   into compact facades such as `files`, `skills`, `preview`, `canvas`, and
   `web`, each with an `action` discriminator and action-specific validation.
@@ -230,6 +237,11 @@ the model-visible surface byte-stable for prompt caching.
   tests.
 
 ### Verification
+
+- [x] **EFF-01-PV1 - Lock schema size and execution contracts.** Focused tests
+  enforce serialized size ceilings, required delegation guidance, sandbox
+  limits/helpers, enabled-tool filtering, and the `web_search`/`web_extract`
+  return envelopes.
 
 - [ ] **EFF-01-V1 - Meet the schema budget.** The default profile is at most
   18,000 serialized characters or 4,500 estimated tokens, with no lost action.
@@ -376,6 +388,17 @@ handles so the model sees a compact index and requests only relevant slices.
 
 ### Implementation
 
+- [x] **EFF-04-P1 - Add recoverable token soft limits.** Apply conservative
+  UTF-8 token estimates of 12,000 tokens per result and 24,000 per tool batch
+  only when durable environment storage is available. Preserve the complete
+  original result if a token-only spill cannot be stored.
+
+- [x] **EFF-04-P2 - Add safe artifact identity and same-turn deduplication.**
+  Record SHA-256 content identity and origin metadata in persisted previews,
+  collapse repeated persisted content to the first artifact reference, and
+  pass aligned tool names internally so pinned `read_file` pages cannot enter
+  a persist-read loop.
+
 - [ ] **EFF-04-01 - Make every large-producing tool pageable.** Standardize
   `offset`, `limit`, `next_cursor`, `total_size`, `content_hash`, and truncation
   metadata for file reads, searches, terminal output, browser snapshots, web
@@ -403,6 +426,12 @@ handles so the model sees a compact index and requests only relevant slices.
   return its prior artifact handle and a compact unchanged marker.
 
 ### Verification
+
+- [x] **EFF-04-PV1 - Cover token-density and recovery edges.** Tests cover ASCII,
+  CJK, lone-surrogate estimation, storage failure, token-budget opt-out,
+  duplicate artifacts, aligned-name mismatch safety, and pinned `read_file`
+  behavior. A four-result fixture reduced estimated inline tokens from 56,000
+  to 14,759, a 73.6% reduction.
 
 - [ ] **EFF-04-V1 - Fuzz pagination.** Reassemble Unicode, binary metadata,
   long-line, empty, remote, and concurrent outputs byte-for-byte from pages.
@@ -456,6 +485,12 @@ conflicts.
   exact final results.
 
 ### Verification
+
+- [x] **EFF-05-PV1 - Verify default and explicit pacing.** Two zero-work calls
+  fell from 1.0067 seconds to 0.0002 seconds median. Tests prove the default
+  performs no sleep, explicit nonzero pacing still sleeps exactly once between
+  calls, tool-result order is stable, and provider-facing tool messages keep
+  their standard shape.
 
 - [ ] **EFF-05-V1 - Run conflict-table tests.** Cover independent reads,
   overlapping writes, terminal mutations, browser session state, memory/todo
@@ -654,6 +689,11 @@ uses them.
 
 ### Implementation
 
+- [x] **EFF-09-P1 - Defer optional MCP imports for unconfigured profiles.**
+  Inspect raw profile configuration before importing the MCP SDK. Profiles with
+  an `mcp_servers` mapping keep the existing eager discovery path, while
+  unconfigured profiles avoid loading the optional SDK and its dependencies.
+
 - [ ] **EFF-09-01 - Split schema metadata from handlers.** Keep a lightweight,
   declarative manifest importable without optional SDKs. Resolve and import the
   handler module only on its first invocation.
@@ -678,6 +718,12 @@ uses them.
   source discovery and included in desktop artifacts only when required.
 
 ### Verification
+
+- [x] **EFF-09-PV1 - Benchmark and test the lazy MCP boundary.** Seven fresh
+  `core.run_agent` processes improved from 0.5959 to 0.4849 seconds median,
+  imported 205 fewer modules, and used about 13.9 MiB less RSS. Fresh-process
+  tests cover both configured and unconfigured profiles, and MCP/model-tool/ACP
+  regression suites preserve discovery behavior.
 
 - [ ] **EFF-09-V1 - Import budget.** Measure five fresh processes and meet a
   median `import core.run_agent` target of 0.45 seconds, stretch goal 0.35, on
@@ -770,6 +816,10 @@ configurable; explicit user verbosity always wins.
 - [ ] **GATE-02 - Complete frontend checks.** Run full Vitest, focused ESLint,
   TypeScript build, production Vite build to temporary output, and the bundle
   budget before accepting generated `web_dist` changes.
+  **Current evidence:** 235 Vitest tests, TypeScript/Vite production build, and
+  the 194.77 KiB gzip entry bundle passed. Full ESLint still has two existing
+  errors and eight warnings in unchanged Web UI source, so this gate remains
+  unchecked.
 
 - [ ] **GATE-03 - Replay the fixed efficiency suite.** Compare baseline and
   candidate with pinned versions and publish raw measurements, median, p95,
@@ -780,10 +830,14 @@ configurable; explicit user verbosity always wins.
   refresh, reconnect, gateway restart, responsive widths, and console/network
   traces against the source dashboard.
 
-- [ ] **GATE-05 - Run full practical regressions.** Execute
+- [x] **GATE-05 - Run full practical regressions.** Execute
   `python -m pytest tests/ -m "not slow and not integration" -q`, then the full
   practical suite if no blocker appears. Document exact independently reproduced
   pre-existing failures rather than hiding them.
+  **Evidence:** 12,068 tests passed and 151 skipped. The two failures were
+  reproduced unchanged on detached `main`: a stale offline Codex catalog
+  expectation and DNS safety rejecting `a.example`/`b.example` in a browser
+  concurrency fixture.
 
 - [ ] **GATE-06 - Validate the packaged macOS app.** Measure launch, first token,
   tools, reconnect, persistence, and web state in the actual signed/notarized
@@ -793,10 +847,13 @@ configurable; explicit user verbosity always wins.
   the actual `Spark.exe` build, including native terminal/file/preview behavior
   and sleep/wake/reconnect.
 
-- [ ] **GATE-08 - Review generated output and release scope.** Rebuild
+- [x] **GATE-08 - Review generated output and release scope.** Rebuild
   `src/spark_cli/web_dist/` once after source acceptance, verify every manifest
   asset exists, inspect the diff, and exclude temporary clones, eval secrets,
   private fixtures, raw provider payloads, and unrelated worktree changes.
+  **Evidence:** Node 22 produced 46 manifest entries; every manifest and
+  `index.html` asset reference resolves. The release worktree contains only
+  the version bump, generated bundle, PLAN evidence, and no supplied references.
 
 ## Recommended Delivery Order
 
