@@ -71,6 +71,42 @@ jobs:
             throw "Packaged Spark.exe did not expose a healthy Windows desktop backend"
           }
 
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public static class ProcessSleep {
+            [DllImport("ntdll.dll", SetLastError = true)]
+            private static extern int NtSuspendProcess(IntPtr processHandle);
+            [DllImport("ntdll.dll", SetLastError = true)]
+            private static extern int NtResumeProcess(IntPtr processHandle);
+            public static void Suspend(int pid) {
+              using (var process = System.Diagnostics.Process.GetProcessById(pid)) {
+                if (NtSuspendProcess(process.Handle) != 0) throw new Exception("NtSuspendProcess failed");
+              }
+            }
+            public static void Resume(int pid) {
+              using (var process = System.Diagnostics.Process.GetProcessById(pid)) {
+                if (NtResumeProcess(process.Handle) != 0) throw new Exception("NtResumeProcess failed");
+              }
+            }
+          }
+          "@
+
+          function Get-ProcessTreeIds {
+            param([int]$RootPid)
+            $Ids = [System.Collections.Generic.List[int]]::new()
+            $Queue = [System.Collections.Generic.Queue[int]]::new()
+            $Queue.Enqueue($RootPid)
+            while ($Queue.Count -gt 0) {
+              $Current = $Queue.Dequeue()
+              $Ids.Add($Current)
+              Get-CimInstance Win32_Process -Filter "ParentProcessId=$Current" | ForEach-Object {
+                $Queue.Enqueue([int]$_.ProcessId)
+              }
+            }
+            return $Ids.ToArray()
+          }
+
           $Desktop = $null
           try {
             $Desktop = Start-Process -FilePath $AppExe -PassThru
@@ -81,6 +117,31 @@ jobs:
               --platform windows
             if ($LASTEXITCODE -ne 0) {
               throw "Packaged Windows prepare acceptance failed"
+            }
+
+            # Preserve the exact process tree while simulating the suspend/resume
+            # portion of OS sleep/wake. SSE reconnect is exercised again after wake.
+            $TreeIds = @(Get-ProcessTreeIds -RootPid $Desktop.Id)
+            $ChildIds = @($TreeIds | Where-Object { $_ -ne $Desktop.Id })
+            foreach ($PidToSuspend in $ChildIds) {
+              [ProcessSleep]::Suspend($PidToSuspend)
+            }
+            [ProcessSleep]::Suspend($Desktop.Id)
+            Start-Sleep -Seconds 3
+            [ProcessSleep]::Resume($Desktop.Id)
+            foreach ($PidToResume in $ChildIds) {
+              [ProcessSleep]::Resume($PidToResume)
+            }
+            $AfterWake = Wait-SparkDesktop
+            if ($AfterWake.server_instance_id -ne $Before.server_instance_id) {
+              throw "Packaged Windows backend restarted during suspend/resume"
+            }
+            python scripts/desktop_runtime_acceptance.py `
+              --base-url http://127.0.0.1:9119 `
+              --phase prepare `
+              --platform windows
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packaged Windows post-wake reconnect acceptance failed"
             }
 
             taskkill /PID $Desktop.Id /T /F | Out-Null
