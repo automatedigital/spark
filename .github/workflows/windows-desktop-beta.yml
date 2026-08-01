@@ -109,8 +109,11 @@ jobs:
 
           $Desktop = $null
           try {
+            $LaunchWatch = [System.Diagnostics.Stopwatch]::StartNew()
             $Desktop = Start-Process -FilePath $AppExe -PassThru
             $Before = Wait-SparkDesktop
+            $LaunchWatch.Stop()
+            Write-Host ("Packaged Windows launch-to-ready: {0:N3} seconds" -f $LaunchWatch.Elapsed.TotalSeconds)
             python scripts/desktop_runtime_acceptance.py `
               --base-url http://127.0.0.1:9119 `
               --phase prepare `
@@ -146,8 +149,11 @@ jobs:
 
             taskkill /PID $Desktop.Id /T /F | Out-Null
             $Desktop.WaitForExit()
+            $RelaunchWatch = [System.Diagnostics.Stopwatch]::StartNew()
             $Desktop = Start-Process -FilePath $AppExe -PassThru
             $After = Wait-SparkDesktop -PreviousInstance $Before.server_instance_id
+            $RelaunchWatch.Stop()
+            Write-Host ("Packaged Windows relaunch-to-ready: {0:N3} seconds" -f $RelaunchWatch.Elapsed.TotalSeconds)
             python scripts/desktop_runtime_acceptance.py `
               --base-url http://127.0.0.1:9119 `
               --phase resume `

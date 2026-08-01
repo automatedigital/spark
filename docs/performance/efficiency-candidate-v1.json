@@ -1,25 +1,25 @@
 {
   "fixture_version": "1.0.0",
   "import_core_run_agent_ms": {
-    "median": 113.221,
-    "p95": 125.097,
+    "median": 97.711,
+    "p95": 105.377,
     "raw": [
-      125.097,
-      114.077,
-      112.967,
-      111.968,
-      113.221
+      105.377,
+      101.041,
+      97.711,
+      96.221,
+      95.989
     ]
   },
   "import_spark_cli_main_ms": {
-    "median": 84.118,
-    "p95": 86.212,
+    "median": 72.357,
+    "p95": 74.816,
     "raw": [
-      84.287,
-      86.212,
-      84.118,
-      78.084,
-      75.789
+      71.676,
+      70.136,
+      74.816,
+      72.357,
+      73.559
     ]
   },
   "pinned_runtime": {
@@ -30,7 +30,7 @@
   "raw_trials": [
     {
       "case_id": "direct-answer",
-      "elapsed_ms": 7.21,
+      "elapsed_ms": 7.5,
       "json_snapshot_bytes": 57,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -46,7 +46,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5948749603703618,
+        "db_write_elapsed_ms": 0.6493749970104545,
         "db_write_transactions": 2.0
       },
       "trial": 1,
@@ -55,7 +55,7 @@
     },
     {
       "case_id": "direct-answer",
-      "elapsed_ms": 6.928,
+      "elapsed_ms": 6.853,
       "json_snapshot_bytes": 57,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -71,7 +71,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5714589788112789,
+        "db_write_elapsed_ms": 0.4841659974772483,
         "db_write_transactions": 2.0
       },
       "trial": 2,
@@ -80,7 +80,7 @@
     },
     {
       "case_id": "direct-answer",
-      "elapsed_ms": 6.403,
+      "elapsed_ms": 6.792,
       "json_snapshot_bytes": 57,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -96,7 +96,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5202080064918846,
+        "db_write_elapsed_ms": 0.5058760289102793,
         "db_write_transactions": 2.0
       },
       "trial": 3,
@@ -105,7 +105,7 @@
     },
     {
       "case_id": "direct-answer",
-      "elapsed_ms": 6.217,
+      "elapsed_ms": 6.7,
       "json_snapshot_bytes": 57,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -121,7 +121,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5418329674284905,
+        "db_write_elapsed_ms": 0.4755409900099039,
         "db_write_transactions": 2.0
       },
       "trial": 4,
@@ -130,7 +130,7 @@
     },
     {
       "case_id": "direct-answer",
-      "elapsed_ms": 6.643,
+      "elapsed_ms": 6.794,
       "json_snapshot_bytes": 57,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -146,7 +146,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5777079786639661,
+        "db_write_elapsed_ms": 0.444123987108469,
         "db_write_transactions": 2.0
       },
       "trial": 5,
@@ -155,7 +155,7 @@
     },
     {
       "case_id": "code-edit",
-      "elapsed_ms": 6.173,
+      "elapsed_ms": 6.55,
       "json_snapshot_bytes": 114,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -171,7 +171,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.49145802040584385,
+        "db_write_elapsed_ms": 0.43724902207031846,
         "db_write_transactions": 2.0
       },
       "trial": 1,
@@ -180,7 +180,7 @@
     },
     {
       "case_id": "code-edit",
-      "elapsed_ms": 6.854,
+      "elapsed_ms": 6.585,
       "json_snapshot_bytes": 114,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -196,7 +196,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5445839778985828,
+        "db_write_elapsed_ms": 0.41845798841677606,
         "db_write_transactions": 2.0
       },
       "trial": 2,
@@ -205,7 +205,7 @@
     },
     {
       "case_id": "code-edit",
-      "elapsed_ms": 6.482,
+      "elapsed_ms": 6.698,
       "json_snapshot_bytes": 114,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -221,7 +221,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.4631670017261058,
+        "db_write_elapsed_ms": 0.42954098898917437,
         "db_write_transactions": 2.0
       },
       "trial": 3,
@@ -230,7 +230,7 @@
     },
     {
       "case_id": "code-edit",
-      "elapsed_ms": 5.803,
+      "elapsed_ms": 6.427,
       "json_snapshot_bytes": 114,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -246,7 +246,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.44604099821299314,
+        "db_write_elapsed_ms": 0.4589160089381039,
         "db_write_transactions": 2.0
       },
       "trial": 4,
@@ -255,7 +255,7 @@
     },
     {
       "case_id": "code-edit",
-      "elapsed_ms": 6.378,
+      "elapsed_ms": 6.714,
       "json_snapshot_bytes": 114,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -271,7 +271,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.6575830047950149,
+        "db_write_elapsed_ms": 0.4801250179298222,
         "db_write_transactions": 2.0
       },
       "trial": 5,
@@ -280,7 +280,7 @@
     },
     {
       "case_id": "multi-tool-research",
-      "elapsed_ms": 6.68,
+      "elapsed_ms": 6.728,
       "json_snapshot_bytes": 94,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -296,7 +296,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5919579998590052,
+        "db_write_elapsed_ms": 0.4219990223646164,
         "db_write_transactions": 2.0
       },
       "trial": 1,
@@ -305,7 +305,7 @@
     },
     {
       "case_id": "multi-tool-research",
-      "elapsed_ms": 6.016,
+      "elapsed_ms": 6.501,
       "json_snapshot_bytes": 94,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -321,7 +321,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.46275000204332173,
+        "db_write_elapsed_ms": 0.4287080082576722,
         "db_write_transactions": 2.0
       },
       "trial": 2,
@@ -330,7 +330,7 @@
     },
     {
       "case_id": "multi-tool-research",
-      "elapsed_ms": 7.103,
+      "elapsed_ms": 6.634,
       "json_snapshot_bytes": 94,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -346,7 +346,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5013329791836441,
+        "db_write_elapsed_ms": 0.42499901610426605,
         "db_write_transactions": 2.0
       },
       "trial": 3,
@@ -355,7 +355,7 @@
     },
     {
       "case_id": "multi-tool-research",
-      "elapsed_ms": 6.503,
+      "elapsed_ms": 6.585,
       "json_snapshot_bytes": 94,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -371,7 +371,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5138329870533198,
+        "db_write_elapsed_ms": 0.4102919774595648,
         "db_write_transactions": 2.0
       },
       "trial": 4,
@@ -380,7 +380,7 @@
     },
     {
       "case_id": "multi-tool-research",
-      "elapsed_ms": 7.41,
+      "elapsed_ms": 7.555,
       "json_snapshot_bytes": 94,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -396,7 +396,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5381670198403299,
+        "db_write_elapsed_ms": 0.6032919918652624,
         "db_write_transactions": 2.0
       },
       "trial": 5,
@@ -405,7 +405,7 @@
     },
     {
       "case_id": "large-file-read",
-      "elapsed_ms": 6.738,
+      "elapsed_ms": 6.523,
       "json_snapshot_bytes": 104,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -421,7 +421,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.4716239927802235,
+        "db_write_elapsed_ms": 0.4249999765306711,
         "db_write_transactions": 2.0
       },
       "trial": 1,
@@ -430,7 +430,7 @@
     },
     {
       "case_id": "large-file-read",
-      "elapsed_ms": 6.595,
+      "elapsed_ms": 6.235,
       "json_snapshot_bytes": 104,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -446,7 +446,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.4877910250797868,
+        "db_write_elapsed_ms": 0.4242910072207451,
         "db_write_transactions": 2.0
       },
       "trial": 2,
@@ -455,7 +455,7 @@
     },
     {
       "case_id": "large-file-read",
-      "elapsed_ms": 7.458,
+      "elapsed_ms": 6.509,
       "json_snapshot_bytes": 104,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -471,7 +471,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.6773750064894557,
+        "db_write_elapsed_ms": 0.4062499792780727,
         "db_write_transactions": 2.0
       },
       "trial": 3,
@@ -480,7 +480,7 @@
     },
     {
       "case_id": "large-file-read",
-      "elapsed_ms": 6.868,
+      "elapsed_ms": 6.369,
       "json_snapshot_bytes": 104,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -496,7 +496,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5554589733947068,
+        "db_write_elapsed_ms": 0.4109170113224536,
         "db_write_transactions": 2.0
       },
       "trial": 4,
@@ -505,7 +505,7 @@
     },
     {
       "case_id": "large-file-read",
-      "elapsed_ms": 6.931,
+      "elapsed_ms": 6.555,
       "json_snapshot_bytes": 104,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -521,7 +521,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5858330114278942,
+        "db_write_elapsed_ms": 0.4172489861957729,
         "db_write_transactions": 2.0
       },
       "trial": 5,
@@ -530,7 +530,7 @@
     },
     {
       "case_id": "long-session",
-      "elapsed_ms": 7.124,
+      "elapsed_ms": 6.463,
       "json_snapshot_bytes": 11865,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -546,7 +546,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.6176669849082828,
+        "db_write_elapsed_ms": 0.41133398190140724,
         "db_write_transactions": 2.0
       },
       "trial": 1,
@@ -555,7 +555,7 @@
     },
     {
       "case_id": "long-session",
-      "elapsed_ms": 7.196,
+      "elapsed_ms": 6.596,
       "json_snapshot_bytes": 11865,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -571,7 +571,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5068329919595271,
+        "db_write_elapsed_ms": 0.412667024647817,
         "db_write_transactions": 2.0
       },
       "trial": 2,
@@ -580,7 +580,7 @@
     },
     {
       "case_id": "long-session",
-      "elapsed_ms": 6.82,
+      "elapsed_ms": 6.574,
       "json_snapshot_bytes": 11865,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -596,7 +596,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5002499965485185,
+        "db_write_elapsed_ms": 0.40324899600818753,
         "db_write_transactions": 2.0
       },
       "trial": 3,
@@ -605,7 +605,7 @@
     },
     {
       "case_id": "long-session",
-      "elapsed_ms": 6.93,
+      "elapsed_ms": 6.51,
       "json_snapshot_bytes": 11865,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -621,7 +621,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5975000094622374,
+        "db_write_elapsed_ms": 0.3972080012317747,
         "db_write_transactions": 2.0
       },
       "trial": 4,
@@ -630,7 +630,7 @@
     },
     {
       "case_id": "long-session",
-      "elapsed_ms": 7.156,
+      "elapsed_ms": 6.418,
       "json_snapshot_bytes": 11865,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -646,7 +646,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.49516698345541954,
+        "db_write_elapsed_ms": 0.3998329921159893,
         "db_write_transactions": 2.0
       },
       "trial": 5,
@@ -655,7 +655,7 @@
     },
     {
       "case_id": "reconnect",
-      "elapsed_ms": 7.394,
+      "elapsed_ms": 6.612,
       "json_snapshot_bytes": 86,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -671,7 +671,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5851250025443733,
+        "db_write_elapsed_ms": 0.40895797428674996,
         "db_write_transactions": 2.0
       },
       "trial": 1,
@@ -684,7 +684,7 @@
     },
     {
       "case_id": "reconnect",
-      "elapsed_ms": 7.527,
+      "elapsed_ms": 6.346,
       "json_snapshot_bytes": 86,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -700,7 +700,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5803329695481807,
+        "db_write_elapsed_ms": 0.4014169971924275,
         "db_write_transactions": 2.0
       },
       "trial": 2,
@@ -713,7 +713,7 @@
     },
     {
       "case_id": "reconnect",
-      "elapsed_ms": 6.746,
+      "elapsed_ms": 6.475,
       "json_snapshot_bytes": 86,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -729,7 +729,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5054170032963157,
+        "db_write_elapsed_ms": 0.40079100290313363,
         "db_write_transactions": 2.0
       },
       "trial": 3,
@@ -742,7 +742,7 @@
     },
     {
       "case_id": "reconnect",
-      "elapsed_ms": 7.189,
+      "elapsed_ms": 6.419,
       "json_snapshot_bytes": 86,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -758,7 +758,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5810010188724846,
+        "db_write_elapsed_ms": 0.411542016081512,
         "db_write_transactions": 2.0
       },
       "trial": 4,
@@ -771,7 +771,7 @@
     },
     {
       "case_id": "reconnect",
-      "elapsed_ms": 7.127,
+      "elapsed_ms": 6.579,
       "json_snapshot_bytes": 86,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -787,7 +787,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5757079925388098,
+        "db_write_elapsed_ms": 0.3987079835496843,
         "db_write_transactions": 2.0
       },
       "trial": 5,
@@ -800,7 +800,7 @@
     },
     {
       "case_id": "concurrent-chats",
-      "elapsed_ms": 7.143,
+      "elapsed_ms": 6.514,
       "json_snapshot_bytes": 67,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -816,7 +816,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.4871249839197844,
+        "db_write_elapsed_ms": 0.4166669968981296,
         "db_write_transactions": 2.0
       },
       "trial": 1,
@@ -829,7 +829,7 @@
     },
     {
       "case_id": "concurrent-chats",
-      "elapsed_ms": 7.863,
+      "elapsed_ms": 6.407,
       "json_snapshot_bytes": 67,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -845,7 +845,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.7392919796984643,
+        "db_write_elapsed_ms": 0.39354199543595314,
         "db_write_transactions": 2.0
       },
       "trial": 2,
@@ -858,7 +858,7 @@
     },
     {
       "case_id": "concurrent-chats",
-      "elapsed_ms": 7.78,
+      "elapsed_ms": 6.475,
       "json_snapshot_bytes": 67,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -874,7 +874,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.617832993157208,
+        "db_write_elapsed_ms": 0.41024998063221574,
         "db_write_transactions": 2.0
       },
       "trial": 3,
@@ -887,7 +887,7 @@
     },
     {
       "case_id": "concurrent-chats",
-      "elapsed_ms": 7.838,
+      "elapsed_ms": 6.358,
       "json_snapshot_bytes": 67,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -903,7 +903,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.5959999980404973,
+        "db_write_elapsed_ms": 0.39991599624045193,
         "db_write_transactions": 2.0
       },
       "trial": 4,
@@ -916,7 +916,7 @@
     },
     {
       "case_id": "concurrent-chats",
-      "elapsed_ms": 8.21,
+      "elapsed_ms": 6.487,
       "json_snapshot_bytes": 67,
       "model": "deterministic-replay-v1",
       "provider": "fixture",
@@ -932,7 +932,7 @@
       "runtime": {
         "db_bytes_growth": 90640.0,
         "db_lock_retries": 0.0,
-        "db_write_elapsed_ms": 0.7374580309260637,
+        "db_write_elapsed_ms": 0.40387496119365096,
         "db_write_transactions": 2.0
       },
       "trial": 5,
@@ -945,55 +945,55 @@
     }
   ],
   "report_version": "1.0.0",
-  "source_commit": "718da7a9f85c67bcadcd3012f05ad98c9db5139b",
-  "source_dirty": true,
+  "source_commit": "4f38048858ca24565722eb26705a454cb4b71d2c",
+  "source_dirty": false,
   "summary": [
     {
       "case_id": "direct-answer",
-      "elapsed_ms_median": 6.643,
-      "elapsed_ms_p95": 7.21,
+      "elapsed_ms_median": 6.794,
+      "elapsed_ms_p95": 7.5,
       "prompt_tokens_median": 16,
       "snapshot_bytes_median": 57
     },
     {
       "case_id": "code-edit",
-      "elapsed_ms_median": 6.378,
-      "elapsed_ms_p95": 6.854,
+      "elapsed_ms_median": 6.585,
+      "elapsed_ms_p95": 6.714,
       "prompt_tokens_median": 127,
       "snapshot_bytes_median": 114
     },
     {
       "case_id": "multi-tool-research",
-      "elapsed_ms_median": 6.68,
-      "elapsed_ms_p95": 7.41,
+      "elapsed_ms_median": 6.634,
+      "elapsed_ms_p95": 7.555,
       "prompt_tokens_median": 115,
       "snapshot_bytes_median": 94
     },
     {
       "case_id": "large-file-read",
-      "elapsed_ms_median": 6.868,
-      "elapsed_ms_p95": 7.458,
+      "elapsed_ms_median": 6.509,
+      "elapsed_ms_p95": 6.555,
       "prompt_tokens_median": 88,
       "snapshot_bytes_median": 104
     },
     {
       "case_id": "long-session",
-      "elapsed_ms_median": 7.124,
-      "elapsed_ms_p95": 7.196,
+      "elapsed_ms_median": 6.51,
+      "elapsed_ms_p95": 6.596,
       "prompt_tokens_median": 3087,
       "snapshot_bytes_median": 11865
     },
     {
       "case_id": "reconnect",
-      "elapsed_ms_median": 7.189,
-      "elapsed_ms_p95": 7.527,
+      "elapsed_ms_median": 6.475,
+      "elapsed_ms_p95": 6.612,
       "prompt_tokens_median": 23,
       "snapshot_bytes_median": 86
     },
     {
       "case_id": "concurrent-chats",
-      "elapsed_ms_median": 7.838,
-      "elapsed_ms_p95": 8.21,
+      "elapsed_ms_median": 6.475,
+      "elapsed_ms_p95": 6.514,
       "prompt_tokens_median": 18,
       "snapshot_bytes_median": 67
     }
