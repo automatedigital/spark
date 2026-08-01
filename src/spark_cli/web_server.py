@@ -7329,7 +7329,6 @@ def _run_fake_stream_task(
             eager_user_id=eager_user_id,
             checkpoint_assistant_id=active_turn.assistant_message_id if active_turn else None,
         )
-        _emit_web_session_updated(session_id)
         try:
             loop.call_soon_threadsafe(queue.put_nowait, None)
         except Exception:
@@ -7341,6 +7340,7 @@ def _run_fake_stream_task(
             session_id,
         )
         _clear_web_turn(session_id)
+        _emit_web_session_updated(session_id)
 
 
 def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
@@ -8255,6 +8255,10 @@ def _emit_web_session_updated(session_id: str) -> None:
         try:
             row = db.get_session(session_id)
             if row:
+                # SessionDB rows describe durable sessions, not the transient
+                # web turn registry. Project the authoritative live state so a
+                # background thread cannot remain "Working" after turn_done.
+                row["is_active"] = _is_web_turn_active(session_id)
                 _emit_sessions_changed("updated", session_id, row)
         finally:
             db.close()
@@ -9227,7 +9231,6 @@ async def create_conversation(body: ConversationCreate):
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -9236,6 +9239,7 @@ async def create_conversation(body: ConversationCreate):
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
     with turn.lock:
@@ -9668,7 +9672,6 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _web_queues.pop(session_id, None)
@@ -9676,6 +9679,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     with turn.lock:
@@ -10136,13 +10140,13 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
                 before_message_count,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             _maybe_auto_title_web(agent, final_session_id, user_msg, result)
             _web_queues.pop(session_id, None)
             _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     _mark_web_turn_active(session_id, status="Retrying…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
     asyncio.create_task(run_agent_task())
@@ -10594,7 +10598,6 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
-            _emit_web_session_updated(final_session_id)
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, raw_message, result)
             try:
@@ -10609,6 +10612,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
+            _emit_web_session_updated(final_session_id)
 
     _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
     asyncio.create_task(run_agent_task())

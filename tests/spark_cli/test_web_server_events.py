@@ -694,7 +694,17 @@ def test_fake_stream_compaction_failure_clears_active_turn(web_client, monkeypat
 
 
 def test_fake_stream_supports_multiple_simultaneous_sessions(web_client, monkeypatch):
+    import spark_cli.web_server as web_server
+
     monkeypatch.setenv("SPARK_WEB_FAKE_STREAMS", "1")
+    published = []
+    original_publish = web_server._publish_event
+
+    def capture_event(topic, data, session_id=None):
+        published.append((topic, data, session_id))
+        return original_publish(topic, data, session_id)
+
+    monkeypatch.setattr(web_server, "_publish_event", capture_event)
 
     session_events = {
         "fake_multi_a": ["A1 ", "A2"],
@@ -744,6 +754,16 @@ def test_fake_stream_supports_multiple_simultaneous_sessions(web_client, monkeyp
             assert messages[-1]["content"] == "".join(chunks)
     finally:
         db.close()
+
+    for session_id in session_events:
+        lifecycle = [
+            event for event in published
+            if event[2] == session_id
+            and event[0] in {"chat.turn_done", "sessions.changed"}
+        ]
+        assert lifecycle[-2][0] == "chat.turn_done"
+        assert lifecycle[-1][0] == "sessions.changed"
+        assert lifecycle[-1][1]["session"]["is_active"] is False
 
 
 class TestEventBus:
