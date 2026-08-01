@@ -55,6 +55,7 @@ class ScheduledResult:
     args: dict[str, Any]
     content: str
     duration: float
+    queue_wait: float = 0.0
     cancelled: bool = False
     timed_out: bool = False
 
@@ -184,6 +185,7 @@ class ToolBatchScheduler:
         running: dict[concurrent.futures.Future[ScheduledResult], ScheduledTool] = {}
         service_active: defaultdict[str, int] = defaultdict(int)
         results: list[ScheduledResult | None] = [None] * len(nodes)
+        batch_queued_at = time.monotonic()
 
         def _run(node: ScheduledTool) -> ScheduledResult:
             started = time.monotonic()
@@ -208,6 +210,7 @@ class ToolBatchScheduler:
                     args=node.args,
                     content=content,
                     duration=time.monotonic() - started,
+                    queue_wait=started - batch_queued_at,
                 )
             except InterruptedError:
                 return _cancelled_result(
@@ -222,6 +225,7 @@ class ToolBatchScheduler:
                     args=node.args,
                     content=f"Error executing tool '{node.name}': {exc}",
                     duration=time.monotonic() - started,
+                    queue_wait=started - batch_queued_at,
                 )
             finally:
                 _execution_deadline.reset(deadline_token)
