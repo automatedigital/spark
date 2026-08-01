@@ -934,7 +934,8 @@ configurable; explicit user verbosity always wins.
   `python -m pytest tests/ -m "not slow and not integration" -q`, then the full
   practical suite if no blocker appears. Document exact independently reproduced
   pre-existing failures rather than hiding them.
-  **Evidence:** 12,068 tests passed and 151 skipped. The two failures were
+  **Evidence:** final candidate rerun: 12,193 tests passed and 151 skipped. The
+  two failures were
   reproduced unchanged on detached `main`: a stale offline Codex catalog
   expectation and DNS safety rejecting `a.example`/`b.example` in a browser
   concurrency fixture.
