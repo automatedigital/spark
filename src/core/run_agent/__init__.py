@@ -2024,8 +2024,8 @@ class AIAgent(_PromptCacheMixin):
             return
         self._apply_persist_user_message_override(messages)
         self._session_messages = messages
-        self._save_session_log(messages)
         self._flush_messages_to_session_db(messages, conversation_history)
+        self._save_session_log(messages, settled_only=True)
 
     def _flush_messages_to_session_db(self, messages: List[Dict], conversation_history: List[Dict] = None):
         """Persist any un-flushed messages to the SQLite session store.
@@ -2048,6 +2048,7 @@ class AIAgent(_PromptCacheMixin):
             )
             start_idx = len(conversation_history) if conversation_history else 0
             flush_from = max(start_idx, self._last_flushed_db_idx)
+            pending_messages = []
             for msg in messages[flush_from:]:
                 if msg.get("_internal"):
                     continue
@@ -2061,18 +2062,28 @@ class AIAgent(_PromptCacheMixin):
                     ]
                 elif isinstance(msg.get("tool_calls"), list):
                     tool_calls_data = msg["tool_calls"]
-                self._session_db.append_message(
-                    session_id=self.session_id,
-                    role=role,
-                    content=content,
-                    tool_name=msg.get("tool_name"),
-                    tool_calls=tool_calls_data,
-                    tool_call_id=msg.get("tool_call_id"),
-                    finish_reason=msg.get("finish_reason"),
-                    reasoning=msg.get("reasoning") if role == "assistant" else None,
-                    reasoning_details=msg.get("reasoning_details") if role == "assistant" else None,
-                    codex_reasoning_items=msg.get("codex_reasoning_items") if role == "assistant" else None,
+                pending_messages.append(
+                    {
+                        "role": role,
+                        "content": content,
+                        "tool_name": msg.get("tool_name"),
+                        "tool_calls": tool_calls_data,
+                        "tool_call_id": msg.get("tool_call_id"),
+                        "finish_reason": msg.get("finish_reason"),
+                        "reasoning": msg.get("reasoning") if role == "assistant" else None,
+                        "reasoning_details": msg.get("reasoning_details") if role == "assistant" else None,
+                        "codex_reasoning_items": msg.get("codex_reasoning_items") if role == "assistant" else None,
+                    }
                 )
+            if pending_messages:
+                self._session_db.append_iteration(
+                    self.session_id,
+                    pending_messages,
+                    idempotency_prefix=f"flush:{flush_from}:{len(messages)}",
+                    status="settled" if self._session_is_settled(messages) else "working",
+                )
+                if self._session_is_settled(messages):
+                    self._session_db.create_session_checkpoint(self.session_id)
             self._last_flushed_db_idx = len(messages)
         except Exception as e:
             logger.warning("Session DB append_message failed: %s", e)
@@ -2559,7 +2570,24 @@ class AIAgent(_PromptCacheMixin):
         content = re.sub(r'(</think>)\n+', r'\1\n', content)
         return content.strip()
 
-    def _save_session_log(self, messages: List[Dict[str, Any]] = None):
+    @staticmethod
+    def _session_is_settled(messages: List[Dict[str, Any]]) -> bool:
+        visible = [message for message in messages if not message.get("_internal")]
+        if not visible:
+            return False
+        last = visible[-1]
+        return (
+            last.get("role") == "assistant"
+            and not last.get("tool_calls")
+            and last.get("finish_reason") not in {"tool_calls", "in_progress"}
+        )
+
+    def _save_session_log(
+        self,
+        messages: List[Dict[str, Any]] = None,
+        *,
+        settled_only: bool = False,
+    ):
         """
         Save the full raw session to a JSON file.
 
@@ -2573,6 +2601,12 @@ class AIAgent(_PromptCacheMixin):
         """
         messages = messages or self._session_messages
         if not messages:
+            return
+
+        # SQLite events are the crash-recovery authority while a turn is
+        # active.  Materialize the legacy JSON export only once the turn
+        # settles, avoiding quadratic full-document rewrites.
+        if settled_only and not self._session_is_settled(messages):
             return
 
         try:
@@ -8482,7 +8516,7 @@ class AIAgent(_PromptCacheMixin):
                                     }
                                     messages.append(continue_msg)
                                     self._session_messages = messages
-                                    self._save_session_log(messages)
+                                    self._save_session_log(messages, settled_only=True)
                                     restart_with_length_continuation = True
                                     break
 
@@ -9635,7 +9669,7 @@ class AIAgent(_PromptCacheMixin):
                         if not self.quiet_mode:
                             self._vprint(f"{self.log_prefix}↻ Codex response incomplete; continuing turn ({self._codex_incomplete_retries}/3)")
                         self._session_messages = messages
-                        self._save_session_log(messages)
+                        self._save_session_log(messages, settled_only=True)
                         continue
 
                     self._codex_incomplete_retries = 0
@@ -10056,7 +10090,7 @@ class AIAgent(_PromptCacheMixin):
                     
                     # Save session log incrementally (so progress is visible even if interrupted)
                     self._session_messages = messages
-                    self._save_session_log(messages)
+                    self._save_session_log(messages, settled_only=True)
                     
                     # Continue loop for next response
                     continue
@@ -10145,7 +10179,7 @@ class AIAgent(_PromptCacheMixin):
                             interim_msg["_thinking_prefill"] = True
                             messages.append(interim_msg)
                             self._session_messages = messages
-                            self._save_session_log(messages)
+                            self._save_session_log(messages, settled_only=True)
                             continue
 
                         # ── Empty response retry ──────────────────────
@@ -10273,7 +10307,7 @@ class AIAgent(_PromptCacheMixin):
                         }
                         messages.append(continue_msg)
                         self._session_messages = messages
-                        self._save_session_log(messages)
+                        self._save_session_log(messages, settled_only=True)
                         continue
 
                     codex_ack_continuations = 0

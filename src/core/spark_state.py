@@ -21,10 +21,12 @@ import re
 import sqlite3
 import threading
 import time
-from pathlib import Path
-from core.spark_constants import get_spark_home
-from typing import Any, TypeVar
+import uuid
 from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TypeVar
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000
@@ -64,6 +66,11 @@ def _bounded_json(value: Any, max_len: int = _SUBAGENT_JSON_LIMIT) -> str:
         {"_truncated": True, "preview": text[:preview_len] + "..."},
         ensure_ascii=False,
     )
+
+
+def _event_json(value: Any) -> str:
+    """Serialize durable session events without lossy preview truncation."""
+    return json.dumps(value if value is not None else {}, default=str, ensure_ascii=False)
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -197,6 +204,31 @@ CREATE TABLE IF NOT EXISTS subagent_events (
     timestamp REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_subagent_events_run ON subagent_events(subagent_id, timestamp, id);
+
+CREATE TABLE IF NOT EXISTS session_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    timestamp REAL NOT NULL,
+    UNIQUE(session_id, sequence),
+    UNIQUE(session_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_session_events_sequence
+    ON session_events(session_id, sequence);
+
+CREATE TABLE IF NOT EXISTS session_checkpoints (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL,
+    projection_version INTEGER NOT NULL DEFAULT 1,
+    projection_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (session_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_session_checkpoints_latest
+    ON session_checkpoints(session_id, sequence DESC);
 """
 
 FTS_SQL = """
@@ -249,6 +281,7 @@ class SessionDB:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.Lock()
+        self._event_subscribers: list[Callable[[dict[str, Any]], None]] = []
         self._write_count = 0
         self._conn = sqlite3.connect(
             str(self.db_path),
@@ -503,6 +536,35 @@ class SessionDB:
                     """
                 )
                 cursor.execute("UPDATE schema_version SET version = 9")
+            if current_version < 10:
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS session_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL,
+                        idempotency_key TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        payload_json TEXT NOT NULL DEFAULT '{}',
+                        timestamp REAL NOT NULL,
+                        UNIQUE(session_id, sequence),
+                        UNIQUE(session_id, idempotency_key)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_session_events_sequence
+                        ON session_events(session_id, sequence);
+                    CREATE TABLE IF NOT EXISTS session_checkpoints (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        sequence INTEGER NOT NULL,
+                        projection_version INTEGER NOT NULL DEFAULT 1,
+                        projection_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY (session_id, sequence)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_session_checkpoints_latest
+                        ON session_checkpoints(session_id, sequence DESC);
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 10")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -554,6 +616,12 @@ class SessionDB:
                 ),
             )
         self._execute_write(_do)
+        self.append_session_event(
+            session_id,
+            "session.started",
+            {"source": source, "model": model, "parent_session_id": parent_session_id},
+            idempotency_key="session.started",
+        )
         return session_id
 
     def end_session(self, session_id: str, end_reason: str) -> None:
@@ -564,6 +632,12 @@ class SessionDB:
                 (time.time(), end_reason, session_id),
             )
         self._execute_write(_do)
+        self.append_session_event(
+            session_id,
+            "session.ended",
+            {"end_reason": end_reason},
+            idempotency_key=f"session.ended:{end_reason}",
+        )
 
     def reopen_session(self, session_id: str) -> None:
         """Clear ended_at/end_reason so a session can be resumed."""
@@ -573,6 +647,11 @@ class SessionDB:
                 (session_id,),
             )
         self._execute_write(_do)
+        self.append_session_event(
+            session_id,
+            "status.changed",
+            {"status": "reopened"},
+        )
 
     def update_system_prompt(self, session_id: str, system_prompt: str) -> None:
         """Store the full assembled system prompt snapshot."""
@@ -672,6 +751,18 @@ class SessionDB:
         def _do(conn):
             conn.execute(sql, params)
         self._execute_write(_do)
+        self.append_session_event(
+            session_id,
+            "usage.updated",
+            {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_tokens": cache_read_tokens,
+                "cache_write_tokens": cache_write_tokens,
+                "reasoning_tokens": reasoning_tokens,
+                "absolute": absolute,
+            },
+        )
 
     def ensure_session(
         self,
@@ -916,6 +1007,12 @@ class SessionDB:
             )
             return cursor.rowcount
         rowcount = self._execute_write(_do)
+        if rowcount > 0:
+            self.append_session_event(
+                session_id,
+                "title.changed",
+                {"title": title},
+            )
         return rowcount > 0
 
     def update_session_source(self, session_id: str, source: str | None) -> bool:
@@ -931,6 +1028,12 @@ class SessionDB:
             )
             return cursor.rowcount
         rowcount = self._execute_write(_do)
+        if rowcount > 0:
+            self.append_session_event(
+                session_id,
+                "source.changed",
+                {"source": source},
+            )
         return rowcount > 0
 
     def migrate_session_source(self, old_source: str, new_source: str | None) -> int:
@@ -1257,6 +1360,392 @@ class SessionDB:
     # Message storage
     # =========================================================================
 
+    def subscribe_session_events(self, callback: Callable[[dict[str, Any]], None]):
+        """Subscribe to committed events; callbacks never observe open transactions."""
+        with self._lock:
+            self._event_subscribers.append(callback)
+
+        def unsubscribe() -> None:
+            with self._lock:
+                if callback in self._event_subscribers:
+                    self._event_subscribers.remove(callback)
+
+        return unsubscribe
+
+    def _publish_committed_events(self, events: list[dict[str, Any]]) -> None:
+        with self._lock:
+            subscribers = list(self._event_subscribers)
+        for event in events:
+            for callback in subscribers:
+                try:
+                    callback(dict(event))
+                except Exception:
+                    logger.debug("Session event subscriber failed", exc_info=True)
+
+    @staticmethod
+    def _next_event_sequence(conn: sqlite3.Connection, session_id: str) -> int:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(sequence), 0) + 1 FROM session_events WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        return int(row[0] if row else 1)
+
+    @staticmethod
+    def _event_dict(
+        session_id: str,
+        sequence: int,
+        idempotency_key: str,
+        event_type: str,
+        payload: dict[str, Any],
+        timestamp: float,
+    ) -> dict[str, Any]:
+        return {
+            "session_id": session_id,
+            "sequence": sequence,
+            "idempotency_key": idempotency_key,
+            "event_type": event_type,
+            "payload": payload,
+            "timestamp": timestamp,
+        }
+
+    def append_session_event(
+        self,
+        session_id: str,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Append one ordered idempotent event and publish it after commit."""
+        payload = payload or {}
+        key = idempotency_key or f"{event_type}:{uuid.uuid4().hex}"
+        timestamp = time.time()
+
+        def _do(conn):
+            existing = conn.execute(
+                """SELECT sequence, event_type, payload_json, timestamp
+                   FROM session_events WHERE session_id = ? AND idempotency_key = ?""",
+                (session_id, key),
+            ).fetchone()
+            if existing:
+                return self._event_dict(
+                    session_id,
+                    int(existing["sequence"]),
+                    key,
+                    str(existing["event_type"]),
+                    self._decode_json_field(existing["payload_json"], {}),
+                    float(existing["timestamp"]),
+                ), False
+            sequence = self._next_event_sequence(conn, session_id)
+            conn.execute(
+                """INSERT INTO session_events
+                   (session_id, sequence, idempotency_key, event_type, payload_json, timestamp)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (session_id, sequence, key, event_type, _event_json(payload), timestamp),
+            )
+            return self._event_dict(
+                session_id, sequence, key, event_type, payload, timestamp
+            ), True
+
+        event, created = self._execute_write(_do)
+        if created:
+            self._publish_committed_events([event])
+        return event
+
+    def get_session_events(
+        self,
+        session_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int = 1_000,
+    ) -> list[dict[str, Any]]:
+        self.backfill_session_events(session_id)
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT session_id, sequence, idempotency_key, event_type,
+                          payload_json, timestamp
+                   FROM session_events
+                   WHERE session_id = ? AND sequence > ?
+                   ORDER BY sequence LIMIT ?""",
+                (session_id, max(0, after_sequence), min(max(1, limit), 10_000)),
+            ).fetchall()
+        return [
+            self._event_dict(
+                row["session_id"],
+                int(row["sequence"]),
+                row["idempotency_key"],
+                row["event_type"],
+                self._decode_json_field(row["payload_json"], {}),
+                float(row["timestamp"]),
+            )
+            for row in rows
+        ]
+
+    def backfill_session_events(self, session_id: str) -> int:
+        """Idempotently project legacy message rows into the ordered event log."""
+        def _do(conn):
+            rows = conn.execute(
+                """SELECT * FROM messages WHERE session_id = ?
+                   ORDER BY timestamp, id""",
+                (session_id,),
+            ).fetchall()
+            projected_message_ids = {
+                int(payload["message_id"])
+                for event_row in conn.execute(
+                    """SELECT payload_json FROM session_events
+                       WHERE session_id = ? AND event_type = 'message.appended'""",
+                    (session_id,),
+                ).fetchall()
+                if (payload := self._decode_json_field(event_row["payload_json"], {})).get("message_id") is not None
+            }
+            sequence = self._next_event_sequence(conn, session_id)
+            created = 0
+            for row in rows:
+                if int(row["id"]) in projected_message_ids:
+                    continue
+                key = f"legacy-message:{row['id']}"
+                if conn.execute(
+                    "SELECT 1 FROM session_events WHERE session_id = ? AND idempotency_key = ?",
+                    (session_id, key),
+                ).fetchone():
+                    continue
+                payload = dict(row)
+                conn.execute(
+                    """INSERT INTO session_events
+                       (session_id, sequence, idempotency_key, event_type, payload_json, timestamp)
+                       VALUES (?, ?, ?, 'message.appended', ?, ?)""",
+                    (session_id, sequence, key, _event_json(payload), row["timestamp"]),
+                )
+                sequence += 1
+                created += 1
+            return created
+
+        return self._execute_write(_do)
+
+    def create_session_checkpoint(
+        self,
+        session_id: str,
+        *,
+        sequence: int | None = None,
+        projection_version: int = 1,
+    ) -> dict[str, Any] | None:
+        """Snapshot the authoritative projection at a committed event sequence."""
+        def _do(conn):
+            event_row = conn.execute(
+                "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM session_events WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            target_sequence = int(sequence if sequence is not None else event_row["sequence"])
+            if target_sequence <= 0:
+                return None
+            session = conn.execute(
+                "SELECT * FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            last_message = conn.execute(
+                """SELECT id, timestamp FROM messages WHERE session_id = ?
+                   ORDER BY timestamp DESC, id DESC LIMIT 1""",
+                (session_id,),
+            ).fetchone()
+            projection = {
+                "session": dict(session) if session else None,
+                "last_message_id": last_message["id"] if last_message else None,
+                "message_count": int(session["message_count"] if session else 0),
+            }
+            conn.execute(
+                """INSERT OR REPLACE INTO session_checkpoints
+                   (session_id, sequence, projection_version, projection_json, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    session_id,
+                    target_sequence,
+                    projection_version,
+                    _event_json(projection),
+                    time.time(),
+                ),
+            )
+            return {
+                "session_id": session_id,
+                "sequence": target_sequence,
+                "projection_version": projection_version,
+                "projection": projection,
+            }
+
+        return self._execute_write(_do)
+
+    def get_latest_session_checkpoint(self, session_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT sequence, projection_version, projection_json, created_at
+                   FROM session_checkpoints WHERE session_id = ?
+                   ORDER BY sequence DESC LIMIT 1""",
+                (session_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "session_id": session_id,
+            "sequence": int(row["sequence"]),
+            "projection_version": int(row["projection_version"]),
+            "projection": self._decode_json_field(row["projection_json"], {}),
+            "created_at": float(row["created_at"]),
+        }
+
+    def append_iteration(
+        self,
+        session_id: str,
+        messages: list[dict[str, Any]],
+        *,
+        idempotency_prefix: str | None = None,
+        usage: dict[str, int] | None = None,
+        status: str | None = None,
+    ) -> list[int]:
+        """Commit one agent iteration's messages, counters, usage, and events once."""
+        if not messages and not usage and status is None:
+            return []
+        prefix = idempotency_prefix or uuid.uuid4().hex
+        now = time.time()
+
+        if idempotency_prefix is not None:
+            with self._lock:
+                existing_rows = self._conn.execute(
+                    """SELECT payload_json FROM session_events
+                       WHERE session_id = ? AND idempotency_key LIKE ?
+                       ORDER BY sequence""",
+                    (session_id, f"{prefix}:%"),
+                ).fetchall()
+            if existing_rows:
+                return [
+                    int(payload["message_id"])
+                    for row in existing_rows
+                    if (payload := self._decode_json_field(row["payload_json"], {})).get("message_id") is not None
+                ]
+
+        def _do(conn):
+            sequence = self._next_event_sequence(conn, session_id)
+            message_ids: list[int] = []
+            committed_events: list[dict[str, Any]] = []
+            tool_call_count = 0
+            new_message_count = 0
+            for index, message in enumerate(messages):
+                key = f"{prefix}:message:{index}"
+                existing = conn.execute(
+                    """SELECT payload_json FROM session_events
+                       WHERE session_id = ? AND idempotency_key = ?""",
+                    (session_id, key),
+                ).fetchone()
+                if existing:
+                    payload = self._decode_json_field(existing["payload_json"], {})
+                    if payload.get("message_id") is not None:
+                        message_ids.append(int(payload["message_id"]))
+                    continue
+                tool_calls = message.get("tool_calls")
+                serialized_tool_calls = json.dumps(tool_calls) if tool_calls else None
+                serialized_reasoning = (
+                    json.dumps(message.get("reasoning_details"))
+                    if message.get("reasoning_details") else None
+                )
+                serialized_codex = (
+                    json.dumps(message.get("codex_reasoning_items"))
+                    if message.get("codex_reasoning_items") else None
+                )
+                cursor = conn.execute(
+                    """INSERT INTO messages (session_id, role, content, tool_call_id,
+                       tool_calls, tool_name, timestamp, token_count, finish_reason,
+                       reasoning, reasoning_details, codex_reasoning_items)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        session_id,
+                        message.get("role", "unknown"),
+                        message.get("content"),
+                        message.get("tool_call_id"),
+                        serialized_tool_calls,
+                        message.get("tool_name"),
+                        float(message.get("timestamp") or now + index * 0.000001),
+                        message.get("token_count"),
+                        message.get("finish_reason"),
+                        message.get("reasoning"),
+                        serialized_reasoning,
+                        serialized_codex,
+                    ),
+                )
+                message_id = int(cursor.lastrowid)
+                message_ids.append(message_id)
+                new_message_count += 1
+                calls = len(tool_calls) if isinstance(tool_calls, list) else bool(tool_calls)
+                tool_call_count += int(calls)
+                payload = {**message, "message_id": message_id}
+                timestamp = float(message.get("timestamp") or now)
+                conn.execute(
+                    """INSERT INTO session_events
+                       (session_id, sequence, idempotency_key, event_type, payload_json, timestamp)
+                       VALUES (?, ?, ?, 'message.appended', ?, ?)""",
+                    (session_id, sequence, key, _event_json(payload), timestamp),
+                )
+                committed_events.append(
+                    self._event_dict(
+                        session_id, sequence, key, "message.appended", payload, timestamp
+                    )
+                )
+                sequence += 1
+
+            if new_message_count:
+                conn.execute(
+                    """UPDATE sessions SET message_count = message_count + ?,
+                       tool_call_count = tool_call_count + ? WHERE id = ?""",
+                    (new_message_count, tool_call_count, session_id),
+                )
+            if usage:
+                key = f"{prefix}:usage"
+                if not conn.execute(
+                    "SELECT 1 FROM session_events WHERE session_id = ? AND idempotency_key = ?",
+                    (session_id, key),
+                ).fetchone():
+                    conn.execute(
+                        """UPDATE sessions SET input_tokens = input_tokens + ?,
+                           output_tokens = output_tokens + ?, cache_read_tokens = cache_read_tokens + ?,
+                           cache_write_tokens = cache_write_tokens + ?, reasoning_tokens = reasoning_tokens + ?
+                           WHERE id = ?""",
+                        (
+                            int(usage.get("input_tokens", 0)),
+                            int(usage.get("output_tokens", 0)),
+                            int(usage.get("cache_read_tokens", 0)),
+                            int(usage.get("cache_write_tokens", 0)),
+                            int(usage.get("reasoning_tokens", 0)),
+                            session_id,
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO session_events
+                           (session_id, sequence, idempotency_key, event_type, payload_json, timestamp)
+                           VALUES (?, ?, ?, 'usage.updated', ?, ?)""",
+                        (session_id, sequence, key, _event_json(usage), now),
+                    )
+                    committed_events.append(
+                        self._event_dict(session_id, sequence, key, "usage.updated", usage, now)
+                    )
+                    sequence += 1
+            if status is not None:
+                key = f"{prefix}:status"
+                payload = {"status": status}
+                if not conn.execute(
+                    "SELECT 1 FROM session_events WHERE session_id = ? AND idempotency_key = ?",
+                    (session_id, key),
+                ).fetchone():
+                    conn.execute(
+                        """INSERT INTO session_events
+                           (session_id, sequence, idempotency_key, event_type, payload_json, timestamp)
+                           VALUES (?, ?, ?, 'status.changed', ?, ?)""",
+                        (session_id, sequence, key, _event_json(payload), now),
+                    )
+                    committed_events.append(
+                        self._event_dict(session_id, sequence, key, "status.changed", payload, now)
+                    )
+            return message_ids, committed_events
+
+        message_ids, committed_events = self._execute_write(_do)
+        self._publish_committed_events(committed_events)
+        return message_ids
+
     def append_message(
         self,
         session_id: str,
@@ -1277,60 +1766,24 @@ class SessionDB:
         Also increments the session's message_count (and tool_call_count
         if role is 'tool' or tool_calls is present).
         """
-        # Serialize structured fields to JSON before entering the write txn
-        reasoning_details_json = (
-            json.dumps(reasoning_details)
-            if reasoning_details else None
+        ids = self.append_iteration(
+            session_id,
+            [
+                {
+                    "role": role,
+                    "content": content,
+                    "tool_name": tool_name,
+                    "tool_calls": tool_calls,
+                    "tool_call_id": tool_call_id,
+                    "token_count": token_count,
+                    "finish_reason": finish_reason,
+                    "reasoning": reasoning,
+                    "reasoning_details": reasoning_details,
+                    "codex_reasoning_items": codex_reasoning_items,
+                }
+            ],
         )
-        codex_items_json = (
-            json.dumps(codex_reasoning_items)
-            if codex_reasoning_items else None
-        )
-        tool_calls_json = json.dumps(tool_calls) if tool_calls else None
-
-        # Pre-compute tool call count
-        num_tool_calls = 0
-        if tool_calls is not None:
-            num_tool_calls = len(tool_calls) if isinstance(tool_calls, list) else 1
-
-        def _do(conn):
-            cursor = conn.execute(
-                """INSERT INTO messages (session_id, role, content, tool_call_id,
-                   tool_calls, tool_name, timestamp, token_count, finish_reason,
-                   reasoning, reasoning_details, codex_reasoning_items)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    session_id,
-                    role,
-                    content,
-                    tool_call_id,
-                    tool_calls_json,
-                    tool_name,
-                    time.time(),
-                    token_count,
-                    finish_reason,
-                    reasoning,
-                    reasoning_details_json,
-                    codex_items_json,
-                ),
-            )
-            msg_id = cursor.lastrowid
-
-            # Update counters
-            if num_tool_calls > 0:
-                conn.execute(
-                    """UPDATE sessions SET message_count = message_count + 1,
-                       tool_call_count = tool_call_count + ? WHERE id = ?""",
-                    (num_tool_calls, session_id),
-                )
-            else:
-                conn.execute(
-                    "UPDATE sessions SET message_count = message_count + 1 WHERE id = ?",
-                    (session_id,),
-                )
-            return msg_id
-
-        return self._execute_write(_do)
+        return ids[0]
 
     def update_message(
         self,
@@ -1367,13 +1820,28 @@ class SessionDB:
         params.append(message_id)
 
         def _do(conn):
+            row = conn.execute(
+                "SELECT session_id FROM messages WHERE id = ?", (message_id,)
+            ).fetchone()
             cursor = conn.execute(
                 f"UPDATE messages SET {', '.join(sets)} WHERE id = ?",
                 params,
             )
-            return cursor.rowcount > 0
+            return cursor.rowcount > 0, (row["session_id"] if row else None)
 
-        return self._execute_write(_do)
+        updated, session_id = self._execute_write(_do)
+        if updated and session_id:
+            self.append_session_event(
+                session_id,
+                "stream.checkpoint",
+                {
+                    "message_id": message_id,
+                    "content": content,
+                    "finish_reason": finish_reason,
+                    "token_count": token_count,
+                },
+            )
+        return updated
 
     def delete_message(self, message_id: int) -> bool:
         """

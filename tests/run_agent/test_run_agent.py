@@ -3792,8 +3792,8 @@ class TestPersistUserMessageOverride:
         assert messages[0]["content"] == "Hello there"
         saved_messages = mock_save.call_args.args[0]
         assert saved_messages[0]["content"] == "Hello there"
-        first_db_write = agent._session_db.append_message.call_args_list[0].kwargs
-        assert first_db_write["content"] == "Hello there"
+        batch = agent._session_db.append_iteration.call_args.args[1]
+        assert batch[0]["content"] == "Hello there"
 
 
 # ---------------------------------------------------------------------------
