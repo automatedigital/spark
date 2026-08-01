@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock, Edit3, Pause, Play, Plus, Trash2, X, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CronJob } from "@/lib/api";
@@ -137,13 +137,13 @@ export default function CronPage() {
   const [schedMonth, setSchedMonth] = useState("1");   // month (1-12)
   const [customExpr, setCustomExpr] = useState("");
 
-  const loadJobs = () => {
+  const loadJobs = useCallback(() => {
     api
       .getCronJobs()
       .then(setJobs)
       .catch(() => showToast(t.common.loading, "error"))
       .finally(() => setLoading(false));
-  };
+  }, [showToast, t.common.loading]);
 
   useEffect(() => {
     loadJobs();
@@ -158,7 +158,7 @@ export default function CronPage() {
       window.clearInterval(refresh);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, []);
+  }, [loadJobs]);
 
   const focusJob = (id: string) => {
     setHighlightedJobId(id);

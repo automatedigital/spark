@@ -42,7 +42,8 @@ import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
-import { TimelineMinimap, buildTimelineMinimapItems, type TimelineSourceItem } from "@/components/chat/TimelineMinimap";
+import { TimelineMinimap } from "@/components/chat/TimelineMinimap";
+import { buildTimelineMinimapItems, type TimelineSourceItem } from "@/components/chat/timelineMinimapModel";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
 import { tokenizeUserBubbleText } from "@/lib/userBubbleTokens";
@@ -1828,7 +1829,7 @@ export function ChatPanel({
     }
   };
 
-  const stop = async () => {
+  const stop = useCallback(async () => {
     const sid = activeTurnSessionIdRef.current ?? activeSessionId;
     if (!sid) return;
     if (turnStateRef.current === "stopping" || turnStateRef.current === "redirecting") return;
@@ -1840,7 +1841,7 @@ export function ChatPanel({
       setStatusLabel("Stop requested; waiting for backend state…");
       void resyncTurnState();
     }
-  };
+  }, [activeSessionId, resyncTurnState]);
 
   // Use refs for values that change so useCallback deps stay empty → stable identities
   const onSessionCreatedRef = useRef(onSessionCreated);
@@ -2029,6 +2030,7 @@ export function ChatPanel({
     latestUserMessage,
     recoveryActionBusy,
     reloadLatestTranscript,
+    stop,
   ]);
 
   const recoveryActions = useMemo(() => recoveryActionsForTurn({
@@ -2721,7 +2723,7 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [activeSessionId, collapsedMessages.length, streamingAssistantVisibleChars, streaming, safeMode, virtualizer]);
+  }, [activeSessionId, collapsedMessages.length, streamingAssistantVisibleChars, streaming, safeMode, virtualizer, runBottomClamp]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;
