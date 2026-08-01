@@ -140,6 +140,7 @@ def _discover_tools():
         "tools.web_tools",
         "tools.terminal_tool",
         "tools.file_tools",
+        "tools.artifact_tool",
         "tools.vision_tools",
         "tools.mixture_of_agents_tool",
         "tools.image_generation_tool",
@@ -445,7 +446,7 @@ def get_tool_definitions(
 # The registry still holds their schemas; dispatch just returns a stub error
 # so if something slips through, the LLM sees a sensible message.
 _AGENT_LOOP_TOOLS = {"todo", "memory", "session_search", "delegate_task"}
-_READ_SEARCH_TOOLS = {"read_file", "search_files"}
+_READ_SEARCH_TOOLS = {"read_file", "artifact_read", "search_files"}
 
 
 # =========================================================================

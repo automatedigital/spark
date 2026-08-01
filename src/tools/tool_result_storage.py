@@ -30,6 +30,7 @@ import shlex
 import uuid
 from collections.abc import Sequence
 
+from tools.artifact_store import get_artifact, register_artifact, semantic_preview
 from tools.budget_config import (
     DEFAULT_BUDGET,
     DEFAULT_PREVIEW_SIZE_CHARS,
@@ -45,6 +46,7 @@ HEREDOC_MARKER = "SPARK_PERSIST_EOF"
 _BUDGET_TOOL_NAME = "__budget_enforcement__"
 _CONTENT_HASH_RE = re.compile(r"^Content hash: (sha256:[0-9a-f]{64})$", re.MULTILINE)
 _FILE_PATH_RE = re.compile(r"^Full output saved to: (.+)$", re.MULTILINE)
+_ARTIFACT_HANDLE_RE = re.compile(r"^Artifact handle: (artifact://[0-9a-f]{64})$", re.MULTILINE)
 
 
 def estimate_tool_result_tokens(content: str) -> int:
@@ -120,6 +122,7 @@ def _build_persisted_message(
     *,
     content_hash: str | None = None,
     origin_tool: str | None = None,
+    artifact_record=None,
 ) -> str:
     """Build the <persisted-output> replacement block."""
     size_kb = original_size / 1024
@@ -130,13 +133,23 @@ def _build_persisted_message(
 
     msg = f"{PERSISTED_OUTPUT_TAG}\n"
     msg += f"This tool result was too large ({original_size:,} characters, {size_str}).\n"
-    msg += f"Full output saved to: {file_path}\n"
+    if artifact_record is not None:
+        msg += f"Artifact handle: {artifact_record.handle}\n"
+        msg += f"MIME type: {artifact_record.mime_type}\n"
+        msg += f"Expires at: {artifact_record.expires_at}\n"
+        msg += f"Paging: offset=0 limit={min(8000, artifact_record.total_size)} total_size={artifact_record.total_size}\n"
+    else:
+        # Compatibility for callers that have not enabled artifact metadata.
+        msg += f"Full output saved to: {file_path}\n"
     if content_hash:
         msg += f"Content hash: {content_hash}\n"
     if origin_tool:
         msg += f"Origin tool: {origin_tool}\n"
-    msg += "Use the read_file tool with offset and limit to access specific sections of this output.\n\n"
-    msg += f"Preview (first {len(preview)} chars):\n"
+    if artifact_record is not None:
+        msg += "Use artifact_read with the handle to page or search the complete result.\n\n"
+    else:
+        msg += "Use read_file with offset and limit to access specific sections of this output.\n\n"
+    msg += f"Semantic preview ({len(preview)} chars):\n"
     msg += preview
     if has_more:
         msg += "\n..."
@@ -153,6 +166,7 @@ def maybe_persist_tool_result(
     threshold: int | float | None = None,
     truncate_on_failure: bool = False,
     force_persist: bool = False,
+    task_id: str = "default",
 ) -> str:
     """Layer 2: persist oversized result into the sandbox, return preview + path.
 
@@ -186,14 +200,25 @@ def maybe_persist_tool_result(
         threshold is None
         and env is not None
         and config.result_budget_tokens is not None
-        and estimate_tool_result_tokens(content) > config.result_budget_tokens
+        and config.count_tokens(content) > config.result_budget_tokens
     )
     if not exceeds_char_limit and not exceeds_token_limit and not force_persist:
         return content
 
+    digest = _content_hash(content)
+    handle = f"artifact://{digest.removeprefix('sha256:')}"
+    existing = get_artifact(handle, task_id=task_id)
+    if existing is not None:
+        return (
+            f"{PERSISTED_OUTPUT_TAG}\n"
+            f"Unchanged duplicate of artifact {digest}.\n"
+            f"Artifact handle: {existing.handle}\n"
+            f"{PERSISTED_OUTPUT_CLOSING_TAG}"
+        )
+
     storage_dir = _resolve_storage_dir(env)
-    remote_path = f"{storage_dir}/{tool_use_id}.txt"
-    preview, has_more = generate_preview(content, max_chars=config.preview_size)
+    remote_path = f"{storage_dir}/{digest.removeprefix('sha256:')}.txt"
+    preview, has_more = semantic_preview(content, max_chars=config.preview_size)
 
     if env is not None:
         try:
@@ -202,13 +227,20 @@ def maybe_persist_tool_result(
                     "Persisted large tool result: %s (%s, %d chars -> %s)",
                     tool_name, tool_use_id, len(content), remote_path,
                 )
+                record = register_artifact(
+                    content=content,
+                    locator=remote_path,
+                    origin_tool=tool_name,
+                    task_id=task_id,
+                )
                 return _build_persisted_message(
                     preview,
                     has_more,
                     len(content),
                     remote_path,
-                    content_hash=_content_hash(content),
+                    content_hash=digest,
                     origin_tool=tool_name,
+                    artifact_record=record,
                 )
         except Exception as exc:
             logger.warning("Sandbox write failed for %s: %s", tool_use_id, exc)
@@ -237,6 +269,7 @@ def enforce_turn_budget(
     env=None,
     config: BudgetConfig = DEFAULT_BUDGET,
     tool_names: Sequence[str] | None = None,
+    task_id: str = "default",
 ) -> list[dict]:
     """Layer 3: enforce aggregate budget across all tool results in a turn.
 
@@ -266,7 +299,7 @@ def enforce_turn_budget(
         content = msg.get("content", "")
         size = len(content)
         total_size += size
-        total_tokens += estimate_tool_result_tokens(content)
+        total_tokens += config.count_tokens(content)
         tool_name = (
             tool_names[i]
             if tool_names is not None
@@ -276,26 +309,28 @@ def enforce_turn_budget(
             continue
         if PERSISTED_OUTPUT_TAG in content:
             hash_match = _CONTENT_HASH_RE.search(content)
+            handle_match = _ARTIFACT_HANDLE_RE.search(content)
             path_match = _FILE_PATH_RE.search(content)
-            if hash_match and path_match:
+            locator_match = handle_match or path_match
+            if hash_match and locator_match:
                 content_hash = hash_match.group(1)
-                file_path = path_match.group(1)
-                prior_path = artifacts_by_hash.get(content_hash)
-                if prior_path:
+                locator = locator_match.group(1)
+                prior_locator = artifacts_by_hash.get(content_hash)
+                if prior_locator:
                     replacement = (
                         f"{PERSISTED_OUTPUT_TAG}\n"
                         f"Unchanged duplicate of artifact {content_hash}.\n"
-                        f"Full output saved to: {prior_path}\n"
+                        f"Artifact handle: {prior_locator}\n"
                         f"{PERSISTED_OUTPUT_CLOSING_TAG}"
                     )
                     total_size += len(replacement) - size
                     total_tokens += (
-                        estimate_tool_result_tokens(replacement)
-                        - estimate_tool_result_tokens(content)
+                        config.count_tokens(replacement)
+                        - config.count_tokens(content)
                     )
                     msg["content"] = replacement
                 else:
-                    artifacts_by_hash[content_hash] = file_path
+                    artifacts_by_hash[content_hash] = locator
         else:
             candidates.append((i, size))
 
@@ -321,12 +356,12 @@ def enforce_turn_budget(
         tool_use_id = msg.get("tool_call_id", f"budget_{idx}")
         content_hash = _content_hash(content)
 
-        prior_path = artifacts_by_hash.get(content_hash)
-        if prior_path:
+        prior_locator = artifacts_by_hash.get(content_hash)
+        if prior_locator:
             replacement = (
                 f"{PERSISTED_OUTPUT_TAG}\n"
                 f"Unchanged duplicate of artifact {content_hash}.\n"
-                f"Full output saved to: {prior_path}\n"
+                f"Artifact handle: {prior_locator}\n"
                 f"{PERSISTED_OUTPUT_CLOSING_TAG}"
             )
         else:
@@ -338,17 +373,20 @@ def enforce_turn_budget(
                 config=config,
                 force_persist=True,
                 truncate_on_failure=total_size > config.turn_budget,
+                task_id=task_id,
             )
 
         if replacement != content:
             total_size -= size
             total_size += len(replacement)
-            total_tokens -= estimate_tool_result_tokens(content)
-            total_tokens += estimate_tool_result_tokens(replacement)
+            total_tokens -= config.count_tokens(content)
+            total_tokens += config.count_tokens(replacement)
             tool_messages[idx]["content"] = replacement
+            handle_match = _ARTIFACT_HANDLE_RE.search(replacement)
             path_match = _FILE_PATH_RE.search(replacement)
-            if path_match:
-                artifacts_by_hash[content_hash] = path_match.group(1)
+            locator_match = handle_match or path_match
+            if locator_match:
+                artifacts_by_hash[content_hash] = locator_match.group(1)
             logger.info(
                 "Budget enforcement: persisted tool result %s (%d chars)",
                 tool_use_id, size,

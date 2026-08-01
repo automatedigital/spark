@@ -68,6 +68,7 @@ from core.model_tools import (
     check_toolset_requirements,
 )
 from tools.terminal_tool import cleanup_vm, get_active_env, is_persistent_env
+from tools.budget_config import BudgetConfig
 from tools.tool_result_storage import maybe_persist_tool_result, enforce_turn_budget
 from tools.interrupt import set_interrupt as _set_interrupt
 from tools.browser_tool import cleanup_browser
@@ -6676,6 +6677,27 @@ class AIAgent(_PromptCacheMixin):
         finally:
             self._on_tool_dispatched(function_name)
 
+    def _tool_budget_config(self, tool_name: str | None = None) -> BudgetConfig:
+        """Allocate tool-result context from the current model/request state."""
+        compressor = getattr(self, "context_compressor", None)
+        context_length = int(getattr(compressor, "context_length", 0) or 0)
+        prompt_tokens = int(getattr(compressor, "last_prompt_tokens", 0) or 0)
+        remaining = max(0, context_length - prompt_tokens) if context_length else None
+        phase = str(getattr(self, "_request_phase", "work") or "work")
+        result_kind = "text"
+        if tool_name in {"web_search", "search_files", "session_search"}:
+            result_kind = "search"
+        elif tool_name in {"terminal", "process"}:
+            result_kind = "terminal"
+        elif tool_name in {"connectors", "artifact_read"}:
+            result_kind = "structured"
+        return BudgetConfig.for_request(
+            remaining_context_tokens=remaining,
+            task_phase=phase,
+            result_kind=result_kind,
+            provider_count_tokens=getattr(self, "_provider_token_counter", None),
+        )
+
     def _execute_tool_calls_concurrent(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
         """Execute multiple tool calls concurrently using a thread pool.
 
@@ -6866,6 +6888,8 @@ class AIAgent(_PromptCacheMixin):
                 tool_name=name,
                 tool_use_id=tc.id,
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(name),
+                task_id=effective_task_id,
             )
 
             subdir_hints = self._subdirectory_hints.check_tool_call(name, args)
@@ -6886,7 +6910,9 @@ class AIAgent(_PromptCacheMixin):
             enforce_turn_budget(
                 turn_tool_msgs,
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(),
                 tool_names=[function_name for _, function_name, _ in parsed_calls],
+                task_id=effective_task_id,
             )
 
     def _execute_tool_calls_sequential(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
@@ -7239,6 +7265,8 @@ class AIAgent(_PromptCacheMixin):
                 tool_name=function_name,
                 tool_use_id=tool_call.id,
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(function_name),
+                task_id=effective_task_id,
             )
 
             # Discover subdirectory context files from tool arguments
@@ -7283,7 +7311,9 @@ class AIAgent(_PromptCacheMixin):
             enforce_turn_budget(
                 messages[-num_tools_seq:],
                 env=get_active_env(effective_task_id),
+                config=self._tool_budget_config(),
                 tool_names=[tool_call.function.name for tool_call in assistant_message.tool_calls],
+                task_id=effective_task_id,
             )
 
 

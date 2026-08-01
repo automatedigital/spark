@@ -4,12 +4,14 @@ Overridable at the RL environment level via SparkAgentEnvConfig fields.
 Per-tool resolution: pinned > config overrides > registry > default.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 # Tools whose thresholds must never be overridden.
 # read_file=inf prevents infinite persist->read->persist loops.
 PINNED_THRESHOLDS: dict[str, float] = {
     "read_file": float("inf"),
+    "artifact_read": float("inf"),
 }
 
 # Defaults matching the current hardcoded values in tool_result_storage.py.
@@ -44,6 +46,55 @@ class BudgetConfig:
     tool_overrides: dict[str, int] = field(default_factory=dict)
     result_budget_tokens: int | None = DEFAULT_RESULT_BUDGET_TOKENS
     turn_budget_tokens: int | None = DEFAULT_TURN_BUDGET_TOKENS
+    token_counter: Callable[[str], int] | None = field(default=None, compare=False, repr=False)
+
+    @classmethod
+    def for_request(
+        cls,
+        *,
+        remaining_context_tokens: int | None,
+        task_phase: str = "work",
+        result_kind: str = "text",
+        provider_count_tokens=None,
+    ) -> "BudgetConfig":
+        """Derive conservative result shares from the current request budget.
+
+        Provider tokenizers can tighten the budget at enforcement time; the
+        stored values remain hard upper bounds for estimator-only paths.
+        """
+        if not remaining_context_tokens or remaining_context_tokens <= 0:
+            return cls()
+        phase_share = {
+            "planning": 0.12,
+            "work": 0.20,
+            "verification": 0.16,
+            "final": 0.08,
+        }.get(task_phase, 0.16)
+        kind_share = {
+            "search": 0.75,
+            "terminal": 0.85,
+            "structured": 0.65,
+            "text": 1.0,
+        }.get(result_kind, 1.0)
+        turn_tokens = max(2_000, min(DEFAULT_TURN_BUDGET_TOKENS, int(remaining_context_tokens * phase_share * kind_share)))
+        result_tokens = max(1_000, min(DEFAULT_RESULT_BUDGET_TOKENS, turn_tokens // 2))
+        return cls(
+            result_budget_tokens=result_tokens,
+            turn_budget_tokens=turn_tokens,
+            token_counter=provider_count_tokens,
+        )
+
+    def count_tokens(self, content: str) -> int:
+        """Use a provider counter when available, else the safe UTF-8 estimate."""
+        if self.token_counter is not None:
+            try:
+                count = int(self.token_counter(content))
+                if count >= 0:
+                    return count
+            except Exception:
+                pass
+        encoded = content.encode("utf-8", errors="surrogatepass")
+        return (len(encoded) + 2) // 3
 
     def resolve_threshold(self, tool_name: str) -> int | float:
         """Resolve the persistence threshold for a tool.
