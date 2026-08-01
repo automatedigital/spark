@@ -1942,7 +1942,7 @@ def _emit_sessions_changed(
 ) -> None:
     payload: Dict[str, Any] = {"action": action, "session_id": session_id}
     if session is not None:
-        payload["session"] = session
+        payload["session"] = _web_session_list_row(session)
     _publish_event("sessions.changed", payload, session_id)
 
 
@@ -2114,11 +2114,20 @@ async def sse_events_bus(
                     entity_ids=None,
                 )
                 if resume.requires_snapshot:
-                    control = web_state_journal.append(
-                        "bus.snapshot_required",
-                        {"reason": resume.reason},
-                        session_id,
-                    )
+                    payload = {"reason": resume.reason}
+                    control = {
+                        "schema_version": 1,
+                        "topic": "bus.snapshot_required",
+                        "entity_id": session_id,
+                        "session_id": session_id,
+                        "sequence": max(1, after_sequence + 1),
+                        "projection_version": 1,
+                        "timestamp": time.time(),
+                        "ts": time.time(),
+                        "payload": payload,
+                        "data": payload,
+                        "server_epoch": web_state_journal.server_epoch,
+                    }
                     yield f"data: {json.dumps(control, default=str)}\n\n"
                 else:
                     for replayed in resume.events:

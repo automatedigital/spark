@@ -42,6 +42,7 @@ class ConnectionSupervisor {
   private running = false;
   private cursor: Cursor | null = this.readCursor();
   private selectedSessionId: string | null = null;
+  private snapshotRecovery: Promise<void> | null = null;
 
   start(): void {
     if (this.running || typeof window === "undefined") return;
@@ -69,9 +70,7 @@ class ConnectionSupervisor {
     if (this.selectedSessionId === sessionId) return;
     this.selectedSessionId = sessionId;
     if (!this.running) return;
-    this.source?.close();
-    this.source = null;
-    void this.fetchSnapshot().then(() => this.connect()).catch(() => this.scheduleReconnect());
+    void this.recoverSnapshot();
   }
 
   private bootstrap = async (): Promise<void> => {
@@ -160,7 +159,7 @@ class ConnectionSupervisor {
     if (decision === "duplicate") return;
     if (decision === "gap" || decision === "snapshot" || event.topic === "bus.snapshot_required") {
       this.notifySynthetic(BUS_GAP_TOPIC, { reason: decision });
-      void this.fetchSnapshot();
+      void this.recoverSnapshot();
       return;
     }
     this.cursor.sequence = event.sequence;
@@ -187,6 +186,17 @@ class ConnectionSupervisor {
       server_epoch: cursor.serverEpoch,
     } satisfies SparkEventEnvelope;
     listeners.forEach((listener) => listener(event));
+  }
+
+  private recoverSnapshot(): Promise<void> {
+    if (this.snapshotRecovery) return this.snapshotRecovery;
+    this.source?.close();
+    this.source = null;
+    this.snapshotRecovery = this.fetchSnapshot()
+      .then(() => this.connect())
+      .catch(() => this.scheduleReconnect())
+      .finally(() => { this.snapshotRecovery = null; });
+    return this.snapshotRecovery;
   }
 
   private scheduleReconnect(): void {
