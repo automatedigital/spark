@@ -164,7 +164,13 @@ jobs:
           }
           finally {
             if ($Desktop -and -not $Desktop.HasExited) {
-              taskkill /PID $Desktop.Id /T /F | Out-Null
+              try {
+                taskkill /PID $Desktop.Id /T /F | Out-Null
+              }
+              catch {
+                Write-Host "Packaged desktop process tree already exited during cleanup"
+              }
+              $global:LASTEXITCODE = 0
             }
             Remove-Item $SmokeHome -Recurse -Force -ErrorAction SilentlyContinue
           }
