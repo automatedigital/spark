@@ -2465,11 +2465,11 @@ class TestConversationControl:
 
         calls = []
 
-        async def fake_to_thread(fn, *args, **kwargs):
+        async def fake_run_blocking(fn, *args, **kwargs):
             calls.append(fn.__name__)
             return fn(*args, **kwargs)
 
-        monkeypatch.setattr(web_server.asyncio, "to_thread", fake_to_thread)
+        monkeypatch.setattr(web_server, "_run_blocking", fake_run_blocking)
         resp = web_client.get("/api/conversations/snapshot-threaded/stream-snapshot")
         assert resp.status_code == 200
         assert calls == ["_conversation_stream_snapshot_payload"]

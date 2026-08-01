@@ -1096,7 +1096,8 @@ class MCPServerTask:
 
 _servers: Dict[str, MCPServerTask] = {}
 
-# Dedicated event loop running in a background daemon thread.
+# MCP tasks run on the process-owned async runtime.  These aliases remain for
+# compatibility with diagnostics and tests that inspect MCP lifecycle state.
 _mcp_loop: Optional[asyncio.AbstractEventLoop] = None
 _mcp_thread: Optional[threading.Thread] = None
 
@@ -1152,19 +1153,17 @@ def _mcp_loop_exception_handler(loop, context):
 
 
 def _ensure_mcp_loop():
-    """Start the background event loop thread if not already running."""
+    """Attach MCP tasks to Spark's process-owned asynchronous runtime."""
     global _mcp_loop, _mcp_thread
+    from core.async_runtime import get_async_runtime
+
     with _lock:
         if _mcp_loop is not None and _mcp_loop.is_running():
             return
-        _mcp_loop = asyncio.new_event_loop()
+        runtime = get_async_runtime()
+        _mcp_loop = runtime.loop
         _mcp_loop.set_exception_handler(_mcp_loop_exception_handler)
-        _mcp_thread = threading.Thread(
-            target=_mcp_loop.run_forever,
-            name="mcp-event-loop",
-            daemon=True,
-        )
-        _mcp_thread.start()
+        _mcp_thread = None
 
 
 def _run_on_mcp_loop(coro, timeout: float = 30):
@@ -2244,21 +2243,11 @@ def _kill_orphaned_mcp_children() -> None:
 
 
 def _stop_mcp_loop():
-    """Stop the background event loop and join its thread."""
+    """Detach MCP state without stopping the process-owned runtime."""
     global _mcp_loop, _mcp_thread
     with _lock:
-        loop = _mcp_loop
-        thread = _mcp_thread
         _mcp_loop = None
         _mcp_thread = None
-    if loop is not None:
-        loop.call_soon_threadsafe(loop.stop)
-        if thread is not None:
-            thread.join(timeout=5)
-        try:
-            loop.close()
-        except Exception:
-            pass
-        # After closing the loop, any stdio subprocesses that survived the
-        # graceful shutdown are now orphaned.  Force-kill them.
-        _kill_orphaned_mcp_children()
+    # Each server's async context has already been exited above.  Kill only
+    # explicitly tracked stdio children that survived that graceful shutdown.
+    _kill_orphaned_mcp_children()
