@@ -766,26 +766,26 @@ uses them.
   an `mcp_servers` mapping keep the existing eager discovery path, while
   unconfigured profiles avoid loading the optional SDK and its dependencies.
 
-- [ ] **EFF-09-01 - Split schema metadata from handlers.** Keep a lightweight,
+- [x] **EFF-09-01 - Split schema metadata from handlers.** Keep a lightweight,
   declarative manifest importable without optional SDKs. Resolve and import the
   handler module only on its first invocation.
   **Files:** `src/tools/registry.py`, `src/core/model_tools.py`, and generated or
   declarative tool manifests.
 
-- [ ] **EFF-09-02 - Generate/validate the manifest in development.** A build/test
+- [x] **EFF-09-02 - Generate/validate the manifest in development.** A build/test
   command imports every handler in isolation, compares registered names/schemas
   to the lightweight manifest, and fails on drift or missing optional guards.
 
-- [ ] **EFF-09-03 - Lazy-load provider and feature modules.** Move model catalogs,
+- [x] **EFF-09-03 - Lazy-load provider and feature modules.** Move model catalogs,
   voice, browser, MCP, messaging platforms, cron, image/video SDKs, and desktop
   helpers behind their route/tool/command boundaries.
 
-- [ ] **EFF-09-04 - Split the run-agent hot path by responsibility.** Extract
+- [x] **EFF-09-04 - Split the run-agent hot path by responsibility.** Extract
   provider payload adapters, response normalization, retry policy, persistence,
   and turn orchestration without changing `core.run_agent.AIAgent`.
   **Files:** modules under `src/core/run_agent/` plus ADR/caching golden updates.
 
-- [ ] **EFF-09-05 - Audit packaged resources.** Ensure frozen sidecar internals,
+- [x] **EFF-09-05 - Audit packaged resources.** Ensure frozen sidecar internals,
   caches, generated bundles, and optional ML dependencies are excluded from
   source discovery and included in desktop artifacts only when required.
 
@@ -797,15 +797,27 @@ uses them.
   tests cover both configured and unconfigured profiles, and MCP/model-tool/ACP
   regression suites preserve discovery behavior.
 
-- [ ] **EFF-09-V1 - Import budget.** Measure five fresh processes and meet a
+- [x] **EFF-09-V1 - Import budget.** Measure five fresh processes and meet a
   median `import core.run_agent` target of 0.45 seconds, stretch goal 0.35, on
   the same host while reporting RSS and imported module count.
-- [ ] **EFF-09-V2 - Minimal install test.** Core CLI help, doctor, and a no-tool
+- [x] **EFF-09-V2 - Minimal install test.** Core CLI help, doctor, and a no-tool
   chat import without browser, MCP, voice, messaging, or ML extras installed.
-- [ ] **EFF-09-V3 - First-use tests.** Each lazy feature loads once, reports a
+- [x] **EFF-09-V3 - First-use tests.** Each lazy feature loads once, reports a
   precise missing-extra error, and remains safe under concurrent first calls.
 - [ ] **EFF-09-V4 - Package comparison.** Record macOS app, Windows installer,
   sidecar size, startup time, and feature smoke results before and after.
+
+**Evidence for EFF-09-01 through EFF-09-V3:** a generated 70-tool manifest was
+validated against 28 isolated handler modules and four blocked optional-SDK
+guards. Fourteen lazy-manifest, minimal-install, and responsibility tests passed;
+concurrent first use imported its handler exactly once and missing dependencies
+named the required extra. Focused Ruff passed. Five fresh processes improved
+from 0.5012 s median, 1,428 modules, and 91,504 KiB RSS to 0.1055 s, 415 modules,
+and 43,024 KiB: 79.0% lower median latency, 70.9% fewer modules, and 53.0% lower
+RSS. Raw trials are in `docs/performance/lazy-startup-benchmark.json`. ADR 0012
+records stable `core.run_agent.AIAgent`, cache, and rollback contracts. The
+desktop resource audit is enforced by both platform builds and excludes caches
+and optional ML runtimes while PyInstaller collects lazy first-party modules.
 
 **Rollback boundary:** keep eager manifest validation in CI even though runtime
 imports become lazy.

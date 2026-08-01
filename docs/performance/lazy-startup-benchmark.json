@@ -1,0 +1,45 @@
+{
+  "benchmark": "fresh-process import core.run_agent",
+  "date": "2026-08-01",
+  "python": "/Users/joe/Developer/github/spark/.venv/bin/python",
+  "host": "same macOS host and virtual environment",
+  "baseline": {
+    "commit": "43f2f9c4",
+    "median_seconds": 0.5011521249834914,
+    "p95_seconds": 0.7924537090002559,
+    "median_modules": 1428,
+    "median_rss_kib": 91504,
+    "trials": [
+      {"seconds": 0.7924537090002559, "modules": 1428, "rss_kib": 127088},
+      {"seconds": 0.5121110420150217, "modules": 1428, "rss_kib": 90656},
+      {"seconds": 0.4974175829847809, "modules": 1428, "rss_kib": 91744},
+      {"seconds": 0.5011521249834914, "modules": 1428, "rss_kib": 90800},
+      {"seconds": 0.48248729199985974, "modules": 1428, "rss_kib": 91504}
+    ]
+  },
+  "candidate": {
+    "commit": "f481414d",
+    "median_seconds": 0.10545833301148377,
+    "p95_seconds": 0.14794749999418855,
+    "median_modules": 415,
+    "median_rss_kib": 43024,
+    "trials": [
+      {"seconds": 0.14794749999418855, "modules": 415, "rss_kib": 63680},
+      {"seconds": 0.10494579200167209, "modules": 415, "rss_kib": 43024},
+      {"seconds": 0.10514245799276978, "modules": 415, "rss_kib": 42528},
+      {"seconds": 0.10942708398215473, "modules": 415, "rss_kib": 43120},
+      {"seconds": 0.10545833301148377, "modules": 415, "rss_kib": 42928}
+    ]
+  },
+  "improvement_percent": {
+    "median_seconds": 78.9568221395933,
+    "median_modules": 70.93837535014006,
+    "median_rss_kib": 52.981290435390804
+  },
+  "budget": {
+    "median_seconds_maximum": 0.45,
+    "stretch_seconds_maximum": 0.35,
+    "passed": true,
+    "stretch_passed": true
+  }
+}
