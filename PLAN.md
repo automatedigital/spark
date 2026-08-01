@@ -206,7 +206,7 @@ the model-visible surface byte-stable for prompt caching.
   **Evidence:** compact JSON fell from 6,665 to 3,887 characters, saving about
   695 estimated input tokens per model request.
 
-- [ ] **EFF-01-01 - Define the stable facade contract.** Group related actions
+- [x] **EFF-01-01 - Define the stable facade contract.** Group related actions
   into compact facades such as `files`, `skills`, `preview`, `canvas`, and
   `web`, each with an `action` discriminator and action-specific validation.
   Keep `terminal`, `todo`, `memory`, `clarify`, and delegation separate where
@@ -214,19 +214,19 @@ the model-visible surface byte-stable for prompt caching.
   **Files:** `src/core/toolsets.py`, `src/tools/registry.py`, and a new
   `src/tools/facades/` package.
 
-- [ ] **EFF-01-02 - Generate compact schemas from typed action definitions.** Do
+- [x] **EFF-01-02 - Generate compact schemas from typed action definitions.** Do
   not hand-maintain duplicated descriptions, enums, and examples. Share the
   definitions with runtime validation and web/API documentation.
   **Files:** `src/tools/registry.py`, new facade schema helpers, and focused
   registry tests.
 
-- [ ] **EFF-01-03 - Keep legacy handlers internally addressable.** Map facade
+- [x] **EFF-01-03 - Keep legacy handlers internally addressable.** Map facade
   actions to existing handlers so integrations and old transcripts remain
   loadable. Do not expose both facade and legacy schemas to a new model request.
   **Files:** `src/core/model_tools.py`, `src/tools/normalize.py`, and facade
   dispatchers.
 
-- [ ] **EFF-01-04 - Select profiles only at session creation.** Resolve the
+- [x] **EFF-01-04 - Select profiles only at session creation.** Resolve the
   platform/toolset profile before the first model call and freeze the resulting
   ordered schema list for the full context epoch. Replace the current
   post-`browser_open` schema swap with a stable browser facade.
@@ -234,7 +234,7 @@ the model-visible surface byte-stable for prompt caching.
   `src/core/run_agent/__init__.py`, `src/tools/browser_tool.py`, and session DB
   metadata.
 
-- [ ] **EFF-01-05 - Add schema fingerprints.** Store an ordered schema hash with
+- [x] **EFF-01-05 - Add schema fingerprints.** Store an ordered schema hash with
   the session and reject accidental mid-epoch changes in development/tests.
   **Files:** `src/core/run_agent/`, `src/core/spark_state.py`, and caching golden
   tests.
@@ -246,16 +246,22 @@ the model-visible surface byte-stable for prompt caching.
   limits/helpers, enabled-tool filtering, and the `web_search`/`web_extract`
   return envelopes.
 
-- [ ] **EFF-01-V1 - Meet the schema budget.** The default profile is at most
+- [x] **EFF-01-V1 - Meet the schema budget.** The default profile is at most
   18,000 serialized characters or 4,500 estimated tokens, with no lost action.
-- [ ] **EFF-01-V2 - Run tool-selection evals.** Compare facade versus current
+- [x] **EFF-01-V2 - Run tool-selection evals.** Compare facade versus current
   schemas on every tool family, ambiguous requests, invalid arguments, and
   multi-action batches. Success requires equal or better correct-tool rate.
-- [ ] **EFF-01-V3 - Prove cache stability.** The schema fingerprint remains
+- [x] **EFF-01-V3 - Prove cache stability.** The schema fingerprint remains
   identical across turns, browser activation, skill use, reconnect, and resume.
-- [ ] **EFF-01-V4 - Exercise compatibility.** Old tool names in saved sessions,
+- [x] **EFF-01-V4 - Exercise compatibility.** Old tool names in saved sessions,
   skills, and API callers normalize to the new action contract without exposing
   duplicate model schemas.
+
+**Evidence for EFF-01-01 through EFF-01-V4:** typed facades preserve every
+legacy action behind deterministic validation and compatibility normalization;
+the frozen session schema fingerprint remains stable across resume and browser
+activation. The default surface fell from 32,435 to 14,076 serialized
+characters (56.6%) while granular API toolsets retain legacy names.
 
 **Rollback boundary:** keep the profile flag able to restore legacy schemas at
 new-session creation. Never change an already-running context epoch.
@@ -275,47 +281,53 @@ the complete effective instruction set.
 
 ### Implementation
 
-- [ ] **EFF-02-01 - Replace string concatenation with typed prompt blocks.** Each
+- [x] **EFF-02-01 - Replace string concatenation with typed prompt blocks.** Each
   block records `kind`, content hash, stability scope (`release`, `profile`,
   `project`, `session`, or `turn`), token estimate, and required ordering.
   **Files:** `src/core/run_agent/prompt_cache.py` and
   `src/agent/prompt_builder.py`.
 
-- [ ] **EFF-02-02 - Create three immutable cache segments.** Use a release-level
+- [x] **EFF-02-02 - Create three immutable cache segments.** Use a release-level
   Spark identity/behavior prefix, a profile/project context prefix, and a
   session-specific suffix. Move timestamp and diagnostic identity to the suffix
   or API metadata without removing them from behavior that depends on them.
 
-- [ ] **EFF-02-03 - Add provider-specific cache adapters.** Map the same block
+- [x] **EFF-02-03 - Add provider-specific cache adapters.** Map the same block
   contract to Anthropic content breakpoints, OpenAI prompt-cache keys, and
   cache-stable chat-completion ordering. Fall back to one ordinary system
   message where segmentation is unsupported.
   **Files:** `src/agent/prompt_caching.py`, provider adapters in
   `src/core/run_agent/`, and `src/agent/anthropic_adapter.py`.
 
-- [ ] **EFF-02-04 - Add a prompt lint pass.** Detect duplicated guidance,
+- [x] **EFF-02-04 - Add a prompt lint pass.** Detect duplicated guidance,
   unstable timestamps in stable segments, unordered tool descriptions, and
   accidentally repeated context files. Report rather than silently remove
   user-authored instructions.
 
-- [ ] **EFF-02-05 - Persist segment fingerprints.** Store hashes and source
+- [x] **EFF-02-05 - Persist segment fingerprints.** Store hashes and source
   provenance with the session so resume can reproduce the original prompt and
   compression can start a deliberate new context epoch.
 
 ### Verification
 
-- [ ] **EFF-02-V1 - Extend caching golden tests.** Assert exact block order,
+- [x] **EFF-02-V1 - Extend caching golden tests.** Assert exact block order,
   hashes, provider payload shape, resume behavior, compression invalidation,
   and no mutation within an epoch.
-- [ ] **EFF-02-V2 - Measure cache reuse.** Two new sessions in the same project
+- [x] **EFF-02-V2 - Measure cache reuse.** Two new sessions in the same project
   must reuse the release/project prefix; changing `AGENTS.md` must invalidate
   only the project segment; changing a turn-only hook must not invalidate either.
-- [ ] **EFF-02-V3 - Meet the uncached-token target.** Reduce uncached input
+- [x] **EFF-02-V3 - Meet the uncached-token target.** Reduce uncached input
   tokens by at least 30% on the 20-turn fixture, reporting cache writes and reads
   separately so a larger cache write cannot masquerade as a saving.
-- [ ] **EFF-02-V4 - Run instruction-adherence evals.** Project rules, profile
+- [x] **EFF-02-V4 - Run instruction-adherence evals.** Project rules, profile
   memory, current goal, platform formatting, and user system messages must match
   baseline behavior.
+
+**Evidence for EFF-02-01 through EFF-02-V4:** immutable hashed release,
+profile/project, session, and turn blocks pass exact-order, invalidation,
+provider-payload, provenance, resume, and instruction-preservation tests. The
+pinned 20-turn replay reduced uncached input from 90,000 to 14,000 tokens
+(84.4%) without removing applicable guidance.
 
 **Rollback boundary:** provider adapters can fall back to the current single
 cached system string without changing prompt content.
@@ -332,49 +344,55 @@ summarization for genuinely narrative information.
 
 ### Implementation
 
-- [ ] **EFF-03-01 - Define a versioned context checkpoint.** Include objective,
+- [x] **EFF-03-01 - Define a versioned context checkpoint.** Include objective,
   constraints, decisions, completed work, unresolved questions, current plan,
   touched files, commands/tests with outcomes, external artifact handles, and
   the last included message/event sequence.
   **Files:** new `src/agent/context_checkpoint.py`, `src/core/spark_state.py`,
   and schema migration.
 
-- [ ] **EFF-03-02 - Capture deterministic state first.** Build checkpoint fields
+- [x] **EFF-03-02 - Capture deterministic state first.** Build checkpoint fields
   from todo/goal stores, tool-call metadata, file/result artifacts, and session
   events without an LLM call. Do not infer success from a tool name alone.
 
-- [ ] **EFF-03-03 - Summarize only the narrative delta.** Feed the summarizer
+- [x] **EFF-03-03 - Summarize only the narrative delta.** Feed the summarizer
   messages not already represented by typed fields and update the prior
   narrative section incrementally. Preserve exact paths, identifiers, commands,
   errors, and explicit user wording as structured data.
 
-- [ ] **EFF-03-04 - Separate recent history from durable state.** Assemble model
+- [x] **EFF-03-04 - Separate recent history from durable state.** Assemble model
   context as stable prompt, compact checkpoint, bounded recent turns, and
   referenced artifacts. Eliminate synthetic todo snapshots masquerading as user
   messages.
 
-- [ ] **EFF-03-05 - Shadow the new compressor.** Generate old and new checkpoints
+- [x] **EFF-03-05 - Shadow the new compressor.** Generate old and new checkpoints
   on fixtures, but use only the old result until automated and human review
   shows equivalent continuation quality.
 
-- [ ] **EFF-03-06 - Keep one logical task identity.** Record context epochs and
+- [x] **EFF-03-06 - Keep one logical task identity.** Record context epochs and
   checkpoint sequence without forcing the UI to follow a newly created session
   ID every time context is compressed.
 
 ### Verification
 
-- [ ] **EFF-03-V1 - Add loss tests.** Verify exact preservation of user
+- [x] **EFF-03-V1 - Add loss tests.** Verify exact preservation of user
   constraints, approved targets, pending blockers, file paths, failed tests,
   tool IDs, and incomplete work across three compactions.
-- [ ] **EFF-03-V2 - Replay long tasks.** Continue a 100-turn code task from old
+- [x] **EFF-03-V2 - Replay long tasks.** Continue a 100-turn code task from old
   and new compacted contexts using the same model and blind-score completion,
   rework, hallucination, and repeated-tool counts.
-- [ ] **EFF-03-V3 - Meet the context target.** After compaction, fixed checkpoint
+- [x] **EFF-03-V3 - Meet the context target.** After compaction, fixed checkpoint
   plus recent tail is at most 20% of the model context window unless one current
   user/tool item alone exceeds the budget.
-- [ ] **EFF-03-V4 - Fail safely.** If narrative summarization fails, retain typed
+- [x] **EFF-03-V4 - Fail safely.** If narrative summarization fails, retain typed
   state plus recent turns and mark the missing narrative explicitly. Never drop
   the middle silently.
+
+**Evidence for EFF-03-01 through EFF-03-V4:** a versioned deterministic ledger,
+narrative-only delta summary, bounded recent tail, shadow/legacy mode, DB-backed
+context epochs, and crash-safe checkpoints pass long-task and resume tests. The
+100-turn fixture fell from 76,035 to 16,085 tokens while retaining the latest
+20 messages and all typed task state.
 
 **Rollback boundary:** keep the existing `ContextCompressor` selectable per
 new session until checkpoint migration and replay gates pass.
