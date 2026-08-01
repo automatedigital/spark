@@ -1,28 +1,28 @@
 """Tests for tools/tool_result_storage.py -- 3-layer tool result persistence."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tools.budget_config import (
-    DEFAULT_RESULT_SIZE_CHARS,
-    DEFAULT_TURN_BUDGET_CHARS,
     DEFAULT_PREVIEW_SIZE_CHARS,
+    DEFAULT_RESULT_SIZE_CHARS,
     BudgetConfig,
 )
 from tools.tool_result_storage import (
     HEREDOC_MARKER,
-    PERSISTED_OUTPUT_TAG,
     PERSISTED_OUTPUT_CLOSING_TAG,
+    PERSISTED_OUTPUT_TAG,
     STORAGE_DIR,
     _build_persisted_message,
     _heredoc_marker,
     _resolve_storage_dir,
     _write_to_sandbox,
     enforce_turn_budget,
+    estimate_tool_result_tokens,
     generate_preview,
     maybe_persist_tool_result,
 )
-
 
 # ── generate_preview ──────────────────────────────────────────────────
 
@@ -63,6 +63,20 @@ class TestGeneratePreview:
         preview, has_more = generate_preview(text)
         assert preview == text
         assert has_more is False
+
+
+class TestEstimateToolResultTokens:
+    def test_ascii_uses_conservative_three_byte_estimate(self):
+        assert estimate_tool_result_tokens("a" * 12) == 4
+
+    def test_unicode_counts_utf8_density(self):
+        assert estimate_tool_result_tokens("界" * 12) == 12
+
+    def test_empty_content_is_zero(self):
+        assert estimate_tool_result_tokens("") == 0
+
+    def test_lone_surrogate_does_not_break_estimation(self):
+        assert estimate_tool_result_tokens("\ud800") == 1
 
 
 # ── _heredoc_marker ───────────────────────────────────────────────────
@@ -340,6 +354,57 @@ class TestMaybePersistToolResult:
         # Preview should contain unicode
         assert "日本語テスト" in result
 
+    def test_token_dense_unicode_persists_below_character_limit(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        content = "界" * 20_000
+        result = maybe_persist_tool_result(
+            content=content,
+            tool_name="terminal",
+            tool_use_id="tc_dense_unicode",
+            env=env,
+        )
+        assert PERSISTED_OUTPUT_TAG in result
+        assert "Content hash: sha256:" in result
+        assert len(result) < len(content) * 0.1
+
+    def test_token_only_storage_failure_preserves_original(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "disk full", "returncode": 1}
+        content = "x" * 40_000
+        result = maybe_persist_tool_result(
+            content=content,
+            tool_name="terminal",
+            tool_use_id="tc_soft_fail",
+            env=env,
+        )
+        assert result == content
+
+    def test_token_budget_can_be_disabled_for_compatibility(self):
+        env = MagicMock()
+        content = "x" * 40_000
+        result = maybe_persist_tool_result(
+            content=content,
+            tool_name="terminal",
+            tool_use_id="tc_tokens_disabled",
+            env=env,
+            config=BudgetConfig(result_budget_tokens=None),
+        )
+        assert result == content
+        env.execute.assert_not_called()
+
+    def test_read_file_token_budget_never_creates_persist_read_loop(self):
+        env = MagicMock()
+        content = "界" * 90_000
+        result = maybe_persist_tool_result(
+            content=content,
+            tool_name="read_file",
+            tool_use_id="tc_read_page",
+            env=env,
+        )
+        assert result == content
+        env.execute.assert_not_called()
+
     def test_empty_content_returns_unchanged(self):
         result = maybe_persist_tool_result(
             content="",
@@ -489,6 +554,98 @@ class TestEnforceTurnBudget:
     def test_empty_messages(self):
         result = enforce_turn_budget([], env=None, config=BudgetConfig(turn_budget=200_000))
         assert result == []
+
+    def test_token_budget_spills_batch_below_character_budget(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        msgs = [
+            {"role": "tool", "tool_call_id": f"t{i}", "content": "x" * 42_000}
+            for i in range(4)
+        ]
+        enforce_turn_budget(msgs, env=env, config=BudgetConfig())
+        assert sum(len(msg["content"]) for msg in msgs) < 70_000
+
+    def test_token_only_turn_storage_failure_preserves_originals(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "disk full", "returncode": 1}
+        contents = ["x" * 42_000 for _ in range(4)]
+        msgs = [
+            {"role": "tool", "tool_call_id": f"t{i}", "content": content}
+            for i, content in enumerate(contents)
+        ]
+        enforce_turn_budget(msgs, env=env, config=BudgetConfig())
+        assert [msg["content"] for msg in msgs] == contents
+
+    def test_turn_token_budget_can_be_disabled_for_compatibility(self):
+        env = MagicMock()
+        contents = ["x" * 42_000 for _ in range(4)]
+        msgs = [
+            {"role": "tool", "tool_call_id": f"t{i}", "content": content}
+            for i, content in enumerate(contents)
+        ]
+        enforce_turn_budget(
+            msgs,
+            env=env,
+            config=BudgetConfig(turn_budget_tokens=None),
+        )
+        assert [msg["content"] for msg in msgs] == contents
+        env.execute.assert_not_called()
+
+    def test_turn_budget_never_persists_aligned_read_file_page(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        read_page = "界" * 90_000
+        msgs = [
+            {
+                "role": "tool",
+                "tool_call_id": "read_page",
+                "content": read_page,
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "terminal_output",
+                "content": "x" * 90_000,
+            },
+        ]
+        enforce_turn_budget(
+            msgs,
+            env=env,
+            config=BudgetConfig(),
+            tool_names=["read_file", "terminal"],
+        )
+        assert msgs[0]["content"] == read_page
+        assert PERSISTED_OUTPUT_TAG in msgs[1]["content"]
+
+    def test_turn_budget_name_mismatch_fails_safe_without_mutation(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        contents = ["x" * 90_000, "y" * 90_000]
+        msgs = [
+            {"role": "tool", "tool_call_id": f"t{i}", "content": content}
+            for i, content in enumerate(contents)
+        ]
+        enforce_turn_budget(
+            msgs,
+            env=env,
+            config=BudgetConfig(),
+            tool_names=["read_file"],
+        )
+        assert [msg["content"] for msg in msgs] == contents
+        env.execute.assert_not_called()
+
+    def test_repeated_persisted_result_uses_compact_artifact_reference(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        content = "same output\n" * 8_000
+        first = maybe_persist_tool_result(content, "terminal", "t1", env=env)
+        second = maybe_persist_tool_result(content, "terminal", "t2", env=env)
+        msgs = [
+            {"role": "tool", "tool_call_id": "t1", "content": first},
+            {"role": "tool", "tool_call_id": "t2", "content": second},
+        ]
+        enforce_turn_budget(msgs, env=env)
+        assert "Unchanged duplicate of artifact sha256:" in msgs[1]["content"]
+        assert len(msgs[1]["content"]) < len(second) * 0.2
 
 
 # ── Per-tool threshold integration ────────────────────────────────────

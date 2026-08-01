@@ -79,6 +79,20 @@ class TestSandboxRequirements(unittest.TestCase):
         self.assertIn("code", EXECUTE_CODE_SCHEMA["parameters"]["properties"])
         self.assertIn("code", EXECUTE_CODE_SCHEMA["parameters"]["required"])
 
+    def test_schema_keeps_critical_guidance_within_token_budget(self):
+        schema = build_execute_code_schema()
+        description = schema["description"]
+        serialized = json.dumps(schema, separators=(",", ":"))
+
+        self.assertLess(len(serialized), 1500)
+        self.assertIn("5-minute timeout", description)
+        self.assertIn("50KB stdout", description)
+        self.assertIn("50 tool calls", description)
+        self.assertIn("foreground-only", description)
+        self.assertIn("json_parse", description)
+        self.assertIn("shell_quote", description)
+        self.assertIn("retry", description)
+
 
 class TestSparkToolsGeneration(unittest.TestCase):
     def test_generates_all_allowed_tools(self):
@@ -478,6 +492,12 @@ class TestBuildExecuteCodeSchema(unittest.TestCase):
         desc = schema["description"]
         for name, _ in _TOOL_DOC_LINES:
             self.assertIn(name, desc, f"Default schema should mention '{name}'")
+
+    def test_web_tools_keep_return_envelopes(self):
+        desc = build_execute_code_schema()["description"]
+
+        self.assertIn('{"success":...,"data":{"web":[', desc)
+        self.assertIn('{"results":[{"url":...,"title":...,"content":...', desc)
 
     def test_schema_structure(self):
         schema = build_execute_code_schema()

@@ -5,11 +5,10 @@ Per-tool resolution: pinned > config overrides > registry > default.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict
 
 # Tools whose thresholds must never be overridden.
 # read_file=inf prevents infinite persist->read->persist loops.
-PINNED_THRESHOLDS: Dict[str, float] = {
+PINNED_THRESHOLDS: dict[str, float] = {
     "read_file": float("inf"),
 }
 
@@ -18,6 +17,11 @@ PINNED_THRESHOLDS: Dict[str, float] = {
 DEFAULT_RESULT_SIZE_CHARS: int = 100_000
 DEFAULT_TURN_BUDGET_CHARS: int = 200_000
 DEFAULT_PREVIEW_SIZE_CHARS: int = 1_500
+# Conservative, tokenizer-independent soft limits.  These only trigger a
+# spill when durable result storage is available; the character limits above
+# remain the hard fallback ceilings.
+DEFAULT_RESULT_BUDGET_TOKENS: int = 12_000
+DEFAULT_TURN_BUDGET_TOKENS: int = 24_000
 
 
 @dataclass(frozen=True)
@@ -27,13 +31,19 @@ class BudgetConfig:
     Layer 2 (per-result): resolve_threshold(tool_name) -> threshold in chars.
     Layer 3 (per-turn):   turn_budget -> aggregate char budget across all tool
                           results in a single assistant turn.
+    Token soft limits:   result_budget_tokens / turn_budget_tokens -> lower
+                          estimated-token limits used when results can be
+                          persisted without losing content.
     Preview:              preview_size -> inline snippet size after persistence.
     """
 
     default_result_size: int = DEFAULT_RESULT_SIZE_CHARS
     turn_budget: int = DEFAULT_TURN_BUDGET_CHARS
     preview_size: int = DEFAULT_PREVIEW_SIZE_CHARS
-    tool_overrides: Dict[str, int] = field(default_factory=dict)
+    # Keep tool_overrides as the fourth field for positional compatibility.
+    tool_overrides: dict[str, int] = field(default_factory=dict)
+    result_budget_tokens: int | None = DEFAULT_RESULT_BUDGET_TOKENS
+    turn_budget_tokens: int | None = DEFAULT_TURN_BUDGET_TOKENS
 
     def resolve_threshold(self, tool_name: str) -> int | float:
         """Resolve the persistence threshold for a tool.
@@ -48,5 +58,6 @@ class BudgetConfig:
         return registry.get_max_result_size(tool_name, default=self.default_result_size)
 
 
-# Default config -- matches current hardcoded behavior exactly.
+# Default config preserves the historical character ceilings and adds lower,
+# recoverable token soft limits.
 DEFAULT_BUDGET = BudgetConfig()
