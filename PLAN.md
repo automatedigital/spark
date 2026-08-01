@@ -812,8 +812,8 @@ validated against 28 isolated handler modules and four blocked optional-SDK
 guards. Fourteen lazy-manifest, minimal-install, and responsibility tests passed;
 concurrent first use imported its handler exactly once and missing dependencies
 named the required extra. Focused Ruff passed. Five fresh processes improved
-from 0.5012 s median, 1,428 modules, and 91,504 KiB RSS to 0.1055 s, 415 modules,
-and 43,024 KiB: 79.0% lower median latency, 70.9% fewer modules, and 53.0% lower
+from 0.5012 s median, 1,428 modules, and 91,504 KiB RSS to 0.1094 s, 414 modules,
+and 42,416 KiB: 78.2% lower median latency, 71.0% fewer modules, and 53.6% lower
 RSS. Raw trials are in `docs/performance/lazy-startup-benchmark.json`. ADR 0012
 records stable `core.run_agent.AIAgent`, cache, and rollback contracts. The
 desktop resource audit is enforced by both platform builds and excludes caches
@@ -994,9 +994,11 @@ configurable; explicit user verbosity always wins.
 - [x] Fixed prompt/schema tokens, uncached tokens, cache reads/writes, tool-result
   tokens, output tokens, latency, DB I/O, event traffic, startup, RSS, and package
   size are all reported from the same versioned replay set.
-  **Evidence:** `docs/performance/efficiency-replay.md` and its raw artifacts
-  index the source metrics; `desktop-package-v1.3.31.md` adds exact v1.3.31
-  package results and transparently records the measured regressions.
+  **Evidence:** the versioned release evidence set is mapped in
+  `desktop-package-v1.3.31.md`. The deterministic replay and startup/RSS were
+  recaptured clean at `4f380488`; package captures use the identical product
+  source before evidence/workflow-only commits. The reports index every metric
+  and transparently retain measured regressions.
 - [x] Token savings do not come from omitting applicable user/project rules,
   truncating necessary answers, hiding tool output, or routing beyond a model's
   capabilities.

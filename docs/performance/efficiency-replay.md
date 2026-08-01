@@ -3,10 +3,9 @@
 Captured on 2026-08-01 on the same macOS host and Spark virtual environment.
 The deterministic workload is fixture version `1.0.0`, pinned to provider
 `fixture`, model `deterministic-replay-v1`, and reasoning effort `medium`.
-The committed baseline contains three trials per case. The candidate contains
-five trials per case and identifies source commit `64270e5a`; its report records
-`source_dirty: true`, so the raw report, rather than that commit alone, is the
-authority for these numbers.
+The committed baseline contains three trials per case. The final candidate
+contains five trials per case and identifies exact clean source commit
+`4f38048858ca24565722eb26705a454cb4b71d2c` with `source_dirty: false`.
 
 ## Replay latency and request size
 
@@ -16,34 +15,32 @@ not obtain their gains by silently changing the fixture input.
 
 | Case | Baseline median / p95 | Candidate median / p95 | Median change | Prompt tokens | Snapshot bytes |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Direct answer | 8.790 / 10.416 | 6.153 / 7.367 | -30.0% | 16 | 57 |
-| Code edit | 9.095 / 11.324 | 5.848 / 6.443 | -35.7% | 127 | 114 |
-| Multi-tool research | 15.830 / 15.962 | 5.784 / 8.090 | -63.5% | 115 | 94 |
-| Large-file read | 15.073 / 16.608 | 6.295 / 6.343 | -58.2% | 88 | 104 |
-| Long session | 7.763 / 16.406 | 6.533 / 7.473 | -15.8% | 3,087 | 11,865 |
-| Reconnect | 9.162 / 18.355 | 17.645 / 29.591 | **+92.6%** | 23 | 86 |
-| Concurrent chats | 10.922 / 12.153 | 6.558 / 6.997 | -40.0% | 18 | 67 |
+| Direct answer | 8.790 / 10.416 | 6.794 / 7.500 | -22.7% | 16 | 57 |
+| Code edit | 9.095 / 11.324 | 6.585 / 6.714 | -27.6% | 127 | 114 |
+| Multi-tool research | 15.830 / 15.962 | 6.634 / 7.555 | -58.1% | 115 | 94 |
+| Large-file read | 15.073 / 16.608 | 6.509 / 6.555 | -56.8% | 88 | 104 |
+| Long session | 7.763 / 16.406 | 6.510 / 6.596 | -16.1% | 3,087 | 11,865 |
+| Reconnect | 9.162 / 18.355 | 6.475 / 6.612 | -29.3% | 23 | 86 |
+| Concurrent chats | 10.922 / 12.153 | 6.475 / 6.514 | -40.7% | 18 | 67 |
 
-The reconnect fixture is a measured regression: its candidate median is 8.483
-ms slower and p95 is 11.236 ms slower. It still performs exactly one reconnect
-and one recovery action with zero healthy HTTP polls in every trial, and the
-live browser restart test recovered authoritatively without a stuck `Working`
-state. This should remain a monitored latency budget rather than being described
-as a speed improvement.
+The final clean replay removed the earlier reconnect timing outlier. It still
+performs exactly one reconnect and one recovery action with zero healthy HTTP
+polls in every trial, while the live browser restart test recovered
+authoritatively without a stuck `Working` state.
 
 Fresh-process imports improved materially:
 
 | Import | Baseline median / p95 | Candidate median / p95 | Median change |
 | --- | ---: | ---: | ---: |
-| `core.run_agent` | 781.956 / 2,214.524 ms | 110.386 / 113.275 ms | -85.9% |
-| `spark_cli.main` | 153.138 / 249.150 ms | 76.811 / 106.984 ms | -49.8% |
+| `core.run_agent` | 781.956 / 2,214.524 ms | 97.711 / 105.377 ms | -87.5% |
+| `spark_cli.main` | 153.138 / 249.150 ms | 72.357 / 74.816 ms | -52.8% |
 
 The separate five-process lazy-startup measurement, taken from exact commits on
 the same host and environment, corroborates the import result. Importing
-`core.run_agent` fell from a 0.501152-second median at `43f2f9c4` to 0.105458
-seconds at `f481414d` (-79.0%). Loaded modules fell from 1,428 to 415 (-70.9%)
-and median peak RSS fell from 91,504 KiB to 43,024 KiB (-53.0%). Candidate p95
-was 0.147947 seconds, below both the 0.45-second budget and 0.35-second stretch
+`core.run_agent` fell from a 0.501152-second median at `43f2f9c4` to 0.109356
+seconds at clean release candidate `4f380488` (-78.2%). Loaded modules fell from
+1,428 to 414 (-71.0%) and median peak RSS fell from 91,504 KiB to 42,416 KiB
+(-53.6%). Candidate p95 was 0.113989 seconds, below both the 0.45-second budget and 0.35-second stretch
 budget.
 
 ## Token, cache, tool, and output accounting
@@ -127,8 +124,7 @@ never exceeded viewport width.
 
 The candidate demonstrates large import, general replay, scheduler, browser,
 output-token, module-count, and RSS gains without a scored quality loss. The
-result is not uniformly faster or smaller: reconnect latency, the tiny
-create-plus-message DB write time, and fresh-schema bytes regressed. Those three
-measurements are explicitly retained as follow-up budgets; the reconnect and
-fresh-database results must not be used to claim across-the-board latency or
-storage improvement.
+result is not uniformly faster or smaller: the tiny create-plus-message DB write
+time, fresh-schema bytes, and desktop package sizes regressed. Those measurements
+are explicitly retained as follow-up budgets and must not be used to claim
+across-the-board latency, storage, or package-size improvement.

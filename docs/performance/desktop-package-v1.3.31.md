@@ -69,6 +69,15 @@ server instance, and recovered the persisted workspace and file marker.
 
 ## Version-linked acceptance index
 
+“Versioned replay set” means release evidence set `desktop-v1.3.31-2026-08-01`.
+The deterministic replay and lazy-startup/RSS capture were rerun from clean
+commit `4f380488`. The macOS package commit `fb528026` has the same product
+source and desktop version; intervening commits change only this evidence report,
+`PLAN.md`, and Windows workflow timing instrumentation. The refreshed Windows
+package is built at `4f380488`. Later evidence-only commits do not change the
+measured Python, web, Rust, or package inputs. This mapping avoids presenting
+measurements from different code revisions as though they were one process run.
+
 | Result class | Versioned evidence |
 | --- | --- |
 | Source checks | 12,193 passed, 151 skipped at the final source candidate; two failures reproduced unchanged on baseline `main`; 770 focused tests and scoped lint/type checks passed. |
