@@ -1258,14 +1258,13 @@ def _run_terminal_command(run_id: str) -> None:
     proc: subprocess.Popen | None = None
 
     try:
-        shell = os.environ.get("SHELL") or "/bin/bash"
         with _terminal_lock:
             run["status"] = "running"
             run["updated_at"] = time.time()
         _queue_terminal_event(run_id, {"type": "state", "status": "running"})
 
         proc = subprocess.Popen(
-            [shell, "-lc", command],
+            _terminal_command_argv(command),
             cwd=cwd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -1309,6 +1308,15 @@ def _run_terminal_command(run_id: str) -> None:
         q = _terminal_run_queues.get(run_id)
         if q is not None:
             q.put_nowait(None)
+
+
+def _terminal_command_argv(command: str) -> list[str]:
+    """Build a native one-shot shell invocation for workspace terminals."""
+    if sys.platform == "win32":
+        shell = os.environ.get("COMSPEC") or "cmd.exe"
+        return [shell, "/d", "/s", "/c", command]
+    shell = os.environ.get("SHELL") or "/bin/bash"
+    return [shell, "-lc", command]
 
 
 @router.post("/projects/{slug}/terminal/runs")

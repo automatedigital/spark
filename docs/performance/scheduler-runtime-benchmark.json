@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-01",
+  "environment": {
+    "platform": "macOS",
+    "python": "3.11.7",
+    "network": "hermetic simulated I/O"
+  },
+  "scheduler": {
+    "fixture": "four independent tools, each sleeping 500 ms",
+    "trials_seconds": [0.5070, 0.5102, 0.5112, 0.5113, 0.5091, 0.5057, 0.5080],
+    "median_seconds": 0.5091,
+    "p95_seconds": 0.5113,
+    "target_seconds": 1.2,
+    "target_met": true
+  },
+  "runtime": {
+    "fixture": "one credential-scoped pooled client and simulated 5 ms requests",
+    "sequential_requests": 100,
+    "sequential_seconds": 0.7548,
+    "sequential_cpu_seconds": 0.1401,
+    "sequential_peak_rss_delta_bytes": 29999104,
+    "concurrent_requests": 20,
+    "concurrent_seconds": 0.0073,
+    "concurrent_cpu_seconds": 0.0010,
+    "concurrent_peak_rss_delta_bytes": 0,
+    "normalized_concurrency_speedup": 20.59,
+    "loops_created": 1,
+    "clients_created": 1,
+    "client_reuses": 119,
+    "open_client_pools": 1,
+    "failures": 0,
+    "retries": 0
+  },
+  "stress": {
+    "randomized_batches": 1000,
+    "cancelled_batches_minimum": 100,
+    "complete_result_sets": 1000,
+    "deterministic_transcripts": 1000,
+    "orphaned_workers": 0,
+    "callback_after_close": 0,
+    "shutdown_leaks": 0
+  }
+}

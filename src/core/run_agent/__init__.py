@@ -22,7 +22,6 @@ Usage:
 
 import asyncio
 import base64
-import concurrent.futures
 import copy
 import hashlib
 import json
@@ -135,6 +134,11 @@ from core.run_agent.stdio import (  # noqa: E402,I001
 # obvious place to live. noqa: import sits mid-module so the mixin is bound
 # before the AIAgent class statement.
 from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
+from core.tool_scheduler import (  # noqa: E402,I001
+    OrderedCallbackDispatcher,
+    ToolBatchScheduler,
+    build_tool_dag,
+)
 
 
 # Tool-batch parallelism heuristics live in run_agent/parallelism.py (Phase 4
@@ -283,6 +287,7 @@ class AIAgent(_PromptCacheMixin):
         model: str = "",
         max_iterations: int = 90,  # Default tool-calling iterations (shared with subagents)
         tool_delay: float = 0.0,
+        dependency_scheduler: bool | None = None,
         enabled_toolsets: List[str] = None,
         disabled_toolsets: List[str] = None,
         save_trajectories: bool = False,
@@ -378,6 +383,19 @@ class AIAgent(_PromptCacheMixin):
         # Consumed by every LLM turn across parent + all subagents.
         self.iteration_budget = iteration_budget or IterationBudget(max_iterations)
         self.tool_delay = tool_delay
+        if dependency_scheduler is None:
+            dependency_scheduler = True
+            try:
+                from spark_cli.config import load_config
+
+                agent_cfg = (load_config() or {}).get("agent") or {}
+                dependency_scheduler = bool(agent_cfg.get("dependency_scheduler", True))
+            except Exception:
+                pass
+        self.dependency_scheduler = bool(dependency_scheduler) and not env_var_enabled(
+            "SPARK_CONSERVATIVE_TOOL_SCHEDULER"
+        )
+        self._tool_callback_dispatcher: OrderedCallbackDispatcher | None = None
         self.save_trajectories = save_trajectories
         self.verbose_logging = verbose_logging
         self.quiet_mode = quiet_mode
@@ -2904,6 +2922,16 @@ class AIAgent(_PromptCacheMixin):
             if client is not None:
                 self._close_openai_client(client, reason="agent_close", shared=True)
                 self.client = None
+        except Exception:
+            pass
+
+        # 6. Drain and close the ordered display queue.  The scheduler joins
+        # tool workers before this point, so no callback can arrive afterwards.
+        try:
+            dispatcher = self._tool_callback_dispatcher
+            if dispatcher is not None:
+                dispatcher.close()
+                self._tool_callback_dispatcher = None
         except Exception:
             pass
 
@@ -6683,7 +6711,25 @@ class AIAgent(_PromptCacheMixin):
         # Allow _vprint during tool execution even with stream consumers
         self._executing_tools = True
         try:
-            if not _should_parallelize_tool_batch(tool_calls):
+            valid_batch = True
+            for tool_call in tool_calls:
+                try:
+                    parsed = json.loads(tool_call.function.arguments)
+                except (json.JSONDecodeError, TypeError):
+                    valid_batch = False
+                    break
+                if not isinstance(parsed, dict):
+                    valid_batch = False
+                    break
+            if (
+                len(tool_calls) <= 1
+                or not self.dependency_scheduler
+                or (
+                    isinstance(self.tool_delay, (int, float))
+                    and self.tool_delay > 0
+                )
+                or not valid_batch
+            ):
                 return self._execute_tool_calls_sequential(
                     assistant_message, messages, effective_task_id, api_call_count
                 )
@@ -6693,6 +6739,14 @@ class AIAgent(_PromptCacheMixin):
             )
         finally:
             self._executing_tools = False
+
+    def _queue_tool_callback(self, callback, *args, **kwargs) -> None:
+        """Queue a display/state callback without delaying tool scheduling."""
+        if callback is None:
+            return
+        if self._tool_callback_dispatcher is None:
+            self._tool_callback_dispatcher = OrderedCallbackDispatcher()
+        self._tool_callback_dispatcher.emit(callback, *args, **kwargs)
 
     def _on_tool_dispatched(self, function_name: str) -> None:
         """Hook fired once a tool finishes dispatching.
@@ -6958,55 +7012,22 @@ class AIAgent(_PromptCacheMixin):
 
         for tc, name, args in parsed_calls:
             if self.tool_progress_callback:
-                try:
-                    preview = _build_tool_preview(name, args)
-                    self.tool_progress_callback("tool.started", name, preview, args)
-                except Exception as cb_err:
-                    logging.debug(f"Tool progress callback error: {cb_err}")
+                preview = _build_tool_preview(name, args)
+                self._queue_tool_callback(
+                    self.tool_progress_callback, "tool.started", name, preview, args
+                )
 
         for tc, name, args in parsed_calls:
             if self.tool_start_callback:
                 try:
                     self.tool_start_callback(tc.id, name, args)
                 except Exception as cb_err:
-                    logging.debug(f"Tool start callback error: {cb_err}")
+                    logging.debug("Tool start callback error: %s", cb_err)
 
         # ── Concurrent execution ─────────────────────────────────────────
         # Each slot holds (function_name, function_args, function_result, duration, error_flag)
         results = [None] * num_tools
         queued_at = time.perf_counter()
-
-        def _run_tool(index, tool_call, function_name, function_args):
-            """Worker function executed in a thread."""
-            queue_wait = time.perf_counter() - queued_at
-            start = time.time()
-            try:
-                result = self._invoke_tool(function_name, function_args, effective_task_id, tool_call.id)
-            except Exception as tool_error:
-                result = f"Error executing tool '{function_name}': {tool_error}"
-                logger.error("_invoke_tool raised for %s: %s", function_name, tool_error, exc_info=True)
-            duration = time.time() - start
-            is_error, _ = _detect_tool_failure(function_name, result)
-            if is_error:
-                logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
-            else:
-                logger.info("tool %s completed (%.2fs, %d chars)", function_name, duration, len(result))
-            results[index] = (function_name, function_args, result, duration, is_error)
-            try:
-                self._efficiency_recorder.record_tool_call(
-                    ToolRuntimeAccounting(
-                        session_id=self.session_id,
-                        iteration=api_call_count,
-                        tool_name=function_name,
-                        queue_wait_ms=round(queue_wait * 1000, 3),
-                        execution_ms=round(duration * 1000, 3),
-                        result_bytes=len(str(result).encode("utf-8", errors="replace")),
-                        failed=is_error,
-                    )
-                )
-            except Exception:
-                logger.debug("Efficiency tool accounting failed", exc_info=True)
-
         # Start spinner for CLI mode (skip when TUI handles tool progress)
         spinner = None
         if self._should_emit_quiet_tool_messages() and self._should_start_quiet_spinner():
@@ -7015,15 +7036,55 @@ class AIAgent(_PromptCacheMixin):
             spinner.start()
 
         try:
-            max_workers = min(num_tools, _MAX_TOOL_WORKERS)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                for i, (tc, name, args) in enumerate(parsed_calls):
-                    f = executor.submit(_run_tool, i, tc, name, args)
-                    futures.append(f)
-
-                # Wait for all to complete (exceptions are captured inside _run_tool)
-                concurrent.futures.wait(futures)
+            nodes = build_tool_dag(tool_calls)
+            timeout_raw = os.environ.get("SPARK_TOOL_BATCH_TIMEOUT", "")
+            try:
+                timeout = float(timeout_raw) if timeout_raw else None
+            except ValueError:
+                timeout = None
+            deadline = time.monotonic() + timeout if timeout and timeout > 0 else None
+            scheduled = ToolBatchScheduler(max_workers=_MAX_TOOL_WORKERS).execute(
+                nodes,
+                lambda node: self._invoke_tool(
+                    node.name, node.args, effective_task_id, node.tool_call_id
+                ),
+                interrupted=lambda: self._interrupt_requested,
+                batch_deadline=deadline,
+            )
+            for item in scheduled:
+                is_error, _ = _detect_tool_failure(item.name, item.content)
+                results[item.index] = (
+                    item.name, item.args, item.content, item.duration, is_error
+                )
+                if is_error:
+                    logger.info(
+                        "tool %s failed (%.2fs): %s",
+                        item.name, item.duration, item.content[:200],
+                    )
+                else:
+                    logger.info(
+                        "tool %s completed (%.2fs, %d chars)",
+                        item.name, item.duration, len(item.content),
+                    )
+                try:
+                    self._efficiency_recorder.record_tool_call(
+                        ToolRuntimeAccounting(
+                            session_id=self.session_id,
+                            iteration=api_call_count,
+                            tool_name=item.name,
+                            queue_wait_ms=round(
+                                max(0.0, time.perf_counter() - queued_at - item.duration) * 1000,
+                                3,
+                            ),
+                            execution_ms=round(item.duration * 1000, 3),
+                            result_bytes=len(
+                                str(item.content).encode("utf-8", errors="replace")
+                            ),
+                            failed=is_error,
+                        )
+                    )
+                except Exception:
+                    logger.debug("Efficiency tool accounting failed", exc_info=True)
         finally:
             if spinner:
                 # Build a summary message for the spinner stop
@@ -7045,17 +7106,14 @@ class AIAgent(_PromptCacheMixin):
                     result_preview = function_result[:200] if len(function_result) > 200 else function_result
                     logger.warning("Tool %s returned error (%.2fs): %s", function_name, tool_duration, result_preview)
 
-                if self.tool_progress_callback:
-                    try:
-                        self.tool_progress_callback(
-                            "tool.completed", function_name, None, None,
-                            duration=tool_duration, is_error=is_error,
-                            result_lines=sum(
-                                1 for ln in str(function_result or "").splitlines() if ln.strip()
-                            ),
-                        )
-                    except Exception as cb_err:
-                        logging.debug(f"Tool progress callback error: {cb_err}")
+                self._queue_tool_callback(
+                    self.tool_progress_callback,
+                    "tool.completed", function_name, None, None,
+                    duration=tool_duration, is_error=is_error,
+                    result_lines=sum(
+                        1 for ln in str(function_result or "").splitlines() if ln.strip()
+                    ),
+                )
 
                 if self.verbose_logging:
                     logging.debug(f"Tool {function_name} completed in {tool_duration:.2f}s")
@@ -7080,7 +7138,7 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     self.tool_complete_callback(tc.id, name, args, function_result)
                 except Exception as cb_err:
-                    logging.debug(f"Tool complete callback error: {cb_err}")
+                    logging.debug("Tool complete callback error: %s", cb_err)
 
             function_result = maybe_persist_tool_result(
                 content=function_result,
@@ -7525,7 +7583,11 @@ class AIAgent(_PromptCacheMixin):
                     messages.append(skip_msg)
                 break
 
-            if self.tool_delay > 0 and i < len(assistant_message.tool_calls):
+            if (
+                isinstance(self.tool_delay, (int, float))
+                and self.tool_delay > 0
+                and i < len(assistant_message.tool_calls)
+            ):
                 time.sleep(self.tool_delay)
 
         # ── Per-turn aggregate budget enforcement ─────────────────────────
