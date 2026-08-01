@@ -1496,6 +1496,32 @@ app.add_middleware(
 )
 
 
+class EfficiencyCounterMiddleware(BaseHTTPMiddleware):
+    """Count API polling and response bytes without retaining paths or content."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        response = await call_next(request)
+        try:
+            from core.runtime_metrics import increment
+
+            if request.method == "GET" and request.url.path.startswith("/api/"):
+                if request.url.path == "/api/events":
+                    increment("event_stream_connections")
+                else:
+                    increment("http_get_requests")
+                    if request.url.path.endswith(("/status", "/turn-status", "/stream-snapshot")):
+                        increment("http_poll_requests")
+            size = response.headers.get("content-length")
+            if size and size.isdigit():
+                increment("json_snapshot_bytes", int(size))
+        except Exception:
+            pass
+        return response
+
+
+app.add_middleware(EfficiencyCounterMiddleware)
+
+
 class DashboardAPIAuthMiddleware(BaseHTTPMiddleware):
     """Require dashboard.token (or SPARK_DASHBOARD_TOKEN) for non-loopback API calls."""
 
@@ -1642,6 +1668,13 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         data = _sanitize_web_chat_value(data)
         data = {**data, "session_id": session_id}
     envelope = {"topic": topic, "session_id": session_id, "ts": time.time(), "data": data}
+    try:
+        from core.runtime_metrics import detailed_enabled, increment
+        increment("event_payloads")
+        if detailed_enabled():
+            increment("event_payload_bytes", len(json.dumps(envelope, default=str).encode("utf-8")))
+    except Exception:
+        pass
     envelope["_seq"] = _next_event_sequence()
 
     # A semantic event is a hard token-batch boundary. Seal the current batch
@@ -2103,6 +2136,16 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     },
     "smart_model_routing.enabled": {
         "description": "Enable Multi-model routing: keep the SMART model for complex work and route simple turns to the configured FAST model.",
+        "category": "general",
+    },
+    "response_budget.style_enabled": {
+        "type": "boolean",
+        "description": "Lead direct, status, and action responses with the outcome while preserving requested detail and safety exceptions.",
+        "category": "general",
+    },
+    "response_budget.soft_output_caps": {
+        "type": "boolean",
+        "description": "Apply request-class output ceilings when adaptive routing is enabled; truncated answers continue automatically.",
         "category": "general",
     },
     "smart_model_routing.max_simple_chars": {
@@ -2873,6 +2916,19 @@ async def get_status():
             "subagents_sidebar": bool(_dash.get("subagents_sidebar", True)),
         },
         "streaming_health": _streaming_pipeline_metrics.snapshot(),
+    }
+
+
+@app.get("/api/efficiency/report")
+def get_efficiency_report(reset: bool = False):
+    """Return count-only process metrics suitable for automated replays."""
+    from core.runtime_metrics import snapshot
+
+    return {
+        "version": "1.0",
+        "runtime": snapshot(reset=reset),
+        "streaming": _streaming_pipeline_metrics.snapshot(),
+        "event_drops": sum(_event_drop_counts.values()),
     }
 
 
@@ -7914,7 +7970,7 @@ def _default_web_chat_model() -> str:
 
 def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
-    from agent.smart_model_routing import resolve_turn_route
+    from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
     from spark_cli.model_config import read_global_model_config
     from spark_cli.runtime_provider import resolve_runtime_provider
 
@@ -7945,8 +8001,10 @@ def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
         cfg.get("smart_model_routing", {}) or {},
         primary,
     )
-    route["request_overrides"] = None
-    return route
+    budget_cfg = cfg.get("response_budget", {}) or {}
+    return merge_route_request_overrides(
+        route, soft_caps_enabled=bool(budget_cfg.get("soft_output_caps", True))
+    )
 
 
 def _update_web_session_model(session_id: str, model: str) -> None:

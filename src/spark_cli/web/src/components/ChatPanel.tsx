@@ -91,6 +91,7 @@ import {
 import { isTauri } from "@/sidecar";
 import { liveStreamFlushInterval, snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
 import { copyExactAssistantContent, exactAssistantContent } from "@/lib/exactMessage";
+import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
 import {
   appendBoundedText,
   boundText,
@@ -507,6 +508,9 @@ export function ChatPanel({
   workspaceSlug,
   className,
 }: ChatPanelProps) {
+  useEffect(() => {
+    recordWebEfficiency("reactCommits");
+  });
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState(() => {
     // First-run "try this" prompt seeded by onboarding — pre-fill once.
@@ -1241,6 +1245,8 @@ export function ChatPanel({
     const recoverySeq = sessionRecoverySeqRef.current;
     resyncInFlightRef.current = true;
     setRecoveryPollCount((count) => count + 1);
+    recordWebEfficiency("httpPolls");
+    recordWebEfficiency("streamRecoveryActions");
     try {
       const status = await api.getTurnStatus(sid);
       debugChatRecovery("resync-turn-status", status.diagnostics ?? status);

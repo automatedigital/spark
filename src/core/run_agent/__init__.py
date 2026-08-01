@@ -97,6 +97,13 @@ from agent.subdirectory_hints import SubdirectoryHintTracker
 from agent.prompt_caching import apply_anthropic_cache_control
 from agent.prompt_builder import DEVELOPER_ROLE_MODELS
 from agent.usage_pricing import estimate_usage_cost, normalize_usage
+from agent.efficiency_metrics import (
+    EfficiencyRecorder,
+    ModelIterationAccounting,
+    ToolRuntimeAccounting,
+    estimate_response_tokens,
+    measure_request,
+)
 from agent.display import (
     KawaiiSpinner, build_tool_preview as _build_tool_preview,
     get_cute_tool_message as _get_cute_tool_message_impl,
@@ -232,6 +239,36 @@ class AIAgent(_PromptCacheMixin):
     def base_url(self, value: str) -> None:
         self._base_url = value
         self._base_url_lower = value.lower() if value else ""
+
+    @property
+    def request_overrides(self) -> dict[str, Any]:
+        return self._request_overrides
+
+    @request_overrides.setter
+    def request_overrides(self, value: Optional[Dict[str, Any]]) -> None:
+        raw = dict(value or {})
+        self._soft_max_output_tokens = raw.pop("_soft_max_output_tokens", None)
+        self._budget_reasoning_effort = raw.pop("_budget_reasoning_effort", None)
+        self._routing_reason = raw.pop("_routing_reason", None)
+        self._request_class = raw.pop("_request_class", None)
+        self._request_overrides = raw
+
+    def _effective_max_tokens(self) -> int | None:
+        configured = self.max_tokens
+        soft = self._soft_max_output_tokens
+        if not isinstance(soft, int) or soft <= 0:
+            return configured
+        if not isinstance(configured, int) or configured <= 0:
+            return soft
+        return min(configured, soft)
+
+    def _effective_reasoning_config(self) -> dict[str, Any] | None:
+        if self.reasoning_config is not None:
+            return self.reasoning_config
+        effort = self._budget_reasoning_effort
+        if isinstance(effort, str) and effort:
+            return {"enabled": True, "effort": effort}
+        return None
 
     def __init__(
         self,
@@ -771,6 +808,8 @@ class AIAgent(_PromptCacheMixin):
         self.logs_dir = spark_home / "sessions"
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.session_log_file = self.logs_dir / f"session_{self.session_id}.json"
+        self._efficiency_recorder = EfficiencyRecorder(self.session_id)
+        self._efficiency_schema_tokens: int | None = None
         
         # Track conversation messages for session logging
         self._session_messages: List[Dict[str, Any]] = []
@@ -942,6 +981,10 @@ class AIAgent(_PromptCacheMixin):
         if not isinstance(_agent_section, dict):
             _agent_section = {}
         self._tool_use_enforcement = _agent_section.get("tool_use_enforcement", "auto")
+        _response_budget_cfg = _agent_cfg.get("response_budget", {})
+        if not isinstance(_response_budget_cfg, dict):
+            _response_budget_cfg = {}
+        self._response_style_enabled = bool(_response_budget_cfg.get("style_enabled", True))
 
         # Initialize context compressor for automatic context management
         # Compresses conversation when approaching model's context limit
@@ -5785,8 +5828,8 @@ class AIAgent(_PromptCacheMixin):
                 model=self.model,
                 messages=anthropic_messages,
                 tools=self.tools,
-                max_tokens=ephemeral_out if ephemeral_out is not None else self.max_tokens,
-                reasoning_config=self.reasoning_config,
+                max_tokens=ephemeral_out if ephemeral_out is not None else self._effective_max_tokens(),
+                reasoning_config=self._effective_reasoning_config(),
                 is_oauth=self._is_anthropic_oauth,
                 preserve_dots=self._anthropic_preserve_dots(),
                 context_length=ctx_len,
@@ -5815,11 +5858,12 @@ class AIAgent(_PromptCacheMixin):
             # Resolve reasoning effort: config > default (medium)
             reasoning_effort = "medium"
             reasoning_enabled = True
-            if self.reasoning_config and isinstance(self.reasoning_config, dict):
-                if self.reasoning_config.get("enabled") is False:
+            _effective_reasoning = self._effective_reasoning_config()
+            if _effective_reasoning and isinstance(_effective_reasoning, dict):
+                if _effective_reasoning.get("enabled") is False:
                     reasoning_enabled = False
-                elif self.reasoning_config.get("effort"):
-                    reasoning_effort = self.reasoning_config["effort"]
+                elif _effective_reasoning.get("effort"):
+                    reasoning_effort = _effective_reasoning["effort"]
 
             # Clamp effort levels not supported by the Responses API model.
             # GPT-5.4 supports none/low/medium/high/xhigh but not "minimal".
@@ -5857,8 +5901,9 @@ class AIAgent(_PromptCacheMixin):
             if self.request_overrides:
                 kwargs.update(self.request_overrides)
 
-            if self.max_tokens is not None and not is_codex_backend:
-                kwargs["max_output_tokens"] = self.max_tokens
+            _effective_max = self._effective_max_tokens()
+            if _effective_max is not None and not is_codex_backend:
+                kwargs["max_output_tokens"] = _effective_max
 
             return kwargs
 
@@ -5949,8 +5994,9 @@ class AIAgent(_PromptCacheMixin):
         if self.tools:
             api_kwargs["tools"] = self.tools
 
-        if self.max_tokens is not None:
-            api_kwargs.update(self._max_tokens_param(self.max_tokens))
+        _effective_max = self._effective_max_tokens()
+        if _effective_max is not None:
+            api_kwargs.update(self._max_tokens_param(_effective_max))
         elif self._is_qwen_portal():
             # Qwen Portal defaults to a very low max_tokens when omitted.
             # Reasoning models (qwen3-coder-plus) exhaust that budget on
@@ -5996,8 +6042,9 @@ class AIAgent(_PromptCacheMixin):
                 if github_reasoning is not None:
                     extra_body["reasoning"] = github_reasoning
             else:
-                if self.reasoning_config is not None:
-                    rc = dict(self.reasoning_config)
+                _effective_reasoning = self._effective_reasoning_config()
+                if _effective_reasoning is not None:
+                    rc = dict(_effective_reasoning)
                     # Legacy hosted endpoints rejected enabled=false; omit it.
                     if _is_spark and rc.get("enabled") is False:
                         pass  # omit reasoning entirely for legacy hosted endpoints
@@ -6825,9 +6872,11 @@ class AIAgent(_PromptCacheMixin):
         # ── Concurrent execution ─────────────────────────────────────────
         # Each slot holds (function_name, function_args, function_result, duration, error_flag)
         results = [None] * num_tools
+        queued_at = time.perf_counter()
 
         def _run_tool(index, tool_call, function_name, function_args):
             """Worker function executed in a thread."""
+            queue_wait = time.perf_counter() - queued_at
             start = time.time()
             try:
                 result = self._invoke_tool(function_name, function_args, effective_task_id, tool_call.id)
@@ -6841,6 +6890,20 @@ class AIAgent(_PromptCacheMixin):
             else:
                 logger.info("tool %s completed (%.2fs, %d chars)", function_name, duration, len(result))
             results[index] = (function_name, function_args, result, duration, is_error)
+            try:
+                self._efficiency_recorder.record_tool_call(
+                    ToolRuntimeAccounting(
+                        session_id=self.session_id,
+                        iteration=api_call_count,
+                        tool_name=function_name,
+                        queue_wait_ms=round(queue_wait * 1000, 3),
+                        execution_ms=round(duration * 1000, 3),
+                        result_bytes=len(str(result).encode("utf-8", errors="replace")),
+                        failed=is_error,
+                    )
+                )
+            except Exception:
+                logger.debug("Efficiency tool accounting failed", exc_info=True)
 
         # Start spinner for CLI mode (skip when TUI handles tool progress)
         spinner = None
@@ -7264,6 +7327,20 @@ class AIAgent(_PromptCacheMixin):
             # Log tool errors to the persistent error log so [error] tags
             # in the UI always have a corresponding detailed entry on disk.
             _is_error_result, _ = _detect_tool_failure(function_name, function_result)
+            try:
+                self._efficiency_recorder.record_tool_call(
+                    ToolRuntimeAccounting(
+                        session_id=self.session_id,
+                        iteration=api_call_count,
+                        tool_name=function_name,
+                        queue_wait_ms=0.0,
+                        execution_ms=round(tool_duration * 1000, 3),
+                        result_bytes=len(str(function_result).encode("utf-8", errors="replace")),
+                        failed=_is_error_result,
+                    )
+                )
+            except Exception:
+                logger.debug("Efficiency tool accounting failed", exc_info=True)
             if _is_error_result:
                 logger.warning("Tool %s returned error (%.2fs): %s", function_name, tool_duration, result_preview)
             else:
@@ -8064,6 +8141,17 @@ class AIAgent(_PromptCacheMixin):
             # Calculate approximate request size for logging
             total_chars = sum(len(str(msg)) for msg in api_messages)
             approx_tokens = estimate_messages_tokens_rough(api_messages)
+            _injected_context_text = "\n".join(
+                part for part in (_ext_prefetch_cache or "", _plugin_user_context or "") if part
+            )
+            _request_breakdown = measure_request(
+                api_messages,
+                self.tools,
+                injected_context=_injected_context_text,
+                schema_tokens=self._efficiency_schema_tokens,
+            )
+            if self._efficiency_schema_tokens is None:
+                self._efficiency_schema_tokens = _request_breakdown.schema_tokens
             
             # Thinking spinner for quiet mode (animated during API call)
             thinking_spinner = None
@@ -8692,6 +8780,53 @@ class AIAgent(_PromptCacheMixin):
                             if not self.quiet_mode:
                                 self._vprint(f"{self.log_prefix}   💾 Cache: {canonical_usage.cache_read_tokens:,}/{prompt:,} tokens ({hit_pct:.0f}% hit, {canonical_usage.cache_write_tokens:,} written)")
                     
+                    try:
+                        _raw_usage = getattr(response, "usage", None)
+                        if _raw_usage:
+                            _accounting_usage = normalize_usage(
+                                _raw_usage, provider=self.provider, api_mode=self.api_mode
+                            )
+                            _usage_source = "provider"
+                            _prompt_tokens = _accounting_usage.prompt_tokens
+                            _output_tokens = _accounting_usage.output_tokens
+                            _cache_read = _accounting_usage.cache_read_tokens
+                            _cache_write = _accounting_usage.cache_write_tokens
+                            _reasoning_tokens = _accounting_usage.reasoning_tokens
+                            _delta = _prompt_tokens - _request_breakdown.estimated_prompt_tokens
+                        else:
+                            _usage_source = "estimator"
+                            _prompt_tokens = _request_breakdown.estimated_prompt_tokens
+                            _output_tokens = estimate_response_tokens(response)
+                            _cache_read = _cache_write = _reasoning_tokens = 0
+                            _delta = None
+                        self._efficiency_recorder.record_model_iteration(
+                            ModelIterationAccounting(
+                                version="1.0",
+                                session_id=self.session_id,
+                                iteration=api_call_count,
+                                provider=self.provider or "unknown",
+                                model=self.model,
+                                api_mode=self.api_mode,
+                                request_latency_ms=round(api_duration * 1000, 3),
+                                system_prompt_tokens=_request_breakdown.system_prompt_tokens,
+                                conversation_tokens=_request_breakdown.conversation_tokens,
+                                injected_context_tokens=_request_breakdown.injected_context_tokens,
+                                tool_result_tokens=_request_breakdown.tool_result_tokens,
+                                schema_tokens=_request_breakdown.schema_tokens,
+                                prompt_tokens=_prompt_tokens,
+                                cache_read_tokens=_cache_read,
+                                cache_write_tokens=_cache_write,
+                                output_tokens=_output_tokens,
+                                reasoning_tokens=_reasoning_tokens,
+                                usage_source=_usage_source,
+                                estimator_delta_tokens=_delta,
+                                routing_reason=self._routing_reason,
+                                request_class=self._request_class,
+                            )
+                        )
+                    except Exception:
+                        logger.debug("Efficiency model accounting failed", exc_info=True)
+
                     has_retried_429 = False  # Reset on success
                     self._consecutive_auth_refreshes = 0  # Reset auth-refresh budget on success
                     self._touch_activity(f"API call #{api_call_count} completed")
@@ -10521,6 +10656,7 @@ class AIAgent(_PromptCacheMixin):
             "estimated_cost_usd": self.session_estimated_cost_usd,
             "cost_status": self.session_cost_status,
             "cost_source": self.session_cost_source,
+            "efficiency": self._efficiency_recorder.snapshot(),
         }
         self._response_was_previewed = False
         

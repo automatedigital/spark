@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { sseUrl } from "@/lib/api";
+import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
 
 /** SSE envelope from GET /api/events */
 export interface SparkEventEnvelope {
@@ -12,6 +13,7 @@ export interface SparkEventEnvelope {
 type Listener = (env: SparkEventEnvelope) => void;
 
 const listeners = new Set<Listener>();
+const utf8Encoder = new TextEncoder();
 let source: EventSource | null = null;
 let reconnectAttempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,6 +64,7 @@ function connectEventSource() {
     reconnectAttempt = 0;
     if (wasDisconnected) {
       wasDisconnected = false;
+      recordWebEfficiency("reconnects");
       notifyListeners({
         topic: BUS_RECONNECTED_TOPIC,
         session_id: null,
@@ -73,6 +76,8 @@ function connectEventSource() {
 
   es.onmessage = (ev) => {
     try {
+      recordWebEfficiency("eventPayloads");
+      recordWebEfficiency("eventPayloadBytes", utf8Encoder.encode(ev.data).byteLength);
       const parsed = JSON.parse(ev.data) as SparkEventEnvelope;
       if (parsed?.topic) {
         reconnectAttempt = 0;

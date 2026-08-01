@@ -1,0 +1,10 @@
+{
+  "fixture": {
+    "command": ["{python}", "evals/response_efficiency/fixture_runner.py"],
+    "provider": "fixture",
+    "model": "deterministic-replay-v1",
+    "reasoning_effort": "medium",
+    "version": "1.0.0",
+    "metered": true
+  }
+}

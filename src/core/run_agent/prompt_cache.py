@@ -23,6 +23,7 @@ test_caching_golden.py) in the same commit, never silently.
 import os
 
 from agent.prompt_builder import (
+    ACTION_FIRST_RESPONSE_GUIDANCE,
     APP_CREATION_GUIDANCE,
     COMPUTER_USE_GUIDANCE,
     DEFAULT_AGENT_IDENTITY,
@@ -80,6 +81,8 @@ class _PromptCacheMixin:
         if _name_guidance:
             prompt_parts.append(_name_guidance)
         prompt_parts.append(build_workspace_guidance())
+        if self._response_style_enabled:
+            prompt_parts.append(ACTION_FIRST_RESPONSE_GUIDANCE)
 
         # Tool-aware behavioral guidance: only inject when the tools are loaded.
         # MEMORY_GUIDANCE and SKILLS_GUIDANCE are intentionally omitted — their

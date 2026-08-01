@@ -318,7 +318,20 @@ class SessionDB:
 
         Returns whatever *fn* returns.
         """
+        from core.runtime_metrics import detailed_enabled, increment
+
         last_err: Exception | None = None
+        started = time.perf_counter()
+        measure_bytes = detailed_enabled()
+        before_bytes = (
+            sum(
+                path.stat().st_size
+                for path in (self.db_path, Path(str(self.db_path) + "-wal"))
+                if path.exists()
+            )
+            if measure_bytes
+            else 0
+        )
         for attempt in range(self._WRITE_MAX_RETRIES):
             try:
                 with self._lock:
@@ -336,6 +349,20 @@ class SessionDB:
                 self._write_count += 1
                 if self._write_count % self._CHECKPOINT_EVERY_N_WRITES == 0:
                     self._try_wal_checkpoint()
+                after_bytes = (
+                    sum(
+                        path.stat().st_size
+                        for path in (self.db_path, Path(str(self.db_path) + "-wal"))
+                        if path.exists()
+                    )
+                    if measure_bytes
+                    else 0
+                )
+                increment("db_write_transactions")
+                increment("db_write_elapsed_ms", (time.perf_counter() - started) * 1000)
+                if measure_bytes:
+                    increment("db_bytes_growth", max(0, after_bytes - before_bytes))
+                increment("db_lock_retries", attempt)
                 return result
             except sqlite3.OperationalError as exc:
                 err_msg = str(exc).lower()

@@ -679,7 +679,7 @@ def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session
     """Resolve provider/model routing and construct the AIAgent for a cron job."""
     from core.run_agent import AIAgent
     from spark_cli.runtime_provider import resolve_runtime_provider, format_runtime_provider_error
-    from agent.smart_model_routing import resolve_turn_route
+    from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
 
     job_id = job["id"]
     model = env["model"]
@@ -709,6 +709,10 @@ def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session
             "args": list(runtime.get("args") or []),
         },
     )
+    turn_route = merge_route_request_overrides(
+        turn_route,
+        soft_caps_enabled=bool((env.get("cfg", {}).get("response_budget", {}) or {}).get("soft_output_caps", True)),
+    )
 
     credential_pool = None
     runtime_provider = str(turn_route["runtime"].get("provider") or "").strip().lower()
@@ -733,6 +737,7 @@ def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session
         api_mode=turn_route["runtime"].get("api_mode"),
         acp_command=turn_route["runtime"].get("command"),
         acp_args=turn_route["runtime"].get("args"),
+        request_overrides=turn_route.get("request_overrides"),
         max_iterations=env["max_iterations"],
         reasoning_config=env["reasoning_config"],
         prefill_messages=env["prefill_messages"],

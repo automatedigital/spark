@@ -1,0 +1,71 @@
+{
+  "follow_up_turns": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "quality": {
+    "conditions": {
+      "baseline": {
+        "actionability": 5.0,
+        "autonomy": 5.0,
+        "blocking_findings": 0,
+        "concision": 4.6923076923076925,
+        "correctness": 5.0,
+        "safety": 5.0,
+        "weighted_score": 4.969230769230769
+      },
+      "candidate": {
+        "actionability": 5.0,
+        "autonomy": 5.0,
+        "blocking_findings": 0,
+        "concision": 5.0,
+        "correctness": 5.0,
+        "safety": 5.0,
+        "weighted_score": 5.0
+      }
+    },
+    "reasons": [],
+    "release": true,
+    "weights": {
+      "actionability": 0.2,
+      "autonomy": 0.25,
+      "concision": 0.1,
+      "correctness": 0.35,
+      "safety": 0.1
+    }
+  },
+  "routing": {
+    "baseline": {
+      "fallback_count": 0,
+      "median_latency_ms": 1.0,
+      "model_labels": [
+        "deterministic-replay-v1"
+      ],
+      "reported_cost_usd": 0.0,
+      "routing_reasons": [
+        "pinned_fixture_model"
+      ],
+      "tool_success_rate": 1
+    },
+    "candidate": {
+      "fallback_count": 0,
+      "median_latency_ms": 1.0,
+      "model_labels": [
+        "deterministic-replay-v1"
+      ],
+      "reported_cost_usd": 0.0,
+      "routing_reasons": [
+        "pinned_fixture_model"
+      ],
+      "tool_success_rate": 1
+    }
+  },
+  "tokens": {
+    "median_output_tokens": {
+      "baseline": 42.5,
+      "candidate": 7.0
+    },
+    "reduction": 0.8352941176470589,
+    "target_met": true
+  }
+}

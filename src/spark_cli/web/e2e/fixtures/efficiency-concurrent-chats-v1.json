@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "sessions": ["fixture-chat-a", "fixture-chat-b", "fixture-chat-c", "fixture-chat-d"],
+  "events_per_session": ["chat.status", "chat.token", "chat.turn_done"],
+  "expected": {"cross_session_events": 0, "completed_sessions": 4, "http_polls_while_healthy": 0}
+}

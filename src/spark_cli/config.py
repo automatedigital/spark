@@ -503,6 +503,12 @@ DEFAULT_CONFIG = {
             "api_mode": "",
         },
     },
+    "response_budget": {
+        # Cache-stable action-first guidance. Adaptive model routing remains
+        # independently controlled by smart_model_routing.enabled.
+        "style_enabled": True,
+        "soft_output_caps": True,
+    },
     # Auxiliary model config — provider:model for each side task.
     # Format: provider is the provider name, model is the model slug.
     # "auto" for provider = auto-detect best available provider.
@@ -852,7 +858,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 27,
+    "_config_version": 28,
 }
 
 # =============================================================================

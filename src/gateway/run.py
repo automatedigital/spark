@@ -952,7 +952,7 @@ class GatewayRunner:
             logger.debug("Live config refresh partially failed: %s", exc)
 
     def _resolve_turn_agent_config(self, user_message: str, model: str, runtime_kwargs: dict) -> dict:
-        from agent.smart_model_routing import resolve_turn_route
+        from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
         from spark_cli.models import resolve_fast_mode_overrides
 
         primary = {
@@ -968,16 +968,16 @@ class GatewayRunner:
         route = resolve_turn_route(user_message, getattr(self, "_smart_model_routing", {}), primary)
 
         service_tier = getattr(self, "_service_tier", None)
-        if not service_tier:
-            route["request_overrides"] = None
-            return route
-
+        overrides = None
         try:
-            overrides = resolve_fast_mode_overrides(route.get("model"))
+            if service_tier:
+                overrides = resolve_fast_mode_overrides(route.get("model"))
         except Exception:
-            overrides = None
-        route["request_overrides"] = overrides
-        return route
+            pass
+        budget_cfg = (getattr(self, "_smart_model_routing", {}) or {}).get("_response_budget", {}) or {}
+        return merge_route_request_overrides(
+            route, overrides, soft_caps_enabled=bool(budget_cfg.get("soft_output_caps", True))
+        )
 
     async def _handle_adapter_fatal_error(self, adapter: BasePlatformAdapter) -> None:
         """React to an adapter failure after startup.
@@ -1340,7 +1340,9 @@ class GatewayRunner:
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
-                return cfg.get("smart_model_routing", {}) or {}
+                routing = dict(cfg.get("smart_model_routing", {}) or {})
+                routing["_response_budget"] = cfg.get("response_budget", {}) or {}
+                return routing
         except Exception:
             pass
         return {}

@@ -259,7 +259,7 @@ class _AgentSetupMixin:
 
     def _resolve_turn_agent_config(self, user_message: str) -> dict:
         """Resolve model/runtime overrides for a single user turn."""
-        from agent.smart_model_routing import resolve_turn_route
+        from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
         from spark_cli.models import resolve_fast_mode_overrides
 
         route = resolve_turn_route(
@@ -278,16 +278,16 @@ class _AgentSetupMixin:
         )
 
         service_tier = getattr(self, "service_tier", None)
-        if not service_tier:
-            route["request_overrides"] = None
-            return route
-
+        overrides = None
         try:
-            overrides = resolve_fast_mode_overrides(route.get("model"))
+            if service_tier:
+                overrides = resolve_fast_mode_overrides(route.get("model"))
         except Exception:
-            overrides = None
-        route["request_overrides"] = overrides
-        return route
+            pass
+        budget_cfg = getattr(self, "_response_budget_config", {}) or {}
+        return merge_route_request_overrides(
+            route, overrides, soft_caps_enabled=bool(budget_cfg.get("soft_output_caps", True))
+        )
 
     def _init_agent(
         self,
@@ -452,4 +452,3 @@ class _AgentSetupMixin:
         except Exception as e:
             ChatConsole().print(f"[bold red]Failed to initialize agent: {e}[/]")
             return False
-

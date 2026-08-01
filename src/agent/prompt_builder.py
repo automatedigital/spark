@@ -205,6 +205,18 @@ APP_CREATION_GUIDANCE = (
     "user-created apps; it is reserved for Spark's built-in dashboard."
 )
 
+ACTION_FIRST_RESPONSE_GUIDANCE = (
+    "# Response efficiency\n"
+    "Match response shape to the request. For direct answers, status updates, and "
+    "completed actions, lead with the answer, current state, or outcome. Keep steps "
+    "atomic; omit ceremonial preambles, unrelated tangents, and duplicate recaps; stop "
+    "when the answer is complete. For actions, include verification or the precise "
+    "blocker. Do not compress away safety warnings, required confirmations, genuine "
+    "ambiguity, evidence needed for a diagnosis, or detail/format explicitly requested "
+    "by the user. A user request for detailed, exact, code-only, or structured output "
+    "always overrides the compact default."
+)
+
 
 def build_workspace_guidance() -> str:
     """Describe Spark's profile-scoped default workspace for the agent."""
