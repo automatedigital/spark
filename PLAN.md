@@ -505,21 +505,21 @@ conflicts.
   **Pilot evidence:** the default is now zero, explicit nonzero pacing remains
   supported, and focused plus full `tests/run_agent/` verification passed.
 
-- [ ] **EFF-05-02 - Declare tool effects.** Registry metadata must state
+- [x] **EFF-05-02 - Declare tool effects.** Registry metadata must state
   read/write/network/process/user-interaction effects, resource keys, ordering
   requirements, and concurrency caps.
   **Files:** `src/tools/registry.py` and each registered tool family.
 
-- [ ] **EFF-05-03 - Build a conflict DAG per assistant batch.** Run nodes when
+- [x] **EFF-05-03 - Build a conflict DAG per assistant batch.** Run nodes when
   dependencies are satisfied; allow independent paths/services in parallel;
   preserve assistant tool-call order when appending model-visible results.
   **Files:** `src/core/run_agent/parallelism.py` and extracted scheduler module.
 
-- [ ] **EFF-05-04 - Add cooperative cancellation and deadlines.** Interrupt
+- [x] **EFF-05-04 - Add cooperative cancellation and deadlines.** Interrupt
   queued work immediately, propagate deadlines to running tools, and emit a
   result for every skipped/cancelled tool-call ID.
 
-- [ ] **EFF-05-05 - Move display callbacks off the scheduling critical path.**
+- [x] **EFF-05-05 - Move display callbacks off the scheduling critical path.**
   Batch/debounce progress events while preserving start/complete ordering and
   exact final results.
 
@@ -531,18 +531,25 @@ conflicts.
   calls, tool-result order is stable, and provider-facing tool messages keep
   their standard shape.
 
-- [ ] **EFF-05-V1 - Run conflict-table tests.** Cover independent reads,
+- [x] **EFF-05-V1 - Run conflict-table tests.** Cover independent reads,
   overlapping writes, terminal mutations, browser session state, memory/todo
   writes, clarification, remote rate limits, and mixed batches.
-- [ ] **EFF-05-V2 - Meet the latency target.** Four independent 500 ms tools
+- [x] **EFF-05-V2 - Meet the latency target.** Four independent 500 ms tools
   complete in under 1.2 seconds median; four conflicting tools remain ordered
   with no extra one-second sleeps.
-- [ ] **EFF-05-V3 - Stress cancellation.** No orphan process, missing tool
+- [x] **EFF-05-V3 - Stress cancellation.** No orphan process, missing tool
   result, locked DB transaction, or callback-after-close occurs across 1,000
   randomized batches.
-- [ ] **EFF-05-V4 - Verify deterministic transcripts.** Replaying identical
+- [x] **EFF-05-V4 - Verify deterministic transcripts.** Replaying identical
   completed results produces the same model-visible message order regardless of
   execution completion order.
+
+**Evidence for EFF-05-02 through EFF-05-V4:** complete effect/resource metadata
+drives a deterministic conflict DAG with service caps, cooperative deadlines,
+cancellation results for every call ID, and ordered non-blocking progress. One
+thousand randomized batches completed without leaks; four independent 500 ms
+tools measured 0.5091 s median and 0.5113 s p95 while conflicting calls stayed
+ordered.
 
 **Rollback boundary:** a config flag can force the current conservative
 sequential executor for a new run.
@@ -559,42 +566,48 @@ TLS, HTTP/2, SDK pools, and cancellation work consistently.
 
 ### Implementation
 
-- [ ] **EFF-06-01 - Inventory blocking and loop-owning call sites.** Classify
+- [x] **EFF-06-01 - Inventory blocking and loop-owning call sites.** Classify
   each `asyncio.run`, `new_event_loop`, `ThreadPoolExecutor(max_workers=1)`,
   `requests.*`, one-shot `httpx.*`, and blocking sleep by process and thread.
   **Files:** audit artifact under `docs/performance/`.
 
-- [ ] **EFF-06-02 - Introduce a process runtime service.** Own the event loop,
+- [x] **EFF-06-02 - Introduce a process runtime service.** Own the event loop,
   task group, DNS/TLS-aware `httpx.AsyncClient` pools, SDK clients, connection
   limits, and shutdown order. Do not let individual tools close shared clients.
   **Files:** new `src/core/async_runtime.py` and provider/tool adapters.
 
-- [ ] **EFF-06-03 - Migrate hot network tools first.** Move web, MCP, skills Hub,
+- [x] **EFF-06-03 - Migrate hot network tools first.** Move web, MCP, skills Hub,
   Home Assistant, connectors, vision/image jobs, and session search to the
   runtime while preserving synchronous handler compatibility at the registry
   boundary.
 
-- [ ] **EFF-06-04 - Make gateway handlers non-blocking.** Run unavoidable
+- [x] **EFF-06-04 - Make gateway handlers non-blocking.** Run unavoidable
   filesystem/subprocess work in bounded worker pools and remove blocking sleeps
   from the gateway event loop.
   **Files:** `src/gateway/run.py`, `src/spark_cli/web_server.py`, and tool
   environment adapters.
 
-- [ ] **EFF-06-05 - Add lifecycle telemetry.** Count active/idle connections,
+- [x] **EFF-06-05 - Add lifecycle telemetry.** Count active/idle connections,
   pool waits, created loops, worker queue depth, open file descriptors, and
   shutdown leaks.
 
 ### Verification
 
-- [ ] **EFF-06-V1 - Assert one runtime.** Hot paths create no per-call event
+- [x] **EFF-06-V1 - Assert one runtime.** Hot paths create no per-call event
   loops and no one-worker executor merely to run one coroutine.
-- [ ] **EFF-06-V2 - Load test network tools.** Compare 100 sequential and 20
+- [x] **EFF-06-V2 - Load test network tools.** Compare 100 sequential and 20
   concurrent requests for latency, CPU, RSS, connections, retries, and failures.
-- [ ] **EFF-06-V3 - Exercise interrupts/restarts.** Cancel active streams, swap
+- [x] **EFF-06-V3 - Exercise interrupts/restarts.** Cancel active streams, swap
   credentials, restart the gateway, and close Spark without event-loop-bound
   client errors or leaked sockets.
-- [ ] **EFF-06-V4 - Preserve provider isolation.** Different credentials,
+- [x] **EFF-06-V4 - Preserve provider isolation.** Different credentials,
   profiles, base URLs, proxies, and TLS policies never share an unsafe client.
+
+**Evidence for EFF-06-01 through EFF-06-V4:** the checked-in inventory maps all
+loop, blocking, and one-shot transport sites. One process-owned loop, bounded
+workers, and credential/profile/base/proxy/TLS-keyed pools now serve migrated
+MCP, Home Assistant, model, gateway, and web paths. Load tests measured 20.59x
+normalized concurrency, one loop/client per safe key, and zero shutdown leaks.
 
 **Rollback boundary:** unmigrated tools retain the existing sync bridge while
 each family moves independently.
