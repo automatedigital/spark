@@ -124,11 +124,14 @@ class TestSchemaInit:
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()
             }
-            assert version == 10
+            from core.spark_state import SCHEMA_VERSION
+            assert version == SCHEMA_VERSION
             assert "session_events" in tables
             assert "session_checkpoints" in tables
             assert "subagent_runs" in tables
             assert "subagent_events" in tables
+            assert "session_context_epochs" in tables
+            assert "context_checkpoints" in tables
         finally:
             migrated.close()
 

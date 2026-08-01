@@ -816,6 +816,9 @@ class AIAgent(_PromptCacheMixin):
         
         # Cached system prompt -- built once per session, only rebuilt on compression
         self._cached_system_prompt: Optional[str] = None
+        self._prompt_bundle = None
+        self._prompt_lint_issues = ()
+        self._restored_prompt_cache_key = None
         
         # Filesystem checkpoint manager (transparent — not a tool)
         from tools.checkpoint_manager import CheckpointManager
@@ -828,6 +831,7 @@ class AIAgent(_PromptCacheMixin):
         self._session_db = session_db
         self._parent_session_id = parent_session_id
         self._last_flushed_db_idx = 0  # tracks DB-write cursor to prevent duplicate writes
+        self._typed_compression_applied = False
         if self._session_db:
             try:
                 self._session_db.create_session(
@@ -1110,6 +1114,7 @@ class AIAgent(_PromptCacheMixin):
                 config_context_length=_config_context_length,
                 provider=self.provider,
                 api_mode=self.api_mode,
+                checkpoint_mode=str(_compression_cfg.get("checkpoint_mode", "typed")).lower(),
             )
         self.compression_enabled = compression_enabled
 
@@ -1136,6 +1141,24 @@ class AIAgent(_PromptCacheMixin):
                 if _tname:
                     self.valid_tool_names.add(_tname)
                     self._context_engine_tool_names.add(_tname)
+
+        # Freeze the ordered model-visible surface after all profile/plugin
+        # contributions and before the first model call.  Any later mutation is
+        # a cache-invalidating programming error, not a dynamic feature.
+        from tools.facades import canonical_schema_json, schema_fingerprint
+        self._frozen_tool_schema_json = canonical_schema_json(self.tools or [])
+        self._schema_fingerprint = schema_fingerprint(self.tools or [])
+        self._context_epoch = 0
+        if self._session_db:
+            try:
+                self._session_db.record_context_epoch(
+                    self.session_id,
+                    epoch=0,
+                    schema_fingerprint=self._schema_fingerprint,
+                    prompt_sources={"tool_schemas": self.tools or []},
+                )
+            except Exception as exc:
+                logger.debug("Could not persist initial schema fingerprint: %s", exc)
 
         # Notify context engine of session start
         if hasattr(self, "context_compressor") and self.context_compressor:
@@ -2089,7 +2112,10 @@ class AIAgent(_PromptCacheMixin):
                 source=self.platform or "cli",
                 model=self.model,
             )
-            start_idx = len(conversation_history) if conversation_history else 0
+            start_idx = (
+                0 if self._typed_compression_applied
+                else len(conversation_history) if conversation_history else 0
+            )
             flush_from = max(start_idx, self._last_flushed_db_idx)
             pending_messages = []
             for msg in messages[flush_from:]:
@@ -2128,6 +2154,7 @@ class AIAgent(_PromptCacheMixin):
                 if self._session_is_settled(messages):
                     self._session_db.create_session_checkpoint(self.session_id)
             self._last_flushed_db_idx = len(messages)
+            self._typed_compression_applied = False
         except Exception as e:
             logger.warning("Session DB append_message failed: %s", e)
 
@@ -5810,6 +5837,7 @@ class AIAgent(_PromptCacheMixin):
 
     def _build_api_kwargs(self, api_messages: list) -> dict:
         """Build the keyword arguments dict for the active API mode."""
+        self._assert_tool_surface_stable()
         if self.api_mode == "anthropic_messages":
             from agent.anthropic_adapter import build_anthropic_kwargs
             anthropic_messages = self._prepare_anthropic_messages_for_api(api_messages)
@@ -5824,7 +5852,7 @@ class AIAgent(_PromptCacheMixin):
             ephemeral_out = getattr(self, "_ephemeral_max_output_tokens", None)
             if ephemeral_out is not None:
                 self._ephemeral_max_output_tokens = None  # consume immediately
-            return build_anthropic_kwargs(
+            kwargs = build_anthropic_kwargs(
                 model=self.model,
                 messages=anthropic_messages,
                 tools=self.tools,
@@ -5836,6 +5864,18 @@ class AIAgent(_PromptCacheMixin):
                 base_url=getattr(self, "_anthropic_base_url", None),
                 fast_mode=(self.request_overrides or {}).get("speed") == "fast",
             )
+            # Native Anthropic can cache typed release/project segments
+            # independently.  Unsupported endpoints retain the ordinary
+            # single-system-message payload produced above.
+            bundle = getattr(self, "_prompt_bundle", None)
+            if bundle is not None and self.provider == "anthropic":
+                from agent.prompt_blocks import anthropic_system_segments
+                kwargs["system"] = anthropic_system_segments(
+                    bundle,
+                    cache_ttl=self._cache_ttl,
+                    ephemeral_suffix=self.ephemeral_system_prompt or "",
+                )
+            return kwargs
 
         if self.api_mode == "codex_responses":
             instructions = ""
@@ -5882,7 +5922,11 @@ class AIAgent(_PromptCacheMixin):
             }
 
             if not is_github_responses:
-                kwargs["prompt_cache_key"] = self.session_id
+                bundle = getattr(self, "_prompt_bundle", None)
+                kwargs["prompt_cache_key"] = (
+                    bundle.reusable_fingerprint if bundle is not None
+                    else self._restored_prompt_cache_key or self.session_id
+                )
 
             if reasoning_enabled:
                 if is_github_responses:
@@ -6502,11 +6546,22 @@ class AIAgent(_PromptCacheMixin):
             except Exception:
                 pass
 
+        _typed_mode = getattr(self.context_compressor, "checkpoint_mode", "legacy") == "typed"
+        if hasattr(self.context_compressor, "set_deterministic_state"):
+            self.context_compressor.set_deterministic_state(
+                current_plan=self._todo_store.read(),
+                task_identity=self.session_id or task_id,
+                context_epoch=getattr(self, "_context_epoch", 0),
+            )
         compressed = self.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=focus_topic)
 
-        todo_snapshot = self._todo_store.format_for_injection()
-        if todo_snapshot:
-            compressed.append({"role": "user", "content": todo_snapshot})
+        # Legacy compression injected a synthetic user todo snapshot.  Typed
+        # checkpoints carry the plan as durable state without creating a fake
+        # user turn.
+        if not _typed_mode:
+            todo_snapshot = self._todo_store.format_for_injection()
+            if todo_snapshot:
+                compressed.append({"role": "user", "content": todo_snapshot})
 
         self._invalidate_system_prompt()
         new_system_prompt = self._build_system_prompt(system_message)
@@ -6514,38 +6569,59 @@ class AIAgent(_PromptCacheMixin):
 
         if self._session_db:
             try:
-                # Propagate title to the new session with auto-numbering
-                old_title = self._session_db.get_session_title(self.session_id)
-                self._session_db.end_session(self.session_id, "compression")
-                old_session_id = self.session_id
-                self.session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-                # Update session_log_file to point to the new session's JSON file
-                self.session_log_file = self.logs_dir / f"session_{self.session_id}.json"
-                self._session_db.create_session(
-                    session_id=self.session_id,
-                    source=self.platform or os.environ.get("SPARK_SESSION_SOURCE", "cli"),
-                    model=self.model,
-                    parent_session_id=old_session_id,
-                )
-                # Auto-number the title for the continuation session
-                if old_title:
-                    try:
-                        new_title = self._session_db.get_next_title_in_lineage(old_title)
-                        self._session_db.set_session_title(self.session_id, new_title)
-                    except (ValueError, Exception) as e:
-                        logger.debug("Could not propagate title on compression: %s", e)
-                self._session_db.update_system_prompt(self.session_id, new_system_prompt)
-                # Reset flush cursor — new session starts with no messages written
-                self._last_flushed_db_idx = 0
-                # Notify subscribers (web UI, gateway) that the session has migrated
-                # so they can update their session_id pointer to follow the agent.
-                if self.session_migrated_callback:
-                    try:
-                        self.session_migrated_callback(old_session_id, self.session_id, "compression")
-                    except Exception:
-                        logger.debug("session_migrated_callback raised", exc_info=True)
+                if _typed_mode:
+                    checkpoint = getattr(self.context_compressor, "_typed_checkpoint", None)
+                    self._context_epoch = getattr(self, "_context_epoch", 0) + 1
+                    if checkpoint is not None:
+                        self._session_db.save_context_checkpoint(
+                            self.session_id,
+                            checkpoint_sequence=checkpoint.checkpoint_sequence,
+                            context_epoch=self._context_epoch,
+                            version=checkpoint.version,
+                            payload=checkpoint.to_dict(),
+                        )
+                    bundle = getattr(self, "_prompt_bundle", None)
+                    self._session_db.record_context_epoch(
+                        self.session_id,
+                        epoch=self._context_epoch,
+                        schema_fingerprint=self._schema_fingerprint,
+                        prompt_fingerprints=bundle.metadata() if bundle else None,
+                        prompt_sources={"tool_schemas": self.tools or []},
+                    )
+                    self._session_db.update_system_prompt(self.session_id, new_system_prompt)
+                    # The typed row is authoritative for resume. The internal
+                    # checkpoint message stays out of the visible transcript;
+                    # future messages flush after the compact in-memory tail.
+                    self._last_flushed_db_idx = len(compressed)
+                    self._typed_compression_applied = True
+                else:
+                    # Legacy rollback path: preserve compression-split behavior.
+                    old_title = self._session_db.get_session_title(self.session_id)
+                    self._session_db.end_session(self.session_id, "compression")
+                    old_session_id = self.session_id
+                    self.session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+                    self.session_log_file = self.logs_dir / f"session_{self.session_id}.json"
+                    self._session_db.create_session(
+                        session_id=self.session_id,
+                        source=self.platform or os.environ.get("SPARK_SESSION_SOURCE", "cli"),
+                        model=self.model,
+                        parent_session_id=old_session_id,
+                    )
+                    if old_title:
+                        try:
+                            new_title = self._session_db.get_next_title_in_lineage(old_title)
+                            self._session_db.set_session_title(self.session_id, new_title)
+                        except (ValueError, Exception) as e:
+                            logger.debug("Could not propagate title on compression: %s", e)
+                    self._session_db.update_system_prompt(self.session_id, new_system_prompt)
+                    self._last_flushed_db_idx = 0
+                    if self.session_migrated_callback:
+                        try:
+                            self.session_migrated_callback(old_session_id, self.session_id, "compression")
+                        except Exception:
+                            logger.debug("session_migrated_callback raised", exc_info=True)
             except Exception as e:
-                logger.warning("Session DB compression split failed — new session will NOT be indexed: %s", e)
+                logger.warning("Session DB compression persistence failed: %s", e)
 
         # Warn on repeated compressions (quality degrades with each pass)
         _cc = self.context_compressor.compression_count
@@ -6621,12 +6697,16 @@ class AIAgent(_PromptCacheMixin):
     def _on_tool_dispatched(self, function_name: str) -> None:
         """Hook fired once a tool finishes dispatching.
 
-        Currently used by ``browser_open`` to swap the slimmed default tool
-        set for the full browser toolset for the remainder of the session.
-        Safe to call after every tool — it's a no-op unless activation state
-        has actually changed since the last refresh.
+        Browser actions now live behind one stable facade, so activation must
+        never mutate the model-visible schema within a context epoch. Explicit
+        legacy/granular API profiles retain their old activation behavior.
         """
         if function_name != "browser_open":
+            return
+        if any(
+            tool.get("function", {}).get("name") == "browser"
+            for tool in (self.tools or [])
+        ):
             return
         try:
             from tools.browser_tool import _browser_session_active
@@ -6634,9 +6714,10 @@ class AIAgent(_PromptCacheMixin):
             return
         if not _browser_session_active:
             return
-        # Cheap idempotency check: only rebuild self.tools if a browser
-        # sub-tool isn't already present.
-        if any(t.get("function", {}).get("name") == "browser_snapshot" for t in (self.tools or [])):
+        if any(
+            tool.get("function", {}).get("name") == "browser_snapshot"
+            for tool in (self.tools or [])
+        ):
             return
         try:
             refreshed = get_tool_definitions(
@@ -6647,7 +6728,14 @@ class AIAgent(_PromptCacheMixin):
         except Exception:
             return
         self.tools = refreshed
-        self.valid_tool_names = {t["function"]["name"] for t in refreshed}
+        self.valid_tool_names = {
+            tool["function"]["name"] for tool in refreshed
+        }
+        # Legacy rollback profiles intentionally preserve their historical
+        # schema swap; update the development guard to that new legacy epoch.
+        from tools.facades import canonical_schema_json, schema_fingerprint
+        self._frozen_tool_schema_json = canonical_schema_json(refreshed)
+        self._schema_fingerprint = schema_fingerprint(refreshed)
 
     def _inject_working_dir(self, function_name: str, function_args: dict) -> dict:
         """Prepend self.working_dir to relative paths in tool args for workspace sessions."""
@@ -6675,6 +6763,11 @@ class AIAgent(_PromptCacheMixin):
         tools. Used by the concurrent execution path; the sequential path retains
         its own inline invocation for backward-compatible display handling.
         """
+        try:
+            from tools.facades import normalize_facade_call
+            function_name, function_args = normalize_facade_call(function_name, function_args)
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
         function_args = self._inject_working_dir(function_name, function_args)
         # Check plugin hooks for a block directive before executing anything.
         block_message: Optional[str] = None
@@ -6816,6 +6909,15 @@ class AIAgent(_PromptCacheMixin):
                 function_args = {}
             if not isinstance(function_args, dict):
                 function_args = {}
+            try:
+                from tools.facades import normalize_facade_call
+                function_name, function_args = normalize_facade_call(function_name, function_args)
+            except ValueError:
+                # Let _invoke_tool produce the aligned error result.  Retain
+                # the facade call here so invalid calls cannot trigger legacy
+                # checkpoints or bookkeeping.
+                parsed_calls.append((tool_call, function_name, function_args))
+                continue
 
             # Checkpoint for file-mutating tools
             if function_name in ("write_file", "patch") and self._checkpoint_mgr.enabled:
@@ -7041,6 +7143,16 @@ class AIAgent(_PromptCacheMixin):
                 function_args = {}
             if not isinstance(function_args, dict):
                 function_args = {}
+            try:
+                from tools.facades import normalize_facade_call
+                function_name, function_args = normalize_facade_call(function_name, function_args)
+            except ValueError as exc:
+                function_result = json.dumps({"error": str(exc)}, ensure_ascii=False)
+                messages.append({
+                    "role": "tool", "content": function_result,
+                    "tool_call_id": tool_call.id,
+                })
+                continue
             function_args = self._inject_working_dir(function_name, function_args)
 
             # Check plugin hooks for a block directive before executing.
@@ -7734,6 +7846,48 @@ class AIAgent(_PromptCacheMixin):
         else:
             messages = list(self._session_messages)
 
+        if getattr(self.context_compressor, "checkpoint_mode", "legacy") == "typed":
+            from agent.context_checkpoint import CHECKPOINT_PREFIX
+
+            _restored_compact_context = False
+            checkpoint_idx = next(
+                (
+                    idx for idx in range(len(messages) - 1, -1, -1)
+                    if str(messages[idx].get("content") or "").startswith(CHECKPOINT_PREFIX)
+                ),
+                None,
+            )
+            if checkpoint_idx is not None:
+                messages = messages[checkpoint_idx:]
+                _restored_compact_context = True
+            elif self._session_db:
+                # Crash-safe recovery: the typed row is authoritative even if
+                # the process stopped before its marker/tail append completed.
+                try:
+                    checkpoint_row = self._session_db.get_latest_context_checkpoint(self.session_id)
+                    if checkpoint_row:
+                        from agent.context_checkpoint import (
+                            ContextCheckpoint,
+                            assemble_checkpoint_context,
+                        )
+                        checkpoint = ContextCheckpoint.from_dict(checkpoint_row["payload"])
+                        messages = assemble_checkpoint_context(
+                            checkpoint,
+                            messages[-getattr(self.context_compressor, "protect_last_n", 20):],
+                            context_window=getattr(self.context_compressor, "context_length", 0) or 100_000,
+                        )
+                        if checkpoint.current_plan and not self._todo_store.has_items():
+                            self._todo_store.write(list(checkpoint.current_plan))
+                        _restored_compact_context = True
+                except Exception:
+                    logger.exception("Could not reconstruct persisted typed checkpoint")
+            if _restored_compact_context:
+                # The caller's DB history is longer than the compact model
+                # context. Reset persistence offsets to the compact list so new
+                # user/assistant messages are not skipped by the old length.
+                self._last_flushed_db_idx = len(messages)
+                self._typed_compression_applied = True
+
         # Hydrate todo store from conversation history (gateway creates a fresh
         # AIAgent per message, so the in-memory store is empty -- we need to
         # recover the todo state from the most recent todo tool response in history)
@@ -7791,8 +7945,35 @@ class AIAgent(_PromptCacheMixin):
                     session_row = self._session_db.get_session(self.session_id)
                     if session_row:
                         stored_prompt = session_row.get("system_prompt") or None
+                    epoch_row = self._session_db.get_context_epoch(self.session_id)
+                    if epoch_row:
+                        self._context_epoch = int(epoch_row.get("epoch", 0))
+                        stored_sources = epoch_row.get("prompt_sources") or {}
+                        stored_tools = stored_sources.get("tool_schemas")
+                        if isinstance(stored_tools, list):
+                            from tools.facades import canonical_schema_json, schema_fingerprint
+                            stored_fingerprint = schema_fingerprint(stored_tools)
+                            if stored_fingerprint != epoch_row.get("schema_fingerprint"):
+                                raise RuntimeError("Stored tool schema fingerprint is corrupt")
+                            self.tools = stored_tools
+                            self.valid_tool_names = {
+                                tool.get("function", {}).get("name", "")
+                                for tool in stored_tools
+                                if tool.get("function", {}).get("name")
+                            }
+                            self._frozen_tool_schema_json = canonical_schema_json(stored_tools)
+                            self._schema_fingerprint = stored_fingerprint
+                        fingerprints = epoch_row.get("prompt_fingerprints") or {}
+                        self._restored_prompt_cache_key = fingerprints.get("reusable_fingerprint")
+                    checkpoint_row = self._session_db.get_latest_context_checkpoint(self.session_id)
+                    if checkpoint_row and hasattr(self.context_compressor, "_typed_checkpoint"):
+                        from agent.context_checkpoint import ContextCheckpoint
+                        self.context_compressor._typed_checkpoint = ContextCheckpoint.from_dict(
+                            checkpoint_row["payload"]
+                        )
                 except Exception:
-                    pass  # Fall through to build fresh
+                    logger.exception("Could not restore frozen context epoch")
+                    raise
 
             if stored_prompt:
                 # Continuing session — reuse the exact system prompt from
@@ -7820,6 +8001,15 @@ class AIAgent(_PromptCacheMixin):
                 if self._session_db:
                     try:
                         self._session_db.update_system_prompt(self.session_id, self._cached_system_prompt)
+                        bundle = getattr(self, "_prompt_bundle", None)
+                        if bundle is not None:
+                            self._session_db.record_context_epoch(
+                                self.session_id,
+                                epoch=self._context_epoch,
+                                schema_fingerprint=self._schema_fingerprint,
+                                prompt_fingerprints=bundle.metadata(),
+                                prompt_sources={"tool_schemas": self.tools or []},
+                            )
                     except Exception as e:
                         logger.debug("Session DB update_system_prompt failed: %s", e)
 

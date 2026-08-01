@@ -424,6 +424,19 @@ def get_tool_definitions(
                     "function": {**td["function"], "description": desc + _browser_suffix},
                 }
 
+    # Collapse related legacy schemas into typed action facades.  Legacy
+    # handlers remain registered and callable by saved transcripts/API users;
+    # only the model-visible surface is compacted.  This happens after dynamic
+    # schema tailoring so action availability is resolved exactly once.
+    from tools.facades import compact_tool_definitions
+    _profile_facades = enabled_toolsets is None or any(
+        str(toolset).startswith("spark-") for toolset in enabled_toolsets
+    )
+    filtered_tools = compact_tool_definitions(
+        filtered_tools,
+        profile_facades=_profile_facades,
+    )
+
     if not quiet_mode:
         if filtered_tools:
             tool_names = [t["function"]["name"] for t in filtered_tools]
@@ -566,6 +579,15 @@ def handle_function_call(
     Returns:
         Function result as a JSON string.
     """
+    # New model requests use compact facades; old saved transcripts and API
+    # callers continue to use legacy names.  Normalize both to the registered
+    # handler before hooks, coercion, budgeting, and dispatch.
+    try:
+        from tools.facades import normalize_facade_call
+        function_name, function_args = normalize_facade_call(function_name, function_args)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
     # Coerce string arguments to their schema-declared types (e.g. "42"→42)
     function_args = coerce_tool_args(function_name, function_args)
 
@@ -621,6 +643,8 @@ def handle_function_call(
             # Prefer the caller-provided list so subagents can't overwrite
             # the parent's tool set via the process-global.
             sandbox_enabled = enabled_tools if enabled_tools is not None else _last_resolved_tool_names
+            from tools.facades import expand_facade_tool_names
+            sandbox_enabled = list(expand_facade_tool_names(sandbox_enabled or []))
             result = registry.dispatch(
                 function_name, function_args,
                 task_id=task_id,
