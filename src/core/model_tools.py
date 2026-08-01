@@ -138,6 +138,11 @@ def _ensure_dynamic_tools_discovered() -> None:
         _dynamic_discovery_complete = True
 
 
+def _discover_tools() -> None:
+    """Compatibility discovery hook retained for existing integrations."""
+    _ensure_dynamic_tools_discovered()
+
+
 # =============================================================================
 # Backward-compat constants  (built once after discovery)
 # =============================================================================
