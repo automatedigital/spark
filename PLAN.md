@@ -730,7 +730,7 @@ known sequence.
 - [x] **EFF-08-V3 - Meet steady-state targets.** With a healthy stream there are
   zero periodic status/session HTTP calls, unchanged entities do not rerender,
   and an unselected long chat body is not resident indefinitely.
-- [ ] **EFF-08-V4 - Record browser evidence.** Test 390, 820, and 1440 px with
+- [x] **EFF-08-V4 - Record browser evidence.** Test 390, 820, and 1440 px with
   exact flows, screenshots, React commit/network traces, and no console errors.
 
 **Evidence for EFF-08-01 through EFF-08-V3:** mirrored validated Python/TypeScript
@@ -739,6 +739,11 @@ resume through one supervisor. Normalized stable selectors, 120-second detail
 TTL, settled-only cache writes, and stale-only watchdog recovery remove healthy
 8-second and 2-second polling. Sequence, restart, retention, 5,000-message TTL,
 cache-crash, and 10,000-event tests passed; a 50-event resume stayed below 25 KB.
+**Evidence for EFF-08-V4:** `docs/performance/browser-efficiency.md` records the
+provider-free production-pipeline flow, 390/820/1440 screenshots, React commit
+counts, 177 traced API responses, zero application console/page/HTTP errors,
+zero forbidden calls in the settled 12-second window, cold reload hydration,
+simultaneous switching, and recovery across a changed backend instance.
 
 **Rollback boundary:** keep the existing SSE envelope and recovery endpoints
 available for one compatibility release while new clients negotiate the
@@ -896,10 +901,15 @@ configurable; explicit user verbosity always wins.
   candidate with pinned versions and publish raw measurements, median, p95,
   cache accounting, correctness scores, and any regressions.
 
-- [ ] **GATE-04 - Run local browser acceptance.** Test multiple simultaneous
+- [x] **GATE-04 - Run local browser acceptance.** Test multiple simultaneous
   chats, long history, active switching, large tool results, background/foreground,
   refresh, reconnect, gateway restart, responsive widths, and console/network
   traces against the source dashboard.
+  **Evidence:** Playwright 1.62/Chromium 151 passed the exact flow at commit
+  `27a94d5f`; all widths had no horizontal overflow, the steady-state forbidden
+  call set was empty, and only the deliberately forced outage produced a
+  transient preview-detector 500. Screenshots and trace summary are in
+  `docs/performance/browser-efficiency.md`.
 
 - [x] **GATE-05 - Run full practical regressions.** Execute
   `python -m pytest tests/ -m "not slow and not integration" -q`, then the full
