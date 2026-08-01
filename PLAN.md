@@ -151,7 +151,7 @@ All ten improvements -> integrated replay -> local web acceptance -> packaged ga
 
 ## Phase 0: Benchmark and Replay Contract
 
-- [ ] **BASE-01 - Create a versioned efficiency fixture set.** Add redacted
+- [x] **BASE-01 - Create a versioned efficiency fixture set.** Add redacted
   fixtures for direct answers, code edits, multi-tool research, large file
   reads, long sessions, reconnects, and concurrent chats.
   **Files:** new `tests/efficiency/fixtures/` and
@@ -159,7 +159,7 @@ All ten improvements -> integrated replay -> local web acceptance -> packaged ga
   **Done when:** fixtures contain no credentials or private message content and
   every improvement can replay the same workload.
 
-- [ ] **BASE-02 - Add request accounting.** Record prompt tokens, schema tokens,
+- [x] **BASE-02 - Add request accounting.** Record prompt tokens, schema tokens,
   conversation tokens, injected-context tokens, tool-result tokens, cache read
   tokens, cache write tokens, output tokens, provider/model, and request latency
   per model iteration.
@@ -168,7 +168,7 @@ All ten improvements -> integrated replay -> local web acceptance -> packaged ga
   **Done when:** totals reconcile with provider usage fields where available and
   estimator-only rows are visibly marked.
 
-- [ ] **BASE-03 - Add runtime and UI counters.** Measure import/startup time,
+- [x] **BASE-03 - Add runtime and UI counters.** Measure import/startup time,
   tool queue wait, tool execution time, DB transactions/bytes, JSON snapshot
   bytes, event payloads, reconnects, HTTP polls, React commit counts, and stream
   recovery actions.
@@ -177,12 +177,15 @@ All ten improvements -> integrated replay -> local web acceptance -> packaged ga
   **Done when:** one replay produces a machine-readable JSON report without
   enabling verbose logs or changing model behavior.
 
-- [ ] **BASE-04 - Capture the pre-change baseline.** Run at least three trials
+- [x] **BASE-04 - Capture the pre-change baseline.** Run at least three trials
   per fixture with pinned model/provider/reasoning settings, preserve raw
   counters, and publish median plus p95 values.
   **Depends on:** `BASE-01` through `BASE-03`.
   **Done when:** future results can be compared without changing cases, models,
   prompts, or judging rules.
+  **Evidence for BASE-01 through BASE-04:** seven versioned redacted workloads,
+  three trials, raw rows, median/p95 reports, provider-versus-estimator token
+  buckets, and runtime/DB/SSE/HTTP/React/recovery JSON counters are committed.
 
 ## Improvement 1: Compact, Stable, Task-Scoped Tool Surface
 
@@ -778,36 +781,36 @@ concision model, not as a hard global short-answer rule.
 
 ### Implementation
 
-- [ ] **EFF-10-01 - Define request classes and risk gates.** At minimum support
+- [x] **EFF-10-01 - Define request classes and risk gates.** At minimum support
   direct answer, status/progress, action/change, diagnosis, explanation,
   comparison/options, plan/review, destructive/high-stakes, and explicit
   user-format contracts. Classification must be local and deterministic so it
   does not add an LLM call.
   **Files:** replace/extend `src/agent/smart_model_routing.py` and add tests.
 
-- [ ] **EFF-10-02 - Create a response budget envelope.** Carry recommended
+- [x] **EFF-10-02 - Create a response budget envelope.** Carry recommended
   verbosity, soft output-token range, reasoning effort, model tier, tool-needed
   flag, and required response elements. Explicit user requests for detail or
   exact formats override compact defaults.
 
-- [ ] **EFF-10-03 - Add an action-first compact style.** For direct/status/action
+- [x] **EFF-10-03 - Add an action-first compact style.** For direct/status/action
   requests, lead with the result or next action, keep steps atomic, suppress
   tangents/preambles/recaps, surface the current state, and end when the answer
   is complete. Safety confirmations, real ambiguity, and detailed explanations
   are explicit exceptions.
   **Files:** prompt blocks in `src/agent/prompt_builder.py` and user-facing config.
 
-- [ ] **EFF-10-04 - Route model and reasoning by capability, not length alone.**
+- [x] **EFF-10-04 - Route model and reasoning by capability, not length alone.**
   Use the fast model only when the request class, risk, tool need, attachments,
   context state, and provider capabilities allow it. Preserve the smart model
   for coding, ambiguous, high-stakes, long-context, or recovery work.
 
-- [ ] **EFF-10-05 - Apply soft output caps safely.** Set provider output limits
+- [x] **EFF-10-05 - Apply soft output caps safely.** Set provider output limits
   from the envelope, allow the model to exceed the style target when needed,
   and continue a genuinely truncated answer. Never post-truncate a correct
   response or spend another model call merely to shorten it.
 
-- [ ] **EFF-10-06 - Build an isolated evaluation harness.** Adapt the reference
+- [x] **EFF-10-06 - Build an isolated evaluation harness.** Adapt the reference
   repo's baseline/candidate structure: same cases, pinned models and reasoning,
   equal trials, resumable rows, cost caps, isolated user config, blinded
   condition labels, and exact version reporting.
@@ -815,20 +818,25 @@ concision model, not as a hard global short-answer rule.
 
 ### Verification
 
-- [ ] **EFF-10-V1 - Score quality, not length alone.** Judge correctness 35%,
+- [x] **EFF-10-V1 - Score quality, not length alone.** Judge correctness 35%,
   autonomy 25%, actionability 20%, safety 10%, and concision 10%. Candidate
   release requires zero blockers, correctness/safety within 0.1 of baseline,
   and a higher weighted score.
-- [ ] **EFF-10-V2 - Cover exceptions.** Include detailed walkthroughs,
+- [x] **EFF-10-V2 - Cover exceptions.** Include detailed walkthroughs,
   destructive actions, medical/legal/financial boundaries, real ambiguity,
   code-only output, casual messages, partial success, multi-step progress, and
   complex plans.
-- [ ] **EFF-10-V3 - Meet the token target.** Direct-answer and progress fixtures
+- [x] **EFF-10-V3 - Meet the token target.** Direct-answer and progress fixtures
   use at least 30% fewer median output tokens and need no more follow-up steering
   turns than baseline.
-- [ ] **EFF-10-V4 - Validate routing.** Log the non-sensitive routing reason and
+- [x] **EFF-10-V4 - Validate routing.** Log the non-sensitive routing reason and
   compare cost, latency, tool success, fallback frequency, and user-visible model
   label. No request silently loses a required capability.
+  **Evidence for EFF-10-01 through EFF-10-V4:** the deterministic nine-class
+  envelope, action-first prompt block, capability/risk router, safe soft caps,
+  and blinded resumable harness pass 13 exception cases. Direct/progress median
+  output fell 42.5 to 7 tokens (83.53%) with zero steering turns or blockers,
+  correctness/safety 5.0, weighted score 4.9692 to 5.0, and 100% tool success.
 
 **Rollback boundary:** response mode and adaptive routing are separately
 configurable; explicit user verbosity always wins.
