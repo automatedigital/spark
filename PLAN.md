@@ -804,7 +804,7 @@ uses them.
   chat import without browser, MCP, voice, messaging, or ML extras installed.
 - [x] **EFF-09-V3 - First-use tests.** Each lazy feature loads once, reports a
   precise missing-extra error, and remains safe under concurrent first calls.
-- [ ] **EFF-09-V4 - Package comparison.** Record macOS app, Windows installer,
+- [x] **EFF-09-V4 - Package comparison.** Record macOS app, Windows installer,
   sidecar size, startup time, and feature smoke results before and after.
 
 **Evidence for EFF-09-01 through EFF-09-V3:** a generated 70-tool manifest was
@@ -818,6 +818,10 @@ RSS. Raw trials are in `docs/performance/lazy-startup-benchmark.json`. ADR 0012
 records stable `core.run_agent.AIAgent`, cache, and rollback contracts. The
 desktop resource audit is enforced by both platform builds and excludes caches
 and optional ML runtimes while PyInstaller collects lazy first-party modules.
+Package evidence in `docs/performance/desktop-package-v1.3.31.md` records exact
+v1.3.30/v1.3.31 hashes and bytes. Package sizes increased about 0.2-0.35%,
+while comparable macOS sidecar startup medians improved 17.7% (root) and
+13.0% (status). Actual macOS and Windows packaged feature smokes passed.
 
 **Rollback boundary:** keep eager manifest validation in CI even though runtime
 imports become lazy.
@@ -944,13 +948,22 @@ configurable; explicit user verbosity always wins.
   expectation and DNS safety rejecting `a.example`/`b.example` in a browser
   concurrency fixture.
 
-- [ ] **GATE-06 - Validate the packaged macOS app.** Measure launch, first token,
+- [x] **GATE-06 - Validate the packaged macOS app.** Measure launch, first token,
   tools, reconnect, persistence, and web state in the actual signed/notarized
   `.app`/DMG, not only source mode.
+  **Evidence:** the 1.3.31 app passed deep/strict signing verification; its DMG
+  passed checksum, notarization, stapling, and Gatekeeper checks. The actual
+  packaged process passed file, terminal, preview, first-token, ordered tool
+  events, SSE resume, hydration, quit/relaunch, and persistence acceptance.
 
-- [ ] **GATE-07 - Validate the packaged Windows beta.** Repeat the same flows in
+- [x] **GATE-07 - Validate the packaged Windows beta.** Repeat the same flows in
   the actual `Spark.exe` build, including native terminal/file/preview behavior
   and sleep/wake/reconnect.
+  **Evidence:** native workflow run `30714505055` passed on exact main commit
+  `fb528026`. The unsigned 1.3.31 package passed Windows-native file, terminal,
+  preview, first-token, tool-event, SSE, hydration, process-tree suspend/resume
+  with stable backend identity, and full restart/persistence checks. The sleep
+  coverage is explicitly a CI process-tree simulation, not literal OS sleep.
 
 - [x] **GATE-08 - Review generated output and release scope.** Rebuild
   `src/spark_cli/web_dist/` once after source acceptance, verify every manifest
@@ -974,17 +987,33 @@ configurable; explicit user verbosity always wins.
 
 ## Final Acceptance Checklist
 
-- [ ] Exactly ten efficiency improvements have implementation and verification
+- [x] Exactly ten efficiency improvements have implementation and verification
   evidence attached to their task IDs.
-- [ ] Fixed prompt/schema tokens, uncached tokens, cache reads/writes, tool-result
+  **Evidence:** Improvements 1-10 have every implementation and verification ID
+  checked, with linked raw reports and focused checks under each section.
+- [x] Fixed prompt/schema tokens, uncached tokens, cache reads/writes, tool-result
   tokens, output tokens, latency, DB I/O, event traffic, startup, RSS, and package
   size are all reported from the same versioned replay set.
-- [ ] Token savings do not come from omitting applicable user/project rules,
+  **Evidence:** `docs/performance/efficiency-replay.md` and its raw artifacts
+  index the source metrics; `desktop-package-v1.3.31.md` adds exact v1.3.31
+  package results and transparently records the measured regressions.
+- [x] Token savings do not come from omitting applicable user/project rules,
   truncating necessary answers, hiding tool output, or routing beyond a model's
   capabilities.
-- [ ] Runtime and UI state recover from interruption, refresh, reconnect,
+  **Evidence:** golden prompt/schema and typed-ledger fidelity tests, recoverable
+  artifact paging, risk/capability routing, explicit verbosity overrides, the
+  manually reviewed live same-model A/B, and both package smokes passed.
+- [x] Runtime and UI state recover from interruption, refresh, reconnect,
   compression, gateway restart, and stale browser cache.
-- [ ] Source tests, web acceptance, macOS package acceptance, and Windows package
+  **Evidence:** interruption/compression suites, source browser refresh/reconnect
+  and backend restart, macOS quit/relaunch, and Windows same-process suspend plus
+  full restart all recovered authoritative persisted state.
+- [x] Source tests, web acceptance, macOS package acceptance, and Windows package
   acceptance are reported as distinct results.
-- [ ] Temporary reference clones and benchmark secrets are absent from the final
+  **Evidence:** the four results are separately labelled in
+  `docs/performance/desktop-package-v1.3.31.md` with exact versions and commits.
+- [x] Temporary reference clones and benchmark secrets are absent from the final
   repository and release artifacts.
+  **Evidence:** final tracked-tree, credential-pattern, generated-manifest, and
+  desktop resource audits passed; both platform builds exclude the temporary
+  references and private evaluation state.
