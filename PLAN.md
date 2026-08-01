@@ -898,9 +898,12 @@ configurable; explicit user verbosity always wins.
 
 ## Integrated Rollout Gates
 
-- [ ] **GATE-01 - Complete focused source checks.** Activate `.venv`, run Ruff on
+- [x] **GATE-01 - Complete focused source checks.** Activate `.venv`, run Ruff on
   changed Python, mypy on affected typed packages, and focused pytest suites for
   prompt caching, tools, compaction, persistence, gateway, and web server.
+  **Evidence:** 770 focused backend tests passed. Ruff E9/F found zero newly
+  introduced critical errors across 74 changed files, full Ruff passed all 43
+  new Python files, and scoped mypy passed all 20 new typed source modules.
 
 - [x] **GATE-02 - Complete frontend checks.** Run full Vitest, focused ESLint,
   TypeScript build, production Vite build to temporary output, and the bundle
@@ -909,9 +912,13 @@ configurable; explicit user verbosity always wins.
   warnings; TypeScript/Vite production build passed; the initial entry graph is
   194.80 KiB gzip against the 600 KiB budget.
 
-- [ ] **GATE-03 - Replay the fixed efficiency suite.** Compare baseline and
+- [x] **GATE-03 - Replay the fixed efficiency suite.** Compare baseline and
   candidate with pinned versions and publish raw measurements, median, p95,
   cache accounting, correctness scores, and any regressions.
+  **Evidence:** Five-trial deterministic fixture replay, response-quality
+  scoring, cache/token accounting, DB/event telemetry, scheduler, browser, and
+  startup/RSS results are published in `docs/performance/efficiency-replay.md`
+  with raw candidate rows in `docs/performance/efficiency-candidate-v1.json`.
 
 - [x] **GATE-04 - Run local browser acceptance.** Test multiple simultaneous
   chats, long history, active switching, large tool results, background/foreground,
