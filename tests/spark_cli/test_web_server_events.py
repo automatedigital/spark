@@ -882,6 +882,28 @@ class TestEventBus:
         assert first.data_queue.get_nowait()["data"]["t"] == "abc"
         assert second.data_queue.get_nowait()["data"]["t"] == "abc"
 
+    def test_token_coalescing_advances_public_resume_cursor(self, web_client):
+        import spark_cli.web_server as web_server
+
+        subscriber = web_server._EventSubscriber(prefixes=("chat",))
+        for sequence, token in ((10, "a"), (11, "b")):
+            subscriber.enqueue(
+                {
+                    "topic": "chat.token",
+                    "session_id": "cursor",
+                    "sequence": sequence,
+                    "_seq": sequence,
+                    "ts": time.time(),
+                    "data": {"t": token},
+                }
+            )
+
+        combined = subscriber.data_queue.get_nowait()
+        assert combined["data"]["t"] == "ab"
+        assert combined["sequence_start"] == 10
+        assert combined["sequence"] == 11
+        assert combined["_seq"] == 11
+
     def test_lifecycle_event_cannot_overtake_earlier_token(self, web_client):
         import spark_cli.web_server as web_server
 

@@ -604,6 +604,8 @@ class _EventSubscriber:
         if not envelope.get("_seq"):
             self.local_sequence += 1
             envelope["_seq"] = self.local_sequence
+        if envelope.get("sequence") is not None and envelope.get("sequence_start") is None:
+            envelope["sequence_start"] = envelope["sequence"]
         topic = str(envelope.get("topic") or "")
         session_id = envelope.get("session_id")
         if topic in _PRIORITY_EVENT_TOPICS or topic == "bus.gap":
@@ -633,6 +635,10 @@ class _EventSubscriber:
             "batch_size": int(tail["data"].get("batch_size") or 1) + 1,
         }
         tail["ts"] = envelope.get("ts", tail.get("ts"))
+        if envelope.get("_seq") is not None:
+            tail["_seq"] = envelope["_seq"]
+        if envelope.get("sequence") is not None:
+            tail["sequence"] = envelope["sequence"]
         return True
 
     def _enqueue_priority(self, envelope: dict[str, Any]) -> None:

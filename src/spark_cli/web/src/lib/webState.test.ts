@@ -3,6 +3,8 @@ import type { SessionInfo, SessionMessage } from "@/lib/api";
 import {
   NormalizedWebState,
   clearUnsettledOrInvalidDetailCache,
+  legacySessionSnapshot,
+  parseLegacyWebStateEvent,
   parseWebStateEvent,
   persistSettledDetail,
   readSettledDetail,
@@ -59,6 +61,29 @@ describe("web state v1 contract", () => {
     expect(sequenceDecision(event(6), cursor)).toBe("gap");
     expect(sequenceDecision(event(5, { server_epoch: "restart" }), cursor)).toBe("snapshot");
     expect(sequenceDecision(event(5, { projection_version: 2 as 1 }), cursor)).toBe("snapshot");
+  });
+
+  it("accepts a coalesced event that covers every sequence after the cursor", () => {
+    const cursor = { sequence: 4, projectionVersion: 1, serverEpoch: "epoch" };
+    expect(sequenceDecision(event(6, { sequence_start: 5 }), cursor)).toBe("apply");
+    expect(parseWebStateEvent(event(6, { sequence_start: 7 }))).toBeNull();
+  });
+
+  it("normalizes compatibility-release snapshots and SSE without losing shells", () => {
+    const snapshot = legacySessionSnapshot(
+      { sessions: [shell("s1")], total: 1, limit: 50, offset: 0 },
+      "legacy:1",
+    );
+    expect(snapshot.shells.map((row) => row.id)).toEqual(["s1"]);
+    const legacy = parseLegacyWebStateEvent(
+      { topic: "sessions.changed", session_id: "s2", ts: 2, data: { action: "created" } },
+      { sequence: 7, serverEpoch: "legacy:1" },
+    );
+    expect(legacy).toMatchObject({ sequence: 8, entity_id: "s2", server_epoch: "legacy:1" });
+    expect(parseLegacyWebStateEvent(
+      { topic: "sessions.changed", data: [] },
+      { sequence: 0, serverEpoch: "legacy" },
+    )).toBeNull();
   });
 });
 

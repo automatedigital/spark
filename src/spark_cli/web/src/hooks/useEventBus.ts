@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import { getApiBase, getDashboardToken, sseUrl } from "@/lib/api";
+import type { PaginatedSessions } from "@/lib/api";
 import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
 import {
   WEB_STATE_PROJECTION_VERSION,
+  legacySessionSnapshot,
+  parseLegacyWebStateEvent,
   parseWebStateEvent,
   sequenceDecision,
   type WebStateEventV1,
@@ -40,9 +43,13 @@ class ConnectionSupervisor {
   private staleSignalled = false;
   private wasDisconnected = false;
   private running = false;
-  private cursor: Cursor | null = this.readCursor();
+  // A resume cursor is meaningful only alongside a hydrated projection. A new
+  // document has an empty React store even when sessionStorage retained the
+  // previous cursor, so it must always start from a bounded snapshot.
+  private cursor: Cursor | null = null;
   private selectedSessionId: string | null = null;
   private snapshotRecovery: Promise<void> | null = null;
+  private legacyMode = false;
 
   start(): void {
     if (this.running || typeof window === "undefined") return;
@@ -76,8 +83,7 @@ class ConnectionSupervisor {
   private bootstrap = async (): Promise<void> => {
     if (!this.running) return;
     try {
-      if (!this.cursor) await this.fetchSnapshot();
-      else await this.fetchDeltas();
+      await this.fetchSnapshot();
       if (this.running) this.connect();
     } catch {
       this.scheduleReconnect();
@@ -87,7 +93,28 @@ class ConnectionSupervisor {
   private fetchSnapshot = async (): Promise<void> => {
     const qs = new URLSearchParams({ session_limit: "50", message_limit: "200" });
     if (this.selectedSessionId) qs.set("selected_session_id", this.selectedSessionId);
-    const response = await this.fetchJson<WebStateSnapshotV1>(`/api/web-state/snapshot?${qs}`);
+    let response: WebStateSnapshotV1;
+    try {
+      response = await this.fetchJson<WebStateSnapshotV1>(`/api/web-state/snapshot?${qs}`);
+      if (
+        response.schema_version !== 1
+        || response.projection_version !== 1
+        || !Array.isArray(response.shells)
+      ) throw new Error("invalid web state snapshot");
+      this.legacyMode = false;
+    } catch {
+      // One-release rollback boundary: an older sidecar serves the SPA HTML for
+      // this unknown route. Hydrate from its bounded sessions endpoint and keep
+      // consuming the legacy SSE envelope instead of emptying the inbox.
+      const page = await this.fetchJson<PaginatedSessions>(
+        "/api/sessions?limit=50&offset=0",
+      );
+      const epoch = this.cursor?.serverEpoch.startsWith("legacy:")
+        ? this.cursor.serverEpoch
+        : `legacy:${Date.now()}`;
+      response = legacySessionSnapshot(page, epoch, this.cursor?.sequence ?? 0);
+      this.legacyMode = true;
+    }
     this.cursor = {
       sequence: response.sequence,
       projectionVersion: response.projection_version,
@@ -99,6 +126,7 @@ class ConnectionSupervisor {
 
   private fetchDeltas = async (): Promise<void> => {
     if (!this.cursor) return this.fetchSnapshot();
+    if (this.legacyMode) return this.fetchSnapshot();
     const qs = new URLSearchParams({
       after_sequence: String(this.cursor.sequence),
       projection_version: String(this.cursor.projectionVersion),
@@ -120,13 +148,13 @@ class ConnectionSupervisor {
     if (!this.running || !this.cursor || document.visibilityState === "hidden") return;
     if (this.source?.readyState === EventSource.OPEN || this.source?.readyState === EventSource.CONNECTING) return;
     this.source?.close();
-    const qs = new URLSearchParams({
-      topics: topicsParam,
-      after_sequence: String(this.cursor.sequence),
-      projection_version: String(this.cursor.projectionVersion),
-      server_epoch: this.cursor.serverEpoch,
-    });
-    if (this.selectedSessionId) qs.set("detail_session_id", this.selectedSessionId);
+    const qs = new URLSearchParams({ topics: topicsParam });
+    if (!this.legacyMode) {
+      qs.set("after_sequence", String(this.cursor.sequence));
+      qs.set("projection_version", String(this.cursor.projectionVersion));
+      qs.set("server_epoch", this.cursor.serverEpoch);
+      if (this.selectedSessionId) qs.set("detail_session_id", this.selectedSessionId);
+    }
     const source = new EventSource(sseUrl(`/api/events?${qs}`));
     this.source = source;
     source.onopen = () => {
@@ -153,7 +181,8 @@ class ConnectionSupervisor {
   }
 
   private accept(value: unknown): void {
-    const event = parseWebStateEvent(value);
+    const event = parseWebStateEvent(value)
+      ?? (this.legacyMode && this.cursor ? parseLegacyWebStateEvent(value, this.cursor) : null);
     if (!event || !this.cursor) return;
     const decision = sequenceDecision(event, this.cursor);
     if (decision === "duplicate") return;
@@ -239,15 +268,6 @@ class ConnectionSupervisor {
     const response = await fetch(`${getApiBase()}${path}`, { headers });
     if (!response.ok) throw new Error(`web state ${response.status}`);
     return response.json() as Promise<T>;
-  }
-
-  private readCursor(): Cursor | null {
-    try {
-      const row = JSON.parse(sessionStorage.getItem(CURSOR_KEY) ?? "null") as Partial<Cursor> | null;
-      if (!row || typeof row.sequence !== "number" || typeof row.serverEpoch !== "string") return null;
-      if (row.projectionVersion !== WEB_STATE_PROJECTION_VERSION) return null;
-      return row as Cursor;
-    } catch { return null; }
   }
 
   private writeCursor(): void {

@@ -1,4 +1,4 @@
-import type { SessionInfo, SessionMessage } from "@/lib/api";
+import type { PaginatedSessions, SessionInfo, SessionMessage } from "@/lib/api";
 
 export const WEB_STATE_SCHEMA_VERSION = 1 as const;
 export const WEB_STATE_PROJECTION_VERSION = 1 as const;
@@ -12,6 +12,7 @@ export interface WebStateEventV1 {
   entity_id: string | null;
   session_id?: string | null;
   sequence: number;
+  sequence_start?: number;
   projection_version: typeof WEB_STATE_PROJECTION_VERSION;
   timestamp: number;
   payload: Record<string, unknown>;
@@ -51,12 +52,66 @@ export function parseWebStateEvent(value: unknown): WebStateEventV1 | null {
     || typeof payload !== "object"
     || Array.isArray(payload)
     || !(row.entity_id === null || typeof row.entity_id === "string")
+    || !(row.sequence_start === undefined || (
+      typeof row.sequence_start === "number"
+      && row.sequence_start >= 1
+      && row.sequence_start <= row.sequence
+    ))
   ) return null;
   return {
     ...(row as unknown as WebStateEventV1),
     session_id: typeof row.session_id === "string" ? row.session_id : row.entity_id as string | null,
     payload: payload as Record<string, unknown>,
     data: payload as Record<string, unknown>,
+  };
+}
+
+/** Normalize the compatibility-release SSE envelope without weakening v1 validation. */
+export function parseLegacyWebStateEvent(
+  value: unknown,
+  cursor: { sequence: number; serverEpoch: string },
+): WebStateEventV1 | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const payload = row.data;
+  if (
+    typeof row.topic !== "string"
+    || !row.topic
+    || !payload
+    || typeof payload !== "object"
+    || Array.isArray(payload)
+    || !(row.session_id === undefined || row.session_id === null || typeof row.session_id === "string")
+  ) return null;
+  const entityId = typeof row.session_id === "string" ? row.session_id : null;
+  const timestamp = typeof row.ts === "number" ? row.ts : Date.now() / 1000;
+  return {
+    schema_version: 1,
+    topic: row.topic,
+    entity_id: entityId,
+    session_id: entityId,
+    sequence: cursor.sequence + 1,
+    projection_version: 1,
+    timestamp,
+    payload: payload as Record<string, unknown>,
+    data: payload as Record<string, unknown>,
+    server_epoch: cursor.serverEpoch,
+  };
+}
+
+export function legacySessionSnapshot(
+  page: PaginatedSessions,
+  serverEpoch: string,
+  sequence = 0,
+): WebStateSnapshotV1 {
+  return {
+    schema_version: 1,
+    projection_version: 1,
+    server_epoch: serverEpoch,
+    sequence,
+    timestamp: Date.now() / 1000,
+    shells: page.sessions.slice(0, 50),
+    detail: null,
+    limits: { sessions: 50, messages: 200, detail_idle_ttl_ms: DETAIL_IDLE_TTL_MS },
   };
 }
 
@@ -71,7 +126,8 @@ export function sequenceDecision(
     || event.server_epoch !== cursor.serverEpoch
   ) return "snapshot";
   if (event.sequence <= cursor.sequence) return "duplicate";
-  if (event.sequence !== cursor.sequence + 1) return "gap";
+  const sequenceStart = event.sequence_start ?? event.sequence;
+  if (sequenceStart !== cursor.sequence + 1) return "gap";
   return "apply";
 }
 

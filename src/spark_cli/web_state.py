@@ -53,6 +53,13 @@ def validate_web_event_envelope(value: Any) -> dict[str, Any]:
         raise ValueError("unsupported web state projection version")
     if value["sequence"] < 1 or not value["topic"]:
         raise ValueError("event topic and positive sequence are required")
+    sequence_start = value.get("sequence_start")
+    if sequence_start is not None and (
+        not isinstance(sequence_start, int)
+        or sequence_start < 1
+        or sequence_start > value["sequence"]
+    ):
+        raise ValueError("invalid web event field: sequence_start")
     return value
 
 

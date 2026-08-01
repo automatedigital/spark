@@ -17,4 +17,13 @@ describe("healthy push transport", () => {
     expect(source.match(/window\.setInterval/g)).toHaveLength(1);
     expect(source).toContain("Date.now() - this.lastEventAt < STALE_AFTER_MS");
   });
+
+  it("hydrates a new document before using any retained resume cursor", () => {
+    const source = fs.readFileSync(path.resolve(import.meta.dirname, "../hooks/useEventBus.ts"), "utf8");
+    const bootstrap = source.slice(source.indexOf("private bootstrap"), source.indexOf("private fetchSnapshot"));
+    expect(source).toContain("private cursor: Cursor | null = null");
+    expect(source).not.toContain("readCursor()");
+    expect(bootstrap).toContain("await this.fetchSnapshot()");
+    expect(bootstrap).not.toContain("fetchDeltas()");
+  });
 });

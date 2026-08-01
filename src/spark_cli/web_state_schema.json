@@ -8,6 +8,7 @@
     "topic": {"type": "string", "minLength": 1},
     "entity_id": {"type": ["string", "null"]},
     "sequence": {"type": "integer", "minimum": 1},
+    "sequence_start": {"type": "integer", "minimum": 1},
     "projection_version": {"const": 1},
     "timestamp": {"type": "number"},
     "payload": {"type": "object"},

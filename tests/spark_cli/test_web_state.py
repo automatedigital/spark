@@ -47,6 +47,15 @@ def test_runtime_validation_rejects_contract_drift(field, value):
         validate_web_event_envelope(event)
 
 
+def test_runtime_validation_accepts_a_valid_coalesced_sequence_range():
+    event = WebStateJournal(server_epoch="test").append("chat.token", {"t": "ab"}, "s1")
+    event["sequence_start"] = event["sequence"]
+    assert validate_web_event_envelope(event) is event
+    event["sequence_start"] = event["sequence"] + 1
+    with pytest.raises(ValueError):
+        validate_web_event_envelope(event)
+
+
 def test_resume_is_ordered_and_filters_selected_detail():
     journal = WebStateJournal(server_epoch="epoch")
     first = journal.append("sessions.changed", {"n": 1}, "s1")
