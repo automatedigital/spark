@@ -959,11 +959,13 @@ configurable; explicit user verbosity always wins.
 - [x] **GATE-07 - Validate the packaged Windows beta.** Repeat the same flows in
   the actual `Spark.exe` build, including native terminal/file/preview behavior
   and sleep/wake/reconnect.
-  **Evidence:** native workflow run `30714505055` passed on exact main commit
-  `fb528026`. The unsigned 1.3.31 package passed Windows-native file, terminal,
-  preview, first-token, tool-event, SSE, hydration, process-tree suspend/resume
-  with stable backend identity, and full restart/persistence checks. The sleep
-  coverage is explicitly a CI process-tree simulation, not literal OS sleep.
+  **Evidence:** native workflow run `30714988411` passed at exact clean replay
+  commit `4f380488`. Initial launch-to-ready measured 19.548 seconds and full
+  relaunch-to-ready 3.229 seconds. The unsigned 1.3.31 package passed
+  Windows-native file, terminal, preview, first-token, tool-event, SSE,
+  hydration, process-tree suspend/resume with stable backend identity, and full
+  restart/persistence checks. Sleep coverage is explicitly a CI process-tree
+  simulation, not literal OS sleep.
 
 - [x] **GATE-08 - Review generated output and release scope.** Rebuild
   `src/spark_cli/web_dist/` once after source acceptance, verify every manifest
