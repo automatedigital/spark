@@ -36,7 +36,10 @@ import threading
 import uuid
 from typing import Dict, Any, Optional, Union
 from urllib.parse import urlencode
-import fal_client
+try:
+    import fal_client
+except ImportError:  # Optional image extra; schema discovery must still work.
+    fal_client = None
 from tools.debug_helpers import DebugSession
 from tools.managed_tool_gateway import resolve_managed_tool_gateway
 
@@ -663,6 +666,11 @@ IMAGE_GENERATE_SCHEMA = {
 
 
 def _handle_image_generate(args, **kw):
+    if fal_client is None:
+        return tool_error(
+            "image_generate requires the optional 'fal_client' dependency; "
+            "install Spark with the 'image' extra"
+        )
     prompt = args.get("prompt", "")
     if not prompt:
         return tool_error("prompt is required for image generation")

@@ -14,6 +14,7 @@ Import chain (circular-import safe):
     run_agent.py, cli.py, batch_runner.py, etc.
 """
 
+import importlib
 import json
 import logging
 import threading
@@ -30,14 +31,14 @@ class ToolEntry:
     __slots__ = (
         "name", "toolset", "schema", "handler", "check_fn",
         "requires_env", "is_async", "description", "emoji",
-        "max_result_size_chars", "normalize", "screen",
-        "effects",
+        "max_result_size_chars", "normalize", "screen", "handler_module",
+        "check_spec", "extra", "effects",
     )
 
     def __init__(self, name, toolset, schema, handler, check_fn,
                  requires_env, is_async, description, emoji,
                  max_result_size_chars=None, normalize=True, screen=True,
-                 effects=None):
+                 handler_module=None, check_spec=None, extra=None, effects=None):
         self.name = name
         self.toolset = toolset
         self.schema = schema
@@ -50,6 +51,9 @@ class ToolEntry:
         self.max_result_size_chars = max_result_size_chars
         self.normalize = normalize
         self.screen = screen
+        self.handler_module = handler_module
+        self.check_spec = check_spec
+        self.extra = extra
         self.effects = effects or infer_tool_effects(name, toolset)
 
 
@@ -63,6 +67,8 @@ class ToolRegistry:
         # reading tool metadata, so keep mutations serialized and readers on
         # stable snapshots.
         self._lock = threading.RLock()
+        self._module_locks: dict[str, threading.Lock] = {}
+        self._module_load_counts: dict[str, int] = {}
 
     def _snapshot_state(self) -> tuple[list[ToolEntry], dict[str, Callable]]:
         """Return a coherent snapshot of registry entries and toolset checks."""
@@ -145,10 +151,90 @@ class ToolRegistry:
                 max_result_size_chars=max_result_size_chars,
                 normalize=normalize,
                 screen=screen,
+                handler_module=getattr(handler, "__module__", None),
                 effects=effects,
             )
             if check_fn and toolset not in self._toolset_checks:
                 self._toolset_checks[toolset] = check_fn
+
+    def register_manifest(self, entries: list[dict]) -> None:
+        """Register schema-only built-ins without importing their handlers.
+
+        A real module registration always wins. This makes the operation safe
+        when a feature module was imported directly before ``model_tools``.
+        """
+        with self._lock:
+            for item in entries:
+                existing = self._tools.get(item["name"])
+                if existing is not None and existing.handler is not None:
+                    continue
+                max_size = item.get("max_result_size_chars")
+                if max_size == "infinity":
+                    max_size = float("inf")
+                self._tools[item["name"]] = ToolEntry(
+                    name=item["name"],
+                    toolset=item["toolset"],
+                    schema=item["schema"],
+                    handler=None,
+                    check_fn=None,
+                    requires_env=item.get("requires_env") or [],
+                    is_async=bool(item.get("is_async")),
+                    description=item.get("description") or item["schema"].get("description", ""),
+                    emoji=item.get("emoji") or "",
+                    max_result_size_chars=max_size,
+                    normalize=item.get("normalize", True),
+                    screen=item.get("screen", True),
+                    handler_module=item["handler_module"],
+                    check_spec=item.get("check_spec"),
+                    extra=item.get("extra"),
+                )
+
+    def _entry_available(self, entry: ToolEntry) -> bool:
+        if entry.check_fn is not None:
+            return self._evaluate_toolset_check(entry.toolset, entry.check_fn)
+        if entry.check_spec:
+            from tools.lazy_availability import evaluate_check
+
+            return evaluate_check(entry.check_spec, entry.requires_env)
+        return True
+
+    def _load_handler(self, name: str) -> ToolEntry:
+        """Load one built-in handler module exactly once, safely across threads."""
+        entry = self.get_entry(name)
+        if entry is None:
+            raise LookupError(f"Unknown tool: {name}")
+        if entry.handler is not None:
+            return entry
+        module_name = entry.handler_module
+        if not module_name:
+            raise RuntimeError(f"Tool {name!r} has no handler module in the manifest")
+        with self._lock:
+            module_lock = self._module_locks.setdefault(module_name, threading.Lock())
+        with module_lock:
+            current = self.get_entry(name)
+            if current is not None and current.handler is not None:
+                return current
+            try:
+                importlib.import_module(module_name)
+            except ModuleNotFoundError as exc:
+                missing = exc.name or "an optional dependency"
+                extra = f" Install Spark with the {entry.extra!r} extra." if entry.extra else ""
+                raise RuntimeError(
+                    f"Tool {name!r} requires optional dependency {missing!r}.{extra}"
+                ) from exc
+            with self._lock:
+                self._module_load_counts[module_name] = self._module_load_counts.get(module_name, 0) + 1
+            loaded = self.get_entry(name)
+            if loaded is None or loaded.handler is None:
+                raise RuntimeError(
+                    f"Handler module {module_name!r} did not register manifest tool {name!r}"
+                )
+            return loaded
+
+    def get_module_load_count(self, module_name: str) -> int:
+        """Return successful first-use imports; exposed for diagnostics/tests."""
+        with self._lock:
+            return self._module_load_counts.get(module_name, 0)
 
     def deregister(self, name: str) -> None:
         """Remove a tool from the registry.
@@ -197,6 +283,10 @@ class ToolRegistry:
                     if not quiet:
                         logger.debug("Tool %s unavailable (check failed)", name)
                     continue
+            elif entry.check_spec and not self._entry_available(entry):
+                if not quiet:
+                    logger.debug("Tool %s unavailable (manifest check failed)", name)
+                continue
             # Ensure schema always has a "name" field — use entry.name as fallback
             schema_with_name = {**entry.schema, "name": entry.name}
             result.append({"type": "function", "function": schema_with_name})
@@ -219,6 +309,8 @@ class ToolRegistry:
         if not entry:
             return json.dumps({"error": f"Unknown tool: {name}"})
         try:
+            if entry.handler is None:
+                entry = self._load_handler(name)
             if entry.is_async:
                 from core.model_tools import _run_async
                 raw = _run_async(entry.handler(args, **kwargs))
@@ -302,14 +394,21 @@ class ToolRegistry:
         """
         with self._lock:
             check = self._toolset_checks.get(toolset)
-        return self._evaluate_toolset_check(toolset, check)
+            entries = [entry for entry in self._tools.values() if entry.toolset == toolset]
+        if check is not None:
+            return self._evaluate_toolset_check(toolset, check)
+        return any(self._entry_available(entry) for entry in entries)
 
     def check_toolset_requirements(self) -> dict[str, bool]:
         """Return ``{toolset: available_bool}`` for every toolset."""
         entries, toolset_checks = self._snapshot_state()
         toolsets = sorted({entry.toolset for entry in entries})
         return {
-            toolset: self._evaluate_toolset_check(toolset, toolset_checks.get(toolset))
+            toolset: (
+                self._evaluate_toolset_check(toolset, toolset_checks.get(toolset))
+                if toolset_checks.get(toolset) is not None
+                else any(self._entry_available(entry) for entry in entries if entry.toolset == toolset)
+            )
             for toolset in toolsets
         }
 
@@ -321,8 +420,10 @@ class ToolRegistry:
             ts = entry.toolset
             if ts not in toolsets:
                 toolsets[ts] = {
-                    "available": self._evaluate_toolset_check(
-                        ts, toolset_checks.get(ts)
+                    "available": (
+                        self._evaluate_toolset_check(ts, toolset_checks.get(ts))
+                        if toolset_checks.get(ts) is not None
+                        else self._entry_available(entry)
                     ),
                     "tools": [],
                     "description": "",
@@ -358,7 +459,7 @@ class ToolRegistry:
 
     def check_tool_availability(self, quiet: bool = False):
         """Return (available_toolsets, unavailable_info) like the old function."""
-        available = []
+        available_toolsets = []
         unavailable = []
         seen = set()
         entries, toolset_checks = self._snapshot_state()
@@ -367,15 +468,20 @@ class ToolRegistry:
             if ts in seen:
                 continue
             seen.add(ts)
-            if self._evaluate_toolset_check(ts, toolset_checks.get(ts)):
-                available.append(ts)
+            is_available = (
+                self._evaluate_toolset_check(ts, toolset_checks.get(ts))
+                if toolset_checks.get(ts) is not None
+                else any(self._entry_available(e) for e in entries if e.toolset == ts)
+            )
+            if is_available:
+                available_toolsets.append(ts)
             else:
                 unavailable.append({
                     "name": ts,
                     "env_vars": entry.requires_env,
                     "tools": [e.name for e in entries if e.toolset == ts],
                 })
-        return available, unavailable
+        return available_toolsets, unavailable
 
 
 # Module-level singleton
@@ -489,7 +595,7 @@ def _post_process(name: str, entry: "ToolEntry", raw: str, args: dict | None) ->
 
     if entry.screen and _pipeline_settings.injection_mode != "off":
         try:
-            from tools.injection_guard import screen_tool_output, blocked_stub
+            from tools.injection_guard import blocked_stub, screen_tool_output
             text, decision = screen_tool_output(
                 text, name,
                 block_threshold=_pipeline_settings.block_threshold,

@@ -22,10 +22,11 @@ Public API (signatures preserved from the original 2,400-line version):
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+import threading
+from typing import Any, Dict, List, Optional, Tuple
 
-from tools.registry import registry
 from core.toolsets import resolve_toolset, validate_toolset
+from tools.registry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -63,55 +64,15 @@ def _run_async(coro):
 
 
 # =============================================================================
-# Tool Discovery  (importing each module triggers its registry.register calls)
+# Tool discovery
 # =============================================================================
 
-def _discover_tools():
-    """Import all tool modules to trigger their registry.register() calls.
+# Schemas and routing metadata are generated from isolated handler imports in
+# development. Runtime startup loads only this data; registry.dispatch imports
+# the owning module on the first invocation of that tool.
+from tools.generated_manifest import BUILTIN_TOOL_MANIFEST
 
-    Wrapped in a function so import errors in optional tools (e.g., fal_client
-    not installed) don't prevent the rest from loading.
-    """
-    _modules = [
-        "tools.web_tools",
-        "tools.terminal_tool",
-        "tools.file_tools",
-        "tools.artifact_tool",
-        "tools.vision_tools",
-        "tools.mixture_of_agents_tool",
-        "tools.image_generation_tool",
-        "tools.skills_tool",
-        "tools.skill_manager_tool",
-        "tools.browser_tool",
-        "tools.preview_tool",
-        "tools.canvas_tool",
-        "tools.cronjob_tools",
-        "tools.rl_training_tool",
-        "tools.tts_tool",
-        "tools.todo_tool",
-        "tools.memory_tool",
-        "tools.session_search_tool",
-        "tools.clarify_tool",
-        "tools.code_execution_tool",
-        "tools.delegate_tool",
-        "tools.process_registry",
-        "tools.send_message_tool",
-        "tools.kanban_tool",
-        # "tools.honcho_tools",  # Removed — Honcho is now a memory provider plugin
-        "tools.homeassistant_tool",
-        "tools.computer_use.tool",
-        "tools.google_tools",
-        "tools.connectors_tool",
-    ]
-    import importlib
-    for mod_name in _modules:
-        try:
-            importlib.import_module(mod_name)
-        except Exception as e:
-            logger.warning("Could not import tool module %s: %s", mod_name, e)
-
-
-_discover_tools()
+registry.register_manifest(BUILTIN_TOOL_MANIFEST)
 
 
 def _has_configured_mcp_servers() -> bool:
@@ -133,23 +94,48 @@ def _has_configured_mcp_servers() -> bool:
         return False
 
 
-# MCP tool discovery (external MCP servers from config).  Keep the SDK lazy for
-# the common unconfigured case; tools.mcp_tool remains the source of truth for
-# configured profiles and direct ACP registration.
-if _has_configured_mcp_servers():
+_dynamic_discovery_lock = threading.Lock()
+_dynamic_discovery_complete = False
+_mcp_discovered = False
+
+
+def _discover_configured_mcp() -> None:
+    """Preserve eager discovery only for profiles that explicitly configure MCP."""
+    global _mcp_discovered
+    if _mcp_discovered or not _has_configured_mcp_servers():
+        return
     try:
         from tools.mcp_tool import discover_mcp_tools
 
         discover_mcp_tools()
-    except Exception as e:
-        logger.debug("MCP tool discovery failed: %s", e)
+    except Exception as exc:
+        logger.debug("MCP tool discovery failed: %s", exc)
+    _mcp_discovered = True
 
-# Plugin tool discovery (user/project/pip plugins)
-try:
-    from spark_cli.plugins import discover_plugins
-    discover_plugins()
-except Exception as e:
-    logger.debug("Plugin discovery failed: %s", e)
+
+_discover_configured_mcp()
+
+
+def _ensure_dynamic_tools_discovered() -> None:
+    """Discover configured MCP and plugin tools at the schema/dispatch boundary."""
+    global _dynamic_discovery_complete
+    if _dynamic_discovery_complete:
+        return
+    with _dynamic_discovery_lock:
+        if _dynamic_discovery_complete:
+            return
+        _discover_configured_mcp()
+        try:
+            from spark_cli.plugins import discover_plugins
+
+            discover_plugins()
+        except Exception as exc:
+            logger.debug("Plugin discovery failed: %s", exc)
+        TOOL_TO_TOOLSET_MAP.clear()
+        TOOL_TO_TOOLSET_MAP.update(registry.get_tool_to_toolset_map())
+        TOOLSET_REQUIREMENTS.clear()
+        TOOLSET_REQUIREMENTS.update(registry.get_toolset_requirements())
+        _dynamic_discovery_complete = True
 
 
 # =============================================================================
@@ -217,6 +203,7 @@ def get_tool_definitions(
     Returns:
         Filtered list of OpenAI-format tool definitions.
     """
+    _ensure_dynamic_tools_discovered()
     # Determine which tool names the caller wants
     tools_to_include: set = set()
 
@@ -277,19 +264,25 @@ def get_tool_definitions(
     for i, td in enumerate(filtered_tools):
         if td.get("function", {}).get("name") != "terminal":
             continue
-        try:
-            from tools.terminal_tool import _terminal_tool_description
+        import sys
 
-            terminal_fn = td["function"]
-            filtered_tools[i] = {
-                "type": td.get("type", "function"),
-                "function": {
-                    **terminal_fn,
-                    "description": _terminal_tool_description(),
-                },
-            }
-        except Exception:
-            logger.debug("Could not build dynamic terminal description", exc_info=True)
+        from core.run_agent.schema_overrides import terminal_description
+
+        terminal_fn = td["function"]
+        terminal_module = sys.modules.get("tools.terminal_tool")
+        description_builder = getattr(terminal_module, "_terminal_tool_description", None)
+        description = (
+            description_builder()
+            if callable(description_builder)
+            else terminal_description(terminal_fn.get("description", ""))
+        )
+        filtered_tools[i] = {
+            "type": td.get("type", "function"),
+            "function": {
+                **terminal_fn,
+                "description": description,
+            },
+        }
         break
 
     # The set of tool names that actually passed check_fn filtering.
@@ -303,7 +296,7 @@ def get_tool_definitions(
     # execute_code" even when the API key isn't configured or the toolset is
     # disabled (#560-discord).
     if "execute_code" in available_tool_names:
-        from tools.code_execution_tool import SANDBOX_ALLOWED_TOOLS, build_execute_code_schema
+        from core.run_agent.schema_overrides import SANDBOX_ALLOWED_TOOLS, build_execute_code_schema
         sandbox_enabled = SANDBOX_ALLOWED_TOOLS & available_tool_names
         dynamic_schema = build_execute_code_schema(sandbox_enabled)
         for i, td in enumerate(filtered_tools):
@@ -515,6 +508,7 @@ def handle_function_call(
     Returns:
         Function result as a JSON string.
     """
+    _ensure_dynamic_tools_discovered()
     # New model requests use compact facades; old saved transcripts and API
     # callers continue to use legacy names.  Normalize both to the registered
     # handler before hooks, coercion, budgeting, and dispatch.
