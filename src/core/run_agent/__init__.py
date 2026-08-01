@@ -36,11 +36,14 @@ import time
 import threading
 from types import SimpleNamespace
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
+
+if TYPE_CHECKING:
+    from agent.rate_limit_tracker import RateLimitState
 
 
 def OpenAI(*args, **kwargs):

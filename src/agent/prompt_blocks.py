@@ -8,6 +8,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from agent.model_metadata import estimate_tokens_rough
 
@@ -204,7 +205,7 @@ def anthropic_system_segments(
     for segment in bundle.segments:
         if not segment.content:
             continue
-        block = {"type": "text", "text": segment.content}
+        block: dict[str, Any] = {"type": "text", "text": segment.content}
         if segment.name != "session":
             block["cache_control"] = dict(marker)
         content.append(block)

@@ -204,8 +204,9 @@ class AsyncRuntime:
     ) -> T:
         """Run an awaitable from synchronous code with cancellation polling."""
         if threading.current_thread() is self._thread:
-            if hasattr(awaitable, "close"):
-                awaitable.close()  # type: ignore[attr-defined]
+            close = getattr(awaitable, "close", None)
+            if callable(close):
+                close()
             raise RuntimeError("cannot synchronously wait from the async runtime thread")
         future = self.submit(awaitable)
         deadline = None if timeout is None else time.monotonic() + timeout

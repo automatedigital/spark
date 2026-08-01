@@ -111,7 +111,7 @@ def search_content(content: str, query: str, limit: int = 20, context: int = 120
         return {"matches": [], "total_matches": 0, "content_hash": content_hash(content)}
     lower_content = content.casefold()
     needle = query.casefold()
-    matches = []
+    matches: list[dict[str, int | str]] = []
     cursor = 0
     max_matches = min(max(1, int(limit)), 100)
     radius = min(max(0, int(context)), 1_000)

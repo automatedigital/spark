@@ -34,7 +34,7 @@ def validate_web_event_envelope(value: Any) -> dict[str, Any]:
     """Validate and return a v1 envelope without importing a schema SDK."""
     if not isinstance(value, dict):
         raise ValueError("event envelope must be an object")
-    required = {
+    required: dict[str, type[Any] | tuple[type[Any], ...]] = {
         "schema_version": int,
         "topic": str,
         "entity_id": (str, type(None)),
