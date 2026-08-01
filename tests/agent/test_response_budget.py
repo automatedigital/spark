@@ -85,6 +85,18 @@ def test_agent_consumes_internal_budget_fields_without_sending_them():
     assert agent._effective_reasoning_config()["effort"] == "high"
 
 
+def test_turn_local_response_contract_does_not_mutate_history():
+    from core.run_agent import AIAgent
+
+    agent = object.__new__(AIAgent)
+    agent._request_class = "direct_answer"
+    messages = [{"role": "user", "content": "Explain latency."}]
+    prepared = agent._apply_response_contract(messages)
+
+    assert messages == [{"role": "user", "content": "Explain latency."}]
+    assert "at most 60 words" in prepared[0]["content"]
+
+
 def test_response_style_and_caps_are_independently_configurable():
     from spark_cli.config import DEFAULT_CONFIG
 

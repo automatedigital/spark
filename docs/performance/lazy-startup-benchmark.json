@@ -1,7 +1,7 @@
 {
   "benchmark": "fresh-process import core.run_agent",
   "date": "2026-08-01",
-  "python": "/Users/joe/Developer/github/spark/.venv/bin/python",
+  "python": "CPython 3.11.15 (project virtual environment)",
   "host": "same macOS host and virtual environment",
   "baseline": {
     "commit": "43f2f9c4",

@@ -888,10 +888,14 @@ concision model, not as a hard global short-answer rule.
   compare cost, latency, tool success, fallback frequency, and user-visible model
   label. No request silently loses a required capability.
   **Evidence for EFF-10-01 through EFF-10-V4:** the deterministic nine-class
-  envelope, action-first prompt block, capability/risk router, safe soft caps,
-  and blinded resumable harness pass 13 exception cases. Direct/progress median
-  output fell 42.5 to 7 tokens (83.53%) with zero steering turns or blockers,
-  correctness/safety 5.0, weighted score 4.9692 to 5.0, and 100% tool success.
+  envelope, action-first prompt block, turn-local compactness contract,
+  capability/risk router, safe soft caps, and blinded resumable policy fixture
+  pass 13 exception cases. The deterministic fixture fell 42.5 to 7 tokens
+  (83.53%). A provider-reconciled same-model `gpt-5.6-luna` A/B then reduced
+  median output from 245 to 68 tokens (72.24%) and visible words from 182 to 47
+  (74.18%); all three candidate answers were manually reviewed as correct,
+  complete, and requiring no follow-up. Raw A/B counters are in
+  `docs/performance/response-live-ab-v1.json`.
 
 **Rollback boundary:** response mode and adaptive routing are separately
 configurable; explicit user verbosity always wins.

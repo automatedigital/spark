@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -41,7 +42,7 @@ class DesktopClient:
         path: str,
         *,
         body: dict[str, Any] | None = None,
-        query: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
     ) -> Any:
         url = f"{self.base_url}{path}"
         if query:
@@ -63,6 +64,30 @@ class DesktopClient:
         if "application/json" in content_type:
             return json.loads(payload)
         return payload.decode("utf-8", errors="replace")
+
+    def sse_until(
+        self,
+        path: str,
+        *,
+        query: dict[str, Any],
+        stop_topic: str,
+    ) -> list[dict[str, Any]]:
+        """Read one bounded SSE connection until the expected topic arrives."""
+        url = f"{self.base_url}{path}?{urllib.parse.urlencode(query)}"
+        request = urllib.request.Request(url, headers={"Accept": "text/event-stream"})
+        events: list[dict[str, Any]] = []
+        deadline = time.monotonic() + self.timeout
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            while time.monotonic() < deadline:
+                line = response.readline().decode("utf-8", errors="replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                payload = json.loads(line[5:].strip())
+                if isinstance(payload, dict):
+                    events.append(payload)
+                    if payload.get("topic") == stop_topic:
+                        return events
+        raise RuntimeError(f"SSE stream did not produce {stop_topic}")
 
 
 def _timed(report: AcceptanceReport, name: str, operation, **details: Any) -> Any:
@@ -194,6 +219,127 @@ def _verify_preview(client: DesktopClient, report: AcceptanceReport, slug: str) 
     )
 
 
+def _verify_packaged_chat(client: DesktopClient, report: AcceptanceReport, slug: str) -> None:
+    """Exercise packaged chat, tool events, SSE resume, and state hydration."""
+    initial = client.request("GET", "/api/web-state/snapshot")
+    session_id = f"desktop-acceptance-{int(time.time() * 1000)}"
+    cursor = int(initial["sequence"])
+    epoch = str(initial["server_epoch"])
+    query = {
+        "topics": "sessions,chat",
+        "session_id": session_id,
+        "detail_session_id": session_id,
+        "after_sequence": cursor,
+        "projection_version": int(initial["projection_version"]),
+        "server_epoch": epoch,
+    }
+    first_events: list[dict[str, Any]] = []
+    first_error: list[BaseException] = []
+
+    def _read_first_token() -> None:
+        try:
+            first_events.extend(
+                client.sse_until("/api/events", query=query, stop_topic="chat.token")
+            )
+        except BaseException as exc:  # propagated after the reader joins
+            first_error.append(exc)
+
+    reader = threading.Thread(target=_read_first_token, daemon=True)
+    reader.start()
+    started = time.perf_counter()
+    response = client.request(
+        "POST",
+        "/api/dev/fake-streams",
+        body={
+            "session_id": session_id,
+            "title": session_id,
+            "source": f"workspace:{slug}",
+            "message": "Verify packaged chat and tool streaming",
+            "events": [
+                {"type": "token", "text": "Packaged ", "delay_ms": 100},
+                {
+                    "type": "tool_start",
+                    "tool_call_id": "packaged_tool_1",
+                    "name": "read_file",
+                    "args": {"path": "resume-marker.txt"},
+                    "delay_ms": 100,
+                },
+                {
+                    "type": "tool_end",
+                    "tool_call_id": "packaged_tool_1",
+                    "name": "read_file",
+                    "result": {"content": "persisted-ok"},
+                    "delay_ms": 100,
+                },
+                {"type": "token", "text": "chat verified", "delay_ms": 100},
+            ],
+        },
+    )
+    if response.get("session_id") != session_id:
+        raise RuntimeError(f"packaged fake chat did not start: {response!r}")
+    reader.join(timeout=client.timeout)
+    if first_error:
+        raise RuntimeError(f"initial packaged SSE failed: {first_error[0]}")
+    if reader.is_alive() or not first_events:
+        raise RuntimeError("packaged SSE did not deliver a first token")
+    first_token_seconds = time.perf_counter() - started
+    token_event = first_events[-1]
+    token_sequence = int(token_event["sequence"])
+    report.record(
+        "chat.first_token",
+        seconds=first_token_seconds,
+        session_id=session_id,
+        sequence=token_sequence,
+    )
+
+    deadline = time.monotonic() + client.timeout
+    while time.monotonic() < deadline:
+        status = client.request("GET", f"/api/conversations/{session_id}/turn-status")
+        if not status.get("turn_active"):
+            break
+        time.sleep(0.05)
+    else:
+        raise RuntimeError("packaged chat did not settle")
+
+    resumed = _timed(
+        report,
+        "chat.sse_resume",
+        lambda: client.sse_until(
+            "/api/events",
+            query={**query, "after_sequence": token_sequence},
+            stop_topic="chat.turn_done",
+        ),
+    )
+    resumed_topics = {str(event.get("topic")) for event in resumed}
+    required_topics = {"chat.tool_start", "chat.tool_end", "chat.turn_done"}
+    if not required_topics.issubset(resumed_topics):
+        raise RuntimeError(f"packaged SSE resume missed events: {resumed_topics!r}")
+
+    hydrated = _timed(
+        report,
+        "chat.web_state_hydration",
+        lambda: client.request(
+            "GET",
+            "/api/web-state/snapshot",
+            query={"selected_session_id": session_id},
+        ),
+    )
+    detail = hydrated.get("detail") or {}
+    messages = detail.get("messages") or []
+    assistant_text = "".join(
+        str(message.get("content") or "")
+        for message in messages
+        if message.get("role") == "assistant"
+    )
+    if assistant_text != "Packaged chat verified":
+        raise RuntimeError(f"packaged chat hydration mismatch: {assistant_text!r}")
+    report.record(
+        "chat.tool_events",
+        seconds=0.0,
+        topics=sorted(required_topics),
+    )
+
+
 def run_acceptance(
     base_url: str,
     phase: str,
@@ -214,6 +360,7 @@ def run_acceptance(
         _write_and_read(client, report, project_slug, "resume-marker.txt", "persisted-ok")
         _verify_terminal(client, report, project_slug, platform_name)
         _verify_preview(client, report, project_slug)
+        _verify_packaged_chat(client, report, project_slug)
     if phase in {"resume", "all"}:
         persisted = _timed(
             report,

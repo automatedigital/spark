@@ -7191,10 +7191,10 @@ def _create_fake_stream_session(
 
         db = SessionDB()
         try:
+            db.create_session(session_id, source=source, model=model)
             db._conn.execute(
-                "INSERT OR IGNORE INTO sessions (id, source, model, title, started_at, kanban_status) "
-                "VALUES (?, ?, ?, ?, ?, 'active')",
-                (session_id, source, model, title, time.time()),
+                "UPDATE sessions SET title = ?, kanban_status = 'active' WHERE id = ?",
+                (title, session_id),
             )
             db._conn.commit()
             return db.get_session(session_id)
@@ -9272,8 +9272,9 @@ async def create_fake_stream(body: FakeStreamStart, request: Request):
         model=body.model or "fake-stream",
         title=(body.title or body.message[:80] or "Fake stream"),
     )
-    if row:
-        _emit_sessions_changed("created", session_id, row)
+    if not row:
+        raise HTTPException(status_code=500, detail="Unable to create fake stream session")
+    _emit_sessions_changed("created", session_id, row)
 
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue

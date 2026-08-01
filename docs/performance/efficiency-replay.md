@@ -56,13 +56,21 @@ injected-context tokens. Provider cache-read and cache-write counters are
 implemented, but the hermetic fixture provider does not exercise a real
 provider cache, so this replay makes no cache-hit-rate claim.
 
-The response-efficiency evaluation scored 39 baseline and 39 candidate rows
-with the same pinned fixture model. Median output fell from 42.5 to 7.0 tokens,
-an 83.53% reduction. Candidate correctness, autonomy, actionability, safety,
-and concision each scored 5.0; weighted quality improved from 4.9692 to 5.0,
-with no blocking findings and no follow-up turns. Both conditions had 100% tool
-success, zero fallbacks, 1 ms median routing latency, and reported cost of
-$0.00. The release decision passed.
+The response-efficiency policy fixture scored 39 baseline and 39 candidate
+rows. Median fixture output fell from 42.5 to 7.0 tokens, an 83.53% reduction.
+This deterministic fixture validates response contracts and exceptions; it is
+not presented as observed provider output. Candidate correctness, autonomy,
+actionability, safety, and concision each scored 5.0; weighted quality improved
+from 4.9692 to 5.0, with no blocking findings or follow-up turns.
+
+A provider-reconciled A/B then exercised Spark's assembled prompt, turn-local
+response contract, Codex Responses payload, and output accounting with
+`gpt-5.6-luna`, low reasoning, no tools, and isolated context. With the feature
+disabled versus enabled, median output fell from 245 to 68 tokens (72.24%) and
+median visible words fell from 182 to 47 (74.18%). All three candidate answers
+were manually reviewed as correct and complete. The contract added roughly 170
+input tokens to these deliberately cold, single-turn agents; its static prompt
+portion is cacheable in normal sessions.
 
 ## Scheduler and shared runtime
 
@@ -111,6 +119,7 @@ never exceeded viewport width.
 - Raw baseline: `tests/efficiency/fixtures/baseline-v1.json`
 - Raw candidate: `docs/performance/efficiency-candidate-v1.json`
 - Response evaluation: `evals/response_efficiency/results/fixture-summary.json`
+- Live provider A/B: `docs/performance/response-live-ab-v1.json`
 - Scheduler/runtime: `docs/performance/scheduler-runtime-benchmark.json`
 - Lazy startup: `docs/performance/lazy-startup-benchmark.json`
 - Ordered persistence: `docs/performance/session-events.md`

@@ -308,6 +308,33 @@ class AIAgent(_PromptCacheMixin):
             return {"enabled": True, "effort": effort}
         return None
 
+    def _apply_response_contract(self, api_messages: list) -> list:
+        """Add a turn-local compactness contract without mutating persisted history."""
+        contracts = {
+            "direct_answer": (
+                "Response constraint: answer in at most 60 words unless more detail is "
+                "required for correctness or safety."
+            ),
+            "status_progress": (
+                "Response constraint: give at most two short bullets unless more detail "
+                "is required for correctness or safety."
+            ),
+        }
+        contract = contracts.get(self._request_class)
+        if not contract:
+            return api_messages
+        prepared = copy.deepcopy(api_messages)
+        for message in reversed(prepared):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                message["content"] = f"{content}\n\n[{contract}]"
+            elif isinstance(content, list):
+                content.append({"type": "text", "text": f"[{contract}]"})
+            break
+        return prepared
+
     def __init__(
         self,
         base_url: str = None,
@@ -5871,6 +5898,7 @@ class AIAgent(_PromptCacheMixin):
     def _build_api_kwargs(self, api_messages: list) -> dict:
         """Build the keyword arguments dict for the active API mode."""
         self._assert_tool_surface_stable()
+        api_messages = self._apply_response_contract(api_messages)
         if self.api_mode == "anthropic_messages":
             from agent.anthropic_adapter import build_anthropic_kwargs
             anthropic_messages = self._prepare_anthropic_messages_for_api(api_messages)

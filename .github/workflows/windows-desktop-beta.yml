@@ -49,6 +49,7 @@ jobs:
           $SmokeHome = Join-Path $env:RUNNER_TEMP "spark-packaged-acceptance"
           New-Item $SmokeHome -ItemType Directory -Force | Out-Null
           $env:SPARK_HOME = $SmokeHome
+          $env:SPARK_WEB_FAKE_STREAMS = "1"
 
           function Wait-SparkDesktop {
             param([string]$PreviousInstance = "")

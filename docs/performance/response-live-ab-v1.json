@@ -1,0 +1,30 @@
+{
+  "report_version": "1.0.0",
+  "date": "2026-08-01",
+  "provider": "openai-codex",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "low",
+  "tools": [],
+  "context": "isolated agents with context files and memory disabled",
+  "comparison": "same implementation with response-budget style and turn contract disabled versus enabled",
+  "baseline": [
+    {"case": "direct", "output_tokens": 270, "prompt_tokens": 688, "visible_words": 191},
+    {"case": "status", "output_tokens": 26, "prompt_tokens": 692, "visible_words": 17},
+    {"case": "direct2", "output_tokens": 245, "prompt_tokens": 685, "visible_words": 182}
+  ],
+  "candidate": [
+    {"case": "direct", "output_tokens": 86, "prompt_tokens": 862, "visible_words": 58},
+    {"case": "status", "output_tokens": 17, "prompt_tokens": 865, "visible_words": 10},
+    {"case": "direct2", "output_tokens": 68, "prompt_tokens": 859, "visible_words": 47}
+  ],
+  "summary": {
+    "baseline_median_output_tokens": 245,
+    "candidate_median_output_tokens": 68,
+    "median_output_token_reduction_percent": 72.24,
+    "baseline_median_visible_words": 182,
+    "candidate_median_visible_words": 47,
+    "median_visible_word_reduction_percent": 74.18,
+    "provider_usage_source": "provider",
+    "manual_quality_review": "all three candidate answers were correct, complete, within their direct or status contract, and required no follow-up"
+  }
+}
