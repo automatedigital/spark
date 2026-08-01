@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { SessionInfo } from "@/lib/api";
 import { threadTitle } from "@/components/chat/ThreadRow";
+import { sortSessionsNewestFirst } from "@/components/sidebar/sidebarRows";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -270,8 +271,12 @@ export function InboxSidebarSessions({
 
   // Inbox membership is a lifecycle choice, not a runtime status. Completed
   // and quiet threads remain full cards until the user explicitly settles them.
-  const active = visible.filter((session) => !settled[session.id]);
-  const settledSessions = visible.filter((session) => Boolean(settled[session.id]));
+  const active = sortSessionsNewestFirst(
+    visible.filter((session) => !settled[session.id]),
+  );
+  const settledSessions = sortSessionsNewestFirst(
+    visible.filter((session) => Boolean(settled[session.id])),
+  );
 
   const toggleSettled = (session: SessionInfo) => {
     setSettled((current) => {

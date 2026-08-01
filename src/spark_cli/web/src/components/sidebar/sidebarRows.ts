@@ -39,6 +39,18 @@ export interface BuildSidebarRowsOptions {
 }
 
 /**
+ * Keep activity lists newest-first even when live rows arrive out of order.
+ * Creation time breaks ordinary ties. Exact ties preserve the store's existing
+ * order because modern JavaScript sorting is stable.
+ */
+export function sortSessionsNewestFirst(sessions: SessionInfo[]): SessionInfo[] {
+  return [...sessions].sort((a, b) => (
+    b.last_active - a.last_active
+    || b.started_at - a.started_at
+  ));
+}
+
+/**
  * Build the complete logical sidebar as one flat list. Keeping hierarchy out
  * of React makes expansion, paging, SSE reordering, and virtualization
  * deterministic and independently testable.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo, WorkspaceProject } from "@/lib/api";
-import { buildSidebarRows } from "./sidebarRows";
+import { buildSidebarRows, sortSessionsNewestFirst } from "./sidebarRows";
 
 function session(id: string, source: string | null = "web"): SessionInfo {
   return {
@@ -31,6 +31,24 @@ const projects: WorkspaceProject[] = [{
 }];
 
 describe("buildSidebarRows", () => {
+  it("sorts inbox activity newest-first regardless of arrival order", () => {
+    const oldest = { ...session("message-1"), last_active: 100, started_at: 100 };
+    const newest = { ...session("message-3"), last_active: 300, started_at: 300 };
+    const middle = { ...session("message-2"), last_active: 200, started_at: 200 };
+
+    expect(sortSessionsNewestFirst([oldest, newest, middle]).map((row) => row.id))
+      .toEqual(["message-3", "message-2", "message-1"]);
+  });
+
+  it("uses creation time and preserves existing order for exact ties", () => {
+    const older = { ...session("a"), last_active: 300, started_at: 100 };
+    const newer = { ...session("b"), last_active: 300, started_at: 200 };
+    const sameTimeHigherId = { ...session("c"), last_active: 300, started_at: 200 };
+
+    expect(sortSessionsNewestFirst([older, newer, sameTimeHigherId]).map((row) => row.id))
+      .toEqual(["b", "c", "a"]);
+  });
+
   it("flattens pinned, project, and ungrouped sessions with stable unique keys", () => {
     const rows = buildSidebarRows({
       projects,
