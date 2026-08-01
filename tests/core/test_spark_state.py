@@ -328,6 +328,21 @@ class TestOrderedSessionEvents:
 # ---------------------------------------------------------------------------
 
 class TestSessionLifecycle:
+    def test_lifecycle_projection_and_events_share_transactions(self, db):
+        sid = _sid()
+        before_writes = db._write_count
+
+        db.create_session(sid, source="cli")
+        db.end_session(sid, end_reason="user_exit")
+        db.reopen_session(sid)
+
+        assert db._write_count - before_writes == 3
+        assert [event["event_type"] for event in db.get_session_events(sid)] == [
+            "session.started",
+            "session.ended",
+            "status.changed",
+        ]
+
     def test_create_and_get(self, db):
         sid = _sid()
         db.create_session(sid, source="cli", model="test/model")

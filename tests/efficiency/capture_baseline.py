@@ -62,7 +62,19 @@ def _import_ms(module: str) -> float:
         "-c",
         f"import importlib,time; s=time.perf_counter(); importlib.import_module({module!r}); print((time.perf_counter()-s)*1000)",
     ]
-    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=True)
+    env = os.environ.copy()
+    existing_path = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        f"{SRC}{os.pathsep}{existing_path}" if existing_path else str(SRC)
+    )
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
     return float(result.stdout.strip().splitlines()[-1])
 
 
@@ -131,6 +143,22 @@ def capture(trials: int = 3) -> dict:
         "fixture_version": manifest["fixture_version"],
         "pinned_runtime": manifest["pinned_runtime"],
         "trials_per_fixture": trials,
+        "source_commit": subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip(),
+        "source_dirty": bool(
+            subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout.strip()
+        ),
         "raw_trials": raw,
         "summary": summaries,
         "import_core_run_agent_ms": {

@@ -721,6 +721,8 @@ class SessionDB:
         parent_session_id: str = None,
     ) -> str:
         """Create a new session record. Returns the session_id."""
+        payload = {"source": source, "model": model, "parent_session_id": parent_session_id}
+
         def _do(conn):
             conn.execute(
                 """INSERT OR IGNORE INTO sessions (id, source, user_id, model, model_config,
@@ -737,43 +739,56 @@ class SessionDB:
                     time.time(),
                 ),
             )
-        self._execute_write(_do)
-        self.append_session_event(
-            session_id,
-            "session.started",
-            {"source": source, "model": model, "parent_session_id": parent_session_id},
-            idempotency_key="session.started",
-        )
+            return self._append_session_event_row(
+                conn, session_id, "session.started", payload, "session.started", time.time()
+            )
+
+        event, created = self._execute_write(_do)
+        if created:
+            self._publish_committed_events([event])
         return session_id
 
     def end_session(self, session_id: str, end_reason: str) -> None:
         """Mark a session as ended."""
+        timestamp = time.time()
+        payload = {"end_reason": end_reason}
+
         def _do(conn):
             conn.execute(
                 "UPDATE sessions SET ended_at = ?, end_reason = ? WHERE id = ?",
-                (time.time(), end_reason, session_id),
+                (timestamp, end_reason, session_id),
             )
-        self._execute_write(_do)
-        self.append_session_event(
-            session_id,
-            "session.ended",
-            {"end_reason": end_reason},
-            idempotency_key=f"session.ended:{end_reason}",
-        )
+            return self._append_session_event_row(
+                conn,
+                session_id,
+                "session.ended",
+                payload,
+                f"session.ended:{end_reason}",
+                timestamp,
+            )
+
+        event, created = self._execute_write(_do)
+        if created:
+            self._publish_committed_events([event])
 
     def reopen_session(self, session_id: str) -> None:
         """Clear ended_at/end_reason so a session can be resumed."""
+        timestamp = time.time()
+        payload = {"status": "reopened"}
+        key = f"status.changed:reopened:{uuid.uuid4().hex}"
+
         def _do(conn):
             conn.execute(
                 "UPDATE sessions SET ended_at = NULL, end_reason = NULL WHERE id = ?",
                 (session_id,),
             )
-        self._execute_write(_do)
-        self.append_session_event(
-            session_id,
-            "status.changed",
-            {"status": "reopened"},
-        )
+            return self._append_session_event_row(
+                conn, session_id, "status.changed", payload, key, timestamp
+            )
+
+        event, created = self._execute_write(_do)
+        if created:
+            self._publish_committed_events([event])
 
     def update_system_prompt(self, session_id: str, system_prompt: str) -> None:
         """Store the full assembled system prompt snapshot."""
@@ -1631,6 +1646,41 @@ class SessionDB:
             "timestamp": timestamp,
         }
 
+    def _append_session_event_row(
+        self,
+        conn: sqlite3.Connection,
+        session_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+        key: str,
+        timestamp: float,
+    ) -> tuple[dict[str, Any], bool]:
+        """Insert an event inside its projection transaction."""
+        existing = conn.execute(
+            """SELECT sequence, event_type, payload_json, timestamp
+               FROM session_events WHERE session_id = ? AND idempotency_key = ?""",
+            (session_id, key),
+        ).fetchone()
+        if existing:
+            return self._event_dict(
+                session_id,
+                int(existing["sequence"]),
+                key,
+                str(existing["event_type"]),
+                self._decode_json_field(existing["payload_json"], {}),
+                float(existing["timestamp"]),
+            ), False
+        sequence = self._next_event_sequence(conn, session_id)
+        conn.execute(
+            """INSERT INTO session_events
+               (session_id, sequence, idempotency_key, event_type, payload_json, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (session_id, sequence, key, event_type, _event_json(payload), timestamp),
+        )
+        return self._event_dict(
+            session_id, sequence, key, event_type, payload, timestamp
+        ), True
+
     def append_session_event(
         self,
         session_id: str,
@@ -1645,30 +1695,9 @@ class SessionDB:
         timestamp = time.time()
 
         def _do(conn):
-            existing = conn.execute(
-                """SELECT sequence, event_type, payload_json, timestamp
-                   FROM session_events WHERE session_id = ? AND idempotency_key = ?""",
-                (session_id, key),
-            ).fetchone()
-            if existing:
-                return self._event_dict(
-                    session_id,
-                    int(existing["sequence"]),
-                    key,
-                    str(existing["event_type"]),
-                    self._decode_json_field(existing["payload_json"], {}),
-                    float(existing["timestamp"]),
-                ), False
-            sequence = self._next_event_sequence(conn, session_id)
-            conn.execute(
-                """INSERT INTO session_events
-                   (session_id, sequence, idempotency_key, event_type, payload_json, timestamp)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (session_id, sequence, key, event_type, _event_json(payload), timestamp),
+            return self._append_session_event_row(
+                conn, session_id, event_type, payload, key, timestamp
             )
-            return self._event_dict(
-                session_id, sequence, key, event_type, payload, timestamp
-            ), True
 
         event, created = self._execute_write(_do)
         if created:

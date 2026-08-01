@@ -2234,7 +2234,7 @@ async def get_web_state_snapshot(
         finally:
             db.close()
 
-    return await asyncio.to_thread(_load)
+    return await _run_blocking(_load)
 
 
 @app.get("/api/web-state/deltas")
