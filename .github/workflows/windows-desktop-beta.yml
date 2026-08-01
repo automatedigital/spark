@@ -41,6 +41,66 @@ jobs:
         shell: pwsh
         run: ./scripts/build_desktop_windows.ps1
 
+      - name: Exercise packaged Windows lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $AppExe = Resolve-Path "src/spark_cli/web/src-tauri/target/release/spark.exe"
+          $SmokeHome = Join-Path $env:RUNNER_TEMP "spark-packaged-acceptance"
+          New-Item $SmokeHome -ItemType Directory -Force | Out-Null
+          $env:SPARK_HOME = $SmokeHome
+
+          function Wait-SparkDesktop {
+            param([string]$PreviousInstance = "")
+            for ($Attempt = 0; $Attempt -lt 120; $Attempt++) {
+              try {
+                $Status = Invoke-RestMethod "http://127.0.0.1:9119/api/status" -TimeoutSec 2
+                if (
+                  $Status.desktop -eq $true -and
+                  $Status.desktop_platform -eq "windows" -and
+                  $Status.server_instance_id -ne $PreviousInstance
+                ) {
+                  return $Status
+                }
+              }
+              catch {
+                Start-Sleep -Milliseconds 500
+              }
+            }
+            throw "Packaged Spark.exe did not expose a healthy Windows desktop backend"
+          }
+
+          $Desktop = $null
+          try {
+            $Desktop = Start-Process -FilePath $AppExe -PassThru
+            $Before = Wait-SparkDesktop
+            python scripts/desktop_runtime_acceptance.py `
+              --base-url http://127.0.0.1:9119 `
+              --phase prepare `
+              --platform windows
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packaged Windows prepare acceptance failed"
+            }
+
+            taskkill /PID $Desktop.Id /T /F | Out-Null
+            $Desktop.WaitForExit()
+            $Desktop = Start-Process -FilePath $AppExe -PassThru
+            $After = Wait-SparkDesktop -PreviousInstance $Before.server_instance_id
+            python scripts/desktop_runtime_acceptance.py `
+              --base-url http://127.0.0.1:9119 `
+              --phase resume `
+              --platform windows
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packaged Windows resume acceptance failed"
+            }
+          }
+          finally {
+            if ($Desktop -and -not $Desktop.HasExited) {
+              taskkill /PID $Desktop.Id /T /F | Out-Null
+            }
+            Remove-Item $SmokeHome -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Read desktop version
         id: version
         shell: pwsh

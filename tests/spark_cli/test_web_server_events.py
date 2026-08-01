@@ -105,7 +105,82 @@ def web_client(monkeypatch, tmp_path):
         web_server._pending_token_gap_sessions.clear()
         web_server._token_flush_scheduled = False
 
+    from spark_cli.web_state import web_state_journal
+
+    web_state_journal.reset_for_test()
+
     return TestClient(web_server.app)
+
+
+def test_web_state_snapshot_splits_shell_from_selected_detail(web_client):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        db.create_session("selected", source="web")
+        db.append_message("selected", "user", "selected question")
+        db.append_message("selected", "assistant", "selected answer")
+        db.create_session("unselected", source="web")
+        db.append_message("unselected", "user", "must not be in detail")
+    finally:
+        db.close()
+
+    response = web_client.get(
+        "/api/web-state/snapshot?selected_session_id=selected&session_limit=10&message_limit=10"
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == body["projection_version"] == 1
+    assert {row["id"] for row in body["shells"]} == {"selected", "unselected"}
+    assert body["detail"]["session_id"] == "selected"
+    assert [row["content"] for row in body["detail"]["messages"]] == [
+        "selected question",
+        "selected answer",
+    ]
+    assert "must not be in detail" not in json.dumps(body["detail"])
+
+
+def test_web_state_delta_resume_and_restart_fallback(web_client):
+    from spark_cli.web_state import web_state_journal
+
+    snapshot = web_client.get("/api/web-state/snapshot").json()
+    web_state_journal.append("sessions.changed", {"action": "updated"}, "s1")
+    web_state_journal.append("chat.turn_done", {"ok": True}, "s1")
+
+    response = web_client.get(
+        "/api/web-state/deltas",
+        params={
+            "after_sequence": snapshot["sequence"],
+            "projection_version": snapshot["projection_version"],
+            "server_epoch": snapshot["server_epoch"],
+            "session_id": "s1",
+        },
+    )
+    body = response.json()
+    assert body["requires_snapshot"] is False
+    assert [row["topic"] for row in body["events"]] == [
+        "sessions.changed",
+        "chat.turn_done",
+    ]
+    assert [row["sequence"] for row in body["events"]] == sorted(
+        row["sequence"] for row in body["events"]
+    )
+
+    restarted = web_client.get(
+        "/api/web-state/deltas",
+        params={
+            "after_sequence": body["latest_sequence"],
+            "projection_version": 1,
+            "server_epoch": "stale-process",
+        },
+    ).json()
+    assert restarted == {
+        "events": [],
+        "requires_snapshot": True,
+        "reason": "server_restarted",
+        "latest_sequence": body["latest_sequence"],
+        "server_epoch": snapshot["server_epoch"],
+    }
 
 
 def _wait_for(predicate, timeout: float = 2.0) -> bool:

@@ -505,6 +505,7 @@ class _EventSubscriber:
 
     prefixes: tuple[str, ...]
     session_ids: frozenset[str] = frozenset()
+    detail_session_ids: frozenset[str] = frozenset()
     priority_queue: asyncio.Queue = field(
         default_factory=lambda: asyncio.Queue(maxsize=_EVENT_PRIORITY_QUEUE_SIZE)
     )
@@ -521,6 +522,26 @@ class _EventSubscriber:
         if not topic_matches:
             return False
         return not self.session_ids or session_id in self.session_ids
+
+    def public_view(self, envelope: dict[str, Any]) -> dict[str, Any]:
+        """Hide unmounted chat detail while preserving the global cursor."""
+        topic = str(envelope.get("topic") or "")
+        session_id = envelope.get("session_id") or envelope.get("entity_id")
+        if (
+            topic.startswith("chat.")
+            and self.detail_session_ids
+            and session_id not in self.detail_session_ids
+        ):
+            payload = {"filtered_topic": topic}
+            return {
+                **envelope,
+                "topic": "bus.cursor",
+                "entity_id": None,
+                "session_id": None,
+                "payload": payload,
+                "data": payload,
+            }
+        return envelope
 
     async def get(self) -> dict[str, Any]:
         ready = self._get_earliest_ready()
@@ -1830,8 +1851,20 @@ def _flush_pending_token_events(
 
 
 def _fanout_event_envelope(envelope: dict[str, Any], published_at: float) -> None:
+    from spark_cli.web_state import web_state_journal
+
     topic = str(envelope.get("topic") or "")
     session_id = envelope.get("session_id")
+    # The replay journal is the commit boundary for browser delivery.  Assign
+    # the public sequence here, after token batching and before any subscriber
+    # can observe the event.
+    envelope = web_state_journal.append(
+        topic,
+        dict(envelope.get("data") or {}),
+        str(session_id) if session_id is not None else None,
+        timestamp=float(envelope.get("ts") or time.time()),
+    )
+    envelope["_seq"] = envelope["sequence"]
     _streaming_pipeline_metrics.record_fanout_latency(_steady_clock() - published_at)
     for subscriber in tuple(_event_subscribers):
         try:
@@ -1909,7 +1942,7 @@ def _emit_sessions_changed(
 ) -> None:
     payload: Dict[str, Any] = {"action": action, "session_id": session_id}
     if session is not None:
-        payload["session"] = session
+        payload["session"] = _web_session_list_row(session)
     _publish_event("sessions.changed", payload, session_id)
 
 
@@ -2050,17 +2083,59 @@ async def sse_events_bus(
     request: Request,
     topics: str = "sessions,chat",
     session_id: Optional[str] = None,
+    detail_session_id: Optional[str] = None,
+    after_sequence: int = 0,
+    projection_version: int = 1,
+    server_epoch: Optional[str] = None,
 ):
-    """Shared SSE bus for sessions.* and chat.* events."""
+    """Shared SSE bus with an optional v1 snapshot-plus-delta resume cursor."""
+    from spark_cli.web_state import web_state_journal
     from fastapi.responses import StreamingResponse as _StreamingResponse
 
     prefixes = tuple(p.strip() for p in topics.split(",") if p.strip())
     session_ids = frozenset({session_id}) if session_id else frozenset()
-    subscriber = _EventSubscriber(prefixes=prefixes, session_ids=session_ids)
+    detail_session_ids = (
+        frozenset({detail_session_id}) if detail_session_id else frozenset()
+    )
+    subscriber = _EventSubscriber(
+        prefixes=prefixes,
+        session_ids=session_ids,
+        detail_session_ids=detail_session_ids,
+    )
     _event_subscribers.add(subscriber)
 
     async def event_generator():
         try:
+            if after_sequence:
+                resume = web_state_journal.resume(
+                    after_sequence,
+                    projection_version=projection_version,
+                    server_epoch=server_epoch or "",
+                    entity_ids=None,
+                )
+                if resume.requires_snapshot:
+                    payload = {"reason": resume.reason}
+                    control = {
+                        "schema_version": 1,
+                        "topic": "bus.snapshot_required",
+                        "entity_id": session_id,
+                        "session_id": session_id,
+                        "sequence": max(1, after_sequence + 1),
+                        "projection_version": 1,
+                        "timestamp": time.time(),
+                        "ts": time.time(),
+                        "payload": payload,
+                        "data": payload,
+                        "server_epoch": web_state_journal.server_epoch,
+                    }
+                    yield f"data: {json.dumps(control, default=str)}\n\n"
+                else:
+                    for replayed in resume.events:
+                        if subscriber.accepts(
+                            str(replayed.get("topic") or ""), replayed.get("entity_id")
+                        ):
+                            projected = subscriber.public_view(replayed)
+                            yield f"data: {json.dumps(projected, default=str)}\n\n"
             while True:
                 if await request.is_disconnected():
                     break
@@ -2072,7 +2147,11 @@ async def sse_events_bus(
                 if env.get("topic") == "bus.gap":
                     subscriber.acknowledge_gap(env.get("session_id"))
                 try:
-                    public_env = {key: value for key, value in env.items() if key != "_seq"}
+                    public_env = {
+                        key: value
+                        for key, value in subscriber.public_view(env).items()
+                        if key != "_seq"
+                    }
                     yield f"data: {json.dumps(public_env, default=str)}\n\n"
                 except Exception:
                     continue
@@ -2088,6 +2167,93 @@ async def sse_events_bus(
             "Connection": "keep-alive",
         },
     )
+
+
+@app.get("/api/web-state/snapshot")
+async def get_web_state_snapshot(
+    selected_session_id: Optional[str] = None,
+    session_limit: int = 50,
+    message_limit: int = 200,
+):
+    """Return bounded shell state plus detail for only the selected session."""
+    from core.spark_state import SessionDB
+    from spark_cli.web_state import (
+        WEB_STATE_PROJECTION_VERSION,
+        WEB_STATE_SCHEMA_VERSION,
+        web_state_journal,
+    )
+
+    def _load() -> dict[str, Any]:
+        db = SessionDB()
+        try:
+            # Capture the cursor before reading projections. Any concurrent
+            # commit is then replayed after this sequence (possibly as a safe
+            # duplicate), never skipped by a cursor newer than the snapshot.
+            snapshot_sequence = web_state_journal.latest_sequence
+            bounded_sessions = min(max(1, session_limit), 200)
+            bounded_messages = min(max(1, message_limit), 500)
+            sessions = db.list_sessions_rich(limit=bounded_sessions, offset=0)
+            _canonicalize_workspace_session_sources(db, sessions)
+            _apply_web_turn_active_state(sessions)
+            shells = [_web_session_list_row(row) for row in sessions]
+            detail = None
+            if selected_session_id:
+                resolved = db.resolve_session_id(selected_session_id)
+                if resolved:
+                    leaf = db.resolve_latest_descendant(resolved)
+                    page = db.get_web_message_page(leaf, limit=bounded_messages)
+                    detail = {
+                        "session_id": leaf,
+                        "messages": [
+                            _message_for_history_response(message)
+                            for message in page.pop("messages")
+                        ],
+                        **page,
+                        "turn": _conversation_turn_status_payload(leaf),
+                    }
+            return {
+                "schema_version": WEB_STATE_SCHEMA_VERSION,
+                "projection_version": WEB_STATE_PROJECTION_VERSION,
+                "server_epoch": web_state_journal.server_epoch,
+                "sequence": snapshot_sequence,
+                "timestamp": time.time(),
+                "shells": shells,
+                "detail": detail,
+                "limits": {
+                    "sessions": bounded_sessions,
+                    "messages": bounded_messages,
+                    "detail_idle_ttl_ms": 120_000,
+                },
+            }
+        finally:
+            db.close()
+
+    return await asyncio.to_thread(_load)
+
+
+@app.get("/api/web-state/deltas")
+async def get_web_state_deltas(
+    after_sequence: int,
+    projection_version: int,
+    server_epoch: str,
+    session_id: Optional[str] = None,
+):
+    """Return ordered retained deltas or an explicit snapshot requirement."""
+    from spark_cli.web_state import web_state_journal
+
+    resume = web_state_journal.resume(
+        after_sequence,
+        projection_version=projection_version,
+        server_epoch=server_epoch,
+        entity_ids=(session_id,) if session_id else None,
+    )
+    return {
+        "events": list(resume.events),
+        "requires_snapshot": resume.requires_snapshot,
+        "reason": resume.reason,
+        "latest_sequence": web_state_journal.latest_sequence,
+        "server_epoch": web_state_journal.server_epoch,
+    }
 
 
 # ---------------------------------------------------------------------------

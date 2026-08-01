@@ -24,7 +24,7 @@ import { CursorGlow } from "@/components/CursorGlow";
 import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
-import { useEventBus } from "@/hooks/useEventBus";
+import { BUS_STALE_TOPIC, BUS_WAKE_TOPIC, useEventBus } from "@/hooks/useEventBus";
 import { gatewayFooterState } from "@/lib/gatewayFooterState";
 import { recordActivePageRender } from "@/lib/renderHealth";
 import { OPEN_SETTINGS_EVENT } from "@/lib/navigationEvents";
@@ -400,10 +400,9 @@ function AppShell() {
     };
   }, []);
 
-  // ── Live status footer: poll every ~8s (paused while tab is hidden) ──
+  // ── Live status footer: hydrate once, then refresh only on a stale/wake signal ──
   useEffect(() => {
     let cancelled = false;
-    let interval: ReturnType<typeof setInterval> | null = null;
 
     const fetchStatus = async () => {
       try {
@@ -439,36 +438,24 @@ function AppShell() {
       }
     };
 
-    const startPolling = () => {
-      if (interval !== null) return;
-      void fetchStatus();
-      interval = setInterval(() => void fetchStatus(), 8_000);
+    void fetchStatus();
+    const handleProbe = (event: Event) => {
+      const topic = (event as CustomEvent<{ topic?: string }>).detail?.topic;
+      if (topic === BUS_STALE_TOPIC || topic === BUS_WAKE_TOPIC) void fetchStatus();
     };
-
-    const stopPolling = () => {
-      if (interval !== null) {
-        clearInterval(interval);
-        interval = null;
-      }
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        stopPolling();
-      } else {
-        startPolling();
-      }
-    };
-
-    if (document.visibilityState !== "hidden") startPolling();
-    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("spark:web-state-probe", handleProbe);
 
     return () => {
       cancelled = true;
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("spark:web-state-probe", handleProbe);
     };
   }, []);
+
+  useEventBus((env) => {
+    if (env.topic === BUS_STALE_TOPIC || env.topic === BUS_WAKE_TOPIC) {
+      window.dispatchEvent(new CustomEvent("spark:web-state-probe", { detail: { topic: env.topic } }));
+    }
+  });
 
 
   // ── First-run onboarding gate ──

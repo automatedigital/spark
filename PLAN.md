@@ -689,49 +689,56 @@ known sequence.
 
 ### Implementation
 
-- [ ] **EFF-08-01 - Version one typed event envelope.** Include topic, entity ID,
+- [x] **EFF-08-01 - Version one typed event envelope.** Include topic, entity ID,
   committed sequence, projection version, timestamp, and minimal patch payload.
   Generate matching Python and TypeScript contracts or validate from one schema.
 
-- [ ] **EFF-08-02 - Split shell and detail projections.** Sidebar session shells
+- [x] **EFF-08-02 - Split shell and detail projections.** Sidebar session shells
   contain title/project/source/activity/status/counts only. The selected chat
   subscribes separately to messages, reasoning, tools, plans, and subagents.
 
-- [ ] **EFF-08-03 - Add snapshot plus `after_sequence` resume.** On first load,
+- [x] **EFF-08-03 - Add snapshot plus `after_sequence` resume.** On first load,
   fetch a bounded snapshot. On reconnect, request only committed deltas after
   the cached sequence; return a new snapshot only when retention has expired or
   the projection version changed.
 
-- [ ] **EFF-08-04 - Centralize connection supervision.** One authenticated
+- [x] **EFF-08-04 - Centralize connection supervision.** One authenticated
   connection owns retry/backoff, visibility/wakeup resubscribe, health probes,
   and offline state. Components consume state and never create transports or
   independent retry loops.
 
-- [ ] **EFF-08-05 - Normalize client state.** Store entity maps keyed by ID and
+- [x] **EFF-08-05 - Normalize client state.** Store entity maps keyed by ID and
   expose referentially stable selectors for shell, messages, status, usage, and
   project groups. Apply idle TTL to unmounted thread detail.
 
-- [ ] **EFF-08-06 - Persist only settled detail.** Debounce cached thread writes
+- [x] **EFF-08-06 - Persist only settled detail.** Debounce cached thread writes
   and skip serialization of rapidly changing active tool payloads until the turn
   settles, while the server remains authoritative.
 
-- [ ] **EFF-08-07 - Retire healthy-state polling.** Replace the eight-second
+- [x] **EFF-08-07 - Retire healthy-state polling.** Replace the eight-second
   status/model/cron group and normal two-second recovery loop with events. Keep
   a bounded watchdog probe only after the stream is stale or the app wakes.
 
 ### Verification
 
-- [ ] **EFF-08-V1 - Run lifecycle acceptance.** Cover long conversations,
+- [x] **EFF-08-V1 - Run lifecycle acceptance.** Cover long conversations,
   multiple chats, switching during generation, refresh, disconnect, app wake,
   gateway restart, stale browser cache, compression epoch, and deletion.
-- [ ] **EFF-08-V2 - Prove sequence correctness.** Duplicate, reordered, missing,
+- [x] **EFF-08-V2 - Prove sequence correctness.** Duplicate, reordered, missing,
   retained-out, and version-mismatched events converge to the authoritative
   snapshot without duplicate messages or stuck Working state.
-- [ ] **EFF-08-V3 - Meet steady-state targets.** With a healthy stream there are
+- [x] **EFF-08-V3 - Meet steady-state targets.** With a healthy stream there are
   zero periodic status/session HTTP calls, unchanged entities do not rerender,
   and an unselected long chat body is not resident indefinitely.
 - [ ] **EFF-08-V4 - Record browser evidence.** Test 390, 820, and 1440 px with
   exact flows, screenshots, React commit/network traces, and no console errors.
+
+**Evidence for EFF-08-01 through EFF-08-V3:** mirrored validated Python/TypeScript
+v1 envelopes drive bounded shell/detail snapshots and retained ordered delta
+resume through one supervisor. Normalized stable selectors, 120-second detail
+TTL, settled-only cache writes, and stale-only watchdog recovery remove healthy
+8-second and 2-second polling. Sequence, restart, retention, 5,000-message TTL,
+cache-crash, and 10,000-event tests passed; a 50-event resume stayed below 25 KB.
 
 **Rollback boundary:** keep the existing SSE envelope and recovery endpoints
 available for one compatibility release while new clients negotiate the

@@ -7029,7 +7029,6 @@ class AIAgent(_PromptCacheMixin):
         # ── Concurrent execution ─────────────────────────────────────────
         # Each slot holds (function_name, function_args, function_result, duration, error_flag)
         results = [None] * num_tools
-        queued_at = time.perf_counter()
         # Start spinner for CLI mode (skip when TUI handles tool progress)
         spinner = None
         if self._should_emit_quiet_tool_messages() and self._should_start_quiet_spinner():
@@ -7074,10 +7073,7 @@ class AIAgent(_PromptCacheMixin):
                             session_id=self.session_id,
                             iteration=api_call_count,
                             tool_name=item.name,
-                            queue_wait_ms=round(
-                                max(0.0, time.perf_counter() - queued_at - item.duration) * 1000,
-                                3,
-                            ),
+                            queue_wait_ms=round(item.queue_wait * 1000, 3),
                             execution_ms=round(item.duration * 1000, 3),
                             result_bytes=len(
                                 str(item.content).encode("utf-8", errors="replace")
