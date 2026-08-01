@@ -244,7 +244,7 @@ class AIAgent(_PromptCacheMixin):
         args: list[str] | None = None,
         model: str = "",
         max_iterations: int = 90,  # Default tool-calling iterations (shared with subagents)
-        tool_delay: float = 1.0,
+        tool_delay: float = 0.0,
         enabled_toolsets: List[str] = None,
         disabled_toolsets: List[str] = None,
         save_trajectories: bool = False,
@@ -303,7 +303,7 @@ class AIAgent(_PromptCacheMixin):
             api_mode (str): API mode override: "chat_completions" or "codex_responses"
             model (str): Model name to use (default: "anthropic/claude-opus-4.6")
             max_iterations (int): Maximum number of tool calling iterations (default: 90)
-            tool_delay (float): Delay between tool calls in seconds (default: 1.0)
+            tool_delay (float): Optional delay between tool calls in seconds (default: 0.0)
             enabled_toolsets (List[str]): Only enable tools from these toolsets (optional)
             disabled_toolsets (List[str]): Disable tools from these toolsets (optional)
             save_trajectories (bool): Whether to save conversation trajectories to JSONL files (default: False)
@@ -6883,7 +6883,11 @@ class AIAgent(_PromptCacheMixin):
         num_tools = len(parsed_calls)
         if num_tools > 0:
             turn_tool_msgs = messages[-num_tools:]
-            enforce_turn_budget(turn_tool_msgs, env=get_active_env(effective_task_id))
+            enforce_turn_budget(
+                turn_tool_msgs,
+                env=get_active_env(effective_task_id),
+                tool_names=[function_name for _, function_name, _ in parsed_calls],
+            )
 
     def _execute_tool_calls_sequential(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
         """Execute tool calls sequentially (original behavior). Used for single calls or interactive tools."""
@@ -7276,7 +7280,11 @@ class AIAgent(_PromptCacheMixin):
         # ── Per-turn aggregate budget enforcement ─────────────────────────
         num_tools_seq = len(assistant_message.tool_calls)
         if num_tools_seq > 0:
-            enforce_turn_budget(messages[-num_tools_seq:], env=get_active_env(effective_task_id))
+            enforce_turn_budget(
+                messages[-num_tools_seq:],
+                env=get_active_env(effective_task_id),
+                tool_names=[tool_call.function.name for tool_call in assistant_message.tool_calls],
+            )
 
 
 

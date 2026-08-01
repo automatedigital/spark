@@ -176,12 +176,36 @@ def _discover_tools():
 
 _discover_tools()
 
-# MCP tool discovery (external MCP servers from config)
-try:
-    from tools.mcp_tool import discover_mcp_tools
-    discover_mcp_tools()
-except Exception as e:
-    logger.debug("MCP tool discovery failed: %s", e)
+
+def _has_configured_mcp_servers() -> bool:
+    """Return whether raw config contains any MCP server declarations.
+
+    Importing the optional MCP SDK is comparatively expensive, while an
+    unconfigured profile cannot register any MCP tools.  Read only the raw
+    config here so profiles without MCP servers avoid importing the SDK at
+    agent startup.  Configured profiles retain the existing eager connection
+    and registration behaviour below.
+    """
+    try:
+        from spark_cli.config import read_raw_config
+
+        servers = read_raw_config().get("mcp_servers")
+        return isinstance(servers, dict) and bool(servers)
+    except Exception as exc:
+        logger.debug("Could not inspect MCP configuration: %s", exc)
+        return False
+
+
+# MCP tool discovery (external MCP servers from config).  Keep the SDK lazy for
+# the common unconfigured case; tools.mcp_tool remains the source of truth for
+# configured profiles and direct ACP registration.
+if _has_configured_mcp_servers():
+    try:
+        from tools.mcp_tool import discover_mcp_tools
+
+        discover_mcp_tools()
+    except Exception as e:
+        logger.debug("MCP tool discovery failed: %s", e)
 
 # Plugin tool discovery (user/project/pip plugins)
 try:

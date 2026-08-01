@@ -20,15 +20,15 @@ from agent.subagents import SUBAGENT_LIFECYCLE_CALLBACK_EVENT
 from tools.delegate_tool import (
     DELEGATE_BLOCKED_TOOLS,
     DELEGATE_TASK_SCHEMA,
-    _get_max_concurrent_children,
     MAX_DEPTH,
-    check_delegate_requirements,
-    delegate_task,
     _build_child_agent,
     _build_child_system_prompt,
-    _strip_blocked_tools,
+    _get_max_concurrent_children,
     _resolve_child_credential_pool,
     _resolve_delegation_credentials,
+    _strip_blocked_tools,
+    check_delegate_requirements,
+    delegate_task,
 )
 
 
@@ -69,6 +69,16 @@ class TestDelegateRequirements(unittest.TestCase):
         self.assertIn("toolsets", props)
         self.assertIn("max_iterations", props)
         self.assertNotIn("maxItems", props["tasks"])  # removed — limit is now runtime-configurable
+
+    def test_schema_keeps_critical_guidance_within_token_budget(self):
+        description = DELEGATE_TASK_SCHEMA["description"]
+        serialized = json.dumps(DELEGATE_TASK_SCHEMA, separators=(",", ":"))
+
+        self.assertLess(len(serialized), 2500)
+        self.assertIn("execute_code", description)
+        self.assertIn("no conversation memory", description)
+        self.assertIn("cannot call delegate_task", description)
+        self.assertIn("default limit 3", description)
 
 
 class TestChildSystemPrompt(unittest.TestCase):

@@ -14,12 +14,13 @@ import pytest
 from tools.budget_config import (
     DEFAULT_BUDGET,
     DEFAULT_PREVIEW_SIZE_CHARS,
+    DEFAULT_RESULT_BUDGET_TOKENS,
     DEFAULT_RESULT_SIZE_CHARS,
     DEFAULT_TURN_BUDGET_CHARS,
+    DEFAULT_TURN_BUDGET_TOKENS,
     PINNED_THRESHOLDS,
     BudgetConfig,
 )
-
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -37,6 +38,10 @@ class TestModuleConstants:
 
     def test_default_preview_size(self):
         assert DEFAULT_PREVIEW_SIZE_CHARS == 1_500
+
+    def test_default_token_budgets(self):
+        assert DEFAULT_RESULT_BUDGET_TOKENS == 12_000
+        assert DEFAULT_TURN_BUDGET_TOKENS == 24_000
 
 
 class TestPinnedThresholds:
@@ -69,6 +74,11 @@ class TestBudgetConfigDefaults:
     def test_default_preview_size(self):
         cfg = BudgetConfig()
         assert cfg.preview_size == DEFAULT_PREVIEW_SIZE_CHARS
+
+    def test_default_token_budgets(self):
+        cfg = BudgetConfig()
+        assert cfg.result_budget_tokens == DEFAULT_RESULT_BUDGET_TOKENS
+        assert cfg.turn_budget_tokens == DEFAULT_TURN_BUDGET_TOKENS
 
     def test_default_tool_overrides_empty(self):
         cfg = BudgetConfig()
@@ -127,6 +137,11 @@ class TestBudgetConfigCustom:
         assert cfg.turn_budget == 100_000
         assert cfg.preview_size == 500
         assert cfg.tool_overrides == {"my_tool": 42}
+
+    def test_legacy_fourth_positional_argument_remains_tool_overrides(self):
+        cfg = BudgetConfig(50_000, 100_000, 500, {"my_tool": 42})
+        assert cfg.tool_overrides == {"my_tool": 42}
+        assert cfg.result_budget_tokens == DEFAULT_RESULT_BUDGET_TOKENS
 
 
 # ---------------------------------------------------------------------------
