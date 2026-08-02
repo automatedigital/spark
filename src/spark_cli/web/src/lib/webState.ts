@@ -162,8 +162,17 @@ export class NormalizedWebState {
 
   upsertShell(row: SessionInfo): SessionInfo {
     const previous = this.shells.get(row.id);
-    if (previous && shallowEqual(previous, row)) return previous;
-    const stable = Object.freeze({ ...previous, ...row });
+    const candidate = {
+      ...previous,
+      ...row,
+      // A live snapshot may expose the backend's zero sentinel before a new
+      // session has been fully persisted. Keep the optimistic epoch seconds
+      // until the authoritative positive timestamps arrive.
+      started_at: row.started_at > 0 ? row.started_at : previous?.started_at ?? row.started_at,
+      last_active: row.last_active > 0 ? row.last_active : previous?.last_active ?? row.last_active,
+    };
+    if (previous && shallowEqual(previous, candidate)) return previous;
+    const stable = Object.freeze(candidate);
     this.shells.set(row.id, stable);
     if (!previous) this.shellOrder = Object.freeze([row.id, ...this.shellOrder]);
     return stable;

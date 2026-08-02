@@ -1,36 +1,36 @@
 {
-  "_ConnectorsPage-B8-VpOw4.js": {
-    "file": "assets/ConnectorsPage-B8-VpOw4.js",
+  "_ConnectorsPage-v74lvGYf.js": {
+    "file": "assets/ConnectorsPage-v74lvGYf.js",
     "name": "ConnectorsPage",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-DewfpLon.js",
-      "_input-DedevdUk.js",
-      "_label-DJRrAZG8.js",
-      "_plug-BoW2zHqC.js",
-      "_server-4iiwkY2Q.js"
+      "_badge-DrAxc0qr.js",
+      "_input-Cxb-CV2a.js",
+      "_label-Djz2huoL.js",
+      "_plug-CnouZC_X.js",
+      "_server-efKFJvnJ.js"
     ]
   },
-  "_SkillsToolsPage-BTO0Np2A.js": {
-    "file": "assets/SkillsToolsPage-BTO0Np2A.js",
+  "_SkillsToolsPage-BdSZHTh4.js": {
+    "file": "assets/SkillsToolsPage-BdSZHTh4.js",
     "name": "SkillsToolsPage",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-DewfpLon.js",
-      "_switch-E5cb0_GK.js",
-      "_ConnectorsPage-B8-VpOw4.js",
-      "_input-DedevdUk.js",
-      "_label-DJRrAZG8.js",
-      "_server-4iiwkY2Q.js",
-      "_save-BCpiMowE.js"
+      "_badge-DrAxc0qr.js",
+      "_switch-DUeupJhY.js",
+      "_ConnectorsPage-v74lvGYf.js",
+      "_input-Cxb-CV2a.js",
+      "_label-Djz2huoL.js",
+      "_server-efKFJvnJ.js",
+      "_save-DkLaBbe_.js"
     ]
   },
-  "_badge-DewfpLon.js": {
-    "file": "assets/badge-DewfpLon.js",
+  "_badge-DrAxc0qr.js": {
+    "file": "assets/badge-DrAxc0qr.js",
     "name": "badge",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
@@ -63,74 +63,74 @@
       "_feature-editor-core-DHV48i40.js"
     ]
   },
-  "_input-DedevdUk.js": {
-    "file": "assets/input-DedevdUk.js",
+  "_input-Cxb-CV2a.js": {
+    "file": "assets/input-Cxb-CV2a.js",
     "name": "input",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html"
     ]
   },
-  "_label-DJRrAZG8.js": {
-    "file": "assets/label-DJRrAZG8.js",
+  "_label-Djz2huoL.js": {
+    "file": "assets/label-Djz2huoL.js",
     "name": "label",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html"
     ]
   },
-  "_localDevice-BqwQtWGq.js": {
-    "file": "assets/localDevice-BqwQtWGq.js",
+  "_localDevice-Bqs-J6YI.js": {
+    "file": "assets/localDevice-Bqs-J6YI.js",
     "name": "localDevice",
     "imports": [
       "index.html"
     ]
   },
-  "_message-circle-BLv_0Try.js": {
-    "file": "assets/message-circle-BLv_0Try.js",
+  "_message-circle-CgOPLN35.js": {
+    "file": "assets/message-circle-CgOPLN35.js",
     "name": "message-circle",
     "imports": [
       "index.html"
     ]
   },
-  "_package-DwGxtJxZ.js": {
-    "file": "assets/package-DwGxtJxZ.js",
+  "_package-tLgx3YD_.js": {
+    "file": "assets/package-tLgx3YD_.js",
     "name": "package",
     "imports": [
       "index.html"
     ]
   },
-  "_plug-BoW2zHqC.js": {
-    "file": "assets/plug-BoW2zHqC.js",
+  "_plug-CnouZC_X.js": {
+    "file": "assets/plug-CnouZC_X.js",
     "name": "plug",
     "imports": [
       "index.html"
     ]
   },
-  "_save-BCpiMowE.js": {
-    "file": "assets/save-BCpiMowE.js",
+  "_save-DkLaBbe_.js": {
+    "file": "assets/save-DkLaBbe_.js",
     "name": "save",
     "imports": [
       "index.html"
     ]
   },
-  "_select-BjJEcniD.js": {
-    "file": "assets/select-BjJEcniD.js",
+  "_select-BDXQe091.js": {
+    "file": "assets/select-BDXQe091.js",
     "name": "select",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html"
     ]
   },
-  "_server-4iiwkY2Q.js": {
-    "file": "assets/server-4iiwkY2Q.js",
+  "_server-efKFJvnJ.js": {
+    "file": "assets/server-efKFJvnJ.js",
     "name": "server",
     "imports": [
       "index.html"
     ]
   },
-  "_switch-E5cb0_GK.js": {
-    "file": "assets/switch-E5cb0_GK.js",
+  "_switch-DUeupJhY.js": {
+    "file": "assets/switch-DUeupJhY.js",
     "name": "switch",
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
@@ -142,7 +142,7 @@
     "name": "vendor-react"
   },
   "index.html": {
-    "file": "assets/index-CLubT_vd.js",
+    "file": "assets/index-BHfxP68j.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -157,8 +157,8 @@
       "src/pages/CronPage.tsx",
       "src/pages/FilesPage.tsx",
       "src/pages/SkillsPage.tsx",
-      "_ConnectorsPage-B8-VpOw4.js",
-      "_SkillsToolsPage-BTO0Np2A.js",
+      "_ConnectorsPage-v74lvGYf.js",
+      "_SkillsToolsPage-BdSZHTh4.js",
       "src/pages/MessagingPage.tsx",
       "src/components/SettingsPanel.tsx",
       "src/components/CommandPalette.tsx",
@@ -325,7 +325,7 @@
     "isDynamicEntry": true
   },
   "node_modules/@tauri-apps/api/event.js": {
-    "file": "assets/event-BOWzqfXK.js",
+    "file": "assets/event-BoNO-0zp.js",
     "name": "event",
     "src": "node_modules/@tauri-apps/api/event.js",
     "isDynamicEntry": true,
@@ -335,7 +335,7 @@
     ]
   },
   "node_modules/highlight.js/es/common.js": {
-    "file": "assets/common-CdAuX8Ay.js",
+    "file": "assets/common-CQBej-xM.js",
     "name": "common",
     "src": "node_modules/highlight.js/es/common.js",
     "isDynamicEntry": true,
@@ -345,20 +345,20 @@
     ]
   },
   "src/components/CommandPalette.tsx": {
-    "file": "assets/CommandPalette-DjHpfrC1.js",
+    "file": "assets/CommandPalette-sFyRZ7po.js",
     "name": "CommandPalette",
     "src": "src/components/CommandPalette.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_package-DwGxtJxZ.js",
-      "_message-circle-BLv_0Try.js",
-      "_plug-BoW2zHqC.js"
+      "_package-tLgx3YD_.js",
+      "_message-circle-CgOPLN35.js",
+      "_plug-CnouZC_X.js"
     ]
   },
   "src/components/KeyboardShortcutsModal.tsx": {
-    "file": "assets/KeyboardShortcutsModal-D-IvtpV4.js",
+    "file": "assets/KeyboardShortcutsModal-yPKKZz4O.js",
     "name": "KeyboardShortcutsModal",
     "src": "src/components/KeyboardShortcutsModal.tsx",
     "isDynamicEntry": true,
@@ -368,43 +368,43 @@
     ]
   },
   "src/components/OnboardingWizard.tsx": {
-    "file": "assets/OnboardingWizard-BMF_ktNS.js",
+    "file": "assets/OnboardingWizard-CpACrYa-.js",
     "name": "OnboardingWizard",
     "src": "src/components/OnboardingWizard.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_localDevice-BqwQtWGq.js",
-      "_input-DedevdUk.js",
-      "_server-4iiwkY2Q.js"
+      "_localDevice-Bqs-J6YI.js",
+      "_input-Cxb-CV2a.js",
+      "_server-efKFJvnJ.js"
     ]
   },
   "src/components/SettingsPanel.tsx": {
-    "file": "assets/SettingsPanel-BjYmdRVr.js",
+    "file": "assets/SettingsPanel-2c1msVxZ.js",
     "name": "SettingsPanel",
     "src": "src/components/SettingsPanel.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-DewfpLon.js",
-      "_localDevice-BqwQtWGq.js",
-      "_switch-E5cb0_GK.js",
-      "_label-DJRrAZG8.js",
-      "_server-4iiwkY2Q.js",
-      "_plug-BoW2zHqC.js",
-      "_SkillsToolsPage-BTO0Np2A.js",
-      "_input-DedevdUk.js",
-      "_select-BjJEcniD.js",
-      "_ConnectorsPage-B8-VpOw4.js",
-      "_save-BCpiMowE.js",
+      "_badge-DrAxc0qr.js",
+      "_localDevice-Bqs-J6YI.js",
+      "_switch-DUeupJhY.js",
+      "_label-Djz2huoL.js",
+      "_server-efKFJvnJ.js",
+      "_plug-CnouZC_X.js",
+      "_SkillsToolsPage-BdSZHTh4.js",
+      "_input-Cxb-CV2a.js",
+      "_select-BDXQe091.js",
+      "_ConnectorsPage-v74lvGYf.js",
+      "_save-DkLaBbe_.js",
       "src/pages/MessagingPage.tsx",
-      "_message-circle-BLv_0Try.js"
+      "_message-circle-CgOPLN35.js"
     ]
   },
   "src/components/files/CodeEditor.tsx": {
-    "file": "assets/CodeEditor-B53GuRes.js",
+    "file": "assets/CodeEditor-2Qqg_GZ2.js",
     "name": "CodeEditor",
     "src": "src/components/files/CodeEditor.tsx",
     "isDynamicEntry": true,
@@ -445,7 +445,7 @@
     ]
   },
   "src/components/workspace/WorkspaceTerminalPanel.tsx": {
-    "file": "assets/WorkspaceTerminalPanel-BPpjeEar.js",
+    "file": "assets/WorkspaceTerminalPanel-BwM25dJj.js",
     "name": "WorkspaceTerminalPanel",
     "src": "src/components/workspace/WorkspaceTerminalPanel.tsx",
     "isDynamicEntry": true,
@@ -456,58 +456,58 @@
     ]
   },
   "src/pages/CronPage.tsx": {
-    "file": "assets/CronPage-11BftGQF.js",
+    "file": "assets/CronPage-Bjbkw0Z7.js",
     "name": "CronPage",
     "src": "src/pages/CronPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-DewfpLon.js",
-      "_input-DedevdUk.js",
-      "_label-DJRrAZG8.js",
-      "_select-BjJEcniD.js"
+      "_badge-DrAxc0qr.js",
+      "_input-Cxb-CV2a.js",
+      "_label-Djz2huoL.js",
+      "_select-BDXQe091.js"
     ]
   },
   "src/pages/FilesPage.tsx": {
-    "file": "assets/FilesPage-BBK9vzjI.js",
+    "file": "assets/FilesPage-CQLzGaWE.js",
     "name": "FilesPage",
     "src": "src/pages/FilesPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
       "_vendor-react-Dc-lrgX9.js",
-      "_input-DedevdUk.js",
-      "_save-BCpiMowE.js"
+      "_input-Cxb-CV2a.js",
+      "_save-DkLaBbe_.js"
     ],
     "dynamicImports": [
       "src/components/files/CodeEditor.tsx"
     ]
   },
   "src/pages/MessagingPage.tsx": {
-    "file": "assets/MessagingPage-_LPfuYbv.js",
+    "file": "assets/MessagingPage-BHrpC48z.js",
     "name": "MessagingPage",
     "src": "src/pages/MessagingPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_switch-E5cb0_GK.js",
-      "_save-BCpiMowE.js"
+      "_switch-DUeupJhY.js",
+      "_save-DkLaBbe_.js"
     ]
   },
   "src/pages/SkillsPage.tsx": {
-    "file": "assets/SkillsPage-CEL0_szb.js",
+    "file": "assets/SkillsPage-WRCY4A-1.js",
     "name": "SkillsPage",
     "src": "src/pages/SkillsPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-Dc-lrgX9.js",
       "index.html",
-      "_badge-DewfpLon.js",
-      "_input-DedevdUk.js",
-      "_switch-E5cb0_GK.js",
-      "_package-DwGxtJxZ.js"
+      "_badge-DrAxc0qr.js",
+      "_input-Cxb-CV2a.js",
+      "_switch-DUeupJhY.js",
+      "_package-tLgx3YD_.js"
     ]
   }
 }

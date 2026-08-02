@@ -99,6 +99,27 @@ describe("normalized shell/detail projections", () => {
     expect(state.selectShell("s1")).toBe(first);
   });
 
+  it("preserves optimistic timestamps while a new-session snapshot contains zero sentinels", () => {
+    const state = new NormalizedWebState();
+    state.upsertShell({ ...shell("new"), started_at: 1_785_619_000, last_active: 1_785_619_000 });
+
+    const reconciled = state.upsertShell({
+      ...shell("new"),
+      started_at: 0,
+      last_active: 0,
+      is_active: true,
+    });
+
+    expect(reconciled.started_at).toBe(1_785_619_000);
+    expect(reconciled.last_active).toBe(1_785_619_000);
+    expect(state.upsertShell({
+      ...shell("new"),
+      started_at: 0,
+      last_active: 0,
+      is_active: true,
+    })).toBe(reconciled);
+  });
+
   it("does not keep unselected long chat bodies past their idle TTL", () => {
     const state = new NormalizedWebState();
     const longBody: SessionMessage[] = Array.from({ length: 5_000 }, (_, id) => ({
