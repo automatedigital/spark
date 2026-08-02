@@ -7,6 +7,10 @@ export function cn(...inputs: ClassValue[]) {
 
 /** Relative time from a Unix epoch timestamp (seconds). */
 export function timeAgo(ts: number): string {
+  // Session projections can briefly carry a zero timestamp while a newly
+  // created thread is being persisted. Never render that sentinel as the
+  // number of days since the Unix epoch.
+  if (!Number.isFinite(ts) || ts <= 0) return "just now";
   const delta = Date.now() / 1000 - ts;
   if (delta < 60) return "just now";
   if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;

@@ -572,6 +572,28 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     const source = meta?.source ?? (meta?.projectSlug ? `workspace:${meta.projectSlug}` : null);
     const projectSlug = meta?.projectSlug ?? slugFromSource(source);
     const now = Date.now() / 1000;
+    const optimistic: SessionInfo = {
+      id: sessionId,
+      source,
+      model: null,
+      title: initialMessage,
+      started_at: now,
+      ended_at: null,
+      last_active: now,
+      is_active: true,
+      message_count: 1,
+      tool_call_count: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      preview: initialMessage,
+      kanban_status: null,
+      estimated_cost_usd: null,
+    };
+    // Seed the normalized projection as well as React state so an immediate
+    // snapshot with zero timestamps cannot erase the local creation time.
+    if (!normalizedWebState.selectShell(sessionId)) {
+      normalizedWebState.upsertShell(optimistic);
+    }
     setPendingInitialMessages((pending) => ({ ...pending, [sessionId]: initialMessage }));
     setComposingFor(null);
     setSelectedId(sessionId);
@@ -591,23 +613,6 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
             : session
         ));
       }
-      const optimistic: SessionInfo = {
-        id: sessionId,
-        source,
-        model: null,
-        title: initialMessage,
-        started_at: now,
-        ended_at: null,
-        last_active: now,
-        is_active: true,
-        message_count: 1,
-        tool_call_count: 0,
-        input_tokens: 0,
-        output_tokens: 0,
-        preview: initialMessage,
-        kanban_status: null,
-        estimated_cost_usd: null,
-      };
       return [optimistic, ...prev];
     });
   }, []);
