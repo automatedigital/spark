@@ -1,0 +1,4363 @@
+{
+  "schema": "spark.web.baseline.v1",
+  "capturedAt": "2026-08-04T17:11:23.352Z",
+  "source": {
+    "commit": "d827339d",
+    "branch": "webui-thread-foundation",
+    "browser": "147.0.7727.15",
+    "node": "v22.22.1"
+  },
+  "fixtureSizes": [
+    50,
+    500,
+    2000
+  ],
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "deviceScaleFactor": 1
+    }
+  ],
+  "themes": [
+    {
+      "id": "codex",
+      "name": "dark"
+    },
+    {
+      "id": "daylight",
+      "name": "light"
+    }
+  ],
+  "cases": [
+    {
+      "fixtureRows": 50,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 1407.82,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 966.1000000238419,
+        "loadEventEnd": 967,
+        "duration": 967
+      },
+      "history": {
+        "pagesLoaded": 0,
+        "attempts": 0,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 2,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 18
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 11,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 4,
+        "observedTargets": 160,
+        "callbacks": 6,
+        "callbackEntries": 67
+      },
+      "performance": {
+        "Timestamp": 353588.15804,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 564,
+        "LayoutObjects": 1094,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1337,
+        "Resources": 57,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 2,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000005,
+        "ScriptDuration": 0.000003,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000017,
+        "TaskOtherDuration": 0.000009,
+        "ThreadTime": 0.000044,
+        "ProcessTime": 0.775431,
+        "JSHeapUsedSize": 20774412,
+        "JSHeapTotalSize": 28164096,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353586.871994,
+        "NavigationStart": 353585.906066
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:6",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:6",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 458.19999998807907,
+            "visibleTokens": 2,
+            "visibleChars": 44,
+            "streaming": "true"
+          },
+          {
+            "at": 643.5,
+            "visibleTokens": 5,
+            "visibleChars": 110,
+            "streaming": "true"
+          },
+          {
+            "at": 807.9000000357628,
+            "visibleTokens": 7,
+            "visibleChars": 154,
+            "streaming": "true"
+          },
+          {
+            "at": 935.9000000357628,
+            "visibleTokens": 9,
+            "visibleChars": 198,
+            "streaming": "true"
+          },
+          {
+            "at": 1069.199999988079,
+            "visibleTokens": 11,
+            "visibleChars": 244,
+            "streaming": "true"
+          },
+          {
+            "at": 1159.5,
+            "visibleTokens": 13,
+            "visibleChars": 290,
+            "streaming": "true"
+          },
+          {
+            "at": 1298.300000011921,
+            "visibleTokens": 15,
+            "visibleChars": 336,
+            "streaming": "true"
+          },
+          {
+            "at": 1365.9000000357628,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1068.6000000238419,
+        "updatesPerSecond": 7.486430843928046,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12800,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 22,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/50-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 50,
+      "viewport": {
+        "width": 1024,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 476.93,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 113.40000003576279,
+        "loadEventEnd": 114.5,
+        "duration": 114.5
+      },
+      "history": {
+        "pagesLoaded": 0,
+        "attempts": 0,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 2,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 23
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 13,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 4,
+        "observedTargets": 157,
+        "callbacks": 6,
+        "callbackEntries": 65
+      },
+      "performance": {
+        "Timestamp": 353591.498691,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 789,
+        "LayoutObjects": 1152,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1444,
+        "Resources": 61,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 2,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000004,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000004,
+        "TaskOtherDuration": 0,
+        "ThreadTime": 0.000019,
+        "ProcessTime": 0.751196,
+        "JSHeapUsedSize": 23443916,
+        "JSHeapTotalSize": 29736960,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353590.304233,
+        "NavigationStart": 353590.190858
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:6",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:6",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 407.5999999642372,
+            "visibleTokens": 2,
+            "visibleChars": 44,
+            "streaming": "true"
+          },
+          {
+            "at": 542.3000000119209,
+            "visibleTokens": 4,
+            "visibleChars": 88,
+            "streaming": "true"
+          },
+          {
+            "at": 730.0999999642372,
+            "visibleTokens": 7,
+            "visibleChars": 154,
+            "streaming": "true"
+          },
+          {
+            "at": 866.1999999880791,
+            "visibleTokens": 9,
+            "visibleChars": 198,
+            "streaming": "true"
+          },
+          {
+            "at": 1041.8999999761581,
+            "visibleTokens": 12,
+            "visibleChars": 267,
+            "streaming": "true"
+          },
+          {
+            "at": 1191.0999999642372,
+            "visibleTokens": 14,
+            "visibleChars": 313,
+            "streaming": "true"
+          },
+          {
+            "at": 1314.5,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 7,
+        "elapsedMs": 1079.699999988079,
+        "updatesPerSecond": 6.4832823933289685,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12792,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 23,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/50-w1024.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 50,
+      "viewport": {
+        "width": 768,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 405.18,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 94.89999997615814,
+        "loadEventEnd": 95.89999997615814,
+        "duration": 95.89999997615814
+      },
+      "history": {
+        "pagesLoaded": 0,
+        "attempts": 0,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 2,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 20
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 12,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 4,
+        "observedTargets": 121,
+        "callbacks": 6,
+        "callbackEntries": 56
+      },
+      "performance": {
+        "Timestamp": 353594.522173,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 495,
+        "LayoutObjects": 1009,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1248,
+        "Resources": 57,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 2,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000005,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000007,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000024,
+        "ProcessTime": 0.709526,
+        "JSHeapUsedSize": 19624664,
+        "JSHeapTotalSize": 28164096,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353593.373421,
+        "NavigationStart": 353593.278619
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:4",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:4",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 491.5,
+            "visibleTokens": 2,
+            "visibleChars": 42,
+            "streaming": "true"
+          },
+          {
+            "at": 620.3999999761581,
+            "visibleTokens": 4,
+            "visibleChars": 84,
+            "streaming": "true"
+          },
+          {
+            "at": 769.7999999523163,
+            "visibleTokens": 6,
+            "visibleChars": 126,
+            "streaming": "true"
+          },
+          {
+            "at": 877.3999999761581,
+            "visibleTokens": 8,
+            "visibleChars": 168,
+            "streaming": "true"
+          },
+          {
+            "at": 1046.7999999523163,
+            "visibleTokens": 10,
+            "visibleChars": 211,
+            "streaming": "true"
+          },
+          {
+            "at": 1169.699999988079,
+            "visibleTokens": 12,
+            "visibleChars": 255,
+            "streaming": "true"
+          },
+          {
+            "at": 1261.699999988079,
+            "visibleTokens": 14,
+            "visibleChars": 299,
+            "streaming": "true"
+          },
+          {
+            "at": 1386.5999999642372,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1078,
+        "updatesPerSecond": 7.421150278293135,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12662,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 27,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/50-w768.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 500,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 443.72,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 95.60000002384186,
+        "loadEventEnd": 96.60000002384186,
+        "duration": 96.60000002384186
+      },
+      "history": {
+        "pagesLoaded": 9,
+        "attempts": 9,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 11,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "101"
+          }
+        ],
+        "mountedRows": 24
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 64,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 13,
+        "observedTargets": 1806,
+        "callbacks": 35,
+        "callbackEntries": 1354
+      },
+      "performance": {
+        "Timestamp": 353598.501922,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 6085,
+        "LayoutObjects": 4738,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 6074,
+        "Resources": 55,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000004,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000005,
+        "TaskOtherDuration": 0.000001,
+        "ThreadTime": 0.000021,
+        "ProcessTime": 1.781225,
+        "JSHeapUsedSize": 25668860,
+        "JSHeapTotalSize": 56999936,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353596.47822,
+        "NavigationStart": 353596.38275
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:56",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:56",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 503.89999997615814,
+            "visibleTokens": 2,
+            "visibleChars": 46,
+            "streaming": "true"
+          },
+          {
+            "at": 656.1000000238419,
+            "visibleTokens": 4,
+            "visibleChars": 92,
+            "streaming": "true"
+          },
+          {
+            "at": 777.1999999880791,
+            "visibleTokens": 6,
+            "visibleChars": 138,
+            "streaming": "true"
+          },
+          {
+            "at": 902.6999999880791,
+            "visibleTokens": 8,
+            "visibleChars": 184,
+            "streaming": "true"
+          },
+          {
+            "at": 1037.300000011921,
+            "visibleTokens": 10,
+            "visibleChars": 231,
+            "streaming": "true"
+          },
+          {
+            "at": 1175.199999988079,
+            "visibleTokens": 12,
+            "visibleChars": 279,
+            "streaming": "true"
+          },
+          {
+            "at": 1272.199999988079,
+            "visibleTokens": 14,
+            "visibleChars": 327,
+            "streaming": "true"
+          },
+          {
+            "at": 1408.1000000238419,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1075.9000000357628,
+        "updatesPerSecond": 7.435635281842254,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12934,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 22,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/500-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 500,
+      "viewport": {
+        "width": 1024,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 526.34,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 171,
+        "loadEventEnd": 172.19999998807907,
+        "duration": 172.19999998807907
+      },
+      "history": {
+        "pagesLoaded": 9,
+        "attempts": 9,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 11,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "101"
+          }
+        ],
+        "mountedRows": 23
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 69,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 13,
+        "observedTargets": 2090,
+        "callbacks": 45,
+        "callbackEntries": 1682
+      },
+      "performance": {
+        "Timestamp": 353602.672739,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 6606,
+        "LayoutObjects": 5273,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 6427,
+        "Resources": 56,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000005,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000008,
+        "TaskOtherDuration": 0.000003,
+        "ThreadTime": 0.000026,
+        "ProcessTime": 1.80035,
+        "JSHeapUsedSize": 43387016,
+        "JSHeapTotalSize": 68009984,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353600.622217,
+        "NavigationStart": 353600.451193
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:56",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:56",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 600.8000000119209,
+            "visibleTokens": 2,
+            "visibleChars": 46,
+            "streaming": "true"
+          },
+          {
+            "at": 718.8999999761581,
+            "visibleTokens": 4,
+            "visibleChars": 92,
+            "streaming": "true"
+          },
+          {
+            "at": 879.8000000119209,
+            "visibleTokens": 7,
+            "visibleChars": 161,
+            "streaming": "true"
+          },
+          {
+            "at": 1093.6000000238419,
+            "visibleTokens": 10,
+            "visibleChars": 231,
+            "streaming": "true"
+          },
+          {
+            "at": 1244.699999988079,
+            "visibleTokens": 12,
+            "visibleChars": 279,
+            "streaming": "true"
+          },
+          {
+            "at": 1431.5,
+            "visibleTokens": 15,
+            "visibleChars": 351,
+            "streaming": "true"
+          },
+          {
+            "at": 1513.699999988079,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 7,
+        "elapsedMs": 1116.699999988079,
+        "updatesPerSecond": 6.268469597989367,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12942,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 21,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/500-w1024.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 500,
+      "viewport": {
+        "width": 768,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 440.17,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 112.19999998807907,
+        "loadEventEnd": 113.30000001192093,
+        "duration": 113.30000001192093
+      },
+      "history": {
+        "pagesLoaded": 9,
+        "attempts": 9,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 11,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "101"
+          }
+        ],
+        "mountedRows": 20
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 58,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 13,
+        "observedTargets": 1726,
+        "callbacks": 33,
+        "callbackEntries": 1091
+      },
+      "performance": {
+        "Timestamp": 353606.843329,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 2884,
+        "LayoutObjects": 3094,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 4887,
+        "Resources": 55,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000003,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000005,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000022,
+        "ProcessTime": 1.646022,
+        "JSHeapUsedSize": 32283796,
+        "JSHeapTotalSize": 55427072,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353604.912638,
+        "NavigationStart": 353604.800557
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:54",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:54",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 473,
+            "visibleTokens": 2,
+            "visibleChars": 44,
+            "streaming": "true"
+          },
+          {
+            "at": 626.9000000357628,
+            "visibleTokens": 4,
+            "visibleChars": 88,
+            "streaming": "true"
+          },
+          {
+            "at": 752.9000000357628,
+            "visibleTokens": 6,
+            "visibleChars": 132,
+            "streaming": "true"
+          },
+          {
+            "at": 884.9000000357628,
+            "visibleTokens": 8,
+            "visibleChars": 176,
+            "streaming": "true"
+          },
+          {
+            "at": 1037.4000000357628,
+            "visibleTokens": 10,
+            "visibleChars": 221,
+            "streaming": "true"
+          },
+          {
+            "at": 1191,
+            "visibleTokens": 12,
+            "visibleChars": 267,
+            "streaming": "true"
+          },
+          {
+            "at": 1286.699999988079,
+            "visibleTokens": 14,
+            "visibleChars": 313,
+            "streaming": "true"
+          },
+          {
+            "at": 1417.6000000238419,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1110.6000000238419,
+        "updatesPerSecond": 7.2033135240665045,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12848,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 24,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/500-w768.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 523.35,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 125.80000001192093,
+        "loadEventEnd": 126.89999997615814,
+        "duration": 126.89999997615814
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 41,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "601"
+          }
+        ],
+        "mountedRows": 18
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 319,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 43,
+        "observedTargets": 11408,
+        "callbacks": 238,
+        "callbackEntries": 8890
+      },
+      "performance": {
+        "Timestamp": 353617.105658,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 22916,
+        "LayoutObjects": 5837,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 6226,
+        "Resources": 54,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000005,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000007,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000028,
+        "ProcessTime": 9.129448,
+        "JSHeapUsedSize": 29972276,
+        "JSHeapTotalSize": 106807296,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353608.868042,
+        "NavigationStart": 353608.742357
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:556",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:556",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 516.2000000476837,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "true"
+          },
+          {
+            "at": 708.4000000357628,
+            "visibleTokens": 5,
+            "visibleChars": 120,
+            "streaming": "true"
+          },
+          {
+            "at": 873.7000000476837,
+            "visibleTokens": 7,
+            "visibleChars": 168,
+            "streaming": "true"
+          },
+          {
+            "at": 1005.6000000238419,
+            "visibleTokens": 9,
+            "visibleChars": 216,
+            "streaming": "true"
+          },
+          {
+            "at": 1140.7000000476837,
+            "visibleTokens": 11,
+            "visibleChars": 266,
+            "streaming": "true"
+          },
+          {
+            "at": 1282.6000000238419,
+            "visibleTokens": 13,
+            "visibleChars": 316,
+            "streaming": "true"
+          },
+          {
+            "at": 1422.6000000238419,
+            "visibleTokens": 15,
+            "visibleChars": 366,
+            "streaming": "true"
+          },
+          {
+            "at": 1468.5,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1127.699999988079,
+        "updatesPerSecond": 7.094085306450801,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13069,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 25,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/2000-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 1024,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 477.58,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 109.60000002384186,
+        "loadEventEnd": 110.70000004768372,
+        "duration": 110.70000004768372
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 41,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "601"
+          }
+        ],
+        "mountedRows": 18
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 369,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 43,
+        "observedTargets": 12386,
+        "callbacks": 302,
+        "callbackEntries": 9883
+      },
+      "performance": {
+        "Timestamp": 353627.947067,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 27057,
+        "LayoutObjects": 6505,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 7340,
+        "Resources": 56,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000005,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000006,
+        "TaskOtherDuration": 0.000001,
+        "ThreadTime": 0.000027,
+        "ProcessTime": 9.761116,
+        "JSHeapUsedSize": 50581812,
+        "JSHeapTotalSize": 107855872,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353619.179974,
+        "NavigationStart": 353619.070402
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:556",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:556",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 572.1999999880791,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "true"
+          },
+          {
+            "at": 681.3000000119209,
+            "visibleTokens": 4,
+            "visibleChars": 96,
+            "streaming": "true"
+          },
+          {
+            "at": 832.3000000119209,
+            "visibleTokens": 6,
+            "visibleChars": 144,
+            "streaming": "true"
+          },
+          {
+            "at": 928.5,
+            "visibleTokens": 8,
+            "visibleChars": 192,
+            "streaming": "true"
+          },
+          {
+            "at": 1096.800000011921,
+            "visibleTokens": 10,
+            "visibleChars": 241,
+            "streaming": "true"
+          },
+          {
+            "at": 1200.1000000238419,
+            "visibleTokens": 12,
+            "visibleChars": 291,
+            "streaming": "true"
+          },
+          {
+            "at": 1346,
+            "visibleTokens": 14,
+            "visibleChars": 341,
+            "streaming": "true"
+          },
+          {
+            "at": 1463,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1098.199999988079,
+        "updatesPerSecond": 7.284647605251174,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13090,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 22,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/2000-w1024.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 768,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 474.31,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 145.9000000357628,
+        "loadEventEnd": 147,
+        "duration": 147
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 41,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "601"
+          }
+        ],
+        "mountedRows": 15
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 230,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 43,
+        "observedTargets": 8583,
+        "callbacks": 180,
+        "callbackEntries": 6702
+      },
+      "performance": {
+        "Timestamp": 353636.347596,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 18390,
+        "LayoutObjects": 6979,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 18126,
+        "Resources": 56,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000003,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000004,
+        "TaskOtherDuration": 0.000001,
+        "ThreadTime": 0.000029,
+        "ProcessTime": 6.582061,
+        "JSHeapUsedSize": 42047464,
+        "JSHeapTotalSize": 100515840,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353630.020282,
+        "NavigationStart": 353629.874382
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:554",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:554",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 515.1000000238419,
+            "visibleTokens": 2,
+            "visibleChars": 46,
+            "streaming": "true"
+          },
+          {
+            "at": 646.3999999761581,
+            "visibleTokens": 4,
+            "visibleChars": 92,
+            "streaming": "true"
+          },
+          {
+            "at": 767.3999999761581,
+            "visibleTokens": 6,
+            "visibleChars": 138,
+            "streaming": "true"
+          },
+          {
+            "at": 924,
+            "visibleTokens": 8,
+            "visibleChars": 184,
+            "streaming": "true"
+          },
+          {
+            "at": 1068.800000011921,
+            "visibleTokens": 10,
+            "visibleChars": 231,
+            "streaming": "true"
+          },
+          {
+            "at": 1189.300000011921,
+            "visibleTokens": 12,
+            "visibleChars": 279,
+            "streaming": "true"
+          },
+          {
+            "at": 1345.699999988079,
+            "visibleTokens": 14,
+            "visibleChars": 327,
+            "streaming": "true"
+          },
+          {
+            "at": 1437.800000011921,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1107,
+        "updatesPerSecond": 7.226738934056008,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12960,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 24,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/2000-w768.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 50,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 588.47,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 166,
+        "loadEventEnd": 167.19999998807907,
+        "duration": 167.19999998807907
+      },
+      "history": {
+        "pagesLoaded": 0,
+        "attempts": 0,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 2,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 24
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 11,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 4,
+        "observedTargets": 160,
+        "callbacks": 6,
+        "callbackEntries": 67
+      },
+      "performance": {
+        "Timestamp": 353639.662299,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 520,
+        "LayoutObjects": 1322,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1544,
+        "Resources": 57,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 2,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000004,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000006,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000019,
+        "ProcessTime": 0.796132,
+        "JSHeapUsedSize": 20804404,
+        "JSHeapTotalSize": 30785536,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353638.405183,
+        "NavigationStart": 353638.239191
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:6",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:6",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 428.4000000357628,
+            "visibleTokens": 2,
+            "visibleChars": 46,
+            "streaming": "true"
+          },
+          {
+            "at": 584.4000000357628,
+            "visibleTokens": 4,
+            "visibleChars": 92,
+            "streaming": "true"
+          },
+          {
+            "at": 708.6000000238419,
+            "visibleTokens": 6,
+            "visibleChars": 138,
+            "streaming": "true"
+          },
+          {
+            "at": 835.7000000476837,
+            "visibleTokens": 8,
+            "visibleChars": 184,
+            "streaming": "true"
+          },
+          {
+            "at": 975.1000000238419,
+            "visibleTokens": 9,
+            "visibleChars": 207,
+            "streaming": "true"
+          },
+          {
+            "at": 1119.5,
+            "visibleTokens": 12,
+            "visibleChars": 279,
+            "streaming": "true"
+          },
+          {
+            "at": 1266.4000000357628,
+            "visibleTokens": 14,
+            "visibleChars": 327,
+            "streaming": "true"
+          },
+          {
+            "at": 1417.4000000357628,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1167.1000000238419,
+        "updatesPerSecond": 6.854596863881907,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12943,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 25,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/50-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 50,
+      "viewport": {
+        "width": 1024,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 720.63,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 108.70000004768372,
+        "loadEventEnd": 109.80000001192093,
+        "duration": 109.80000001192093
+      },
+      "history": {
+        "pagesLoaded": 0,
+        "attempts": 0,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 2,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 18
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 16,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 4,
+        "observedTargets": 157,
+        "callbacks": 6,
+        "callbackEntries": 65
+      },
+      "performance": {
+        "Timestamp": 353643.376578,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 3,
+        "Frames": 2,
+        "JSEventListeners": 897,
+        "LayoutObjects": 1380,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1651,
+        "Resources": 66,
+        "ContextLifecycleStateObservers": 7,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 3,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 2,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000006,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000008,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000037,
+        "ProcessTime": 0.866734,
+        "JSHeapUsedSize": 22130088,
+        "JSHeapTotalSize": 31309824,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353641.866023,
+        "NavigationStart": 353641.757461
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:6",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:6",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 870.1999999880791,
+            "visibleTokens": 3,
+            "visibleChars": 69,
+            "streaming": "true"
+          },
+          {
+            "at": 1052.5999999642372,
+            "visibleTokens": 5,
+            "visibleChars": 115,
+            "streaming": "true"
+          },
+          {
+            "at": 1168.0999999642372,
+            "visibleTokens": 7,
+            "visibleChars": 161,
+            "streaming": "true"
+          },
+          {
+            "at": 1328.5999999642372,
+            "visibleTokens": 9,
+            "visibleChars": 207,
+            "streaming": "true"
+          },
+          {
+            "at": 1493.5,
+            "visibleTokens": 11,
+            "visibleChars": 255,
+            "streaming": "true"
+          },
+          {
+            "at": 1616.199999988079,
+            "visibleTokens": 13,
+            "visibleChars": 303,
+            "streaming": "true"
+          },
+          {
+            "at": 1737.8999999761581,
+            "visibleTokens": 15,
+            "visibleChars": 351,
+            "streaming": "true"
+          },
+          {
+            "at": 1810.699999988079,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1270.1000000238419,
+        "updatesPerSecond": 6.298716636367079,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12951,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 24,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/50-w1024.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 50,
+      "viewport": {
+        "width": 768,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 685.47,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 113.40000003576279,
+        "loadEventEnd": 114.60000002384186,
+        "duration": 114.60000002384186
+      },
+      "history": {
+        "pagesLoaded": 0,
+        "attempts": 0,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 2,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 20
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 15,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 4,
+        "observedTargets": 121,
+        "callbacks": 6,
+        "callbackEntries": 56
+      },
+      "performance": {
+        "Timestamp": 353647.265057,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 781,
+        "LayoutObjects": 1267,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1500,
+        "Resources": 72,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 2,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000004,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000006,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000026,
+        "ProcessTime": 0.82284,
+        "JSHeapUsedSize": 18699976,
+        "JSHeapTotalSize": 34717696,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353645.829587,
+        "NavigationStart": 353645.716196
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:4",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:4",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 836.8999999761581,
+            "visibleTokens": 3,
+            "visibleChars": 66,
+            "streaming": "true"
+          },
+          {
+            "at": 1011,
+            "visibleTokens": 5,
+            "visibleChars": 110,
+            "streaming": "true"
+          },
+          {
+            "at": 1135.5,
+            "visibleTokens": 7,
+            "visibleChars": 154,
+            "streaming": "true"
+          },
+          {
+            "at": 1300.199999988079,
+            "visibleTokens": 9,
+            "visibleChars": 198,
+            "streaming": "true"
+          },
+          {
+            "at": 1403.3999999761581,
+            "visibleTokens": 11,
+            "visibleChars": 244,
+            "streaming": "true"
+          },
+          {
+            "at": 1542.5,
+            "visibleTokens": 13,
+            "visibleChars": 290,
+            "streaming": "true"
+          },
+          {
+            "at": 1643.699999988079,
+            "visibleTokens": 15,
+            "visibleChars": 336,
+            "streaming": "true"
+          },
+          {
+            "at": 1728.300000011921,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1139.4000000357628,
+        "updatesPerSecond": 7.0212392485070225,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 20,
+          "eventPayloadBytes": 14085,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 25,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/50-w768.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 500,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 483.58,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 106.69999998807907,
+        "loadEventEnd": 107.80000001192093,
+        "duration": 107.80000001192093
+      },
+      "history": {
+        "pagesLoaded": 9,
+        "attempts": 9,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 11,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "101"
+          }
+        ],
+        "mountedRows": 24
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 74,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 13,
+        "observedTargets": 2188,
+        "callbacks": 42,
+        "callbackEntries": 1685
+      },
+      "performance": {
+        "Timestamp": 353651.755176,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 7208,
+        "LayoutObjects": 5982,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 7212,
+        "Resources": 56,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000004,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000006,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000019,
+        "ProcessTime": 1.989616,
+        "JSHeapUsedSize": 21659500,
+        "JSHeapTotalSize": 69844992,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353649.635164,
+        "NavigationStart": 353649.528442
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:56",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:56",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 596.1999999880791,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "true"
+          },
+          {
+            "at": 753,
+            "visibleTokens": 4,
+            "visibleChars": 96,
+            "streaming": "true"
+          },
+          {
+            "at": 879.8999999761581,
+            "visibleTokens": 6,
+            "visibleChars": 144,
+            "streaming": "true"
+          },
+          {
+            "at": 1011.8999999761581,
+            "visibleTokens": 8,
+            "visibleChars": 192,
+            "streaming": "true"
+          },
+          {
+            "at": 1148.5,
+            "visibleTokens": 10,
+            "visibleChars": 241,
+            "streaming": "true"
+          },
+          {
+            "at": 1240.5999999642372,
+            "visibleTokens": 12,
+            "visibleChars": 291,
+            "streaming": "true"
+          },
+          {
+            "at": 1426.8999999761581,
+            "visibleTokens": 14,
+            "visibleChars": 341,
+            "streaming": "true"
+          },
+          {
+            "at": 1519.5,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1134.5,
+        "updatesPerSecond": 7.051564565888056,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13071,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 25,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/500-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 500,
+      "viewport": {
+        "width": 1024,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 483.4,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 91.69999998807907,
+        "loadEventEnd": 92.69999998807907,
+        "duration": 92.69999998807907
+      },
+      "history": {
+        "pagesLoaded": 9,
+        "attempts": 9,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 11,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "101"
+          }
+        ],
+        "mountedRows": 23
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 74,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 13,
+        "observedTargets": 2411,
+        "callbacks": 48,
+        "callbackEntries": 1813
+      },
+      "performance": {
+        "Timestamp": 353656.155295,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 9224,
+        "LayoutObjects": 7092,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 8533,
+        "Resources": 57,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000003,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000005,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000023,
+        "ProcessTime": 1.995656,
+        "JSHeapUsedSize": 31433356,
+        "JSHeapTotalSize": 72466432,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353653.989883,
+        "NavigationStart": 353653.898177
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:56",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:56",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 461.5,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "true"
+          },
+          {
+            "at": 626.5,
+            "visibleTokens": 4,
+            "visibleChars": 96,
+            "streaming": "true"
+          },
+          {
+            "at": 750.6000000238419,
+            "visibleTokens": 6,
+            "visibleChars": 144,
+            "streaming": "true"
+          },
+          {
+            "at": 911.9000000357628,
+            "visibleTokens": 9,
+            "visibleChars": 216,
+            "streaming": "true"
+          },
+          {
+            "at": 1116.9000000357628,
+            "visibleTokens": 11,
+            "visibleChars": 266,
+            "streaming": "true"
+          },
+          {
+            "at": 1226.6000000238419,
+            "visibleTokens": 13,
+            "visibleChars": 316,
+            "streaming": "true"
+          },
+          {
+            "at": 1374.5,
+            "visibleTokens": 15,
+            "visibleChars": 366,
+            "streaming": "true"
+          },
+          {
+            "at": 1418.699999988079,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1156.199999988079,
+        "updatesPerSecond": 6.919218128422837,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13069,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 26,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/500-w1024.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 500,
+      "viewport": {
+        "width": 768,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 561.57,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 200,
+        "loadEventEnd": 201.19999998807907,
+        "duration": 201.19999998807907
+      },
+      "history": {
+        "pagesLoaded": 9,
+        "attempts": 9,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 11,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "101"
+          }
+        ],
+        "mountedRows": 20
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 56,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 13,
+        "observedTargets": 1863,
+        "callbacks": 42,
+        "callbackEntries": 1400
+      },
+      "performance": {
+        "Timestamp": 353660.310223,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 3172,
+        "LayoutObjects": 3300,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 3604,
+        "Resources": 55,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000004,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000005,
+        "TaskOtherDuration": 0.000001,
+        "ThreadTime": 0.000021,
+        "ProcessTime": 1.707844,
+        "JSHeapUsedSize": 28272132,
+        "JSHeapTotalSize": 57786368,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353658.322184,
+        "NavigationStart": 353658.122227
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:54",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:54",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 467.69999998807907,
+            "visibleTokens": 2,
+            "visibleChars": 46,
+            "streaming": "true"
+          },
+          {
+            "at": 620.1999999880791,
+            "visibleTokens": 4,
+            "visibleChars": 92,
+            "streaming": "true"
+          },
+          {
+            "at": 771.3999999761581,
+            "visibleTokens": 6,
+            "visibleChars": 138,
+            "streaming": "true"
+          },
+          {
+            "at": 878.5999999642372,
+            "visibleTokens": 8,
+            "visibleChars": 184,
+            "streaming": "true"
+          },
+          {
+            "at": 1021,
+            "visibleTokens": 10,
+            "visibleChars": 231,
+            "streaming": "true"
+          },
+          {
+            "at": 1139.5,
+            "visibleTokens": 12,
+            "visibleChars": 279,
+            "streaming": "true"
+          },
+          {
+            "at": 1290.699999988079,
+            "visibleTokens": 14,
+            "visibleChars": 327,
+            "streaming": "true"
+          },
+          {
+            "at": 1411.8999999761581,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1121.1000000238419,
+        "updatesPerSecond": 7.135848719855382,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 12945,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 25,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/500-w768.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 530.89,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 87.39999997615814,
+        "loadEventEnd": 88.39999997615814,
+        "duration": 88.39999997615814
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 41,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "601"
+          }
+        ],
+        "mountedRows": 18
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 286,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 43,
+        "observedTargets": 10062,
+        "callbacks": 218,
+        "callbackEntries": 7868
+      },
+      "performance": {
+        "Timestamp": 353670.060181,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 26950,
+        "LayoutObjects": 6706,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 6989,
+        "Resources": 55,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000005,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000006,
+        "TaskOtherDuration": 0.000001,
+        "ThreadTime": 0.000025,
+        "ProcessTime": 8.533558,
+        "JSHeapUsedSize": 50710448,
+        "JSHeapTotalSize": 112836608,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353662.336168,
+        "NavigationStart": 353662.248841
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:556",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:556",
+          "top": 86,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 483,
+            "visibleTokens": 2,
+            "visibleChars": 50,
+            "streaming": "true"
+          },
+          {
+            "at": 637,
+            "visibleTokens": 4,
+            "visibleChars": 100,
+            "streaming": "true"
+          },
+          {
+            "at": 759,
+            "visibleTokens": 6,
+            "visibleChars": 150,
+            "streaming": "true"
+          },
+          {
+            "at": 884.2999999523163,
+            "visibleTokens": 8,
+            "visibleChars": 200,
+            "streaming": "true"
+          },
+          {
+            "at": 1018.5,
+            "visibleTokens": 10,
+            "visibleChars": 251,
+            "streaming": "true"
+          },
+          {
+            "at": 1154.199999988079,
+            "visibleTokens": 12,
+            "visibleChars": 303,
+            "streaming": "true"
+          },
+          {
+            "at": 1295.5,
+            "visibleTokens": 14,
+            "visibleChars": 355,
+            "streaming": "true"
+          },
+          {
+            "at": 1426,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1125,
+        "updatesPerSecond": 7.111111111111111,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13199,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 25,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/2000-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 1024,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 501.89,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 89.40000003576279,
+        "loadEventEnd": 90.40000003576279,
+        "duration": 90.40000003576279
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 41,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "601"
+          }
+        ],
+        "mountedRows": 18
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 368,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 43,
+        "observedTargets": 12578,
+        "callbacks": 303,
+        "callbackEntries": 10192
+      },
+      "performance": {
+        "Timestamp": 353681.092196,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 44315,
+        "LayoutObjects": 9281,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 18351,
+        "Resources": 57,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000005,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000008,
+        "TaskOtherDuration": 0.000003,
+        "ThreadTime": 0.000032,
+        "ProcessTime": 9.714477,
+        "JSHeapUsedSize": 52914328,
+        "JSHeapTotalSize": 109690880,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353672.190302,
+        "NavigationStart": 353672.100927
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:556",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:556",
+          "top": 108,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 558.1999999880791,
+            "visibleTokens": 2,
+            "visibleChars": 50,
+            "streaming": "true"
+          },
+          {
+            "at": 728.1999999880791,
+            "visibleTokens": 4,
+            "visibleChars": 100,
+            "streaming": "true"
+          },
+          {
+            "at": 821.3000000119209,
+            "visibleTokens": 6,
+            "visibleChars": 150,
+            "streaming": "true"
+          },
+          {
+            "at": 948.5,
+            "visibleTokens": 8,
+            "visibleChars": 200,
+            "streaming": "true"
+          },
+          {
+            "at": 1087.5,
+            "visibleTokens": 10,
+            "visibleChars": 251,
+            "streaming": "true"
+          },
+          {
+            "at": 1270.3999999761581,
+            "visibleTokens": 13,
+            "visibleChars": 329,
+            "streaming": "true"
+          },
+          {
+            "at": 1422,
+            "visibleTokens": 15,
+            "visibleChars": 381,
+            "streaming": "true"
+          },
+          {
+            "at": 1499.800000011921,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1133.6000000238419,
+        "updatesPerSecond": 7.057163020317347,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13208,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 22,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/2000-w1024.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 768,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "daylight",
+        "name": "light"
+      },
+      "firstRenderMs": 446.81,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 96.29999995231628,
+        "loadEventEnd": 97.39999997615814,
+        "duration": 97.39999997615814
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 41,
+        "requests": [
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "limit": 50,
+            "beforeId": "601"
+          }
+        ],
+        "mountedRows": 15
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 228,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 43,
+        "observedTargets": 8832,
+        "callbacks": 188,
+        "callbackEntries": 7153
+      },
+      "performance": {
+        "Timestamp": 353689.580658,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 6656,
+        "LayoutObjects": 4125,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 5129,
+        "Resources": 54,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 0.000006,
+        "ScriptDuration": 0,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000008,
+        "TaskOtherDuration": 0.000002,
+        "ThreadTime": 0.000034,
+        "ProcessTime": 6.806811,
+        "JSHeapUsedSize": 39602388,
+        "JSHeapTotalSize": 106020864,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 353683.157367,
+        "NavigationStart": 353683.061167
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "db:554",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "after": {
+          "id": "db:554",
+          "top": 44,
+          "scrollTop": 500
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 1010.1999999880791,
+            "visibleTokens": 3,
+            "visibleChars": 72,
+            "streaming": "true"
+          },
+          {
+            "at": 1138.699999988079,
+            "visibleTokens": 5,
+            "visibleChars": 120,
+            "streaming": "true"
+          },
+          {
+            "at": 1302.800000011921,
+            "visibleTokens": 7,
+            "visibleChars": 168,
+            "streaming": "true"
+          },
+          {
+            "at": 1406.699999988079,
+            "visibleTokens": 9,
+            "visibleChars": 216,
+            "streaming": "true"
+          },
+          {
+            "at": 1546.9000000357628,
+            "visibleTokens": 11,
+            "visibleChars": 266,
+            "streaming": "true"
+          },
+          {
+            "at": 1688.1000000238419,
+            "visibleTokens": 13,
+            "visibleChars": 316,
+            "streaming": "true"
+          },
+          {
+            "at": 1794.800000011921,
+            "visibleTokens": 15,
+            "visibleChars": 366,
+            "streaming": "true"
+          },
+          {
+            "at": 1888.9000000357628,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "false"
+          }
+        ],
+        "updateCount": 8,
+        "elapsedMs": 1131.2000000476837,
+        "updatesPerSecond": 7.072135784708959,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13082,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 22,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "src/spark_cli/web/screenshots/baseline/thread/light/2000-w768.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    }
+  ],
+  "summary": {
+    "caseCount": 18,
+    "streamUpdateCount": 142,
+    "pageErrorCount": 0,
+    "consoleErrorCount": 0
+  },
+  "notes": [
+    "This is a raw current-state baseline, not redesign acceptance evidence.",
+    "Rows are deterministic user/assistant messages seeded into a temporary SPARK_HOME.",
+    "Efficiency counters are exposed only when the explicit spark_efficiency_test flag is present."
+  ]
+}

@@ -6971,6 +6971,7 @@ class FakeStreamStart(BaseModel):
     model: Optional[str] = None
     source: Optional[str] = None
     title: Optional[str] = None
+    reuse_existing: bool = False
     events: list[FakeStreamEvent] = Field(default_factory=list)
 
 
@@ -7185,12 +7186,15 @@ def _create_fake_stream_session(
     source: str,
     model: Optional[str],
     title: Optional[str],
+    reuse_existing: bool = False,
 ) -> dict[str, Any] | None:
     try:
         from core.spark_state import SessionDB
 
         db = SessionDB()
         try:
+            if reuse_existing:
+                return db.get_session(session_id)
             db.create_session(session_id, source=source, model=model)
             db._conn.execute(
                 "UPDATE sessions SET title = ?, kanban_status = 'active' WHERE id = ?",
@@ -7269,6 +7273,24 @@ def _run_fake_stream_task(
                 tid = event.tool_call_id or next(iter(tool_args_by_id), f"fake_tool_{index}")
                 args = tool_args_by_id.pop(tid, event.args if isinstance(event.args, dict) else {})
                 tool_complete_callback(tid, event.name or "fake_tool", args, event.result)
+            elif event_type == "approval":
+                approval = event.args if isinstance(event.args, dict) else {}
+                _touch_web_turn(session_id, status="Waiting for approval…", phase="approval")
+                _publish_event(
+                    "chat.approval_requested",
+                    {"approval": _json_safe(approval)},
+                    session_id,
+                )
+            elif event_type == "approval_resolved":
+                approval = event.args if isinstance(event.args, dict) else {}
+                _publish_event(
+                    "chat.approval_resolved",
+                    {
+                        "choice": str(approval.get("choice") or "once"),
+                        "resolved": int(approval.get("resolved") or 1),
+                    },
+                    session_id,
+                )
             elif event_type == "stall":
                 _touch_web_turn(
                     session_id,
@@ -9271,6 +9293,7 @@ async def create_fake_stream(body: FakeStreamStart, request: Request):
         source=source,
         model=body.model or "fake-stream",
         title=(body.title or body.message[:80] or "Fake stream"),
+        reuse_existing=body.reuse_existing,
     )
     if not row:
         raise HTTPException(status_code=500, detail="Unable to create fake stream session")
@@ -9288,7 +9311,7 @@ async def create_fake_stream(body: FakeStreamStart, request: Request):
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
         turn.fake_stream_cancel = threading.Event()
-    eager_user_id = _persist_web_user_message(session_id, body.message)
+    eager_user_id = None if body.reuse_existing else _persist_web_user_message(session_id, body.message)
     with turn.lock:
         turn.user_message_id = eager_user_id
     before_message_count = _session_message_count(session_id)

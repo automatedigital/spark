@@ -1,0 +1,814 @@
+{
+  "version": "1.0.0",
+  "fixture_id": "spark-web-chat-thread-states",
+  "description": "Deterministic, redacted chat/thread states for baseline and redesign UI tests.",
+  "network": {
+    "allowed": false,
+    "private_data": false,
+    "redaction": "All identifiers, paths, content, timestamps, and model names are synthetic fixture values."
+  },
+  "clock": {
+    "epoch": "2026-01-15T12:00:00.000Z",
+    "timestamps_are_fixture_only": true
+  },
+  "scenarios": [
+    {
+      "id": "empty",
+      "label": "Empty chat",
+      "state": "idle",
+      "session": {
+        "id": "fixture-thread-empty",
+        "title": "New chat",
+        "source": "web",
+        "model": "terra"
+      },
+      "messages": [],
+      "events": [],
+      "expected": {
+        "visible_message_count": 0,
+        "composer_enabled": true,
+        "connection": "connected"
+      }
+    },
+    {
+      "id": "short",
+      "label": "Short completed chat",
+      "state": "complete",
+      "session": {
+        "id": "fixture-thread-short",
+        "title": "Short answer",
+        "source": "web",
+        "model": "terra"
+      },
+      "messages": [
+        {
+          "id": "short-user-001",
+          "role": "user",
+          "content": "Summarise the release checklist in one sentence.",
+          "timestamp": "2026-01-15T12:00:01.000Z"
+        },
+        {
+          "id": "short-assistant-001",
+          "role": "assistant",
+          "content": "Verify tests, review the diff, and confirm the release artifact before publishing.",
+          "timestamp": "2026-01-15T12:00:03.000Z",
+          "usage": {
+            "totalTokens": 42,
+            "costUsd": 0.0004
+          }
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.turn_done",
+          "timestamp": "2026-01-15T12:00:03.000Z",
+          "data": {
+            "completed": true
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 2,
+        "composer_enabled": true,
+        "connection": "connected"
+      }
+    },
+    {
+      "id": "long",
+      "label": "Long multi-turn chat",
+      "state": "complete",
+      "session": {
+        "id": "fixture-thread-long",
+        "title": "Long planning thread",
+        "source": "web",
+        "model": "sol"
+      },
+      "messages": [
+        {
+          "id": "long-user-001",
+          "role": "user",
+          "content": "Help plan a small offline reading list app.",
+          "timestamp": "2026-01-15T11:40:00.000Z"
+        },
+        {
+          "id": "long-assistant-001",
+          "role": "assistant",
+          "content": "Start with a local list, a filter, and a detail view. Keep the first version deliberately narrow.",
+          "timestamp": "2026-01-15T11:40:05.000Z"
+        },
+        {
+          "id": "long-user-002",
+          "role": "user",
+          "content": "Add import and export requirements.",
+          "timestamp": "2026-01-15T11:41:00.000Z"
+        },
+        {
+          "id": "long-assistant-002",
+          "role": "assistant",
+          "content": "Use newline-delimited JSON for export and validate each imported record before it enters the local store.",
+          "timestamp": "2026-01-15T11:41:06.000Z"
+        },
+        {
+          "id": "long-user-003",
+          "role": "user",
+          "content": "What should happen when an imported item is incomplete?",
+          "timestamp": "2026-01-15T11:42:00.000Z"
+        },
+        {
+          "id": "long-assistant-003",
+          "role": "assistant",
+          "content": "Keep valid records, report the rejected line numbers, and offer a downloadable error summary without losing the original file.",
+          "timestamp": "2026-01-15T11:42:08.000Z"
+        },
+        {
+          "id": "long-user-004",
+          "role": "user",
+          "content": "Now consider search and sorting.",
+          "timestamp": "2026-01-15T11:43:00.000Z"
+        },
+        {
+          "id": "long-assistant-004",
+          "role": "assistant",
+          "content": "Search title and author locally, debounce input, and make sort order explicit so a refresh cannot silently change the result order.",
+          "timestamp": "2026-01-15T11:43:09.000Z"
+        },
+        {
+          "id": "long-user-005",
+          "role": "user",
+          "content": "Include keyboard navigation in the first release.",
+          "timestamp": "2026-01-15T11:44:00.000Z"
+        },
+        {
+          "id": "long-assistant-005",
+          "role": "assistant",
+          "content": "Give the list a roving focus target, preserve focus after filtering, and expose the selected item to assistive technology.",
+          "timestamp": "2026-01-15T11:44:11.000Z"
+        },
+        {
+          "id": "long-user-006",
+          "role": "user",
+          "content": "How should the app recover after a reload during an edit?",
+          "timestamp": "2026-01-15T11:45:00.000Z"
+        },
+        {
+          "id": "long-assistant-006",
+          "role": "assistant",
+          "content": "Persist drafts separately from committed records, restore the draft with a clear notice, and never overwrite a newer local edit with an older snapshot.",
+          "timestamp": "2026-01-15T11:45:14.000Z"
+        },
+        {
+          "id": "long-user-007",
+          "role": "user",
+          "content": "Give me the implementation order.",
+          "timestamp": "2026-01-15T11:46:00.000Z"
+        },
+        {
+          "id": "long-assistant-007",
+          "role": "assistant",
+          "content": "Build the local store, add the list and detail views, wire validation, then add import/export, search, keyboard navigation, and recovery tests.",
+          "timestamp": "2026-01-15T11:46:20.000Z",
+          "usage": {
+            "totalTokens": 684,
+            "costUsd": 0.0068
+          }
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.turn_done",
+          "timestamp": "2026-01-15T11:46:20.000Z",
+          "data": {
+            "completed": true
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 14,
+        "composer_enabled": true,
+        "connection": "connected",
+        "long_thread": true
+      }
+    },
+    {
+      "id": "streaming",
+      "label": "Active streaming response",
+      "state": "streaming",
+      "session": {
+        "id": "fixture-thread-streaming",
+        "title": "Streaming answer",
+        "source": "web",
+        "model": "terra"
+      },
+      "messages": [
+        {
+          "id": "stream-user-001",
+          "role": "user",
+          "content": "Draft a three-step test plan.",
+          "timestamp": "2026-01-15T12:01:00.000Z"
+        },
+        {
+          "id": "stream-reasoning-001",
+          "role": "reasoning",
+          "text": "Choose a small plan with observable checkpoints.",
+          "timestamp": "2026-01-15T12:01:01.000Z"
+        },
+        {
+          "id": "stream-assistant-001",
+          "role": "assistant",
+          "content": "1. Seed the fixture.\n2. Exercise the interaction.\n3. Assert the rendered state.",
+          "streaming": true,
+          "renderRevision": 3,
+          "liveTotalChars": 68,
+          "timestamp": "2026-01-15T12:01:03.000Z"
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.status",
+          "timestamp": "2026-01-15T12:01:00.000Z",
+          "data": {
+            "phase": "starting"
+          }
+        },
+        {
+          "seq": 2,
+          "topic": "chat.reasoning",
+          "timestamp": "2026-01-15T12:01:01.000Z",
+          "data": {
+            "text": "Choose a small plan with observable checkpoints."
+          }
+        },
+        {
+          "seq": 3,
+          "topic": "chat.token",
+          "timestamp": "2026-01-15T12:01:03.000Z",
+          "data": {
+            "t": "3. Assert the rendered state."
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 3,
+        "composer_enabled": false,
+        "connection": "connected",
+        "active_stream": true,
+        "tail_anchor": true
+      }
+    },
+    {
+      "id": "interrupted",
+      "label": "Interrupted response",
+      "state": "interrupted",
+      "session": {
+        "id": "fixture-thread-interrupted",
+        "title": "Stopped response",
+        "source": "web",
+        "model": "terra"
+      },
+      "messages": [
+        {
+          "id": "interrupt-user-001",
+          "role": "user",
+          "content": "Explain the migration steps.",
+          "timestamp": "2026-01-15T12:02:00.000Z"
+        },
+        {
+          "id": "interrupt-assistant-001",
+          "role": "assistant",
+          "content": "First, record the current schema and prepare a reversible change...",
+          "streaming": false,
+          "timestamp": "2026-01-15T12:02:04.000Z"
+        },
+        {
+          "id": "interrupt-note-001",
+          "role": "note",
+          "text": "Generation stopped by the user.",
+          "timestamp": "2026-01-15T12:02:05.000Z"
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.interrupt_requested",
+          "timestamp": "2026-01-15T12:02:05.000Z",
+          "data": {
+            "reason": "user_requested"
+          }
+        },
+        {
+          "seq": 2,
+          "topic": "chat.interrupted",
+          "timestamp": "2026-01-15T12:02:05.000Z",
+          "data": {
+            "completed": false
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 3,
+        "composer_enabled": true,
+        "connection": "connected",
+        "retry_visible": true,
+        "partial_answer_visible": true
+      }
+    },
+    {
+      "id": "reconnecting",
+      "label": "Reconnecting chat",
+      "state": "reconnecting",
+      "session": {
+        "id": "fixture-thread-reconnecting",
+        "title": "Recovering connection",
+        "source": "web",
+        "model": "terra"
+      },
+      "messages": [
+        {
+          "id": "reconnect-user-001",
+          "role": "user",
+          "content": "Continue the checklist.",
+          "timestamp": "2026-01-15T12:03:00.000Z"
+        },
+        {
+          "id": "reconnect-assistant-001",
+          "role": "assistant",
+          "content": "The next item is to verify the saved state.",
+          "streaming": true,
+          "timestamp": "2026-01-15T12:03:03.000Z"
+        }
+      ],
+      "transport": {
+        "connection": "reconnecting",
+        "last_seen_seq": 2,
+        "retry_count": 2,
+        "recovery_action": "resume_from_sequence"
+      },
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.status",
+          "timestamp": "2026-01-15T12:03:00.000Z",
+          "data": {
+            "phase": "streaming"
+          }
+        },
+        {
+          "seq": 2,
+          "topic": "chat.token",
+          "timestamp": "2026-01-15T12:03:03.000Z",
+          "data": {
+            "t": "The next item is to verify the saved state."
+          }
+        },
+        {
+          "action": "disconnect",
+          "timestamp": "2026-01-15T12:03:04.000Z"
+        },
+        {
+          "action": "reconnect",
+          "last_seen_seq": 2,
+          "timestamp": "2026-01-15T12:03:06.000Z"
+        }
+      ],
+      "expected": {
+        "visible_message_count": 2,
+        "composer_enabled": false,
+        "connection": "reconnecting",
+        "resume_from_sequence": 2,
+        "preserve_transcript": true
+      }
+    },
+    {
+      "id": "tool-heavy",
+      "label": "Tool-heavy completed turn",
+      "state": "complete",
+      "session": {
+        "id": "fixture-thread-tool-heavy",
+        "title": "Tool activity",
+        "source": "web",
+        "model": "sol"
+      },
+      "messages": [
+        {
+          "id": "tool-user-001",
+          "role": "user",
+          "content": "Check the local project status and summarise the changes.",
+          "timestamp": "2026-01-15T12:04:00.000Z"
+        },
+        {
+          "id": "tool-call-001",
+          "role": "tool",
+          "toolId": "fixture-tool-001",
+          "name": "list_files",
+          "args": {
+            "path": "workspace/demo"
+          },
+          "result": "README.md\nsrc/demo.ts\ntests/demo.test.ts",
+          "done": true,
+          "startedAt": 1768478640,
+          "endedAt": 1768478641,
+          "durationSeconds": 1
+        },
+        {
+          "id": "tool-call-002",
+          "role": "tool",
+          "toolId": "fixture-tool-002",
+          "name": "search_text",
+          "args": {
+            "query": "TODO",
+            "path": "workspace/demo"
+          },
+          "result": "workspace/demo/src/demo.ts:12: TODO: add empty-state copy",
+          "done": true,
+          "startedAt": 1768478641,
+          "endedAt": 1768478642,
+          "durationSeconds": 1
+        },
+        {
+          "id": "tool-call-003",
+          "role": "tool",
+          "toolId": "fixture-tool-003",
+          "name": "run_check",
+          "args": {
+            "command": "test demo"
+          },
+          "result": "3 checks passed",
+          "done": true,
+          "startedAt": 1768478642,
+          "endedAt": 1768478644,
+          "durationSeconds": 2
+        },
+        {
+          "id": "tool-assistant-001",
+          "role": "assistant",
+          "content": "The project is clean apart from one documented TODO in the demo source. The focused checks pass.",
+          "timestamp": "2026-01-15T12:04:05.000Z"
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.tool_start",
+          "timestamp": "2026-01-15T12:04:01.000Z",
+          "data": {
+            "tool_call_id": "fixture-tool-001",
+            "name": "list_files"
+          }
+        },
+        {
+          "seq": 2,
+          "topic": "chat.tool_end",
+          "timestamp": "2026-01-15T12:04:01.000Z",
+          "data": {
+            "tool_call_id": "fixture-tool-001",
+            "done": true
+          }
+        },
+        {
+          "seq": 3,
+          "topic": "chat.tool_start",
+          "timestamp": "2026-01-15T12:04:02.000Z",
+          "data": {
+            "tool_call_id": "fixture-tool-002",
+            "name": "search_text"
+          }
+        },
+        {
+          "seq": 4,
+          "topic": "chat.tool_end",
+          "timestamp": "2026-01-15T12:04:02.000Z",
+          "data": {
+            "tool_call_id": "fixture-tool-002",
+            "done": true
+          }
+        },
+        {
+          "seq": 5,
+          "topic": "chat.tool_start",
+          "timestamp": "2026-01-15T12:04:03.000Z",
+          "data": {
+            "tool_call_id": "fixture-tool-003",
+            "name": "run_check"
+          }
+        },
+        {
+          "seq": 6,
+          "topic": "chat.tool_end",
+          "timestamp": "2026-01-15T12:04:04.000Z",
+          "data": {
+            "tool_call_id": "fixture-tool-003",
+            "done": true
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 5,
+        "composer_enabled": true,
+        "connection": "connected",
+        "tool_count": 3,
+        "all_tools_settled": true
+      }
+    },
+    {
+      "id": "reasoning-heavy",
+      "label": "Reasoning-heavy completed turn",
+      "state": "complete",
+      "session": {
+        "id": "fixture-thread-reasoning-heavy",
+        "title": "Reasoning activity",
+        "source": "web",
+        "model": "sol"
+      },
+      "messages": [
+        {
+          "id": "reason-user-001",
+          "role": "user",
+          "content": "Compare two safe ways to migrate the local cache.",
+          "timestamp": "2026-01-15T12:05:00.000Z"
+        },
+        {
+          "id": "reasoning-001",
+          "role": "reasoning",
+          "text": "Option A keeps the old cache readable while new records are written in the new shape. Option B converts everything in one pass. Compare rollback, partial failure, and the amount of user-visible disruption before recommending an option.",
+          "totalChars": 224,
+          "omittedChars": 0,
+          "timestamp": "2026-01-15T12:05:03.000Z"
+        },
+        {
+          "id": "reason-assistant-001",
+          "role": "assistant",
+          "content": "Use the compatibility window: it supports rollback and lets the application migrate records incrementally. Remove the old reader only after the new format is proven in the saved-data tests.",
+          "timestamp": "2026-01-15T12:05:08.000Z"
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.reasoning",
+          "timestamp": "2026-01-15T12:05:03.000Z",
+          "data": {
+            "total_chars": 224
+          }
+        },
+        {
+          "seq": 2,
+          "topic": "chat.turn_done",
+          "timestamp": "2026-01-15T12:05:08.000Z",
+          "data": {
+            "completed": true
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 3,
+        "composer_enabled": true,
+        "connection": "connected",
+        "reasoning_count": 1,
+        "reasoning_foldable": true
+      }
+    },
+    {
+      "id": "approval-pending",
+      "label": "Approval pending",
+      "state": "approval_pending",
+      "session": {
+        "id": "fixture-thread-approval",
+        "title": "Approval required",
+        "source": "web",
+        "model": "terra"
+      },
+      "messages": [
+        {
+          "id": "approval-user-001",
+          "role": "user",
+          "content": "Prepare the local migration command, but wait before running it.",
+          "timestamp": "2026-01-15T12:06:00.000Z"
+        },
+        {
+          "id": "approval-tool-001",
+          "role": "tool",
+          "toolId": "fixture-tool-approval-001",
+          "name": "run_check",
+          "args": {
+            "command": "migration dry run"
+          },
+          "done": false,
+          "startedAt": 1768478762
+        },
+        {
+          "id": "approval-001",
+          "role": "approval",
+          "approval": {
+            "kind": "command",
+            "command": "migration dry run",
+            "reason": "The next step changes local project state."
+          },
+          "resolved": false,
+          "timestamp": "2026-01-15T12:06:03.000Z"
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.approval_required",
+          "timestamp": "2026-01-15T12:06:03.000Z",
+          "data": {
+            "approval_id": "fixture-approval-001",
+            "resolved": false
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 3,
+        "composer_enabled": false,
+        "connection": "connected",
+        "approval_visible": true,
+        "approval_resolved": false,
+        "stop_visible": true
+      }
+    },
+    {
+      "id": "changed-file",
+      "label": "Changed-file result",
+      "state": "complete",
+      "session": {
+        "id": "fixture-thread-changed-file",
+        "title": "Changed files",
+        "source": "web",
+        "model": "sol"
+      },
+      "messages": [
+        {
+          "id": "changed-user-001",
+          "role": "user",
+          "content": "Add an empty-state message to the demo list.",
+          "timestamp": "2026-01-15T12:07:00.000Z"
+        },
+        {
+          "id": "changed-tool-001",
+          "role": "tool",
+          "toolId": "fixture-tool-edit-001",
+          "name": "edit_file",
+          "args": {
+            "path": "workspace/demo/src/emptyState.ts",
+            "operation": "replace"
+          },
+          "result": "Applied one replacement",
+          "done": true,
+          "startedAt": 1768478821,
+          "endedAt": 1768478822,
+          "durationSeconds": 1
+        },
+        {
+          "id": "changed-assistant-001",
+          "role": "assistant",
+          "content": "Added the empty-state message and verified the focused list check.",
+          "timestamp": "2026-01-15T12:07:04.000Z"
+        }
+      ],
+      "changed_files": [
+        {
+          "path": "workspace/demo/src/emptyState.ts",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "path": "workspace/demo/tests/emptyState.test.ts",
+          "status": "modified",
+          "additions": 8,
+          "deletions": 0
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.files_changed",
+          "timestamp": "2026-01-15T12:07:04.000Z",
+          "data": {
+            "count": 2
+          }
+        },
+        {
+          "seq": 2,
+          "topic": "chat.turn_done",
+          "timestamp": "2026-01-15T12:07:04.000Z",
+          "data": {
+            "completed": true
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 3,
+        "composer_enabled": true,
+        "connection": "connected",
+        "changed_file_count": 2,
+        "changed_files_visible": true
+      }
+    },
+    {
+      "id": "parallel-subagents",
+      "label": "Parallel subagents",
+      "state": "complete",
+      "session": {
+        "id": "fixture-thread-parallel-subagents",
+        "title": "Parallel research",
+        "source": "web",
+        "model": "sol"
+      },
+      "messages": [
+        {
+          "id": "parallel-user-001",
+          "role": "user",
+          "content": "Ask two helpers to compare the two local implementation options.",
+          "timestamp": "2026-01-15T12:08:00.000Z"
+        },
+        {
+          "id": "parallel-assistant-001",
+          "role": "assistant",
+          "content": "Two bounded helpers compared the options. The compatibility window is the safer default because it supports rollback.",
+          "timestamp": "2026-01-15T12:08:10.000Z"
+        }
+      ],
+      "subagents": [
+        {
+          "id": "fixture-subagent-001",
+          "status": "completed",
+          "task": "Compare migration rollback behavior.",
+          "model": "luna-high",
+          "started_at": "2026-01-15T12:08:02.000Z",
+          "ended_at": "2026-01-15T12:08:07.000Z",
+          "events": [
+            {
+              "id": "fixture-subagent-event-001",
+              "type": "output",
+              "text": "Compatibility window supports rollback.",
+              "timestamp": "2026-01-15T12:08:07.000Z"
+            }
+          ]
+        },
+        {
+          "id": "fixture-subagent-002",
+          "status": "completed",
+          "task": "Compare migration test coverage.",
+          "model": "luna-high",
+          "started_at": "2026-01-15T12:08:02.000Z",
+          "ended_at": "2026-01-15T12:08:08.000Z",
+          "events": [
+            {
+              "id": "fixture-subagent-event-002",
+              "type": "output",
+              "text": "Saved-data tests cover the compatibility window.",
+              "timestamp": "2026-01-15T12:08:08.000Z"
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "topic": "chat.subagent.started",
+          "timestamp": "2026-01-15T12:08:02.000Z",
+          "data": {
+            "run_id": "fixture-subagent-001"
+          }
+        },
+        {
+          "seq": 2,
+          "topic": "chat.subagent.started",
+          "timestamp": "2026-01-15T12:08:02.000Z",
+          "data": {
+            "run_id": "fixture-subagent-002"
+          }
+        },
+        {
+          "seq": 3,
+          "topic": "chat.subagent.completed",
+          "timestamp": "2026-01-15T12:08:08.000Z",
+          "data": {
+            "run_id": "fixture-subagent-002"
+          }
+        },
+        {
+          "seq": 4,
+          "topic": "chat.subagent.completed",
+          "timestamp": "2026-01-15T12:08:09.000Z",
+          "data": {
+            "run_id": "fixture-subagent-001"
+          }
+        }
+      ],
+      "expected": {
+        "visible_message_count": 2,
+        "composer_enabled": true,
+        "connection": "connected",
+        "subagent_count": 2,
+        "parallel_subagents": true,
+        "all_subagents_settled": true
+      }
+    }
+  ]
+}

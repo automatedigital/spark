@@ -21,22 +21,16 @@ import {
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api, openExternal } from "@/lib/api";
-import type { SessionMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
 import {
   useEventBus,
-  BUS_GAP_TOPIC,
-  BUS_RECONNECTED_TOPIC,
-  BUS_STALE_TOPIC,
-  BUS_WAKE_TOPIC,
   useSelectedDetailSubscription,
 } from "@/hooks/useEventBus";
 import {
   estimateAssistantRowSize,
-  findLiveRowIndex,
   shouldSkipRowMeasurement,
 } from "@/lib/rowMeasurement";
 import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
@@ -48,18 +42,14 @@ import { PromptBar } from "@/components/chat/PromptBar";
 import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
-import type { SessionStats } from "@/components/chat/SessionInfoBar";
 import { TimelineMinimap } from "@/components/chat/TimelineMinimap";
-import { buildTimelineMinimapItems, type TimelineSourceItem } from "@/components/chat/timelineMinimapModel";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
 import { tokenizeUserBubbleText } from "@/lib/userBubbleTokens";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 import {
-  backendTurnStatusLabel,
   nextChatTurnState,
-  recoverTurnStateFromBackend,
   type ChatTurnState,
 } from "@/lib/chatTurnState";
 import { consumeRecoverySignal, initialRecoverySignalBudget } from "@/lib/chatRecovery";
@@ -74,9 +64,7 @@ import {
   pruneLongTasks,
   readSafeMode,
   rememberRenderHealth,
-  applyStreamRenderSnapshotState,
   shouldEnableSafeMode,
-  shouldApplyStreamRenderSnapshot,
   type LongTaskSample,
 } from "@/lib/renderHealth";
 import {
@@ -85,43 +73,32 @@ import {
   shouldAutoScrollChat,
 } from "@/lib/chatScrollState";
 import {
-  currentTurnLiveAssistantIndex,
-  localTurnCache,
-  mergeSyncedMessages,
   rememberLocalTurn,
   type ChatMessage,
 } from "@/lib/chatTranscriptMerge";
+import {
+  approvalFailureMessage,
+  approvalIsDisabled,
+  approvalSubmission,
+} from "@/lib/chatApproval";
+import {
+  deriveCollapsedMessages,
+  deriveTimelineItems,
+  findLiveRowIndex,
+  streamingAssistantVisibleChars as getStreamingAssistantVisibleChars,
+} from "@/lib/chatTimeline";
 import { isTauri } from "@/sidecar";
-import { liveStreamFlushInterval, snapshotLiveStream, windowLiveStream } from "@/lib/liveStreamWindow";
-import { copyExactAssistantContent, exactAssistantContent } from "@/lib/exactMessage";
+import { copyExactAssistantContent } from "@/lib/exactMessage";
 import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
-import {
-  clearUnsettledOrInvalidDetailCache,
-  readSettledDetail,
-  schedulePersistSettledDetail,
-} from "@/lib/webState";
-import {
-  appendBoundedText,
-  boundText,
-  COMPLETED_TEXT_WINDOW_CHARS,
-  REASONING_WINDOW_CHARS,
-} from "@/lib/textWindow";
+import { clearUnsettledOrInvalidDetailCache } from "@/lib/webState";
+import { useChatSessionController, type ChatSessionResetInput } from "@/hooks/useChatSessionController";
+import { useChatComposerActions } from "@/hooks/useChatComposerActions";
+import { useChatStreamController } from "@/hooks/useChatStreamController";
+import type { ChatStreamSnapshot } from "@/lib/chatStreamReducer";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
-const hasText = (value: string | null | undefined) => Boolean(value && value.length > 0);
 const CHAT_WORD_WRAP_CHANGED_EVENT = "spark:chat-word-wrap-changed";
-const CHAT_RECOVERY_DEBUG_KEY = "spark:chat-recovery-debug";
-
-function debugChatRecovery(event: string, payload: unknown) {
-  try {
-    const enabled = window.localStorage.getItem(CHAT_RECOVERY_DEBUG_KEY);
-    if (enabled !== "1" && enabled !== "true") return;
-    console.debug(`[spark-chat-recovery] ${event}`, payload);
-  } catch {
-    /* debug logging is best-effort */
-  }
-}
 
 const chatWordWrapFromConfig = (config: Record<string, unknown>): boolean => {
   const display = config.display;
@@ -146,61 +123,6 @@ interface ChatPanelProps {
   initialMessage?: string;
   workspaceSlug?: string;
   className?: string;
-}
-
-function sessionMessagesToChat(messages: SessionMessage[]): ChatMessage[] {
-  const out: ChatMessage[] = [];
-  // Build a map of tool_call_id -> tool name from assistant tool_calls for fallback
-  const toolCallNames: Record<string, string> = {};
-  for (const m of messages) {
-    if (m.role === "assistant" && m.tool_calls) {
-      for (const tc of m.tool_calls) {
-        if (tc.id && tc.function?.name) toolCallNames[tc.id] = tc.function.name;
-      }
-    }
-  }
-  messages.forEach((m, i) => {
-    const baseId = m.id ? `db:${m.id}` : `db:${m.role}:${i}`;
-    if (m.role === "user") {
-      // Skip internal system-injected continuation messages (e.g. codex ack loop)
-      if ((m.content ?? "").startsWith("[System:")) return;
-      out.push({ id: baseId, role: "user", content: m.content ?? "", sessionIdx: m.message_index ?? i });
-    } else if (m.role === "assistant") {
-      const reasoning = m.reasoning?.trim();
-      if (reasoning) {
-        const bounded = boundText(reasoning, REASONING_WINDOW_CHARS);
-        out.push({ id: `${baseId}:reasoning`, role: "reasoning", text: bounded.text,
-          totalChars: bounded.totalChars, omittedChars: bounded.omittedChars });
-      }
-      if (hasText(m.content)) {
-        const bounded = boundText(m.content ?? "", COMPLETED_TEXT_WINDOW_CHARS);
-        out.push({ id: baseId, role: "assistant", content: bounded.text,
-          liveTotalChars: bounded.totalChars, liveOmittedChars: bounded.omittedChars });
-      }
-    } else if (m.role === "tool") {
-      const toolId = m.tool_call_id ?? "";
-      const result = String(m.result_preview ?? m.content ?? "");
-      out.push({
-        id: toolId ? `tool:${toolId}` : baseId,
-        role: "tool",
-        toolId,
-        name: m.tool_name ?? toolCallNames[toolId] ?? "tool",
-        args: {},
-        result,
-        resultTruncated: Boolean(m.result_truncated ?? m.has_full_result) || undefined,
-        done: true,
-      });
-    }
-  });
-  return out;
-}
-
-function latestAssistantContentLength(messages: ChatMessage[]): number {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role === "assistant" && msg.content) return msg.liveTotalChars ?? msg.content.length;
-  }
-  return 0;
 }
 
 // ── Memoized row components ───────────────────────────────────────────────────
@@ -257,14 +179,6 @@ type ReasoningMsg = Extract<ChatMessage, { role: "reasoning" }>;
 type ApprovalMsg = Extract<ChatMessage, { role: "approval" }>;
 type NoteMsg = Extract<ChatMessage, { role: "note" }>;
 type FeedbackFormMsg = Extract<ChatMessage, { role: "feedback_form" }>;
-
-function toolDurationSeconds(msg: ToolMsg): number | undefined {
-  if (typeof msg.durationSeconds === "number") return Math.max(0, msg.durationSeconds);
-  if (typeof msg.startedAt === "number" && typeof msg.endedAt === "number") {
-    return Math.max(0, msg.endedAt - msg.startedAt);
-  }
-  return undefined;
-}
 
 const MODE_SHORT: Record<string, string> = {
   path_only: "path", excerpt: "excerpt", summary: "summary", full: "full", search: "search",
@@ -474,7 +388,7 @@ const ApprovalRow = memo(function ApprovalRow({
       <ApprovalPrompt
         command={String(msg.approval.command ?? "")}
         description={String(msg.approval.description ?? "")}
-        disabled={disabled || !!msg.resolved}
+        disabled={approvalIsDisabled(disabled, !!msg.resolved)}
         onChoice={onChoice}
       />
     </div>
@@ -520,7 +434,6 @@ export function ChatPanel({
   useEffect(() => {
     recordWebEfficiency("reactCommits");
   });
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState(() => {
     // First-run "try this" prompt seeded by onboarding — pre-fill once.
     try {
@@ -540,21 +453,9 @@ export function ChatPanel({
   const setStreaming = useCallback((active: boolean) => {
     setTurnState(active ? "streaming" : "idle");
   }, []);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [hasEarlier, setHasEarlier] = useState(false);
-  const [loadingEarlier, setLoadingEarlier] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const HISTORY_PAGE = 50;
-  const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const approvalBusyRef = useRef(false);
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
-  const [sessionStats, setSessionStats] = useState<SessionStats>({});
-  const [forkInfo, setForkInfo] = useState<{
-    parentSessionId: string | null;
-    parentTitle: string | null;
-    forkCount: number;
-  } | null>(null);
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
   const [safeModeNotice, setSafeModeNotice] = useState<string | null>(null);
   const [chatWordWrap, setChatWordWrap] = useState(false);
@@ -563,87 +464,199 @@ export function ChatPanel({
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [recoveryActionBusy, setRecoveryActionBusy] = useState<RecoveryActionId | null>(null);
   const [sseReconnectCount, setSseReconnectCount] = useState(0);
-  const [recoveryPollCount, setRecoveryPollCount] = useState(0);
 
   useEffect(() => clearUnsettledOrInvalidDetailCache(), []);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const activeSessionRef = useRef<string | null>(sessionId);
   const streamingRef = useRef(false);
   const turnStateRef = useRef<ChatTurnState>("idle");
   const safeModeRef = useRef(safeMode);
-  const activeTurnSessionIdRef = useRef<string | null>(null);
-  const activeSessionAliasesRef = useRef<Set<string>>(new Set(sessionId ? [sessionId] : []));
-  const sessionRecoverySeqRef = useRef(0);
-  // Token batching: accumulate tokens and flush once per animation frame
-  const tokenBufferRef = useRef<string[]>([]);
-  const rafPendingRef = useRef<number | null>(null);
-  const flushTimerRef = useRef<number | null>(null);
-  // Reasoning batching: same rAF coalescing as tokens, so a model that streams
-  // reasoning in many small deltas triggers at most one re-render per frame
-  // instead of one per delta.
-  const reasoningBufferRef = useRef("");
-  const reasoningBufferedCharsRef = useRef(0);
-  const reasoningRafRef = useRef<number | null>(null);
-  // Timestamp of the last chat event received for the active turn. Drives the
-  // stall watchdog that recovers from a silently-dropped turn (lost SSE).
-  const lastEventAtRef = useRef<number>(0);
-  // Timestamp of the last visible assistant token. Status/reasoning events can
-  // keep the backend heartbeat alive while the rendered answer itself is stuck.
-  const lastTokenAtRef = useRef<number>(0);
-  // Guards against overlapping turn-status re-sync polls.
-  const resyncInFlightRef = useRef(false);
+  const onSessionResetRef = useRef<((input: ChatSessionResetInput) => void) | null>(null);
+  const flushPendingStreamRef = useRef<(() => void) | null>(null);
+  const finalizeAssistantRef = useRef<(() => void) | null>(null);
+  const syncLiveAssistantSnapshotRef = useRef<((text: string, revision: number, start: number) => void) | null>(null);
+  const appendRecoveredStaleTurnNoteRef = useRef<((text: string) => void) | null>(null);
+
+  const controller = useChatSessionController({
+    sessionId,
+    initialMessage,
+    scrollContainerRef,
+    streamingRef,
+    setStreaming,
+    setTurnState,
+    onSessionResetRef,
+    flushPendingStreamRef,
+    finalizeAssistantRef,
+    syncLiveAssistantSnapshotRef,
+    appendRecoveredStaleTurnNoteRef,
+    onSessionCreated: (id) => onSessionCreated?.(id),
+    onSessionUpdated,
+  });
+  const {
+    chatMessages,
+    setChatMessages,
+    activeSessionId,
+    setActiveSessionId,
+    loadingHistory,
+    hasEarlier,
+    loadingEarlier,
+    error,
+    setError,
+    statusLabel,
+    setStatusLabel,
+    sessionStats,
+    setSessionStats,
+    forkInfo,
+    recoveryPollCount,
+    activeSessionRef,
+    activeSessionAliasesRef,
+    sessionRecoverySeqRef,
+    activeTurnSessionIdRef,
+    streamTextCharsRef,
+    prependScrollAnchorRef,
+    rememberActiveSessionAliases,
+    isCurrentSessionResponse,
+    resyncTurnState,
+    doFork,
+    doRetry,
+    refreshLatestTranscript,
+    loadEarlierMessages,
+    loadExactMessages,
+    fetchExactAssistant,
+  } = controller;
+
   const recoverySignalBudgetRef = useRef(initialRecoverySignalBudget());
-  // Exact oversized messages live outside React render state. They are loaded
-  // only for explicit copy/search/artifact actions and never mounted in the DOM.
-  const exactAssistantContentRef = useRef<Map<string, string>>(new Map());
-  const exactSearchRequestKeyRef = useRef("");
   const resyncTurnStateRef = useRef<((options?: { allowIdle?: boolean }) => Promise<void>) | null>(null);
-  // SSE is the fast path; the backend stream snapshot is the source of truth.
-  // Track revisions so recovery polling only repaints when the server advanced.
-  const streamRevisionRef = useRef(0);
-  const streamTextCharsRef = useRef(0);
+  const lastPresentedStreamMessagesRef = useRef<readonly ChatMessage[] | null>(null);
+  const lastHistoryMessagesRef = useRef<readonly ChatMessage[] | null>(null);
+  const pendingStreamProjectionRef = useRef<readonly ChatMessage[] | null>(null);
+  const streamStatusRef = useRef<string | null>(null);
+  const streamTurnStateRef = useRef<string>("idle");
+  const streamErrorRef = useRef<string | null>(null);
   // Keep the viewport pinned to the live tail while the user is following the
   // stream, but stop auto-scrolling as soon as they deliberately scroll upward.
   const followStreamRef = useRef(true);
   const scrollStateRef = useRef(initialChatScrollState());
-  const prependScrollAnchorRef = useRef<{
-    scrollHeight: number;
-    scrollTop: number;
-    anchorId: string | null;
-  } | null>(null);
+  const prependRestoreGenerationRef = useRef(0);
   const [detachedFromBottom, setDetachedFromBottom] = useState(false);
 
-  activeSessionRef.current = activeSessionId;
-  if (activeSessionId) activeSessionAliasesRef.current.add(activeSessionId);
+  const handleStreamResync = useCallback((request: { reason: string; allowIdle: boolean }) => {
+    if (request.reason === "reconnect") setSseReconnectCount((count) => count + 1);
+    const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
+    recoverySignalBudgetRef.current = result.budget;
+    if (result.allowed) void resyncTurnState({ allowIdle: request.allowIdle });
+  }, [resyncTurnState]);
+
+  const handleStreamHistory = useCallback(async (request: {
+    sessionId: string;
+    recoverySequence: number;
+    reason: "turn-done" | "failure" | "snapshot-finalized";
+  }) => {
+    if (request.recoverySequence !== sessionRecoverySeqRef.current) return;
+    if (!isCurrentSessionResponse(request.recoverySequence, request.sessionId)) return;
+    await refreshLatestTranscript({
+      sessionId: request.sessionId,
+      syncTail: request.reason === "turn-done",
+    });
+  }, [isCurrentSessionResponse, refreshLatestTranscript, sessionRecoverySeqRef]);
+
+  const streamController = useChatStreamController({
+    activeSessionId,
+    recoverySequence: sessionRecoverySeqRef.current,
+    sessionAliases: [...activeSessionAliasesRef.current],
+    initialMessages: chatMessages,
+    callbacks: {
+      onStateChange: (transition) => {
+        const nextMessages = transition.state.messages;
+        if (lastPresentedStreamMessagesRef.current === nextMessages) return;
+        lastPresentedStreamMessagesRef.current = nextMessages;
+        const projection = [...nextMessages];
+        pendingStreamProjectionRef.current = projection;
+        setChatMessages(projection);
+      },
+      onFlushStream: () => flushPendingStreamRef.current?.(),
+      onResync: handleStreamResync,
+      onLoadHistory: handleStreamHistory,
+      onEffectError: (effectError) => setError(effectError instanceof Error ? effectError.message : String(effectError)),
+    },
+  });
+  const syncStreamMessages = streamController.syncMessages;
+
+  const bridgeStreamSnapshot = useCallback((snapshot: ChatStreamSnapshot) => {
+    streamController.applySnapshot(snapshot);
+  }, [streamController]);
+
+  flushPendingStreamRef.current = () => streamController.flush();
+  finalizeAssistantRef.current = () => streamController.finalize();
+  syncLiveAssistantSnapshotRef.current = (text, revision, start) => {
+    const sid = activeSessionRef.current;
+    if (!sid || !text) return;
+    bridgeStreamSnapshot({
+      session_id: sid,
+      resolved_session_id: sid,
+      active_turn_session_id: activeTurnSessionIdRef.current ?? sid,
+      turn_active: true,
+      stream_text: text,
+      stream_revision: revision,
+      stream_text_start: start,
+      stream_text_chars: start + text.length,
+    });
+  };
+
+  const composerActions = useChatComposerActions({
+    input,
+    contextItems,
+    transcript: chatMessages,
+    activeSessionId,
+    activeTurnSessionIdRef,
+    activeSessionRef,
+    rememberActiveSessionAliases,
+    turnState,
+    turnStateRef,
+    statusLabel,
+    workspaceSlug,
+    setInput,
+    setContextItems,
+    setChatMessages,
+    setActiveSessionId,
+    setTurnState,
+    setStatusLabel,
+    setError,
+    createMessageId: nid,
+    onSessionCreated,
+    onPrepareSend: (optimisticMessageCount) => {
+      followStreamRef.current = true;
+      streamTextCharsRef.current = 0;
+      scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+        type: "jump-to-bottom",
+        itemCount: optimisticMessageCount,
+      });
+      setDetachedFromBottom(false);
+    },
+    onEdit: (messageIndex, text) => setEditingUser({ sessionIdx: messageIndex, text }),
+    retryAction: doRetry,
+    forkAction: doFork,
+    resyncTurnState,
+  });
+  const {
+    sendMessage,
+    stop,
+    retryMessage,
+    editMessage,
+    forkMessage,
+    forkSession,
+  } = composerActions;
+
   streamingRef.current = streaming;
   turnStateRef.current = turnState;
   safeModeRef.current = safeMode;
-
-  useEffect(() => () => {
-    if (flushTimerRef.current !== null) clearTimeout(flushTimerRef.current);
-    if (rafPendingRef.current !== null) cancelAnimationFrame(rafPendingRef.current);
-    if (reasoningRafRef.current !== null) cancelAnimationFrame(reasoningRafRef.current);
-    flushTimerRef.current = null;
-    rafPendingRef.current = null;
-    reasoningRafRef.current = null;
-    tokenBufferRef.current = [];
-    reasoningBufferRef.current = "";
-    reasoningBufferedCharsRef.current = 0;
-  }, []);
-
-  const rememberActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
-    ids.forEach((id) => {
-      if (id) activeSessionAliasesRef.current.add(id);
-    });
-  }, []);
 
   const appendRecoveredStaleTurnNote = useCallback((text: string) => {
     setChatMessages((prev) => {
       if (prev.some((m) => m.role === "note" && m.text === text)) return prev;
       return [...prev, { id: nid(), role: "note", text }];
     });
-  }, []);
+  }, [setChatMessages]);
 
   const latestUserMessage = useMemo(() => {
     return [...chatMessages]
@@ -656,22 +669,6 @@ export function ChatPanel({
   const hasAssistantOutput = useMemo(() => (
     chatMessages.some((m) => m.role === "assistant" && m.content.trim().length > 0)
   ), [chatMessages]);
-
-  const resetActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
-    activeSessionAliasesRef.current = new Set(ids.filter((id): id is string => Boolean(id)));
-  }, []);
-
-  const isCurrentSessionResponse = useCallback((
-    recoverySeq: number,
-    ...ids: Array<string | null | undefined>
-  ) => {
-    if (recoverySeq !== sessionRecoverySeqRef.current) return false;
-    const current = activeSessionRef.current;
-    return Boolean(current && (
-      ids.includes(current) ||
-      ids.some((id) => typeof id === "string" && activeSessionAliasesRef.current.has(id))
-    ));
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -691,7 +688,7 @@ export function ChatPanel({
       cancelled = true;
       window.removeEventListener(CHAT_WORD_WRAP_CHANGED_EVENT, handleWrapChanged);
     };
-  }, []);
+  }, [activeSessionRef, setChatMessages]);
 
   // Desktop (§3.1): reflect agent activity in the menu-bar tray indicator.
   useEffect(() => {
@@ -699,269 +696,8 @@ export function ChatPanel({
   }, [streaming]);
 
   useEffect(() => {
-    if (sessionId && sessionId === activeSessionRef.current && streamingRef.current) {
-      return;
-    }
-    // Cancel any pending token flushes from the previous session
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-      tokenBufferRef.current = [];
-    }
-    if (rafPendingRef.current !== null) {
-      cancelAnimationFrame(rafPendingRef.current);
-      rafPendingRef.current = null;
-    }
-    tokenBufferRef.current = [];
-    if (reasoningRafRef.current !== null) {
-      cancelAnimationFrame(reasoningRafRef.current);
-      reasoningRafRef.current = null;
-      reasoningBufferRef.current = "";
-      reasoningBufferedCharsRef.current = 0;
-    }
-    prependScrollAnchorRef.current = null;
-    setActiveSessionId(sessionId);
-    activeSessionRef.current = sessionId;
-    resetActiveSessionAliases(sessionId);
-    const recoverySeq = ++sessionRecoverySeqRef.current;
-    const optimistic: ChatMessage[] = initialMessage
-      ? [{ id: nid(), role: "user", content: initialMessage }]
-      : [];
-    const settledCache = sessionId ? readSettledDetail(sessionId) : null;
-    const cachedTranscript = sessionId
-      ? localTurnCache.get(sessionId)
-        ?? (settledCache ? sessionMessagesToChat(settledCache.messages) : [])
-      : [];
-    const initialTranscript = cachedTranscript.length > 0 ? cachedTranscript : optimistic;
-    setChatMessages(initialTranscript);
-    setError(null);
-    setDiagnosticsOpen(false);
-    setConversationDiagnostics(null);
-    setDiagnosticsError(null);
-    // Mounting with an initialMessage means the composer just started a turn for
-    // this new thread (its postConversation already kicked off the agent). Show
-    // the typing indicator right away instead of waiting for the first token —
-    // which can be many seconds on a slow model. Cleared below if history shows
-    // the turn already finished, and by the chat.turn_done event otherwise.
-    setStreaming(!!initialMessage);
-    setStatusLabel(initialMessage ? MODEL_LOADING_LABEL : null);
-    lastTokenAtRef.current = initialMessage ? Date.now() : 0;
-    streamRevisionRef.current = 0;
-    streamTextCharsRef.current = latestAssistantContentLength(initialTranscript);
-    recoverySignalBudgetRef.current = initialRecoverySignalBudget();
-    exactAssistantContentRef.current.clear();
-    exactSearchRequestKeyRef.current = "";
-    prevCountRef.current = 0;
-    lastAutoScrollAtRef.current = 0;
-    scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
-      type: "jump-to-bottom",
-      itemCount: initialTranscript.length,
-    });
-    setDetachedFromBottom(false);
-    activeTurnSessionIdRef.current = null;
-    followStreamRef.current = true;
-    setEditingUser(null);
-    setSessionStats({});
-    setForkInfo(null);
-    const restoredSafeMode = readSafeMode(sessionId);
-    setSafeMode(restoredSafeMode);
-    setSafeModeNotice(restoredSafeMode ? "Recovered this thread in safe mode." : null);
-    if (sessionId) {
-      const selectedSessionId = sessionId;
-      void api.getTurnStatus(selectedSessionId).then(async (status) => {
-        debugChatRecovery("initial-turn-status", status.diagnostics ?? status);
-        const recoveryStillCurrent = (...ids: Array<string | null | undefined>) => (
-          isCurrentSessionResponse(recoverySeq, selectedSessionId, ...ids)
-        );
-        if (!recoveryStillCurrent(
-          status.resolved_session_id,
-          status.latest_session_id,
-          status.active_turn_session_id,
-        )) return;
-        rememberActiveSessionAliases(
-          selectedSessionId,
-          status.resolved_session_id,
-          status.latest_session_id,
-          status.active_turn_session_id,
-        );
-        activeTurnSessionIdRef.current = status.turn_active
-          ? status.active_turn_session_id ?? selectedSessionId
-          : null;
-        const recoveredState = recoverTurnStateFromBackend({
-          turnActive: status.turn_active,
-          phase: status.phase,
-          state: status.state,
-          interruptRequested: status.interrupt_requested,
-        });
-        setTurnState(recoveredState);
-        setStatusLabel(backendTurnStatusLabel({
-          turnActive: status.turn_active,
-          phase: status.phase,
-          state: status.state,
-          status: status.status,
-          idleForSeconds: status.idle_for_seconds,
-        }));
-        if (status.turn_active) {
-          lastEventAtRef.current = Date.now();
-          const snapshotSessionId = status.active_turn_session_id ?? selectedSessionId;
-          try {
-            const snapshot = await api.getStreamSnapshot(
-              snapshotSessionId,
-              streamTextCharsRef.current > 0 ? { afterChars: streamTextCharsRef.current } : {},
-            );
-            debugChatRecovery("initial-stream-snapshot", snapshot.diagnostics ?? snapshot);
-            if (!recoveryStillCurrent(
-              snapshot.resolved_session_id,
-              snapshot.latest_session_id,
-              snapshot.active_turn_session_id,
-            )) return;
-            rememberActiveSessionAliases(
-              snapshot.resolved_session_id,
-              snapshot.latest_session_id,
-              snapshot.active_turn_session_id,
-            );
-            activeTurnSessionIdRef.current = snapshot.turn_active
-              ? snapshot.active_turn_session_id ?? snapshotSessionId
-              : null;
-            if (snapshot.stream_text) {
-              syncLiveAssistantSnapshot(
-                snapshot.stream_text,
-                snapshot.stream_revision,
-                snapshot.stream_text_start ?? 0,
-              );
-            }
-            if (!snapshot.turn_active) {
-              setTurnState("idle");
-              setStatusLabel("Finalizing from saved history…");
-              flushPendingStream();
-              finalizeAssistant();
-              try {
-                const resp = await api.getSessionMessages(selectedSessionId, HISTORY_PAGE);
-                if (!recoveryStillCurrent(resp.session_id)) return;
-                rememberActiveSessionAliases(selectedSessionId, resp.session_id);
-                const mapped = sessionMessagesToChat(
-                  resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-                );
-                setChatMessages((prev) => mergeSyncedMessages(
-                  mapped,
-                  prev,
-                  resp.session_id ?? selectedSessionId,
-                  { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
-                ));
-              } catch {
-                /* final history recovery is best-effort */
-              } finally {
-                setStatusLabel(null);
-              }
-            }
-          } catch {
-            /* snapshot hydration is best-effort */
-          }
-          return;
-        }
-        flushPendingStream();
-        finalizeAssistant();
-        try {
-          const resp = await api.getSessionMessages(selectedSessionId, HISTORY_PAGE);
-          if (!recoveryStillCurrent(resp.session_id)) return;
-          const mapped = sessionMessagesToChat(
-            resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-          );
-          const hasAssistant = mapped.some((m) => m.role === "assistant" && m.content.trim());
-          setChatMessages((prev) => mergeSyncedMessages(
-            mapped,
-            initialTranscript.length > 0 ? prev : optimistic,
-            resp.session_id ?? selectedSessionId,
-            { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
-          ));
-          setHasEarlier(resp.has_earlier ?? false);
-          if ((initialMessage || initialTranscript.some((m) => m.role === "assistant" && m.streaming)) && !hasAssistant) {
-            appendRecoveredStaleTurnNote("This turn was no longer active after reconnecting. You can retry or send a follow-up.");
-          }
-        } catch {
-          /* history recovery is best-effort */
-        }
-      }).catch(() => {
-        /* selected-session turn recovery is best-effort */
-      });
-      api.getSessionForks(sessionId).then((info) => {
-        if (!isCurrentSessionResponse(recoverySeq, sessionId)) return;
-        setForkInfo({
-          parentSessionId: info.parent_session_id,
-          parentTitle: info.parent_title,
-          forkCount: info.fork_count,
-        });
-      }).catch(() => {});
-      setLoadingHistory(true);
-      setHasEarlier(false);
-      api
-        .getSessionMessages(sessionId, HISTORY_PAGE)
-        .then((resp) => {
-          if (!isCurrentSessionResponse(recoverySeq, sessionId, resp.session_id)) return;
-          // If the requested session was compressed, the backend returns
-          // the leaf session_id. Re-pin our refs so streaming events and
-          // turn_done re-fetches use the agent's actual current session.
-          rememberActiveSessionAliases(sessionId, resp.session_id);
-          if (resp.session_id && resp.session_id !== activeSessionRef.current) {
-            activeSessionRef.current = resp.session_id;
-            setActiveSessionId(resp.session_id);
-          }
-          const mapped = sessionMessagesToChat(
-            resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-          );
-          setChatMessages((prev) => {
-            const merged = mergeSyncedMessages(
-              mapped,
-              initialTranscript.length > 0 ? prev : optimistic,
-              resp.session_id ?? sessionId,
-              {
-                preserveLocalAssistantPrefix: Boolean(activeTurnSessionIdRef.current),
-                syncedComplete: !(resp.has_earlier ?? false),
-              },
-            );
-            if (activeTurnSessionIdRef.current) {
-              streamTextCharsRef.current = Math.max(
-                streamTextCharsRef.current,
-                latestAssistantContentLength(merged),
-              );
-            }
-            return merged;
-          });
-          setHasEarlier(resp.has_earlier ?? false);
-          // If history already contains an assistant reply, the turn finished
-          // before/at mount — clear the optimistic streaming flag so we don't
-          // show a perpetual typing indicator (the turn_done event would
-          // otherwise be the only thing to clear it, and it may have fired
-          // before we subscribed).
-          if (streamingRef.current && !activeTurnSessionIdRef.current && mapped.some((m) => m.role === "assistant")) {
-            setStreaming(false);
-            setStatusLabel(null);
-          }
-          // Fire-and-forget after a short debounce: pre-warm only if the user
-          // is still on this thread after rapid A -> B -> C switching.
-          const warmSessionId = resp.session_id ?? sessionId;
-          window.setTimeout(() => {
-            if (
-              activeSessionRef.current === warmSessionId ||
-              activeSessionAliasesRef.current.has(warmSessionId)
-            ) {
-              void api.warmSession(warmSessionId).catch(() => {});
-            }
-          }, 400);
-        })
-        .catch(() => {
-          // A just-created thread may mount before its first persisted message
-          // is visible. Its optimistic user message is already the complete
-          // initial transcript, so an unavailable history page is not an error.
-          if (!initialMessage) setError("Failed to load conversation history.");
-        })
-        .finally(() => setLoadingHistory(false));
-    }
-  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
     rememberLocalTurn(activeSessionRef.current, chatMessages);
-  }, [chatMessages]);
+  }, [activeSessionRef, chatMessages]);
 
   useEffect(() => {
     rememberRenderHealth(activeSessionId, safeMode);
@@ -979,7 +715,7 @@ export function ChatPanel({
       ...prev,
       { id: nid(), role: "note", text: reason },
     ]);
-  }, []);
+  }, [activeSessionRef, setChatMessages]);
 
   const disableSafeMode = useCallback(() => {
     const sid = activeSessionRef.current;
@@ -988,7 +724,7 @@ export function ChatPanel({
     setSafeMode(false);
     setSafeModeNotice(null);
     rememberRenderHealth(sid, false);
-  }, []);
+  }, [activeSessionRef]);
 
   useEffect(() => {
     if (typeof PerformanceObserver === "undefined") return;
@@ -1024,907 +760,154 @@ export function ChatPanel({
     return () => observer.disconnect();
   }, [enableSafeMode]);
 
-  const finalizeAssistant = useCallback(() => {
-    setChatMessages((prev) => {
-      const next = [...prev];
-      const last = next[next.length - 1];
-      if (last?.role === "assistant" && last.streaming) {
-        next[next.length - 1] = { ...last, streaming: false };
-      }
-      return next;
-    });
-  }, []);
-
-  const flushTokenBuffer = useCallback(() => {
-    rafPendingRef.current = null;
-    const buffered = tokenBufferRef.current.join("");
-    tokenBufferRef.current = [];
-    if (!buffered) return;
-    setChatMessages((prev) => {
-      const next = [...prev];
-      const last = next[next.length - 1];
-      if (last?.role === "assistant" && last.streaming) {
-        const windowed = windowLiveStream({
-          content: last.content,
-          totalChars: last.liveTotalChars ?? last.content.length,
-          fenceCount: last.liveFenceCount ?? 0,
-        }, buffered);
-        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, windowed.totalChars);
-        next[next.length - 1] = {
-          ...last,
-          content: windowed.content,
-          liveTotalChars: windowed.totalChars,
-          liveOmittedChars: windowed.omittedChars,
-          liveFenceCount: windowed.fenceCount,
-          renderRevision: (last.renderRevision ?? 0) + 1,
-        };
-      } else {
-        const windowed = snapshotLiveStream(buffered);
-        streamTextCharsRef.current = Math.max(streamTextCharsRef.current, windowed.totalChars);
-        next.push({ id: nid(), role: "assistant", content: windowed.content, streaming: true,
-          liveTotalChars: windowed.totalChars, liveOmittedChars: windowed.omittedChars,
-          liveFenceCount: windowed.fenceCount, renderRevision: 1 });
-      }
-      return next;
-    });
-  }, []);
-
-  const syncLiveAssistantSnapshot = useCallback((text: string, revision?: number | null, start = 0) => {
-    if (start > 0) {
-      if (!text) return false;
-      if (flushTimerRef.current !== null) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
-      if (rafPendingRef.current !== null) {
-        cancelAnimationFrame(rafPendingRef.current);
-        rafPendingRef.current = null;
-      }
-      tokenBufferRef.current = [];
-
-      const nextRevision = typeof revision === "number" ? revision : streamRevisionRef.current + 1;
-      const nextChars = start + text.length;
-      const canAppend = streamTextCharsRef.current === start;
-      streamRevisionRef.current = nextRevision;
-      streamTextCharsRef.current = Math.max(streamTextCharsRef.current, nextChars);
-      lastTokenAtRef.current = Date.now();
-      setChatMessages((prev) => {
-        const next = [...prev];
-        const i = currentTurnLiveAssistantIndex(next);
-        if (i >= 0) {
-          const msg = next[i];
-          if (msg.role !== "assistant") return prev;
-          const windowed = canAppend
-            ? windowLiveStream({
-                content: msg.content,
-                totalChars: msg.liveTotalChars ?? msg.content.length,
-                fenceCount: msg.liveFenceCount ?? 0,
-              }, text, nextChars)
-            : snapshotLiveStream(text, nextChars);
-          next[i] = {
-            ...msg,
-            content: windowed.content,
-            liveTotalChars: windowed.totalChars,
-            liveOmittedChars: windowed.omittedChars,
-            liveFenceCount: windowed.fenceCount,
-            streaming: true,
-            renderRevision: nextRevision > 0 ? nextRevision : (msg.renderRevision ?? 0) + 1,
-          };
-          return next;
-        }
-        const windowed = snapshotLiveStream(text, nextChars);
-        next.push({ id: nid(), role: "assistant", content: windowed.content, streaming: true,
-          liveTotalChars: windowed.totalChars, liveOmittedChars: windowed.omittedChars,
-          liveFenceCount: windowed.fenceCount, renderRevision: nextRevision });
-        return next;
-      });
-      return true;
-    }
-
-    const currentState = { revision: streamRevisionRef.current, textChars: streamTextCharsRef.current };
-    if (!shouldApplyStreamRenderSnapshot(currentState, { text, revision })) return false;
-
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-    if (rafPendingRef.current !== null) {
-      cancelAnimationFrame(rafPendingRef.current);
-      rafPendingRef.current = null;
-    }
-    tokenBufferRef.current = [];
-
-    const nextState = applyStreamRenderSnapshotState(currentState, { text, revision });
-    streamRevisionRef.current = nextState.revision;
-    streamTextCharsRef.current = nextState.textChars;
-    lastTokenAtRef.current = Date.now();
-    let applied = false;
-    setChatMessages((prev) => {
-      const next = [...prev];
-      const i = currentTurnLiveAssistantIndex(next);
-      if (i >= 0) {
-        const msg = next[i];
-        if (msg.role !== "assistant") return prev;
-        const windowed = snapshotLiveStream(text, nextState.textChars);
-        if (msg.content === windowed.content && msg.liveTotalChars === windowed.totalChars) return prev;
-        next[i] = {
-          ...msg,
-          content: windowed.content,
-          liveTotalChars: windowed.totalChars,
-          liveOmittedChars: windowed.omittedChars,
-          liveFenceCount: windowed.fenceCount,
-          streaming: true,
-          renderRevision: nextState.revision > 0 ? nextState.revision : (msg.renderRevision ?? 0) + 1,
-        };
-        applied = true;
-        return next;
-      }
-      const windowed = snapshotLiveStream(text, nextState.textChars);
-      next.push({
-        id: nid(),
-        role: "assistant",
-        content: windowed.content,
-        liveTotalChars: windowed.totalChars,
-        liveOmittedChars: windowed.omittedChars,
-        liveFenceCount: windowed.fenceCount,
-        streaming: true,
-        renderRevision: nextState.revision > 0 ? nextState.revision : 1,
-      });
-      applied = true;
-      return next;
-    });
-    return applied;
-  }, []);
-
-  // Accumulate tokens and flush at a controlled cadence instead of on every
-  // animation frame. Long markdown responses can otherwise spend the whole
-  // stream re-rendering the live assistant row.
-  const appendToken = useCallback((token: string) => {
-    tokenBufferRef.current.push(token);
-    const tokenNow = Date.now();
-    if (tokenNow - lastTokenAtRef.current >= 250) lastTokenAtRef.current = tokenNow;
-    if (flushTimerRef.current === null && rafPendingRef.current === null) {
-      flushTimerRef.current = window.setTimeout(() => {
-        flushTimerRef.current = null;
-        rafPendingRef.current = requestAnimationFrame(flushTokenBuffer);
-      }, liveStreamFlushInterval(streamTextCharsRef.current + token.length));
-    }
-  }, [flushTokenBuffer]);
-
-  const flushReasoningBuffer = useCallback(() => {
-    reasoningRafRef.current = null;
-    const buffered = reasoningBufferRef.current;
-    const bufferedChars = reasoningBufferedCharsRef.current;
-    reasoningBufferRef.current = "";
-    reasoningBufferedCharsRef.current = 0;
-    if (!buffered) return;
-    setChatMessages((prev) => {
-      const next = [...prev];
-      const last = next[next.length - 1];
-      if (last?.role === "reasoning") {
-        const windowed = appendBoundedText({
-          text: last.text,
-          totalChars: last.totalChars ?? last.text.length,
-          omittedChars: last.omittedChars ?? 0,
-        }, buffered, REASONING_WINDOW_CHARS);
-        windowed.totalChars += Math.max(0, bufferedChars - buffered.length);
-        windowed.omittedChars = Math.max(0, windowed.totalChars - windowed.text.length);
-        next[next.length - 1] = { ...last, text: windowed.text,
-          totalChars: windowed.totalChars, omittedChars: windowed.omittedChars };
-      } else {
-        const windowed = boundText(buffered, REASONING_WINDOW_CHARS, bufferedChars);
-        next.push({ id: nid(), role: "reasoning", text: windowed.text,
-          totalChars: windowed.totalChars, omittedChars: windowed.omittedChars });
-      }
-      return next;
-    });
-  }, []);
-
-  // Accumulate reasoning deltas and flush once per animation frame, mirroring tokens.
-  const appendReasoning = useCallback((text: string) => {
-    reasoningBufferRef.current = `${reasoningBufferRef.current}${text}`.slice(-REASONING_WINDOW_CHARS);
-    reasoningBufferedCharsRef.current += text.length;
-    if (reasoningRafRef.current === null) {
-      reasoningRafRef.current = requestAnimationFrame(flushReasoningBuffer);
-    }
-  }, [flushReasoningBuffer]);
-
-  // Flush buffered tokens AND reasoning immediately — call before appending a tool
-  // row, finalizing, or ending a turn so ordering and the final deltas are preserved.
-  const flushPendingStream = useCallback(() => {
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-    if (rafPendingRef.current !== null) {
-      cancelAnimationFrame(rafPendingRef.current);
-      flushTokenBuffer();
-    } else if (tokenBufferRef.current.length > 0) {
-      flushTokenBuffer();
-    }
-    if (reasoningRafRef.current !== null) {
-      cancelAnimationFrame(reasoningRafRef.current);
-      flushReasoningBuffer();
-    }
-  }, [flushTokenBuffer, flushReasoningBuffer]);
-
-  // Re-sync turn state after a suspected lost event (SSE reconnect or stall).
-  // Polls the backend's authoritative turn-status; if the turn already finished
-  // we flush + finalize the assistant bubble and reload history so nothing is
-  // lost. If it's still running we surface a gentle "still working" status
-  // instead of leaving the UI frozen on a stale typing indicator.
-  const resyncTurnState = useCallback(async (options: { allowIdle?: boolean } = {}) => {
-    const sid = activeSessionRef.current;
-    if (!sid || (!streamingRef.current && !options.allowIdle) || resyncInFlightRef.current) return;
-    const recoverySeq = sessionRecoverySeqRef.current;
-    resyncInFlightRef.current = true;
-    setRecoveryPollCount((count) => count + 1);
-    recordWebEfficiency("httpPolls");
-    recordWebEfficiency("streamRecoveryActions");
-    try {
-      const status = await api.getTurnStatus(sid);
-      debugChatRecovery("resync-turn-status", status.diagnostics ?? status);
-      if (!isCurrentSessionResponse(
-        recoverySeq,
-        sid,
-        status.resolved_session_id,
-        status.latest_session_id,
-        status.active_turn_session_id,
-      )) return;
-      rememberActiveSessionAliases(
-        sid,
-        status.resolved_session_id,
-        status.latest_session_id,
-        status.active_turn_session_id,
-      );
-      if (!status.turn_active) {
-        const wasStreaming = streamingRef.current;
-        activeTurnSessionIdRef.current = null;
-        // Turn finished while we weren't listening — finalize from history.
-        flushPendingStream();
-        finalizeAssistant();
-        setStreaming(false);
-        setStatusLabel(null);
-        try {
-          const resp = await api.getSessionMessages(sid, HISTORY_PAGE);
-          if (!isCurrentSessionResponse(recoverySeq, sid, resp.session_id)) return;
-          rememberActiveSessionAliases(sid, resp.session_id);
-          const mapped = sessionMessagesToChat(
-            resp.messages.filter(
-              (m) => m.role === "user" || m.role === "assistant" || m.role === "tool",
-            ),
-          );
-          const hasAssistant = mapped.some((m) => m.role === "assistant" && m.content.trim());
-          setChatMessages((prev) => mergeSyncedMessages(
-            mapped,
-            prev,
-            resp.session_id ?? sid,
-            { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
-          ));
-          if (wasStreaming && !hasAssistant) {
-            appendRecoveredStaleTurnNote("The previous response stopped before Spark saved an assistant reply. You can retry this message.");
-          }
-        } catch {
-          /* keep whatever we have locally */
-          if (wasStreaming) {
-            appendRecoveredStaleTurnNote("Spark lost the live response state while reconnecting. You can retry or send a follow-up.");
-          }
-        }
-      } else {
-        // Still running — reset the stall clock and reassure the user.
-        const snapshotSessionId = status.active_turn_session_id ?? sid;
-        activeTurnSessionIdRef.current = snapshotSessionId;
-        lastEventAtRef.current = Date.now();
-        setTurnState(recoverTurnStateFromBackend({
-          turnActive: true,
-          phase: status.phase,
-          state: status.state,
-          interruptRequested: status.interrupt_requested,
-        }));
-        setStatusLabel(
-          backendTurnStatusLabel({
-            turnActive: true,
-            phase: status.phase,
-            state: status.state,
-            status: status.status,
-            idleForSeconds: status.idle_for_seconds,
-          }) ?? MODEL_LOADING_LABEL,
-        );
-        try {
-          const snapshot = await api.getStreamSnapshot(
-            snapshotSessionId,
-            streamTextCharsRef.current > 0 ? { afterChars: streamTextCharsRef.current } : {},
-          );
-          debugChatRecovery("resync-stream-snapshot", snapshot.diagnostics ?? snapshot);
-          if (!isCurrentSessionResponse(
-            recoverySeq,
-            sid,
-            snapshot.resolved_session_id,
-            snapshot.latest_session_id,
-            snapshot.active_turn_session_id,
-          )) return;
-          rememberActiveSessionAliases(
-            sid,
-            snapshot.resolved_session_id,
-            snapshot.latest_session_id,
-            snapshot.active_turn_session_id,
-          );
-          activeTurnSessionIdRef.current = snapshot.turn_active
-            ? snapshot.active_turn_session_id ?? snapshotSessionId
-            : null;
-          if (snapshot.stream_text) {
-            syncLiveAssistantSnapshot(
-              snapshot.stream_text,
-              snapshot.stream_revision,
-              snapshot.stream_text_start ?? 0,
-            );
-          }
-          if (!snapshot.turn_active) {
-            activeTurnSessionIdRef.current = null;
-            flushPendingStream();
-            finalizeAssistant();
-            setStreaming(false);
-            setStatusLabel("Finalizing from saved history…");
-            try {
-              const resp = await api.getSessionMessages(snapshot.latest_session_id ?? snapshotSessionId, HISTORY_PAGE);
-              if (!isCurrentSessionResponse(recoverySeq, sid, resp.session_id)) return;
-              rememberActiveSessionAliases(sid, resp.session_id);
-              const mapped = sessionMessagesToChat(
-                resp.messages.filter(
-                  (m) => m.role === "user" || m.role === "assistant" || m.role === "tool",
-                ),
-              );
-              setChatMessages((prev) => mergeSyncedMessages(
-                mapped,
-                prev,
-                resp.session_id ?? sid,
-                { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
-              ));
-            } catch {
-              /* final history recovery is best-effort */
-            } finally {
-              setStatusLabel(null);
-            }
-          }
-        } catch {
-          /* snapshot recovery is best-effort */
-        }
-      }
-    } catch {
-      /* network blip — leave state untouched, watchdog will retry */
-    } finally {
-      resyncInFlightRef.current = false;
-    }
-  }, [
-    flushPendingStream,
-    finalizeAssistant,
-    setStreaming,
-    syncLiveAssistantSnapshot,
-    isCurrentSessionResponse,
-    rememberActiveSessionAliases,
-    appendRecoveredStaleTurnNote,
-  ]);
-
+  appendRecoveredStaleTurnNoteRef.current = appendRecoveredStaleTurnNote;
   resyncTurnStateRef.current = resyncTurnState;
-
-  useEventBus((env) => {
-    // Synthetic local event from the SSE bus reopening after a drop. Events
-    // emitted during the gap (possibly a whole turn_done) may have been missed,
-    // so reconcile against the backend's turn-status.
-    if (env.topic === BUS_RECONNECTED_TOPIC) {
-      setSseReconnectCount((count) => count + 1);
-      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
-      recoverySignalBudgetRef.current = result.budget;
-      if (result.allowed) void resyncTurnState({ allowIdle: true });
-      return;
-    }
-    if (env.topic === BUS_STALE_TOPIC || env.topic === BUS_WAKE_TOPIC) {
-      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
-      recoverySignalBudgetRef.current = result.budget;
-      if (result.allowed) void resyncTurnState({ allowIdle: true });
-      return;
-    }
-    const sid = env.session_id ?? undefined;
-    if (!sid || !activeSessionAliasesRef.current.has(sid)) return;
-    if (env.topic === BUS_GAP_TOPIC) {
-      const result = consumeRecoverySignal(recoverySignalBudgetRef.current, Date.now());
-      recoverySignalBudgetRef.current = result.budget;
-      if (result.allowed) void resyncTurnState({ allowIdle: true });
-      return;
-    }
-    const eventNow = Date.now();
-    if (eventNow - lastEventAtRef.current >= 250) lastEventAtRef.current = eventNow;
-    const data = env.data as Record<string, unknown>;
-
-    switch (env.topic) {
-      case "chat.token": {
-        const t = data.t;
-        if (typeof t === "string" && t) appendToken(t);
-        // A token stream can deliver thousands of events per second. Do not
-        // enqueue an identical React state update for every event.
-        if (turnStateRef.current !== "streaming") {
-          const next = nextChatTurnState(turnStateRef.current, { type: "token" });
-          turnStateRef.current = next;
-          setTurnState(next);
-        }
-        break;
-      }
-      case "chat.tool_start": {
-        flushPendingStream();
-        finalizeAssistant();
-        setTurnState((prev) => nextChatTurnState(prev, { type: "tool_start" }));
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            id: nid(),
-            role: "tool",
-            toolId: String(data.id ?? ""),
-            name: String(data.name ?? "tool"),
-            args: (data.args as Record<string, unknown>) ?? {},
-            done: false,
-            startedAt: typeof data.started_at === "number" ? data.started_at : typeof data.ts === "number" ? data.ts : undefined,
-          },
-        ]);
-        setStatusLabel(`Tool: ${String(data.name ?? "")}`);
-        break;
-      }
-      case "chat.tool_end": {
-        const tid = String(data.id ?? "");
-        setTurnState((prev) => nextChatTurnState(prev, { type: "tool_end" }));
-        setChatMessages((prev) => {
-          const next = [...prev];
-          for (let i = next.length - 1; i >= 0; i--) {
-            const row = next[i];
-            if (row.role === "tool" && row.toolId === tid) {
-              const preview = String(data.result_preview ?? data.result ?? "");
-              next[i] = {
-                ...row,
-                result: preview,
-                resultTruncated: Boolean(data.result_truncated ?? data.truncated) || undefined,
-                done: true,
-                endedAt: typeof data.ended_at === "number" ? data.ended_at : typeof data.ts === "number" ? data.ts : undefined,
-                durationSeconds: typeof data.duration_seconds === "number" ? data.duration_seconds : undefined,
-              };
-              break;
-            }
-          }
-          return next;
-        });
-        break;
-      }
-      case "chat.reasoning": {
-        const text = String((data as { text?: string }).text ?? "");
-        if (text) appendReasoning(text);
-        break;
-      }
-      case "chat.subagent.created": {
-        const run = (data as { subagent?: { name?: string; task?: string } }).subagent ?? {};
-        const name = typeof run.name === "string" && run.name.trim() ? run.name.trim() : "sub-agent";
-        const task = typeof run.task === "string" && run.task.trim() ? `: ${run.task.trim().slice(0, 140)}` : "";
-        setChatMessages((prev) => [...prev, { id: nid(), role: "note", text: `Created ${name}${task}` }]);
-        setStatusLabel(`Created ${name}`);
-        break;
-      }
-      case "chat.status": {
-        const msg = String((data as { message?: string }).message ?? "");
-        if (msg) setStatusLabel(msg);
-        break;
-      }
-      case "chat.approval_requested": {
-        flushPendingStream();
-        finalizeAssistant();
-        const approval = (data as { approval?: Record<string, unknown> }).approval ?? {};
-        setChatMessages((prev) => [...prev, { id: nid(), role: "approval", approval }]);
-        setStatusLabel("Waiting for approval…");
-        break;
-      }
-      case "chat.approval_resolved":
-        setStatusLabel(null);
-        setChatMessages((prev) =>
-          prev.map((m) => (m.role === "approval" ? { ...m, resolved: true } : m)),
-        );
-        break;
-      case "chat.session_migrated": {
-        const oldId = String((data as { old_session_id?: string }).old_session_id ?? "");
-        const newId = String((data as { new_session_id?: string }).new_session_id ?? "");
-        rememberActiveSessionAliases(oldId, newId);
-        setTurnState((prev) => nextChatTurnState(prev, { type: "session_migrated" }));
-        if (newId && newId !== activeSessionRef.current) {
-          activeSessionRef.current = newId;
-          setActiveSessionId(newId);
-          onSessionUpdated?.(newId);
-          // Inline marker so the user understands why the agent may suddenly
-          // recall less detail about earlier work in this thread.
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              id: nid(),
-              role: "note",
-              text: "Earlier conversation was summarized to free context space — the assistant may not recall fine-grained details from before this point.",
-            },
-          ]);
-        }
-        break;
-      }
-      case "chat.compaction": {
-        const status = String((data as { status?: string }).status ?? "");
-        if (status === "failed") {
-          const message = String((data as { message?: string }).message ?? "");
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              id: nid(),
-              role: "note",
-              text: message || "Context compression failed. The transcript was preserved, and you can retry this message.",
-            },
-          ]);
-          setStatusLabel(null);
-        }
-        break;
-      }
-      case "chat.interrupted": {
-        flushPendingStream();
-        finalizeAssistant();
-        const msg = (data as { message?: string }).message;
-        const phase = (data as { phase?: string }).phase === "redirecting" ? "redirecting" : "stopping";
-        setChatMessages((prev) => [
-          ...prev,
-          { id: nid(), role: "note", text: msg ? `Interrupted: ${msg}` : "Interrupted." },
-        ]);
-        setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested", redirect: phase === "redirecting" }));
-        setStatusLabel(phase === "redirecting" ? "Redirecting…" : "Stopping…");
-        void resyncTurnState();
-        break;
-      }
-      case "chat.turn_done": {
-        debugChatRecovery("turn-done", (data as { diagnostics?: unknown }).diagnostics ?? data);
-        // Flush any remaining buffered tokens before finalizing
-        flushPendingStream();
-        finalizeAssistant();
-        setTurnState((prev) => nextChatTurnState(prev, { type: "turn_done" }));
-        setStatusLabel(null);
-        // Extract token/cost stats from the richer payload
-        {
-          const tokens = data.tokens as Record<string, number> | undefined;
-          const cost = typeof data.cost_usd === "number" ? data.cost_usd : undefined;
-          const model = typeof data.model === "string" ? data.model : undefined;
-          const interrupted = Boolean((data as { interrupted?: boolean }).interrupted);
-          const finalAssistantPresent = Boolean((data as { final_assistant_present?: boolean }).final_assistant_present);
-          const backendErrorClass = typeof (data as { backend_error_class?: unknown }).backend_error_class === "string"
-            ? String((data as { backend_error_class?: string }).backend_error_class)
-            : "";
-          setSessionStats((prev) => ({
-            model: model ?? prev.model,
-            inputTokens: (prev.inputTokens ?? 0) + (tokens?.input ?? 0),
-            outputTokens: (prev.outputTokens ?? 0) + (tokens?.output ?? 0),
-            cacheReadTokens: (prev.cacheReadTokens ?? 0) + (tokens?.cache_read ?? 0),
-            cacheWriteTokens: (prev.cacheWriteTokens ?? 0) + (tokens?.cache_write ?? 0),
-            costUsd: (prev.costUsd ?? 0) + (cost ?? 0),
-            turnCount: (prev.turnCount ?? 0) + 1,
-          }));
-          // Attach this turn's usage to the just-finalized assistant message.
-          const turnTokens = (tokens?.input ?? 0) + (tokens?.output ?? 0);
-          if (turnTokens > 0 || cost != null) {
-            setChatMessages((prev) => {
-              for (let i = prev.length - 1; i >= 0; i--) {
-                const m = prev[i];
-                if (m.role === "assistant") {
-                  const next = [...prev];
-                  next[i] = { ...m, usage: { totalTokens: turnTokens, costUsd: cost } };
-                  return next;
-                }
-              }
-              return prev;
-            });
-          }
-          if (!interrupted && (!finalAssistantPresent || backendErrorClass)) {
-            setChatMessages((prev) => [
-              ...prev,
-              {
-                id: nid(),
-                role: "note",
-                text: backendErrorClass
-                  ? `Turn ended with a backend error (${backendErrorClass}). You can retry this message.`
-                  : "Turn ended without a saved assistant response. You can retry this message.",
-              },
-            ]);
-          }
-        }
-        const cur = activeSessionRef.current;
-        if (cur) {
-          const doneSessionId = typeof data.session_id === "string" ? data.session_id : undefined;
-          rememberActiveSessionAliases(cur, sid, doneSessionId);
-          onSessionUpdated?.(cur);
-          const finalHistorySessionId = doneSessionId ?? cur;
-          const applyFinalHistory = (resp: Awaited<ReturnType<typeof api.getSessionMessages>>) => {
-            const current = activeSessionRef.current;
-            const aliases = activeSessionAliasesRef.current;
-            const responseSessionId = resp.session_id ?? finalHistorySessionId;
-            if (
-              !current ||
-              (
-                current !== cur &&
-                current !== finalHistorySessionId &&
-                current !== responseSessionId &&
-                !aliases.has(finalHistorySessionId) &&
-                !aliases.has(responseSessionId)
-              )
-            ) return;
-            rememberActiveSessionAliases(cur, finalHistorySessionId, responseSessionId);
-            const mapped = sessionMessagesToChat(
-              resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-            );
-            setChatMessages((prev) => mergeSyncedMessages(
-              mapped,
-              prev,
-              responseSessionId,
-              { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
-            ));
-          };
-          void api
-            .getSessionMessages(finalHistorySessionId, HISTORY_PAGE)
-            .then((resp) => {
-              applyFinalHistory(resp);
-              schedulePersistSettledDetail(
-                resp.session_id ?? finalHistorySessionId,
-                resp.messages,
-                env.sequence,
-                true,
-              );
-              window.setTimeout(() => {
-                void api
-                  .getSessionMessages(finalHistorySessionId, HISTORY_PAGE)
-                  .then(applyFinalHistory)
-                  .catch(() => {});
-              }, 500);
-            })
-            .catch(() => {});
-          // Sync sessionIdx values on recent user messages for retry/fork.
-          // Fetch only the tail (last 20) to avoid transmitting the full history
-          // every turn. Patch sessionIdx in-place rather than replacing the list.
-          setTimeout(() => {
-            void api
-              .getSessionMessages(finalHistorySessionId, 20)
-              .then((resp) => {
-                const current = activeSessionRef.current;
-                const responseSessionId = resp.session_id ?? finalHistorySessionId;
-                if (
-                  !current ||
-                  (
-                    current !== cur &&
-                    current !== finalHistorySessionId &&
-                    current !== responseSessionId &&
-                    !activeSessionAliasesRef.current.has(finalHistorySessionId) &&
-                    !activeSessionAliasesRef.current.has(responseSessionId)
-                  )
-                ) return;
-                rememberActiveSessionAliases(cur, finalHistorySessionId, responseSessionId);
-                const tail = resp.messages.filter((m) => m.role === "user");
-                if (tail.length === 0) return;
-                const tailByContent = new Map(tail.map((m, i) => [
-                  m.content ?? "",
-                  m.message_index ?? resp.messages.indexOf(tail[i]),
-                ]));
-                setChatMessages((prev) => {
-                  let changed = false;
-                  const next = prev.map((m) => {
-                    if (m.role !== "user") return m;
-                    if (m.sessionIdx != null) return m;
-                    const newIdx = tailByContent.get(m.content);
-                    if (newIdx != null && newIdx !== m.sessionIdx) {
-                      changed = true;
-                      return { ...m, sessionIdx: newIdx };
-                    }
-                    return m;
-                  });
-                  return changed ? next : prev;
-                });
-              })
-              .catch(() => {});
-          }, 500);
-        }
-        break;
-      }
-      default:
-        break;
-    }
-  });
-
-  const sendMessage = async () => {
-    const text = input.trim();
-    if (!text) return;
-
-    // While a turn is streaming, a submit becomes a redirect: interrupt the
-    // running turn and hand it the new message (read on the next loop iter).
-    if (streaming) {
-      const sid = activeTurnSessionIdRef.current ?? activeSessionId;
-      if (!sid) return;
-      setChatMessages((prev) => [
-        ...prev,
-        { id: nid(), role: "user", content: text, redirect: true },
-      ]);
-      setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested", redirect: true }));
-      setStatusLabel("Redirecting…");
-      try {
-        await api.interruptConversation(sid, text);
-        setInput("");
-      } catch {
-        setStatusLabel("Redirect requested; waiting for backend state…");
-        void resyncTurnState();
-      }
-      return;
-    }
-
-    setInput("");
-    setError(null);
-    const itemsToSend = contextItems;
-    // Drop one-turn items after send; keep pinned items
-    setContextItems((prev) => prev.filter((i) => i.scope === "pinned"));
-    setChatMessages((prev) => [
-      ...prev,
-      { id: nid(), role: "user", content: text, contextItems: itemsToSend.length ? itemsToSend : undefined },
-    ]);
-
-    // /feedback is handled entirely in the frontend — inject the form immediately,
-    // send to backend only to prevent agent fallthrough (backend returns "").
-    if (text.trim() === "/feedback") {
-      setChatMessages((prev) => [...prev, { id: nid(), role: "feedback_form" as const }]);
-    }
-
-    setTurnState(nextChatTurnState(turnStateRef.current, { type: "submit" }));
-    setStatusLabel(MODEL_LOADING_LABEL);
-    followStreamRef.current = true;
-    streamRevisionRef.current = 0;
-    streamTextCharsRef.current = 0;
-    scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
+  onSessionResetRef.current = ({
+    sessionId: resetSessionId,
+    initialTranscript,
+    initialMessage: resetInitialMessage,
+    recoverySequence,
+  }) => {
+    // Drop all bridge identities from the previous session before installing
+    // the new reducer source. Otherwise a late old projection can be mistaken
+    // for the selected session's initial transcript.
+    lastPresentedStreamMessagesRef.current = null;
+    lastHistoryMessagesRef.current = null;
+    pendingStreamProjectionRef.current = null;
+    activeSessionRef.current = resetSessionId;
+    prependRestoreGenerationRef.current += 1;
+    const transition = streamController.setSession({
+      sessionId: resetSessionId,
+      aliases: resetSessionId ? [resetSessionId] : [],
+      recoverySequence,
+      messages: initialTranscript,
+    });
+    streamStatusRef.current = transition.state.statusLabel;
+    streamTurnStateRef.current = transition.state.turnState;
+    streamErrorRef.current = transition.state.error;
+    prependScrollAnchorRef.current = null;
+    recoverySignalBudgetRef.current = initialRecoverySignalBudget();
+    prevCountRef.current = 0;
+    lastAutoScrollAtRef.current = 0;
+    scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
       type: "jump-to-bottom",
-      itemCount: chatMessages.length + 1,
+      itemCount: initialTranscript.length,
     });
     setDetachedFromBottom(false);
-
-    // Yield to the browser paint cycle so the stop button renders
-    // before we block on the API call.
-    await new Promise((r) => setTimeout(r, 0));
-
-    try {
-      let sid = activeSessionId;
-
-      if (!sid) {
-        if (workspaceSlug) {
-          const resp = await api.startWorkspaceConversation(workspaceSlug, text, undefined, itemsToSend);
-          sid = resp.session_id;
-          activeSessionRef.current = sid;
-          setActiveSessionId(sid);
-          onSessionCreated?.(sid, text, { source: resp.source, projectSlug: workspaceSlug });
-        } else {
-          const resp = await api.postConversation(text, undefined, itemsToSend);
-          sid = resp.session_id;
-          activeSessionRef.current = sid;
-          setActiveSessionId(sid);
-          onSessionCreated?.(sid, text);
-        }
-      } else {
-        activeSessionRef.current = sid;
-        const resp = await api.postConversationMessage(sid, text, itemsToSend);
-        if (resp.session_id && resp.session_id !== sid) {
-          sid = resp.session_id;
-          activeSessionRef.current = sid;
-          setActiveSessionId(sid);
-          onSessionCreated?.(sid, text);
-        }
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg.replace(/^\d+:\s*/, ""));
-      setChatMessages((prev) => prev.filter((m, i) => i < prev.length - 1 || m.role !== "user"));
-      setStreaming(false);
-      setStatusLabel(null);
+    followStreamRef.current = true;
+    setEditingUser(null);
+    setDiagnosticsOpen(false);
+    setConversationDiagnostics(null);
+    setDiagnosticsError(null);
+    const restoredSafeMode = readSafeMode(resetSessionId);
+    setSafeMode(restoredSafeMode);
+    setSafeModeNotice(restoredSafeMode ? "Recovered this thread in safe mode." : null);
+    if (resetInitialMessage) {
+      streamTurnStateRef.current = "starting";
+      setTurnState("starting");
+      setStatusLabel(MODEL_LOADING_LABEL);
     }
   };
 
-  const stop = useCallback(async () => {
-    const sid = activeTurnSessionIdRef.current ?? activeSessionId;
-    if (!sid) return;
-    if (turnStateRef.current === "stopping" || turnStateRef.current === "redirecting") return;
-    setTurnState(nextChatTurnState(turnStateRef.current, { type: "interrupt_requested" }));
-    setStatusLabel("Stopping…");
-    try {
-      await api.interruptConversation(sid);
-    } catch {
-      setStatusLabel("Stop requested; waiting for backend state…");
-      void resyncTurnState();
+  useEffect(() => {
+    const pendingProjection = pendingStreamProjectionRef.current;
+    if (pendingProjection === chatMessages) {
+      pendingStreamProjectionRef.current = null;
+      lastHistoryMessagesRef.current = chatMessages;
+      return;
     }
-  }, [activeSessionId, resyncTurnState]);
+    // A controller history response may land before the reducer projection
+    // render that was queued by an earlier stream transition. In that case
+    // the current controller array is the newer source; never echo the stale
+    // projection back over it or leave the guard armed indefinitely.
+    if (pendingProjection !== null) pendingStreamProjectionRef.current = null;
+    if (chatMessages === lastHistoryMessagesRef.current) return;
+    lastHistoryMessagesRef.current = chatMessages;
+    syncStreamMessages(chatMessages);
+  }, [chatMessages, syncStreamMessages]);
 
-  // Use refs for values that change so useCallback deps stay empty → stable identities
-  const onSessionCreatedRef = useRef(onSessionCreated);
-  onSessionCreatedRef.current = onSessionCreated;
+  useEffect(() => {
+    const streamState = streamController.state;
+    streamTextCharsRef.current = Math.max(streamTextCharsRef.current, streamState.streamTextChars);
+    activeTurnSessionIdRef.current = streamState.activeTurnSessionId;
 
-  const doFork = useCallback(async (fromSessionIdx?: number) => {
-    const sid = activeSessionRef.current;
-    if (!sid) return;
-    try {
-      const r = await api.forkConversation(sid, fromSessionIdx);
-      setActiveSessionId(r.session_id);
-      activeSessionRef.current = r.session_id;
-      onSessionCreatedRef.current?.(r.session_id);
-      setChatMessages([]);
-      setLoadingHistory(true);
-      const resp = await api.getSessionMessages(r.session_id);
-      setChatMessages(
-        sessionMessagesToChat(
-          resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-        ),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoadingHistory(false);
+    if (
+      streamState.recoverySequence === sessionRecoverySeqRef.current
+      && streamState.activeSessionId
+      && streamState.activeSessionId !== activeSessionRef.current
+    ) {
+      rememberActiveSessionAliases(...streamState.sessionAliases);
+      activeSessionRef.current = streamState.activeSessionId;
+      setActiveSessionId(streamState.activeSessionId);
+      onSessionUpdated?.(streamState.activeSessionId);
     }
-  }, []);
 
-  const doRetry = useCallback(async (sessionIdx: number, edited?: string) => {
-    const sid = activeSessionRef.current;
-    if (!sid || streamingRef.current) return;
-    try {
-      await api.retryConversation(sid, sessionIdx, edited);
-      setStreaming(true);
-      setStatusLabel(MODEL_LOADING_LABEL);
-      followStreamRef.current = true;
-      streamRevisionRef.current = 0;
-      streamTextCharsRef.current = 0;
-      scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
-        type: "jump-to-bottom",
+    if (streamStatusRef.current !== streamState.statusLabel) {
+      streamStatusRef.current = streamState.statusLabel;
+      setStatusLabel(streamState.statusLabel);
+    }
+
+    if (streamTurnStateRef.current !== streamState.turnState) {
+      streamTurnStateRef.current = streamState.turnState;
+      const nextState: ChatTurnState = streamState.turnState === "starting"
+        ? "starting"
+        : streamState.turnState === "stopping"
+          ? "stopping"
+          : streamState.turnState === "redirecting"
+            ? "redirecting"
+            : streamState.turnState === "stalled"
+              ? "stalled"
+              : streamState.turnState === "streaming"
+                || streamState.turnState === "awaiting-approval"
+                || streamState.turnState === "awaiting-input"
+                ? "streaming"
+                : "idle";
+      turnStateRef.current = nextState;
+      setTurnState(nextState);
+      setStreaming(nextState !== "idle");
+    }
+
+    if (streamErrorRef.current !== streamState.error) {
+      streamErrorRef.current = streamState.error;
+      if (streamState.error) setError(streamState.error);
+    }
+
+    const stats = streamState.stats;
+    if (stats.turnCount > 0 || stats.model || stats.costUsd > 0) {
+      setSessionStats({
+        model: stats.model,
+        inputTokens: stats.inputTokens,
+        outputTokens: stats.outputTokens,
+        cacheReadTokens: stats.cacheReadTokens,
+        cacheWriteTokens: stats.cacheWriteTokens,
+        costUsd: stats.costUsd,
+        turnCount: stats.turnCount,
       });
-      setDetachedFromBottom(false);
-      setChatMessages((prev) => {
-        const next = [...prev];
-        while (next.length > 0) {
-          const last = next[next.length - 1];
-          if (last.role === "assistant" || last.role === "tool" || last.role === "reasoning" || last.role === "note") {
-            next.pop();
-            continue;
-          }
-          if (last.role === "user" && last.sessionIdx === sessionIdx) {
-            if (edited != null) {
-              next[next.length - 1] = { ...last, content: edited };
-            }
-            break;
-          }
-          break;
-        }
-        return next;
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
     }
-  }, [setStreaming]);
+  }, [
+    onSessionUpdated,
+    rememberActiveSessionAliases,
+    setActiveSessionId,
+    setError,
+    setSessionStats,
+    setStatusLabel,
+    setStreaming,
+    setTurnState,
+    streamController.state,
+    streamTextCharsRef,
+    activeSessionRef,
+    activeTurnSessionIdRef,
+    sessionRecoverySeqRef,
+  ]);
 
-  const reloadLatestTranscript = useCallback(async () => {
-    const sid = activeSessionRef.current;
-    if (!sid) return;
-    setLoadingHistory(true);
-    try {
-      const resp = await api.getSessionMessages(sid, HISTORY_PAGE);
-      rememberActiveSessionAliases(sid, resp.session_id);
-      const mapped = sessionMessagesToChat(
-        resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-      );
-      setChatMessages((prev) => mergeSyncedMessages(
-        mapped,
-        prev,
-        resp.session_id ?? sid,
-        { preferSyncedAssistants: true, syncedComplete: !(resp.has_earlier ?? false) },
-      ));
-      setHasEarlier(resp.has_earlier ?? false);
-      setStatusLabel(streamingRef.current ? statusLabel ?? MODEL_LOADING_LABEL : null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [HISTORY_PAGE, rememberActiveSessionAliases, statusLabel]);
-
+  useEventBus((env) => {
+    streamController.handleEvent({
+      topic: env.topic,
+      session_id: env.session_id,
+      sequence: env.sequence,
+      data: env.data,
+    });
+  });
   const refreshConversationDiagnostics = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid) return null;
@@ -1949,7 +932,7 @@ export function ChatPanel({
       setDiagnosticsError(msg);
       return null;
     }
-  }, [recoveryPollCount, sseReconnectCount]);
+  }, [activeSessionRef, recoveryPollCount, sseReconnectCount]);
 
   const continueFromSavedOutput = useCallback(async () => {
     const sid = activeSessionRef.current;
@@ -1969,7 +952,6 @@ export function ChatPanel({
         setTurnState(nextChatTurnState(turnStateRef.current, { type: "submit" }));
         setStatusLabel(MODEL_LOADING_LABEL);
         followStreamRef.current = true;
-        streamRevisionRef.current = 0;
         streamTextCharsRef.current = 0;
         await api.postConversationMessage(sid, text);
       }
@@ -1979,7 +961,18 @@ export function ChatPanel({
     } finally {
       setRecoveryActionBusy(null);
     }
-  }, []);
+  }, [
+    activeSessionRef,
+    activeTurnSessionIdRef,
+    followStreamRef,
+    resyncTurnStateRef,
+    setChatMessages,
+    setError,
+    setStatusLabel,
+    setTurnState,
+    streamTextCharsRef,
+    streamingRef,
+  ]);
 
   const copyConversationDiagnostics = useCallback(async () => {
     setRecoveryActionBusy("copy");
@@ -1992,16 +985,16 @@ export function ChatPanel({
     } finally {
       setRecoveryActionBusy(null);
     }
-  }, [conversationDiagnostics, refreshConversationDiagnostics]);
+  }, [conversationDiagnostics, refreshConversationDiagnostics, setError, setStatusLabel]);
 
   const runRecoveryAction = useCallback(async (id: RecoveryActionId) => {
     if (recoveryActionBusy) return;
     setRecoveryActionBusy(id);
     try {
       if (id === "reload") {
-        await reloadLatestTranscript();
+        await refreshLatestTranscript();
       } else if (id === "retry") {
-        if (latestUserMessage?.sessionIdx != null) await doRetry(latestUserMessage.sessionIdx);
+        if (latestUserMessage?.sessionIdx != null) await retryMessage(latestUserMessage.sessionIdx);
       } else if (id === "stop") {
         await stop();
       } else if (id === "continue") {
@@ -2019,10 +1012,10 @@ export function ChatPanel({
   }, [
     copyConversationDiagnostics,
     continueFromSavedOutput,
-    doRetry,
     latestUserMessage,
+    retryMessage,
     recoveryActionBusy,
-    reloadLatestTranscript,
+    refreshLatestTranscript,
     stop,
   ]);
 
@@ -2053,47 +1046,45 @@ export function ChatPanel({
 
   const submitApproval = useCallback(async (choice: "once" | "session" | "always" | "deny") => {
     const sid = activeSessionRef.current;
-    if (!sid) return;
+    const submission = approvalSubmission({
+      sessionId: sid,
+      choice,
+      busy: approvalBusy || approvalBusyRef.current,
+    });
+    if (!submission) return;
+    approvalBusyRef.current = true;
     setApprovalBusy(true);
     try {
-      await api.submitConversationApproval(sid, choice);
+      await api.submitConversationApproval(
+        submission.sessionId,
+        submission.payload.choice,
+        submission.payload.resolve_all,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(approvalFailureMessage(err));
     } finally {
+      approvalBusyRef.current = false;
       setApprovalBusy(false);
     }
-  }, []);
+  }, [activeSessionRef, approvalBusy, setError]);
 
   const copyText = useCallback((t: string) => {
     void navigator.clipboard.writeText(t);
   }, []);
 
-  const fetchExactAssistant = useCallback(async (msg: AssistantMsg) => {
-    if (!msg.liveOmittedChars) return msg.content;
-    const cached = exactAssistantContentRef.current.get(msg.id);
-    if (cached != null) return cached;
-    const sid = activeSessionRef.current;
-    if (!sid) return msg.content;
-    const response = await api.getSessionMessages(sid);
-    const exact = exactAssistantContent(response.messages, msg.id) ?? msg.content;
-    exactAssistantContentRef.current.set(msg.id, exact);
-    return exact;
-  }, []);
-
   const copyAssistant = useCallback((msg: AssistantMsg) => {
-    const sid = activeSessionRef.current;
-    if (!msg.liveOmittedChars || !sid) {
+    if (!msg.liveOmittedChars) {
       void navigator.clipboard.writeText(msg.content);
       return;
     }
     void copyExactAssistantContent({
       renderedId: msg.id,
       visibleFallback: msg.content,
-      loadMessages: async () => (await api.getSessionMessages(sid)).messages,
+      loadMessages: loadExactMessages,
       writeText: (content) => navigator.clipboard.writeText(content),
     })
       .catch(() => navigator.clipboard.writeText(msg.content));
-  }, []);
+  }, [loadExactMessages]);
 
   const uploadFiles = useCallback(async (files: File[]) => {
     const res = workspaceSlug
@@ -2126,7 +1117,7 @@ export function ChatPanel({
       ),
     );
     return content;
-  }, []);
+  }, [activeSessionRef, setChatMessages]);
 
   const removeContextItem = useCallback((id: string) => {
     setContextItems((prev) => prev.filter((i) => i.id !== id));
@@ -2145,49 +1136,11 @@ export function ChatPanel({
   }, []);
 
   // Stable handlers passed to memoized row components
-  const handleEdit = useCallback((idx: number, text: string) => {
-    setEditingUser({ sessionIdx: idx, text });
-  }, []);
-  const handleRetry = useCallback((idx: number) => { void doRetry(idx); }, [doRetry]);
-  const handleFork = useCallback((idx: number) => { void doFork(idx); }, [doFork]);
-
-  const loadEarlierMessages = useCallback(async () => {
-    const sid = activeSessionRef.current;
-    if (!sid || loadingEarlier) return;
-    const recoverySeq = sessionRecoverySeqRef.current;
-    const firstMsg = chatMessages.find((m) => (m as { sessionIdx?: number }).sessionIdx != null);
-    const firstId = (firstMsg as { id?: string })?.id;
-    const beforeId = firstId?.startsWith("db:") ? firstId.slice(3) : firstId;
-    const scrollEl = scrollContainerRef.current;
-    prependScrollAnchorRef.current = scrollEl
-      ? {
-          scrollHeight: scrollEl.scrollHeight,
-          scrollTop: scrollEl.scrollTop,
-          anchorId: firstId ?? null,
-        }
-      : null;
-    setLoadingEarlier(true);
-    try {
-      const resp = await api.getSessionMessages(sid, HISTORY_PAGE, beforeId);
-      if (!isCurrentSessionResponse(recoverySeq, sid, resp.session_id)) return;
-      rememberActiveSessionAliases(sid, resp.session_id);
-      const mapped = sessionMessagesToChat(
-        resp.messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool"),
-      );
-      setChatMessages((prev) => {
-        const existingIds = new Set(prev.map((m) => m.id));
-        const older = mapped.filter((m) => !existingIds.has(m.id));
-        if (older.length === 0) return prev;
-        return [...older, ...prev];
-      });
-      setHasEarlier(resp.has_earlier ?? false);
-    } catch {
-      // silently ignore
-      prependScrollAnchorRef.current = null;
-    } finally {
-      setLoadingEarlier(false);
-    }
-  }, [chatMessages, loadingEarlier, HISTORY_PAGE, isCurrentSessionResponse, rememberActiveSessionAliases]);
+  const handleEdit = useCallback((idx: number) => {
+    editMessage(idx);
+  }, [editMessage]);
+  const handleRetry = useCallback((idx: number) => { void retryMessage(idx); }, [retryMessage]);
+  const handleFork = useCallback((idx: number) => { void forkMessage(idx); }, [forkMessage]);
 
   const summarizeContextItem = useCallback(async (id: string) => {
     const item = contextItems.find((i) => i.id === id);
@@ -2220,6 +1173,7 @@ export function ChatPanel({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatchIdx, setSearchMatchIdx] = useState(0);
+  const exactSearchRequestKeyRef = useRef("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
 
@@ -2293,28 +1247,23 @@ export function ChatPanel({
     exactSearchRequestKeyRef.current = requestKey;
     const recoverySeq = sessionRecoverySeqRef.current;
     let cancelled = false;
-    void api.getSessionMessages(sid).then((response) => {
+    void loadExactMessages().then(async () => {
       if (cancelled || recoverySeq !== sessionRecoverySeqRef.current) return;
-      for (const message of response.messages) {
-        if (message.role === "assistant" && message.id != null && message.content != null) {
-          exactAssistantContentRef.current.set(`db:${message.id}`, message.content);
-        }
-      }
       const results: number[] = [];
-      chatMessages.forEach((msg, index) => {
+      for (const [index, msg] of chatMessages.entries()) {
         const text = msg.role === "assistant"
-          ? exactAssistantContentRef.current.get(msg.id) ?? msg.content
+          ? await fetchExactAssistant(msg)
           : msg.role === "user" ? msg.content
           : msg.role === "reasoning" ? msg.text
           : "";
         if (text.toLowerCase().includes(q)) results.push(index);
-      });
+      }
       setSearchMatches(results);
     }).catch(() => {
       if (exactSearchRequestKeyRef.current === requestKey) exactSearchRequestKeyRef.current = "";
     });
     return () => { cancelled = true; };
-  }, [chatMessages, searchQuery]);
+  }, [activeSessionRef, chatMessages, fetchExactAssistant, loadExactMessages, searchQuery, sessionRecoverySeqRef]);
 
   // Scroll active match into view using the virtualizer
   useEffect(() => {
@@ -2357,58 +1306,17 @@ export function ChatPanel({
     if (files.length > 0) void uploadFiles(files);
   }, [uploadFiles]);
 
-  // Collapse consecutive same-name tool calls and append a typing indicator
-  // synthetic entry when streaming has started but no assistant token arrived yet.
-  type CollapsedItem = { msg: ChatMessage; repeatCount: number; id: string } | { msg: null; id: "typing" };
-  const collapsedMessages = useMemo<CollapsedItem[]>(() => {
-    const collapsed: CollapsedItem[] = [];
-    for (const msg of chatMessages) {
-      const prev = collapsed[collapsed.length - 1];
-      if (
-        msg.role === "tool" &&
-        prev && prev.msg !== null && prev.msg.role === "tool" &&
-        msg.name === (prev.msg as Extract<ChatMessage, { role: "tool" }>).name
-      ) {
-        const previousTool = prev.msg as ToolMsg;
-        const previousDuration = toolDurationSeconds(previousTool);
-        const currentDuration = toolDurationSeconds(msg);
-        const combinedDuration =
-          previousDuration !== undefined || currentDuration !== undefined
-            ? (previousDuration ?? 0) + (currentDuration ?? 0)
-            : undefined;
-        collapsed[collapsed.length - 1] = {
-          msg: {
-            ...msg,
-            startedAt: previousTool.startedAt ?? msg.startedAt,
-            durationSeconds: combinedDuration,
-          },
-          repeatCount: (prev as { msg: ChatMessage; repeatCount: number; id: string }).repeatCount + 1,
-          id: prev.id,
-        };
-      } else {
-        collapsed.push({ msg, repeatCount: 0, id: msg.id });
-      }
-    }
-    // Append typing indicator if streaming but last message isn't an active assistant bubble
-    if (streaming) {
-      const last = chatMessages[chatMessages.length - 1];
-      const isAlreadyStreamingAssistant = last?.role === "assistant" && (last.streaming || !last.content);
-      if (!isAlreadyStreamingAssistant) {
-        collapsed.push({ msg: null, id: "typing" } as CollapsedItem);
-      }
-    }
-    return collapsed;
-  }, [chatMessages, streaming]);
+  const collapsedMessages = useMemo(
+    () => deriveCollapsedMessages(chatMessages, streaming),
+    [chatMessages, streaming],
+  );
 
   const liveRowIndex = useMemo(() => findLiveRowIndex(collapsedMessages), [collapsedMessages]);
 
-  const streamingAssistantVisibleChars = useMemo(() => {
-    for (let i = chatMessages.length - 1; i >= 0; i--) {
-      const msg = chatMessages[i];
-      if (msg.role === "assistant" && msg.streaming) return msg.content.length;
-    }
-    return 0;
-  }, [chatMessages]);
+  const streamingAssistantVisibleChars = useMemo(
+    () => getStreamingAssistantVisibleChars(chatMessages),
+    [chatMessages],
+  );
 
   const estimateRowSize = useCallback((index: number) => {
     const item = collapsedMessages[index];
@@ -2626,10 +1534,21 @@ export function ChatPanel({
     const el = scrollContainerRef.current;
     if (!el) return;
     const count = collapsedMessages.length;
+    const messageCount = chatMessages.length;
     const countChanged = count !== prevCountRef.current;
     const pendingPrepend = prependScrollAnchorRef.current;
+    // Loading state can re-render this effect before the prepended rows arrive.
+    // Keep the captured anchor until the controller transcript grows.
     if (pendingPrepend) {
+      if (
+        messageCount <= pendingPrepend.messageCount
+        || chatMessages[0]?.id === pendingPrepend.firstMessageId
+      ) return;
       prependScrollAnchorRef.current = null;
+      if (autoScrollRafRef.current !== null) {
+        cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = null;
+      }
       prevCountRef.current = count;
       scrollStateRef.current = {
         mode: "detached",
@@ -2638,13 +1557,71 @@ export function ChatPanel({
       };
       followStreamRef.current = false;
       setDetachedFromBottom(true);
+      const restoreGeneration = ++prependRestoreGenerationRef.current;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const target = scrollContainerRef.current;
           if (!target) return;
-          const delta = target.scrollHeight - pendingPrepend.scrollHeight;
-          target.scrollTop = pendingPrepend.scrollTop + delta;
-          virtualizer.measure();
+          const addedMessageCount = Math.max(0, messageCount - pendingPrepend.messageCount);
+          const currentAnchorIndex = pendingPrepend.anchorId
+            ? collapsedMessages.findIndex((item) => item.id === pendingPrepend.anchorId)
+            : -1;
+          const anchorIndex = currentAnchorIndex >= 0
+            ? currentAnchorIndex
+            : pendingPrepend.anchorIndex != null
+            ? pendingPrepend.anchorIndex + addedMessageCount
+            : -1;
+          if (anchorIndex >= 0) {
+            virtualizer.scrollToIndex(anchorIndex, { align: "start", behavior: "instant" });
+          }
+          let remainingFrames = 120;
+          let stableFrames = 0;
+          const restoreAnchor = () => requestAnimationFrame(() => {
+            if (restoreGeneration !== prependRestoreGenerationRef.current) return;
+            const currentTarget = scrollContainerRef.current;
+            const anchorId = pendingPrepend.anchorId;
+            if (!currentTarget || !anchorId || pendingPrepend.anchorTop == null) return;
+            remainingFrames -= 1;
+            const anchor = currentTarget.querySelector<HTMLElement>(
+              `[data-row-id="${CSS.escape(anchorId)}"]`,
+            );
+            if (!anchor) {
+              if (anchorIndex >= 0) {
+                virtualizer.scrollToIndex(anchorIndex, { align: "start", behavior: "instant" });
+              }
+              if (remainingFrames > 0) restoreAnchor();
+              return;
+            }
+            const anchorRect = anchor.getBoundingClientRect();
+            const scrollRect = currentTarget.getBoundingClientRect();
+            if (anchorRect.bottom <= scrollRect.top || anchorRect.top >= scrollRect.bottom) {
+              if (anchorIndex >= 0) {
+                virtualizer.scrollToIndex(anchorIndex, { align: "start", behavior: "instant" });
+              }
+              stableFrames = 0;
+              if (remainingFrames > 0) restoreAnchor();
+              return;
+            }
+            const correction = anchorRect.top - pendingPrepend.anchorTop;
+            // A mounted virtual row can still carry a stale transform while
+            // the virtualizer settles. Never apply a viewport-sized jump from
+            // that transient position; rematerialize instead.
+            if (Math.abs(correction) > currentTarget.clientHeight) {
+              if (anchorIndex >= 0) {
+                virtualizer.scrollToIndex(anchorIndex, { align: "start", behavior: "instant" });
+              }
+              stableFrames = 0;
+              if (remainingFrames > 0) restoreAnchor();
+              return;
+            }
+            if (Math.abs(correction) <= 0.5) stableFrames += 1;
+            else {
+              currentTarget.scrollTop += correction;
+              stableFrames = 0;
+            }
+            if (remainingFrames > 0 && stableFrames < 20) restoreAnchor();
+          });
+          restoreAnchor();
         });
       });
       return;
@@ -2716,49 +1693,32 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [activeSessionId, collapsedMessages.length, streamingAssistantVisibleChars, streaming, safeMode, virtualizer, runBottomClamp]);
+  }, [activeSessionId, chatMessages, collapsedMessages, prependScrollAnchorRef, streamingAssistantVisibleChars, streaming, safeMode, virtualizer, runBottomClamp]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;
   const visibleEndIndex = virtualItems[virtualItems.length - 1]?.index ?? visibleStartIndex;
-  const timelineItems = useMemo(() => {
-    const sources: TimelineSourceItem[] = collapsedMessages.map((item, index) => {
-      if (item.msg === null) {
-        return { id: item.id, index, role: "typing", streaming: true };
-      }
-      const msg = item.msg;
-      if (msg.role === "tool") {
-        return {
-          id: item.id,
-          index,
-          role: "tool",
-          done: msg.done,
-          resultTruncated: msg.resultTruncated,
-          hasError: typeof msg.result === "string" && /\b(error|failed|traceback)\b/i.test(msg.result),
-        };
-      }
-      return {
-        id: item.id,
-        index,
-        role: msg.role === "feedback_form" ? "feedback" : msg.role,
-        streaming: msg.role === "assistant" ? msg.streaming : false,
-      };
-    });
-    return buildTimelineMinimapItems(sources);
-  }, [collapsedMessages]);
+  const timelineItems = useMemo(
+    () => deriveTimelineItems(collapsedMessages),
+    [collapsedMessages],
+  );
 
   const jumpToIndex = useCallback((index: number, align: "start" | "center" | "end" = "center") => {
     if (collapsedMessages.length === 0) return;
+    prependRestoreGenerationRef.current += 1;
     const nextIndex = Math.max(0, Math.min(index, collapsedMessages.length - 1));
+    if (align !== "end") {
+      scrollStateRef.current = { ...scrollStateRef.current, anchorId: null };
+    }
     scrollStateRef.current = align === "end"
       ? reduceChatScrollState(scrollStateRef.current, { type: "jump-to-bottom", itemCount: collapsedMessages.length })
       : scrollStateRef.current;
-    virtualizer.scrollToIndex(nextIndex, { align, behavior: safeMode ? "instant" : "smooth" });
+    virtualizer.scrollToIndex(nextIndex, { align, behavior: "instant" });
     if (align === "end") {
       // Clamp until row measurements settle so the jump never lands short.
       runBottomClamp();
     }
-  }, [collapsedMessages.length, runBottomClamp, safeMode, virtualizer]);
+  }, [collapsedMessages.length, runBottomClamp, virtualizer]);
 
   const jumpToLatest = useCallback(() => {
     jumpToIndex(collapsedMessages.length - 1, "end");
@@ -2843,7 +1803,7 @@ export function ChatPanel({
                 size="sm"
                 className="h-6 text-[10px] gap-1"
                 disabled={streaming}
-                onClick={() => doFork()}
+                onClick={() => void forkSession()}
                 title="Fork session"
               >
                 <GitFork className="h-3 w-3" />
@@ -3004,7 +1964,12 @@ export function ChatPanel({
       )}
 
       <div className="relative min-h-0 flex-1">
-        <div className="h-full overflow-y-auto px-4 py-5 pr-8" ref={scrollContainerRef}>
+        <div
+          data-testid="chat-scroll"
+          className="h-full overflow-y-auto px-4 py-5 pr-8"
+          style={{ overflowAnchor: "none" }}
+          ref={scrollContainerRef}
+        >
           {loadingHistory ? (
             <div className="flex flex-col gap-4 py-2">
             <MessageRowSkeleton />
@@ -3167,7 +2132,7 @@ export function ChatPanel({
               onClick={() => {
                 const { sessionIdx, text } = editingUser;
                 setEditingUser(null);
-                void doRetry(sessionIdx, text);
+                void retryMessage(sessionIdx, text);
               }}
             >
               Retry with edited message

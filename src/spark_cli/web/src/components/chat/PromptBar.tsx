@@ -9,6 +9,7 @@ import { AtFileMenu } from "@/components/chat/AtFileMenu";
 import { useTokenEstimate } from "@/hooks/useTokenEstimate";
 import type { ContextItem, ContextEstimate } from "@/lib/context";
 import { emitOpenSettings } from "@/lib/navigationEvents";
+import { promptBarAvailability, promptBarKeyPolicy } from "@/components/chat/promptBarPolicy";
 
 interface PromptBarProps {
   input: string;
@@ -668,6 +669,7 @@ export function PromptBar({
   const [slashQuery, setSlashQuery] = useState("");
   const [cursorPos, setCursorPos] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const stopRequestedRef = useRef(false);
 
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestionsResponse | null>(null);
@@ -709,15 +711,16 @@ export function PromptBar({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showMenu || showAtMenu) {
-      if (["ArrowUp", "ArrowDown", "Escape"].includes(e.key)) return;
-      if (e.key === "Tab") { e.preventDefault(); return; }
-      if (e.key === "Enter" && !e.shiftKey && (menuHasItems || showAtMenu)) { e.preventDefault(); return; }
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    const policy = promptBarKeyPolicy({
+      key: e.key,
+      shiftKey: e.shiftKey,
+      commandMenuOpen: showMenu,
+      atMenuOpen: showAtMenu,
+      commandMenuHasItems: menuHasItems,
+    });
+    if (policy.preventDefault) e.preventDefault();
+    if (policy.action === "menu") return;
+    if (policy.action === "submit") handleSend();
     if (e.key === "Escape") {
       setShowMenu(false);
       setShowAtMenu(false);
@@ -836,8 +839,24 @@ export function PromptBar({
   // The textarea stays editable while streaming so the user can type a redirect
   // ("actually, do X instead") that interrupts the running turn on Enter.
   const inputBlocked = disabled || uploading;
-  const canSend = !!input.trim() && !blocked;
-  const canRedirect = !!input.trim() && streaming && !disabled && !uploading;
+  const availability = promptBarAvailability({
+    input,
+    streaming,
+    disabled: !!disabled,
+    uploading,
+    stopRequested: stopRequestedRef.current,
+  });
+  const canSend = availability.canSubmit;
+  const canRedirect = availability.canRedirect;
+  const handleStop = () => {
+    if (!availability.canStop || stopRequestedRef.current) return;
+    stopRequestedRef.current = true;
+    onStop();
+  };
+
+  useEffect(() => {
+    if (!streaming) stopRequestedRef.current = false;
+  }, [streaming]);
 
   const activeModel = modelStatus
     ? (modelStatus.multi_model_enabled && modelStatus.fast_model) || modelStatus.smart_model || null
@@ -1001,7 +1020,7 @@ export function PromptBar({
               )}
               <button
                 type="button"
-                onClick={onStop}
+                onClick={handleStop}
                 title="Stop"
                 className="flex h-7 w-7 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
               >
