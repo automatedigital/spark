@@ -105,6 +105,8 @@ def test_compute_changed_files_attributes_only_status_transitions():
     assert result["count"] == 2
     assert [item["path"] for item in result["files"]] == ["already.py", "new.py"]
     assert result["files"][0]["before"]["adds"] == 1
+    assert "before" not in result
+    assert "after" not in result
 
 
 def test_compute_changed_files_reports_reverted_path():

@@ -1895,6 +1895,7 @@ export interface WebPlan {
 export interface WebTurnOutcome {
   turn_id: string;
   session_id: string;
+  user_message_id: number | string | null;
   assistant_message_id: number | string | null;
   status: "running" | "completed" | "failed" | "interrupted" | string;
   started_at: number | null;

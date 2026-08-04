@@ -62,8 +62,6 @@ def compute_changed_files(
         "branch": (after or {}).get("branch") or (before or {}).get("branch"),
         "files": changed,
         "count": len(changed),
-        "before": dict(before) if isinstance(before, Mapping) else None,
-        "after": dict(after) if isinstance(after, Mapping) else None,
     }
 
 

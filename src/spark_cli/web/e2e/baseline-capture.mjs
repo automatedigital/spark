@@ -416,7 +416,16 @@ async function waitForStableAnchor(page, timeoutMs = 3_000) {
 
 async function measureScrollDrift(page) {
   const scroll = page.getByTestId("chat-scroll");
-  await scroll.evaluate((element) => { element.scrollTop = Math.min(500, element.scrollHeight); });
+  await scroll.evaluate((element) => new Promise((resolve) => {
+    let frames = 45;
+    const holdAtSample = () => requestAnimationFrame(() => {
+      element.scrollTop = Math.min(500, element.scrollHeight);
+      frames -= 1;
+      if (frames > 0) holdAtSample();
+      else resolve(undefined);
+    });
+    holdAtSample();
+  }));
   await page.waitForFunction(() => {
     const scrollElement = document.querySelector('[data-testid="chat-scroll"]');
     if (!(scrollElement instanceof HTMLElement)) return false;

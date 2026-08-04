@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 export interface SessionStats {
@@ -23,6 +23,7 @@ function fmtCost(n: number): string {
 
 export function SessionInfoBar({ stats }: { stats: SessionStats }) {
   const [expanded, setExpanded] = useState(false);
+  const detailsId = `session-stats-${useId().replace(/:/g, "")}`;
 
   const hasData = stats.model || stats.inputTokens || stats.turnCount;
   if (!hasData) return null;
@@ -38,6 +39,8 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
     <div className="border-t border-border/40 bg-muted/10 px-4 py-1 shrink-0">
       <button
         type="button"
+        aria-expanded={expanded}
+        aria-controls={detailsId}
         className="w-full flex items-center gap-3 text-[10px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
         onClick={() => setExpanded((p) => !p)}
         title={expanded ? "Collapse stats" : "Expand stats"}
@@ -60,11 +63,11 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
         {stats.turnCount != null && stats.turnCount > 0 && (
           <span title="Turns" className="ml-auto">{stats.turnCount} {stats.turnCount === 1 ? "turn" : "turns"}</span>
         )}
-        <span className="shrink-0 ml-0.5">{expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronUp className="h-2.5 w-2.5" />}</span>
+        <span className="shrink-0 ml-0.5">{expanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}</span>
       </button>
 
       {expanded && (
-        <div className="mt-1 pb-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground/60">
+        <div id={detailsId} className="mt-1 pb-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground/60">
           {stats.model && (
             <><span>Model</span><span className="font-mono text-primary/60 truncate">{stats.model}</span></>
           )}

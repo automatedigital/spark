@@ -186,7 +186,7 @@ const ContextTrayItem = memo(function ContextTrayItem({
           type="button"
           title="Summarize this file"
           onClick={() => onSummarize(item.id)}
-          className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-primary transition opacity-0 group-hover:opacity-100"
+          className="shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
         >
           <Sparkles className="h-3 w-3" />
         </button>
@@ -201,7 +201,7 @@ const ContextTrayItem = memo(function ContextTrayItem({
           "shrink-0 rounded p-0.5 transition",
           isPinned
             ? "text-primary hover:text-primary/70"
-            : "text-muted-foreground/40 hover:text-foreground opacity-0 group-hover:opacity-100",
+            : "text-muted-foreground/40 opacity-0 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100",
         )}
       >
         {isPinned ? <Pin className="h-3 w-3" /> : <PinOff className="h-3 w-3" />}
@@ -212,7 +212,7 @@ const ContextTrayItem = memo(function ContextTrayItem({
         type="button"
         title="Remove"
         onClick={() => onRemove(item.id)}
-        className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-destructive transition opacity-0 group-hover:opacity-100"
+        className="shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
       >
         <X className="h-3 w-3" />
       </button>

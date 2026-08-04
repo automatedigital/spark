@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { TimelineMinimapItem, TimelineMinimapLandmark } from "./timelineMinimapModel";
+import { limitTimelineLandmarks } from "./timelineMinimapModel";
 
 function markerClassName(item: TimelineMinimapItem): string {
   if (item.error) return "bg-destructive";
@@ -69,7 +70,7 @@ export const TimelineMinimap = memo(function TimelineMinimap({
   className?: string;
 }) {
   const usingLandmarks = Boolean(landmarks);
-  const landmarkItems = landmarks ?? [];
+  const landmarkItems = useMemo(() => limitTimelineLandmarks(landmarks ?? []), [landmarks]);
   const markerCount = usingLandmarks ? landmarkItems.length : items.length;
   const maxTurnIndex = landmarkItems.reduce((max, item) => Math.max(max, item.turnIndex), 0);
   const visible = useMemo(() => {

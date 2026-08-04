@@ -47,6 +47,43 @@ export interface TimelineMinimapLandmark extends TimelineTurnLandmarkSource {
   error: boolean;
 }
 
+export const MAX_RENDERED_TIMELINE_LANDMARKS = 160;
+
+function sampleEvenly<T>(items: readonly T[], limit: number): T[] {
+  if (limit <= 0) return [];
+  if (items.length <= limit) return [...items];
+  if (limit === 1) return [items.at(-1)!];
+  return Array.from({ length: limit }, (_, index) => (
+    items[Math.round(index * (items.length - 1) / (limit - 1))]
+  ));
+}
+
+/**
+ * Bound the interactive DOM used by the minimap. Important states receive up
+ * to half the marker budget and the remaining user/answer landmarks are
+ * sampled evenly, retaining navigation across the full conversation without
+ * mounting thousands of overlapping buttons.
+ */
+export function limitTimelineLandmarks(
+  landmarks: readonly TimelineMinimapLandmark[],
+  limit = MAX_RENDERED_TIMELINE_LANDMARKS,
+): TimelineMinimapLandmark[] {
+  if (landmarks.length <= limit) return [...landmarks];
+  const important = landmarks.filter((item) => (
+    item.active || item.error || item.kind === "active-work" || item.kind === "failure" || item.kind === "approval"
+  ));
+  const importantIds = new Set(important.map((item) => item.id));
+  const ordinary = landmarks.filter((item) => !importantIds.has(item.id));
+  const importantBudget = Math.min(important.length, Math.max(1, Math.floor(limit / 2)));
+  const selected = [
+    ...sampleEvenly(important, importantBudget),
+    ...sampleEvenly(ordinary, Math.max(0, limit - importantBudget)),
+  ];
+  return selected.sort((left, right) => (
+    left.turnIndex - right.turnIndex || left.kind.localeCompare(right.kind)
+  ));
+}
+
 export function buildTimelineMinimapItems(items: TimelineSourceItem[]): TimelineMinimapItem[] {
   return items.map((item) => ({
     id: item.id,
