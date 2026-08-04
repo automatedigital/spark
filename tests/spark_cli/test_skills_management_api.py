@@ -37,6 +37,9 @@ def test_skill_detail_save_and_security_boundaries(client):
     row = next(item for item in response.json() if item["name"] == "api-demo")
     skill_id = row["skill_id"]
     assert row["provenance"] == "local"
+    assert row["invocation_policy"] == "both"
+    assert row["model_invocable"] is True
+    assert row["user_invocable"] is True
     assert row["capabilities"]["editable"] is True
     assert str(directory) not in response.text
 
@@ -68,9 +71,26 @@ def test_external_skill_is_view_only(client, monkeypatch, tmp_path):
     response = client.get("/api/skills")
     row = next(item for item in response.json() if item["name"] == "external-demo")
     assert row["provenance"] == "external"
+    assert row["invocation_policy"] == "both"
     assert row["capabilities"]["editable"] is False
     assert client.put(f"/api/skills/{row['skill_id']}", json={"content": "---\nname: external-demo\ndescription: x\n---\n\nchanged"}).status_code == 403
     assert client.delete(f"/api/skills/{row['skill_id']}").status_code == 409
+
+
+def test_api_exposes_user_only_invocation_policy(client):
+    directory = _skill(get_spark_home() / "skills", "user-only-api")
+    directory.joinpath("SKILL.md").write_text(
+        "---\nname: user-only-api\ndescription: User orchestration\n"
+        "disable-model-invocation: true\n---\n\nRun directly.\n",
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/skills")
+    row = next(item for item in response.json() if item["name"] == "user-only-api")
+    assert row["invocation_policy"] == "user_invoked"
+    assert row["disable_model_invocation"] is True
+    assert row["model_invocable"] is False
+    assert row["user_invocable"] is True
 
 
 def test_hub_skill_uses_lock_uninstall_path(client):

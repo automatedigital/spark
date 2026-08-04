@@ -26,6 +26,12 @@ PLATFORM_MAP = {
 
 EXCLUDED_SKILL_DIRS = frozenset((".git", ".github", ".hub"))
 
+# A skill's invocation policy is shared by prompt indexing, model tools, slash
+# commands, and management surfaces.  Keep the legacy default as ``both`` so
+# existing skills retain their behaviour until they opt into a policy.
+SKILL_INVOCATION_POLICIES = frozenset(("user_invoked", "model_invoked", "both"))
+DEFAULT_SKILL_INVOCATION_POLICY = "both"
+
 # ── Lazy YAML loader ─────────────────────────────────────────────────────
 
 _yaml_load_fn = None
@@ -84,6 +90,86 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
             frontmatter[key.strip()] = value.strip()
 
     return frontmatter, body
+
+
+def _skill_policy_metadata(frontmatter: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the optional Spark metadata namespace from frontmatter."""
+    metadata = frontmatter.get("metadata")
+    if not isinstance(metadata, dict):
+        return {}
+    spark = metadata.get("spark")
+    return spark if isinstance(spark, dict) else {}
+
+
+def get_skill_invocation_policy(frontmatter: Dict[str, Any]) -> str:
+    """Resolve the canonical user/model invocation policy for a skill.
+
+    ``disable-model-invocation: true`` is the compatible external-skill form
+    and always wins over an explicit policy.  Spark metadata accepts either
+    ``invocation-policy``/``invocation_policy`` or ``invocation`` at the
+    top-level or in ``metadata.spark``.  Unknown values preserve legacy
+    behaviour by falling back to ``both``.
+    """
+    if not isinstance(frontmatter, dict):
+        return DEFAULT_SKILL_INVOCATION_POLICY
+
+    metadata_root = frontmatter.get("metadata")
+    if not isinstance(metadata_root, dict):
+        metadata_root = {}
+    metadata = _skill_policy_metadata(frontmatter)
+    disabled = frontmatter.get("disable-model-invocation")
+    if disabled is None:
+        disabled = metadata_root.get("disable-model-invocation")
+    if disabled is None:
+        disabled = metadata.get("disable-model-invocation")
+    if isinstance(disabled, str):
+        disabled = disabled.strip().lower() in {"1", "true", "yes", "on"}
+    if disabled is True:
+        return "user_invoked"
+
+    raw_policy = None
+    for source in (frontmatter, metadata_root, metadata):
+        for key in ("invocation-policy", "invocation_policy", "invocation"):
+            if source.get(key) is not None:
+                raw_policy = source[key]
+                break
+        if raw_policy is not None:
+            break
+
+    normalized = str(raw_policy or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "user": "user_invoked",
+        "user_only": "user_invoked",
+        "model": "model_invoked",
+        "model_only": "model_invoked",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return (
+        normalized
+        if normalized in SKILL_INVOCATION_POLICIES
+        else DEFAULT_SKILL_INVOCATION_POLICY
+    )
+
+
+def get_skill_invocation_metadata(frontmatter: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the canonical invocation fields exposed by every skill surface."""
+    policy = get_skill_invocation_policy(frontmatter)
+    return {
+        "invocation_policy": policy,
+        "user_invocable": policy in {"user_invoked", "both"},
+        "model_invocable": policy in {"model_invoked", "both"},
+        "disable_model_invocation": policy == "user_invoked",
+    }
+
+
+def skill_is_model_invocable(frontmatter: Dict[str, Any]) -> bool:
+    """Return whether the model may discover/invoke the skill normally."""
+    return get_skill_invocation_policy(frontmatter) in {"model_invoked", "both"}
+
+
+def skill_is_user_invocable(frontmatter: Dict[str, Any]) -> bool:
+    """Return whether a user-facing slash/UI invocation is allowed."""
+    return get_skill_invocation_policy(frontmatter) in {"user_invoked", "both"}
 
 
 # ── Platform matching ─────────────────────────────────────────────────────

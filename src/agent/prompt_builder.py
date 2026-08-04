@@ -18,8 +18,10 @@ from agent.skill_utils import (
     extract_skill_description,
     get_all_skills_dirs,
     get_disabled_skill_names,
+    get_skill_invocation_metadata,
     iter_skill_index_files,
     parse_frontmatter,
+    skill_is_model_invocable,
     skill_matches_platform,
 )
 from core.spark_constants import (
@@ -539,7 +541,7 @@ CONTEXT_TRUNCATE_TAIL_RATIO = 0.2
 _SKILLS_PROMPT_CACHE_MAX = 8
 _SKILLS_PROMPT_CACHE: OrderedDict[tuple, str] = OrderedDict()
 _SKILLS_PROMPT_CACHE_LOCK = threading.Lock()
-_SKILLS_SNAPSHOT_VERSION = 1
+_SKILLS_SNAPSHOT_VERSION = 2
 
 
 def _skills_prompt_snapshot_path() -> Path:
@@ -558,15 +560,35 @@ def clear_skills_system_prompt_cache(*, clear_snapshot: bool = False) -> None:
 
 
 def _build_skills_manifest(skills_dir: Path) -> dict[str, list[int]]:
-    """Build an mtime/size manifest of all SKILL.md and DESCRIPTION.md files."""
+    """Build a manifest for model-visible skill prompt inputs.
+
+    User-only skills are deliberately absent.  Editing or adding one must not
+    invalidate the cached system prompt, while a policy transition to/from
+    model visibility still changes the manifest and is detected.
+    """
     manifest: dict[str, list[int]] = {}
-    for filename in ("SKILL.md", "DESCRIPTION.md"):
-        for path in iter_skill_index_files(skills_dir, filename):
-            try:
-                st = path.stat()
-            except OSError:
+    for path in iter_skill_index_files(skills_dir, "SKILL.md"):
+        try:
+            raw = path.read_text(encoding="utf-8")
+            frontmatter, _ = parse_frontmatter(raw)
+            if not skill_is_model_invocable(frontmatter):
                 continue
+            st = path.stat()
             manifest[str(path.relative_to(skills_dir))] = [st.st_mtime_ns, st.st_size]
+        except OSError:
+            continue
+        except Exception:
+            continue
+
+    # Category descriptions affect the visible index only when there is a
+    # model-visible skill in that category.  Retaining their existing manifest
+    # entries preserves invalidation for legacy prompt content.
+    for path in iter_skill_index_files(skills_dir, "DESCRIPTION.md"):
+        try:
+            st = path.stat()
+            manifest[str(path.relative_to(skills_dir))] = [st.st_mtime_ns, st.st_size]
+        except OSError:
+            continue
     return manifest
 
 
@@ -634,6 +656,7 @@ def _build_snapshot_entry(
         "description": description,
         "platforms": [str(p).strip() for p in platforms if str(p).strip()],
         "conditions": extract_skill_conditions(frontmatter),
+        **get_skill_invocation_metadata(frontmatter),
     }
 
 
@@ -726,7 +749,10 @@ def build_skills_system_prompt(
             count = 0
             for d in [skills_dir, *external_dirs]:
                 if d.exists():
-                    count += sum(1 for _ in iter_skill_index_files(d, "SKILL.md"))
+                    for skill_file in iter_skill_index_files(d, "SKILL.md"):
+                        compatible, frontmatter, _ = _parse_skill_file(skill_file)
+                        if compatible and skill_is_model_invocable(frontmatter):
+                            count += 1
         except Exception:
             count = 0
         if count == 0:
@@ -785,6 +811,8 @@ def build_skills_system_prompt(
                 continue
             if frontmatter_name in disabled or skill_name in disabled:
                 continue
+            if not entry.get("model_invocable", True):
+                continue
             if not _skill_should_show(
                 entry.get("conditions") or {},
                 available_tools,
@@ -808,6 +836,8 @@ def build_skills_system_prompt(
             if not is_compatible:
                 continue
             skill_name = entry["skill_name"]
+            if not skill_is_model_invocable(frontmatter):
+                continue
             if entry["frontmatter_name"] in disabled or skill_name in disabled:
                 continue
             if not _skill_should_show(
@@ -861,6 +891,8 @@ def build_skills_system_prompt(
                 entry = _build_snapshot_entry(skill_file, ext_dir, frontmatter, desc)
                 skill_name = entry["skill_name"]
                 if skill_name in seen_skill_names:
+                    continue
+                if not skill_is_model_invocable(frontmatter):
                     continue
                 if entry["frontmatter_name"] in disabled or skill_name in disabled:
                     continue

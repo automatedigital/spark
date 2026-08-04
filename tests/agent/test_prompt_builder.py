@@ -266,6 +266,41 @@ class TestBuildSkillsSystemPrompt:
         assert "Debug Python scripts" in result
         assert "available_skills" in result
 
+    def test_user_only_skill_is_omitted_without_invalidating_prompt_snapshot(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+        visible_dir = tmp_path / "skills" / "coding" / "visible"
+        visible_dir.mkdir(parents=True)
+        (visible_dir / "SKILL.md").write_text(
+            "---\nname: visible\ndescription: Visible workflow\n---\n"
+        )
+
+        first = build_skills_system_prompt()
+        user_only_dir = tmp_path / "skills" / "orchestration" / "user-only"
+        user_only_dir.mkdir(parents=True)
+        (user_only_dir / "SKILL.md").write_text(
+            "---\nname: user-only\ndescription: Secret user workflow\n"
+            "disable-model-invocation: true\n---\n"
+        )
+
+        # Preserve the disk snapshot while dropping only the in-process cache.
+        from agent.prompt_builder import (
+            _build_skills_manifest,
+            clear_skills_system_prompt_cache,
+        )
+
+        clear_skills_system_prompt_cache()
+        second = build_skills_system_prompt()
+
+        assert first == second
+        assert "visible" in second
+        assert "user-only" not in second
+        assert "Secret user workflow" not in second
+        assert "orchestration/user-only/SKILL.md" not in _build_skills_manifest(
+            tmp_path / "skills"
+        )
+
     def test_deduplicates_skills(self, monkeypatch, tmp_path):
         monkeypatch.setenv("SPARK_HOME", str(tmp_path))
         cat_dir = tmp_path / "skills" / "tools"
