@@ -381,6 +381,9 @@ def _ensure_spark_home_managed(home: Path):
 # =============================================================================
 
 DEFAULT_CONFIG = {
+    # Keep the historical string shape. The canonical role-based Auto policy
+    # lives under smart_model_routing.auto; model_config handles old strings
+    # and newer model dictionaries without forcing a config rewrite.
     "model": "",
     "providers": {},
     "fallback_providers": [],
@@ -504,6 +507,19 @@ DEFAULT_CONFIG = {
             "model": "",
             "base_url": "",
             "api_mode": "",
+        },
+        # The role-based Auto policy is additive. Legacy fields above remain
+        # readable and writable so existing config files keep working.
+        "auto": {
+            "enabled": True,
+            "hysteresis_margin": 2,
+            "context_threshold": 24000,
+            "roles": {
+                "lead": {"provider": "openai-codex", "model": "gpt-5.6-sol", "reasoning_effort": "high", "fallback": ["balanced"]},
+                "balanced": {"provider": "openai-codex", "model": "gpt-5.6-terra", "reasoning_effort": "medium", "fallback": ["fast"]},
+                "fast": {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "low", "fallback": ["balanced"]},
+                "subagent": {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "high", "fallback": ["balanced"]},
+            },
         },
     },
     "response_budget": {
@@ -861,7 +877,7 @@ DEFAULT_CONFIG = {
             "review_threshold": 0.45,
         },
     },
-    "_config_version": 28,
+    "_config_version": 29,
 }
 
 # =============================================================================

@@ -212,8 +212,8 @@ class TestWebServerEndpoints:
                 return_value={"logged_in": True, "api_key": "token"},
             ),
             patch(
-                "spark_cli.codex_models._fetch_models_from_api",
-                return_value=["gpt-5.4"],
+                "spark_cli.codex_models._fetch_model_entries_from_api",
+                return_value=([{"slug": "gpt-5.4"}], None),
             ),
         ):
             resp = self.client.get(
@@ -221,12 +221,29 @@ class TestWebServerEndpoints:
             )
 
         assert resp.status_code == 200
-        assert resp.json() == {
+        data = resp.json()
+        assert data == {
             "provider": "openai-codex",
             "models": ["gpt-5.4"],
+            "catalog": [
+                {
+                    "slug": "gpt-5.4",
+                    "display_name": "gpt-5.4",
+                    "visibility": None,
+                    "supported_reasoning_efforts": [],
+                    "context_window": None,
+                    "max_output_tokens": None,
+                    "multi_agent_version": None,
+                    "source": "live",
+                    "fetched_at": None,
+                }
+            ],
             "live": True,
             "strict": True,
             "source": "live",
+            "freshness": None,
+            "stale": False,
+            "authoritative": True,
             "warning": "",
         }
 
