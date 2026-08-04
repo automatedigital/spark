@@ -1,18 +1,24 @@
 ---
 name: plan
-description: Plan mode for Spark — inspect context, write a markdown plan into the active workspace's `.spark/plans/` directory, and do not execute the work.
+description: Plan-only alias of `writing-plans` for Spark — inspect context, save the canonical implementation plan, and do not execute the work.
 version: 1.0.0
 author: Spark Agent
 license: MIT
 metadata:
   spark:
     tags: [planning, plan-mode, implementation, workflow]
+    canonical_skill: writing-plans
+    alias_of: writing-plans
     related_skills: [writing-plans, subagent-driven-development]
 ---
 
 # Plan Mode
 
 Use this skill when the user wants a plan instead of execution.
+
+`writing-plans` owns the planning method. This skill only selects its
+plan-only execution boundary and save location; keep task structure, file
+paths, tests, and handoff rules aligned with the canonical skill.
 
 ## Core behavior
 

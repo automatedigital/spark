@@ -425,6 +425,55 @@ Generate some audio.
         assert "references/guide.md" in msg
         assert 'skill_view(name="external-skill", file_path="<path>")' in msg
 
+    def test_slash_invocation_is_plain_user_message_without_system_prompt_rebuild(
+        self, tmp_path
+    ):
+        with patch("tools.skills_tool.SKILLS_DIR", tmp_path):
+            _make_skill(
+                tmp_path,
+                "user-only-style",
+                frontmatter_extra="disable-model-invocation: true\n",
+                body="Persistence rules stay active until the user says stop mode.",
+            )
+            scan_skill_commands()
+            with patch("agent.prompt_builder.build_skills_system_prompt") as build_prompt:
+                message = build_skill_invocation_message(
+                    "/user-only-style", "apply this to the next answer"
+                )
+
+        build_prompt.assert_not_called()
+        assert message is not None
+        assert message.startswith("[User-invoked skill:")
+        assert "[SYSTEM:" not in message
+        assert "apply this to the next answer" in message
+        assert "Persistence rules" in message
+
+    def test_i_have_adhd_invocation_carries_session_persistence_contract(
+        self, tmp_path
+    ):
+        with patch("tools.skills_tool.SKILLS_DIR", tmp_path):
+            _make_skill(
+                tmp_path,
+                "i-have-adhd",
+                frontmatter_extra="disable-model-invocation: true\n",
+                body=(
+                    "## Persistence\n"
+                    "These rules apply for the rest of the session.\n"
+                    "Turn them off only when the user says stop adhd mode."
+                ),
+            )
+            scan_skill_commands()
+            first_turn = build_skill_invocation_message("/i-have-adhd")
+
+        # The invocation is persisted as a normal user-message payload by the
+        # CLI/gateway dispatchers, so the continuation contract remains in the
+        # session history instead of changing the cached system prompt.
+        assert first_turn is not None
+        assert first_turn.startswith("[User-invoked skill:")
+        assert "rest of the session" in first_turn
+        assert "stop adhd mode" in first_turn
+        assert "role" not in first_turn.lower()
+
 
 class TestPlanSkillHelpers:
     def test_build_plan_path_uses_workspace_relative_dir_and_slugifies_request(self):

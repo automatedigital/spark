@@ -7,7 +7,7 @@ license: MIT
 metadata:
   spark:
     tags: [Coding-Agent, Codex, OpenAI, Code-Review, Refactoring]
-    related_skills: [claude-code, spark-agent]
+    related_skills: [subagent-driven-development, claude-code, spark-agent]
 ---
 
 # Codex CLI

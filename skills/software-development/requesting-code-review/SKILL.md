@@ -10,6 +10,8 @@ license: MIT
 metadata:
   spark:
     tags: [code-review, security, verification, quality, pre-commit, auto-fix]
+    canonical: true
+    external_alternatives: [code-review]
     related_skills: [subagent-driven-development, writing-plans, test-driven-development, github-code-review]
 ---
 
@@ -19,6 +21,14 @@ Automated verification pipeline before code lands. Static scans, baseline-aware
 quality gates, an independent reviewer subagent, and an auto-fix loop.
 
 **Core principle:** No agent should verify its own work. Fresh context finds what you miss.
+
+## Boundary with related review skills
+
+This is Spark's canonical local pre-commit gate for the changes you just made.
+Use the installed `code-review` skill for a fixed-point standards/spec review,
+and `github-code-review` for another person's GitHub PR. Those alternatives
+complement this gate; they do not replace its security, baseline, and commit
+boundary checks.
 
 ## When to Use
 

@@ -1,12 +1,14 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior. 4-phase root cause investigation — NO fixes without understanding the problem first.
+description: Use for bugs, test failures, or unexpected behavior. Start with one deterministic, red-capable feedback loop before root-cause investigation.
 version: 1.1.0
 author: Spark Agent (adapted from obra/superpowers)
 license: MIT
 metadata:
   spark:
     tags: [debugging, troubleshooting, problem-solving, root-cause, investigation]
+    canonical: true
+    external_alternatives: [diagnosing-bugs]
     related_skills: [test-driven-development, writing-plans, subagent-driven-development]
 ---
 
@@ -19,6 +21,14 @@ Random fixes waste time and create new bugs. Quick patches mask underlying issue
 **Core principle:** ALWAYS find root cause before attempting fixes. Symptom fixes are failure.
 
 **Violating the letter of this process is violating the spirit of debugging.**
+
+## Boundary with related skills
+
+This is Spark's canonical debugging workflow. Use it to establish the repro and
+root cause; hand a confirmed regression seam to `test-driven-development`, a
+multi-step design change to `writing-plans`, and an approved implementation
+plan to `subagent-driven-development`. The installed `diagnosing-bugs` skill is
+a compact external alternative, not a second bundled implementation.
 
 ## The Iron Law
 
@@ -59,6 +69,14 @@ You MUST complete each phase before proceeding to the next.
 ## Phase 1: Root Cause Investigation
 
 **BEFORE attempting ANY fix:**
+
+### First loop: make the exact symptom go red
+
+Before theorising, build and run one fast, unattended command that exercises the
+real bug path and asserts the user's exact symptom. Prefer a focused test,
+HTTP/CLI fixture, or headless-browser script. Pin time, randomness, filesystem,
+and network inputs when they affect the verdict. Record the command and its
+result; do not proceed to hypotheses without a deterministic, red-capable loop.
 
 ### 1. Read Error Messages Carefully
 

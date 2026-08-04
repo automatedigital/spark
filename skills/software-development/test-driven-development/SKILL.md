@@ -1,12 +1,14 @@
 ---
 name: test-driven-development
-description: Use when implementing any feature or bugfix, before writing implementation code. Enforces RED-GREEN-REFACTOR cycle with test-first approach.
+description: Use before implementing a feature or bugfix. Agree the public seam first, then deliver one vertical slice at a time through RED-GREEN-REFACTOR.
 version: 1.1.0
 author: Spark Agent (adapted from obra/superpowers)
 license: MIT
 metadata:
   spark:
     tags: [testing, tdd, development, quality, red-green-refactor]
+    canonical: true
+    external_alternatives: [tdd]
     related_skills: [systematic-debugging, writing-plans, subagent-driven-development]
 ---
 
@@ -19,6 +21,21 @@ Write the test first. Watch it fail. Write minimal code to pass.
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
+
+## Boundary with related skills
+
+This is Spark's canonical test-first implementation workflow. Debugging owns
+the initial repro and root cause; planning owns multi-step design; this skill
+owns behavior at an agreed public seam. The installed `tdd` skill is a compact
+external alternative, not a second bundled implementation.
+
+## Agree the seam, then slice vertically
+
+Before writing a test, name the public interface where behavior will be
+observed and confirm that it reaches the user's path. Do not test private
+helpers or implementation-shaped mocks. Work as one vertical slice at a time:
+one seam-level failing test, the smallest implementation that passes it, then
+the next slice. Keep the expected result independent of the implementation.
 
 ## When to Use
 

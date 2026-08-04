@@ -7,12 +7,19 @@ license: MIT
 metadata:
   spark:
     tags: [GitHub, Code-Review, Pull-Requests, Git, Quality]
+    canonical: true
+    external_alternatives: [code-review]
     related_skills: [github-auth, github-pr-workflow]
 ---
 
 # GitHub Code Review
 
 Perform code reviews on local changes before pushing, or review open PRs on GitHub. Most of this skill uses plain `git` — the `gh`/`curl` split only matters for PR-level interactions.
+
+This is Spark's canonical GitHub-facing review workflow. Use
+`requesting-code-review` for the local pre-commit gate and the installed
+`code-review` skill for a fixed-point standards/spec review; neither replaces
+the GitHub PR and inline-comment behavior here.
 
 ## Prerequisites
 
