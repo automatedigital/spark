@@ -282,7 +282,7 @@ Integrated web acceptance -> separate future desktop build/release plan
 
 ## Phase 0: Thread Stack, Baselines, and UI Direction
 
-- [ ] **BRANCH-01 - Initialize the thread PR stack before source work.** From a
+- [x] **BRANCH-01 - Initialize the thread PR stack before source work.** From a
   clean latest `main`, verify `gh stack --help`, run
   `gh stack init webui-thread-foundation`, record the `origin/main` base SHA,
   and confirm the worktree contains only intentional files. Add
@@ -291,8 +291,14 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Done when:** the checked-out branch is `webui-thread-foundation`, the stack
   map/base relationships are recorded, and `git status --short` has no unrelated
   changes.
+  **Evidence (2026-08-04):** `origin/main` and local `main` were both at
+  `d827339dacb3b5caf5a59f2bab970b398de6316c`; `gh stack --help` reported that
+  the command is unavailable, so the documented ordinary dependent-PR fallback
+  is active. The clean checkout is now on `webui-thread-foundation`; later
+  layers will base `webui-thread-interface` on this branch and
+  `webui-thread-polish` on `webui-thread-interface`.
 
-- [ ] **BASE-01 - Capture behavior fixtures for the current chat surface.** Add
+- [x] **BASE-01 - Capture behavior fixtures for the current chat surface.** Add
   redacted fixtures for empty, short, long, streaming, interrupted, reconnecting,
   tool-heavy, reasoning-heavy, approval-pending, changed-file, and parallel
   subagent threads.
@@ -300,15 +306,27 @@ Integrated web acceptance -> separate future desktop build/release plan
   and focused API fixtures under `tests/` only where needed.
   **Done when:** the same fixtures can drive baseline and redesigned UI states
   without network or private data.
+  **Evidence (2026-08-04):** `chat-thread-states-v1.json` defines all eleven
+  required synthetic states with deterministic timestamps and no network/private
+  data; its Node contract test verifies the catalog, redaction rules, unique
+  sessions, and state-specific payloads. `node --test`, `jq empty`, all 253
+  frontend tests, and `git diff --check` pass.
 
-- [ ] **BASE-02 - Freeze the behavioral contracts that the redesign must keep.**
+- [x] **BASE-02 - Freeze the behavioral contracts that the redesign must keep.**
   Add tests for exact assistant copy, retry/edit/fork, paged history, active
   streaming rows, tool-result expansion, approvals, redirect/stop, scroll
   anchoring, minimap navigation, refresh/reconnect, and chat switching.
   **Files:** existing chat tests plus new focused tests beside the extracted
   **Validation:** `cd src/spark_cli/web && npm test`.
+  **Evidence (2026-08-04):** deterministic browser contracts cover exact
+  assistant copy, edit/retry/fork, paged history, active streaming rows,
+  expanded tool results, persisted approvals, minimap navigation, reconnect,
+  chat switching, stop, and redirect. The focused history-prepend repro passes
+  twice with the same visible row held at exactly `0px` drift after virtualizer
+  remeasurement. The broad browser contract, all 289 frontend tests, 97 focused
+  web-server tests, lint, and TypeScript pass.
 
-- [ ] **BASE-03 - Record web performance and visual baselines.** Measure React
+- [x] **BASE-03 - Record web performance and visual baselines.** Measure React
   commits, first render, stream update rate, row measurement churn, scroll drift,
   and memory for 50-, 500-, and 2,000-row fixtures. Capture screenshots at
   1440px, 1024px, and 768px widths in light and dark themes.
@@ -316,8 +334,15 @@ Integrated web acceptance -> separate future desktop build/release plan
   and existing efficiency metrics helpers.
   **Done when:** raw numbers and screenshots identify the current state; they are
   not acceptance evidence for the redesign.
+  **Evidence (2026-08-04):** `baseline-d827339d.json` records all 18 combinations
+  of 50/500/2,000 rows, 1440/1024/768px, and light/dark themes with first render,
+  React commits, stream rate, row-measurement churn, scroll drift, and browser
+  memory. All cases have 7-8 observed stream updates, zero page/console errors,
+  zero measured anchor drift, and one atomic screenshot; 18 screenshots were
+  captured. Representative wide/light and narrow/dark renders were visually
+  inspected and correctly retained as pre-redesign baselines only.
 
-- [ ] **UI-01 - Build two polished T3-inspired main-thread prototypes.** Use one
+- [x] **UI-01 - Build two polished T3-inspired main-thread prototypes.** Use one
   temporary dev-only route or query flag to compare a calm/spacious transcript
   with a dense/operational transcript. Both must use the same fixture data,
   final-answer-first turn hierarchy, compact outcome cards, composer controls,
@@ -326,21 +351,38 @@ Integrated web acceptance -> separate future desktop build/release plan
   `src/spark_cli/web/src/dev/thread-prototypes/` and one guarded dev entrypoint.
   **Done when:** both run from one documented command and neither is wired into
   production state.
+  **Evidence (2026-08-04):** `?thread-prototype=1` loads calm/spacious and
+  dense/operational variants from the shared canonical fixture catalog, with a
+  fixture picker, preserved actions, final-answer-first hierarchy, outcome
+  cards, work/approval states, and composer controls. Browser checks cover both
+  variants at 1440/1024/768px, including zero horizontal overflow after fixing
+  the narrow dense view; six review screenshots were captured. Frontend tests,
+  lint, TypeScript, a temporary production build, and a production-bundle scan
+  all pass, with no prototype route/chunk markers in the production output.
 
-- [ ] **UI-02 - Review the prototypes in the browser and select one direction.**
+- [x] **UI-02 - Review the prototypes in the browser and select one direction.**
   Compare information hierarchy, long-thread scanning, tool density, composer
   reachability, changed-file visibility, and narrow-width behavior with the user.
   **Gate:** do not begin production visual refactoring until one direction and
   any retained elements from the other variants are explicitly recorded.
+  **Evidence (2026-08-04):** selected dense/operational as the production
+  foundation, retaining the calm variant's final-answer prominence and breathing
+  room around outcome cards. The decision and responsive review findings are
+  recorded in `docs/web/ui-direction-decision.md` against the six preserved
+  1440/1024/768 screenshots.
 
-- [ ] **UI-03 - Remove rejected prototype code and capture the decision.** Keep
+- [x] **UI-03 - Remove rejected prototype code and capture the decision.** Keep
   only a small screenshot/decision note if useful; production code starts from
   the selected behavior, not by promoting an untested prototype wholesale.
   **Done when:** no temporary prototype route can ship in a production build.
+  **Evidence (2026-08-04):** removed the dev-only query entrypoint and all
+  temporary `src/dev/thread-prototypes/` source while retaining only the decision
+  note and six review screenshots. Frontend tests, lint, TypeScript, temporary
+  production build, bundle budget, marker scans, and `git diff --check` pass.
 
 ## Phase 1: Turn-Oriented Thread Model
 
-- [ ] **THREAD-01 - Define a pure presentation model for one conversation turn.**
+- [x] **THREAD-01 - Define a pure presentation model for one conversation turn.**
   Convert persisted/streaming `ChatMessage` rows into typed turns containing the
   initiating user message, commentary/reasoning, tool activity, approvals,
   subagent activity, final assistant answer, usage, changed files, status, and
@@ -349,8 +391,12 @@ Integrated web acceptance -> separate future desktop build/release plan
   `threadTimelineModel.test.ts`.
   **Done when:** mixed persisted/live events produce stable IDs and deterministic
   turn boundaries without React or network state.
+  **Evidence (2026-08-04):** `threadTimelineModel.ts` provides a pure typed turn
+  model with deterministic explicit and fallback boundaries, user/final-answer
+  separation, work, approvals, requested input, subagents, changed files, usage,
+  status, and timestamps. Focused and full frontend tests pass.
 
-- [ ] **THREAD-02 - Define settled-work folding rules.** Keep an active or
+- [x] **THREAD-02 - Define settled-work folding rules.** Keep an active or
   interrupted turn expanded. For settled turns, retain the final assistant
   answer while folding intermediate reasoning/tool/subagent rows behind a
   summary such as `Worked for 2m 14s · 7 actions`.
@@ -359,14 +405,23 @@ Integrated web acceptance -> separate future desktop build/release plan
   redirect/interruption, failed tools, approvals, requested user input, and
   resumed sessions; failures and unresolved interactions cannot be hidden by
   the default fold.
+  **Evidence (2026-08-04):** focused tests cover settled final-answer-first folds,
+  active streaming, interruption/redirect, tool failure, unresolved and resolved
+  approvals, requested input, multiple assistant messages, and resumed sessions.
+  Active, failed, interrupted, approval, and input states remain expanded.
 
-- [ ] **THREAD-03 - Add structural sharing for unchanged timeline items.** A
+- [x] **THREAD-03 - Add structural sharing for unchanged timeline items.** A
   streaming delta should replace only the affected active item; settled turns
   must retain object identity so virtualization and memoization remain useful.
   **Files:** `threadTimelineModel.ts`, tests, and existing transcript merge code.
   **Done when:** tests assert referential stability across representative deltas.
+  **Evidence (2026-08-04):** semantic signatures reuse the complete previous
+  timeline when unchanged, retain settled-turn identity across active deltas,
+  preserve unaffected active work-item identity, and replace only the changed
+  streaming answer. Eight focused tests and all 280 frontend tests pass with
+  lint, TypeScript, and `git diff --check` clean.
 
-- [ ] **THREAD-04 - Extract transport/controller concerns from `ChatPanel.tsx`.**
+- [x] **THREAD-04 - Extract transport/controller concerns from `ChatPanel.tsx`.**
   Move transcript loading/recovery, stream event reduction, composer actions,
   and timeline derivation into explicit hooks/modules while retaining
   `ChatPanel` as the stable public component.
@@ -374,6 +429,14 @@ Integrated web acceptance -> separate future desktop build/release plan
   `src/spark_cli/web/src/hooks/` and `src/spark_cli/web/src/lib/`.
   **Done when:** no behavior is lost, controller modules have focused tests, and
   presentation components do not fetch session state directly.
+  **Evidence (2026-08-04):** session/history recovery, pure stream reduction,
+  batched stream orchestration, composer actions, and timeline derivation now
+  live in focused hooks/modules while `ChatPanel` remains the public component.
+  The complete frontend suite passes with 47 files and 324 tests, lint and
+  TypeScript pass, 217 focused web-server tests pass, the broad browser contract
+  passes, and the strengthened history-prepend contract passes six consecutive
+  trials with exact `0px` settled drift. Stream topics are no longer reduced by
+  an inline event switch in the presentation component.
 
 ## Phase 2: Main Thread Panel Redesign
 
@@ -587,15 +650,22 @@ Integrated web acceptance -> separate future desktop build/release plan
 
 ## Phase 5: Better Skills With Lower Prompt Cost
 
-- [ ] **SKILL-00 - Initialize the skills stack from current `main`.** Run
+- [x] **SKILL-00 - Initialize the skills stack from current `main`.** Run
   `gh stack init skills-invocation`; add `skills-library` only after invocation
   and provenance contracts are reviewable, then add `skills-web` for the UI.
   The stack may proceed independently of routing where file ownership does not
   overlap.
   **Done when:** each PR shows only its intended layer and the bottom PR records
   its `origin/main` base SHA.
+  **Evidence (2026-08-04):** created the isolated unprefixed
+  `skills-invocation` worktree directly from `origin/main` at
+  `d827339dacb3b5caf5a59f2bab970b398de6316c`. Commit `4a5f3a67` contains only
+  invocation/provenance contracts and focused tests; draft PR #118 targets
+  `main`, records the base SHA and planned `skills-library -> skills-web`
+  dependency chain, and contains no thread-stack, generated, or external-skill
+  files.
 
-- [ ] **SKILL-01 - Add an explicit invocation contract.** Support user-invoked
+- [x] **SKILL-01 - Add an explicit invocation contract.** Support user-invoked
   skills that remain available in slash commands and the Skills UI but omit
   their descriptions from the model-visible skill index. Recognize compatible
   metadata such as `disable-model-invocation: true`; preserve legacy behavior
@@ -606,8 +676,17 @@ Integrated web acceptance -> separate future desktop build/release plan
   tests.
   **Done when:** a user-only skill consumes zero model-index description tokens
   and is still directly invokable.
+  **Evidence (2026-08-04):** canonical `user_invoked`, `model_invoked`, and
+  `both` metadata now honors `disable-model-invocation: true` across prompt
+  indexing, model-facing `skills_list`, direct slash commands, `skill_view`, and
+  provenance-aware API records. User-only descriptions are absent from the
+  model index and its cache manifest while remaining slash/API discoverable;
+  external supporting files resolve from their real read-only source. The
+  focused invocation, cache, provenance, and API suite passes with 232 tests
+  and one skip; `git diff --check` passes. Evidence is published in draft PR
+  #118 without vendored or modified external skills.
 
-- [ ] **SKILL-02 - Audit the installed engineering skills for overlap.** Compare
+- [x] **SKILL-02 - Audit the installed engineering skills for overlap.** Compare
   external and bundled triggers, steps, references, completion criteria,
   invocation type, size, usage, provenance, license, and eval coverage. Produce
   a keep-external/improve-bundled/merge-bundled/archive-bundled decision for
@@ -617,8 +696,13 @@ Integrated web acceptance -> separate future desktop build/release plan
   output from existing skill metadata helpers.
   **Gate:** do not vendor an external skill. No new bundled skill is added before
   its nearest installed/bundled skill is named and a gap decision is recorded.
+  **Evidence (2026-08-04):** the dated Markdown/JSON audit covers 24 bundled and
+  external records with reproducible byte/token measurements, provenance,
+  invocation, license, usage, eval coverage, and explicit keep/improve/merge/
+  archive decisions. Its schema validator and focused tests pass; no external
+  file was copied or modified.
 
-- [ ] **SKILL-03 - Integrate and evaluate the externally installed
+- [x] **SKILL-03 - Integrate and evaluate the externally installed
   `i-have-adhd` skill.** Verify that it is discoverable, user-invoked,
   session-persistent where requested, removable/disableable, correctly
   attributed, and absent from ordinary model-index tokens. Compare its
@@ -626,8 +710,13 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Files:** skill discovery/session-state contracts and `tests/evals/skills/`.
   **Gate:** create a Spark-bundled action-first skill only if this external skill
   cannot satisfy a documented Spark-specific requirement.
+  **Evidence (2026-08-04):** focused contracts verify external discovery,
+  user-message invocation without a system-prompt rebuild, session-persistence
+  instructions, user-only index exclusion, provenance, read-only source,
+  disabling, and safe root detachment. The external installation satisfies the
+  requirement, so no bundled copy was added.
 
-- [ ] **SKILL-04 - Integrate externally installed orchestration skills.** Verify
+- [x] **SKILL-04 - Integrate externally installed orchestration skills.** Verify
   direct invocation, dependency resolution, supporting-file loading, provenance,
   and zero ordinary index cost for `research`, `prototype`, `wayfinder`,
   `grill-me`, `grill-with-docs`, `domain-modeling`, and related user-invoked
@@ -635,8 +724,13 @@ Integrated web acceptance -> separate future desktop build/release plan
   without rebuilding the system prompt mid-conversation.
   **Files:** skill discovery, slash-command dispatch, Skills API contracts, and
   focused tests.
+  **Evidence (2026-08-04):** external-root discovery now works without a local
+  profile skill directory; direct slash invocation, root/reference supporting
+  files, canonical provenance, user-only index exclusion, and read-only
+  capabilities are covered for the installed orchestration family. The combined
+  discovery/invocation/prompt suite passes with 230 tests and one skip.
 
-- [ ] **SKILL-05 - Evaluate installed planning/orchestration workflows.** Use
+- [x] **SKILL-05 - Evaluate installed planning/orchestration workflows.** Use
   representative Spark cases to compare `wayfinder`, `grill-me`,
   `grill-with-docs`, `research`, and `prototype` for trigger precision,
   autonomy boundaries, artifact quality, issue-tracker integration, and prompt
@@ -645,16 +739,26 @@ Integrated web acceptance -> separate future desktop build/release plan
   `docs/agents/triage-labels.md`.
   **Done when:** the Skills UI can explain when to use each without introducing
   duplicate bundled wrappers.
+  **Evidence (2026-08-04):** the paired corpus covers `wayfinder`, `grill-me`,
+  `grill-with-docs`, `research`, and `prototype`, including GitHub issue/triage
+  rules, trigger precision, autonomy, artifacts, and index cost. Twenty-one
+  shared SKILL-05/06 cases produce 84 two-trial rows; the deterministic offline
+  comparator reports `release: true` at zero cost/network use.
 
-- [ ] **SKILL-06 - Evaluate external codebase/domain-design references against
+- [x] **SKILL-06 - Evaluate external codebase/domain-design references against
   Spark's architecture guidance.** Test `codebase-design` and `domain-modeling`
   against real module seams and the single-context `CONTEXT.md`/`docs/adr/`
   contract. Keep them external and user-invoked where declared; capture only
   Spark-specific architecture guidance in repository docs.
   **Files:** eval cases plus any justified updates under `docs/agents/`,
   `CONTEXT.md`, or `docs/adr/` following their repository rules.
+  **Evidence (2026-08-04):** the same isolated corpus includes trigger,
+  deep-module/glossary, implementation-boundary, cross-check, `CONTEXT.md`, and
+  sparse-ADR cases for `codebase-design` and `domain-modeling`. The existing
+  repository architecture contract was sufficient, so no unrelated domain doc
+  change was made.
 
-- [ ] **SKILL-07 - Improve canonical overlapping skills instead of duplicating
+- [x] **SKILL-07 - Improve canonical overlapping skills instead of duplicating
   them.** Candidate bundled improvements include a red-capable tight feedback
   loop for systematic debugging, pre-agreed public seams and vertical slices for
   TDD, and clearer links from bundled skills to better external alternatives.
@@ -662,8 +766,14 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Depends on:** `SKILL-02`.
   **Done when:** aliases/related-skill links point to one canonical behavior and
   replaced content remains recoverable in git history.
+  **Evidence (2026-08-04):** canonical bundled debugging, TDD, planning, review,
+  and subagent/provider skills now carry concise boundaries, external
+  alternatives, a deterministic red-capable loop, agreed public seams, and
+  vertical-slice guidance. `plan` points to `writing-plans` as its canonical
+  plan-only mode. Fifteen rewrite-specific cases produce 60 paired rows with a
+  clean correctness/safety release gate and no external edits.
 
-- [ ] **SKILL-08 - Add paired skill evaluations.** Run baseline, candidate, and
+- [x] **SKILL-08 - Add paired skill evaluations.** Run baseline, candidate, and
   comparator with pinned model/effort, isolated user configuration, identical
   cases, resumable trials, a hard spend/usage cap, blinded judging, and weighted
   correctness/autonomy/actionability/safety/concision gates.
@@ -671,6 +781,13 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Gate:** a new or rewritten bundled skill does not ship until its candidate
   beats baseline without correctness or safety blockers. External integrations
   must pass discovery, invocation, isolation, provenance, and prompt-cost gates.
+  **Evidence (2026-08-04):** the checked-in harness pins runtime/effort, isolates
+  `HOME`/`SPARK_HOME`, runs identical resumable pairs under hard token/USD caps,
+  emits separate blinded packets/condition keys, and applies weighted quality
+  and safety floors. Generic integration, SKILL-05/06, and SKILL-07 corpora pass;
+  the complete focused skills-library gate passes with 261 tests and one skip,
+  isolated Ruff, schema validation, and `git diff --check`. Draft PR #119
+  contains this independently reviewable layer above PR #118.
 
 - [ ] **SKILL-09 - Improve the Skills UI quality signals.** Show source,
   invocation type, enabled state, approximate index-token cost, supporting-file
