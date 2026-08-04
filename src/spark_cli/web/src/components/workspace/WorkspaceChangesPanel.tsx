@@ -43,7 +43,7 @@ function DiffView({ diff }: { diff: string }) {
   );
 }
 
-function ChangeRow({ slug, file, onReverted }: { slug: string; file: WorkspaceGitFile; onReverted: () => void }) {
+function ChangeRow({ slug, file, onReverted, requestedOpen }: { slug: string; file: WorkspaceGitFile; onReverted: () => void; requestedOpen?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [diff, setDiff] = useState<string | null>(null);
   const [loadingDiff, setLoadingDiff] = useState(false);
@@ -64,6 +64,12 @@ function ChangeRow({ slug, file, onReverted }: { slug: string; file: WorkspaceGi
       }
     }
   };
+
+  useEffect(() => {
+    if (requestedOpen && !expanded) void toggle();
+  // `toggle` intentionally reacts only when a new requested path selects this row.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedOpen]);
 
   const revert = async () => {
     try {
@@ -130,6 +136,7 @@ const GROUPS: { key: WorkspaceGitFile["status"]; label: string }[] = [
 export function WorkspaceChangesPanel({ slug }: { slug: string }) {
   const [status, setStatus] = useState<WorkspaceGitStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [requestedPath, setRequestedPath] = useState<string | null>(null);
   const reloadTimerRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
@@ -144,6 +151,15 @@ export function WorkspaceChangesPanel({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const openFile = (event: Event) => {
+      const detail = (event as CustomEvent<{ tab?: string; path?: string }>).detail;
+      if (detail?.tab === "changes" && typeof detail.path === "string") setRequestedPath(detail.path);
+    };
+    window.addEventListener("spark:right-panel-open", openFile);
+    return () => window.removeEventListener("spark:right-panel-open", openFile);
+  }, []);
 
   // Refresh on the same signals the Files pane uses.
   useEventBus((env: SparkEventEnvelope) => {
@@ -213,7 +229,7 @@ export function WorkspaceChangesPanel({ slug }: { slug: string }) {
                   {label} · {files.length}
                 </div>
                 {files.map((f) => (
-                  <ChangeRow key={f.path} slug={slug} file={f} onReverted={() => void load()} />
+                  <ChangeRow key={f.path} slug={slug} file={f} requestedOpen={requestedPath === f.path} onReverted={() => void load()} />
                 ))}
               </div>
             );

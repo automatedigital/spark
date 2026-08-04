@@ -1,51 +1,43 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronLeft,
   X,
-  User,
   Loader2,
   GitFork,
   RotateCcw,
   Copy,
-  Pencil,
   Search,
   ChevronUp,
   ChevronDown,
   CornerUpLeft,
-  FileText,
   ShieldCheck,
   Activity,
   RefreshCw,
   PlayCircle,
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
-import { api, openExternal } from "@/lib/api";
+import { api, type SubagentRun, type WebPendingAction, type WebPlan, type WebTurnOutcome } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Markdown } from "@/components/Markdown";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
 import {
   useEventBus,
   useSelectedDetailSubscription,
 } from "@/hooks/useEventBus";
-import {
-  estimateAssistantRowSize,
-  shouldSkipRowMeasurement,
-} from "@/lib/rowMeasurement";
-import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
-import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
-import { ApprovalPrompt } from "@/components/chat/ApprovalPrompt";
-import { FeedbackForm } from "@/components/chat/FeedbackForm";
+import { estimateAssistantRowSize } from "@/lib/rowMeasurement";
 import { MODEL_LOADING_LABEL, StatusPill } from "@/components/chat/StatusPill";
 import { PromptBar } from "@/components/chat/PromptBar";
 import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import { TimelineMinimap } from "@/components/chat/TimelineMinimap";
+import { TimelineTurnGroup } from "@/components/chat/MessagesTimeline";
+import { ChangedFilesCard } from "@/components/chat/ChangedFilesCard";
+import { PlanCard } from "@/components/chat/PlanCard";
+import { PendingActionTray } from "@/components/chat/PendingActionTray";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
-import { tokenizeUserBubbleText } from "@/lib/userBubbleTokens";
 import { makeFileContextItem, briefApi } from "@/lib/context";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 import {
@@ -78,16 +70,17 @@ import {
 } from "@/lib/chatTranscriptMerge";
 import {
   approvalFailureMessage,
-  approvalIsDisabled,
   approvalSubmission,
 } from "@/lib/chatApproval";
 import {
-  deriveCollapsedMessages,
-  deriveTimelineItems,
-  findLiveRowIndex,
   streamingAssistantVisibleChars as getStreamingAssistantVisibleChars,
 } from "@/lib/chatTimeline";
-import { isTauri } from "@/sidecar";
+import {
+  buildThreadTimeline,
+  type ThreadTimeline,
+  type ThreadTimelineMessage,
+} from "@/lib/threadTimelineModel";
+import { buildTurnLandmarks } from "@/components/chat/timelineMinimapModel";
 import { copyExactAssistantContent } from "@/lib/exactMessage";
 import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
 import { clearUnsettledOrInvalidDetailCache } from "@/lib/webState";
@@ -122,302 +115,16 @@ interface ChatPanelProps {
   sessionTitle?: string | null;
   initialMessage?: string;
   workspaceSlug?: string;
+  subagents?: SubagentRun[];
+  onSubagentSelect?: (subagentId: string) => void;
   className?: string;
 }
-
-// ── Memoized row components ───────────────────────────────────────────────────
-// Defined at module scope so their identity is stable — React.memo bails out
-// any row whose props haven't changed, preventing re-renders of the full
-// message list on every streaming token.
 
 function SparkAgentIcon({ className = "h-4 w-4" }: { className?: string }) {
   return <BrandLogo className={className} />;
 }
 
-function SparkAgentAvatar() {
-  return (
-    <div className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center bg-success/20">
-      <SparkAgentIcon />
-    </div>
-  );
-}
-
-function renderTokens(text: string): React.ReactNode[] {
-  return tokenizeUserBubbleText(text).map((token, index) => {
-    if (token.type === "highlight") {
-      return <span key={index} className="text-primary font-medium">{token.text}</span>;
-    }
-    if (token.type === "link") {
-      return (
-        <a
-          key={index}
-          href={token.href}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => openUserBubbleLink(event, token.href)}
-          className="break-words text-primary/90 underline decoration-primary/25 underline-offset-2 transition-colors hover:text-primary hover:decoration-primary/60"
-        >
-          {token.text}
-        </a>
-      );
-    }
-    return token.text;
-  });
-}
-
-function openUserBubbleLink(event: MouseEvent<HTMLAnchorElement>, href: string) {
-  event.stopPropagation();
-  if (!isTauri()) return;
-  event.preventDefault();
-  void openExternal(href);
-}
-
-type UserMsg = Extract<ChatMessage, { role: "user" }>;
 type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
-type ToolMsg = Extract<ChatMessage, { role: "tool" }>;
-type ReasoningMsg = Extract<ChatMessage, { role: "reasoning" }>;
-type ApprovalMsg = Extract<ChatMessage, { role: "approval" }>;
-type NoteMsg = Extract<ChatMessage, { role: "note" }>;
-type FeedbackFormMsg = Extract<ChatMessage, { role: "feedback_form" }>;
-
-const MODE_SHORT: Record<string, string> = {
-  path_only: "path", excerpt: "excerpt", summary: "summary", full: "full", search: "search",
-};
-
-const UserRow = memo(function UserRow({
-  msg, hasSession, streaming, onEdit, onRetry, onFork, onCopy,
-}: {
-  msg: UserMsg;
-  hasSession: boolean;
-  streaming: boolean;
-  onEdit: (idx: number, text: string) => void;
-  onRetry: (idx: number) => void;
-  onFork: (idx: number) => void;
-  onCopy: (text: string) => void;
-}) {
-  const [expandedChip, setExpandedChip] = useState<string | null>(null);
-
-  return (
-    <div className="flex gap-2 flex-row-reverse group/msg">
-      <div className="shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-xs bg-foreground/8 text-muted-foreground">
-        <User className="h-3.5 w-3.5" />
-      </div>
-      <div className="max-w-[85%] flex flex-col items-end gap-1">
-        {msg.redirect && (
-          <span className="text-[10px] text-muted-foreground/60">↩ redirect</span>
-        )}
-        <div className="rounded-lg px-3 py-2 text-sm bg-foreground/8 text-foreground relative">
-          <p className="whitespace-pre-wrap leading-relaxed">{renderTokens(msg.content)}</p>
-          {hasSession && msg.sessionIdx != null && (
-            <div className="absolute -top-2 right-0 opacity-0 group-hover/msg:opacity-100 flex gap-1 transition-opacity">
-              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Edit & retry"
-                onClick={() => onEdit(msg.sessionIdx!, msg.content)}>
-                <Pencil className="h-3 w-3" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Retry"
-                disabled={streaming} onClick={() => onRetry(msg.sessionIdx!)}>
-                <RotateCcw className="h-3 w-3" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Fork from here"
-                disabled={streaming} onClick={() => onFork(msg.sessionIdx!)}>
-                <GitFork className="h-3 w-3" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Copy"
-                onClick={() => onCopy(msg.content)}>
-                <Copy className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
-        </div>
-        {msg.contextItems && msg.contextItems.length > 0 && (
-          <div className="flex flex-wrap gap-1 justify-end">
-            {msg.contextItems.map((item) => {
-              const name = item.label ?? item.source_path?.split("/").pop() ?? item.id;
-              const modeLabel = MODE_SHORT[item.inclusion_mode] ?? item.inclusion_mode;
-              const isExpanded = expandedChip === item.id;
-              return (
-                <div key={item.id} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedChip(isExpanded ? null : item.id)}
-                    className="flex items-center gap-1 rounded-md bg-foreground/6 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-foreground/9 hover:text-foreground transition"
-                    title={`${name} · ${modeLabel} mode`}
-                  >
-                    <span className="font-mono truncate max-w-[80px]">{name}</span>
-                    <span className="opacity-50">·</span>
-                    <span>{modeLabel}</span>
-                  </button>
-                  {isExpanded && item.content && (
-                    <div className="absolute bottom-full mb-1 right-0 z-50 w-72 rounded-md border border-border bg-popover/95 shadow-lg p-2 text-[11px] font-mono text-foreground/80 max-h-40 overflow-y-auto whitespace-pre-wrap backdrop-blur-xl">
-                      {item.content}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-const AssistantRow = memo(function AssistantRow({
-  msg,
-  safeMode,
-  defaultWrap,
-  onPromoteToBrief,
-  onCopyExact,
-}: {
-  msg: AssistantMsg;
-  safeMode?: boolean;
-  defaultWrap?: boolean;
-  onPromoteToBrief?: (msg: AssistantMsg) => void;
-  onCopyExact?: (msg: AssistantMsg) => void;
-}) {
-  return (
-    <div className="flex gap-2 group/amsg">
-      <SparkAgentAvatar />
-      <div className="w-full max-w-[85%] rounded-lg px-3 py-2 text-sm bg-transparent text-foreground min-w-0 relative">
-        {msg.content ? (
-          <>
-            {Boolean(msg.liveOmittedChars) && (
-              <div className="mb-2 text-[11px] text-muted-foreground/60">
-                Showing the latest {msg.content.length.toLocaleString()} of {msg.liveTotalChars?.toLocaleString()} characters
-                {!msg.streaming && "; the complete response remains saved in this session"}
-              </div>
-            )}
-            <Markdown
-              content={msg.content}
-              streaming={msg.streaming}
-              showStreamingCursor={msg.streaming}
-              safeMode={safeMode}
-              renderRevision={msg.renderRevision}
-              defaultWrap={defaultWrap}
-            />
-          </>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Loader2 className={`h-3 w-3 ${safeMode ? "" : "animate-spin"}`} />
-            <span className="text-xs">Thinking…</span>
-          </span>
-        )}
-        {!msg.streaming && msg.content && (onPromoteToBrief || onCopyExact) && (
-          <div className="absolute -top-2 right-0 opacity-0 group-hover/amsg:opacity-100 transition-opacity flex gap-1">
-            {onCopyExact && (
-              <Button type="button" variant="ghost" size="icon" className="h-6 w-6"
-                title="Copy complete response" onClick={() => onCopyExact(msg)}>
-                <Copy className="h-3 w-3" />
-              </Button>
-            )}
-            {onPromoteToBrief && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              title="Promote to brief"
-              onClick={() => onPromoteToBrief(msg)}
-            >
-              <FileText className="h-3 w-3" />
-            </Button>
-            )}
-          </div>
-        )}
-        {!msg.streaming && msg.usage && msg.usage.totalTokens > 0 && (
-          <div className="mt-1 text-[10px] text-muted-foreground/40 tabular-nums">
-            {msg.usage.totalTokens >= 1000
-              ? `${(msg.usage.totalTokens / 1000).toFixed(1)}K tokens`
-              : `${msg.usage.totalTokens} tokens`}
-            {msg.usage.costUsd != null && msg.usage.costUsd > 0 && (
-              <> · ${msg.usage.costUsd < 0.01 ? msg.usage.costUsd.toFixed(4) : msg.usage.costUsd.toFixed(2)}</>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-const ToolRow = memo(function ToolRow({
-  msg,
-  repeatCount,
-  safeMode,
-  onAttachPath,
-  onFetchFullResult,
-}: {
-  msg: ToolMsg;
-  repeatCount: number;
-  safeMode?: boolean;
-  onAttachPath?: (path: string) => void;
-  onFetchFullResult?: (toolId: string) => Promise<string | null>;
-}) {
-  return (
-    <div className="pl-9">
-      <ToolCallBubble
-        name={msg.name} args={msg.args} result={msg.result} done={msg.done}
-        startedAt={msg.startedAt} endedAt={msg.endedAt} durationSeconds={msg.durationSeconds}
-        repeatCount={repeatCount > 0 ? repeatCount : undefined}
-        resultTruncated={msg.resultTruncated}
-        safeMode={safeMode}
-        onAttachPath={onAttachPath}
-        onFetchFullResult={onFetchFullResult ? () => onFetchFullResult(msg.toolId) : undefined}
-      />
-    </div>
-  );
-});
-
-const ReasoningRow = memo(function ReasoningRow({ msg, isActive, safeMode }: { msg: ReasoningMsg; isActive?: boolean; safeMode?: boolean }) {
-  return <div className="pl-9">
-    {Boolean(msg.omittedChars) && (
-      <p className="mb-1 text-[10px] text-muted-foreground">Earlier reasoning hidden to keep this chat responsive.</p>
-    )}
-    <ReasoningBubble text={msg.text} isActive={isActive} safeMode={safeMode} />
-  </div>;
-});
-
-const ApprovalRow = memo(function ApprovalRow({
-  msg, disabled, onChoice,
-}: {
-  msg: ApprovalMsg;
-  disabled: boolean;
-  onChoice: (c: "once" | "session" | "always" | "deny") => void;
-}) {
-  return (
-    <div className="pl-2">
-      <ApprovalPrompt
-        command={String(msg.approval.command ?? "")}
-        description={String(msg.approval.description ?? "")}
-        disabled={approvalIsDisabled(disabled, !!msg.resolved)}
-        onChoice={onChoice}
-      />
-    </div>
-  );
-});
-
-const NoteRow = memo(function NoteRow({ msg }: { msg: NoteMsg }) {
-  return <p className="text-xs text-muted-foreground italic pl-2">{msg.text}</p>;
-});
-
-const FeedbackRow = memo(function FeedbackRow({
-  msg, sessionId, onSubmitted,
-}: {
-  msg: FeedbackFormMsg;
-  sessionId: string | null;
-  onSubmitted: (id: string) => void;
-}) {
-  const handleSubmit = async (data: { name: string; email: string; area: string; note: string }) => {
-    if (!sessionId) throw new Error("No active session");
-    await api.submitFeedback(sessionId, data);
-    onSubmitted(msg.id);
-  };
-  return (
-    <div className="pl-2">
-      <FeedbackForm onSubmit={handleSubmit} submitted={!!msg.submitted} />
-    </div>
-  );
-});
-
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
 export function ChatPanel({
@@ -428,6 +135,8 @@ export function ChatPanel({
   onSessionUpdated,
   initialMessage,
   workspaceSlug,
+  subagents = [],
+  onSubagentSelect,
   className,
 }: ChatPanelProps) {
   useSelectedDetailSubscription(sessionId);
@@ -455,6 +164,10 @@ export function ChatPanel({
   }, []);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const approvalBusyRef = useRef(false);
+  const [turnOutcomes, setTurnOutcomes] = useState<WebTurnOutcome[]>([]);
+  const [conversationPlan, setConversationPlan] = useState<WebPlan | null>(null);
+  const [pendingActions, setPendingActions] = useState<WebPendingAction[]>([]);
+  const [busyActionIds, setBusyActionIds] = useState<Set<string>>(() => new Set());
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
   const [safeModeNotice, setSafeModeNotice] = useState<string | null>(null);
@@ -468,6 +181,18 @@ export function ChatPanel({
   useEffect(() => clearUnsettledOrInvalidDetailCache(), []);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollViewportTopRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const element = scrollContainerRef.current;
+    if (!element) return;
+    const nextTop = element.getBoundingClientRect().top;
+    const previousTop = scrollViewportTopRef.current;
+    if (previousTop != null && scrollStateRef.current.mode !== "following") {
+      element.scrollTop += nextTop - previousTop;
+    }
+    scrollViewportTopRef.current = nextTop;
+  }, [safeMode]);
   const streamingRef = useRef(false);
   const turnStateRef = useRef<ChatTurnState>("idle");
   const safeModeRef = useRef(safeMode);
@@ -908,6 +633,43 @@ export function ChatPanel({
       data: env.data,
     });
   });
+
+  const refreshTurnSurfaces = useCallback(async () => {
+    const sid = activeSessionRef.current;
+    if (!sid) {
+      setTurnOutcomes([]);
+      setConversationPlan(null);
+      setPendingActions([]);
+      return;
+    }
+    const [outcomeResult, planResult, actionsResult] = await Promise.allSettled([
+      api.getConversationTurnOutcomes(sid),
+      api.getConversationPlan(sid),
+      api.getConversationPendingActions(sid),
+    ]);
+    if (activeSessionRef.current !== sid) return;
+    setTurnOutcomes(outcomeResult.status === "fulfilled" ? outcomeResult.value.outcomes : []);
+    setConversationPlan(planResult.status === "fulfilled" ? planResult.value.plan : null);
+    setPendingActions(actionsResult.status === "fulfilled" ? actionsResult.value.actions : []);
+  }, [activeSessionRef]);
+
+  useEffect(() => {
+    void refreshTurnSurfaces();
+  }, [activeSessionId, refreshTurnSurfaces]);
+
+  useEventBus((env) => {
+    if (![
+      "chat.turn_done",
+      "chat.plan_updated",
+      "chat.approval_requested",
+      "chat.approval_resolved",
+      "chat.input_requested",
+      "chat.input_resolved",
+    ].includes(env.topic)) return;
+    const sid = activeSessionRef.current;
+    if (!sid || (env.session_id && !activeSessionAliasesRef.current.has(env.session_id))) return;
+    void refreshTurnSurfaces();
+  });
   const refreshConversationDiagnostics = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid) return null;
@@ -1044,7 +806,10 @@ export function ChatPanel({
     void refreshConversationDiagnostics();
   }, [refreshConversationDiagnostics, shouldShowRecoveryPanel, turnState]);
 
-  const submitApproval = useCallback(async (choice: "once" | "session" | "always" | "deny") => {
+  const submitApproval = useCallback(async (
+    choice: "once" | "session" | "always" | "deny",
+    actionId?: string,
+  ) => {
     const sid = activeSessionRef.current;
     const submission = approvalSubmission({
       sessionId: sid,
@@ -1059,14 +824,35 @@ export function ChatPanel({
         submission.sessionId,
         submission.payload.choice,
         submission.payload.resolve_all,
+        actionId,
       );
+      await refreshTurnSurfaces();
     } catch (err) {
       setError(approvalFailureMessage(err));
     } finally {
       approvalBusyRef.current = false;
       setApprovalBusy(false);
     }
-  }, [activeSessionRef, approvalBusy, setError]);
+  }, [activeSessionRef, approvalBusy, refreshTurnSurfaces, setError]);
+
+  const runPendingAction = useCallback(async (
+    action: WebPendingAction,
+    operation: () => Promise<unknown>,
+  ) => {
+    setBusyActionIds((current) => new Set(current).add(action.action_id));
+    try {
+      await operation();
+      await refreshTurnSurfaces();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyActionIds((current) => {
+        const next = new Set(current);
+        next.delete(action.action_id);
+        return next;
+      });
+    }
+  }, [refreshTurnSurfaces, setError]);
 
   const copyText = useCallback((t: string) => {
     void navigator.clipboard.writeText(t);
@@ -1265,13 +1051,21 @@ export function ChatPanel({
     return () => { cancelled = true; };
   }, [activeSessionRef, chatMessages, fetchExactAssistant, loadExactMessages, searchQuery, sessionRecoverySeqRef]);
 
+  const turnIndexForMessageIndex = useCallback((messageIndex: number) => {
+    let turnIndex = 0;
+    for (let index = 0; index <= messageIndex && index < chatMessages.length; index += 1) {
+      if (chatMessages[index]?.role === "user") turnIndex += 1;
+    }
+    return Math.max(0, turnIndex - 1);
+  }, [chatMessages]);
+
   // Scroll active match into view using the virtualizer
   useEffect(() => {
     if (!searchMatches.length) return;
-    const idx = searchMatches[searchMatchIdx % searchMatches.length];
+    const idx = turnIndexForMessageIndex(searchMatches[searchMatchIdx % searchMatches.length]);
     virtualizer.scrollToIndex(idx, { align: "center", behavior: safeMode ? "instant" : "smooth" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchMatchIdx, searchMatches, safeMode]);
+  }, [searchMatchIdx, searchMatches, safeMode, turnIndexForMessageIndex]);
 
   // Drag-and-drop state
   const [isDragOver, setIsDragOver] = useState(false);
@@ -1306,12 +1100,32 @@ export function ChatPanel({
     if (files.length > 0) void uploadFiles(files);
   }, [uploadFiles]);
 
-  const collapsedMessages = useMemo(
-    () => deriveCollapsedMessages(chatMessages, streaming),
-    [chatMessages, streaming],
-  );
-
-  const liveRowIndex = useMemo(() => findLiveRowIndex(collapsedMessages), [collapsedMessages]);
+  const previousTimelineRef = useRef<ThreadTimeline | undefined>(undefined);
+  const timelineSessionRef = useRef<string | null>(null);
+  const threadTimeline = useMemo(() => {
+    const sessionChanged = timelineSessionRef.current !== activeSessionId;
+    const previous = sessionChanged ? undefined : previousTimelineRef.current;
+    const messages = chatMessages as readonly ThreadTimelineMessage[];
+    const projectedMessages = subagents.length > 0 && messages.length > 0
+      ? messages.map((message, index) => index === messages.length - 1 ? {
+          ...message,
+          subagents: subagents.map((run) => ({
+            id: run.id ?? run.run_id ?? run.subagent_id ?? "subagent",
+            name: run.name ?? undefined,
+            task: run.task ?? run.goal ?? undefined,
+            status: run.status,
+            error: run.error ?? undefined,
+            startedAt: run.started_at ?? undefined,
+            endedAt: run.ended_at ?? undefined,
+          })),
+        } : message)
+      : messages;
+    const next = buildThreadTimeline(projectedMessages, { previous });
+    timelineSessionRef.current = activeSessionId;
+    previousTimelineRef.current = next;
+    return next;
+  }, [activeSessionId, chatMessages, subagents]);
+  const timelineTurns = threadTimeline.turns;
 
   const streamingAssistantVisibleChars = useMemo(
     () => getStreamingAssistantVisibleChars(chatMessages),
@@ -1319,39 +1133,45 @@ export function ChatPanel({
   );
 
   const estimateRowSize = useCallback((index: number) => {
-    const item = collapsedMessages[index];
-    if (!item || item.msg === null) return 56;
-    switch (item.msg.role) {
-      case "user":
-        return 72;
-      case "assistant":
-        return estimateAssistantRowSize(
-          item.msg.content,
-          item.msg.liveFenceCount,
-        );
-      case "tool":
-        return 44;
-      case "reasoning":
-        return 44;
-      case "approval":
-        return 160;
-      case "feedback_form":
-        return 280;
-      case "note":
-        return 32;
-      default:
-        return 80;
-    }
-  }, [collapsedMessages]);
+    const turn = timelineTurns[index];
+    if (!turn) return 120;
+    const answerChars = turn.finalAnswer?.content.length ?? 0;
+    // estimateAssistantRowSize includes the standalone message-row chrome.
+    // A timeline turn shares that chrome with its user row, so subtract the
+    // duplicated allowance. Keeping the short-turn estimate close to its
+    // rendered 90px height prevents late virtual-list remeasurement from
+    // moving a preserved history anchor after prepending older messages.
+    const answerEstimate = answerChars
+      ? Math.max(36, estimateAssistantRowSize(turn.finalAnswer?.content ?? "") - 60)
+      : 0;
+    const expandedWorkEstimate = turn.isExpanded ? Math.min(720, turn.workItems.length * 64 + turn.subagents.length * 56) : 44;
+    return Math.max(54, 54 + answerEstimate + (turn.workItems.length || turn.subagents.length ? expandedWorkEstimate : 0));
+  }, [timelineTurns]);
 
   const virtualizer = useVirtualizer({
-    count: collapsedMessages.length,
+    count: timelineTurns.length,
     getScrollElement: () => scrollContainerRef.current,
-    getItemKey: (index) => collapsedMessages[index]?.id ?? index,
+    getItemKey: (index) => timelineTurns[index]?.id ?? index,
     estimateSize: estimateRowSize,
     overscan: safeMode ? 4 : 10,
     gap: 12,
   });
+  const virtualOrderRef = useRef<{ sessionId: string | null; firstId: string | null; count: number }>({ sessionId: null, firstId: null, count: 0 });
+
+  useLayoutEffect(() => {
+    const firstId = timelineTurns[0]?.id ?? null;
+    const previous = virtualOrderRef.current;
+    virtualOrderRef.current = { sessionId: activeSessionId, firstId, count: timelineTurns.length };
+    if (
+      (previous.sessionId != null && previous.sessionId !== activeSessionId) ||
+      (previous.firstId && firstId !== previous.firstId && timelineTurns.length > previous.count)
+    ) {
+      // A prepend moves stable keyed DOM rows to new virtual indexes. Reset the
+      // index measurement cache before the anchor-restoration loop remeasures
+      // mounted rows, otherwise stale starts can temporarily overlap rows.
+      virtualizer.measure();
+    }
+  }, [activeSessionId, timelineTurns, virtualizer]);
 
   const rowResizeObserverRef = useRef<ResizeObserver | null>(null);
   const rowResizeRafRef = useRef<number | null>(null);
@@ -1359,13 +1179,8 @@ export function ChatPanel({
   const measureRowElement = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     rowResizeObserverRef.current?.observe(el);
-    const index = Number(el.dataset.index);
-    const item = collapsedMessages[index];
-    if (shouldSkipRowMeasurement(item, index, liveRowIndex, safeMode)) {
-      return;
-    }
     virtualizer.measureElement(el);
-  }, [collapsedMessages, liveRowIndex, safeMode, virtualizer]);
+  }, [virtualizer]);
 
   useEffect(() => {
     const root = messageListRef.current;
@@ -1421,7 +1236,7 @@ export function ChatPanel({
         rowResizeRafRef.current = null;
       }
     };
-  }, [collapsedMessages, measureRowElement]);
+  }, [measureRowElement, timelineTurns]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -1436,7 +1251,7 @@ export function ChatPanel({
           scrollTop: el.scrollTop,
           clientHeight: el.clientHeight,
         },
-        anchorId: firstVisibleIndex == null ? null : collapsedMessages[firstVisibleIndex]?.id ?? null,
+        anchorId: firstVisibleIndex == null ? null : timelineTurns[firstVisibleIndex]?.id ?? null,
       });
       followStreamRef.current = scrollStateRef.current.mode === "following";
       setDetachedFromBottom(
@@ -1447,7 +1262,7 @@ export function ChatPanel({
     updateFollowState();
     el.addEventListener("scroll", updateFollowState, { passive: true });
     return () => el.removeEventListener("scroll", updateFollowState);
-  }, [activeSessionId, collapsedMessages, loadingHistory, virtualizer]);
+  }, [activeSessionId, loadingHistory, timelineTurns, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
@@ -1533,7 +1348,7 @@ export function ChatPanel({
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    const count = collapsedMessages.length;
+    const count = timelineTurns.length;
     const messageCount = chatMessages.length;
     const countChanged = count !== prevCountRef.current;
     const pendingPrepend = prependScrollAnchorRef.current;
@@ -1549,6 +1364,7 @@ export function ChatPanel({
         cancelAnimationFrame(autoScrollRafRef.current);
         autoScrollRafRef.current = null;
       }
+      const addedTurnCount = Math.max(0, count - prevCountRef.current);
       prevCountRef.current = count;
       scrollStateRef.current = {
         mode: "detached",
@@ -1562,19 +1378,26 @@ export function ChatPanel({
         requestAnimationFrame(() => {
           const target = scrollContainerRef.current;
           if (!target) return;
-          const addedMessageCount = Math.max(0, messageCount - pendingPrepend.messageCount);
+          // Preserve the viewport immediately from the list's total-height
+          // delta. The keyed-row correction below then absorbs any remaining
+          // difference as newly mounted turns are measured.
+          const preservePrependOffset = (element: HTMLElement) => {
+            element.scrollTop = pendingPrepend.scrollTop
+              + Math.max(0, element.scrollHeight - pendingPrepend.scrollHeight);
+          };
+          preservePrependOffset(target);
           const currentAnchorIndex = pendingPrepend.anchorId
-            ? collapsedMessages.findIndex((item) => item.id === pendingPrepend.anchorId)
+            ? timelineTurns.findIndex((item) => item.id === pendingPrepend.anchorId)
             : -1;
           const anchorIndex = currentAnchorIndex >= 0
             ? currentAnchorIndex
             : pendingPrepend.anchorIndex != null
-            ? pendingPrepend.anchorIndex + addedMessageCount
+            ? pendingPrepend.anchorIndex + addedTurnCount
             : -1;
           if (anchorIndex >= 0) {
             virtualizer.scrollToIndex(anchorIndex, { align: "start", behavior: "instant" });
           }
-          let remainingFrames = 120;
+          let remainingFrames = 240;
           let stableFrames = 0;
           const restoreAnchor = () => requestAnimationFrame(() => {
             if (restoreGeneration !== prependRestoreGenerationRef.current) return;
@@ -1589,6 +1412,11 @@ export function ChatPanel({
               if (anchorIndex >= 0) {
                 virtualizer.scrollToIndex(anchorIndex, { align: "start", behavior: "instant" });
               }
+              // The first restoration frame can run before React commits the
+              // larger list height, which clamps the initial offset. Retry the
+              // deterministic height-delta restoration after scrollToIndex so
+              // the stable keyed anchor is materialised on the next frame.
+              preservePrependOffset(currentTarget);
               if (remainingFrames > 0) restoreAnchor();
               return;
             }
@@ -1598,6 +1426,7 @@ export function ChatPanel({
               if (anchorIndex >= 0) {
                 virtualizer.scrollToIndex(anchorIndex, { align: "start", behavior: "instant" });
               }
+              preservePrependOffset(currentTarget);
               stableFrames = 0;
               if (remainingFrames > 0) restoreAnchor();
               return;
@@ -1619,7 +1448,7 @@ export function ChatPanel({
               currentTarget.scrollTop += correction;
               stableFrames = 0;
             }
-            if (remainingFrames > 0 && stableFrames < 20) restoreAnchor();
+            if (remainingFrames > 0 && stableFrames < 60) restoreAnchor();
           });
           restoreAnchor();
         });
@@ -1693,36 +1522,33 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [activeSessionId, chatMessages, collapsedMessages, prependScrollAnchorRef, streamingAssistantVisibleChars, streaming, safeMode, virtualizer, runBottomClamp]);
+  }, [activeSessionId, chatMessages, prependScrollAnchorRef, runBottomClamp, safeMode, streaming, streamingAssistantVisibleChars, timelineTurns, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;
   const visibleEndIndex = virtualItems[virtualItems.length - 1]?.index ?? visibleStartIndex;
-  const timelineItems = useMemo(
-    () => deriveTimelineItems(collapsedMessages),
-    [collapsedMessages],
-  );
+  const turnLandmarks = useMemo(() => buildTurnLandmarks(timelineTurns), [timelineTurns]);
 
   const jumpToIndex = useCallback((index: number, align: "start" | "center" | "end" = "center") => {
-    if (collapsedMessages.length === 0) return;
+    if (timelineTurns.length === 0) return;
     prependRestoreGenerationRef.current += 1;
-    const nextIndex = Math.max(0, Math.min(index, collapsedMessages.length - 1));
+    const nextIndex = Math.max(0, Math.min(index, timelineTurns.length - 1));
     if (align !== "end") {
       scrollStateRef.current = { ...scrollStateRef.current, anchorId: null };
     }
     scrollStateRef.current = align === "end"
-      ? reduceChatScrollState(scrollStateRef.current, { type: "jump-to-bottom", itemCount: collapsedMessages.length })
+      ? reduceChatScrollState(scrollStateRef.current, { type: "jump-to-bottom", itemCount: timelineTurns.length })
       : scrollStateRef.current;
     virtualizer.scrollToIndex(nextIndex, { align, behavior: "instant" });
     if (align === "end") {
       // Clamp until row measurements settle so the jump never lands short.
       runBottomClamp();
     }
-  }, [collapsedMessages.length, runBottomClamp, virtualizer]);
+  }, [runBottomClamp, timelineTurns.length, virtualizer]);
 
   const jumpToLatest = useCallback(() => {
-    jumpToIndex(collapsedMessages.length - 1, "end");
-  }, [collapsedMessages.length, jumpToIndex]);
+    jumpToIndex(timelineTurns.length - 1, "end");
+  }, [jumpToIndex, timelineTurns.length]);
 
   const diagnosticsTurn = (
     conversationDiagnostics?.turn && typeof conversationDiagnostics.turn === "object"
@@ -1997,86 +1823,73 @@ export function ChatPanel({
             )}
             <div ref={messageListRef} style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
             {virtualizer.getVirtualItems().map((vItem) => {
-              const item = collapsedMessages[vItem.index];
-              if (!item) return null;
-
-              // Typing indicator synthetic item
-              if (item.msg === null) {
-                return (
-                  <div
-                    key="typing"
-                    data-index={vItem.index}
-                    data-row-id="typing"
-                    ref={measureRowElement}
-                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
-                  >
-                    <div className="flex gap-2">
-                      <SparkAgentAvatar />
-                      <div className="rounded-lg px-3 py-2.5 text-sm bg-foreground/6">
-                        <span className="flex gap-[4px] items-center">
-                          <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
-                          <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
-                          <span className="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              const { msg, repeatCount } = item as { msg: ChatMessage; repeatCount: number; id: string };
-              let rowContent: React.ReactNode = null;
-
-              if (msg.role === "user") {
-                rowContent = (
-                  <UserRow msg={msg} hasSession={!!activeSessionId}
-                    streaming={streaming} onEdit={handleEdit} onRetry={handleRetry}
-                    onFork={handleFork} onCopy={copyText} />
-                );
-              } else if (msg.role === "assistant") {
-                if (!msg.content && !msg.streaming) return null;
-                rowContent = (
-                  <AssistantRow
-                    msg={msg}
-                    safeMode={safeMode}
-                    defaultWrap={chatWordWrap}
-                    onPromoteToBrief={activeSessionId ? handlePromoteToBrief : undefined}
-                    onCopyExact={copyAssistant}
-                  />
-                );
-              } else if (msg.role === "tool") {
-                rowContent = <ToolRow msg={msg} repeatCount={repeatCount} safeMode={safeMode} onAttachPath={attachPath} onFetchFullResult={fetchFullToolResult} />;
-              } else if (msg.role === "reasoning") {
-                rowContent = <ReasoningRow msg={msg} isActive={streaming && vItem.index === collapsedMessages.length - 1} safeMode={safeMode} />;
-              } else if (msg.role === "approval") {
-                rowContent = <ApprovalRow msg={msg} disabled={approvalBusy} onChoice={submitApproval} />;
-              } else if (msg.role === "note") {
-                rowContent = <NoteRow msg={msg} />;
-              } else if (msg.role === "feedback_form") {
-                rowContent = (
-                  <FeedbackRow
-                    msg={msg}
-                    sessionId={activeSessionId}
-                    onSubmitted={(id) =>
-                      setChatMessages((prev) =>
-                        prev.map((m) => (m.id === id ? { ...m, submitted: true } : m)),
-                      )
-                    }
-                  />
-                );
-              }
-
-              if (rowContent === null) return null;
+              const turn = timelineTurns[vItem.index];
+              if (!turn) return null;
+              const latestOutcome = turnOutcomes.at(-1) ?? null;
+              const matchedOutcome = turn.finalAnswer
+                ? turnOutcomes.find((outcome) => (
+                    outcome.assistant_message_id != null && turn.finalAnswer?.id === `db:${outcome.assistant_message_id}`
+                  )) ?? null
+                : null;
+              const turnOutcome = matchedOutcome ?? (
+                vItem.index === timelineTurns.length - 1 ? latestOutcome : null
+              );
 
               return (
                 <div
-                  key={item.id}
+                  key={turn.id}
                   data-index={vItem.index}
-                  data-row-id={item.id}
+                  data-row-id={turn.id}
                   ref={measureRowElement}
                   style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vItem.start}px)` }}
                 >
-                  {rowContent}
+                  <div className="mx-auto w-full max-w-3xl px-4 pr-8">
+                  <TimelineTurnGroup
+                    turn={turn}
+                    hasSession={Boolean(activeSessionId)}
+                    streaming={streaming}
+                    safeMode={safeMode}
+                    sessionId={activeSessionId}
+                    defaultWrap={chatWordWrap}
+                    approvalBusy={approvalBusy}
+                    onApprovalChoice={(item, choice) => void submitApproval(
+                      choice,
+                      typeof item.approval.action_id === "string" ? item.approval.action_id : undefined,
+                    )}
+                    onEdit={handleEdit}
+                    onRetry={handleRetry}
+                    onFork={handleFork}
+                    onCopyText={copyText}
+                    onPromoteToBrief={activeSessionId ? (message) => handlePromoteToBrief(message.source as AssistantMsg) : undefined}
+                    onCopyExact={(message) => copyAssistant(message.source as AssistantMsg)}
+                    onAttachPath={attachPath}
+                    onFetchFullResult={fetchFullToolResult}
+                    onSubagentSelect={onSubagentSelect}
+                    onFeedbackSubmit={async (item, data) => {
+                      if (!activeSessionId) throw new Error("No active session");
+                      await api.submitFeedback(activeSessionId, data);
+                      setChatMessages((previous) => previous.map((message) => (
+                        item.sourceMessageIds.includes(message.id)
+                          ? { ...message, submitted: true }
+                          : message
+                      )));
+                    }}
+                  />
+                  {turnOutcome && (
+                    <div className="ml-8 mt-3 max-w-[85%] space-y-2">
+                      <ChangedFilesCard
+                        changedFiles={turnOutcome?.changed_files}
+                        onOpenFile={workspaceSlug ? (path) => window.dispatchEvent(new CustomEvent("spark:right-panel-open", {
+                          detail: { tab: "changes", path },
+                        })) : undefined}
+                      />
+                      <PlanCard
+                        plan={turnOutcome === latestOutcome ? conversationPlan ?? turnOutcome.plan : turnOutcome.plan}
+                        onOpenPlan={() => window.dispatchEvent(new CustomEvent("spark:brief-open"))}
+                      />
+                    </div>
+                  )}
+                  </div>
                 </div>
               );
             })}
@@ -2085,12 +1898,12 @@ export function ChatPanel({
           )}
         </div>
         <TimelineMinimap
-          items={timelineItems}
-          visibleStartIndex={visibleStartIndex}
-          visibleEndIndex={visibleEndIndex}
-          onJumpToIndex={jumpToIndex}
+          landmarks={turnLandmarks}
+          visibleStartTurnIndex={visibleStartIndex}
+          visibleEndTurnIndex={visibleEndIndex}
+          onJumpToTurn={jumpToIndex}
         />
-        {detachedFromBottom && collapsedMessages.length > 0 && (
+        {detachedFromBottom && timelineTurns.length > 0 && (
           <Button
             type="button"
             variant="outline"
@@ -2144,6 +1957,19 @@ export function ChatPanel({
       <SessionInfoBar stats={sessionStats} />
 
       {activeSessionId && <BriefPanel sessionId={activeSessionId} />}
+
+      <PendingActionTray
+        actions={pendingActions}
+        busyActionIds={busyActionIds}
+        onApprovalChoice={(action, choice) => runPendingAction(
+          action,
+          () => api.submitConversationApproval(activeSessionId ?? action.session_id, choice, false, action.action_id),
+        )}
+        onSubmitInput={(action, response) => runPendingAction(
+          action,
+          () => api.submitConversationInput(activeSessionId ?? action.session_id, action.action_id, response),
+        )}
+      />
 
       <ContextTray
         items={contextItems}

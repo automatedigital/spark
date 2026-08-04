@@ -73,7 +73,7 @@ export interface TimelineUserMessage {
   readonly sessionIdx?: number;
   readonly redirect: boolean;
   readonly timestamp?: number;
-  readonly source: ThreadTimelineMessage;
+  readonly source: Extract<ThreadTimelineMessage, { role: "user" }>;
 }
 
 export interface TimelineAssistantMessage {
@@ -83,7 +83,7 @@ export interface TimelineAssistantMessage {
   readonly streaming: boolean;
   readonly timestamp?: number;
   readonly usage?: TimelineUsage;
-  readonly source: ThreadTimelineMessage;
+  readonly source: Extract<ThreadTimelineMessage, { role: "assistant" }>;
 }
 
 export interface TimelineReasoningItem {
@@ -149,12 +149,21 @@ export interface TimelineIntermediateAssistantItem {
   readonly sourceMessageIds: readonly string[];
 }
 
+export interface TimelineFeedbackItem {
+  readonly kind: "feedback";
+  readonly id: string;
+  readonly submitted: boolean;
+  readonly timestamp?: number;
+  readonly sourceMessageIds: readonly string[];
+}
+
 export type TimelineWorkItem =
   | TimelineReasoningItem
   | TimelineToolItem
   | TimelineApprovalItem
   | TimelineSubagentItem
   | TimelineRequestedInputItem
+  | TimelineFeedbackItem
   | TimelineNoteItem
   | TimelineIntermediateAssistantItem;
 
@@ -340,9 +349,10 @@ function messageItems(message: ThreadTimelineMessage, index: number): TimelineWo
     case "note": {
       return [{ kind: "note", id, text: message.text, timestamp, sourceMessageIds }];
     }
+    case "feedback_form":
+      return [{ kind: "feedback", id, submitted: Boolean(message.submitted), timestamp, sourceMessageIds }];
     case "assistant":
     case "user":
-    case "feedback_form":
       return [];
   }
 }
@@ -460,6 +470,7 @@ function statusOf(
 ): TimelineTurnStatus {
   const statusText = messages.map((message) => `${metadataOf(message).status ?? ""} ${metadataOf(message).turnStatus ?? ""}`).join(" ").toLowerCase();
   if (
+    workItems.some((item) => item.kind === "feedback" && !item.submitted) ||
     requestedInputs.some((item) => !item.requestedInput.resolved) ||
     /\b(awaiting[ _-]?input|requested[ _-]?input)\b/.test(statusText)
   ) return "awaiting-input";
@@ -517,7 +528,7 @@ function buildDrafts(messages: readonly ThreadTimelineMessage[]): TurnDraft[] {
     let draft = explicit ? byExplicitId.get(explicit) : undefined;
     if (!draft && message.role === "user") {
       userCount += 1;
-      draft = { id: explicit ? `turn:${explicit}` : `turn:user:${message.sessionIdx ?? (message.id || userCount)}`, messages: [], interrupted: false };
+      draft = { id: explicit ? `turn:${explicit}` : `turn:user:${message.id || message.sessionIdx || userCount}`, messages: [], interrupted: false };
       drafts.push(draft);
       if (explicit) byExplicitId.set(explicit, draft);
     }

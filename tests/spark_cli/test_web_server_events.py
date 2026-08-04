@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import queue
+import threading
 import time
 from unittest.mock import MagicMock
 
@@ -100,6 +102,7 @@ def web_client(monkeypatch, tmp_path):
     web_server._web_warm_inflight.clear()
     web_server._web_warm_recent.clear()
     web_server._web_queues.clear()
+    web_server._web_input_queues.clear()
     with web_server._pending_token_lock:
         web_server._pending_token_events.clear()
         web_server._pending_token_gap_sessions.clear()
@@ -2839,6 +2842,400 @@ class TestConversationControl:
         assert resp.status_code == 200
         assert entry.result == "once"
         web_server._event_subscribers.clear()
+
+    def test_approval_action_id_cannot_cross_session(self, web_client):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+        from tools import approval as approval_mod
+
+        db = SessionDB()
+        try:
+            db.ensure_session("approval-owner", source="web", model="test-model")
+            db.ensure_session("approval-other", source="web", model="test-model")
+        finally:
+            db.close()
+        web_server._mark_web_turn_active("approval-owner")
+        action = web_server._create_web_pending_action(
+            "approval-owner",
+            kind="approval",
+            payload={"command": "echo safe", "description": "test"},
+        )
+        entry = approval_mod._ApprovalEntry(
+            {"action_id": action["action_id"], "command": "echo safe"}
+        )
+        with approval_mod._lock:
+            approval_mod._gateway_queues["approval-owner"] = [entry]
+        try:
+            response = web_client.post(
+                "/api/conversations/approval-other/approval",
+                json={"choice": "once", "action_id": action["action_id"]},
+            )
+            assert response.status_code == 404
+            assert not entry.event.is_set()
+            db = SessionDB()
+            try:
+                assert db.get_web_pending_action(action["action_id"])["status"] == "pending"
+            finally:
+                db.close()
+        finally:
+            with approval_mod._lock:
+                approval_mod._gateway_queues.pop("approval-owner", None)
+            web_server._clear_web_turn("approval-owner")
+
+    def test_approval_action_uses_current_session_after_migration(self, web_client):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+        from tools import approval as approval_mod
+
+        db = SessionDB()
+        try:
+            db.ensure_session("approval-parent", source="web", model="test-model")
+            db.ensure_session("approval-leaf", source="web", model="test-model")
+        finally:
+            db.close()
+        turn = web_server._mark_web_turn_active("approval-leaf")
+        with web_server._with_web_turn_lock():
+            web_server._web_turn_aliases["approval-parent"] = "approval-leaf"
+            turn.session_aliases.add("approval-parent")
+        action = web_server._create_web_pending_action(
+            "approval-parent",
+            kind="approval",
+            payload={"command": "echo safe", "description": "test"},
+        )
+        entry = approval_mod._ApprovalEntry(
+            {"action_id": action["action_id"], "command": "echo safe"}
+        )
+        with approval_mod._lock:
+            approval_mod._gateway_queues["approval-parent"] = [entry]
+        try:
+            assert action["session_id"] == "approval-leaf"
+            response = web_client.post(
+                "/api/conversations/approval-leaf/approval",
+                json={"choice": "once", "action_id": action["action_id"]},
+            )
+            assert response.status_code == 200
+            assert entry.result == "once"
+            db = SessionDB()
+            try:
+                assert db.get_web_pending_action(action["action_id"])["status"] == "resolved"
+            finally:
+                db.close()
+        finally:
+            with approval_mod._lock:
+                approval_mod._gateway_queues.pop("approval-parent", None)
+            web_server._clear_web_turn("approval-leaf")
+
+    def test_requested_input_is_durable_and_idempotent(self, web_client):
+        from spark_cli import web_server
+        from core.spark_state import SessionDB
+
+        sid = "requested-input-contract"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+        finally:
+            db.close()
+        web_server._mark_web_turn_active(sid)
+        try:
+            action = web_server._create_web_pending_action(
+                sid,
+                kind="requested_input",
+                payload={"question": "Pick one", "choices": ["A", "B"]},
+            )
+            response_queue = queue.Queue(maxsize=1)
+            web_server._web_input_queues[action["action_id"]] = response_queue
+
+            pending = web_client.get(f"/api/conversations/{sid}/pending-actions")
+            assert pending.status_code == 200
+            assert pending.json()["actions"][0]["status"] == "pending"
+
+            submitted = web_client.post(
+                f"/api/conversations/{sid}/input",
+                json={"action_id": action["action_id"], "response": "A"},
+            )
+            assert submitted.status_code == 200
+            assert submitted.json()["idempotent"] is False
+            assert response_queue.get_nowait() == "A"
+
+            repeated = web_client.post(
+                f"/api/conversations/{sid}/input",
+                json={"action_id": action["action_id"], "response": "B"},
+            )
+            assert repeated.status_code == 200
+            assert repeated.json()["idempotent"] is True
+            assert repeated.json()["action"]["response"] == {"value": "A"}
+        finally:
+            web_server._clear_web_turn(sid)
+
+    def test_clarify_callback_blocks_until_requested_input_submission(self, web_client):
+        from spark_cli import web_server
+        from core.spark_state import SessionDB
+
+        sid = "clarify-queue-contract"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+        finally:
+            db.close()
+        web_server._mark_web_turn_active(sid)
+        result: list[str] = []
+
+        worker = threading.Thread(
+            target=lambda: result.append(
+                web_server._web_clarify_callback(
+                    "Pick one", ["A", "B"], session_id=sid
+                )
+            )
+        )
+        worker.start()
+        try:
+            deadline = time.time() + 2
+            action = None
+            while time.time() < deadline and action is None:
+                actions = web_client.get(
+                    f"/api/conversations/{sid}/pending-actions"
+                ).json()["actions"]
+                action = next((item for item in actions if item["status"] == "pending"), None)
+                if action is None:
+                    time.sleep(0.01)
+            assert action is not None
+            response = web_client.post(
+                f"/api/conversations/{sid}/input",
+                json={"action_id": action["action_id"], "response": "B"},
+            )
+            assert response.status_code == 200
+            worker.join(timeout=2)
+            assert not worker.is_alive()
+            assert result == ["B"]
+        finally:
+            web_server._clear_web_turn(sid)
+
+    def test_clarify_callback_is_cancelled_when_turn_is_cleared(self, web_client):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+
+        sid = "clarify-cancel-contract"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+        finally:
+            db.close()
+        web_server._mark_web_turn_active(sid)
+        result: list[str] = []
+        worker = threading.Thread(
+            target=lambda: result.append(
+                web_server._web_clarify_callback("Cancel me", None, session_id=sid)
+            )
+        )
+        worker.start()
+        action = None
+        try:
+            deadline = time.time() + 2
+            while time.time() < deadline and action is None:
+                actions = web_client.get(f"/api/conversations/{sid}/pending-actions").json()["actions"]
+                action = next((item for item in actions if item["status"] == "pending"), None)
+                if action is None:
+                    time.sleep(0.01)
+            assert action is not None
+            web_server._clear_web_turn(sid)
+            worker.join(timeout=2)
+            assert not worker.is_alive()
+            assert result == [""]
+            response = web_client.post(
+                f"/api/conversations/{sid}/input",
+                json={"action_id": action["action_id"], "response": "late"},
+            )
+            assert response.status_code == 409
+            db = SessionDB()
+            try:
+                stored = db.get_web_pending_action(action["action_id"])
+                assert stored["status"] == "cancelled"
+            finally:
+                db.close()
+        finally:
+            if worker.is_alive():
+                web_server._clear_web_turn(sid)
+                worker.join(timeout=2)
+
+    def test_latest_projection_prefers_newest_migrated_candidate(self, web_client, monkeypatch):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+
+        db = SessionDB()
+        try:
+            db.ensure_session("projection-parent", source="web", model="test-model")
+            db.ensure_session("projection-leaf", source="web", model="test-model")
+            db.upsert_web_turn_projection(
+                "turn-parent",
+                "projection-parent",
+                {"turn_id": "turn-parent", "status": "running"},
+            )
+            time.sleep(0.01)
+            db.upsert_web_turn_projection(
+                "turn-leaf",
+                "projection-leaf",
+                {"turn_id": "turn-leaf", "status": "completed"},
+            )
+        finally:
+            db.close()
+        monkeypatch.setattr(
+            web_server,
+            "_web_turn_candidate_keys",
+            lambda _session_id, resolve=True: ["projection-parent", "projection-leaf"],
+        )
+        assert web_server._latest_web_turn_projection("projection-parent")["status"] == "completed"
+
+    def test_turn_outcomes_returns_all_ordered_migration_aware_projections(self, web_client):
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session("outcomes-parent", source="web", model="test-model")
+            db.create_session(
+                "outcomes-leaf",
+                source="web",
+                model="test-model",
+                parent_session_id="outcomes-parent",
+            )
+            db.end_session("outcomes-parent", "compression")
+            db.upsert_web_turn_projection(
+                "outcome-1",
+                "outcomes-parent",
+                {
+                    "turn_id": "outcome-1",
+                    "session_id": "outcomes-parent",
+                    "started_at": 1.0,
+                    "assistant_message_id": 101,
+                    "status": "completed",
+                },
+            )
+            db.upsert_web_turn_projection(
+                "outcome-2",
+                "outcomes-leaf",
+                {
+                    "turn_id": "outcome-2",
+                    "session_id": "outcomes-leaf",
+                    "started_at": 2.0,
+                    "assistant_message_id": 202,
+                    "status": "completed",
+                },
+            )
+        finally:
+            db.close()
+
+        response = web_client.get("/api/conversations/outcomes-parent/turn-outcomes")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["session_id"] == "outcomes-parent"
+        assert body["resolved_session_id"] == "outcomes-parent"
+        assert body["latest_session_id"] == "outcomes-leaf"
+        assert body["migrated_from"] == "outcomes-parent"
+        assert body["count"] == 2
+        assert [item["turn_id"] for item in body["outcomes"]] == [
+            "outcome-1",
+            "outcome-2",
+        ]
+        assert [item["assistant_message_id"] for item in body["outcomes"]] == [101, 202]
+
+        latest = web_client.get("/api/conversations/outcomes-parent/turn-outcome")
+        assert latest.status_code == 200
+        assert latest.json()["turn_id"] == "outcome-2"
+
+    def test_projection_keeps_surviving_assistant_message_id(self, web_client):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+
+        sid = "assistant-survivor-contract"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+            db.append_message(sid, "user", "previous")
+            previous_assistant_id = db.append_message(sid, "assistant", "previous answer")
+            user_id = db.append_message(sid, "user", "current")
+            checkpoint_id = db.append_message(
+                sid, "assistant", "partial", finish_reason="interrupted"
+            )
+            final_id = db.append_message(sid, "assistant", "final")
+        finally:
+            db.close()
+        surviving_id = web_server._persist_web_turn_if_missing(
+            sid,
+            "current",
+            {"final_response": "final"},
+            before_message_count=2,
+            eager_user_id=user_id,
+            checkpoint_assistant_id=checkpoint_id,
+        )
+        assert surviving_id == final_id
+        assert surviving_id != previous_assistant_id
+        db = SessionDB()
+        try:
+            assert checkpoint_id not in {message["id"] for message in db.get_messages(sid)}
+        finally:
+            db.close()
+
+        turn = web_server.WebActiveTurn(
+            started_at=time.time(),
+            last_event_at=time.time(),
+            status="completed",
+            interrupt_requested=False,
+            active_agent_session_id=sid,
+            phase="streaming",
+        )
+        turn.assistant_message_id = surviving_id
+        assert web_server._web_turn_projection_payload(sid, turn)["assistant_message_id"] == final_id
+
+    def test_failed_turn_does_not_attach_previous_assistant_message(self, web_client):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+
+        sid = "assistant-attribution-contract"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+            db.append_message(sid, "user", "previous")
+            db.append_message(sid, "assistant", "previous answer")
+        finally:
+            db.close()
+        turn = web_server.WebActiveTurn(
+            started_at=time.time(),
+            last_event_at=time.time(),
+            status="running",
+            interrupt_requested=False,
+            active_agent_session_id=sid,
+            phase="api",
+        )
+        outcome = web_server._finalize_web_turn_projection(
+            sid,
+            turn,
+            {"backend_error_class": "ProviderError"},
+        )
+        assert outcome["assistant_message_id"] is None
+
+    def test_plan_projection_is_available_through_refresh_api(self, web_client):
+        from spark_cli import web_server
+        from core.spark_state import SessionDB
+
+        sid = "plan-projection-contract"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+        finally:
+            db.close()
+        web_server._mark_web_turn_active(sid)
+        try:
+            web_server._record_web_plan(
+                sid,
+                json.dumps(
+                    {"todos": [{"id": "step-1", "content": "Ship", "status": "in_progress"}]}
+                ),
+            )
+            response = web_client.get(f"/api/conversations/{sid}/plan")
+            assert response.status_code == 200
+            assert response.json()["plan"]["revision"] == 1
+            assert response.json()["plan"]["steps"][0]["id"] == "step-1"
+        finally:
+            web_server._clear_web_turn(sid)
 
     def test_fork_requires_session(self, web_client):
         resp = web_client.post("/api/conversations/missing/fork", json={})

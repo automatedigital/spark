@@ -180,6 +180,30 @@ CREATE TABLE IF NOT EXISTS workspace_manifests (
     updated_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS web_turn_projections (
+    turn_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    projection_json TEXT NOT NULL DEFAULT '{}',
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_web_turn_projections_session
+    ON web_turn_projections(session_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS web_pending_actions (
+    action_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    turn_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending',
+    response_json TEXT,
+    created_at REAL NOT NULL,
+    resolved_at REAL,
+    UNIQUE(session_id, action_id)
+);
+CREATE INDEX IF NOT EXISTS idx_web_pending_actions_session
+    ON web_pending_actions(session_id, status, created_at);
+
 CREATE TABLE IF NOT EXISTS file_summaries (
     path TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
@@ -687,6 +711,34 @@ class SessionDB:
                     """
                 )
                 cursor.execute("UPDATE schema_version SET version = 11")
+            if current_version < 12:
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS web_turn_projections (
+                        turn_id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        projection_json TEXT NOT NULL DEFAULT '{}',
+                        updated_at REAL NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_web_turn_projections_session
+                        ON web_turn_projections(session_id, updated_at DESC);
+                    CREATE TABLE IF NOT EXISTS web_pending_actions (
+                        action_id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        turn_id TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        payload_json TEXT NOT NULL DEFAULT '{}',
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        response_json TEXT,
+                        created_at REAL NOT NULL,
+                        resolved_at REAL,
+                        UNIQUE(session_id, action_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_web_pending_actions_session
+                        ON web_pending_actions(session_id, status, created_at);
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 12")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -1732,6 +1784,212 @@ class SessionDB:
             )
             for row in rows
         ]
+
+    # =========================================================================
+    # Web turn projections
+
+    def upsert_web_turn_projection(
+        self,
+        turn_id: str,
+        session_id: str,
+        projection: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Persist the authoritative web turn projection for refresh recovery."""
+        updated_at = time.time()
+
+        def _do(conn):
+            conn.execute(
+                """INSERT INTO web_turn_projections
+                   (turn_id, session_id, projection_json, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(turn_id) DO UPDATE SET
+                       session_id = excluded.session_id,
+                       projection_json = excluded.projection_json,
+                       updated_at = excluded.updated_at""",
+                (turn_id, session_id, _event_json(projection), updated_at),
+            )
+            return {
+                "turn_id": turn_id,
+                "session_id": session_id,
+                "projection": projection,
+                "updated_at": updated_at,
+            }
+
+        return self._execute_write(_do)
+
+    def get_web_turn_projection(self, turn_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT turn_id, session_id, projection_json, updated_at
+                   FROM web_turn_projections WHERE turn_id = ?""",
+                (turn_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "turn_id": row["turn_id"],
+            "session_id": row["session_id"],
+            "projection": self._decode_json_field(row["projection_json"], {}),
+            "updated_at": float(row["updated_at"]),
+        }
+
+    def get_latest_web_turn_projection(self, session_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT turn_id, session_id, projection_json, updated_at
+                   FROM web_turn_projections
+                   WHERE session_id = ?
+                   ORDER BY updated_at DESC
+                   LIMIT 1""",
+                (session_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "turn_id": row["turn_id"],
+            "session_id": row["session_id"],
+            "projection": self._decode_json_field(row["projection_json"], {}),
+            "updated_at": float(row["updated_at"]),
+        }
+
+    def list_web_turn_projections(self, session_id: str) -> list[dict[str, Any]]:
+        """Return every durable web turn projection for one session, oldest first."""
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT turn_id, session_id, projection_json, updated_at
+                   FROM web_turn_projections
+                   WHERE session_id = ?
+                   ORDER BY updated_at ASC, turn_id ASC""",
+                (session_id,),
+            ).fetchall()
+        return [
+            {
+                "turn_id": row["turn_id"],
+                "session_id": row["session_id"],
+                "projection": self._decode_json_field(row["projection_json"], {}),
+                "updated_at": float(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
+    @staticmethod
+    def _web_pending_action_dict(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "action_id": row["action_id"],
+            "session_id": row["session_id"],
+            "turn_id": row["turn_id"],
+            "kind": row["kind"],
+            "payload": SessionDB._decode_json_field(row["payload_json"], {}),
+            "status": row["status"],
+            "response": SessionDB._decode_json_field(row["response_json"], None),
+            "created_at": float(row["created_at"]),
+            "resolved_at": (
+                float(row["resolved_at"]) if row["resolved_at"] is not None else None
+            ),
+        }
+
+    def create_web_pending_action(
+        self,
+        *,
+        action_id: str,
+        session_id: str,
+        turn_id: str,
+        kind: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Create a durable pending action, idempotently by action id."""
+        created_at = time.time()
+
+        def _do(conn):
+            conn.execute(
+                """INSERT OR IGNORE INTO web_pending_actions
+                   (action_id, session_id, turn_id, kind, payload_json, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, 'pending', ?)""",
+                (action_id, session_id, turn_id, kind, _event_json(payload), created_at),
+            )
+            row = conn.execute(
+                """SELECT * FROM web_pending_actions WHERE action_id = ?""",
+                (action_id,),
+            ).fetchone()
+            return self._web_pending_action_dict(row)
+
+        return self._execute_write(_do)
+
+    def get_web_pending_action(self, action_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM web_pending_actions WHERE action_id = ?",
+                (action_id,),
+            ).fetchone()
+        return self._web_pending_action_dict(row) if row else None
+
+    def list_web_pending_actions(
+        self,
+        session_id: str,
+        *,
+        include_resolved: bool = False,
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM web_pending_actions WHERE session_id = ?"
+        params: list[Any] = [session_id]
+        if not include_resolved:
+            query += " AND status = 'pending'"
+        query += " ORDER BY created_at, action_id"
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
+        return [self._web_pending_action_dict(row) for row in rows]
+
+    def resolve_web_pending_action(
+        self,
+        *,
+        action_id: str,
+        session_id: str,
+        response: Any,
+    ) -> tuple[dict[str, Any] | None, bool]:
+        """Resolve once; repeated submissions return the committed result."""
+        resolved_at = time.time()
+
+        def _do(conn):
+            conn.execute(
+                """UPDATE web_pending_actions
+                   SET status = 'resolved', response_json = ?, resolved_at = ?
+                   WHERE action_id = ? AND session_id = ? AND status = 'pending'""",
+                (_event_json(response), resolved_at, action_id, session_id),
+            )
+            changed = conn.execute("SELECT changes()").fetchone()[0] > 0
+            row = conn.execute(
+                "SELECT * FROM web_pending_actions WHERE action_id = ? AND session_id = ?",
+                (action_id, session_id),
+            ).fetchone()
+            return (self._web_pending_action_dict(row) if row else None, changed)
+
+        return self._execute_write(_do)
+
+    def cancel_web_pending_action(
+        self,
+        *,
+        action_id: str,
+        session_id: str,
+        reason: str = "turn_ended",
+    ) -> tuple[dict[str, Any] | None, bool]:
+        """Cancel a pending web action without allowing a later answer to wake it."""
+        resolved_at = time.time()
+        response = {"cancelled": True, "reason": reason}
+
+        def _do(conn):
+            conn.execute(
+                """UPDATE web_pending_actions
+                   SET status = 'cancelled', response_json = ?, resolved_at = ?
+                   WHERE action_id = ? AND session_id = ? AND status = 'pending'""",
+                (_event_json(response), resolved_at, action_id, session_id),
+            )
+            changed = conn.execute("SELECT changes()").fetchone()[0] > 0
+            row = conn.execute(
+                "SELECT * FROM web_pending_actions WHERE action_id = ? AND session_id = ?",
+                (action_id, session_id),
+            ).fetchone()
+            return (self._web_pending_action_dict(row) if row else None, changed)
+
+        return self._execute_write(_do)
 
     def backfill_session_events(self, session_id: str) -> int:
         """Idempotently project legacy message rows into the ordered event log."""

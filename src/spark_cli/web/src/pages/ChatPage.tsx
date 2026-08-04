@@ -967,6 +967,20 @@ export default function ChatPage() {
     return () => window.removeEventListener("spark:preview-open", openPreview);
   }, [activeWorkspaceSlug, rightPanelWorkspaceSlug, selectedId, selectRightTab]);
 
+  useEffect(() => {
+    if (!rightPanelWorkspaceSlug) return;
+    const openPanel = (event: Event) => {
+      const detail = (event as CustomEvent<{ tab?: RightTab }>).detail;
+      const tab = detail?.tab;
+      if (!tab || !availableRightTabs(Boolean(rightPanelWorkspaceSlug), rightPanelIsProject, Boolean(selectedId), subagentsSidebarEnabled).some((item) => item.id === tab)) return;
+      setRightPanelOpen(true);
+      saveRightPanelOpen(activeWorkspaceSlug, selectedId, true);
+      selectRightTab(tab);
+    };
+    window.addEventListener("spark:right-panel-open", openPanel);
+    return () => window.removeEventListener("spark:right-panel-open", openPanel);
+  }, [activeWorkspaceSlug, rightPanelIsProject, rightPanelWorkspaceSlug, selectedId, selectRightTab, subagentsSidebarEnabled]);
+
   // ── Real-time updates ──
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic !== "workspace.preview.ready") return;
@@ -1107,6 +1121,8 @@ export default function ChatPage() {
                 sessionId={selectedId}
                 sessionTitle={selectedSession ? threadTitle(selectedSession) : null}
                 workspaceSlug={activeProjectSlug ?? undefined}
+                subagents={subagents}
+                onSubagentSelect={handleSelectSubagent}
                 initialMessage={activeInitialMessage}
                 onBack={() => selectSession(null)}
                 onSessionCreated={(id, initialMessage, meta) => {

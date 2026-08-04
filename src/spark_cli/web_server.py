@@ -244,6 +244,10 @@ class WebActiveTurn:
     interrupt_requested: bool
     active_agent_session_id: Optional[str]
     phase: str
+    turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    workspace_slug: str | None = None
+    workspace_before: dict[str, Any] | None = None
+    plan: dict[str, Any] | None = None
     stream_text: str | _ChunkedStreamText = field(default_factory=_ChunkedStreamText)
     stream_revision: int = 0
     # Incremental persistence: the user message is written to SQLite at turn
@@ -259,6 +263,7 @@ class WebActiveTurn:
     session_aliases: set[str] = field(default_factory=set)
     timings: dict[str, float] = field(default_factory=dict)
     compaction: dict[str, Any] = field(default_factory=dict)
+    pending_input_action_ids: set[str] = field(default_factory=set)
     # Provider-free fake streams run in a worker thread without an AIAgent.
     # This event gives the normal interrupt route the same prompt cancellation
     # semantics without coupling production agents to the dev harness.
@@ -286,6 +291,8 @@ class _WebTurnCallbackContext:
 _web_active_turns: dict[str, WebActiveTurn] = {}
 _web_turn_aliases: dict[str, str] = {}
 _web_turn_lock = threading.RLock()
+_web_input_queues: dict[str, thread_queue.Queue] = {}
+_WEB_INPUT_CANCELLED = object()
 
 
 class _StreamingPipelineMetrics:
@@ -462,6 +469,9 @@ _PRIORITY_EVENT_TOPICS = {
     "chat.session_migrated",
     "chat.approval_requested",
     "chat.approval_resolved",
+    "chat.input_requested",
+    "chat.input_resolved",
+    "chat.plan_updated",
     "chat.compaction",
     "chat.error",
     "chat.subagent.created",
@@ -775,6 +785,418 @@ def _remember_web_turn_aliases(key: str, turn: WebActiveTurn, aliases: set[str])
             turn.session_aliases.add(alias)
 
 
+def _web_workspace_slug(session_id: str) -> str | None:
+    """Resolve the project slug without making the web turn depend on UI state."""
+    try:
+        from core.spark_state import SessionDB
+
+        db = SessionDB()
+        try:
+            resolved = db.resolve_session_id(session_id) or session_id
+            row = db.get_session(resolved)
+        finally:
+            db.close()
+        source = str((row or {}).get("source") or "")
+        return source.split(":", 1)[1] if source.startswith("workspace:") else None
+    except Exception:
+        _log.debug("web workspace source lookup failed session=%s", session_id, exc_info=True)
+        return None
+
+
+def _web_workspace_git_status(slug: str | None) -> dict[str, Any] | None:
+    if not slug:
+        return None
+    try:
+        from spark_cli.workspace_routes import git_status
+
+        return _json_safe(git_status(slug))
+    except Exception:
+        _log.debug("web workspace status lookup failed slug=%s", slug, exc_info=True)
+        return None
+
+
+def _web_turn_projection_payload(
+    session_id: str,
+    turn: WebActiveTurn,
+    *,
+    status: str = "running",
+    ended_at: float | None = None,
+    workspace_after: dict[str, Any] | None = None,
+    changed_files: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from spark_cli.web_projections import compute_changed_files
+
+    with turn.lock:
+        before = turn.workspace_before
+        after = workspace_after
+        outcome = changed_files
+        if outcome is None and after is not None:
+            outcome = compute_changed_files(before, after)
+        return {
+            "turn_id": turn.turn_id,
+            "session_id": session_id,
+            "assistant_message_id": turn.assistant_message_id,
+            "status": status,
+            "started_at": turn.started_at,
+            "ended_at": ended_at,
+            "workspace_slug": turn.workspace_slug,
+            "changed_files": outcome,
+            "plan": dict(turn.plan) if turn.plan else None,
+        }
+
+
+def _persist_web_turn_projection(
+    session_id: str,
+    turn: WebActiveTurn,
+    *,
+    status: str = "running",
+    ended_at: float | None = None,
+    workspace_after: dict[str, Any] | None = None,
+    changed_files: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from core.spark_state import SessionDB
+
+    payload = _web_turn_projection_payload(
+        session_id,
+        turn,
+        status=status,
+        ended_at=ended_at,
+        workspace_after=workspace_after,
+        changed_files=changed_files,
+    )
+    db = SessionDB()
+    try:
+        db.upsert_web_turn_projection(turn.turn_id, session_id, payload)
+    finally:
+        db.close()
+    return payload
+
+
+def _latest_web_turn_projection(session_id: str) -> dict[str, Any] | None:
+    from core.spark_state import SessionDB
+
+    candidates = _web_turn_candidate_keys(session_id, resolve=True)
+    db = SessionDB()
+    try:
+        rows = [
+            row
+            for candidate in candidates
+            if (row := db.get_latest_web_turn_projection(candidate)) is not None
+        ]
+        if rows:
+            return max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"]
+    finally:
+        db.close()
+    return None
+
+
+def _web_turn_projection_session_keys(session_id: str) -> list[str]:
+    """Return active aliases plus every session in the compression family."""
+    from core.spark_state import SessionDB
+
+    candidates = _web_turn_candidate_keys(session_id, resolve=True)
+    db = SessionDB()
+    try:
+        resolved = db.resolve_session_id(session_id) or session_id
+        candidates.extend(db.resolve_compression_chain(resolved))
+    finally:
+        db.close()
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            ordered.append(candidate)
+    return ordered
+
+
+def _all_web_turn_projections(session_id: str) -> list[dict[str, Any]]:
+    """Return one newest row per durable turn across a migration family."""
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        newest_by_turn: dict[str, dict[str, Any]] = {}
+        for candidate in _web_turn_projection_session_keys(session_id):
+            for row in db.list_web_turn_projections(candidate):
+                previous = newest_by_turn.get(row["turn_id"])
+                if previous is None or (
+                    float(row.get("updated_at") or 0.0), row["session_id"]
+                ) > (
+                    float(previous.get("updated_at") or 0.0), previous["session_id"]
+                ):
+                    newest_by_turn[row["turn_id"]] = row
+        rows = list(newest_by_turn.values())
+        rows.sort(
+            key=lambda row: (
+                float(
+                    row["projection"].get("started_at")
+                    or row.get("updated_at")
+                    or 0.0
+                ),
+                float(row.get("updated_at") or 0.0),
+                row["turn_id"],
+            )
+        )
+        return [row["projection"] for row in rows]
+    finally:
+        db.close()
+
+
+def _finalize_web_turn_projection(
+    session_id: str,
+    turn: WebActiveTurn | None,
+    result: Any,
+    *,
+    interrupted: bool = False,
+    agent: Any = None,
+) -> dict[str, Any] | None:
+    if turn is None:
+        return _latest_web_turn_projection(session_id)
+    try:
+        todo_store = getattr(agent, "_todo_store", None)
+        if todo_store is not None:
+            _record_web_plan(
+                session_id,
+                json.dumps({"todos": todo_store.read()}, ensure_ascii=False),
+            )
+    except Exception:
+        _log.debug("web plan checkpoint projection failed session=%s", session_id, exc_info=True)
+    status = "interrupted" if interrupted else "failed" if isinstance(result, dict) and result.get("backend_error_class") else "completed"
+    after = _web_workspace_git_status(turn.workspace_slug)
+    return _persist_web_turn_projection(
+        session_id,
+        turn,
+        status=status,
+        ended_at=time.time(),
+        workspace_after=after,
+    )
+
+
+def _record_web_plan(session_id: str, result: Any) -> None:
+    """Project the TodoStore response emitted by the authoritative tool call."""
+    if not isinstance(result, str):
+        return
+    try:
+        data = json.loads(result)
+    except (TypeError, ValueError):
+        return
+    todos = data.get("todos") if isinstance(data, dict) else None
+    if not isinstance(todos, list):
+        return
+    _, turn = _get_web_turn(session_id)
+    if turn is None:
+        return
+    from spark_cli.web_projections import normalize_plan
+
+    with turn.lock:
+        revision = int((turn.plan or {}).get("revision", 0)) + 1
+        candidate = normalize_plan(todos, revision=revision, updated_at=time.time())
+        current = turn.plan or {}
+        if (
+            current.get("steps") == candidate.get("steps")
+            and current.get("status") == candidate.get("status")
+            and current.get("markdown") == candidate.get("markdown")
+        ):
+            return
+        turn.plan = candidate
+        plan = dict(turn.plan)
+    _persist_web_turn_projection(session_id, turn)
+    _publish_event("chat.plan_updated", {"plan": plan}, session_id)
+
+
+def _create_web_pending_action(
+    session_id: str,
+    *,
+    kind: str,
+    payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    active_session_id, turn = _get_web_turn(session_id)
+    if turn is None:
+        return None
+    session_id = active_session_id or session_id
+    action_id = str(payload.get("action_id") or uuid.uuid4().hex)
+    payload = {**payload, "action_id": action_id, "turn_id": turn.turn_id}
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        action = db.create_web_pending_action(
+            action_id=action_id,
+            session_id=session_id,
+            turn_id=turn.turn_id,
+            kind=kind,
+            payload=payload,
+        )
+    finally:
+        db.close()
+    _persist_web_turn_projection(session_id, turn)
+    return action
+
+
+def _get_web_pending_action(action_id: str) -> dict[str, Any] | None:
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        return db.get_web_pending_action(action_id)
+    finally:
+        db.close()
+
+
+def _list_web_pending_actions(
+    session_id: str,
+    *,
+    include_resolved: bool = False,
+) -> list[dict[str, Any]]:
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        candidates = _web_turn_candidate_keys(session_id, resolve=True) or [session_id]
+        actions: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            for action in db.list_web_pending_actions(
+                candidate, include_resolved=include_resolved
+            ):
+                if action["action_id"] not in seen:
+                    actions.append(action)
+                    seen.add(action["action_id"])
+        return actions
+    finally:
+        db.close()
+
+
+def _resolve_web_pending_action(
+    session_id: str,
+    action_id: str,
+    response: Any,
+) -> tuple[dict[str, Any] | None, bool]:
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        action, changed = db.resolve_web_pending_action(
+            action_id=action_id,
+            session_id=session_id,
+            response=response,
+        )
+    finally:
+        db.close()
+    return action, changed
+
+
+def _cancel_web_pending_action(
+    session_id: str,
+    action_id: str,
+    *,
+    reason: str = "turn_ended",
+) -> tuple[dict[str, Any] | None, bool]:
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        action, changed = db.cancel_web_pending_action(
+            action_id=action_id,
+            session_id=session_id,
+            reason=reason,
+        )
+    finally:
+        db.close()
+    return action, changed
+
+
+def _web_gateway_session_keys(session_id: str) -> list[str]:
+    """Return the active and pre-migration keys for one web turn."""
+    keys = [session_id]
+    _, turn = _get_web_turn(session_id)
+    if turn is not None:
+        keys.extend(turn.session_aliases)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for key in keys:
+        if key and key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    return ordered
+
+
+def _web_current_turn_session_id(session_id: str) -> str:
+    active_session_id, _ = _get_web_turn(session_id)
+    return active_session_id or session_id
+
+
+def _web_clarify_callback(question: str, choices: list[str] | None, *, session_id: str) -> str:
+    """Bridge the sync clarify tool to the durable web input action queue."""
+    active_session_id, turn = _get_web_turn(session_id)
+    if turn is None:
+        return ""
+    session_id = active_session_id or session_id
+    action_id = uuid.uuid4().hex
+    response_queue: thread_queue.Queue = thread_queue.Queue(maxsize=1)
+    with _with_web_turn_lock():
+        _web_input_queues[action_id] = response_queue
+    action = _create_web_pending_action(
+        session_id,
+        kind="requested_input",
+        payload={
+            "action_id": action_id,
+            "question": question,
+            "choices": choices or None,
+        },
+    )
+    if action is None:
+        with _with_web_turn_lock():
+            _web_input_queues.pop(action_id, None)
+        return ""
+    with _with_web_turn_lock():
+        if not any(active_turn is turn for active_turn in _web_active_turns.values()):
+            response_queue.put_nowait(_WEB_INPUT_CANCELLED)
+            active = False
+        else:
+            with turn.lock:
+                turn.pending_input_action_ids.add(action_id)
+            active = True
+    if not active:
+        _cancel_web_pending_action(session_id, action_id)
+        return ""
+    _touch_web_turn(session_id, status="Waiting for input…", phase="input")
+    _publish_event("chat.input_requested", {"input": action}, session_id)
+    timeout = 300.0
+    try:
+        cfg = load_config()
+        timeout = float((cfg.get("clarify", {}) or {}).get("timeout", timeout))
+    except Exception:
+        timeout = 300.0
+    try:
+        try:
+            response = response_queue.get(timeout=max(1.0, timeout))
+        except thread_queue.Empty:
+            action, changed = _resolve_web_pending_action(
+                session_id, action_id, {"timed_out": True}
+            )
+            if changed:
+                _publish_event(
+                    "chat.input_resolved",
+                    {"action_id": action_id, "response": None, "timed_out": True},
+                    session_id,
+                )
+            return ""
+        if response is _WEB_INPUT_CANCELLED:
+            return ""
+        current = _get_web_pending_action(action_id)
+        value = response if current is None else (current.get("response") or response)
+        if isinstance(value, dict) and "value" in value:
+            value = value["value"]
+        return str(value).strip()
+    finally:
+        with _with_web_turn_lock():
+            _web_input_queues.pop(action_id, None)
+        with turn.lock:
+            turn.pending_input_action_ids.discard(action_id)
+
+
 def _mark_web_turn_active(
     session_id: str,
     *,
@@ -784,6 +1206,7 @@ def _mark_web_turn_active(
 ) -> WebActiveTurn:
     key = _web_turn_key(session_id)
     now = time.time()
+    workspace_slug = _web_workspace_slug(session_id)
     turn = WebActiveTurn(
         started_at=now,
         last_event_at=now,
@@ -791,12 +1214,18 @@ def _mark_web_turn_active(
         interrupt_requested=False,
         active_agent_session_id=active_agent_session_id,
         phase=phase,
+        workspace_slug=workspace_slug,
+        workspace_before=_web_workspace_git_status(workspace_slug),
         session_aliases=_web_turn_alias_set(session_id),
     )
     turn.timings["turn_registered"] = now
     with _with_web_turn_lock():
         _web_active_turns[key] = turn
         _remember_web_turn_aliases(key, turn, turn.session_aliases | {key})
+    try:
+        _persist_web_turn_projection(session_id, turn)
+    except Exception:
+        _log.debug("web turn projection start failed session=%s", session_id, exc_info=True)
     return turn
 
 
@@ -1339,15 +1768,35 @@ def _persist_web_user_message(session_id: str, user_message: str) -> int | None:
 
 def _clear_web_turn(session_id: str) -> None:
     candidates = _web_turn_candidate_keys(session_id)
+    cancelled_actions: list[str] = []
     with _with_web_turn_lock():
         turns = [_web_active_turns.pop(candidate, None) for candidate in candidates]
         for turn in turns:
             if not turn:
                 continue
             _checkpoint_writer.cancel(turn)
+            with turn.lock:
+                cancelled_actions.extend(turn.pending_input_action_ids)
+                turn.pending_input_action_ids.clear()
             for alias in list(turn.session_aliases):
                 if _web_turn_aliases.get(alias) in candidates:
                     _web_turn_aliases.pop(alias, None)
+        for action_id in cancelled_actions:
+            response_queue = _web_input_queues.pop(action_id, None)
+            if response_queue is not None:
+                try:
+                    response_queue.put_nowait(_WEB_INPUT_CANCELLED)
+                except thread_queue.Full:
+                    pass
+
+    for action_id in cancelled_actions:
+        action = _get_web_pending_action(action_id)
+        if not action or action.get("status") != "pending":
+            continue
+        _cancel_web_pending_action(
+            str(action.get("session_id") or session_id),
+            action_id,
+        )
 
 
 def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTurn]]:
@@ -1492,7 +1941,18 @@ async def _lifespan(_app: FastAPI):
             _log.debug("desktop gateway shutdown skipped", exc_info=True)
         _web_event_loop = None
         _event_subscribers.clear()
-        _web_active_turns.clear()
+        with _with_web_turn_lock():
+            active_session_ids = list(_web_active_turns)
+        for active_session_id in active_session_ids:
+            _clear_web_turn(active_session_id)
+        with _with_web_turn_lock():
+            orphaned_input_queues = list(_web_input_queues.values())
+            _web_input_queues.clear()
+        for response_queue in orphaned_input_queues:
+            try:
+                response_queue.put_nowait(_WEB_INPUT_CANCELLED)
+            except thread_queue.Full:
+                pass
         _web_turn_aliases.clear()
         _web_queues.clear()
         with _pending_token_lock:
@@ -7000,6 +7460,12 @@ class ConversationRetryBody(BaseModel):
 class ConversationApprovalBody(BaseModel):
     choice: str
     resolve_all: bool = False
+    action_id: Optional[str] = None
+
+
+class ConversationInputBody(BaseModel):
+    action_id: str
+    response: str
 
 
 def _publish_web_status(session_id: str, kind: str, message: str, *, phase: Optional[str] = None) -> None:
@@ -7053,6 +7519,9 @@ def _make_web_chat_callbacks(
         ended_at = time.time()
         started = tool_started_monotonic.pop(tid, None)
         duration_seconds = max(0.0, time.monotonic() - started) if started is not None else None
+        current_session_id = turn_context.session_id
+        if name == "todo":
+            _record_web_plan(current_session_id, result)
         publish_status("tool_finished", f"Tool finished: {name}", phase="streaming")
         _publish_event(
             "chat.tool_end",
@@ -7065,7 +7534,7 @@ def _make_web_chat_callbacks(
                 "ended_at": ended_at,
                 **({"duration_seconds": duration_seconds} if duration_seconds is not None else {}),
             },
-            turn_context.session_id,
+            current_session_id,
         )
 
     def reasoning_callback(text: str) -> None:
@@ -7275,6 +7744,11 @@ def _run_fake_stream_task(
                 tool_complete_callback(tid, event.name or "fake_tool", args, event.result)
             elif event_type == "approval":
                 approval = event.args if isinstance(event.args, dict) else {}
+                action = _create_web_pending_action(
+                    session_id, kind="approval", payload=dict(approval)
+                )
+                if action:
+                    approval = {**approval, "action_id": action["action_id"]}
                 _touch_web_turn(session_id, status="Waiting for approval…", phase="approval")
                 _publish_event(
                     "chat.approval_requested",
@@ -7343,13 +7817,19 @@ def _run_fake_stream_task(
             _wait_for_checkpoint_ready(
                 session_id, active_turn, operation="fake_stream_completion"
             )
-        _persist_web_turn_if_missing(
+        surviving_assistant_id = _persist_web_turn_if_missing(
             session_id,
             message,
             result,
             before_message_count,
             eager_user_id=eager_user_id,
             checkpoint_assistant_id=active_turn.assistant_message_id if active_turn else None,
+        )
+        if active_turn is not None and surviving_assistant_id is not None:
+            with active_turn.lock:
+                active_turn.assistant_message_id = surviving_assistant_id
+        turn_outcome = _finalize_web_turn_projection(
+            session_id, active_turn, result, interrupted=interrupted
         )
         try:
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -7358,7 +7838,9 @@ def _run_fake_stream_task(
         _web_queues.pop(session_id, None)
         _publish_event(
             "chat.turn_done",
-            _turn_done_payload(result, session_id, interrupted=interrupted),
+            _turn_done_payload(
+                result, session_id, interrupted=interrupted, turn_outcome=turn_outcome
+            ),
             session_id,
         )
         _clear_web_turn(session_id)
@@ -7390,6 +7872,7 @@ def _turn_done_payload(
     *,
     interrupted: bool = False,
     migrated_session_id: Optional[str] = None,
+    turn_outcome: dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Extract token/cost stats from a run_conversation() result for chat.turn_done."""
     payload: Dict[str, Any] = {
@@ -7398,6 +7881,11 @@ def _turn_done_payload(
         "interrupted": interrupted,
         "migrated_session_id": migrated_session_id,
         "backend_error_class": None,
+        "turn_outcome": (
+            turn_outcome or _latest_web_turn_projection(session_id)
+            if session_id
+            else turn_outcome
+        ),
     }
     if session_id:
         ids = _resolve_web_turn_ids(session_id)
@@ -8260,6 +8748,9 @@ def _new_web_agent(
         status_callback=status_callback,
         session_migrated_callback=session_migrated_callback,
         subagent_event_callback=subagent_event_callback,
+        clarify_callback=lambda question, choices=None: _web_clarify_callback(
+            question, choices, session_id=session_id
+        ),
         quiet_mode=True,
         platform="web",
         session_db=SessionDB(),
@@ -8467,7 +8958,7 @@ def _persist_web_turn_if_missing(
     before_message_count: int,
     eager_user_id: int | None = None,
     checkpoint_assistant_id: int | None = None,
-) -> None:
+) -> int | None:
     """Persist any missing pieces of a web turn.
 
     The agent may flush the current user message before the final assistant
@@ -8479,6 +8970,7 @@ def _persist_web_turn_if_missing(
     are reconciled here: kept when the agent's own flush is missing, deleted
     when it would duplicate them.
     """
+    surviving_assistant_id: int | None = None
     try:
         from core.spark_state import SessionDB
 
@@ -8593,6 +9085,7 @@ def _persist_web_turn_if_missing(
 
             if display_response:
                 if has_assistant:
+                    surviving_assistant_id = int(assistant_messages[-1]["id"])
                     if checkpoint_assistant_id is not None:
                         # The agent flushed its own final assistant message —
                         # the streaming checkpoint row is now a duplicate.
@@ -8606,20 +9099,27 @@ def _persist_web_turn_if_missing(
                         finish_reason="",
                         touch_timestamp=True,
                     )
+                    surviving_assistant_id = checkpoint_assistant_id
                 else:
                     # Context compression can migrate the active turn to a new
                     # leaf session after the stream checkpoint was inserted in
                     # the parent. In that case, save the final answer into the
                     # leaf and drop the stale parent checkpoint.
-                    db.append_message(session_id, "assistant", content=display_response)
+                    surviving_assistant_id = db.append_message(
+                        session_id, "assistant", content=display_response
+                    )
                     if checkpoint_assistant_id is not None:
                         db.delete_message(checkpoint_assistant_id)
+            elif checkpoint_assistant_id is not None and checkpoint_in_final_session:
+                surviving_assistant_id = checkpoint_assistant_id
             # No final response (crash/interrupt): a checkpoint row keeps the
             # partial streamed text, still marked "interrupted".
+            return surviving_assistant_id
         finally:
             db.close()
     except Exception:
         _log.debug("web turn fallback persist failed session=%s", session_id, exc_info=True)
+        return None
 
 
 def _session_message_count(session_id: str) -> int:
@@ -9187,8 +9687,14 @@ async def create_conversation(body: ConversationCreate):
     _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
-        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
-        _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
+        approval = dict(data or {})
+        current_session_id = _web_current_turn_session_id(session_id)
+        action = _create_web_pending_action(current_session_id, kind="approval", payload=approval)
+        if action:
+            approval["action_id"] = action["action_id"]
+            data["action_id"] = action["action_id"]
+        _publish_web_status(current_session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
+        _publish_event("chat.approval_requested", {"approval": _json_safe(approval)}, current_session_id)
 
     async def run_agent_task() -> None:
         agent = None
@@ -9248,16 +9754,28 @@ async def create_conversation(body: ConversationCreate):
                 await _await_checkpoint_ready(
                     final_session_id, _active_turn, operation="turn_completion"
                 )
-            _persist_web_turn_if_missing(
+            surviving_assistant_id = _persist_web_turn_if_missing(
                 final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
+            )
+            if _active_turn is not None and surviving_assistant_id is not None:
+                with _active_turn.lock:
+                    _active_turn.assistant_message_id = surviving_assistant_id
+            turn_outcome = _finalize_web_turn_projection(
+                final_session_id, _active_turn, result, agent=agent
             )
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _web_queues.pop(session_id, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _publish_event(
+                "chat.turn_done",
+                _turn_done_payload(
+                    result, final_session_id, turn_outcome=turn_outcome
+                ),
+                final_session_id,
+            )
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
@@ -9653,8 +10171,14 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
-        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
-        _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
+        approval = dict(data or {})
+        current_session_id = _web_current_turn_session_id(session_id)
+        action = _create_web_pending_action(current_session_id, kind="approval", payload=approval)
+        if action:
+            approval["action_id"] = action["action_id"]
+            data["action_id"] = action["action_id"]
+        _publish_web_status(current_session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
+        _publish_event("chat.approval_requested", {"approval": _json_safe(approval)}, current_session_id)
 
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
@@ -9691,15 +10215,27 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 await _await_checkpoint_ready(
                     final_session_id, _active_turn, operation="turn_completion"
                 )
-            _persist_web_turn_if_missing(
+            surviving_assistant_id = _persist_web_turn_if_missing(
                 final_session_id, message, result, before_message_count,
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
+            if _active_turn is not None and surviving_assistant_id is not None:
+                with _active_turn.lock:
+                    _active_turn.assistant_message_id = surviving_assistant_id
+            turn_outcome = _finalize_web_turn_projection(
+                final_session_id, _active_turn, result, agent=agent
+            )
             _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _web_queues.pop(session_id, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _publish_event(
+                "chat.turn_done",
+                _turn_done_payload(
+                    result, final_session_id, turn_outcome=turn_outcome
+                ),
+                final_session_id,
+            )
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
@@ -10131,8 +10667,14 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
     _update_web_session_model(session_id, turn_route["model"])
 
     def _gw_notify(data: dict) -> None:
-        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
-        _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
+        approval = dict(data or {})
+        current_session_id = _web_current_turn_session_id(session_id)
+        action = _create_web_pending_action(current_session_id, kind="approval", payload=approval)
+        if action:
+            approval["action_id"] = action["action_id"]
+            data["action_id"] = action["action_id"]
+        _publish_web_status(current_session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
+        _publish_event("chat.approval_requested", {"approval": _json_safe(approval)}, current_session_id)
 
     async def run_agent_task() -> None:
         register_gateway_notify(session_id, _gw_notify)
@@ -10157,16 +10699,28 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
                 await _await_checkpoint_ready(
                     final_session_id, _active_turn, operation="turn_completion"
                 )
-            _persist_web_turn_if_missing(
+            surviving_assistant_id = _persist_web_turn_if_missing(
                 final_session_id,
                 user_msg,
                 result,
                 before_message_count,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
             )
+            if _active_turn is not None and surviving_assistant_id is not None:
+                with _active_turn.lock:
+                    _active_turn.assistant_message_id = surviving_assistant_id
+            turn_outcome = _finalize_web_turn_projection(
+                final_session_id, _active_turn, result, agent=agent
+            )
             _maybe_auto_title_web(agent, final_session_id, user_msg, result)
             _web_queues.pop(session_id, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _publish_event(
+                "chat.turn_done",
+                _turn_done_payload(
+                    result, final_session_id, turn_outcome=turn_outcome
+                ),
+                final_session_id,
+            )
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)
@@ -10184,17 +10738,111 @@ async def conversation_approval(session_id: str, body: ConversationApprovalBody)
     choice = body.choice
     if choice not in ("once", "session", "always", "deny"):
         raise HTTPException(status_code=400, detail="Invalid choice")
-    n = approval_mod.resolve_gateway_approval(
-        session_id, choice, resolve_all=body.resolve_all
+    allowed_sessions = set(_web_turn_candidate_keys(session_id, resolve=True))
+    if body.action_id:
+        existing = _get_web_pending_action(body.action_id)
+        if (
+            not existing
+            or existing.get("session_id") not in allowed_sessions
+            or existing.get("kind") != "approval"
+        ):
+            raise HTTPException(status_code=404, detail="Approval not found")
+        if existing.get("status") == "resolved":
+            return {
+                "ok": True,
+                "session_id": session_id,
+                "resolved": 0,
+                "idempotent": True,
+                "action": existing,
+            }
+    pending = _list_web_pending_actions(session_id)
+    approval_actions = [item for item in pending if item.get("kind") == "approval"]
+    selected_ids = (
+        [body.action_id]
+        if body.action_id
+        else [item["action_id"] for item in (approval_actions if body.resolve_all else approval_actions[:1])]
     )
+    n = 0
+    for gateway_session_id in _web_gateway_session_keys(session_id):
+        n += approval_mod.resolve_gateway_approval(
+            gateway_session_id,
+            choice,
+            resolve_all=body.resolve_all,
+            action_id=body.action_id,
+        )
+        if body.action_id and n:
+            break
     if n == 0:
+        if body.action_id:
+            # The durable action was validated above, but its in-memory waiter
+            # may have disappeared after a restart or turn cancellation.
+            raise HTTPException(status_code=404, detail="No pending approval for this session")
         raise HTTPException(status_code=404, detail="No pending approval for this session")
+    resolved_ids: list[str] = []
+    for action_id in selected_ids:
+        stored_action = _get_web_pending_action(action_id)
+        action, changed = _resolve_web_pending_action(
+            str((stored_action or {}).get("session_id") or session_id),
+            action_id,
+            {"choice": choice},
+        )
+        if action and (changed or action.get("status") == "resolved"):
+            resolved_ids.append(action_id)
     _publish_event(
         "chat.approval_resolved",
-        {"choice": choice, "resolved": n},
+        {"choice": choice, "resolved": n, "action_ids": resolved_ids},
         session_id,
     )
-    return {"ok": True, "session_id": session_id, "resolved": n}
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "resolved": n,
+        "action_ids": resolved_ids,
+    }
+
+
+@app.get("/api/conversations/{session_id}/pending-actions")
+async def conversation_pending_actions(session_id: str):
+    """Return durable approvals and requested-input actions for refresh recovery."""
+    actions = _list_web_pending_actions(session_id)
+    return {"session_id": session_id, "actions": actions}
+
+
+@app.post("/api/conversations/{session_id}/input")
+async def conversation_input(session_id: str, body: ConversationInputBody):
+    """Submit a requested-input answer exactly once and wake the agent queue."""
+    existing = _get_web_pending_action(body.action_id)
+    allowed_sessions = set(_web_turn_candidate_keys(session_id, resolve=True))
+    if not existing or existing.get("session_id") not in allowed_sessions:
+        raise HTTPException(status_code=404, detail="Requested input not found")
+    if existing.get("kind") != "requested_input":
+        raise HTTPException(status_code=400, detail="Action is not requested input")
+    if existing.get("status") == "cancelled":
+        raise HTTPException(status_code=409, detail="Requested input is no longer pending")
+    action, changed = _resolve_web_pending_action(
+        str(existing["session_id"]), body.action_id, {"value": body.response}
+    )
+    if action is None:
+        raise HTTPException(status_code=404, detail="Requested input not found")
+    if changed:
+        with _with_web_turn_lock():
+            response_queue = _web_input_queues.get(body.action_id)
+        if response_queue is not None:
+            try:
+                response_queue.put_nowait(body.response)
+            except thread_queue.Full:
+                pass
+        _publish_event(
+            "chat.input_resolved",
+            {"action_id": body.action_id, "response": body.response},
+            session_id,
+        )
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "action": action,
+        "idempotent": not changed,
+    }
 
 
 @app.post("/api/conversations/{session_id}/feedback")
@@ -10257,6 +10905,11 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
         "last_event_at": None,
         "interrupt_requested": False,
         "active_agent_session_id": None,
+        "turn_outcome": _latest_web_turn_projection(session_id),
+        "plan": None,
+        "pending_actions": _list_web_pending_actions(
+            ids.get("latest") or ids.get("resolved") or session_id
+        ),
         "diagnostics": diagnostics,
     }
     if turn:
@@ -10282,6 +10935,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                     "stream_text_chars": len(turn.stream_text),
                     "timings": _web_turn_timing_payload(turn),
                     "compaction": dict(turn.compaction),
+                    "plan": dict(turn.plan) if turn.plan else None,
                 }
             )
     return payload
@@ -10305,6 +10959,45 @@ async def conversation_stream_snapshot(
         after_chars=after_chars,
         tail_chars=tail_chars,
     )
+
+
+@app.get("/api/conversations/{session_id}/turn-outcome")
+async def conversation_turn_outcome(session_id: str):
+    """Return the durable outcome of the latest web turn for refresh recovery."""
+    return _latest_web_turn_projection(session_id)
+
+
+@app.get("/api/conversations/{session_id}/turn-outcomes")
+async def conversation_turn_outcomes(session_id: str):
+    """Return all durable web turn outcomes in chronological order.
+
+    The collection follows compression migrations and active in-memory aliases,
+    while keeping one newest projection per turn.  Each item is the same flat
+    projection shape returned by the singular latest-outcome endpoint.
+    """
+    ids = _resolve_web_turn_ids(session_id)
+    outcomes = await _run_blocking(_all_web_turn_projections, session_id)
+    response = {
+        "session_id": ids.get("requested") or session_id,
+        "resolved_session_id": ids.get("resolved") or session_id,
+        "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
+        "count": len(outcomes),
+        "outcomes": outcomes,
+    }
+    if response["latest_session_id"] != response["resolved_session_id"]:
+        response["migrated_from"] = response["resolved_session_id"]
+    return response
+
+
+@app.get("/api/conversations/{session_id}/plan")
+async def conversation_plan(session_id: str):
+    """Return the latest durable TodoStore/checkpoint plan projection."""
+    outcome = _latest_web_turn_projection(session_id)
+    return {
+        "session_id": session_id,
+        "turn_id": outcome.get("turn_id") if outcome else None,
+        "plan": outcome.get("plan") if outcome else None,
+    }
 
 
 def _bounded_stream_snapshot_text(
@@ -10396,6 +11089,13 @@ def _conversation_stream_snapshot_payload(
         "stream_text_start": text_start,
         "stream_text_mode": text_mode,
         "stream_text_complete": text_complete,
+        "turn_outcome": _latest_web_turn_projection(session_id),
+        "plan": (
+            _latest_web_turn_projection(session_id) or {}
+        ).get("plan"),
+        "pending_actions": _list_web_pending_actions(
+            ids.get("latest") or ids.get("resolved") or session_id
+        ),
         "timings": _web_turn_timing_payload(turn),
         "diagnostics": diagnostics,
     }
@@ -10570,8 +11270,14 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     _persist_context_items(session_id, validated_items)
 
     def _gw_notify(data: dict) -> None:
-        _publish_web_status(session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
-        _publish_event("chat.approval_requested", {"approval": _json_safe(data)}, session_id)
+        approval = dict(data or {})
+        current_session_id = _web_current_turn_session_id(session_id)
+        action = _create_web_pending_action(current_session_id, kind="approval", payload=approval)
+        if action:
+            approval["action_id"] = action["action_id"]
+            data["action_id"] = action["action_id"]
+        _publish_web_status(current_session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
+        _publish_event("chat.approval_requested", {"approval": _json_safe(approval)}, current_session_id)
 
     raw_message = body.message
 
@@ -10617,10 +11323,16 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                     _active_turn,
                     operation="workspace_turn_completion",
                 )
-            _persist_web_turn_if_missing(
+            surviving_assistant_id = _persist_web_turn_if_missing(
                 final_session_id, raw_message, result, before_message_count,
                 eager_user_id=eager_user_id,
                 checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
+            )
+            if _active_turn is not None and surviving_assistant_id is not None:
+                with _active_turn.lock:
+                    _active_turn.assistant_message_id = surviving_assistant_id
+            turn_outcome = _finalize_web_turn_projection(
+                final_session_id, _active_turn, result, agent=agent
             )
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, raw_message, result)
@@ -10632,7 +11344,13 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             _web_queues.pop(session_id, None)
-            _publish_event("chat.turn_done", _turn_done_payload(result, final_session_id), final_session_id)
+            _publish_event(
+                "chat.turn_done",
+                _turn_done_payload(
+                    result, final_session_id, turn_outcome=turn_outcome
+                ),
+                final_session_id,
+            )
             _clear_web_turn(final_session_id)
             if final_session_id != session_id:
                 _clear_web_turn(session_id)

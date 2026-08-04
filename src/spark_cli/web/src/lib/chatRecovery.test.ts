@@ -80,6 +80,52 @@ describe("decideRecoveryPoll", () => {
     expect(decision.poll).toBe(true);
     expect(decision.nextIdlePollAt).toBe(10_000);
   });
+
+  it("does not invent a reconnecting label from elapsed time", () => {
+    const decision = decideRecoveryPoll({
+      streaming: true,
+      hidden: false,
+      now: 40_000,
+      lastEventAt: 0,
+      lastTokenAt: 0,
+      lastIdlePollAt: 0,
+    });
+    expect(decision.poll).toBe(true);
+    expect(decision.statusLabel).toBeUndefined();
+  });
+
+  it("returns confirmed connection state and clears stale optimistic copy", () => {
+    const decision = decideRecoveryPoll({
+      streaming: true,
+      hidden: false,
+      now: 20_000,
+      lastEventAt: 1_000,
+      lastTokenAt: 1_000,
+      lastIdlePollAt: 0,
+      backend: { turnActive: true, connection: "reconnecting" },
+      optimisticLabel: "Loading LLM response",
+      optimisticAt: 1_000,
+    });
+    expect(decision).toMatchObject({
+      poll: true,
+      statusLabel: "Reconnecting to Spark",
+      statusKind: "reconnecting",
+      statusConfirmed: true,
+    });
+
+    const settled = decideRecoveryPoll({
+      streaming: false,
+      hidden: false,
+      now: 20_000,
+      lastEventAt: 1_000,
+      lastTokenAt: 1_000,
+      lastIdlePollAt: 20_000,
+      backend: { turnActive: false },
+      optimisticLabel: "Loading LLM response",
+      optimisticAt: 1_000,
+    });
+    expect(settled).toMatchObject({ optimisticExpired: true, statusLabel: undefined, statusKind: "idle" });
+  });
 });
 
 describe("recovery signal budget", () => {

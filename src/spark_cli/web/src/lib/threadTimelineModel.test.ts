@@ -62,8 +62,8 @@ describe("thread timeline model", () => {
 
     expect(timeline.turns.map((turn) => turn.id)).toEqual([
       "turn:orphan:0",
-      "turn:user:7",
-      "turn:user:8",
+      "turn:user:u1",
+      "turn:user:u2",
     ]);
     expect(timeline.turns[0].finalAnswer?.content).toBe("Recovered");
     expect(timeline.turns[1].userMessage?.content).toBe("First");
@@ -131,6 +131,13 @@ describe("thread timeline model", () => {
     ]).turns[0];
     expect(requested.status).toBe("awaiting-input");
     expect(requested.visibleItems.some((item) => item.kind === "requested-input")).toBe(true);
+
+    const feedback = buildThreadTimeline([
+      user("u7"),
+      { id: "feedback7", role: "feedback_form" },
+    ]).turns[0];
+    expect(feedback.status).toBe("awaiting-input");
+    expect(feedback.visibleItems.some((item) => item.kind === "feedback")).toBe(true);
   });
 
   it("folds subagents and changed files into deterministic outcomes with usage and duration", () => {

@@ -4,6 +4,7 @@ import {
   nextChatTurnState,
   normalizeBackendPhase,
   recoverTurnStateFromBackend,
+  resolveConfirmedTurnStatus,
 } from "./chatTurnState";
 
 describe("chat turn state", () => {
@@ -76,5 +77,15 @@ describe("chat turn state", () => {
     expect(backendTurnStatusLabel({ turnActive: true, phase: "tool", state: "running", status: "Tool running: ls" })).toBe("Tool running: ls");
     expect(backendTurnStatusLabel({ turnActive: true, phase: "streaming", state: "streaming" })).toBe("Streaming response");
     expect(backendTurnStatusLabel({ turnActive: true, phase: "api", state: "stalled", idleForSeconds: 52.9 })).toBe("Backend stalled for 52s");
+  });
+
+  it("keeps terminal backend outcomes visible after the active flag clears", () => {
+    expect(backendTurnStatusLabel({ turnActive: false, state: "failed" })).toBe("Response failed");
+    expect(backendTurnStatusLabel({ turnActive: false, state: "interrupted" })).toBe("Response interrupted");
+    expect(resolveConfirmedTurnStatus({
+      turnActive: true,
+      state: "stalled",
+      idleForSeconds: 13.8,
+    })).toMatchObject({ kind: "stalled", label: "Backend stalled for 13s", confirmed: true });
   });
 });
