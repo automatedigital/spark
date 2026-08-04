@@ -2080,6 +2080,14 @@ export interface SkillInfo {
   provenance?: "bundled" | "spark_created" | "hub_installed" | "local" | "external";
   provenance_detail?: { label: string; source: string };
   trust_level?: string;
+  source?: string;
+  invocation_type?: "user" | "model" | "both";
+  index_token_cost?: number;
+  supporting_file_count?: number;
+  eval_status?: string;
+  eval_date?: string | null;
+  overlap_warnings?: string[];
+  duplicate_warnings?: string[];
   modified?: boolean;
   removed?: boolean;
   location?: string;

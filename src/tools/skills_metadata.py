@@ -10,6 +10,7 @@ metadata cannot leak across requests.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from enum import Enum
 from pathlib import Path
@@ -62,7 +63,189 @@ CAPABILITY_MATRIX: dict[str, dict[str, Any]] = {
 }
 
 _HIDDEN_DIRS = frozenset({".git", ".github", ".hub"})
+_SUPPORTING_DIRS = frozenset({"references", "templates", "scripts", "assets"})
 _MAX_DESCRIPTION = 1024
+_AUDIT_FILENAME = "2026-08-04-skill-02-engineering-overlap-audit.json"
+
+
+def _repository_root() -> Path | None:
+    """Find the checked-out repository without assuming a machine-specific path."""
+    module_path = Path(__file__).resolve()
+    for candidate in (module_path.parent, *module_path.parents):
+        if (
+            (candidate / "docs" / "skills").is_dir()
+            and (candidate / "evals" / "skills").is_dir()
+        ):
+            return candidate
+    return None
+
+
+def _load_quality_artifacts() -> tuple[
+    dict[str, list[dict[str, Any]]], dict[str, tuple[str, str | None]]
+]:
+    """Load audit/eval metadata from checked-in artifacts when available.
+
+    The artifacts intentionally describe evidence rather than claiming that a
+    fixture corpus is a passed model-quality evaluation.  Missing artifacts
+    are expected for installed/package contexts and degrade to empty metadata.
+    """
+    root = _repository_root()
+    if root is None:
+        return {}, {}
+
+    audit_by_name: dict[str, list[dict[str, Any]]] = {}
+    audit_date: str | None = None
+    try:
+        audit_path = root / "docs" / "skills" / _AUDIT_FILENAME
+        payload = json.loads(audit_path.read_text(encoding="utf-8"))
+        audit_date = str((payload.get("audit") or {}).get("date") or "") or None
+        for item in payload.get("skills") or []:
+            if isinstance(item, dict) and item.get("name"):
+                item_copy = dict(item)
+                item_copy["_audit_date"] = audit_date
+                audit_by_name.setdefault(str(item["name"]), []).append(item_copy)
+    except (OSError, TypeError, ValueError):
+        pass
+
+    eval_by_name: dict[str, tuple[str, str | None]] = {}
+    docs_dir = root / "docs" / "skills"
+    for cases_path in sorted((root / "evals" / "skills").glob("cases.skill-*.jsonl")):
+        try:
+            names = set()
+            for line in cases_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                case = json.loads(line)
+                skill_name = ((case.get("oracle") or {}).get("skill"))
+                if skill_name:
+                    names.add(str(skill_name))
+        except (OSError, TypeError, ValueError):
+            continue
+        if not names:
+            continue
+
+        eval_date = None
+        for doc_path in sorted(docs_dir.glob("????-??-??-skill-*-evaluation.md")):
+            try:
+                doc_text = doc_path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if cases_path.name not in doc_text:
+                continue
+            prefix = doc_path.name[:10]
+            if len(prefix) == 10 and prefix[4] == "-" and prefix[7] == "-":
+                eval_date = prefix
+            break
+        for name in names:
+            eval_by_name[name] = ("fixture-only", eval_date)
+
+    return audit_by_name, eval_by_name
+
+
+def _audit_for_runtime(
+    audit_entries: list[dict[str, Any]], provenance: str
+) -> dict[str, Any] | None:
+    expected = {
+        "external_installed": SkillProvenance.EXTERNAL.value,
+        "codex_bundled": SkillProvenance.EXTERNAL.value,
+        "spark_bundled": SkillProvenance.BUNDLED.value,
+    }
+    for audit in audit_entries:
+        if expected.get(str(audit.get("source_kind") or "")) == provenance:
+            return audit
+    return None
+
+
+def _safe_overlap_name(value: Any) -> str | None:
+    """Reduce an audit overlap path to a non-sensitive skill identifier."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip().replace("\\", "/")
+    if text.endswith("/SKILL.md"):
+        return Path(text).parent.name or None
+    return text
+
+
+def _supporting_file_count(skill_dir: Path) -> int:
+    count = 0
+    try:
+        for path in skill_dir.glob("*.md"):
+            if path.is_file() and not path.is_symlink() and path.name != "SKILL.md":
+                count += 1
+        for directory_name in _SUPPORTING_DIRS:
+            directory = skill_dir / directory_name
+            if not directory.is_dir():
+                continue
+            for path in directory.rglob("*"):
+                if path.is_file() and not path.is_symlink():
+                    count += 1
+    except OSError:
+        return count
+    return count
+
+
+def _quality_metadata(
+    name: str,
+    frontmatter: dict[str, Any],
+    provenance: str,
+    skill_dir: Path,
+    *,
+    artifacts: tuple[dict[str, list[dict[str, Any]]], dict[str, tuple[str, str | None]]] | None = None,
+) -> dict[str, Any]:
+    """Return stable API quality signals for one skill."""
+    audit_by_name, eval_by_name = artifacts or _load_quality_artifacts()
+    audit = _audit_for_runtime(audit_by_name.get(name, []), provenance)
+
+    source_fallback = {
+        SkillProvenance.BUNDLED.value: "spark_bundled",
+        SkillProvenance.SPARK_CREATED.value: "spark_created",
+        SkillProvenance.HUB_INSTALLED.value: "skills_hub",
+        SkillProvenance.LOCAL.value: "profile_local",
+        SkillProvenance.EXTERNAL.value: "external_installed",
+    }[provenance]
+    source = str((audit or {}).get("source_kind") or source_fallback)
+
+    from agent.model_metadata import estimate_tokens_rough
+
+    from agent.skill_utils import extract_skill_description, get_skill_invocation_metadata
+
+    invocation = get_skill_invocation_metadata(frontmatter)
+    if not invocation["model_invocable"]:
+        index_token_cost = 0
+    else:
+        index_description = extract_skill_description(frontmatter)
+        index_line = f"    - {name}: {index_description}" if index_description else f"    - {name}"
+        index_token_cost = estimate_tokens_rough(index_line)
+
+    eval_status = "not evaluated"
+    eval_date = None
+    if audit is not None and eval_by_name.get(name):
+        eval_status, eval_date = eval_by_name[name]
+    elif audit is not None and (audit.get("eval_coverage") or {}).get("runtime"):
+        eval_status = "runtime-covered"
+        eval_date = audit.get("_audit_date")
+
+    overlap_warnings = []
+    if audit is not None:
+        overlap_warnings = sorted({
+            overlap_name
+            for overlap in audit.get("overlaps") or []
+            if (overlap_name := _safe_overlap_name(overlap))
+            and overlap_name != name
+        })
+    overlap_warning = f"Overlaps with: {', '.join(overlap_warnings)}" if overlap_warnings else None
+
+    return {
+        "source": source,
+        "invocation_type": invocation["invocation_policy"],
+        "index_token_cost": index_token_cost,
+        "supporting_file_count": _supporting_file_count(skill_dir),
+        "eval_status": eval_status,
+        "eval_date": eval_date,
+        "overlap_warning": overlap_warning,
+        "overlap_warnings": overlap_warnings,
+        "duplicate_warning": None,
+    }
 
 
 def _external_dirs() -> list[Path]:
@@ -245,7 +428,12 @@ def _provenance(root_kind: str, root: Path, skill_dir: Path, name: str) -> tuple
     return SkillProvenance.LOCAL.value, None, usage
 
 
-def resolve_skill(skill_dir: Path, *, root_kind: str | None = None) -> dict[str, Any] | None:
+def resolve_skill(
+    skill_dir: Path,
+    *,
+    root_kind: str | None = None,
+    artifacts: tuple[dict[str, list[dict[str, Any]]], dict[str, tuple[str, str | None]]] | None = None,
+) -> dict[str, Any] | None:
     """Resolve one already-discovered directory to the canonical API record."""
     try:
         skill_dir = skill_dir.resolve()
@@ -275,6 +463,7 @@ def resolve_skill(skill_dir: Path, *, root_kind: str | None = None) -> dict[str,
         provenance, hub, usage = _provenance(kind, root, skill_dir, name)
         capabilities = dict(CAPABILITY_MATRIX[provenance])
         manifest = _manifest()
+        artifacts = artifacts or _load_quality_artifacts()
         modified = False
         if provenance == SkillProvenance.BUNDLED.value and manifest.get(name):
             modified = _dir_hash(skill_dir) != manifest[name]
@@ -314,6 +503,7 @@ def resolve_skill(skill_dir: Path, *, root_kind: str | None = None) -> dict[str,
             "name": name,
             "description": description,
             **invocation,
+            **_quality_metadata(name, frontmatter, provenance, skill_dir, artifacts=artifacts),
             "category": category,
             "provenance": provenance,
             "provenance_detail": detail,
@@ -339,13 +529,14 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
     """Discover skills across local and external roots using one resolver."""
     records: list[dict[str, Any]] = []
     seen_names: set[str] = set()
+    artifacts = _load_quality_artifacts()
     for root_kind, root in _roots():
         if not root.exists():
             continue
         for skill_md in root.rglob("SKILL.md"):
             if any(part in _HIDDEN_DIRS for part in skill_md.parts):
                 continue
-            record = resolve_skill(skill_md.parent, root_kind=root_kind)
+            record = resolve_skill(skill_md.parent, root_kind=root_kind, artifacts=artifacts)
             if record is None:
                 continue
             if not include_duplicates and record["name"] in seen_names:
@@ -378,6 +569,7 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
             "name": name,
             "description": description,
             **invocation,
+            **_quality_metadata(name, frontmatter, SkillProvenance.BUNDLED.value, destination, artifacts=artifacts),
             "category": relative.parts[-2] if len(relative.parts) > 1 else None,
             "provenance": SkillProvenance.BUNDLED.value,
             "provenance_detail": {"label": "Spark built-in", "source": "bundled"},
@@ -397,6 +589,16 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
         seen_names.add(name)
         records.append(record)
     records.sort(key=lambda row: (str(row.get("name") or "").lower(), row["skill_id"]))
+    records_by_name: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        records_by_name.setdefault(str(record.get("name") or ""), []).append(record)
+    for name, matching_records in records_by_name.items():
+        if len(matching_records) < 2:
+            continue
+        sources = sorted({str(record.get("source") or record.get("provenance") or "unknown") for record in matching_records})
+        warning = f"Duplicate skill name across: {', '.join(sources)}"
+        for record in matching_records:
+            record["duplicate_warning"] = warning
     return records
 
 

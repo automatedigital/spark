@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import ConnectorsPage from "@/pages/ConnectorsPage";
 import EnvPage from "@/pages/EnvPage";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { SkillQualitySignals } from "@/components/skills/SkillQualitySignals";
 
 const CATEGORY_LABELS: Record<string, string> = {
   mlops: "MLOps",
@@ -114,6 +115,7 @@ function SkillRow({
           {skill.modified && <span className="text-[10px] text-amber-300">Modified</span>}
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{skill.description || "No description provided."}</p>
+        <SkillQualitySignals skill={skill} />
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground/70">
           <span>{prettyCategory(skill.category)}</span>
           {skill.location && <span className="truncate">{skill.location}</span>}

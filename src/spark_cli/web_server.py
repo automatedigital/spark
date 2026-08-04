@@ -6945,6 +6945,22 @@ def _skill_public_records() -> list[dict[str, Any]]:
     return records
 
 
+def _apply_skill_quality_defaults(record: dict[str, Any]) -> None:
+    """Keep legacy/plugin-provided rows compatible with the quality contract."""
+    provenance = str(record.get("provenance") or "local")
+    detail = record.get("provenance_detail")
+    detail_source = detail.get("source") if isinstance(detail, dict) else None
+    record.setdefault("source", detail_source or provenance)
+    record.setdefault("invocation_type", record.get("invocation_policy") or "unknown")
+    record.setdefault("index_token_cost", 0 if not record.get("model_invocable", True) else None)
+    record.setdefault("supporting_file_count", None)
+    record.setdefault("eval_status", "not evaluated")
+    record.setdefault("eval_date", None)
+    record.setdefault("overlap_warning", None)
+    record.setdefault("overlap_warnings", [])
+    record.setdefault("duplicate_warning", None)
+
+
 @app.get("/api/skills")
 async def get_skills():
     from tools.skills_tool import _find_all_skills
@@ -6983,6 +6999,7 @@ async def get_skills():
         pass
 
     for s in skills:
+        _apply_skill_quality_defaults(s)
         s["enabled"] = s.get("enabled", s["name"] not in disabled)
         rec = usage_by_name.get(s["name"])
         if rec:
@@ -7037,6 +7054,11 @@ async def toggle_skill(body: SkillToggle):
 async def get_skill_detail(skill_id: str):
     """Return one skill's bounded detail by opaque server-generated ID."""
     record = _skill_record_or_404(skill_id)
+    record = dict(record)
+    from spark_cli.skills_config import get_disabled_skills
+
+    record["enabled"] = record.get("name") not in get_disabled_skills(load_config())
+    _apply_skill_quality_defaults(record)
     skill_dir = record["_path"]
     skill_md = skill_dir / "SKILL.md"
     try:
@@ -7058,7 +7080,8 @@ async def get_skill_detail(skill_id: str):
             if not path.is_file() or path.name == "SKILL.md" or path.is_symlink():
                 continue
             relative = path.relative_to(skill_dir)
-            if not relative.parts or relative.parts[0] not in allowed_roots:
+            root_markdown = len(relative.parts) == 1 and path.suffix.lower() == ".md"
+            if not relative.parts or (relative.parts[0] not in allowed_roots and not root_markdown):
                 continue
             supporting_files.append({
                 "path": relative.as_posix(),
@@ -7075,6 +7098,7 @@ async def get_skill_detail(skill_id: str):
         **public_record(record),
         "content": content,
         "supporting_files": supporting_files,
+        "supporting_file_count": record.get("supporting_file_count", len(supporting_files)),
         "future_context": "Changes apply to a future conversation context; active cached prompts are unchanged.",
     }
 
