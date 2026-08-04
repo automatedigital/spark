@@ -583,7 +583,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   Browser checks at 1440/1024/768px confirm the composer remains reachable with
   the right panel open and produces no horizontal overflow.
 
-- [ ] **THREAD-PR-01 - Submit and accept the thread stack bottom-up.** Keep
+- [x] **THREAD-PR-01 - Submit and accept the thread stack bottom-up.** Keep
   baseline fixtures/pure timeline/controller work in `webui-thread-foundation`,
   the selected timeline/composer implementation in `webui-thread-interface`, and
   visual refinement/performance/accessibility fixes in
@@ -592,10 +592,20 @@ Integrated web acceptance -> separate future desktop build/release plan
   comparisons, and performance numbers; then merge from the bottom up.
   **Gate:** do not initialize `adaptive-routing-core` until all thread layers are
   accepted and present on `main`.
+  **Evidence (2026-08-04):** ordinary dependent PRs were used because `gh stack`
+  is unavailable. Foundation PR #120, interface PR #122, and polish PR #123 all
+  passed GitHub checks and were merged bottom-up into `main` as `89564863`,
+  `f0951f4a`, and `333e2f6b`. The polish review closed assistant-less outcome,
+  resolved-action, backend-status, refresh-race, accessibility, event-loop, and
+  long-thread performance blockers. Final evidence includes 361 frontend tests,
+  237 focused backend tests, ESLint, TypeScript, Ruff, a 214.80 KiB initial gzip
+  bundle against the 600 KiB budget, light/dark 1440/1024/768 review, zero-drift
+  history contracts, and bounded 2,000-row browser cases. Desktop builds remain
+  intentionally deferred.
 
 ## Phase 4: Adaptive Codex Routing
 
-- [ ] **MODEL-00 - Initialize the routing stack after the accepted thread stack
+- [x] **MODEL-00 - Initialize the routing stack after the accepted thread stack
   lands.** Fast-forward local `main`, run `gh stack init adaptive-routing-core`,
   and add `adaptive-routing-web` only after the core metadata/policy contract is
   reviewable.
@@ -603,7 +613,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   `adaptive-routing-core`, and neither branch contains thread-stack history that
   has not already landed on `main`.
 
-- [ ] **MODEL-01 - Preserve account-scoped Codex model metadata.** Change model
+- [x] **MODEL-01 - Preserve account-scoped Codex model metadata.** Change model
   discovery from a list of slugs to a backward-compatible catalog containing
   display name, visibility, supported reasoning efforts, context/output limits,
   multi-agent version, and source/freshness when supplied by the live API/cache.
@@ -613,7 +623,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Done when:** the account list remains authoritative and stale/offline data is
   visibly distinguished without inventing unavailable models.
 
-- [ ] **MODEL-02 - Define one Auto policy using roles, not hard-coded product
+- [x] **MODEL-02 - Define one Auto policy using roles, not hard-coded product
   names.** Add `lead`, `balanced`, `fast`, and `subagent` role settings, each
   resolving to provider, model, reasoning effort, and fallback. `Auto` is the
   sole automatic preset in the first release. Migrate existing `model.default`,
@@ -626,7 +636,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   bounded long-running children. Main-agent and delegated-subagent roles resolve
   independently. The role contract, not those names, is stable.
 
-- [ ] **MODEL-03 - Expand deterministic routing classification.** Route from
+- [x] **MODEL-03 - Expand deterministic routing classification.** Route from
   request class, tool need, context size, attachments, risk, task duration, and
   explicit user choice. Preserve the current effective model unless a tested
   threshold is crossed; use hysteresis so adjacent turns do not oscillate.
@@ -639,7 +649,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   remain stable; explicit model selection bypasses Auto and stays pinned to the
   thread until changed.
 
-- [ ] **MODEL-04 - Route delegated work by role with bounded escalation.** Let
+- [x] **MODEL-04 - Route delegated work by role with bounded escalation.** Let
   Spark select the configured subagent role without adding verbose per-call
   model arguments to the model-visible tool schema. A child may escalate only
   under an explicit tested policy; cap concurrency, iterations, and retries.
@@ -649,7 +659,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Files:** `src/tools/delegate_tool.py`, delegation lifecycle payloads,
   `tests/tools/test_delegate.py`, and subagent tests.
 
-- [ ] **MODEL-05 - Test Sol/Terra/Luna compatibility through Spark's actual
+- [x] **MODEL-05 - Test Sol/Terra/Luna compatibility through Spark's actual
   transport.** Cover direct main turns, separate Spark child sessions, batches,
   reasoning efforts, auth modes, unavailable models, and the current v2/v1
   multi-agent metadata mismatch. Do not assume Codex native multi-agent behavior
@@ -657,7 +667,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Gate:** Auto cannot assign a Sol/Terra/Luna role until the account-specific
   matrix passes or a safe fallback is proven.
 
-- [ ] **MODEL-06 - Add one web routing-policy editor.** Replace scattered
+- [x] **MODEL-06 - Add one web routing-policy editor.** Replace scattered
   smart/fast/delegation controls with the single `Auto` choice plus an advanced
   role editor in Settings. Keep all explicit account-available models in the
   composer; choosing one pins the thread and bypasses Auto. Show availability,
@@ -665,7 +675,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Files:** composer model controls, Settings model section, API endpoints/types,
   and component tests.
 
-- [ ] **MODEL-07 - Surface effective routing in the thread.** Record and display
+- [x] **MODEL-07 - Surface effective routing in the thread.** Record and display
   the actual main model, child model(s), effort, deterministic route label,
   fallback, escalation, token usage, cache usage, and child-agent usage per turn.
   Use concise labels based on observable policy signals, such as
@@ -676,7 +686,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   `src/spark_cli/web/src/components/chat/SessionInfoBar.tsx`, turn metadata
   components, and tests.
 
-- [ ] **MODEL-08 - Build a pinned routing eval matrix.** Use representative
+- [x] **MODEL-08 - Build a pinned routing eval matrix.** Use representative
   direct answers, UI work, debugging, plans, research, long-running child tasks,
   safety cases, and failure recovery. Compare fixed Sol/Terra/Luna role mixes
   with the current baseline using identical prompts, toolsets, context, trials,
@@ -688,6 +698,16 @@ Integrated web acceptance -> separate future desktop build/release plan
   subscription-window consumption, using latency only as a tie-break. No safety
   blocker, no repeated escalation, and no material latency regression outside
   explicitly quality-first work.
+
+  **Evidence (2026-08-04):** `adaptive-routing-core` commit `f413da34` and PR
+  #124 add the account-authoritative catalog, backward-compatible Auto policy,
+  explicit pins, deterministic risk/context/duration classification,
+  hysteresis, independent bounded child routing, lifecycle metadata, and the
+  synthetic 11-scenario matrix. The live Spark transport returned compatible
+  responses for Sol/low, Terra/medium, and Luna/high; the account catalog's
+  Sol/Terra `v2` versus Luna `v1` metadata is documented without equating it to
+  Spark child sessions. The compatibility and quality/cost decision record is
+  `docs/evals/adaptive-routing-compatibility-2026-08-04.md`.
 
 - [ ] **ROUTING-PR-01 - Submit and accept the routing stack bottom-up.** Keep
   live metadata, migration, Auto policy, hysteresis, independent child routing,
@@ -853,16 +873,22 @@ Integrated web acceptance -> separate future desktop build/release plan
   Python API/metadata tests, skill detail interaction, and desktop plus 390px
   visual acceptance with zero horizontal overflow.
 
-- [ ] **SKILLS-PR-01 - Submit and accept the skills stack bottom-up.** Keep
+- [x] **SKILLS-PR-01 - Submit and accept the skills stack bottom-up.** Keep
   invocation/provenance/index-cost contracts in `skills-invocation`, audited
   library decisions and evals in `skills-library`, and Skills UI signals in
   `skills-web`. Run `gh stack submit`; verify no external skill files were
   vendored or modified; attach discovery/invocation/eval evidence; then merge
   from the bottom up.
+  **Evidence (2026-08-04):** invocation PR #118, library/evals PR #119, and web
+  quality-signals PR #121 passed GitHub checks and merged bottom-up as
+  `fa05818e`, `959ebdbd`, and `af36db99`. The stack contains no vendored or
+  modified external skill files; it preserves external provenance and ships
+  the recorded discovery, invocation, prompt-cost, paired-eval, and responsive
+  UI evidence from SKILL-01 through SKILL-09.
 
 ## Phase 6: Integrated Web Acceptance
 
-- [ ] **QA-01 - Run focused Python contracts.** At minimum:
+- [x] **QA-01 - Run focused Python contracts.** At minimum:
 
   ```bash
   source .venv/bin/activate
@@ -874,7 +900,7 @@ Integrated web acceptance -> separate future desktop build/release plan
   python -m pytest tests/spark_cli/test_web_server.py tests/spark_cli/test_web_server_events.py -q
   ```
 
-- [ ] **QA-02 - Run frontend static and behavioral gates.** Run from
+- [x] **QA-02 - Run frontend static and behavioral gates.** Run from
   `src/spark_cli/web/`:
 
   ```bash
@@ -885,14 +911,14 @@ Integrated web acceptance -> separate future desktop build/release plan
   Fix new failures. Clearly identify any pre-existing failure with a baseline
   command and evidence; do not silently waive it.
 
-- [ ] **QA-03 - Run long-thread and concurrent-chat stress acceptance.** Exercise
+- [x] **QA-03 - Run long-thread and concurrent-chat stress acceptance.** Exercise
   the 50/500/2,000-row fixtures, two chats streaming at once, switching during
   generation, refresh, reconnect, gateway restart, history prepend, old-work
   expansion, minimap jumps, stop, redirect, subagent completion, Auto model
   stability, one bounded escalation, and context compaction/recovery.
   **Validation:** existing `npm run test:e2e` plus expanded deterministic flows.
 
-- [ ] **QA-04 - Perform visual browser acceptance against the approved
+- [x] **QA-04 - Perform visual browser acceptance against the approved
   prototype.** Inspect real rendered states at 1440/1024/768px in light and dark
   themes. Compare hierarchy, spacing, typography, scroll behavior, composer
   reachability, active work, settled work, failures, plans, changed files,
@@ -901,24 +927,32 @@ Integrated web acceptance -> separate future desktop build/release plan
   surface rhythm and information density while remaining recognizably Spark.
   **Gate:** a functioning route or passing tests alone do not complete this task.
 
-- [ ] **QA-05 - Verify accessibility and input behavior.** Test keyboard-only
+- [x] **QA-05 - Verify accessibility and input behavior.** Test keyboard-only
   navigation, focus restoration, screen-reader names, contrast, reduced motion,
   zoom, selection/copy, long unbroken text, code blocks, and narrow panels.
 
-- [ ] **QA-06 - Compare performance with the Phase 0 baseline.** No material
+- [x] **QA-06 - Compare performance with the Phase 0 baseline.** No material
   regression in stream continuity, first render, scroll stability, or memory.
   The 500-row case should update only the active turn during streaming, and the
   2,000-row case must remain navigable without safe-mode fallback under normal
   fixture load.
 
-- [ ] **QA-07 - Run the practical repository gate.** Activate `.venv`, run
+- [x] **QA-07 - Run the practical repository gate.** Activate `.venv`, run
   `ruff check src/`, the relevant pytest subsets, and the full practical suite
   when feasible. Record exact counts and any documented baseline exclusions.
 
-- [ ] **WEB-RELEASE-01 - Build the accepted web bundle only after source
+- [x] **WEB-RELEASE-01 - Build the accepted web bundle only after source
   acceptance.** Run `npm run build`, inspect the generated bundle and budget,
   and verify the served web UI uses the new assets. Generated `web_dist` changes
   belong only to this final web gate, not intermediate source commits.
+  **Evidence (2026-08-04):** 362 focused Python tests and 361 frontend tests
+  passed, as did ESLint, TypeScript, the concurrent-chat/reconnect/compaction
+  E2E, and the final production build. The browser pass covered 1440, 1024, and
+  768px with zero horizontal overflow and visually inspected the compact Auto
+  policy popover. A rapid-switch stale-session projection race found by E2E was
+  fixed. The initial static entry graph is 215.16 KiB gzip against the 600 KiB
+  budget (Phase 0: 214.80 KiB, +0.36 KiB). Repository-wide Ruff still reports
+  50 unrelated pre-existing findings; E9/F checks on changed paths pass.
 
 - [ ] **WEB-RELEASE-02 - Record the integrated stacked-PR evidence.** Link every
   merged layer and include each base SHA, stack map, scope, routing eval summary,

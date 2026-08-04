@@ -4882,6 +4882,10 @@ def get_model_status():
     """Return all model/routing/reasoning state needed by the prompt bar."""
     try:
         cfg = load_config()
+        from spark_cli.model_config import read_auto_policy, read_global_model_config
+
+        global_model = read_global_model_config(cfg)
+        policy = read_auto_policy(cfg)
         model_cfg = cfg.get("model", "")
         if isinstance(model_cfg, dict):
             smart_model = str(model_cfg.get("default", model_cfg.get("name", "")) or "")
@@ -4909,20 +4913,36 @@ def get_model_status():
         except Exception:
             pass
 
+        catalog_source = "unavailable"
+        catalog_warning = ""
+        try:
+            catalog = _resolve_codex_model_catalog()
+            catalog_source = str(catalog.get("source") or "unavailable")
+            catalog_warning = str(catalog.get("warning") or "")
+        except Exception:
+            pass
+
         return {
-            "smart_model": smart_model,
+            "smart_model": "auto" if global_model.selection == "auto" else smart_model,
             "smart_provider": smart_provider,
             "fast_model": fast_model,
             "fast_provider": fast_provider,
             "multi_model_enabled": multi_enabled,
             "reasoning_effort": effort,
             "reasoning_supported": reasoning_supported,
+            "auto_enabled": policy.enabled,
+            "selection": global_model.selection,
+            "auto_roles": {name: target.as_dict() for name, target in policy.roles.items()},
+            "catalog_source": catalog_source,
+            "catalog_warning": catalog_warning,
         }
     except Exception:
         _log.exception("GET /api/model/status failed")
         return {
             "smart_model": "", "smart_provider": "", "fast_model": "", "fast_provider": "",
             "multi_model_enabled": False, "reasoning_effort": "none", "reasoning_supported": False,
+            "auto_enabled": True, "selection": "auto", "auto_roles": {},
+            "catalog_source": "unavailable", "catalog_warning": "",
         }
 
 
@@ -5133,6 +5153,8 @@ def get_available_models(provider: str = "", base_url: str = ""):
 def get_model_suggestions():
     """Return provider-aware model name suggestions for the quick-settings popover."""
     try:
+        from spark_cli.model_config import read_auto_policy
+
         cfg = load_config()
         model_cfg = cfg.get("model", "")
         smart_provider = ""
@@ -5146,11 +5168,14 @@ def get_model_suggestions():
         fast_provider = str(cheap.get("provider", "") or "")
         fast_base_url = str(cheap.get("base_url", "") or "")
 
+        if not smart_provider:
+            policy = read_auto_policy(cfg)
+            smart_provider = policy.role("balanced").provider
         smart_models, _ = _resolve_provider_models(smart_provider, smart_base_url)
         fast_models, _ = _resolve_provider_models(fast_provider, fast_base_url)
 
         return {
-            "smart": smart_models,
+            "smart": ["auto", *[model for model in smart_models if model != "auto"]],
             "fast": fast_models,
             "smart_provider": smart_provider,
             "fast_provider": fast_provider,
@@ -5190,6 +5215,12 @@ def set_smart_model(body: Dict[str, Any]):
     try:
         from spark_cli.config import save_config
 
+        raw_model = str(body.get("model") or "").strip()
+        if raw_model.lower() == "auto":
+            from spark_cli.model_config import write_global_model_config
+
+            write_global_model_config(model="auto")
+            return {"ok": True, "model": "auto", "selection": "auto"}
         try:
             new_model = normalize_model_name(body.get("model"), field_name="Model name")
         except ValueError as exc:
@@ -8711,7 +8742,11 @@ def _default_web_chat_model() -> str:
     return read_global_model_config().model
 
 
-def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
+def _resolve_web_turn_route(
+    user_message: str,
+    *,
+    explicit_model: str | None = None,
+) -> Dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
     from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
     from spark_cli.model_config import read_global_model_config
@@ -8750,6 +8785,7 @@ def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
         cfg.get("smart_model_routing", {}) or {},
         primary,
         available_catalog=available_catalog,
+        explicit_model=explicit_model,
     )
     budget_cfg = cfg.get("response_budget", {}) or {}
     return merge_route_request_overrides(
@@ -9619,7 +9655,28 @@ async def get_conversation_config():
 
 @app.get("/api/conversations/models")
 async def get_conversation_models():
-    """Curated model ids for the web UI picker (OpenRouter-style)."""
+    """Return Auto plus the account-authoritative catalog for thread pinning."""
+    try:
+        catalog = _resolve_codex_model_catalog()
+        entries = [
+            {
+                "id": item["slug"],
+                "hint": item.get("display_name") or item["slug"],
+                "reasoning_efforts": item.get("supported_reasoning_efforts", []),
+                "source": item.get("source", catalog.get("source")),
+            }
+            for item in catalog["catalog"]
+        ]
+        return {
+            "models": [
+                {"id": "auto", "hint": "Automatic routing by task, risk and context"},
+                *entries,
+            ],
+            "source": catalog["source"],
+            "warning": catalog["warning"],
+        }
+    except Exception:
+        pass
     curated = [
         ("anthropic/claude-sonnet-4.6", "Fast, strong generalist"),
         ("anthropic/claude-opus-4.6", "Highest quality"),
@@ -9627,7 +9684,14 @@ async def get_conversation_models():
         ("google/gemini-3-pro-preview", "Long context"),
         ("deepseek/deepseek-r1", "Reasoning"),
     ]
-    return {"models": [{"id": mid, "hint": h} for mid, h in curated]}
+    return {
+        "models": [
+            {"id": "auto", "hint": "Automatic routing by task, risk and context"},
+            *[{"id": mid, "hint": h} for mid, h in curated],
+        ],
+        "source": "offline-fallback",
+        "warning": "Live account catalog unavailable.",
+    }
 
 
 class CanvasChatBody(BaseModel):
@@ -9719,12 +9783,9 @@ async def create_conversation(body: ConversationCreate):
         _compaction_failed_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
-    if body.model:
-        from spark_cli.model_config import write_global_model_config
-
-        write_global_model_config(model=body.model)
-    turn_route = _resolve_web_turn_route(body.message)
+    turn_route = _resolve_web_turn_route(body.message, explicit_model=body.model)
     model = turn_route["model"]
+    session_model = body.model or ("auto" if turn_route.get("role") else model)
 
     session_source = _normalize_web_session_source(body.source)
     workspace_slug = session_source.split(":", 1)[1] if session_source.startswith("workspace:") else None
@@ -9737,7 +9798,7 @@ async def create_conversation(body: ConversationCreate):
             _db._conn.execute(
                 "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
                 "VALUES (?, ?, ?, ?, 'active')",
-                (session_id, session_source, model, time.time()),
+                (session_id, session_source, session_model, time.time()),
             )
             _db._conn.commit()
             row = _db.get_session(session_id)
@@ -10187,7 +10248,11 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             _compaction_failed_callback,
         ) = _make_web_chat_callbacks(session_id, queue, loop)
         _web_queues[session_id] = queue
-        turn_route = _resolve_web_turn_route(body.message)
+        selected_model = str(row.get("model") or "").strip()
+        turn_route = _resolve_web_turn_route(
+            body.message,
+            explicit_model=selected_model or None,
+        )
         agent = _get_web_cached_agent(session_id)
         conversation_history = db.get_messages_as_conversation(session_id)
         history_hydrated_at = time.time()
@@ -10404,7 +10469,13 @@ async def switch_conversation_model(session_id: str, body: ConversationModelBody
             status_code=409, detail="Cannot switch model while a turn is running."
         )
     from spark_cli.config import get_compatible_custom_providers
-    from spark_cli.model_config import read_global_model_config, write_model_switch_result
+    if body.model.strip().lower() == "auto":
+        _close_web_agent(session_id)
+        _update_web_session_model(session_id, "auto")
+        _publish_event("chat.model_changed", {"model": "auto"}, session_id)
+        return {"ok": True, "session_id": session_id, "model": "auto"}
+
+    from spark_cli.model_config import read_global_model_config
     from spark_cli.model_switch import switch_model
 
     cfg = load_config()
@@ -10422,10 +10493,7 @@ async def switch_conversation_model(session_id: str, body: ConversationModelBody
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error_message)
 
-    write_model_switch_result(result)
-    for sid in list(_web_agents.keys()):
-        if not _is_web_turn_active(sid):
-            _close_web_agent(sid)
+    _close_web_agent(session_id)
     _update_web_session_model(session_id, result.new_model)
     _publish_event("chat.model_changed", {"model": result.new_model}, session_id)
     return {"ok": True, "session_id": session_id, "model": result.new_model}

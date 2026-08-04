@@ -2451,6 +2451,16 @@ export interface ModelStatusResponse {
   multi_model_enabled: boolean;
   reasoning_effort: string;
   reasoning_supported: boolean;
+  auto_enabled: boolean;
+  selection: "auto" | "pinned";
+  auto_roles: Record<string, {
+    provider: string;
+    model: string;
+    reasoning_effort: string;
+    fallback: string[];
+  }>;
+  catalog_source: string;
+  catalog_warning: string;
 }
 
 export interface ModelSuggestionsResponse {

@@ -1962,7 +1962,7 @@ class TestConversationControl:
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_web"
         assert "stored_web" in web_server._web_agents
-        assert web_server._web_agents["stored_web"].model == "test-model"
+        assert web_server._web_agents["stored_web"].model == "m1"
         assert _wait_for(lambda: "history" in captured)
         assert captured["user_message"] == "again"
         assert captured["history"] == [
@@ -2003,7 +2003,7 @@ class TestConversationControl:
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_cli"
         assert "stored_cli" in web_server._web_agents
-        assert web_server._web_agents["stored_cli"].model == "test-model"
+        assert web_server._web_agents["stored_cli"].model == "m1"
         assert _wait_for(lambda: "history" in captured)
         assert captured["user_message"] == "continue"
         assert captured["history"] == [
@@ -2797,15 +2797,13 @@ class TestConversationControl:
         finally:
             web_server._web_queues.pop("s_done", None)
 
-    def test_model_switch_persists_global_and_closes_cached_agent(self, web_client, monkeypatch):
+    def test_model_switch_pins_thread_and_closes_cached_agent(self, web_client, monkeypatch):
         import spark_cli.web_server as web_server
         from spark_cli.model_switch import ModelSwitchResult
 
         agent = MagicMock()
         agent.model = "old"
         web_server._web_agents["s1"] = agent
-        saved = {}
-
         monkeypatch.setattr(
             "spark_cli.model_switch.switch_model",
             lambda **_kw: ModelSwitchResult(
@@ -2815,14 +2813,9 @@ class TestConversationControl:
             ),
         )
 
-        def fake_write(result):
-            saved["model"] = result.new_model
-            return {"model": {"default": result.new_model, "provider": result.target_provider}}
-
-        monkeypatch.setattr("spark_cli.model_config.write_model_switch_result", fake_write)
         resp = web_client.post("/api/conversations/s1/model", json={"model": "new/model"})
         assert resp.status_code == 200
-        assert saved["model"] == "new/model"
+        assert resp.json()["model"] == "new/model"
         assert "s1" not in web_server._web_agents
 
     def test_approval_no_pending(self, web_client):

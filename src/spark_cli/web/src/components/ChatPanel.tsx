@@ -295,6 +295,14 @@ export function ChatPanel({
     initialMessages: chatMessages,
     callbacks: {
       onStateChange: (transition) => {
+        const transitionSessionId = transition.state.activeSessionId;
+        if (
+          transitionSessionId
+          && transitionSessionId !== activeSessionRef.current
+          && !activeSessionAliasesRef.current.has(transitionSessionId)
+        ) {
+          return;
+        }
         const nextMessages = transition.state.messages;
         if (lastPresentedStreamMessagesRef.current === nextMessages) return;
         lastPresentedStreamMessagesRef.current = nextMessages;
@@ -424,8 +432,8 @@ export function ChatPanel({
   }, [streaming]);
 
   useEffect(() => {
-    rememberLocalTurn(activeSessionRef.current, chatMessages);
-  }, [activeSessionRef, chatMessages]);
+    rememberLocalTurn(activeSessionId, chatMessages);
+  }, [activeSessionId, chatMessages]);
 
   useEffect(() => {
     rememberRenderHealth(activeSessionId, safeMode);
@@ -629,6 +637,13 @@ export function ChatPanel({
   ]);
 
   useEventBus((env) => {
+    if (
+      env.topic.startsWith("chat.")
+      && env.session_id
+      && !activeSessionAliasesRef.current.has(env.session_id)
+    ) {
+      return;
+    }
     streamController.handleEvent({
       topic: env.topic,
       session_id: env.session_id,
