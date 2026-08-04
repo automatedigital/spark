@@ -48,11 +48,14 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
     if not raw_identifier:
         return None
 
+    source_dir: Path | None = None
     try:
         from tools.skills_tool import SKILLS_DIR, skill_view
 
         identifier_path = Path(raw_identifier).expanduser()
         if identifier_path.is_absolute():
+            if identifier_path.is_dir() and (identifier_path / "SKILL.md").is_file():
+                source_dir = identifier_path.resolve()
             try:
                 normalized = str(identifier_path.resolve().relative_to(SKILLS_DIR.resolve()))
             except Exception:
@@ -69,8 +72,8 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
 
     skill_name = str(loaded_skill.get("name") or normalized)
     skill_path = str(loaded_skill.get("path") or "")
-    skill_dir = None
-    if skill_path:
+    skill_dir = source_dir
+    if skill_dir is None and skill_path:
         try:
             skill_dir = SKILLS_DIR / Path(skill_path).parent
         except Exception:
@@ -206,8 +209,17 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
     global _skill_commands
     _skill_commands = {}
     try:
-        from tools.skills_tool import SKILLS_DIR, _parse_frontmatter, skill_matches_platform, _get_disabled_skill_names
-        from agent.skill_utils import get_external_skills_dirs
+        from agent.skill_utils import (
+            get_external_skills_dirs,
+            get_skill_invocation_metadata,
+            skill_is_user_invocable,
+        )
+        from tools.skills_tool import (
+            SKILLS_DIR,
+            _get_disabled_skill_names,
+            _parse_frontmatter,
+            skill_matches_platform,
+        )
         disabled = _get_disabled_skill_names()
         seen_names: set = set()
 
@@ -226,6 +238,8 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
                     frontmatter, body = _parse_frontmatter(content)
                     # Skip skills incompatible with the current OS platform
                     if not skill_matches_platform(frontmatter):
+                        continue
+                    if not skill_is_user_invocable(frontmatter):
                         continue
                     name = frontmatter.get('name', skill_md.parent.name)
                     if name in seen_names:
@@ -249,11 +263,22 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
                     cmd_name = _SKILL_MULTI_HYPHEN.sub('-', cmd_name).strip('-')
                     if not cmd_name:
                         continue
+                    provenance = "external" if scan_dir != SKILLS_DIR else "local"
+                    try:
+                        from tools.skills_metadata import resolve_skill
+
+                        canonical = resolve_skill(skill_md.parent)
+                        if canonical:
+                            provenance = str(canonical.get("provenance") or provenance)
+                    except Exception:
+                        pass
                     _skill_commands[f"/{cmd_name}"] = {
                         "name": name,
                         "description": description or f"Invoke the {name} skill",
                         "skill_md_path": str(skill_md),
                         "skill_dir": str(skill_md.parent),
+                        "provenance": provenance,
+                        **get_skill_invocation_metadata(frontmatter),
                     }
                 except Exception as e:
                     logger.debug("Skipping skill file %s: %s", skill_md, e)

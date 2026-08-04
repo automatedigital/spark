@@ -266,6 +266,9 @@ def resolve_skill(skill_dir: Path, *, root_kind: str | None = None) -> dict[str,
         kind, root = matched
         content = skill_md.read_text(encoding="utf-8")
         frontmatter = _parse_frontmatter(content[:100_000])
+        from agent.skill_utils import get_skill_invocation_metadata
+
+        invocation = get_skill_invocation_metadata(frontmatter)
         name = str(frontmatter.get("name") or skill_dir.name).strip()[:64]
         if not name:
             return None
@@ -310,6 +313,7 @@ def resolve_skill(skill_dir: Path, *, root_kind: str | None = None) -> dict[str,
             "skill_id": _skill_id(root, skill_dir, provenance),
             "name": name,
             "description": description,
+            **invocation,
             "category": category,
             "provenance": provenance,
             "provenance_detail": detail,
@@ -364,12 +368,16 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
         except (OSError, UnicodeError):
             continue
         description = str(frontmatter.get("description") or "").strip()[:_MAX_DESCRIPTION]
+        from agent.skill_utils import get_skill_invocation_metadata
+
+        invocation = get_skill_invocation_metadata(frontmatter)
         relative = source.relative_to(_bundled_root())
         usage = _usage_entry(name) or {}
         record = {
             "skill_id": _skill_id(local_root, destination, SkillProvenance.BUNDLED.value),
             "name": name,
             "description": description,
+            **invocation,
             "category": relative.parts[-2] if len(relative.parts) > 1 else None,
             "provenance": SkillProvenance.BUNDLED.value,
             "provenance_detail": {"label": "Spark built-in", "source": "bundled"},

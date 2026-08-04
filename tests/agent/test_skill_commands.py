@@ -101,6 +101,25 @@ class TestScanSkillCommands:
         assert "/enabled-skill" in result
         assert "/disabled-skill" not in result
 
+    def test_model_only_skill_has_no_user_command(self, tmp_path):
+        with patch("tools.skills_tool.SKILLS_DIR", tmp_path):
+            _make_skill(
+                tmp_path,
+                "model-only",
+                frontmatter_extra="invocation-policy: model_invoked\n",
+            )
+            _make_skill(
+                tmp_path,
+                "user-only",
+                frontmatter_extra="disable-model-invocation: true\n",
+            )
+            result = scan_skill_commands()
+
+        assert "/model-only" not in result
+        assert "/user-only" in result
+        assert result["/user-only"]["invocation_policy"] == "user_invoked"
+        assert result["/user-only"]["model_invocable"] is False
+
 
     def test_special_chars_stripped_from_cmd_key(self, tmp_path):
         """Skill names with +, /, or other special chars produce clean cmd keys."""
@@ -383,6 +402,28 @@ Generate some audio.
 
         assert msg is not None
         assert 'file_path="<path>"' in msg
+
+    def test_external_supporting_files_use_the_external_skill_directory(
+        self, tmp_path, monkeypatch
+    ):
+        local = tmp_path / "local"
+        external = tmp_path / "external"
+        _make_skill(external, "external-skill", category="orchestration")
+        references = external / "orchestration" / "external-skill" / "references"
+        references.mkdir()
+        (references / "guide.md").write_text("external guide")
+
+        monkeypatch.setattr(
+            "agent.skill_utils.get_external_skills_dirs", lambda: [external]
+        )
+        with patch("tools.skills_tool.SKILLS_DIR", local):
+            commands = scan_skill_commands()
+            msg = build_skill_invocation_message("/external-skill")
+
+        assert commands["/external-skill"]["provenance"] == "external"
+        assert msg is not None
+        assert "references/guide.md" in msg
+        assert 'skill_view(name="external-skill", file_path="<path>")' in msg
 
 
 class TestPlanSkillHelpers:

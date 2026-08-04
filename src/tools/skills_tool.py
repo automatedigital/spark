@@ -510,18 +510,27 @@ def _is_skill_disabled(name: str, platform: str = None) -> bool:
         return False
 
 
-def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
+def _find_all_skills(
+    *, skip_disabled: bool = False, model_invocable_only: bool = False
+) -> List[Dict[str, Any]]:
     """Recursively find all skills in ~/.spark/skills/ and external dirs.
 
     Args:
         skip_disabled: If True, return ALL skills regardless of disabled
             state (used by ``spark skills`` config UI). Default False
             filters out disabled skills.
+        model_invocable_only: If True, omit skills that are not discoverable by
+            the model. This is used by the model-facing ``skills_list`` tool;
+            management and slash-command callers retain all relevant skills.
 
     Returns:
         List of skill metadata dicts (name, description, category).
     """
-    from agent.skill_utils import get_external_skills_dirs
+    from agent.skill_utils import (
+        get_external_skills_dirs,
+        get_skill_invocation_metadata,
+        skill_is_model_invocable,
+    )
 
     skills = []
     seen_names: set = set()
@@ -549,6 +558,9 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
                 if not skill_matches_platform(frontmatter):
                     continue
 
+                if model_invocable_only and not skill_is_model_invocable(frontmatter):
+                    continue
+
                 name = frontmatter.get("name", skill_dir.name)[:MAX_NAME_LENGTH]
                 if name in seen_names:
                     continue
@@ -569,11 +581,14 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
                 category = _get_category_from_path(skill_md)
 
                 seen_names.add(name)
-                skills.append({
-                    "name": name,
-                    "description": description,
-                    "category": category,
-                })
+                skills.append(
+                    {
+                        "name": name,
+                        "description": description,
+                        "category": category,
+                        **get_skill_invocation_metadata(frontmatter),
+                    }
+                )
 
             except (UnicodeDecodeError, PermissionError) as e:
                 logger.debug("Failed to read skill file %s: %s", skill_md, e)
@@ -670,7 +685,10 @@ def skills_list(category: str = None, task_id: str = None) -> str:
             )
 
         # Find all skills
-        all_skills = _find_all_skills()
+        # This is a model-facing tool result. User-only skills remain visible
+        # to slash commands and the management API, but do not enter the
+        # model's ordinary discovery surface.
+        all_skills = _find_all_skills(model_invocable_only=True)
 
         if not all_skills:
             return json.dumps(
@@ -973,6 +991,8 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
 
         # Reuse the parse from the platform check above
         frontmatter = parsed_frontmatter
+        from agent.skill_utils import get_skill_invocation_metadata
+        invocation_metadata = get_skill_invocation_metadata(frontmatter)
 
         # Get reference, template, asset, and script files if this is a directory-based skill
         reference_files = []
@@ -1138,6 +1158,7 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
             "readiness_status": SkillReadinessStatus.SETUP_NEEDED.value
             if setup_needed
             else SkillReadinessStatus.AVAILABLE.value,
+            **invocation_metadata,
         }
 
         setup_help = next((e["help"] for e in required_env_vars if e.get("help")), None)
