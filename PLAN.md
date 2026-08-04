@@ -12,25 +12,47 @@ needed to power the web UI, but macOS and Windows desktop rebuilds, installers,
 signing, notarization, and release publication are deferred until the web
 experience has been reviewed and accepted.
 
-## Feature-Branch Rule
+## Stacked Feature-Branch Rule
 
-All implementation must happen on a feature branch created from the latest
+All implementation must happen on feature branches created from the latest
 `origin/main`. Do not implement any source task while `git branch --show-current`
-prints `main`.
+prints `main`, and never use an assistant-specific branch prefix.
 
-The intended branch is:
+Use GitHub stacked pull requests only where one review layer genuinely depends
+on the layer below it. Keep the three concerns in separate stacks:
+
+| Stack | Branches, bottom to top | Merge boundary |
+| --- | --- | --- |
+| Thread | `webui-thread-foundation` -> `webui-thread-interface` -> `webui-thread-polish` | Accepted thread and composer |
+| Routing | `adaptive-routing-core` -> `adaptive-routing-web` | Accepted Auto policy and web controls |
+| Skills | `skills-invocation` -> `skills-library` -> `skills-web` | Accepted skill contracts, library decisions, and UI |
+
+The thread stack goes first. Start the routing stack from fresh `main` after the
+thread stack lands so its composer/thread UI targets the accepted components.
+The skills stack may proceed independently where file ownership does not
+overlap, but every layer must remain independently reviewable.
+
+GitHub's stacked-PR feature is currently public preview. Verify the current
+`gh stack` workflow before source work:
 
 ```bash
 git fetch origin
 git switch main
 git pull --ff-only origin main
-git switch -c webui-next
+gh stack --help
+gh stack init webui-thread-foundation
 ```
 
-Record the base SHA in the first implementation PR. Keep unrelated generated,
-reference, release, and user-owned files out of the branch. The temporary
-research clones described below are not Spark dependencies and must never be
-copied into or committed with this repository.
+Use `gh stack add <branch>` for each dependent layer, `gh stack submit` to push
+and open the linked PRs, and merge from the bottom up. If the preview tooling is
+unavailable or unsuitable, use ordinary same-repository dependent PRs with the
+same branch names, base relationships, and review boundaries rather than
+collapsing the work into one large PR.
+
+Record the `origin/main` base SHA in the bottom PR of each stack. Keep unrelated
+generated, reference, release, and user-owned files out of every branch. The
+temporary research clones described below are not Spark dependencies and must
+never be copied into or committed with this repository.
 
 ## Scope
 
@@ -42,8 +64,8 @@ copied into or committed with this repository.
   delegated-subagent routing.
 - Account-aware Codex model discovery, capability display, routing telemetry,
   and cost/token evaluation.
-- New skills, improvements to overlapping existing skills, skill invocation
-  metadata, skill quality evals, and clearer Skills UI provenance.
+- External-skill integration, improvements to overlapping bundled skills, skill
+  invocation metadata, skill quality evals, and clearer Skills UI provenance.
 - Local web preview, browser-based visual acceptance, frontend tests, focused
   Python tests, and performance/accessibility checks.
 
@@ -54,12 +76,25 @@ copied into or committed with this repository.
   publication.
 - Mobile, gateway-platform, or CLI redesign unrelated to shared API contracts.
 - A wholesale copy of T3 Code's architecture, styling, dependencies, or source.
+- Vendored copies of externally installed Matt Pocock or `i-have-adhd` skills.
 - Committing the temporary clones or generated reference screenshots.
 
 ## Research Snapshot
 
-Research was refreshed on 2026-08-02 from fresh, shallow clones of each default
-branch and from current primary documentation.
+Repository research was refreshed on 2026-08-02 from fresh, shallow clones of
+each default branch. The stacked-PR workflow and installed-skill state were
+refreshed on 2026-08-04 from current primary documentation and the local system.
+
+### GitHub stacked pull requests
+
+- [GitHub's stacked-PR overview](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)
+  defines a stack as dependent same-repository PRs where each layer targets the
+  branch below it, CI and branch protection apply throughout, and merges proceed
+  bottom-up. The feature is currently public preview.
+- [GitHub's creation guide](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/creating-stacked-pull-requests)
+  documents `gh stack init`, `gh stack add`, and `gh stack submit`.
+- Transfer to Spark: small dependency-correct review layers and explicit stack
+  maps. Do not force independent routing, skills, and thread work into one chain.
 
 ### T3 Code
 
@@ -97,8 +132,9 @@ branch and from current primary documentation.
   prompts, pinned models, isolated configuration, resumable trials, cost caps,
   blinded judging, and release gates for correctness, autonomy, actionability,
   safety, and concision.
-- Transfer to Spark: an opt-in action-first skill and the paired eval discipline.
-  Preserve MIT attribution if text or test cases are adapted.
+- `i-have-adhd` is now externally installed on this machine. Transfer to Spark:
+  invocation/provenance support and the paired eval discipline, not a bundled
+  copy. Preserve MIT attribution if text or test cases are ever adapted.
 
 ### Matt Pocock skills
 
@@ -109,12 +145,13 @@ branch and from current primary documentation.
   for discoverability, progressive disclosure through context pointers,
   checkable completion criteria, and aggressive removal of duplicated/no-op
   prose.
-- High-value candidates for Spark are `research`, `prototype`,
-  `codebase-design`, `domain-modeling`, `writing-great-skills`, and `handoff`.
-- `diagnosing-bugs`, `tdd`, `grill-with-docs`, planning, review, and subagent
-  workflows overlap Spark's installed skills. Improve or replace the existing
-  canonical skill after comparison; do not install a second skill with a
-  different name for the same behavior.
+- The Matt Pocock skills are now externally installed on this machine. High-value
+  examples include `research`, `prototype`, `codebase-design`,
+  `domain-modeling`, `wayfinder`, `grill-me`, and `grill-with-docs`.
+- `diagnosing-bugs`, `tdd`, planning, review, and subagent workflows overlap
+  Spark's bundled skills. Improve or replace the bundled canonical skill after
+  comparison; do not vendor the external skill or create a second bundled skill
+  with a different name for the same behavior.
 
 ### Current OpenAI/Codex guidance
 
@@ -133,7 +170,7 @@ branch and from current primary documentation.
   exposes `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`. Sol and Terra
   advertise multi-agent v2 while Luna advertises v1. Availability and metadata
   can change; Spark must use the live account catalog and test parent/child
-  compatibility before enabling a Sol-to-Luna preset.
+  compatibility before enabling those models in Auto role mappings.
 
 ## Current Spark Baseline
 
@@ -164,44 +201,96 @@ branch and from current primary documentation.
 
 ## Product Principles
 
-- Final answers and concrete outcomes remain visually dominant; intermediate
-  work is available without becoming the main reading path.
-- Running work stays expanded and legible. Settled work becomes compact but is
-  never deleted from the transcript.
+- Final answers and concrete outcomes remain visually dominant. Active work
+  stays expanded; completed reasoning, tools, and subagents collapse into one
+  expandable work summary by default.
+- Failures, pending approvals, and unresolved user input never disappear into a
+  collapsed summary. Raw transcript content remains available and exact.
+- Compact changed-file and plan-progress cards sit beneath the answer that
+  produced them; the right panel remains the detailed diff/plan workspace.
 - The server/session database remains authoritative. UI folds, filters, drafts,
   and optimistic state must reconcile after refresh, reconnect, and chat switch.
 - Exact message text, tool results, approvals, retry/fork semantics, and the
   stable SSE recovery contracts must survive the redesign.
-- Model routing is transparent, account-aware, reversible, and measured. A user
-  can always see the effective model/effort and override the default.
-- Skills earn their prompt cost. User-only skills should consume no model-index
-  tokens; overlapping skills should have one canonical source of truth.
+- `Auto` is the default for new chats. Explicit model selection pins that model
+  for the thread until changed; Auto always shows the effective model, effort,
+  route label, fallback, and any bounded escalation.
+- Auto routes the main agent and delegated subagents independently, preserves a
+  quality/safety floor before minimizing usage, uses latency only as a tie-break,
+  and prefers model stability unless a tested threshold is crossed.
+- Routing explanations are deterministic policy labels based on observable
+  signals, never generated reasoning or hidden chain-of-thought.
+- Context management warns early, offers manual removal/summarization, compacts
+  automatically only when required to continue safely, preserves pinned context
+  and decisions, and visibly records what changed. It never silently drops
+  context merely to save tokens.
+- Skills earn their prompt cost. User-only orchestration skills consume no
+  model-index tokens; overlapping skills have one canonical source of truth;
+  external skills retain their source rather than being copied into Spark.
+- T3 Code is a visual as well as structural reference: borrow its restrained
+  surfaces, spacing, density, composer treatment, work summaries, and thread
+  rhythm while retaining Spark branding, color system, typography character,
+  terminology, and distinctive controls.
 - Visual acceptance means inspecting the rendered web UI at representative
   widths with real long, streaming, tool-heavy, and subagent conversations.
+
+## Confirmed Product Decisions
+
+The 2026-08-04 `grill-me` session resolved these implementation choices:
+
+- Use separate dependency-correct PR stacks, not one monolithic branch or one
+  artificial stack spanning unrelated concerns.
+- Completed turns are final-answer-first with intermediate work collapsed;
+  active work, failures, approvals, and unresolved input remain visible.
+- Changed files and plan progress appear as compact inline outcomes linked to
+  the authoritative right-panel detail.
+- Compare two polished T3-inspired prototypes: calm/spacious and
+  dense/operational. Do not spend a prototype on an unrelated visual direction.
+- `Auto` is the default model choice; explicit choices remain supported and pin
+  the thread. Main-agent and subagent routing are independent.
+- Auto permits at most one reasoned escalation per turn, maintains a tested
+  quality/safety floor, then minimizes usage, with latency as a tie-break.
+- Ship one Auto policy initially. Use sticky routing with hysteresis rather than
+  reconsidering models from scratch on every turn.
+- Show deterministic route labels such as `Terra · normal coding task` or
+  `Escalated to Sol · validation failed`; never expose hidden reasoning.
+- Manage context conservatively and visibly; never silently discard it for cost.
+- Do not vendor the installed Matt Pocock or `i-have-adhd` skills. Start with
+  invocation, provenance, overlap, token-cost, and eval infrastructure; add a
+  bundled skill only after the audit proves a gap.
+- User-invoked orchestration skills remain available in slash commands and the
+  Skills UI but are omitted from the normal model-visible skill index.
 
 ## Dependency Map
 
 ```text
-BRANCH -> BASELINE -> UI PROTOTYPES -> USER ACCEPTANCE
-                              |
-                              +-> THREAD MODEL -> TIMELINE -> COMPOSER -> USAGE UI
-                              |
-LIVE MODEL METADATA -> ROUTING POLICY -> ROUTING UI -> ROUTING EVALS
-                              |
-SKILL INVOCATION CONTRACT -> SKILL AUDIT -> NEW/IMPROVED SKILLS -> SKILL EVALS
+THREAD STACK
+main -> webui-thread-foundation -> webui-thread-interface -> webui-thread-polish
+          baseline + model          timeline + composer       visual/perf QA
 
-THREAD + ROUTING + SKILLS -> INTEGRATED WEB QA -> ACCEPTED WEB BUNDLE
+ROUTING STACK (after accepted thread stack lands)
+main -> adaptive-routing-core -> adaptive-routing-web
+          metadata + policy          Auto UI + telemetry + eval acceptance
 
-Accepted web bundle -> separate future desktop build/release plan
+SKILLS STACK (independent where ownership permits)
+main -> skills-invocation -> skills-library -> skills-web
+          metadata + index       audit + evals       provenance/quality UI
+
+Accepted thread + routing + skills stacks -> integrated web bundle gate
+Integrated web acceptance -> separate future desktop build/release plan
 ```
 
-## Phase 0: Branch, Baselines, and UI Direction
+## Phase 0: Thread Stack, Baselines, and UI Direction
 
-- [ ] **BRANCH-01 - Create the implementation branch before source work.** Run
-  the feature-branch commands above, record the `origin/main` base SHA, and
-  confirm the worktree contains only intentional files.
-  **Done when:** `git branch --show-current` prints `webui-next` and
-  `git status --short` has no unrelated changes.
+- [ ] **BRANCH-01 - Initialize the thread PR stack before source work.** From a
+  clean latest `main`, verify `gh stack --help`, run
+  `gh stack init webui-thread-foundation`, record the `origin/main` base SHA,
+  and confirm the worktree contains only intentional files. Add
+  `webui-thread-interface` and `webui-thread-polish` only when their dependency
+  boundaries are reached.
+  **Done when:** the checked-out branch is `webui-thread-foundation`, the stack
+  map/base relationships are recorded, and `git status --short` has no unrelated
+  changes.
 
 - [ ] **BASE-01 - Capture behavior fixtures for the current chat surface.** Add
   redacted fixtures for empty, short, long, streaming, interrupted, reconnecting,
@@ -217,7 +306,6 @@ Accepted web bundle -> separate future desktop build/release plan
   streaming rows, tool-result expansion, approvals, redirect/stop, scroll
   anchoring, minimap navigation, refresh/reconnect, and chat switching.
   **Files:** existing chat tests plus new focused tests beside the extracted
-  models/components.
   **Validation:** `cd src/spark_cli/web && npm test`.
 
 - [ ] **BASE-03 - Record web performance and visual baselines.** Measure React
@@ -229,14 +317,14 @@ Accepted web bundle -> separate future desktop build/release plan
   **Done when:** raw numbers and screenshots identify the current state; they are
   not acceptance evidence for the redesign.
 
-- [ ] **UI-01 - Build three deliberately different main-thread prototypes.** Use
-  one temporary dev-only route or query flag to compare: a T3-inspired compact
-  turn timeline, a calmer document-style transcript, and a denser operations
-  timeline. Each variant must use the same fixture data and preserve the same
-  actions.
+- [ ] **UI-01 - Build two polished T3-inspired main-thread prototypes.** Use one
+  temporary dev-only route or query flag to compare a calm/spacious transcript
+  with a dense/operational transcript. Both must use the same fixture data,
+  final-answer-first turn hierarchy, compact outcome cards, composer controls,
+  Spark branding, and preserved actions.
   **Files:** temporary components under
   `src/spark_cli/web/src/dev/thread-prototypes/` and one guarded dev entrypoint.
-  **Done when:** all three run from one documented command and none is wired into
+  **Done when:** both run from one documented command and neither is wired into
   production state.
 
 - [ ] **UI-02 - Review the prototypes in the browser and select one direction.**
@@ -268,7 +356,9 @@ Accepted web bundle -> separate future desktop build/release plan
   summary such as `Worked for 2m 14s · 7 actions`.
   **Depends on:** `THREAD-01`.
   **Done when:** tests cover missing turn IDs, multiple assistant messages,
-  redirect/interruption, failed tools, approvals, and resumed sessions.
+  redirect/interruption, failed tools, approvals, requested user input, and
+  resumed sessions; failures and unresolved interactions cannot be hidden by
+  the default fold.
 
 - [ ] **THREAD-03 - Add structural sharing for unchanged timeline items.** A
   streaming delta should replace only the affected active item; settled turns
@@ -289,8 +379,9 @@ Accepted web bundle -> separate future desktop build/release plan
 
 - [ ] **CHAT-01 - Implement the selected timeline shell.** Use a centered,
   readable content column, a persistent bottom composer, clear active-turn
-  status, and responsive gutters. Keep Spark's visual identity rather than
-  cloning T3 colors or branding.
+  status, and responsive gutters. Move visibly toward T3's restrained surfaces,
+  spacing, density, and thread rhythm while retaining Spark's brand tokens,
+  terminology, typography character, and distinctive controls.
   **Files:** new `src/spark_cli/web/src/components/chat/MessagesTimeline.tsx`,
   existing `src/spark_cli/web/src/components/ChatPanel.tsx`, and shared theme
   styles.
@@ -305,8 +396,9 @@ Accepted web bundle -> separate future desktop build/release plan
 
 - [ ] **CHAT-03 - Implement compact expandable work groups.** Group tool calls,
   reasoning, and subagent status under the turn summary. Show failures and
-  unresolved approvals prominently; allow complete raw details and stored tool
-  artifacts to be expanded on demand.
+  unresolved approvals/user input prominently; allow complete raw details and
+  stored tool artifacts to be expanded on demand. Completed groups collapse by
+  default; active groups remain expanded.
   **Files:** new `TurnWorkGroup.tsx`; existing
   `src/spark_cli/web/src/components/chat/ToolCallBubble.tsx`,
   `ReasoningBubble.tsx`, and `SubagentsPanel.tsx`; and focused tests in the same
@@ -314,16 +406,18 @@ Accepted web bundle -> separate future desktop build/release plan
 
 - [ ] **CHAT-04 - Make changed files a first-class turn outcome.** Reuse the
   authoritative changes/diff data already available to the right panel. Show a
-  compact file tree with additions/deletions and open-diff actions; do not infer
-  success merely from a tool call string.
+  compact card directly beneath the relevant final answer, with a file tree,
+  additions/deletions, and open-diff actions; do not infer success merely from a
+  tool call string. Keep the right panel as the detailed workspace.
   **Files:** a new `ChangedFilesCard.tsx`, the existing changes-panel model/API,
   and focused tests.
   **Done when:** changed files reconcile after refresh and a file opens in the
   existing Changes tab at the expected path.
 
 - [ ] **CHAT-05 - Add inline plan presentation.** Render active plan steps and
-  proposed plan Markdown as a collapsible turn card with a shortcut to the
-  existing plan/brief surface. Preserve one authoritative plan state.
+  proposed plan Markdown as a compact card beneath the relevant answer with a
+  shortcut to the existing plan/brief surface. Preserve one authoritative plan
+  state in the right panel/backend.
   **Files:** new `PlanCard.tsx`, existing
   `src/spark_cli/web/src/components/chat/BriefPanel.tsx`, plan event adapters,
   and tests.
@@ -350,8 +444,10 @@ Accepted web bundle -> separate future desktop build/release plan
 
 - [ ] **COMPOSER-01 - Recompose the prompt surface around progressive
   disclosure.** Keep the prompt and send/stop/redirect actions always visible;
-  group attachments, context, project, main model, subagent model, reasoning,
-  and advanced controls into compact discoverable controls.
+  group attachments, context, project, model, reasoning, and advanced controls
+  into compact discoverable controls. `Auto` is the default for new chats and
+  sits alongside all currently available explicit model choices. An explicit
+  choice pins the thread until changed.
   **Files:** split `src/spark_cli/web/src/components/chat/PromptBar.tsx` into
   focused composer components while keeping its public contract stable during
   migration.
@@ -359,6 +455,10 @@ Accepted web bundle -> separate future desktop build/release plan
 - [ ] **COMPOSER-02 - Make context pressure actionable.** Keep the current token
   estimate, show context buckets, and offer remove/summarize actions before the
   threshold is reached. Label estimates separately from provider-reported usage.
+  Warn before compaction; automatically compact only when required to continue
+  safely; preserve pinned context, approvals, decisions, and recent turns; and
+  show exactly what was summarized or omitted. Never silently discard context
+  merely to reduce usage.
   **Files:** extracted `ContextWindowMeter.tsx`, context hooks, and tests.
 
 - [ ] **COMPOSER-03 - Keep approvals and requested user input at the point of
@@ -371,7 +471,25 @@ Accepted web bundle -> separate future desktop build/release plan
   Enter/Shift+Enter, stop, redirect, attachment menus, and screen readers.
   **Validation:** component tests plus browser acceptance at 1440/1024/768px.
 
+- [ ] **THREAD-PR-01 - Submit and accept the thread stack bottom-up.** Keep
+  baseline fixtures/pure timeline/controller work in `webui-thread-foundation`,
+  the selected timeline/composer implementation in `webui-thread-interface`, and
+  visual refinement/performance/accessibility fixes in
+  `webui-thread-polish`. Run `gh stack submit`; review each layer's own diff;
+  record focused frontend tests, long-thread/manual-browser evidence, visual
+  comparisons, and performance numbers; then merge from the bottom up.
+  **Gate:** do not initialize `adaptive-routing-core` until all thread layers are
+  accepted and present on `main`.
+
 ## Phase 4: Adaptive Codex Routing
+
+- [ ] **MODEL-00 - Initialize the routing stack after the accepted thread stack
+  lands.** Fast-forward local `main`, run `gh stack init adaptive-routing-core`,
+  and add `adaptive-routing-web` only after the core metadata/policy contract is
+  reviewable.
+  **Done when:** the bottom PR targets current `main`, the web PR targets
+  `adaptive-routing-core`, and neither branch contains thread-stack history that
+  has not already landed on `main`.
 
 - [ ] **MODEL-01 - Preserve account-scoped Codex model metadata.** Change model
   discovery from a list of slugs to a backward-compatible catalog containing
@@ -383,31 +501,39 @@ Accepted web bundle -> separate future desktop build/release plan
   **Done when:** the account list remains authoritative and stale/offline data is
   visibly distinguished without inventing unavailable models.
 
-- [ ] **MODEL-02 - Define routing roles instead of hard-coded product names.**
-  Add `lead`, `balanced`, `fast`, and `subagent` role settings, each resolving to
-  provider, model, reasoning effort, and fallback. Migrate existing
-  `model.default`, `smart_model_routing`, and `delegation` settings without
-  breaking old configs.
+- [ ] **MODEL-02 - Define one Auto policy using roles, not hard-coded product
+  names.** Add `lead`, `balanced`, `fast`, and `subagent` role settings, each
+  resolving to provider, model, reasoning effort, and fallback. `Auto` is the
+  sole automatic preset in the first release. Migrate existing `model.default`,
+  `smart_model_routing`, and `delegation` settings without breaking old configs.
   **Files:** `src/spark_cli/config.py`, `src/spark_cli/model_config.py`,
   `src/agent/smart_model_routing.py`, `src/tools/delegate_tool.py`, config
   migration tests, and web API types.
   **Default intent when available and validated:** Sol for genuinely difficult
   lead work, Terra for balanced work, and Luna at measured high effort for
-  bounded long-running children. The role contract, not those names, is stable.
+  bounded long-running children. Main-agent and delegated-subagent roles resolve
+  independently. The role contract, not those names, is stable.
 
 - [ ] **MODEL-03 - Expand deterministic routing classification.** Route from
   request class, tool need, context size, attachments, risk, task duration, and
-  explicit user choice. Character/word count can remain a signal but cannot be
-  the sole definition of a simple task.
+  explicit user choice. Preserve the current effective model unless a tested
+  threshold is crossed; use hysteresis so adjacent turns do not oscillate.
+  Character/word count can remain a signal but cannot be the sole definition of
+  a simple task.
   **Files:** `src/agent/smart_model_routing.py` and
   `tests/agent/test_smart_model_routing.py`.
   **Done when:** destructive/high-stakes, ambiguous, recovery, code-edit, and
-  long-context turns cannot silently downgrade.
+  long-context turns cannot silently downgrade; equivalent consecutive turns
+  remain stable; explicit model selection bypasses Auto and stays pinned to the
+  thread until changed.
 
 - [ ] **MODEL-04 - Route delegated work by role with bounded escalation.** Let
   Spark select the configured subagent role without adding verbose per-call
   model arguments to the model-visible tool schema. A child may escalate only
   under an explicit tested policy; cap concurrency, iterations, and retries.
+  Main turns and children may use different effective models. Permit at most one
+  policy-driven escalation per turn/child and never bounce repeatedly between
+  models.
   **Files:** `src/tools/delegate_tool.py`, delegation lifecycle payloads,
   `tests/tools/test_delegate.py`, and subagent tests.
 
@@ -416,20 +542,24 @@ Accepted web bundle -> separate future desktop build/release plan
   reasoning efforts, auth modes, unavailable models, and the current v2/v1
   multi-agent metadata mismatch. Do not assume Codex native multi-agent behavior
   and Spark child-agent behavior are equivalent.
-  **Gate:** the Sol-to-Luna preset remains opt-in until the account-specific
+  **Gate:** Auto cannot assign a Sol/Terra/Luna role until the account-specific
   matrix passes or a safe fallback is proven.
 
 - [ ] **MODEL-06 - Add one web routing-policy editor.** Replace scattered
-  smart/fast/delegation controls with a clear preset plus advanced role editor.
-  Show availability, effective effort, fallback, live/offline source, and any
-  compatibility warning. Preserve a manual per-thread override.
+  smart/fast/delegation controls with the single `Auto` choice plus an advanced
+  role editor in Settings. Keep all explicit account-available models in the
+  composer; choosing one pins the thread and bypasses Auto. Show availability,
+  effective effort, fallback, live/offline source, and any compatibility warning.
   **Files:** composer model controls, Settings model section, API endpoints/types,
   and component tests.
 
 - [ ] **MODEL-07 - Surface effective routing in the thread.** Record and display
-  the actual model, effort, route reason, fallback, token usage, cache usage, and
-  child-agent usage per turn. Keep the normal view compact and expose detail on
-  demand.
+  the actual main model, child model(s), effort, deterministic route label,
+  fallback, escalation, token usage, cache usage, and child-agent usage per turn.
+  Use concise labels based on observable policy signals, such as
+  `Terra · normal coding task`, `Luna high · bounded background research`, or
+  `Escalated to Sol · validation failed`. Never expose hidden chain-of-thought.
+  Keep the normal view compact and expose policy detail on demand.
   **Files:** agent usage metadata, session persistence/API serializers,
   `src/spark_cli/web/src/components/chat/SessionInfoBar.tsx`, turn metadata
   components, and tests.
@@ -441,16 +571,36 @@ Accepted web bundle -> separate future desktop build/release plan
   and judging rules.
   **Files:** extend `tests/efficiency/fixtures/`, `tests/evals/`, and report
   tooling without committing private prompts.
-  **Release gate:** no correctness or safety blocker; equal or better weighted
-  quality; lower measured paid-token cost or subscription-window consumption;
-  and no material latency regression outside explicitly quality-first work.
+  **Release gate:** establish and meet a correctness/safety quality floor first;
+  among routes that meet it, choose the lowest measured paid-token cost or
+  subscription-window consumption, using latency only as a tie-break. No safety
+  blocker, no repeated escalation, and no material latency regression outside
+  explicitly quality-first work.
+
+- [ ] **ROUTING-PR-01 - Submit and accept the routing stack bottom-up.** Keep
+  live metadata, migration, Auto policy, hysteresis, independent child routing,
+  and escalation contracts in `adaptive-routing-core`; keep composer/Settings
+  controls, deterministic labels, usage telemetry, and web acceptance in
+  `adaptive-routing-web`. Run `gh stack submit` and attach the compatibility and
+  quality/cost/latency matrices to the relevant PRs.
+  **Gate:** Auto cannot become the default until both layers pass and merge.
 
 ## Phase 5: Better Skills With Lower Prompt Cost
 
+- [ ] **SKILL-00 - Initialize the skills stack from current `main`.** Run
+  `gh stack init skills-invocation`; add `skills-library` only after invocation
+  and provenance contracts are reviewable, then add `skills-web` for the UI.
+  The stack may proceed independently of routing where file ownership does not
+  overlap.
+  **Done when:** each PR shows only its intended layer and the bottom PR records
+  its `origin/main` base SHA.
+
 - [ ] **SKILL-01 - Add an explicit invocation contract.** Support user-invoked
   skills that remain available in slash commands and the Skills UI but omit
-  their descriptions from the model-visible skill index. Keep existing skills
-  model-invoked by default for compatibility.
+  their descriptions from the model-visible skill index. Recognize compatible
+  metadata such as `disable-model-invocation: true`; preserve legacy behavior
+  for skills without metadata, but honor external orchestration skills that
+  declare themselves user-invoked.
   **Files:** `src/agent/skill_utils.py`, `src/agent/prompt_builder.py`,
   `src/agent/skill_commands.py`, `src/tools/skills_tool.py`, Skills API/UI, and
   tests.
@@ -458,46 +608,57 @@ Accepted web bundle -> separate future desktop build/release plan
   and is still directly invokable.
 
 - [ ] **SKILL-02 - Audit the installed engineering skills for overlap.** Compare
-  triggers, steps, references, completion criteria, size, usage, and eval
-  coverage. Produce a keep/improve/merge/archive decision for debugging, TDD,
-  planning, review, research, prototyping, handoff, and subagent workflows.
+  external and bundled triggers, steps, references, completion criteria,
+  invocation type, size, usage, provenance, license, and eval coverage. Produce
+  a keep-external/improve-bundled/merge-bundled/archive-bundled decision for
+  debugging, TDD, planning, review, research, prototyping, grilling, wayfinding,
+  domain modeling, handoff, and subagent workflows.
   **Files:** a dated report under `docs/skills/` and machine-readable size/token
   output from existing skill metadata helpers.
-  **Gate:** no new skill is added before its nearest existing skill is named and
-  a duplication decision is recorded.
+  **Gate:** do not vendor an external skill. No new bundled skill is added before
+  its nearest installed/bundled skill is named and a gap decision is recorded.
 
-- [ ] **SKILL-03 - Add an opt-in action-first output skill.** Adapt the useful
-  behavior from `i-have-adhd`: next action first, bounded numbered steps,
-  restated state, concrete wins, suppressed tangents, and safety/task overrides.
-  Make it user-invoked and session-persistent with an explicit off command.
-  **Files:** new skill under `skills/productivity/`, license/attribution, skill
-  session-state support if needed, and tests.
+- [ ] **SKILL-03 - Integrate and evaluate the externally installed
+  `i-have-adhd` skill.** Verify that it is discoverable, user-invoked,
+  session-persistent where requested, removable/disableable, correctly
+  attributed, and absent from ordinary model-index tokens. Compare its
+  action-first behavior against baseline without copying its files into Spark.
+  **Files:** skill discovery/session-state contracts and `tests/evals/skills/`.
+  **Gate:** create a Spark-bundled action-first skill only if this external skill
+  cannot satisfy a documented Spark-specific requirement.
 
-- [ ] **SKILL-04 - Add a primary-source research skill.** It should define the
-  question, prefer first-party sources, cite every material claim, use a
-  background child only when useful, and save one concise research artifact at
-  the repository's existing documentation location.
-  **Files:** new or adapted skill under `skills/research/`, references only where
-  branch-specific detail earns its token cost, and eval cases.
+- [ ] **SKILL-04 - Integrate externally installed orchestration skills.** Verify
+  direct invocation, dependency resolution, supporting-file loading, provenance,
+  and zero ordinary index cost for `research`, `prototype`, `wayfinder`,
+  `grill-me`, `grill-with-docs`, `domain-modeling`, and related user-invoked
+  skills. A slash-command invocation must inject instructions as a user message
+  without rebuilding the system prompt mid-conversation.
+  **Files:** skill discovery, slash-command dispatch, Skills API contracts, and
+  focused tests.
 
-- [ ] **SKILL-05 - Add a throwaway prototype skill.** Support a logic branch and
-  a UI branch. UI prototypes must present multiple meaningfully different
-  variants from one route, state the question they answer, use one run command,
-  and be removed or isolated before production merge.
-  **Files:** new skill under `skills/software-development/` with concise linked
-  references and eval cases.
+- [ ] **SKILL-05 - Evaluate installed planning/orchestration workflows.** Use
+  representative Spark cases to compare `wayfinder`, `grill-me`,
+  `grill-with-docs`, `research`, and `prototype` for trigger precision,
+  autonomy boundaries, artifact quality, issue-tracker integration, and prompt
+  cost. Confirm GitHub Issues operations follow
+  `docs/agents/issue-tracker.md` and triage labels follow
+  `docs/agents/triage-labels.md`.
+  **Done when:** the Skills UI can explain when to use each without introducing
+  duplicate bundled wrappers.
 
-- [ ] **SKILL-06 - Add codebase-design and skill-authoring references.** Adapt
-  the deep-module/seam vocabulary and the invocation/progressive-disclosure/
-  completion-criterion guidance. Keep manually requested reference skills
-  user-invoked to avoid permanent prompt cost.
-  **Files:** selected skills under `skills/software-development/` and
-  `skills/productivity/`, preserving licenses and attribution.
+- [ ] **SKILL-06 - Evaluate external codebase/domain-design references against
+  Spark's architecture guidance.** Test `codebase-design` and `domain-modeling`
+  against real module seams and the single-context `CONTEXT.md`/`docs/adr/`
+  contract. Keep them external and user-invoked where declared; capture only
+  Spark-specific architecture guidance in repository docs.
+  **Files:** eval cases plus any justified updates under `docs/agents/`,
+  `CONTEXT.md`, or `docs/adr/` following their repository rules.
 
 - [ ] **SKILL-07 - Improve canonical overlapping skills instead of duplicating
-  them.** Candidate improvements include a red-capable tight feedback loop for
-  `systematic-debugging`, pre-agreed public seams and vertical slices for TDD,
-  and stronger domain language/context handling in `grill-with-docs`.
+  them.** Candidate bundled improvements include a red-capable tight feedback
+  loop for systematic debugging, pre-agreed public seams and vertical slices for
+  TDD, and clearer links from bundled skills to better external alternatives.
+  Do not edit externally installed files as part of the Spark branch.
   **Depends on:** `SKILL-02`.
   **Done when:** aliases/related-skill links point to one canonical behavior and
   replaced content remains recoverable in git history.
@@ -507,8 +668,9 @@ Accepted web bundle -> separate future desktop build/release plan
   cases, resumable trials, a hard spend/usage cap, blinded judging, and weighted
   correctness/autonomy/actionability/safety/concision gates.
   **Files:** `tests/evals/skills/`, runner scripts, schemas, and validation tests.
-  **Gate:** a new or rewritten skill does not become bundled/default until its
-  candidate beats baseline without correctness or safety blockers.
+  **Gate:** a new or rewritten bundled skill does not ship until its candidate
+  beats baseline without correctness or safety blockers. External integrations
+  must pass discovery, invocation, isolation, provenance, and prompt-cost gates.
 
 - [ ] **SKILL-09 - Improve the Skills UI quality signals.** Show source,
   invocation type, enabled state, approximate index-token cost, supporting-file
@@ -517,6 +679,13 @@ Accepted web bundle -> separate future desktop build/release plan
   **Files:** `src/spark_cli/web/src/pages/SkillsPage.tsx`,
   `src/spark_cli/web/src/pages/SkillsToolsPage.tsx`, Skills API contracts, and
   focused frontend/Python tests.
+
+- [ ] **SKILLS-PR-01 - Submit and accept the skills stack bottom-up.** Keep
+  invocation/provenance/index-cost contracts in `skills-invocation`, audited
+  library decisions and evals in `skills-library`, and Skills UI signals in
+  `skills-web`. Run `gh stack submit`; verify no external skill files were
+  vendored or modified; attach discovery/invocation/eval evidence; then merge
+  from the bottom up.
 
 ## Phase 6: Integrated Web Acceptance
 
@@ -546,7 +715,8 @@ Accepted web bundle -> separate future desktop build/release plan
 - [ ] **QA-03 - Run long-thread and concurrent-chat stress acceptance.** Exercise
   the 50/500/2,000-row fixtures, two chats streaming at once, switching during
   generation, refresh, reconnect, gateway restart, history prepend, old-work
-  expansion, minimap jumps, stop, redirect, and subagent completion.
+  expansion, minimap jumps, stop, redirect, subagent completion, Auto model
+  stability, one bounded escalation, and context compaction/recovery.
   **Validation:** existing `npm run test:e2e` plus expanded deterministic flows.
 
 - [ ] **QA-04 - Perform visual browser acceptance against the approved
@@ -554,7 +724,8 @@ Accepted web bundle -> separate future desktop build/release plan
   themes. Compare hierarchy, spacing, typography, scroll behavior, composer
   reachability, active work, settled work, failures, plans, changed files,
   subagents, and usage controls. Save acceptance screenshots separately from
-  baseline shots.
+  baseline shots. Confirm the accepted result is recognizably T3-inspired in
+  surface rhythm and information density while remaining recognizably Spark.
   **Gate:** a functioning route or passing tests alone do not complete this task.
 
 - [ ] **QA-05 - Verify accessibility and input behavior.** Test keyboard-only
@@ -576,15 +747,18 @@ Accepted web bundle -> separate future desktop build/release plan
   and verify the served web UI uses the new assets. Generated `web_dist` changes
   belong only to this final web gate, not intermediate source commits.
 
-- [ ] **WEB-RELEASE-02 - Open the feature-branch PR with evidence.** Include the
-  base SHA, scope, routing eval summary, skill eval summary, focused/full test
-  results, performance comparison, screenshots, manual browser flows, known
-  limitations, and explicit note that desktop packages were not rebuilt.
+- [ ] **WEB-RELEASE-02 - Record the integrated stacked-PR evidence.** Link every
+  merged layer and include each base SHA, stack map, scope, routing eval summary,
+  skill eval summary, focused/full test results, performance comparison,
+  screenshots, manual browser flows, known limitations, and explicit note that
+  desktop packages were not rebuilt. Confirm all stack branches landed through
+  PR review rather than direct source work on `main`.
 
 ## Deferred Desktop Gate
 
-After the web PR is accepted and merged, create a separate desktop build/release
-plan from fresh `main`. That plan must independently cover macOS and Windows
+After all web stacks and integrated acceptance are complete, create a separate
+desktop build/release plan from fresh `main`. That plan must independently cover
+macOS and Windows
 packaging, Tauri/Rust integration, generated asset inclusion, signing,
 notarization/stapling, installers, packaged long-thread/model/skill smoke tests,
 versioning, and publication. Web acceptance is a prerequisite for that work, not
@@ -594,17 +768,25 @@ proof that packaged desktop behavior is complete.
 
 This plan is complete only when all of the following are true:
 
-- The implementation landed from `webui-next`, not direct work on `main`.
+- The implementation landed through the documented thread, routing, and skills
+  feature stacks, not direct source work on `main`; no branch uses an
+  assistant-specific prefix.
 - The accepted main thread uses a turn-oriented hierarchy that keeps final
   answers and outcomes visible while preserving expandable raw work.
 - Long, concurrent, interrupted, and reconnected chats preserve exact transcript
   content, actions, and scroll state.
 - The composer exposes context, main-model, subagent-model, effort, and routing
-  policy without overwhelming the default surface.
+  policy without overwhelming the default surface. New chats default to Auto;
+  explicit model choices pin the thread until changed.
 - Sol/Terra/Luna or any later model family is selected from live account
-  capabilities and measured evals, with visible fallbacks and overrides.
+  capabilities and measured evals, with sticky routing, deterministic labels,
+  independent child roles, at most one escalation, visible fallbacks, and manual
+  overrides.
+- Auto meets the correctness/safety floor before optimizing usage, uses latency
+  only as a tie-break, and never silently drops context to save tokens.
 - New/improved skills have one canonical purpose, appropriate invocation type,
-  preserved attribution, bounded prompt cost, and passing paired eval gates.
+  preserved provenance/attribution, bounded prompt cost, and passing paired eval
+  gates; externally installed skills are integrated rather than vendored.
 - Frontend tests, focused Python tests, practical repository checks, browser
   visual acceptance, accessibility, and performance gates have recorded evidence.
 - The web bundle is built only after source acceptance, and no desktop package or
