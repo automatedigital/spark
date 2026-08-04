@@ -538,13 +538,48 @@ export const api = {
     sessionId: string,
     choice: "once" | "session" | "always" | "deny",
     resolveAll = false,
+    actionId?: string,
   ) =>
-    fetchJSON<{ ok: boolean; session_id: string; resolved: number }>(
+    fetchJSON<WebApprovalSubmitResponse>(
       `/api/conversations/${encodeURIComponent(sessionId)}/approval`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choice, resolve_all: resolveAll }),
+        body: JSON.stringify({
+          choice,
+          resolve_all: resolveAll,
+          ...(actionId ? { action_id: actionId } : {}),
+        }),
+      },
+    ),
+
+  getConversationTurnOutcome: (sessionId: string) =>
+    fetchJSON<WebTurnOutcome | null>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/turn-outcome`,
+    ),
+
+  getConversationTurnOutcomes: (sessionId: string) =>
+    fetchJSON<WebTurnOutcomesResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/turn-outcomes`,
+    ),
+
+  getConversationPlan: (sessionId: string) =>
+    fetchJSON<WebPlanResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/plan`,
+    ),
+
+  getConversationPendingActions: (sessionId: string) =>
+    fetchJSON<WebPendingActionsResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/pending-actions`,
+    ),
+
+  submitConversationInput: (sessionId: string, actionId: string, response: string) =>
+    fetchJSON<WebPendingActionSubmitResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/input`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action_id: actionId, response }),
       },
     ),
 
@@ -1814,6 +1849,116 @@ export interface SessionInfo {
   preview: string | null;
   kanban_status: string | null;
   estimated_cost_usd: number | null;
+}
+
+export interface WebGitFileSnapshot {
+  path?: string;
+  status?: string;
+  adds?: number | null;
+  dels?: number | null;
+}
+
+export interface WebChangedFile {
+  path: string;
+  status: string;
+  before?: WebGitFileSnapshot | null;
+  after?: WebGitFileSnapshot | null;
+  additions?: number | null;
+  deletions?: number | null;
+}
+
+export interface WebChangedFiles {
+  is_repo: boolean;
+  branch: string | null;
+  files: WebChangedFile[];
+  count: number;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}
+
+export type WebPlanStepStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
+export interface WebPlanStep {
+  id: string;
+  content: string;
+  status: WebPlanStepStatus;
+}
+
+export interface WebPlan {
+  revision: number;
+  steps: WebPlanStep[];
+  status: "empty" | "active" | "completed" | string;
+  markdown: string | null;
+  updated_at?: number;
+}
+
+export interface WebTurnOutcome {
+  turn_id: string;
+  session_id: string;
+  assistant_message_id: number | string | null;
+  status: "running" | "completed" | "failed" | "interrupted" | string;
+  started_at: number | null;
+  ended_at: number | null;
+  workspace_slug: string | null;
+  changed_files: WebChangedFiles | null;
+  plan: WebPlan | null;
+}
+
+export interface WebTurnOutcomesResponse {
+  session_id: string;
+  resolved_session_id: string;
+  latest_session_id: string;
+  migrated_from?: string;
+  count: number;
+  outcomes: WebTurnOutcome[];
+}
+
+export interface WebPlanResponse {
+  session_id: string;
+  turn_id: string | null;
+  plan: WebPlan | null;
+}
+
+export type WebPendingActionKind = "approval" | "requested_input";
+
+export interface WebPendingAction {
+  action_id: string;
+  session_id: string;
+  turn_id: string;
+  kind: WebPendingActionKind | string;
+  payload: {
+    command?: string;
+    description?: string;
+    question?: string;
+    prompt?: string;
+    choices?: string[] | null;
+    [key: string]: unknown;
+  };
+  status: "pending" | "resolved" | string;
+  response?: unknown;
+  created_at: number;
+  resolved_at?: number | null;
+}
+
+export interface WebPendingActionsResponse {
+  session_id: string;
+  actions: WebPendingAction[];
+}
+
+export interface WebPendingActionSubmitResponse {
+  ok: boolean;
+  session_id: string;
+  action: WebPendingAction;
+  idempotent: boolean;
+}
+
+export interface WebApprovalSubmitResponse {
+  ok: boolean;
+  session_id: string;
+  resolved: number;
+  action_ids?: string[];
+  action?: WebPendingAction;
+  idempotent?: boolean;
 }
 
 export interface PaginatedSessions {

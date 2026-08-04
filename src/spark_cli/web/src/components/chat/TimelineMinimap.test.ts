@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { TimelineMinimap } from "./TimelineMinimap";
-import { buildTimelineMinimapItems } from "./timelineMinimapModel";
+import { buildTimelineMinimapItems, buildTurnLandmarks } from "./timelineMinimapModel";
 
 describe("TimelineMinimap", () => {
   it("derives lightweight markers without reading message content", () => {
@@ -51,5 +51,60 @@ describe("TimelineMinimap", () => {
       visibleEndIndex: 1,
       onJumpToIndex: () => {},
     }))).toBe("");
+  });
+
+  it("derives turn landmarks while suppressing repetitive tool noise", () => {
+    const landmarks = buildTurnLandmarks([
+      {
+        id: "turn-1",
+        userMessage: {},
+        finalAnswer: {},
+        status: "settled",
+        workItems: [{ kind: "tool" }, { kind: "tool" }],
+      },
+      {
+        id: "turn-2",
+        userMessage: {},
+        status: "failed",
+        workItems: [{ kind: "tool", failed: true }],
+      },
+      {
+        id: "turn-3",
+        userMessage: {},
+        status: "active",
+        workItems: [{ kind: "tool" }],
+      },
+      {
+        id: "turn-4",
+        userMessage: {},
+        status: "awaiting-approval",
+        workItems: [{ kind: "approval", resolved: false }],
+      },
+    ]);
+
+    expect(landmarks.map((item) => item.kind)).toEqual([
+      "user-turn", "final-answer", "user-turn", "failure", "user-turn", "active-work", "user-turn", "approval",
+    ]);
+    expect(landmarks.filter((item) => item.turnIndex === 0)).toHaveLength(2);
+  });
+
+  it("renders keyboard-navigable turn landmark buttons", () => {
+    const landmarks = buildTurnLandmarks(Array.from({ length: 3 }, (_, index) => ({
+      id: `turn-${index}`,
+      userMessage: {},
+      finalAnswer: {},
+      status: "settled",
+      workItems: [],
+    })));
+    const html = renderToStaticMarkup(createElement(TimelineMinimap, {
+      landmarks,
+      visibleStartTurnIndex: 0,
+      visibleEndTurnIndex: 1,
+      onJumpToTurn: () => {},
+    }));
+
+    expect(html).toContain('aria-label="Conversation turn landmarks"');
+    expect(html).toContain('data-timeline-marker');
+    expect(html).toContain("Turn 2 · final answer");
   });
 });

@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import type { TimelineMinimapItem } from "./timelineMinimapModel";
+import type { TimelineMinimapItem, TimelineMinimapLandmark } from "./timelineMinimapModel";
 
 function markerClassName(item: TimelineMinimapItem): string {
   if (item.error) return "bg-destructive";
@@ -31,37 +31,99 @@ function markerLabel(item: TimelineMinimapItem): string {
   return `${role} row ${item.index + 1}${suffix}`;
 }
 
+function landmarkClassName(item: TimelineMinimapLandmark): string {
+  if (item.error) return "bg-destructive";
+  if (item.active) return "bg-success";
+  switch (item.kind) {
+    case "user-turn": return "bg-primary";
+    case "final-answer": return "bg-foreground/65";
+    case "active-work": return "bg-success";
+    case "failure": return "bg-destructive";
+    case "approval": return "bg-fuchsia-500/75";
+  }
+}
+
+function landmarkLabel(item: TimelineMinimapLandmark): string {
+  return item.label ?? `Turn ${item.turnIndex + 1} · ${item.kind}`;
+}
+
 export const TimelineMinimap = memo(function TimelineMinimap({
-  items,
-  visibleStartIndex,
-  visibleEndIndex,
+  items = [],
+  visibleStartIndex = 0,
+  visibleEndIndex = 0,
   onJumpToIndex,
+  landmarks,
+  visibleStartTurnIndex = 0,
+  visibleEndTurnIndex = 0,
+  onJumpToTurn,
   className,
 }: {
-  items: TimelineMinimapItem[];
-  visibleStartIndex: number;
-  visibleEndIndex: number;
-  onJumpToIndex: (index: number) => void;
+  items?: TimelineMinimapItem[];
+  visibleStartIndex?: number;
+  visibleEndIndex?: number;
+  onJumpToIndex?: (index: number) => void;
+  landmarks?: TimelineMinimapLandmark[];
+  visibleStartTurnIndex?: number;
+  visibleEndTurnIndex?: number;
+  onJumpToTurn?: (turnIndex: number) => void;
   className?: string;
 }) {
+  const usingLandmarks = Boolean(landmarks);
+  const landmarkItems = landmarks ?? [];
+  const markerCount = usingLandmarks ? landmarkItems.length : items.length;
+  const maxTurnIndex = landmarkItems.reduce((max, item) => Math.max(max, item.turnIndex), 0);
   const visible = useMemo(() => {
-    if (items.length === 0) return { top: 0, height: 0 };
-    const start = Math.max(0, Math.min(visibleStartIndex, items.length - 1));
-    const end = Math.max(start, Math.min(visibleEndIndex, items.length - 1));
-    const top = (start / items.length) * 100;
-    const height = Math.max(7, ((end - start + 1) / items.length) * 100);
+    if (markerCount === 0) return { top: 0, height: 0 };
+    const range = usingLandmarks ? Math.max(maxTurnIndex, 1) : markerCount;
+    const start = usingLandmarks
+      ? Math.max(0, Math.min(visibleStartTurnIndex, range))
+      : Math.max(0, Math.min(visibleStartIndex, markerCount - 1));
+    const end = usingLandmarks
+      ? Math.max(start, Math.min(visibleEndTurnIndex, range))
+      : Math.max(start, Math.min(visibleEndIndex, markerCount - 1));
+    const top = (start / range) * 100;
+    const height = Math.max(7, ((end - start + 1) / range) * 100);
     return { top, height: Math.min(100 - top, height) };
-  }, [items.length, visibleEndIndex, visibleStartIndex]);
+  }, [markerCount, maxTurnIndex, usingLandmarks, visibleEndIndex, visibleEndTurnIndex, visibleStartIndex, visibleStartTurnIndex]);
 
-  if (items.length < 8) return null;
+  if (markerCount < (usingLandmarks ? 4 : 8)) return null;
+
+  const markerButtons = usingLandmarks
+    ? landmarkItems.map((item) => ({
+      id: item.id,
+      label: landmarkLabel(item),
+      top: maxTurnIndex <= 0 ? 0 : (item.turnIndex / maxTurnIndex) * 100,
+      left: item.kind === "user-turn" ? "25%" : item.kind === "final-answer" ? "75%" : "50%",
+      className: landmarkClassName(item),
+      onJump: () => onJumpToTurn?.(item.turnIndex),
+    }))
+    : items.map((item) => ({
+      id: item.id,
+      label: markerLabel(item),
+      top: markerCount <= 1 ? 0 : (item.index / (markerCount - 1)) * 100,
+      left: "50%",
+      className: markerClassName(item),
+      onJump: () => onJumpToIndex?.(item.index),
+    }));
+
+  const moveMarkerFocus = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowRight" && event.key !== "ArrowUp" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const buttons = Array.from(event.currentTarget.closest("[data-timeline-minimap]")?.querySelectorAll<HTMLButtonElement>("[data-timeline-marker]") ?? []);
+    const index = buttons.indexOf(event.currentTarget);
+    const direction = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1;
+    buttons[(index + direction + buttons.length) % buttons.length]?.focus();
+  };
 
   return (
     <div
       className={cn(
-        "pointer-events-auto absolute right-1 top-3 bottom-3 z-20 hidden w-4 flex-col items-center rounded-md border border-border/50 bg-background/75 py-1 shadow-sm backdrop-blur md:flex",
+        "pointer-events-auto absolute right-1 top-3 bottom-3 z-20 hidden w-6 flex-col items-center rounded-md border border-border/50 bg-background/75 py-1 shadow-sm backdrop-blur md:flex",
         className,
       )}
-      aria-label="Chat timeline"
+      aria-label={usingLandmarks ? "Conversation turn landmarks" : "Chat timeline"}
+      role="navigation"
+      data-timeline-minimap
     >
       <div className="relative h-full w-full">
         <div
@@ -69,20 +131,21 @@ export const TimelineMinimap = memo(function TimelineMinimap({
           style={{ top: `${visible.top}%`, height: `${visible.height}%` }}
           aria-hidden="true"
         />
-        {items.map((item) => {
-          const top = items.length <= 1 ? 0 : (item.index / (items.length - 1)) * 100;
+        {markerButtons.map((item) => {
           return (
             <button
               key={item.id}
               type="button"
-              aria-label={markerLabel(item)}
-              title={markerLabel(item)}
-              onClick={() => onJumpToIndex(item.index)}
+              aria-label={item.label}
+              title={item.label}
+              data-timeline-marker
+              onKeyDown={moveMarkerFocus}
+              onClick={item.onJump}
               className={cn(
-                "absolute left-1/2 h-1.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-75 transition hover:h-2 hover:w-3 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring",
-                markerClassName(item),
+                "absolute h-3 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background opacity-80 transition hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background",
+                item.className,
               )}
-              style={{ top: `${top}%` }}
+              style={{ top: `${item.top}%`, left: item.left }}
             />
           );
         })}

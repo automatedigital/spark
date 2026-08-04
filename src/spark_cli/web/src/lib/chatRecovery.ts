@@ -1,3 +1,5 @@
+import { resolveChatStatus, type ChatConnectionState } from "./chatStatus";
+
 export interface RecoveryPollInput {
   streaming: boolean;
   hidden: boolean;
@@ -8,11 +10,25 @@ export interface RecoveryPollInput {
   staleEventMs?: number;
   staleTokenMs?: number;
   idlePollMs?: number;
+  /** Optional confirmed status used to reconcile the browser's optimistic hint. */
+  backend?: {
+    turnActive?: boolean | null;
+    state?: string | null;
+    phase?: string | null;
+    status?: string | null;
+    sessionActive?: boolean | null;
+    connection?: ChatConnectionState | null;
+  };
+  optimisticLabel?: string | null;
+  optimisticAt?: number | null;
 }
 
 export interface RecoveryPollDecision {
   poll: boolean;
   statusLabel?: string;
+  statusKind?: ReturnType<typeof resolveChatStatus>["kind"];
+  statusConfirmed?: boolean;
+  optimisticExpired?: boolean;
   nextIdlePollAt: number;
 }
 
@@ -64,29 +80,44 @@ export function decideRecoveryPoll(input: RecoveryPollInput): RecoveryPollDecisi
   } = input;
   const elapsed = now - lastEventAt;
   const tokenElapsed = now - (lastTokenAt || lastEventAt);
+  const confirmed = input.backend
+    ? resolveChatStatus({
+        turnActive: input.backend.turnActive,
+        backendState: input.backend.state,
+        backendPhase: input.backend.phase,
+        backendLabel: input.backend.status,
+        sessionActive: input.backend.sessionActive,
+        connection: input.backend.connection,
+        optimisticLabel: input.optimisticLabel,
+        optimisticAt: input.optimisticAt,
+        now,
+      })
+    : null;
+  const reconciled = confirmed?.confirmed ? confirmed.label ?? undefined : undefined;
+  const optimisticExpired = confirmed?.staleOptimistic ?? false;
   if (hidden) {
-    if (!streaming) return { poll: false, nextIdlePollAt: lastIdlePollAt };
+    if (!streaming) return { poll: false, statusLabel: reconciled, statusKind: confirmed?.kind, statusConfirmed: confirmed?.confirmed, optimisticExpired, nextIdlePollAt: lastIdlePollAt };
     return {
       poll: elapsed >= staleEventMs || tokenElapsed >= staleTokenMs,
+      statusLabel: reconciled,
+      statusKind: confirmed?.kind,
+      statusConfirmed: confirmed?.confirmed,
+      optimisticExpired,
       nextIdlePollAt: lastIdlePollAt,
     };
   }
   if (!streaming) {
     if (now - lastIdlePollAt >= idlePollMs) {
-      return { poll: true, nextIdlePollAt: now };
+      return { poll: true, statusLabel: reconciled, statusKind: confirmed?.kind, statusConfirmed: confirmed?.confirmed, optimisticExpired, nextIdlePollAt: now };
     }
-    return { poll: false, nextIdlePollAt: lastIdlePollAt };
-  }
-
-  let statusLabel: string | undefined;
-  if (elapsed >= 30_000) {
-    statusLabel = "Reconnecting...";
-  } else if (elapsed >= 12_000) {
-    statusLabel = "Still waiting for backend...";
+    return { poll: false, statusLabel: reconciled, statusKind: confirmed?.kind, statusConfirmed: confirmed?.confirmed, optimisticExpired, nextIdlePollAt: lastIdlePollAt };
   }
   return {
     poll: elapsed >= staleEventMs || tokenElapsed >= staleTokenMs,
-    statusLabel,
+    statusLabel: reconciled,
+    statusKind: confirmed?.kind,
+    statusConfirmed: confirmed?.confirmed,
+    optimisticExpired,
     nextIdlePollAt: lastIdlePollAt,
   };
 }

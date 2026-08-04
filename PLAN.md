@@ -440,7 +440,7 @@ Integrated web acceptance -> separate future desktop build/release plan
 
 ## Phase 2: Main Thread Panel Redesign
 
-- [ ] **CHAT-01 - Implement the selected timeline shell.** Use a centered,
+- [x] **CHAT-01 - Implement the selected timeline shell.** Use a centered,
   readable content column, a persistent bottom composer, clear active-turn
   status, and responsive gutters. Move visibly toward T3's restrained surfaces,
   spacing, density, and thread rhythm while retaining Spark's brand tokens,
@@ -449,15 +449,22 @@ Integrated web acceptance -> separate future desktop build/release plan
   existing `src/spark_cli/web/src/components/ChatPanel.tsx`, and shared theme
   styles.
   **Depends on:** `UI-02`, `THREAD-04`.
+  **Evidence (2026-08-04):** `MessagesTimeline` now renders virtualized turns in
+  a centered `max-w-3xl` reading column with restrained Spark surfaces,
+  responsive gutters, persistent composer placement, and active status. The
+  production build and browser chat contract pass.
 
-- [ ] **CHAT-02 - Implement distinct user and assistant message treatments.**
+- [x] **CHAT-02 - Implement distinct user and assistant message treatments.**
   Preserve user context chips and edit/retry/fork/copy actions. Let assistant
   answers read like the primary document, with exact-copy and usage metadata
   available without permanent visual noise.
   **Files:** new `UserMessageRow.tsx`, `AssistantMessageRow.tsx`, and component
   tests.
+  **Evidence (2026-08-04):** dedicated user and assistant rows preserve context
+  tokens, edit/retry/fork/copy/feedback behavior, exact Markdown answers, and
+  compact usage metadata. Both components have focused rendering/action tests.
 
-- [ ] **CHAT-03 - Implement compact expandable work groups.** Group tool calls,
+- [x] **CHAT-03 - Implement compact expandable work groups.** Group tool calls,
   reasoning, and subagent status under the turn summary. Show failures and
   unresolved approvals/user input prominently; allow complete raw details and
   stored tool artifacts to be expanded on demand. Completed groups collapse by
@@ -466,8 +473,12 @@ Integrated web acceptance -> separate future desktop build/release plan
   `src/spark_cli/web/src/components/chat/ToolCallBubble.tsx`,
   `ReasoningBubble.tsx`, and `SubagentsPanel.tsx`; and focused tests in the same
   component area.
+  **Evidence (2026-08-04):** `TurnWorkGroup` folds settled reasoning, tools,
+  intermediate answers, and subagents behind a deterministic action/duration
+  summary while keeping active, failed, interrupted, approval, and requested
+  input states expanded. Focused tests cover collapsed, active, and failed work.
 
-- [ ] **CHAT-04 - Make changed files a first-class turn outcome.** Reuse the
+- [x] **CHAT-04 - Make changed files a first-class turn outcome.** Reuse the
   authoritative changes/diff data already available to the right panel. Show a
   compact card directly beneath the relevant final answer, with a file tree,
   additions/deletions, and open-diff actions; do not infer success merely from a
@@ -476,36 +487,56 @@ Integrated web acceptance -> separate future desktop build/release plan
   and focused tests.
   **Done when:** changed files reconcile after refresh and a file opens in the
   existing Changes tab at the expected path.
+  **Evidence (2026-08-04):** durable backend turn outcomes carry authoritative
+  changed-file paths and line counts through refresh/session migration.
+  `ChangedFilesCard` opens the existing Changes panel at the selected path; its
+  summary and open-file contracts have focused tests.
 
-- [ ] **CHAT-05 - Add inline plan presentation.** Render active plan steps and
+- [x] **CHAT-05 - Add inline plan presentation.** Render active plan steps and
   proposed plan Markdown as a compact card beneath the relevant answer with a
   shortcut to the existing plan/brief surface. Preserve one authoritative plan
   state in the right panel/backend.
   **Files:** new `PlanCard.tsx`, existing
   `src/spark_cli/web/src/components/chat/BriefPanel.tsx`, plan event adapters,
   and tests.
+  **Evidence (2026-08-04):** plans are persisted as authoritative turn outcomes,
+  rendered by `PlanCard` with step status/progress, and linked to the existing
+  Brief panel. Backend projection and focused component tests pass.
 
-- [ ] **CHAT-06 - Adapt the minimap from message rows to turn landmarks.** Keep
+- [x] **CHAT-06 - Adapt the minimap from message rows to turn landmarks.** Keep
   user turns, final answers, failures, approvals, and active work visible while
   suppressing repetitive tool noise. Preserve keyboard and pointer navigation.
   **Files:** `TimelineMinimap.tsx`, `timelineMinimapModel.ts`, and tests.
+  **Evidence (2026-08-04):** the minimap now derives user, answer, active,
+  failure, and pending-action landmarks per turn, suppresses repetitive work,
+  and supports role-labelled pointer and keyboard navigation. Five focused
+  tests and the browser navigation contract pass.
 
-- [ ] **CHAT-07 - Preserve deterministic scroll anchoring.** Cover appending
+- [x] **CHAT-07 - Preserve deterministic scroll anchoring.** Cover appending
   tokens, expanding old work, prepending history, switching chats mid-stream,
   jumping via minimap, and returning to the bottom. Never steal the user's
   position while they are reading older content.
   **Files:** `chatScrollState.ts`, row-measurement helpers, timeline components,
   and stress tests.
+  **Evidence (2026-08-04):** stable turn estimates, keyed measurement reset,
+  height-delta restoration, and mounted-anchor correction preserve older
+  history through virtualized prepends. Six consecutive browser trials settled
+  at exact `0px` drift; the broad contract also covers streaming, switching,
+  minimap jumps, expansion, and return-to-bottom behavior.
 
-- [ ] **CHAT-08 - Refine loading, offline, reconnecting, interrupted, and failed
+- [x] **CHAT-08 - Refine loading, offline, reconnecting, interrupted, and failed
   states.** State labels must come from confirmed backend/session state and
   expire or reconcile after reconnect.
   **Files:** `StatusPill.tsx`, `chatTurnState.ts`, `chatRecovery.ts`,
   `sessionStore.tsx`, and tests.
+  **Evidence (2026-08-04):** status presentation now reconciles transport hints
+  against confirmed backend turn/session state, with explicit loading, offline,
+  reconnecting, interrupted, failed, waiting, and recovered labels. Thirty-two
+  focused status/recovery tests pass as part of the 353-test frontend suite.
 
 ## Phase 3: Composer and Thread Controls
 
-- [ ] **COMPOSER-01 - Recompose the prompt surface around progressive
+- [x] **COMPOSER-01 - Recompose the prompt surface around progressive
   disclosure.** Keep the prompt and send/stop/redirect actions always visible;
   group attachments, context, project, model, reasoning, and advanced controls
   into compact discoverable controls. `Auto` is the default for new chats and
@@ -514,8 +545,13 @@ Integrated web acceptance -> separate future desktop build/release plan
   **Files:** split `src/spark_cli/web/src/components/chat/PromptBar.tsx` into
   focused composer components while keeping its public contract stable during
   migration.
+  **Evidence (2026-08-04):** `PromptBar` retains its public contract while
+  attachment and advanced actions move into focused menus; prompt,
+  send/stop/redirect, model, and context state remain reachable without crowding
+  the primary surface. Existing explicit models remain available and Auto is
+  presented as the default policy choice pending the routing stack.
 
-- [ ] **COMPOSER-02 - Make context pressure actionable.** Keep the current token
+- [x] **COMPOSER-02 - Make context pressure actionable.** Keep the current token
   estimate, show context buckets, and offer remove/summarize actions before the
   threshold is reached. Label estimates separately from provider-reported usage.
   Warn before compaction; automatically compact only when required to continue
@@ -523,16 +559,29 @@ Integrated web acceptance -> separate future desktop build/release plan
   show exactly what was summarized or omitted. Never silently discard context
   merely to reduce usage.
   **Files:** extracted `ContextWindowMeter.tsx`, context hooks, and tests.
+  **Evidence (2026-08-04):** `ContextWindowMeter` separates estimated from
+  provider-reported usage, exposes context buckets and pressure thresholds, and
+  provides per-item Summarize/Remove actions while protecting pinned context.
+  Existing required-only compaction events remain visible in the turn timeline;
+  focused policy/component tests cover normal, warning, and critical states.
 
-- [ ] **COMPOSER-03 - Keep approvals and requested user input at the point of
+- [x] **COMPOSER-03 - Keep approvals and requested user input at the point of
   action.** Pending prompts appear directly above the composer, remain after
   refresh, and cannot be mistaken for an ordinary assistant message.
   **Files:** approval/input components, session state adapters, and tests.
+  **Evidence (2026-08-04):** `PendingActionTray` renders durable approvals and
+  requested input directly above the composer, supports all approval scopes and
+  free-form/suggested responses, and reconciles completion from backend state.
+  Backend ownership/migration/idempotency tests and focused UI tests pass.
 
-- [ ] **COMPOSER-04 - Add responsive and keyboard contracts.** Define behavior
+- [x] **COMPOSER-04 - Add responsive and keyboard contracts.** Define behavior
   for narrow panels, right-panel-open layouts, model-picker focus, Escape,
   Enter/Shift+Enter, stop, redirect, attachment menus, and screen readers.
   **Validation:** component tests plus browser acceptance at 1440/1024/768px.
+  **Evidence (2026-08-04):** composer contracts preserve Enter/Shift+Enter,
+  Escape, stop, redirect, model focus, accessible labels, and menu behavior.
+  Browser checks at 1440/1024/768px confirm the composer remains reachable with
+  the right panel open and produces no horizontal overflow.
 
 - [ ] **THREAD-PR-01 - Submit and accept the thread stack bottom-up.** Keep
   baseline fixtures/pure timeline/controller work in `webui-thread-foundation`,
@@ -789,13 +838,20 @@ Integrated web acceptance -> separate future desktop build/release plan
   isolated Ruff, schema validation, and `git diff --check`. Draft PR #119
   contains this independently reviewable layer above PR #118.
 
-- [ ] **SKILL-09 - Improve the Skills UI quality signals.** Show source,
+- [x] **SKILL-09 - Improve the Skills UI quality signals.** Show source,
   invocation type, enabled state, approximate index-token cost, supporting-file
   count, last eval status/date, and duplicate/overlap warnings. Keep provenance
   independent of display category or name.
   **Files:** `src/spark_cli/web/src/pages/SkillsPage.tsx`,
   `src/spark_cli/web/src/pages/SkillsToolsPage.tsx`, Skills API contracts, and
   focused frontend/Python tests.
+  **Evidence (2026-08-04):** `skills-web` commit `16aa4a7e` and draft PR #121
+  expose provenance/source independently from category, invocation mode,
+  enabled state, approximate index-token cost, supporting-file count, eval
+  status/date, and duplicate/overlap warnings in both existing Skills surfaces.
+  The gate passes 38 frontend files/257 tests, ESLint, TypeScript, 10 focused
+  Python API/metadata tests, skill detail interaction, and desktop plus 390px
+  visual acceptance with zero horizontal overflow.
 
 - [ ] **SKILLS-PR-01 - Submit and accept the skills stack bottom-up.** Keep
   invocation/provenance/index-cost contracts in `skills-invocation`, audited

@@ -184,6 +184,30 @@ async function loadEarlier(page) {
   }, undefined, { timeout: 10_000 });
 }
 
+async function waitForVisibleAnchorStability(page) {
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    let previous = null;
+    let stableFrames = 0;
+    let remainingFrames = 120;
+    const check = () => requestAnimationFrame(() => {
+      const scroll = document.querySelector('[data-testid="chat-panel"] [data-testid="chat-scroll"]');
+      const scrollRect = scroll instanceof HTMLElement ? scroll.getBoundingClientRect() : null;
+      const row = scrollRect ? [...scroll.querySelectorAll("[data-row-id][data-index]")].find((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return rect.bottom > scrollRect.top && rect.top < scrollRect.bottom;
+      }) : null;
+      const current = row instanceof HTMLElement ? `${row.dataset.rowId}:${row.getBoundingClientRect().top}` : null;
+      stableFrames = current && current === previous ? stableFrames + 1 : 0;
+      previous = current;
+      remainingFrames -= 1;
+      if (stableFrames >= 5) return resolve(undefined);
+      if (remainingFrames <= 0) return reject(new Error("initial anchor did not stabilize"));
+      check();
+    });
+    check();
+  }));
+}
+
 function installClipboard(context) {
   return context.addInitScript(() => {
     window.__e2eClipboard = "";
@@ -230,6 +254,7 @@ async function run() {
   );
 
   let browser;
+  const browserErrors = [];
   try {
     const apiBase = `http://127.0.0.1:${apiPort}`;
     const webBase = `http://127.0.0.1:${webPort}`;
@@ -240,6 +265,10 @@ async function run() {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await installClipboard(context);
     const page = await context.newPage();
+    page.on("pageerror", (error) => browserErrors.push(String(error?.stack ?? error)));
+    page.on("console", (message) => {
+      if (message.type() === "error") browserErrors.push(`console: ${message.text()}`);
+    });
     const retryPayloads = [];
     const forkPayloads = [];
     const approvalPayloads = [];
@@ -351,6 +380,7 @@ async function run() {
     // Tool-result expansion fetches the full result rather than rendering the unbounded history payload.
     await page.reload({ waitUntil: "domcontentloaded" });
     await openChat(page, "contracts_tool", "Contract tool result");
+    await page.getByRole("button", { name: /Completed work/ }).first().click();
     const toolButton = page.getByRole("button", { name: /fake_lookup/ }).first();
     await toolButton.click();
     await waitForText(page, "FULL_TOOL_OUTPUT_SENTINEL");
@@ -396,6 +426,7 @@ async function run() {
         return rect.bottom > scrollRect.top && rect.top < scrollRect.bottom;
       });
     }, undefined, { timeout: 3_000 });
+    await waitForVisibleAnchorStability(page);
     const anchor = await page.evaluate(() => {
       const panel = document.querySelector('[data-testid="chat-panel"]');
       if (!panel) throw new Error("Chat panel missing");
@@ -419,18 +450,23 @@ async function run() {
     await loadEarlier(page);
     const anchoredRow = panel.locator(`[data-row-id="${anchor.id}"]`);
     await anchoredRow.waitFor();
+    await page.evaluate(() => { window.__anchorStableFrames = 0; });
     await page.waitForFunction(({ id, top }) => {
       const element = document.querySelector(`[data-row-id="${CSS.escape(id)}"]`);
-      return element instanceof HTMLElement
-        && Math.abs(element.getBoundingClientRect().top - top) <= 12;
+      if (!(element instanceof HTMLElement) || Math.abs(element.getBoundingClientRect().top - top) > 1) {
+        window.__anchorStableFrames = 0;
+        return false;
+      }
+      window.__anchorStableFrames = (window.__anchorStableFrames ?? 0) + 1;
+      return window.__anchorStableFrames >= 5;
     }, anchor, { timeout: 3_000 });
     const anchoredTop = await anchoredRow.evaluate((element) => element.getBoundingClientRect().top);
-    if (Math.abs(anchoredTop - anchor.top) > 12) throw new Error(`History anchor drifted by ${anchoredTop - anchor.top}px`);
+    if (Math.abs(anchoredTop - anchor.top) > 1) throw new Error(`History anchor drifted by ${anchoredTop - anchor.top}px`);
     await waitForText(page, "History row 001");
 
     // Minimap marker navigation changes the scroll position to the selected row.
     const beforeJump = await scrollBox.evaluate((element) => element.scrollTop);
-    await page.getByRole("button", { name: "user row 1", exact: true }).click();
+    await page.getByRole("button", { name: "Turn 1 · user message", exact: true }).click();
     await page.waitForTimeout(150);
     const afterJump = await scrollBox.evaluate((element) => element.scrollTop);
     if (afterJump >= beforeJump - 5) throw new Error(`Minimap did not navigate upward: ${beforeJump} -> ${afterJump}`);
@@ -486,7 +522,7 @@ async function run() {
     });
     await openChat(page, "contracts_stop", "Contract stop");
     await waitForText(page, "Stop first.");
-    const stopButton = page.getByRole("button", { name: "Stop", exact: true });
+    const stopButton = page.getByRole("button", { name: "Stop response", exact: true });
     await stopButton.click();
     if (await stopButton.count()) await stopButton.click({ force: true }).catch(() => {});
     await waitForTurnIdle(apiBase, "contracts_stop");
@@ -517,6 +553,7 @@ async function run() {
         await pages[0].screenshot({ path: path.join(os.tmpdir(), "spark-chat-contracts-failure.png"), fullPage: true });
         console.error("\n--- visible buttons ---\n", await pages[0].locator("button").allTextContents());
         console.error("\n--- body excerpt ---\n", (await pages[0].locator("body").innerText()).slice(0, 4000));
+        console.error("\n--- browser errors ---\n", browserErrors.slice(-20));
       }
     }
     console.error("\n--- backend logs ---\n", backend.logs.join("").slice(-12_000));

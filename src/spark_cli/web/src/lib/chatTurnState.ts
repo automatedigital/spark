@@ -1,3 +1,5 @@
+import { resolveChatStatus, type ChatStatusInput, type ResolvedChatStatus } from "./chatStatus";
+
 export type ChatTurnState = "idle" | "starting" | "streaming" | "stalled" | "stopping" | "redirecting";
 export type BackendTurnState =
   | "not_found"
@@ -64,21 +66,31 @@ export function backendTurnStatusLabel({
   status?: string | null;
   idleForSeconds?: number | null;
 }): string | null {
-  if (!turnActive) return null;
-  if (state === "stalled") {
-    const seconds = typeof idleForSeconds === "number" ? Math.floor(idleForSeconds) : null;
-    return seconds !== null
-      ? `Backend stalled for ${seconds}s`
-      : "Backend stalled";
-  }
-  if (state === "stopping") return "Stopping response";
-  if (state === "redirecting") return "Redirecting response";
-  if (phase === "starting") return status || "Preparing agent";
-  if (phase === "api") return status || "Waiting for provider response";
-  if (phase === "tool") return status || "Tool running";
-  if (phase === "reasoning") return status || "Reasoning";
-  if (state === "streaming" || phase === "streaming") return status || "Streaming response";
-  return status || "Working";
+  const resolved = resolveConfirmedTurnStatus({
+    turnActive,
+    backendState: state,
+    backendPhase: phase,
+    backendLabel: status,
+    idleForSeconds,
+  });
+  return resolved.label;
+}
+
+export interface ConfirmedTurnStatusInput extends ChatStatusInput {
+  /** Backend API spelling retained as a convenience for direct status snapshots. */
+  state?: BackendTurnState | null;
+  idleForSeconds?: number | null;
+}
+
+/** Resolve a backend/session snapshot without treating a browser hint as truth. */
+export function resolveConfirmedTurnStatus(input: ConfirmedTurnStatusInput): ResolvedChatStatus {
+  const result = resolveChatStatus({ ...input, backendState: input.backendState ?? input.state });
+  if (result.kind !== "stalled" || typeof input.idleForSeconds !== "number") return result;
+  const seconds = Math.max(0, Math.floor(input.idleForSeconds));
+  return {
+    ...result,
+    label: `Backend stalled for ${seconds}s`,
+  };
 }
 
 export function nextChatTurnState(current: ChatTurnState, event: ChatTurnEvent): ChatTurnState {

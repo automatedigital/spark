@@ -21,6 +21,12 @@ export function BriefPanel({ sessionId }: BriefPanelProps) {
     }).catch(() => {});
   }, [sessionId]);
 
+  useEffect(() => {
+    const open = () => setExpanded(true);
+    window.addEventListener("spark:brief-open", open);
+    return () => window.removeEventListener("spark:brief-open", open);
+  }, []);
+
   function handleChange(value: string) {
     setText(value);
     latestTextRef.current = value;

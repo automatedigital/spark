@@ -59,4 +59,30 @@ describe("StatusPill", () => {
     expect(reconnectHtml).toContain("Reconnecting…");
     expect(reconnectHtml).not.toContain(MODEL_LOADING_LABEL);
   });
+
+  it("lets confirmed backend state replace a stale optimistic label", () => {
+    const html = renderToStaticMarkup(createElement(StatusPill, {
+      streaming: true,
+      label: MODEL_LOADING_LABEL,
+      turnActive: false,
+      backendState: "failed",
+      backendStatus: "Provider timeout",
+      optimisticAt: 1_000,
+      now: 20_000,
+    }));
+
+    expect(html).toContain("Provider timeout");
+    expect(html).toContain('data-status-kind="failed"');
+    expect(html).not.toContain(MODEL_LOADING_LABEL);
+  });
+
+  it("renders confirmed offline state without relying on streaming copy", () => {
+    const html = renderToStaticMarkup(createElement(StatusPill, {
+      streaming: false,
+      connection: "offline",
+    }));
+
+    expect(html).toContain("Offline");
+    expect(html).toContain('data-status-kind="offline"');
+  });
 });

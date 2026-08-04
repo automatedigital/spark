@@ -147,6 +147,30 @@ async function readAnchor(page) {
   });
 }
 
+async function waitForVisibleAnchorStability(page) {
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    let previous = null;
+    let stableFrames = 0;
+    let remainingFrames = 120;
+    const check = () => requestAnimationFrame(() => {
+      const scroll = document.querySelector('[data-testid="chat-panel"] [data-testid="chat-scroll"]');
+      const scrollRect = scroll instanceof HTMLElement ? scroll.getBoundingClientRect() : null;
+      const row = scrollRect ? [...scroll.querySelectorAll("[data-row-id][data-index]")].find((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return rect.bottom > scrollRect.top && rect.top < scrollRect.bottom;
+      }) : null;
+      const current = row instanceof HTMLElement ? `${row.dataset.rowId}:${row.getBoundingClientRect().top}` : null;
+      stableFrames = current && current === previous ? stableFrames + 1 : 0;
+      previous = current;
+      remainingFrames -= 1;
+      if (stableFrames >= 5) return resolve(undefined);
+      if (remainingFrames <= 0) return reject(new Error("initial anchor did not stabilize"));
+      check();
+    });
+    check();
+  }));
+}
+
 async function openHistory(page, webBase) {
   await page.goto(webBase, { waitUntil: "domcontentloaded" });
   await page.getByText("Spark").first().waitFor({ timeout: 8_000 });
@@ -163,6 +187,19 @@ async function runTrial(browser, webBase, trial) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
     await openHistory(page, webBase);
+    await page.evaluate(() => new Promise((resolve) => {
+      const scroll = document.querySelector('[data-testid="chat-panel"] [data-testid="chat-scroll"]');
+      if (!(scroll instanceof HTMLElement)) throw new Error("Chat scroll element missing");
+      let frames = 45;
+      const holdAtHistoryControl = () => requestAnimationFrame(() => {
+        scroll.scrollTop = 0;
+        frames -= 1;
+        if (frames > 0) holdAtHistoryControl();
+        else resolve(undefined);
+      });
+      holdAtHistoryControl();
+    }));
+    await waitForVisibleAnchorStability(page);
     const before = await readAnchor(page);
     await loadEarlier(page);
     try {

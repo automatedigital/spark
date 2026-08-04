@@ -1,15 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUp, Brain, Check, ChevronDown, FolderOpen, Loader2, Plus, Settings, Square } from "lucide-react";
+import { ArrowUp, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ModelStatusResponse, ModelSuggestionsResponse, WorkspaceProject } from "@/lib/api";
 import { shortModelName } from "@/lib/modelName";
 import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 import { AtFileMenu } from "@/components/chat/AtFileMenu";
 import { useTokenEstimate } from "@/hooks/useTokenEstimate";
-import type { ContextItem, ContextEstimate } from "@/lib/context";
+import type { ContextItem } from "@/lib/context";
 import { emitOpenSettings } from "@/lib/navigationEvents";
 import { promptBarAvailability, promptBarKeyPolicy } from "@/components/chat/promptBarPolicy";
+import { ContextWindowMeter } from "@/components/chat/ContextWindowMeter";
+import { ComposerAttachmentMenu } from "@/components/chat/ComposerAttachmentMenu";
+import { ComposerMoreMenu } from "@/components/chat/ComposerMoreMenu";
+import { COMPOSER_A11Y_LABELS, COMPOSER_WIDE_ONLY, COMPOSER_WIDE_ONLY_BLOCK } from "@/components/chat/composerContracts";
 
 interface PromptBarProps {
   input: string;
@@ -30,125 +34,6 @@ interface PromptBarProps {
   onProjectChange?: (slug: string) => void;
   /** Override the idle placeholder text. */
   placeholder?: string;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-  return String(n);
-}
-
-interface TokenBudgetIndicatorProps {
-  estimate: ContextEstimate | null;
-  loading: boolean;
-  contextItems?: ContextItem[];
-  onRemoveItem?: (id: string) => void;
-  onUpdateMode?: (id: string, mode: import("@/lib/context").InclusionMode) => void;
-}
-
-function TokenBudgetIndicator({
-  estimate,
-  loading,
-  contextItems = [],
-  onRemoveItem,
-  onUpdateMode,
-}: TokenBudgetIndicatorProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (loading && !estimate) {
-    return (
-      <span className="text-[10px] text-muted-foreground/30 tabular-nums">
-        <Loader2 className="inline h-2.5 w-2.5 animate-spin mr-0.5" />
-      </span>
-    );
-  }
-
-  if (!estimate) return null;
-
-  const pct = estimate.utilization;
-  const colorClass = pct >= 0.95
-    ? "text-destructive"
-    : pct >= 0.80
-    ? "text-yellow-500"
-    : "text-muted-foreground/40";
-
-  const label = `${formatTokens(estimate.total_tokens)} / ${formatTokens(estimate.context_window)}`;
-
-  // Large attached items that can be switched to summary (over 10% of context window)
-  const bigItems = estimate.warning
-    ? contextItems.filter(
-        (item) => item.size_bytes > 5_000 && item.inclusion_mode === "full" && item.type === "file"
-      )
-    : [];
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        title="Token budget breakdown"
-        className={`text-[10px] tabular-nums transition hover:opacity-80 ${colorClass}`}
-      >
-        {label}
-      </button>
-      {expanded && (
-        <div className="absolute bottom-full mb-1 right-0 z-50 bg-popover border border-border rounded-lg shadow-lg p-3 text-[11px] w-60">
-          <div className="font-medium text-foreground mb-2">Token budget</div>
-          {estimate.buckets.map((b) => (
-            <div key={b.label} className="flex justify-between text-muted-foreground py-0.5">
-              <span>{b.label}</span>
-              <span className="tabular-nums">{formatTokens(b.tokens)}</span>
-            </div>
-          ))}
-          <div className="border-t border-border mt-1 pt-1 flex justify-between font-medium text-foreground">
-            <span>Total</span>
-            <span className={`tabular-nums ${colorClass}`}>{formatTokens(estimate.total_tokens)}</span>
-          </div>
-          {estimate.warning && (
-            <div className={`mt-1.5 text-[10px] rounded px-1.5 py-0.5 ${
-              estimate.warning === "limit_exceeded"
-                ? "bg-destructive/10 text-destructive"
-                : "bg-yellow-500/10 text-yellow-600"
-            }`}>
-              {estimate.warning === "limit_exceeded" ? "Likely to hit context limit" : "Context may be compressed"}
-            </div>
-          )}
-          {bigItems.length > 0 && (
-            <div className="mt-2 border-t border-border pt-2 space-y-1">
-              <div className="text-muted-foreground/70 mb-1">Quick fixes</div>
-              {bigItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-1">
-                  <span className="truncate text-muted-foreground max-w-[120px]" title={item.label ?? item.source_path ?? ""}>
-                    {item.label ?? item.source_path?.split("/").pop() ?? "file"}
-                  </span>
-                  <div className="flex gap-1 shrink-0">
-                    {onUpdateMode && (
-                      <button
-                        type="button"
-                        onClick={() => { onUpdateMode(item.id, "summary"); setExpanded(false); }}
-                        className="rounded px-1 py-0.5 bg-secondary hover:bg-secondary/80 text-foreground"
-                      >
-                        → summary
-                      </button>
-                    )}
-                    {onRemoveItem && (
-                      <button
-                        type="button"
-                        onClick={() => { onRemoveItem(item.id); setExpanded(false); }}
-                        className="rounded px-1 py-0.5 bg-secondary hover:bg-secondary/80 text-muted-foreground"
-                      >
-                        remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 const AT_RE = /(@\S+)/g;
@@ -232,6 +117,8 @@ function ProjectPicker({
   const [rect, setRect] = useState<DOMRect | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = `project-menu-${useId().replace(/:/g, "")}`;
   const selected = projects.find((p) => p.slug === value);
   const options = [{ slug: "", name: "No project" }, ...projects];
 
@@ -247,6 +134,18 @@ function ProjectPicker({
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
   useEffect(() => {
@@ -279,6 +178,7 @@ function ProjectPicker({
         return createPortal(
         <div
           ref={menuRef}
+          id={menuId}
           style={{
             position: "fixed",
             left: rect.left,
@@ -323,14 +223,16 @@ function ProjectPicker({
   return (
     <div ref={ref} className="relative min-w-0">
       <button
+        ref={triggerRef}
         type="button"
-        aria-label="Project"
+        aria-label={selected ? `Project: ${selected.name}` : "Project: none"}
         title={selected ? `Project: ${selected.name}` : "No project"}
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-7 max-w-[190px] items-center gap-1.5 rounded-md border border-transparent px-2 text-[11px] font-medium transition select-none disabled:pointer-events-none disabled:opacity-50 sm:max-w-[230px] ${
+        className={`flex h-8 max-w-[190px] items-center gap-1.5 rounded-md border border-transparent px-2 text-[11px] font-medium transition select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50 sm:max-w-[230px] ${
           open
             ? "text-foreground"
             : "bg-transparent text-muted-foreground/70 hover:text-foreground"
@@ -353,6 +255,7 @@ function ModelDropdown({
   provider,
   label,
   saving,
+  autoFocus = false,
   onChange,
 }: {
   value: string;
@@ -360,6 +263,7 @@ function ModelDropdown({
   provider: string;
   label: string;
   saving: boolean;
+  autoFocus?: boolean;
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -368,6 +272,8 @@ function ModelDropdown({
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = `model-menu-${useId().replace(/:/g, "")}`;
 
   // Build deduplicated list with current value always included
   const allOptions = [value, ...suggestions.filter((s) => s !== value)];
@@ -408,6 +314,14 @@ function ModelDropdown({
     else setSearch("");
   }, [open]);
 
+  useEffect(() => {
+    if (!autoFocus) return;
+    const timer = window.setTimeout(() => {
+      (searchRef.current ?? triggerRef.current)?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [autoFocus]);
+
   const select = (v: string) => {
     setOpen(false);
     if (v !== value) onChange(v);
@@ -420,6 +334,7 @@ function ModelDropdown({
       ? createPortal(
           <div
             ref={menuRef}
+            id={menuId}
             data-model-dropdown-menu="true"
             style={{
               position: "fixed",
@@ -427,6 +342,8 @@ function ModelDropdown({
               width: rect.width,
               bottom: window.innerHeight - rect.top + 4,
             }}
+            role="listbox"
+            aria-label={`${label} choices`}
             className="z-[200] rounded-md border border-border bg-popover shadow-xl overflow-hidden"
           >
             {allOptions.length > 5 && (
@@ -436,9 +353,14 @@ function ModelDropdown({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Escape") setOpen(false);
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setOpen(false);
+                      triggerRef.current?.focus();
+                    }
                     if (e.key === "Enter" && filtered.length === 1) select(filtered[0]);
                   }}
+                  aria-label={`Search ${label.toLowerCase()} options`}
                   placeholder="Search models…"
                   className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
                 />
@@ -452,6 +374,8 @@ function ModelDropdown({
                   <button
                     key={opt}
                     type="button"
+                    role="option"
+                    aria-selected={opt === value}
                     onPointerDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -483,9 +407,14 @@ function ModelDropdown({
       </div>
 
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-md border border-input bg-background px-2.5 py-1.5 text-sm transition hover:border-border focus:outline-none"
+        aria-label={`${label}: ${value || "Select model"}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={menuId}
+        className="flex w-full items-center justify-between rounded-md border border-input bg-background px-2.5 py-1.5 text-sm transition hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       >
         <span className="truncate">{value || <span className="text-muted-foreground/40">Select model</span>}</span>
         <div className="flex items-center gap-1.5 shrink-0 ml-2">
@@ -532,6 +461,16 @@ function ModelQuickSettings({
     return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
   }, [onClose]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   const saveSmartModel = async (model: string) => {
     setSavingSmartModel(true);
     try {
@@ -566,6 +505,8 @@ function ModelQuickSettings({
   return (
     <div
       ref={ref}
+      role="dialog"
+      aria-label="Model and reasoning settings"
       className="absolute bottom-full mb-2 left-0 right-0 mx-3 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
     >
       <div className="px-3 pt-3 pb-2 space-y-3">
@@ -577,6 +518,7 @@ function ModelQuickSettings({
           provider={status.smart_provider}
           label={status.multi_model_enabled ? "Smart model" : "Model"}
           saving={savingSmartModel}
+          autoFocus
           onChange={(v) => void saveSmartModel(v)}
         />
 
@@ -835,6 +777,24 @@ export function PromptBar({
     }
   };
 
+  const handleBrowseFiles = () => {
+    const textarea = textareaRef.current;
+    const cursor = textarea?.selectionStart ?? input.length;
+    const needsSpace = cursor > 0 && !/\s/.test(input[cursor - 1] ?? "");
+    const token = `${needsSpace ? " " : ""}@`;
+    const nextInput = input.slice(0, cursor) + token + input.slice(cursor);
+    setInput(nextInput);
+    setCursorPos(cursor + token.length);
+    setAtQuery("");
+    setShowMenu(false);
+    setShowAtMenu(true);
+    window.setTimeout(() => {
+      if (!textarea) return;
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = cursor + token.length;
+    }, 0);
+  };
+
   const blocked = disabled || streaming || uploading;
   // The textarea stays editable while streaming so the user can type a redirect
   // ("actually, do X instead") that interrupts the running turn on Enter.
@@ -898,7 +858,7 @@ export function PromptBar({
       )}
 
       {/* Unified card — no focus ring */}
-      <div className={`rounded-lg border border-input bg-card/58 shadow-lg shadow-black/10 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
+      <div className={`relative rounded-lg border border-input bg-card/58 shadow-lg shadow-black/10 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
         {/* Textarea */}
         <div className="relative min-h-[52px]">
           <div
@@ -920,6 +880,7 @@ export function PromptBar({
             onFocus={(e) => { setIsFocused(true); setCursorPos(e.currentTarget.selectionStart ?? 0); }}
             onBlur={() => setIsFocused(false)}
             disabled={inputBlocked}
+            aria-label={COMPOSER_A11Y_LABELS.input}
             placeholder={
               isFocused ? "" : streaming ? "Type to redirect · Enter to send while responding" : uploading ? "Uploading…" : placeholder ?? "Ask anything · / for commands · @ for context"
             }
@@ -930,19 +891,16 @@ export function PromptBar({
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-1 px-2 pb-2 pt-0">
+        <div className="flex min-w-0 items-center gap-1 px-2 pb-2 pt-0">
           {/* Attach */}
-          {onUploadFiles && (
+          {(onUploadFiles || onAttachPath || workspaceSlug) && (
             <>
-              <button
-                type="button"
+              <ComposerAttachmentMenu
                 disabled={blocked}
-                onClick={() => fileInputRef.current?.click()}
-                title="Add file"
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/55 transition hover:bg-foreground/7 hover:text-foreground disabled:pointer-events-none"
-              >
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              </button>
+                uploading={uploading}
+                onUpload={onUploadFiles ? () => fileInputRef.current?.click() : undefined}
+                onBrowse={handleBrowseFiles}
+              />
               <input
                 ref={fileInputRef}
                 type="file"
@@ -957,9 +915,12 @@ export function PromptBar({
           {modelLabel && (
             <button
               type="button"
+              aria-label={`Model and reasoning settings${modelLabel ? `: ${modelLabel}` : ""}`}
+              aria-haspopup="dialog"
+              aria-expanded={showSettings}
               onClick={() => setShowSettings((v) => !v)}
               title="Quick model settings"
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition select-none ${
+              className={`${COMPOSER_WIDE_ONLY} max-w-[180px] items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
                 showSettings
                   ? "bg-foreground/8 text-foreground"
                   : "text-muted-foreground/60 hover:bg-foreground/7 hover:text-foreground"
@@ -978,18 +939,36 @@ export function PromptBar({
           )}
 
           {showProjectPicker && (
-            <ProjectPicker
-              projects={projectOptions}
-              value={selectedProjectSlug}
+            <div className={COMPOSER_WIDE_ONLY_BLOCK}>
+              <ProjectPicker
+                projects={projectOptions}
+                value={selectedProjectSlug}
+                disabled={inputBlocked}
+                onChange={onProjectChange}
+              />
+            </div>
+          )}
+
+          {(modelLabel || showProjectPicker) && (
+            <ComposerMoreMenu
               disabled={inputBlocked}
-              onChange={onProjectChange}
+              hasModelSettings={Boolean(modelLabel)}
+              onOpenModelSettings={() => setShowSettings(true)}
+              projectControl={showProjectPicker ? (
+                <ProjectPicker
+                  projects={projectOptions}
+                  value={selectedProjectSlug}
+                  disabled={inputBlocked}
+                  onChange={onProjectChange}
+                />
+              ) : undefined}
             />
           )}
 
           <div className="flex-1" />
 
           {/* Token budget indicator */}
-          <TokenBudgetIndicator
+          <ContextWindowMeter
             estimate={estimate}
             loading={estimateLoading}
             contextItems={contextItems}
@@ -1008,21 +987,23 @@ export function PromptBar({
           {/* Send / Redirect / Stop */}
           {streaming ? (
             <div className="flex items-center gap-1">
-              {canRedirect && (
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  title="Redirect (interrupt with this message)"
-                  className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background transition hover:bg-foreground/90"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </button>
-              )}
               <button
                 type="button"
+                disabled={!canRedirect}
+                onClick={handleSend}
+                aria-label={COMPOSER_A11Y_LABELS.redirect}
+                title="Redirect (interrupt with this message)"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-foreground text-background transition hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-30"
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={!availability.canStop}
                 onClick={handleStop}
+                aria-label={COMPOSER_A11Y_LABELS.stop}
                 title="Stop"
-                className="flex h-7 w-7 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-30"
               >
                 <Square className="h-3.5 w-3.5" />
               </button>
@@ -1032,8 +1013,9 @@ export function PromptBar({
               type="button"
               disabled={!canSend}
               onClick={handleSend}
+              aria-label={COMPOSER_A11Y_LABELS.send}
               title="Send (Enter)"
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background transition hover:bg-foreground/90 disabled:opacity-30 disabled:pointer-events-none"
+              className="flex h-8 w-8 items-center justify-center rounded-md bg-foreground text-background transition hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:opacity-30 disabled:pointer-events-none"
             >
               <ArrowUp className="h-4 w-4" />
             </button>
