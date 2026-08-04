@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
 import { api } from "@/lib/api";
@@ -39,7 +39,9 @@ interface PromptBarProps {
 const AT_RE = /(@\S+)/g;
 const SLASH_RE = new RegExp("((?:^|(?<=[ \\t]))\\/\\S+)", "gm");
 
-function renderMirror(text: string, cursorPos: number, showCursor: boolean): React.ReactNode[] {
+// Kept exported so the caret placement can be verified without mounting the full composer.
+// eslint-disable-next-line react-refresh/only-export-components
+export function renderMirror(text: string, cursorPos: number, showCursor: boolean): React.ReactNode[] {
   type Range = { start: number; end: number; text: string };
   const ranges: Range[] = [];
 
@@ -54,39 +56,41 @@ function renderMirror(text: string, cursorPos: number, showCursor: boolean): Rea
   }
   ranges.sort((a, b) => a.start - b.start);
 
-  // Build a flat list of segments with optional cursor injected at cursorPos
-  type Seg = { pos: number; content: React.ReactNode; key: string };
+  // Build non-overlapping text segments so the caret can be inserted inside
+  // highlighted tokens as well as ordinary text.
+  type Seg = { pos: number; text: string; highlighted: boolean; key: string };
   const segs: Seg[] = [];
   let last = 0;
   for (const r of ranges) {
-    if (r.start > last) segs.push({ pos: last, content: text.slice(last, r.start), key: `t${last}` });
-    segs.push({ pos: r.start, content: <mark key={r.start} className="bg-transparent text-primary font-bold not-italic">{r.text}</mark>, key: `m${r.start}` });
+    if (r.start > last) {
+      segs.push({ pos: last, text: text.slice(last, r.start), highlighted: false, key: `t${last}` });
+    }
+    if (r.start < last) continue;
+    segs.push({ pos: r.start, text: r.text, highlighted: true, key: `m${r.start}` });
     last = r.end;
   }
-  if (last < text.length) segs.push({ pos: last, content: text.slice(last), key: `t${last}` });
+  if (last < text.length) segs.push({ pos: last, text: text.slice(last), highlighted: false, key: `t${last}` });
 
   const nodes: React.ReactNode[] = [];
   const cursor = showCursor ? <span key="caret" className="prompt-cursor inline-block w-px h-[1.1em] bg-foreground/70 align-text-bottom" /> : null;
   let emitted = false;
 
   for (const seg of segs) {
-    const content = seg.content;
-    if (!emitted && cursor !== null && typeof content === "string") {
-      const str = content as string;
-      const segEnd = seg.pos + str.length;
-      if (cursorPos <= segEnd) {
-        const off = cursorPos - seg.pos;
-        nodes.push(str.slice(0, off));
-        nodes.push(cursor);
-        nodes.push(str.slice(off));
-        emitted = true;
-        continue;
-      }
-    } else if (!emitted && cursor !== null && cursorPos === seg.pos) {
-      nodes.push(cursor);
+    const segEnd = seg.pos + seg.text.length;
+    if (!emitted && cursor !== null && cursorPos >= seg.pos && cursorPos <= segEnd) {
+      const off = Math.max(0, Math.min(seg.text.length, cursorPos - seg.pos));
+      const before = seg.text.slice(0, off);
+      const after = seg.text.slice(off);
+      const content = seg.highlighted
+        ? <mark key={seg.key} className="bg-transparent text-primary font-bold not-italic">{before}{cursor}{after}</mark>
+        : <Fragment key={seg.key}>{before}{cursor}{after}</Fragment>;
+      nodes.push(content);
       emitted = true;
+      continue;
     }
-    nodes.push(content);
+    nodes.push(seg.highlighted
+      ? <mark key={seg.key} className="bg-transparent text-primary font-bold not-italic">{seg.text}</mark>
+      : seg.text);
   }
   if (!emitted && cursor !== null) nodes.push(cursor);
   nodes.push(" ");

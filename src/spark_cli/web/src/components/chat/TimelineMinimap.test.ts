@@ -2,7 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { TimelineMinimap } from "./TimelineMinimap";
-import { buildTimelineMinimapItems, buildTurnLandmarks } from "./timelineMinimapModel";
+import {
+  MAX_RENDERED_TIMELINE_LANDMARKS,
+  buildTimelineMinimapItems,
+  buildTurnLandmarks,
+  limitTimelineLandmarks,
+} from "./timelineMinimapModel";
 
 describe("TimelineMinimap", () => {
   it("derives lightweight markers without reading message content", () => {
@@ -106,5 +111,21 @@ describe("TimelineMinimap", () => {
     expect(html).toContain('aria-label="Conversation turn landmarks"');
     expect(html).toContain('data-timeline-marker');
     expect(html).toContain("Turn 2 · final answer");
+  });
+
+  it("bounds long-thread marker DOM while sampling the full range", () => {
+    const landmarks = buildTurnLandmarks(Array.from({ length: 1_000 }, (_, index) => ({
+      id: `turn-${index}`,
+      userMessage: {},
+      finalAnswer: {},
+      status: index === 500 ? "failed" : "settled",
+      workItems: index === 500 ? [{ kind: "tool", failed: true }] : [],
+    })));
+    const limited = limitTimelineLandmarks(landmarks);
+
+    expect(limited).toHaveLength(MAX_RENDERED_TIMELINE_LANDMARKS);
+    expect(limited[0].turnIndex).toBe(0);
+    expect(limited.at(-1)?.turnIndex).toBe(999);
+    expect(limited.some((item) => item.kind === "failure" && item.turnIndex === 500)).toBe(true);
   });
 });

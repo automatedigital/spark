@@ -78,7 +78,7 @@ function ApprovalItem({ item, disabled, onChoice }: {
 }) {
   const command = String(item.approval.command ?? "");
   const description = String(item.approval.description ?? "");
-  if (item.resolved && !onChoice) {
+  if (item.resolved) {
     return <div className="rounded-lg border border-success/25 bg-success/8 px-3 py-2 text-xs text-success/80">Approval resolved{command ? ` · ${command}` : ""}</div>;
   }
   return (
@@ -92,6 +92,9 @@ function ApprovalItem({ item, disabled, onChoice }: {
 }
 
 function RequestedInputItem({ item }: { item: TimelineRequestedInputItem }) {
+  if (item.requestedInput.resolved) {
+    return <div className="rounded-lg border border-success/25 bg-success/8 px-3 py-2 text-xs text-success/80">Input received · {item.requestedInput.prompt}</div>;
+  }
   return (
     <div role="status" className="rounded-lg border border-amber-400/35 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
       <div className="font-semibold uppercase tracking-[0.12em] text-[10px] text-amber-300">Input needed</div>

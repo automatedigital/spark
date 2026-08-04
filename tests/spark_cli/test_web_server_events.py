@@ -3182,8 +3182,11 @@ class TestConversationControl:
             active_agent_session_id=sid,
             phase="streaming",
         )
+        turn.user_message_id = user_id
         turn.assistant_message_id = surviving_id
-        assert web_server._web_turn_projection_payload(sid, turn)["assistant_message_id"] == final_id
+        projection = web_server._web_turn_projection_payload(sid, turn)
+        assert projection["user_message_id"] == user_id
+        assert projection["assistant_message_id"] == final_id
 
     def test_failed_turn_does_not_attach_previous_assistant_message(self, web_client):
         from core.spark_state import SessionDB

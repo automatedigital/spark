@@ -80,6 +80,7 @@ import {
   type ThreadTimeline,
   type ThreadTimelineMessage,
 } from "@/lib/threadTimelineModel";
+import { outcomeForTimelineTurn } from "@/lib/turnOutcomeModel";
 import { buildTurnLandmarks } from "@/components/chat/timelineMinimapModel";
 import { copyExactAssistantContent } from "@/lib/exactMessage";
 import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
@@ -167,6 +168,8 @@ export function ChatPanel({
   const [turnOutcomes, setTurnOutcomes] = useState<WebTurnOutcome[]>([]);
   const [conversationPlan, setConversationPlan] = useState<WebPlan | null>(null);
   const [pendingActions, setPendingActions] = useState<WebPendingAction[]>([]);
+  const [confirmedTurnStatus, setConfirmedTurnStatus] = useState<Awaited<ReturnType<typeof api.getTurnStatus>> | null>(null);
+  const turnSurfaceRefreshGenerationRef = useRef(0);
   const [busyActionIds, setBusyActionIds] = useState<Set<string>>(() => new Set());
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
@@ -635,6 +638,7 @@ export function ChatPanel({
   });
 
   const refreshTurnSurfaces = useCallback(async () => {
+    const generation = ++turnSurfaceRefreshGenerationRef.current;
     const sid = activeSessionRef.current;
     if (!sid) {
       setTurnOutcomes([]);
@@ -647,10 +651,10 @@ export function ChatPanel({
       api.getConversationPlan(sid),
       api.getConversationPendingActions(sid),
     ]);
-    if (activeSessionRef.current !== sid) return;
-    setTurnOutcomes(outcomeResult.status === "fulfilled" ? outcomeResult.value.outcomes : []);
-    setConversationPlan(planResult.status === "fulfilled" ? planResult.value.plan : null);
-    setPendingActions(actionsResult.status === "fulfilled" ? actionsResult.value.actions : []);
+    if (activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
+    if (outcomeResult.status === "fulfilled") setTurnOutcomes(outcomeResult.value.outcomes);
+    if (planResult.status === "fulfilled") setConversationPlan(planResult.value.plan);
+    if (actionsResult.status === "fulfilled") setPendingActions(actionsResult.value.actions);
   }, [activeSessionRef]);
 
   useEffect(() => {
@@ -670,6 +674,30 @@ export function ChatPanel({
     if (!sid || (env.session_id && !activeSessionAliasesRef.current.has(env.session_id))) return;
     void refreshTurnSurfaces();
   });
+
+  useEffect(() => {
+    const sid = activeSessionId;
+    let cancelled = false;
+    setConfirmedTurnStatus(null);
+    if (!sid) return;
+    const refresh = async () => {
+      try {
+        const status = await api.getTurnStatus(sid);
+        if (!cancelled && activeSessionRef.current === sid) setConfirmedTurnStatus(status);
+      } catch {
+        // Keep the last confirmed status; transport recovery owns user-facing
+        // connectivity labels and a transient poll failure must not resurrect
+        // stale optimistic state.
+      }
+    };
+    void refresh();
+    if (!streaming) return () => { cancelled = true; };
+    const timer = window.setInterval(() => void refresh(), 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeSessionId, activeSessionRef, streaming]);
   const refreshConversationDiagnostics = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid) return null;
@@ -1599,7 +1627,14 @@ export function ChatPanel({
         )}
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <StatusPill streaming={streaming} label={statusLabel} />
+            <StatusPill
+              streaming={streaming}
+              label={statusLabel}
+              turnActive={confirmedTurnStatus?.turn_active}
+              backendState={confirmedTurnStatus?.state}
+              backendPhase={confirmedTurnStatus?.phase}
+              backendStatus={confirmedTurnStatus?.status}
+            />
             {safeMode && (
               <button
                 type="button"
@@ -1826,13 +1861,10 @@ export function ChatPanel({
               const turn = timelineTurns[vItem.index];
               if (!turn) return null;
               const latestOutcome = turnOutcomes.at(-1) ?? null;
-              const matchedOutcome = turn.finalAnswer
-                ? turnOutcomes.find((outcome) => (
-                    outcome.assistant_message_id != null && turn.finalAnswer?.id === `db:${outcome.assistant_message_id}`
-                  )) ?? null
-                : null;
-              const turnOutcome = matchedOutcome ?? (
-                vItem.index === timelineTurns.length - 1 ? latestOutcome : null
+              const turnOutcome = outcomeForTimelineTurn(
+                turn,
+                turnOutcomes,
+                vItem.index === timelineTurns.length - 1,
               );
 
               return (

@@ -835,6 +835,7 @@ def _web_turn_projection_payload(
         return {
             "turn_id": turn.turn_id,
             "session_id": session_id,
+            "user_message_id": turn.user_message_id,
             "assistant_message_id": turn.assistant_message_id,
             "status": status,
             "started_at": turn.started_at,
@@ -970,6 +971,37 @@ def _finalize_web_turn_projection(
         status=status,
         ended_at=time.time(),
         workspace_after=after,
+    )
+
+
+async def _finalize_web_turn_projection_async(
+    session_id: str,
+    turn: WebActiveTurn | None,
+    result: Any,
+    *,
+    interrupted: bool = False,
+    agent: Any = None,
+) -> dict[str, Any] | None:
+    """Keep potentially slow workspace Git scans off the event loop.
+
+    Plain web chats have no workspace scan; finalize those inline so turn_done
+    and queue cleanup are not delayed behind unrelated executor work.
+    """
+    if turn is not None and turn.workspace_slug:
+        return await _run_blocking(
+            _finalize_web_turn_projection,
+            session_id,
+            turn,
+            result,
+            interrupted=interrupted,
+            agent=agent,
+        )
+    return _finalize_web_turn_projection(
+        session_id,
+        turn,
+        result,
+        interrupted=interrupted,
+        agent=agent,
     )
 
 
@@ -9762,8 +9794,11 @@ async def create_conversation(body: ConversationCreate):
             if _active_turn is not None and surviving_assistant_id is not None:
                 with _active_turn.lock:
                     _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = _finalize_web_turn_projection(
-                final_session_id, _active_turn, result, agent=agent
+            turn_outcome = await _finalize_web_turn_projection_async(
+                final_session_id,
+                _active_turn,
+                result,
+                agent=agent,
             )
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, message, result)
@@ -9781,7 +9816,13 @@ async def create_conversation(body: ConversationCreate):
                 _clear_web_turn(session_id)
             _emit_web_session_updated(final_session_id)
 
-    turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
+    turn = await _run_blocking(
+        _mark_web_turn_active,
+        session_id,
+        status="Starting…",
+        phase="starting",
+        active_agent_session_id=session_id,
+    )
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
     asyncio.create_task(run_agent_task())
@@ -9820,7 +9861,8 @@ async def create_fake_stream(body: FakeStreamStart, request: Request):
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue
     loop = asyncio.get_running_loop()
-    turn = _mark_web_turn_active(
+    turn = await _run_blocking(
+        _mark_web_turn_active,
         session_id,
         status="Starting fake stream…",
         phase="starting",
@@ -10223,8 +10265,11 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             if _active_turn is not None and surviving_assistant_id is not None:
                 with _active_turn.lock:
                     _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = _finalize_web_turn_projection(
-                final_session_id, _active_turn, result, agent=agent
+            turn_outcome = await _finalize_web_turn_projection_async(
+                final_session_id,
+                _active_turn,
+                result,
+                agent=agent,
             )
             _maybe_auto_title_web(agent, final_session_id, message, result)
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -10241,7 +10286,13 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 _clear_web_turn(session_id)
             _emit_web_session_updated(final_session_id)
 
-    turn = _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
+    turn = await _run_blocking(
+        _mark_web_turn_active,
+        session_id,
+        status="Starting…",
+        phase="starting",
+        active_agent_session_id=getattr(agent, "session_id", session_id),
+    )
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
         turn.timings["history_hydrated"] = history_hydrated_at
@@ -10709,8 +10760,11 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             if _active_turn is not None and surviving_assistant_id is not None:
                 with _active_turn.lock:
                     _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = _finalize_web_turn_projection(
-                final_session_id, _active_turn, result, agent=agent
+            turn_outcome = await _finalize_web_turn_projection_async(
+                final_session_id,
+                _active_turn,
+                result,
+                agent=agent,
             )
             _maybe_auto_title_web(agent, final_session_id, user_msg, result)
             _web_queues.pop(session_id, None)
@@ -10726,7 +10780,13 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
                 _clear_web_turn(session_id)
             _emit_web_session_updated(final_session_id)
 
-    _mark_web_turn_active(session_id, status="Retrying…", phase="starting", active_agent_session_id=getattr(agent, "session_id", session_id))
+    await _run_blocking(
+        _mark_web_turn_active,
+        session_id,
+        status="Retrying…",
+        phase="starting",
+        active_agent_session_id=getattr(agent, "session_id", session_id),
+    )
     asyncio.create_task(run_agent_task())
     return {"ok": True, "session_id": session_id}
 
@@ -10964,7 +11024,7 @@ async def conversation_stream_snapshot(
 @app.get("/api/conversations/{session_id}/turn-outcome")
 async def conversation_turn_outcome(session_id: str):
     """Return the durable outcome of the latest web turn for refresh recovery."""
-    return _latest_web_turn_projection(session_id)
+    return await _run_blocking(_latest_web_turn_projection, session_id)
 
 
 @app.get("/api/conversations/{session_id}/turn-outcomes")
@@ -10992,7 +11052,7 @@ async def conversation_turn_outcomes(session_id: str):
 @app.get("/api/conversations/{session_id}/plan")
 async def conversation_plan(session_id: str):
     """Return the latest durable TodoStore/checkpoint plan projection."""
-    outcome = _latest_web_turn_projection(session_id)
+    outcome = await _run_blocking(_latest_web_turn_projection, session_id)
     return {
         "session_id": session_id,
         "turn_id": outcome.get("turn_id") if outcome else None,
@@ -11331,8 +11391,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             if _active_turn is not None and surviving_assistant_id is not None:
                 with _active_turn.lock:
                     _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = _finalize_web_turn_projection(
-                final_session_id, _active_turn, result, agent=agent
+            turn_outcome = await _finalize_web_turn_projection_async(
+                final_session_id,
+                _active_turn,
+                result,
+                agent=agent,
             )
             if agent is not None:
                 _maybe_auto_title_web(agent, final_session_id, raw_message, result)
@@ -11356,7 +11419,13 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 _clear_web_turn(session_id)
             _emit_web_session_updated(final_session_id)
 
-    _mark_web_turn_active(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
+    await _run_blocking(
+        _mark_web_turn_active,
+        session_id,
+        status="Starting…",
+        phase="starting",
+        active_agent_session_id=session_id,
+    )
     asyncio.create_task(run_agent_task())
     return {"session_id": session_id, "ok": True, "source": source}
 

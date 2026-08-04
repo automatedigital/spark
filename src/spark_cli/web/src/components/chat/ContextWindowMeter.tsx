@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Loader2, Pin } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Loader2, Pin, X } from "lucide-react";
 import type { ContextEstimate, ContextItem, InclusionMode } from "@/lib/context";
 import { contextModeSummary, contextPressureLevel, formatContextTokens } from "./contextWindowPolicy";
 
@@ -23,6 +23,27 @@ export function ContextWindowMeter({
   onUpdateMode,
 }: ContextWindowMeterProps) {
   const [expanded, setExpanded] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogId = useId().replace(/:/g, "");
+
+  const closeDialog = useCallback(() => {
+    setExpanded(false);
+    triggerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!expanded) return;
+
+    closeRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeDialog();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeDialog, expanded]);
 
   if (loading && !estimate) {
     return <Loader2 aria-label="Estimating context" className="h-3 w-3 animate-spin text-muted-foreground/40" />;
@@ -43,10 +64,15 @@ export function ContextWindowMeter({
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="dialog"
         aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
+        aria-controls={`context-window-${dialogId}`}
+        onClick={() => {
+          if (expanded) closeDialog();
+          else setExpanded(true);
+        }}
         title="Estimated context window usage"
         className={`rounded px-1.5 py-1 text-[10px] tabular-nums transition hover:bg-foreground/6 ${colorClass}`}
       >
@@ -54,6 +80,7 @@ export function ContextWindowMeter({
       </button>
       {expanded && (
         <div
+          id={`context-window-${dialogId}`}
           role="dialog"
           aria-label="Estimated context window"
           className="absolute bottom-full right-0 z-50 mb-2 w-72 rounded-xl border border-border bg-popover/95 p-3 text-[11px] shadow-xl backdrop-blur-xl"
@@ -63,7 +90,18 @@ export function ContextWindowMeter({
               <div className="font-medium text-foreground">Estimated context</div>
               <div className="text-[10px] text-muted-foreground">Provider-reported usage appears after the turn.</div>
             </div>
-            <span className={`tabular-nums ${colorClass}`}>{Math.round(estimate.utilization * 100)}%</span>
+            <div className="flex items-center gap-2">
+              <span className={`tabular-nums ${colorClass}`}>{Math.round(estimate.utilization * 100)}%</span>
+              <button
+                ref={closeRef}
+                type="button"
+                aria-label="Close context window details"
+                onClick={closeDialog}
+                className="rounded p-0.5 text-muted-foreground/60 transition hover:bg-foreground/8 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="space-y-1">

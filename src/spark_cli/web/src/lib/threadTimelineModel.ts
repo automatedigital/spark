@@ -224,6 +224,7 @@ interface TurnDraft {
 
 const turnKeys = new WeakMap<object, string>();
 const itemKeys = new WeakMap<object, string>();
+const turnSourceMessages = new WeakMap<TimelineTurn, readonly ThreadTimelineMessage[]>();
 
 function normalizeTimestamp(value: TimelineTimestamp | undefined): number | undefined {
   if (value == null) return undefined;
@@ -554,6 +555,14 @@ function buildDrafts(messages: readonly ThreadTimelineMessage[]): TurnDraft[] {
 
 function buildTurn(draft: TurnDraft, previous: TimelineTurn | undefined): TimelineTurn {
   const messages = draft.messages;
+  const previousSources = previous ? turnSourceMessages.get(previous) : undefined;
+  if (
+    previous
+    && previousSources?.length === messages.length
+    && messages.every((message, index) => message === previousSources[index])
+  ) {
+    return previous;
+  }
   const userMessage = messages.find((message): message is Extract<ThreadTimelineMessage, { role: "user" }> => message.role === "user");
   const assistantMessages = messages
     .map((message, index) => message.role === "assistant" ? assistantOf(message, index) : undefined)
@@ -652,7 +661,12 @@ function buildTurn(draft: TurnDraft, previous: TimelineTurn | undefined): Timeli
   const key = turnSignature(turn);
   turnKeys.set(turn, key);
   const previousKey = previous ? turnKeys.get(previous) : undefined;
-  return previous && previousKey === key ? previous : turn;
+  if (previous && previousKey === key) {
+    turnSourceMessages.set(previous, messages);
+    return previous;
+  }
+  turnSourceMessages.set(turn, messages);
+  return turn;
 }
 
 /**
