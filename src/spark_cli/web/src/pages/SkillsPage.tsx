@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/i18n";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { SkillQualitySignals } from "@/components/skills/SkillQualitySignals";
 
 /* ------------------------------------------------------------------ */
 /*  Types & helpers                                                    */
@@ -55,8 +56,6 @@ function prettyCategory(raw: string | null | undefined, generalLabel: string): s
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
-
-
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -468,6 +467,7 @@ export default function SkillsPage() {
                             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                               {skill.description || t.skills.noDescription}
                             </p>
+                            <SkillQualitySignals skill={skill} />
                           </div>
                         </div>
                       ))}

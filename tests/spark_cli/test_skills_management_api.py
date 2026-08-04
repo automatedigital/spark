@@ -32,21 +32,35 @@ def client(monkeypatch):
 
 def test_skill_detail_save_and_security_boundaries(client):
     directory = _skill(get_spark_home() / "skills", "api-demo")
+    (directory / "README.md").write_text("supporting root link", encoding="utf-8")
     response = client.get("/api/skills")
     assert response.status_code == 200
     row = next(item for item in response.json() if item["name"] == "api-demo")
     skill_id = row["skill_id"]
     assert row["provenance"] == "local"
+    assert row["source"] == "profile_local"
     assert row["invocation_policy"] == "both"
+    assert row["invocation_type"] == "both"
     assert row["model_invocable"] is True
     assert row["user_invocable"] is True
+    assert row["index_token_cost"] > 0
+    assert row["supporting_file_count"] == 2
+    assert row["eval_status"] == "not evaluated"
+    assert row["eval_date"] is None
+    assert row["overlap_warning"] is None
+    assert row["duplicate_warning"] is None
     assert row["capabilities"]["editable"] is True
     assert str(directory) not in response.text
 
     detail = client.get(f"/api/skills/{skill_id}")
     assert detail.status_code == 200
     assert detail.json()["content"].startswith("---")
-    assert detail.json()["supporting_files"][0]["path"] == "references/notes.md"
+    assert {item["path"] for item in detail.json()["supporting_files"]} == {
+        "README.md",
+        "references/notes.md",
+    }
+    assert detail.json()["supporting_file_count"] == 2
+    assert detail.json()["enabled"] is True
 
     invalid = client.put(f"/api/skills/{skill_id}", json={"content": "not frontmatter"})
     assert invalid.status_code == 422
@@ -88,9 +102,11 @@ def test_api_exposes_user_only_invocation_policy(client):
     response = client.get("/api/skills")
     row = next(item for item in response.json() if item["name"] == "user-only-api")
     assert row["invocation_policy"] == "user_invoked"
+    assert row["invocation_type"] == "user_invoked"
     assert row["disable_model_invocation"] is True
     assert row["model_invocable"] is False
     assert row["user_invocable"] is True
+    assert row["index_token_cost"] == 0
 
 
 def test_hub_skill_uses_lock_uninstall_path(client):
