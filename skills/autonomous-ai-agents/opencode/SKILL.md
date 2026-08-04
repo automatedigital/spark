@@ -7,7 +7,7 @@ license: MIT
 metadata:
   spark:
     tags: [Coding-Agent, OpenCode, Autonomous, Refactoring, Code-Review]
-    related_skills: [claude-code, codex, spark-agent]
+    related_skills: [subagent-driven-development, claude-code, codex, spark-agent]
 ---
 
 # OpenCode CLI

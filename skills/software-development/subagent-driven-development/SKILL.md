@@ -1,12 +1,14 @@
 ---
 name: subagent-driven-development
-description: Use when executing implementation plans with independent tasks. Dispatches fresh delegate_task per task with two-stage review (spec compliance then code quality).
+description: Use when executing an implementation plan with independent tasks. Dispatch a fresh delegate per task, then run spec and quality review.
 version: 1.1.0
 author: Spark Agent (adapted from obra/superpowers)
 license: MIT
 metadata:
   spark:
     tags: [delegation, subagent, implementation, workflow, parallel]
+    canonical: true
+    external_alternatives: [handoff, wayfinder]
     related_skills: [writing-plans, requesting-code-review, test-driven-development]
 ---
 
@@ -17,6 +19,15 @@ metadata:
 Execute implementation plans by dispatching fresh subagents per task with systematic two-stage review.
 
 **Core principle:** Fresh subagent per task + two-stage review (spec then quality) = high quality, fast iteration.
+
+## Boundary with related workflows
+
+This is Spark's canonical implementation dispatcher. `writing-plans` defines
+the work, this skill executes it, and `requesting-code-review` provides the
+local pre-commit gate. The installed `handoff` skill transfers session context
+and `wayfinder` maps issue decisions; neither is a substitute for task
+execution. Provider adapters such as `claude-code`, `codex`, and `opencode`
+only supply a delegated CLI and must follow this task/review contract.
 
 ## When to Use
 

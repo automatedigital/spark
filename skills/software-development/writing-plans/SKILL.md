@@ -1,12 +1,15 @@
 ---
 name: writing-plans
-description: Use when you have a spec or requirements for a multi-step task. Creates comprehensive implementation plans with bite-sized tasks, exact file paths, and complete code examples.
+description: Use when you have requirements for a multi-step implementation. Create a concrete plan with exact paths, bite-sized tasks, and verification.
 version: 1.1.0
 author: Spark Agent (adapted from obra/superpowers)
 license: MIT
 metadata:
   spark:
     tags: [planning, design, implementation, workflow, documentation]
+    canonical: true
+    aliases: [plan]
+    external_alternatives: [wayfinder]
     related_skills: [subagent-driven-development, test-driven-development, requesting-code-review]
 ---
 
@@ -19,6 +22,15 @@ Write comprehensive implementation plans assuming the implementer has zero conte
 Assume the implementer is a skilled developer but knows almost nothing about the toolset or problem domain. Assume they don't know good test design very well.
 
 **Core principle:** A good plan makes implementation obvious. If someone has to guess, the plan is incomplete.
+
+## Boundary and canonical alias
+
+`writing-plans` is the canonical Spark implementation-planning workflow. The
+bundled `plan` skill is its plan-only mode: it uses the same planning behavior
+and stops after saving the plan. Do not maintain a second planning method in
+the alias. The installed `wayfinder` skill is an external decision and issue
+map; use it before this skill when the work still needs ticket discovery or
+frontier mapping.
 
 ## When to Use
 

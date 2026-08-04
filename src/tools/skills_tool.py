@@ -672,7 +672,13 @@ def skills_list(category: str = None, task_id: str = None) -> str:
         JSON string with minimal skill info: name, description, category
     """
     try:
-        if not SKILLS_DIR.exists():
+        # External roots are a valid installation even when the profile-local
+        # skills directory has not been created yet.  Returning early here
+        # made a fresh profile unable to discover externally installed skills.
+        from agent.skill_utils import get_external_skills_dirs
+
+        external_dirs = get_external_skills_dirs()
+        if not SKILLS_DIR.exists() and not external_dirs:
             SKILLS_DIR.mkdir(parents=True, exist_ok=True)
             return json.dumps(
                 {
@@ -744,10 +750,11 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
         from agent.skill_utils import get_external_skills_dirs
 
         # Build list of all skill directories to search
+        external_dirs = get_external_skills_dirs()
         all_dirs = []
         if SKILLS_DIR.exists():
             all_dirs.append(SKILLS_DIR)
-        all_dirs.extend(get_external_skills_dirs())
+        all_dirs.extend(external_dirs)
 
         if not all_dirs:
             return json.dumps(
@@ -821,7 +828,7 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
         # Security: warn if skill is loaded from outside trusted directories
         # (local skills dir + configured external_dirs are all trusted)
         _outside_skills_dir = True
-        _trusted_dirs = [SKILLS_DIR.resolve()]
+        _trusted_dirs = [SKILLS_DIR.resolve(), *(d.resolve() for d in external_dirs)]
         try:
             _trusted_dirs.extend(d.resolve() for d in all_dirs[1:])
         except Exception:
@@ -1062,6 +1069,58 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
         if script_files:
             linked_files["scripts"] = script_files
 
+        # Several external skills keep small, directly linked markdown
+        # branches beside SKILL.md (for example prototype decision branches or
+        # domain-modeling format guides).  Expose those files as supporting
+        # files so progressive disclosure can resolve them without vendoring
+        # the external skill.
+        if skill_dir:
+            root_supporting_files = [
+                str(path.relative_to(skill_dir))
+                for path in sorted(skill_dir.iterdir())
+                if path.is_file()
+                and path.name != "SKILL.md"
+                and path.suffix.lower() in {".md", ".markdown"}
+            ]
+            if root_supporting_files:
+                linked_files["supporting"] = root_supporting_files
+
+        # Keep provenance attached to every loaded skill.  The resolver knows
+        # about bundled, hub, profile, and external roots; the fallback only
+        # needs to distinguish configured external content when a test or
+        # caller has patched the profile root independently.
+        canonical_record = None
+        try:
+            if skill_dir:
+                from tools.skills_metadata import resolve_skill
+
+                canonical_record = resolve_skill(skill_dir)
+        except Exception:
+            canonical_record = None
+        if canonical_record:
+            provenance_metadata = {
+                key: canonical_record[key]
+                for key in (
+                    "provenance",
+                    "provenance_detail",
+                    "trust_level",
+                    "location",
+                    "capabilities",
+                )
+                if key in canonical_record
+            }
+        else:
+            is_external = bool(
+                skill_dir
+                and any(
+                    skill_dir.resolve().is_relative_to(root.resolve())
+                    for root in external_dirs
+                )
+            )
+            provenance_metadata = {
+                "provenance": "external" if is_external else "local",
+            }
+
         try:
             rel_path = str(skill_md.relative_to(SKILLS_DIR))
         except ValueError:
@@ -1158,6 +1217,7 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
             "readiness_status": SkillReadinessStatus.SETUP_NEEDED.value
             if setup_needed
             else SkillReadinessStatus.AVAILABLE.value,
+            **provenance_metadata,
             **invocation_metadata,
         }
 

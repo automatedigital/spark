@@ -175,6 +175,17 @@ def _build_skill_message(
                         rel = str(f.relative_to(skill_dir))
                         supporting.append(rel)
 
+        # External skills may keep linked markdown branches beside SKILL.md.
+        # Include those in progressive disclosure without treating arbitrary
+        # files as prompt content.
+        for f in sorted(skill_dir.iterdir()):
+            if (
+                f.is_file()
+                and f.name != "SKILL.md"
+                and f.suffix.lower() in {".md", ".markdown"}
+            ):
+                supporting.append(str(f.relative_to(skill_dir)))
+
     if supporting and skill_dir:
         try:
             skill_view_target = str(skill_dir.relative_to(SKILLS_DIR))
@@ -340,8 +351,8 @@ def build_skill_invocation_message(
 
     loaded_skill, skill_dir, skill_name = loaded
     activation_note = (
-        f'[SYSTEM: The user has invoked the "{skill_name}" skill, indicating they want '
-        "you to follow its instructions. The full skill content is loaded below.]"
+        f'[User-invoked skill: "{skill_name}". The user asked Spark to follow '
+        "these instructions for this turn. The full skill content is loaded below.]"
     )
     return _build_skill_message(
         loaded_skill,

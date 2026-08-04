@@ -2,7 +2,6 @@
 
 import json
 import os
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -155,3 +154,91 @@ class TestExternalSkillView:
             result = json.loads(skill_view("my-external-skill"))
         assert result["success"] is True
         assert "external things" in result["content"]
+
+    def test_external_view_reports_provenance_and_root_supporting_files(
+        self, spark_home, external_skills_dir
+    ):
+        (external_skills_dir / "my-external-skill" / "GUIDE.md").write_text(
+            "Supporting instructions."
+        )
+        (spark_home / "config.yaml").write_text(
+            f"skills:\n  external_dirs:\n    - {external_skills_dir}\n"
+        )
+        local_skills = spark_home / "skills"
+        with (
+            patch.dict(os.environ, {"SPARK_HOME": str(spark_home)}),
+            patch("tools.skills_tool.SKILLS_DIR", local_skills),
+        ):
+            from tools.skills_tool import skill_view
+
+            result = json.loads(skill_view("my-external-skill"))
+            supporting = result["linked_files"]["supporting"]
+            guide = json.loads(skill_view("my-external-skill", "GUIDE.md"))
+
+        assert result["provenance"] == "external"
+        assert result["capabilities"]["editable"] is False
+        assert result["capabilities"]["removal_mode"] == "detach"
+        assert "GUIDE.md" in supporting
+        assert guide["success"] is True
+        assert guide["content"] == "Supporting instructions."
+
+    def test_external_skills_are_discoverable_without_local_profile_directory(
+        self, spark_home, external_skills_dir, tmp_path
+    ):
+        model_skill = external_skills_dir / "model-skill"
+        model_skill.mkdir()
+        (model_skill / "SKILL.md").write_text(
+            "---\nname: model-skill\ndescription: Model-visible\n---\n"
+        )
+        user_skill = external_skills_dir / "user-only"
+        user_skill.mkdir()
+        (user_skill / "SKILL.md").write_text(
+            "---\nname: user-only\ndescription: User slash only\n"
+            "disable-model-invocation: true\n---\n"
+        )
+        (spark_home / "config.yaml").write_text(
+            f"skills:\n  external_dirs:\n    - {external_skills_dir}\n"
+        )
+        missing_local = tmp_path / "profile-skills-not-created"
+        with (
+            patch.dict(os.environ, {"SPARK_HOME": str(spark_home)}),
+            patch("tools.skills_tool.SKILLS_DIR", missing_local),
+        ):
+            from tools.skills_tool import skills_list
+
+            result = json.loads(skills_list())
+
+        names = {skill["name"] for skill in result["skills"]}
+        assert "model-skill" in names
+        assert "user-only" not in names
+
+    def test_external_skill_can_be_disabled_then_detached_without_editing_source(
+        self, spark_home, external_skills_dir, monkeypatch, tmp_path
+    ):
+        skill_dir = external_skills_dir / "my-external-skill"
+        missing_local = tmp_path / "profile-skills-not-created"
+        config_path = spark_home / "config.yaml"
+
+        config_path.write_text(
+            f"skills:\n  external_dirs:\n    - {external_skills_dir}\n  disabled: []\n"
+        )
+        with (
+            patch.dict(os.environ, {"SPARK_HOME": str(spark_home)}),
+            patch("tools.skills_tool.SKILLS_DIR", missing_local),
+        ):
+            from agent.skill_commands import scan_skill_commands
+
+            assert "/my-external-skill" in scan_skill_commands()
+
+            config_path.write_text(
+                f"skills:\n  external_dirs:\n    - {external_skills_dir}\n"
+                "  disabled:\n    - my-external-skill\n"
+            )
+            assert "/my-external-skill" not in scan_skill_commands()
+
+            # Detaching removes only the configured root from discovery.  The
+            # externally installed source remains untouched on disk.
+            config_path.write_text("skills:\n  external_dirs: []\n  disabled: []\n")
+            assert "/my-external-skill" not in scan_skill_commands()
+
+        assert (skill_dir / "SKILL.md").exists()

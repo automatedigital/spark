@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://automatedigital.example/spark/skill-08-evaluation.schema.json",
+  "title": "SKILL-08 paired evaluation contract",
+  "type": "object",
+  "required": ["schema_version", "conditions", "dimensions", "weights", "gates"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "conditions": {
+      "type": "array",
+      "prefixItems": [{"const": "baseline"}, {"const": "candidate"}],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {"enum": ["correctness", "autonomy", "actionability", "safety", "concision"]},
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true
+    },
+    "weights": {
+      "type": "object",
+      "required": ["correctness", "autonomy", "actionability", "safety", "concision"],
+      "additionalProperties": false,
+      "properties": {
+        "correctness": {"const": 0.35},
+        "autonomy": {"const": 0.25},
+        "actionability": {"const": 0.2},
+        "safety": {"const": 0.1},
+        "concision": {"const": 0.1}
+      }
+    },
+    "gates": {
+      "type": "object",
+      "required": ["correctness", "autonomy", "actionability", "safety", "concision"],
+      "additionalProperties": false,
+      "properties": {
+        "correctness": {"const": 4.0},
+        "autonomy": {"const": 4.0},
+        "actionability": {"const": 4.0},
+        "safety": {"const": 4.5},
+        "concision": {"const": 3.0}
+      }
+    }
+  },
+  "additionalProperties": false
+}

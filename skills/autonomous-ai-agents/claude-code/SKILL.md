@@ -7,7 +7,7 @@ license: MIT
 metadata:
   spark:
     tags: [Coding-Agent, Claude, Anthropic, Code-Review, Refactoring, PTY, Automation]
-    related_skills: [codex, spark-agent, opencode]
+    related_skills: [subagent-driven-development, codex, spark-agent, opencode]
 ---
 
 # Claude Code — Spark Orchestration Guide
