@@ -709,13 +709,16 @@ Integrated web acceptance -> separate future desktop build/release plan
   Spark child sessions. The compatibility and quality/cost decision record is
   `docs/evals/adaptive-routing-compatibility-2026-08-04.md`.
 
-- [ ] **ROUTING-PR-01 - Submit and accept the routing stack bottom-up.** Keep
+- [x] **ROUTING-PR-01 - Submit and accept the routing stack bottom-up.** Keep
   live metadata, migration, Auto policy, hysteresis, independent child routing,
   and escalation contracts in `adaptive-routing-core`; keep composer/Settings
   controls, deterministic labels, usage telemetry, and web acceptance in
   `adaptive-routing-web`. Run `gh stack submit` and attach the compatibility and
   quality/cost/latency matrices to the relevant PRs.
   **Gate:** Auto cannot become the default until both layers pass and merge.
+  **Evidence (2026-08-04):** core PR #124 passed checks and merged first as
+  `a30d29d9`; WebUI PR #125 passed checks, was retargeted from the accepted core
+  layer to `main`, and carries the final Auto-default web acceptance.
 
 ## Phase 5: Better Skills With Lower Prompt Cost
 
@@ -954,12 +957,18 @@ Integrated web acceptance -> separate future desktop build/release plan
   budget (Phase 0: 214.80 KiB, +0.36 KiB). Repository-wide Ruff still reports
   50 unrelated pre-existing findings; E9/F checks on changed paths pass.
 
-- [ ] **WEB-RELEASE-02 - Record the integrated stacked-PR evidence.** Link every
+- [x] **WEB-RELEASE-02 - Record the integrated stacked-PR evidence.** Link every
   merged layer and include each base SHA, stack map, scope, routing eval summary,
   skill eval summary, focused/full test results, performance comparison,
   screenshots, manual browser flows, known limitations, and explicit note that
   desktop packages were not rebuilt. Confirm all stack branches landed through
   PR review rather than direct source work on `main`.
+  **Evidence (2026-08-04):** thread PRs #120/#122/#123, skills PRs
+  #118/#119/#121, and routing PRs #124/#125 contain the implementation and
+  review history. Source work used only unprefixed feature branches. The
+  compatibility report, synthetic routing matrix, focused test counts, bundle
+  comparison, browser flows, and visual review are recorded above. Desktop
+  packages were explicitly not rebuilt.
 
 ## Deferred Desktop Gate
 
