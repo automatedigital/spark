@@ -520,14 +520,40 @@ function ModelQuickSettings({
           value={status.smart_model}
           suggestions={suggestions?.smart ?? []}
           provider={status.smart_provider}
-          label={status.multi_model_enabled ? "Smart model" : "Model"}
+          label="Routing"
           saving={savingSmartModel}
           autoFocus
           onChange={(v) => void saveSmartModel(v)}
         />
 
+        {status.selection === "auto" && (
+          <div className="rounded-lg border border-primary/20 bg-primary/[0.05] px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-foreground">Auto is choosing per turn</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                  Task type, risk, context and duration decide the route. Your explicit choice stays pinned until changed.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                {status.catalog_source}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Object.entries(status.auto_roles).map(([role, target]) => (
+                <span key={role} className="rounded-md border border-border/70 bg-background/65 px-2 py-1 text-[10px] text-muted-foreground">
+                  <span className="font-semibold text-foreground/80">{role}</span>
+                  {target.model && <> · {shortModelName(target.model)}</>}
+                  {target.reasoning_effort && <> {target.reasoning_effort}</>}
+                </span>
+              ))}
+            </div>
+            {status.catalog_warning && <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">{status.catalog_warning}</p>}
+          </div>
+        )}
+
         {/* Fast model — only shown when multi-model is enabled */}
-        {status.multi_model_enabled && (
+        {status.multi_model_enabled && status.selection !== "auto" && (
           <ModelDropdown
             value={status.fast_model}
             suggestions={suggestions?.fast ?? []}
@@ -822,10 +848,10 @@ export function PromptBar({
     if (!streaming) stopRequestedRef.current = false;
   }, [streaming]);
 
-  const activeModel = modelStatus
-    ? (modelStatus.multi_model_enabled && modelStatus.fast_model) || modelStatus.smart_model || null
+  const activeModel = modelStatus?.smart_model || null;
+  const modelLabel = activeModel
+    ? activeModel.toLowerCase() === "auto" ? "Auto" : shortModelName(activeModel)
     : null;
-  const modelLabel = activeModel ? shortModelName(activeModel) : null;
   const effortLabel = (() => {
     const e = modelStatus?.reasoning_effort;
     if (!e || e === "none") return null;

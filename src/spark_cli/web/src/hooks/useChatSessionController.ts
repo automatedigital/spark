@@ -116,8 +116,12 @@ export function useChatSessionController({
 
   onSessionCreatedRef.current = onSessionCreated;
   onSessionUpdatedRef.current = onSessionUpdated;
-  activeSessionRef.current = activeSessionId;
-  if (activeSessionId) activeSessionAliasesRef.current.add(activeSessionId);
+  if (activeSessionRef.current !== activeSessionId) {
+    activeSessionRef.current = activeSessionId;
+    activeSessionAliasesRef.current = new Set(activeSessionId ? [activeSessionId] : []);
+  } else if (activeSessionId) {
+    activeSessionAliasesRef.current.add(activeSessionId);
+  }
 
   const rememberActiveSessionAliases = useCallback((...ids: Array<string | null | undefined>) => {
     ids.forEach((id) => {
