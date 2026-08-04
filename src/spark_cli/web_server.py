@@ -5007,6 +5007,16 @@ def _models_from_provider_config(provider: str) -> tuple[list, str]:
     return [], ""
 
 
+def _resolve_codex_model_catalog() -> dict:
+    """Return the account-scoped Codex catalog with explicit trust metadata."""
+    from spark_cli.auth import get_codex_auth_status
+    from spark_cli.codex_models import get_codex_model_catalog
+
+    status = get_codex_auth_status()
+    token = str(status.get("api_key", "") or "") if status.get("logged_in") else ""
+    return get_codex_model_catalog(access_token=token, api_timeout=2.0)
+
+
 def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, bool]:
     """Resolve the model catalog for ``provider`` (live where possible).
 
@@ -5027,12 +5037,7 @@ def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, b
 
     if provider == "openai-codex":
         try:
-            from spark_cli.auth import get_codex_auth_status
-            from spark_cli.codex_models import get_codex_model_catalog
-
-            status = get_codex_auth_status()
-            token = str(status.get("api_key", "") or "") if status.get("logged_in") else ""
-            catalog = get_codex_model_catalog(access_token=token, api_timeout=2.0)
+            catalog = _resolve_codex_model_catalog()
             return list(catalog["models"]), bool(catalog["live"])
         except Exception:
             return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
@@ -5082,7 +5087,17 @@ def get_available_models(provider: str = "", base_url: str = ""):
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-    models, live = _resolve_provider_models(provider, normalized_base_url)
+    codex_catalog = None
+    if provider == "openai-codex":
+        try:
+            codex_catalog = _resolve_codex_model_catalog()
+            models = list(codex_catalog["models"])
+            live = bool(codex_catalog["live"])
+        except Exception:
+            models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
+            live = False
+    else:
+        models, live = _resolve_provider_models(provider, normalized_base_url)
     strict = provider in _STRICT_MODEL_PROVIDERS
     warning = ""
     source = "live" if live else "curated"
@@ -5092,7 +5107,7 @@ def get_available_models(provider: str = "", base_url: str = ""):
             "The live Codex catalog is unavailable. Only conservative offline "
             "fallback models are shown; reconnect Codex to refresh account availability."
         )
-    return {
+    response = {
         "provider": provider,
         "models": models,
         "live": live,
@@ -5100,6 +5115,18 @@ def get_available_models(provider: str = "", base_url: str = ""):
         "source": source,
         "warning": warning,
     }
+    if codex_catalog is not None:
+        response.update(
+            {
+                "catalog": list(codex_catalog["catalog"]),
+                "source": codex_catalog["source"],
+                "freshness": codex_catalog["freshness"],
+                "stale": bool(codex_catalog["stale"]),
+                "authoritative": bool(codex_catalog["authoritative"]),
+                "warning": codex_catalog["warning"],
+            }
+        )
+    return response
 
 
 @app.get("/api/model/suggestions")
@@ -8712,10 +8739,17 @@ def _resolve_web_turn_route(user_message: str) -> Dict[str, Any]:
         "args": list(runtime.get("args") or []),
         "credential_pool": runtime.get("credential_pool"),
     }
+    available_catalog = None
+    if runtime.get("provider") == "openai-codex":
+        try:
+            available_catalog = _resolve_codex_model_catalog()["catalog"]
+        except Exception:
+            _log.debug("Codex catalog unavailable for Auto routing", exc_info=True)
     route = resolve_turn_route(
         user_message,
         cfg.get("smart_model_routing", {}) or {},
         primary,
+        available_catalog=available_catalog,
     )
     budget_cfg = cfg.get("response_budget", {}) or {}
     return merge_route_request_overrides(

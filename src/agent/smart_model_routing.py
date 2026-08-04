@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any
 
 from core.utils import is_truthy_value
+from spark_cli.model_config import AUTO_ROLE_NAMES
 
 
 class RequestClass(StrEnum):
@@ -31,6 +32,47 @@ class RequestContext:
     long_context: bool = False
     recovery_turn: bool = False
     ambiguous: bool = False
+    task_class: str = ""
+    tool_need: bool | None = None
+    context_tokens: int = 0
+    risk: str = ""
+    duration: str = ""
+    explicit_model: str = ""
+    pinned_model: bool = False
+    previous_role: str = ""
+    is_subagent: bool = False
+
+
+@dataclass(frozen=True)
+class RoutingSignals:
+    """Observable, deterministic inputs to the Auto policy."""
+
+    task_class: str
+    tool_need: bool
+    context_tokens: int
+    has_attachments: bool
+    risk: str
+    duration: str
+    explicit_choice: str
+    is_subagent: bool
+
+
+@dataclass(frozen=True)
+class AutoRoutingDecision:
+    role: str
+    desired_role: str
+    signals: RoutingSignals
+    reason: str
+    scores: Mapping[str, int]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "desired_role": self.desired_role,
+            "signals": asdict(self.signals),
+            "reason": self.reason,
+            "scores": dict(self.scores),
+        }
 
 
 @dataclass(frozen=True)
@@ -104,12 +146,30 @@ def _request_context(value: RequestContext | Mapping[str, Any] | None) -> Reques
         long_context=bool(raw.get("long_context")),
         recovery_turn=bool(raw.get("recovery_turn")),
         ambiguous=bool(raw.get("ambiguous")),
+        task_class=str(raw.get("task_class") or "").strip(),
+        tool_need=(None if raw.get("tool_need") is None else bool(raw.get("tool_need"))),
+        context_tokens=_coerce_int(raw.get("context_tokens"), 0),
+        risk=str(raw.get("risk") or "").strip().lower(),
+        duration=str(raw.get("duration") or "").strip().lower(),
+        explicit_model=str(raw.get("explicit_model") or raw.get("explicit_choice") or "").strip(),
+        pinned_model=bool(raw.get("pinned_model")),
+        previous_role=str(raw.get("previous_role") or raw.get("current_role") or "").strip().lower(),
+        is_subagent=bool(raw.get("is_subagent")),
     )
 
 
-def classify_request(user_message: str) -> RequestClass:
+def classify_request(
+    user_message: str,
+    context: RequestContext | Mapping[str, Any] | None = None,
+) -> RequestClass:
     """Classify locally with risk/format gates taking priority over convenience."""
     text = (user_message or "").strip()
+    ctx = _request_context(context)
+    if ctx.task_class:
+        try:
+            return RequestClass(ctx.task_class)
+        except ValueError:
+            pass
     if _FORMAT_RE.search(text):
         return RequestClass.FORMAT_CONTRACT
     if _DESTRUCTIVE_RE.search(text) or _HIGH_STAKES_RE.search(text):
@@ -127,6 +187,98 @@ def classify_request(user_message: str) -> RequestClass:
     if _EXPLAIN_RE.search(text):
         return RequestClass.EXPLANATION
     return RequestClass.DIRECT_ANSWER
+
+
+def classify_routing_signals(
+    user_message: str,
+    context: RequestContext | Mapping[str, Any] | None = None,
+    *,
+    context_threshold: int = 24_000,
+) -> RoutingSignals:
+    """Classify every policy input without model calls or provider metadata."""
+    ctx = _request_context(context)
+    text = (user_message or "").strip()
+    request_class = classify_request(text, ctx).value
+    tool_need = ctx.tool_need
+    if tool_need is None:
+        tool_need = bool(_DEFAULT_BUDGETS[RequestClass(request_class)][5])
+        tool_need = bool(tool_need or _ACTION_RE.search(text) or _CODE_RE.search(text))
+    risk = ctx.risk if ctx.risk in {"low", "medium", "high", "critical"} else "low"
+    if risk == "low" and (_DESTRUCTIVE_RE.search(text) or _HIGH_STAKES_RE.search(text)):
+        risk = "high"
+    if risk == "low" and (ctx.ambiguous or ctx.recovery_turn):
+        risk = "medium"
+    context_tokens = max(0, ctx.context_tokens)
+    if context_tokens >= context_threshold:
+        duration = "long"
+    elif ctx.duration in {"short", "medium", "long"}:
+        duration = ctx.duration
+    else:
+        duration = "long" if len(text) >= 2_000 or len(text.split()) >= 350 else "short"
+    return RoutingSignals(
+        task_class=request_class,
+        tool_need=bool(tool_need),
+        context_tokens=context_tokens,
+        has_attachments=ctx.has_attachments,
+        risk=risk,
+        duration=duration,
+        explicit_choice=ctx.explicit_model,
+        is_subagent=ctx.is_subagent,
+    )
+
+
+def _auto_scores(signals: RoutingSignals) -> dict[str, int]:
+    scores = {"lead": 0, "balanced": 1, "fast": 0, "subagent": -100}
+    if signals.task_class in {RequestClass.DIRECT_ANSWER.value, RequestClass.STATUS_PROGRESS.value}:
+        scores["fast"] += 4
+    elif signals.task_class in {RequestClass.EXPLANATION.value, RequestClass.COMPARISON_OPTIONS.value}:
+        scores["balanced"] += 3
+    else:
+        scores["lead"] += 4
+    if signals.tool_need:
+        scores["balanced"] += 2
+        scores["lead"] += 3
+    if signals.has_attachments:
+        scores["balanced"] += 2
+        scores["lead"] += 2
+    if signals.context_tokens >= 24_000 or signals.duration == "long":
+        scores["lead"] += 3
+    if signals.risk in {"high", "critical"}:
+        scores["lead"] += 100
+    elif signals.risk == "medium":
+        scores["lead"] += 3
+    if signals.is_subagent:
+        scores["subagent"] = scores["lead"] + 2
+    else:
+        scores["subagent"] = -100
+    return scores
+
+
+def choose_auto_role(
+    user_message: str,
+    context: RequestContext | Mapping[str, Any] | None = None,
+    *,
+    hysteresis_margin: int = 2,
+    context_threshold: int = 24_000,
+) -> AutoRoutingDecision:
+    """Choose a role with sticky hysteresis and a safety-first escalation gate."""
+    ctx = _request_context(context)
+    signals = classify_routing_signals(user_message, ctx, context_threshold=context_threshold)
+    scores = _auto_scores(signals)
+    desired = max(("lead", "balanced", "fast", "subagent"), key=lambda role: scores[role])
+    previous = ctx.previous_role if ctx.previous_role in scores else ""
+    if signals.is_subagent and previous in {"lead", "balanced", "fast"} and desired == "subagent":
+        previous = ""
+    if signals.risk in {"high", "critical"}:
+        role = "lead"
+        reason = "high_risk_floor"
+    elif previous and previous != desired and scores[desired] - scores[previous] < max(0, hysteresis_margin):
+        role = previous
+        reason = "sticky_hysteresis"
+    else:
+        role = desired
+        reason = "classified_signals"
+    return AutoRoutingDecision(role, desired, signals, reason, scores)
 
 
 _DEFAULT_BUDGETS: dict[RequestClass, tuple[str, int, int, str, str, bool, tuple[str, ...]]] = {
@@ -214,6 +366,229 @@ def _primary_route(primary: dict[str, Any], envelope: ResponseBudgetEnvelope, re
     }
 
 
+def _catalog_entries(available_catalog: Any) -> list[Mapping[str, Any]]:
+    """Normalize the account catalog without manufacturing availability."""
+    if available_catalog is None:
+        return []
+    if isinstance(available_catalog, Mapping):
+        if isinstance(available_catalog.get("models"), (list, tuple)):
+            available_catalog = available_catalog["models"]
+        else:
+            flattened: list[Mapping[str, Any]] = []
+            for provider, values in available_catalog.items():
+                if isinstance(values, Mapping):
+                    values = [values]
+                if isinstance(values, (list, tuple)):
+                    for value in values:
+                        if isinstance(value, Mapping):
+                            item = dict(value)
+                            item.setdefault("provider", provider)
+                            flattened.append(item)
+            return flattened
+    if isinstance(available_catalog, (list, tuple)):
+        return [value for value in available_catalog if isinstance(value, Mapping)]
+    return []
+
+
+def _catalog_match(target: Any, catalog: Any, role: str) -> Mapping[str, Any] | None:
+    entries = _catalog_entries(catalog)
+    if not entries:
+        return None
+    target_provider = str(getattr(target, "provider", "") or "").strip().lower()
+    target_model = str(getattr(target, "model", "") or "").strip()
+    exact: list[Mapping[str, Any]] = []
+    role_matches: list[Mapping[str, Any]] = []
+    for entry in entries:
+        provider = str(entry.get("provider") or entry.get("provider_id") or "").strip().lower()
+        model = str(entry.get("model") or entry.get("slug") or entry.get("id") or "").strip()
+        if target_model and model == target_model and (not target_provider or provider == target_provider):
+            exact.append(entry)
+        roles = entry.get("roles") or entry.get("role") or ()
+        if isinstance(roles, str):
+            roles = (roles,)
+        if role in {str(value).strip().lower() for value in roles}:
+            role_matches.append(entry)
+    if exact:
+        return exact[0]
+    if not target_model and role_matches:
+        return role_matches[0]
+    return None
+
+
+def resolve_auto_target(
+    policy: Any,
+    role: str,
+    available_catalog: Any = None,
+) -> dict[str, Any] | None:
+    """Resolve a role target through the supplied catalog and role fallbacks."""
+    from spark_cli.model_config import AutoPolicy, read_auto_policy
+
+    policy_obj = policy if isinstance(policy, AutoPolicy) else read_auto_policy({"model": {"auto": policy}})
+    visited: set[str] = set()
+
+    def visit(role_name: str) -> dict[str, Any] | None:
+        if role_name in visited or role_name not in AUTO_ROLE_NAMES:
+            return None
+        visited.add(role_name)
+        target = policy_obj.role(role_name)
+        entry = _catalog_match(target, available_catalog, role_name)
+        target_has_preference = bool(target.provider or target.model)
+        if target_has_preference and available_catalog is not None and entry is None:
+            entry = None
+        elif not target_has_preference and available_catalog is not None and entry is None:
+            entry = None
+        if target_has_preference and (available_catalog is None or entry is not None):
+            provider = target.provider
+            model = target.model
+            if entry:
+                provider = provider or str(entry.get("provider") or entry.get("provider_id") or "").strip().lower()
+                model = model or str(entry.get("model") or entry.get("slug") or entry.get("id") or "").strip()
+            effort = target.reasoning_effort
+            if entry and effort:
+                supported = entry.get("reasoning_efforts") or entry.get("supported_reasoning_efforts") or ()
+                if supported and effort not in supported:
+                    effort = str(entry.get("default_reasoning_effort") or supported[0])
+            elif entry and not effort:
+                effort = str(entry.get("default_reasoning_effort") or "")
+            return {
+                "role": role_name,
+                "provider": provider,
+                "model": model,
+                "reasoning_effort": effort,
+                "fallback": list(target.fallback),
+                "base_url": target.base_url,
+                "api_mode": target.api_mode,
+                "catalog_entry": dict(entry) if entry else None,
+            }
+        for fallback in target.fallback:
+            resolved = visit(fallback)
+            if resolved is not None:
+                resolved["fallback_from"] = role_name
+                return resolved
+        return None
+
+    return visit(str(role).strip().lower())
+
+
+def _auto_policy_from_routing_config(config: Mapping[str, Any]) -> Any:
+    from spark_cli.model_config import read_auto_policy
+
+    auto = config.get("auto")
+    if isinstance(auto, Mapping):
+        projected = {"model": {"auto": dict(auto)}, "smart_model_routing": dict(config)}
+    elif config.get("policy") == "auto" or isinstance(config.get("roles"), Mapping):
+        projected = {"model": {"auto": dict(config)}, "smart_model_routing": dict(config)}
+    else:
+        projected = {"smart_model_routing": dict(config)}
+    return read_auto_policy(projected)
+
+
+def _auto_route_enabled(config: Mapping[str, Any]) -> bool:
+    auto = config.get("auto")
+    if isinstance(auto, Mapping):
+        return bool(auto.get("enabled", True))
+    return config.get("policy") == "auto" or isinstance(config.get("roles"), Mapping)
+
+
+def resolve_auto_route(
+    user_message: str,
+    routing_config: Mapping[str, Any],
+    primary: dict[str, Any],
+    context: RequestContext | Mapping[str, Any] | None = None,
+    *,
+    available_catalog: Any = None,
+    explicit_model: str | None = None,
+    previous_role: str | None = None,
+) -> dict[str, Any]:
+    """Resolve one Auto turn; explicit model choices bypass policy routing."""
+    ctx = _request_context(context)
+    if explicit_model is not None:
+        ctx = RequestContext(**{**asdict(ctx), "explicit_model": explicit_model})
+    if previous_role is not None:
+        ctx = RequestContext(**{**asdict(ctx), "previous_role": previous_role})
+    envelope = build_response_envelope(user_message, ctx)
+    explicit = ctx.explicit_model.strip()
+    if not explicit and ctx.pinned_model:
+        route = _primary_route(primary, envelope, "explicit_model_pinned")
+        route["role"] = "pinned"
+        route["label"] = f"Pinned · {primary.get('model') or 'configured model'}"
+        route["pinned"] = True
+        return route
+    if explicit and explicit.lower() != "auto":
+        route = _primary_route(primary, envelope, "explicit_model_pinned")
+        route["model"] = explicit
+        route["role"] = "pinned"
+        route["label"] = f"Pinned · {explicit}"
+        route["pinned"] = True
+        return route
+
+    policy = _auto_policy_from_routing_config(routing_config)
+    decision = choose_auto_role(
+        user_message,
+        ctx,
+        hysteresis_margin=policy.hysteresis_margin,
+        context_threshold=policy.context_threshold,
+    )
+    target = resolve_auto_target(policy, decision.role, available_catalog)
+    if target is None:
+        route = _primary_route(primary, envelope, f"auto_fallback:{decision.reason}")
+        route["role"] = decision.role
+        route["label"] = f"Auto · {decision.role} · primary fallback"
+        route["routing_decision"] = decision.as_dict()
+        return route
+
+    same_runtime = (
+        target["model"] == primary.get("model")
+        and (not target["provider"] or target["provider"] == str(primary.get("provider") or "").lower())
+    )
+    if same_runtime or not target["provider"]:
+        route = _primary_route(primary, envelope, f"auto:{decision.role}:{decision.reason}")
+        route["model"] = target["model"] or primary.get("model")
+        route["role"] = decision.role
+        route["reasoning_effort"] = target["reasoning_effort"]
+        route["fallback"] = target["fallback"]
+        route["label"] = f"Auto · {decision.role}"
+        route["routing_decision"] = decision.as_dict()
+        return route
+
+    from spark_cli.runtime_provider import resolve_runtime_provider
+
+    try:
+        runtime = resolve_runtime_provider(
+            requested=target["provider"],
+            explicit_base_url=target.get("base_url") or None,
+        )
+    except Exception:
+        route = _primary_route(primary, envelope, f"auto_fallback:{decision.role}:runtime_unavailable")
+        route["role"] = decision.role
+        route["label"] = f"Auto · {decision.role} · primary fallback"
+        route["routing_decision"] = decision.as_dict()
+        return route
+    return {
+        "model": target["model"],
+        "runtime": {
+            "api_key": runtime.get("api_key"),
+            "base_url": runtime.get("base_url"),
+            "provider": runtime.get("provider"),
+            "api_mode": runtime.get("api_mode"),
+            "command": runtime.get("command"),
+            "args": list(runtime.get("args") or []),
+            "credential_pool": runtime.get("credential_pool"),
+        },
+        "label": f"Auto · {decision.role}",
+        "role": decision.role,
+        "reasoning_effort": target["reasoning_effort"],
+        "fallback": target["fallback"],
+        "routing_reason": f"auto:{decision.role}:{decision.reason}",
+        "routing_decision": decision.as_dict(),
+        "response_envelope": envelope.as_dict(),
+        "signature": (
+            target["model"], runtime.get("provider"), runtime.get("base_url"),
+            runtime.get("api_mode"), runtime.get("command"), tuple(runtime.get("args") or ()),
+        ),
+    }
+
+
 def choose_cheap_model_route(
     user_message: str,
     routing_config: dict[str, Any] | None,
@@ -262,9 +637,23 @@ def resolve_turn_route(
     routing_config: dict[str, Any] | None,
     primary: dict[str, Any],
     context: RequestContext | Mapping[str, Any] | None = None,
+    *,
+    available_catalog: Any = None,
+    explicit_model: str | None = None,
+    previous_role: str | None = None,
 ) -> dict[str, Any]:
-    envelope = build_response_envelope(user_message, context)
     cfg = routing_config or {}
+    if _auto_route_enabled(cfg):
+        return resolve_auto_route(
+            user_message,
+            cfg,
+            primary,
+            context,
+            available_catalog=available_catalog,
+            explicit_model=explicit_model,
+            previous_role=previous_role,
+        )
+    envelope = build_response_envelope(user_message, context)
     route = choose_cheap_model_route(user_message, cfg, context)
     if not route:
         reason = "adaptive_disabled" if not _coerce_bool(cfg.get("enabled"), False) else envelope.routing_reason
@@ -315,7 +704,8 @@ def response_request_overrides(route: Mapping[str, Any], provider: str | None = 
         return {}
     return {
         "_soft_max_output_tokens": maximum,
-        "_budget_reasoning_effort": envelope.get("reasoning_effort"),
+        "_budget_reasoning_effort": route.get("reasoning_effort")
+        or envelope.get("reasoning_effort"),
     }
 
 

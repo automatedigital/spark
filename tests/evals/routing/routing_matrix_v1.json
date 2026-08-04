@@ -1,0 +1,211 @@
+{
+  "matrix_version": "1.0.0",
+  "contract": "agent.smart_model_routing",
+  "privacy": "synthetic-only",
+  "live_calls": false,
+  "cases": [
+    {
+      "case_id": "direct-answer",
+      "scenario": "direct_answer",
+      "request": {
+        "message": "Name the capital city of France.",
+        "context": {},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "direct_answer",
+        "model_tier": "fast",
+        "reasoning_effort": "low",
+        "tool_needed": false,
+        "routing_reason": "fast_safe:direct_answer"
+      }
+    },
+    {
+      "case_id": "ui-work",
+      "scenario": "ui_work",
+      "request": {
+        "message": "Build the web UI settings panel and verify it in the browser.",
+        "context": {"tools_available": true},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "action_change",
+        "model_tier": "smart",
+        "reasoning_effort": "medium",
+        "tool_needed": true,
+        "routing_reason": "smart_required:class:action_change"
+      }
+    },
+    {
+      "case_id": "debugging",
+      "scenario": "debugging",
+      "request": {
+        "message": "Debug the failing reconnect test and identify the root cause.",
+        "context": {"tools_available": true},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "diagnosis",
+        "model_tier": "smart",
+        "reasoning_effort": "high",
+        "tool_needed": true,
+        "routing_reason": "smart_required:class:diagnosis"
+      }
+    },
+    {
+      "case_id": "planning",
+      "scenario": "planning",
+      "request": {
+        "message": "Create a detailed plan to redesign the main message thread panel.",
+        "context": {"tools_available": true},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "plan_review",
+        "model_tier": "smart",
+        "reasoning_effort": "high",
+        "tool_needed": true,
+        "routing_reason": "smart_required:class:plan_review"
+      }
+    },
+    {
+      "case_id": "research",
+      "scenario": "research",
+      "request": {
+        "message": "Compare model routing options and explain the trade-offs between them.",
+        "context": {},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "comparison_options",
+        "model_tier": "smart",
+        "reasoning_effort": "medium",
+        "tool_needed": false,
+        "routing_reason": "smart_required:class:comparison_options"
+      }
+    },
+    {
+      "case_id": "long-child",
+      "scenario": "long_child",
+      "role": "subagent",
+      "request": {
+        "message": "Run a long child investigation of the session recovery path and report the evidence.",
+        "context": {"long_context": true, "tools_available": true},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "action_change",
+        "model_tier": "smart",
+        "reasoning_effort": "medium",
+        "tool_needed": true,
+        "routing_reason": "smart_required:class:action_change,long_context",
+        "required_blockers": ["long_context"]
+      }
+    },
+    {
+      "case_id": "safety-destructive-high-stakes",
+      "scenario": "safety_destructive_high_stakes",
+      "request": {
+        "message": "Delete the old worktree and force push the branch to main.",
+        "context": {"tools_available": true},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "destructive_high_stakes",
+        "model_tier": "smart",
+        "reasoning_effort": "high",
+        "tool_needed": true,
+        "routing_reason": "smart_required:class:destructive_high_stakes"
+      }
+    },
+    {
+      "case_id": "recovery",
+      "scenario": "recovery",
+      "request": {
+        "message": "Fix the interrupted web session after the gateway restarted.",
+        "context": {"recovery_turn": true, "tools_available": true},
+        "routing_config": {}
+      },
+      "expected": {
+        "request_class": "action_change",
+        "model_tier": "smart",
+        "reasoning_effort": "medium",
+        "tool_needed": true,
+        "routing_reason": "smart_required:class:action_change,recovery"
+      }
+    },
+    {
+      "case_id": "explicit-pin",
+      "scenario": "explicit_pin",
+      "selection": "pinned",
+      "request": {
+        "message": "Give me a concise definition of this setting.",
+        "context": {},
+        "routing_config": {"enabled": false},
+        "primary": {
+          "provider": "openai-codex",
+          "model": "pinned-test-model",
+          "api_mode": "codex_responses"
+        }
+      },
+      "expected": {
+        "request_class": "direct_answer",
+        "model_tier": "fast",
+        "reasoning_effort": "low",
+        "tool_needed": false,
+        "explicit_user_override": true,
+        "route_model": "pinned-test-model",
+        "route_routing_reason": "adaptive_disabled"
+      }
+    },
+    {
+      "case_id": "hysteresis-stable-route",
+      "scenario": "hysteresis",
+      "sequence": [
+        "2 + 2 = ?",
+        "3 + 3 = ?"
+      ],
+      "request": {
+        "context": {},
+        "routing_config": {
+          "enabled": true,
+          "cheap_model": {
+            "provider": "fixture",
+            "model": "deterministic-fast"
+          }
+        },
+        "primary": {
+          "provider": "fixture",
+          "model": "deterministic-primary"
+        }
+      },
+      "expected": {
+        "same_route_signature": true,
+        "route_routing_reason": "simple_turn"
+      }
+    },
+    {
+      "case_id": "unavailable-fallback",
+      "scenario": "unavailable_fallback",
+      "request": {
+        "message": "Name the current branch.",
+        "context": {},
+        "routing_config": {
+          "enabled": true,
+          "cheap_model": {
+            "provider": "fixture",
+            "model": "unavailable-fast"
+          }
+        },
+        "primary": {
+          "provider": "fixture",
+          "model": "deterministic-primary"
+        }
+      },
+      "expected": {
+        "route_model": "deterministic-primary",
+        "route_routing_reason": "fast_runtime_unavailable"
+      }
+    }
+  ]
+}

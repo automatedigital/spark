@@ -26,6 +26,7 @@ from tools.delegate_tool import (
     _get_max_concurrent_children,
     _resolve_child_credential_pool,
     _resolve_delegation_credentials,
+    _resolve_subagent_credentials,
     _strip_blocked_tools,
     check_delegate_requirements,
     delegate_task,
@@ -1397,6 +1398,73 @@ class TestDelegationReasoningEffort(unittest.TestCase):
         )
         call_kwargs = MockAgent.call_args[1]
         self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "medium"})
+
+
+class TestAutoSubagentRouting(unittest.TestCase):
+    @patch("tools.delegate_tool._resolve_delegation_credentials")
+    @patch("agent.smart_model_routing.resolve_auto_target")
+    @patch("spark_cli.model_config.read_auto_policy")
+    @patch("spark_cli.config.load_config")
+    def test_auto_resolves_independent_subagent_role(
+        self, mock_load, mock_policy, mock_target, mock_legacy
+    ):
+        mock_load.return_value = {"smart_model_routing": {"auto": {"enabled": True}}}
+        policy = MagicMock(enabled=True)
+        policy.role.return_value = MagicMock(provider="fixture")
+        mock_policy.return_value = policy
+        mock_target.return_value = {
+            "role": "subagent",
+            "provider": "fixture",
+            "model": "luna",
+            "reasoning_effort": "high",
+            "fallback_from": None,
+        }
+        mock_legacy.return_value = {
+            "model": "luna", "provider": "fixture", "base_url": "",
+            "api_key": "key", "api_mode": "responses",
+        }
+
+        route = _resolve_subagent_credentials({}, _make_mock_parent())
+
+        self.assertEqual(route["model"], "luna")
+        self.assertEqual(route["reasoning_effort"], "high")
+        self.assertEqual(route["routing_role"], "subagent")
+        self.assertEqual(route["routing_reason"], "auto:independent_subagent_role")
+
+    @patch("tools.delegate_tool._resolve_delegation_credentials")
+    def test_explicit_legacy_delegation_bypasses_auto(self, mock_legacy):
+        mock_legacy.return_value = {"model": "explicit-child"}
+        route = _resolve_subagent_credentials(
+            {"provider": "openrouter", "model": "explicit-child"},
+            _make_mock_parent(),
+        )
+        self.assertEqual(route, {"model": "explicit-child"})
+        mock_legacy.assert_called_once()
+
+    @patch("tools.delegate_tool._load_config", return_value={})
+    @patch("core.run_agent.AIAgent")
+    def test_direct_role_effort_overrides_parent(self, MockAgent, _mock_cfg):
+        MockAgent.return_value = MagicMock()
+        parent = _make_mock_parent()
+        parent.reasoning_config = {"enabled": True, "effort": "medium"}
+        _build_child_agent(
+            task_index=0,
+            goal="test",
+            context=None,
+            toolsets=None,
+            model="luna",
+            max_iterations=10,
+            parent_agent=parent,
+            override_reasoning_effort="high",
+        )
+        self.assertEqual(
+            MockAgent.call_args.kwargs["reasoning_config"],
+            {"enabled": True, "effort": "high"},
+        )
+
+    def test_model_visible_schema_has_no_routing_overrides(self):
+        properties = DELEGATE_TASK_SCHEMA["parameters"]["properties"]
+        self.assertFalse({"model", "provider", "reasoning_effort"} & properties.keys())
 
 
 if __name__ == "__main__":

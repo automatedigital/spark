@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from spark_cli.codex_models import DEFAULT_CODEX_MODELS
 
 
@@ -135,15 +137,124 @@ def test_live_codex_catalog_is_authoritative(monkeypatch):
     from spark_cli.codex_models import get_codex_model_catalog
 
     monkeypatch.setattr(
-        "spark_cli.codex_models._fetch_models_from_api",
-        lambda access_token, timeout=10.0: ["gpt-5.4"],
+        "spark_cli.codex_models._fetch_model_entries_from_api",
+        lambda access_token, timeout=10.0: ([{"slug": "gpt-5.4"}], None),
     )
-    assert get_codex_model_catalog("token") == {
-        "models": ["gpt-5.4"],
+    catalog = get_codex_model_catalog("token")
+    assert catalog["models"] == ["gpt-5.4"]
+    assert catalog["source"] == "live"
+    assert catalog["live"] is True
+    assert catalog["authoritative"] is True
+    assert catalog["catalog"] == [
+        {
+            "slug": "gpt-5.4",
+            "display_name": "gpt-5.4",
+            "visibility": None,
+            "supported_reasoning_efforts": [],
+            "context_window": None,
+            "max_output_tokens": None,
+            "multi_agent_version": None,
+            "source": "live",
+            "fetched_at": None,
+        }
+    ]
+
+
+def test_live_catalog_preserves_capabilities_and_freshness(monkeypatch):
+    from spark_cli.codex_models import get_codex_model_catalog
+
+    monkeypatch.setattr(
+        "spark_cli.codex_models._fetch_model_entries_from_api",
+        lambda access_token, timeout=10.0: (
+            [
+                {
+                    "slug": "gpt-5.6-sol",
+                    "display_name": "GPT-5.6-Sol",
+                    "visibility": "list",
+                    "supported_reasoning_levels": [
+                        {"effort": "low"},
+                        {"effort": "xhigh"},
+                    ],
+                    "context_window": 272000,
+                    "max_output_tokens": 64000,
+                    "multi_agent_version": "v2",
+                    "priority": 1,
+                }
+            ],
+            "2026-08-04T21:52:35Z",
+        ),
+    )
+
+    catalog = get_codex_model_catalog("token")
+    assert catalog["freshness"] == "2026-08-04T21:52:35Z"
+    assert catalog["catalog"][0] == {
+        "slug": "gpt-5.6-sol",
+        "display_name": "GPT-5.6-Sol",
+        "visibility": "list",
+        "supported_reasoning_efforts": ["low", "xhigh"],
+        "context_window": 272000,
+        "max_output_tokens": 64000,
+        "multi_agent_version": "v2",
         "source": "live",
-        "live": True,
-        "warning": "",
+        "fetched_at": "2026-08-04T21:52:35Z",
     }
+
+
+def test_live_catalog_does_not_append_defaults_or_hidden_models(monkeypatch):
+    from spark_cli.codex_models import get_codex_model_catalog
+
+    monkeypatch.setattr(
+        "spark_cli.codex_models._fetch_model_entries_from_api",
+        lambda access_token, timeout=10.0: (
+            [
+                {"slug": "visible-model", "visibility": "list"},
+                {"slug": "hidden-model", "visibility": "hide"},
+                {"slug": "unsupported-model", "supported_in_api": False},
+            ],
+            None,
+        ),
+    )
+
+    catalog = get_codex_model_catalog("token")
+    assert catalog["models"] == ["visible-model"]
+    assert all(model not in catalog["models"] for model in DEFAULT_CODEX_MODELS)
+
+
+def test_cache_catalog_preserves_metadata_and_is_marked_stale(monkeypatch, tmp_path):
+    from spark_cli.codex_models import get_codex_model_catalog
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    (tmp_path / "models_cache.json").write_text(
+        json.dumps(
+            {
+                "fetched_at": "2026-08-04T21:52:35Z",
+                "models": [
+                    {
+                        "slug": "gpt-5.6-luna",
+                        "display_name": "GPT-5.6-Luna",
+                        "visibility": "list",
+                        "supported_reasoning_levels": ["low", "medium"],
+                        "context_window": 272000,
+                        "multi_agent_version": "v1",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "spark_cli.codex_models._fetch_model_entries_from_api",
+        lambda access_token, timeout=10.0: None,
+    )
+
+    catalog = get_codex_model_catalog("token")
+    assert catalog["models"] == ["gpt-5.6-luna"]
+    assert catalog["source"] == "cache"
+    assert catalog["live"] is False
+    assert catalog["stale"] is True
+    assert catalog["authoritative"] is False
+    assert catalog["freshness"] == "2026-08-04T21:52:35Z"
+    assert catalog["catalog"][0]["multi_agent_version"] == "v1"
 
 
 def test_failed_codex_discovery_has_explicit_offline_fallback(monkeypatch, tmp_path):
@@ -151,7 +262,7 @@ def test_failed_codex_discovery_has_explicit_offline_fallback(monkeypatch, tmp_p
 
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     monkeypatch.setattr(
-        "spark_cli.codex_models._fetch_models_from_api",
+        "spark_cli.codex_models._fetch_model_entries_from_api",
         lambda access_token, timeout=10.0: None,
     )
     catalog = get_codex_model_catalog("token")

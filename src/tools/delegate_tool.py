@@ -317,6 +317,7 @@ def _build_child_agent(
     override_base_url: Optional[str] = None,
     override_api_key: Optional[str] = None,
     override_api_mode: Optional[str] = None,
+    override_reasoning_effort: Optional[str] = None,
     # ACP transport overrides — lets a non-ACP parent spawn ACP child agents
     override_acp_command: Optional[str] = None,
     override_acp_args: Optional[List[str]] = None,
@@ -407,7 +408,11 @@ def _build_child_agent(
     child_reasoning = parent_reasoning
     try:
         delegation_cfg = _load_config()
-        delegation_effort = str(delegation_cfg.get("reasoning_effort") or "").strip()
+        delegation_effort = str(
+            override_reasoning_effort
+            or delegation_cfg.get("reasoning_effort")
+            or ""
+        ).strip()
         if delegation_effort:
             from core.spark_constants import parse_reasoning_effort
             parsed = parse_reasoning_effort(delegation_effort)
@@ -772,7 +777,7 @@ def delegate_task(
     # used by CLI/gateway startup.  When unconfigured, returns None values so
     # children inherit from the parent.
     try:
-        creds = _resolve_delegation_credentials(cfg, parent_agent)
+        creds = _resolve_subagent_credentials(cfg, parent_agent)
     except ValueError as exc:
         return tool_error(str(exc))
 
@@ -831,6 +836,16 @@ def delegate_task(
                 provider=creds.get("provider") or getattr(parent_agent, "provider", None),
                 toolsets=t.get("toolsets") or toolsets or [],
             )
+            lifecycle_run.update(
+                {
+                    "routing_role": creds.get("routing_role"),
+                    "routing_label": creds.get("routing_label"),
+                    "routing_reason": creds.get("routing_reason"),
+                    "routing_fallback": creds.get("routing_fallback"),
+                    "escalation_count": 0,
+                    "max_escalations": 1,
+                }
+            )
             child = _build_child_agent(
                 task_index=i, goal=t["goal"], context=t.get("context"),
                 toolsets=t.get("toolsets") or toolsets, model=creds["model"],
@@ -838,6 +853,7 @@ def delegate_task(
                 override_provider=creds["provider"], override_base_url=creds["base_url"],
                 override_api_key=creds["api_key"],
                 override_api_mode=creds["api_mode"],
+                override_reasoning_effort=creds.get("reasoning_effort"),
                 override_acp_command=t.get("acp_command") or acp_command,
                 override_acp_args=t.get("acp_args") or acp_args,
                 lifecycle_run=lifecycle_run,
@@ -1061,6 +1077,61 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
         "command": runtime.get("command"),
         "args": list(runtime.get("args") or []),
     }
+
+
+def _resolve_subagent_credentials(cfg: dict, parent_agent) -> dict:
+    """Resolve Auto's independent subagent role, preserving legacy overrides."""
+    explicit = any(str(cfg.get(key) or "").strip() for key in ("model", "provider", "base_url"))
+    if explicit:
+        return _resolve_delegation_credentials(cfg, parent_agent)
+
+    try:
+        from agent.smart_model_routing import resolve_auto_target
+        from spark_cli.config import load_config
+        from spark_cli.model_config import read_auto_policy
+
+        root = load_config()
+        policy = read_auto_policy(root)
+        if not policy.enabled:
+            return _resolve_delegation_credentials(cfg, parent_agent)
+
+        catalog = None
+        target = policy.role("subagent")
+        if target.provider == "openai-codex":
+            try:
+                from spark_cli.codex_models import get_codex_model_catalog
+
+                token = str(getattr(parent_agent, "api_key", "") or "")
+                catalog = get_codex_model_catalog(
+                    access_token=token or None,
+                    api_timeout=2.0,
+                )["catalog"]
+            except Exception:
+                logger.debug("Subagent account catalog unavailable", exc_info=True)
+
+        resolved = resolve_auto_target(policy, "subagent", catalog)
+        if not resolved:
+            return _resolve_delegation_credentials(cfg, parent_agent)
+        routed_cfg = {
+            "provider": resolved.get("provider"),
+            "model": resolved.get("model"),
+            "base_url": resolved.get("base_url"),
+            "reasoning_effort": resolved.get("reasoning_effort"),
+        }
+        creds = _resolve_delegation_credentials(routed_cfg, parent_agent)
+        creds.update(
+            {
+                "reasoning_effort": resolved.get("reasoning_effort"),
+                "routing_role": resolved.get("role", "subagent"),
+                "routing_label": f"Auto · {resolved.get('role', 'subagent')}",
+                "routing_reason": "auto:independent_subagent_role",
+                "routing_fallback": resolved.get("fallback_from"),
+            }
+        )
+        return creds
+    except Exception:
+        logger.debug("Auto subagent routing unavailable; inheriting legacy route", exc_info=True)
+        return _resolve_delegation_credentials(cfg, parent_agent)
 
 
 def _load_config() -> dict:
