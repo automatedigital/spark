@@ -12,6 +12,7 @@ export default function UpdatesPage() {
   const [outputLines, setOutputLines] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [backendVersion, setBackendVersion] = useState<string | null>(null);
   const [desktopVersion, setDesktopVersion] = useState<string | null>(null);
   const [desktopPlatform, setDesktopPlatform] = useState<keyof typeof PLATFORM_LABELS | null>(null);
 
@@ -20,6 +21,7 @@ export default function UpdatesPage() {
       .getStatus()
       .then((s) => {
         setIsDesktop(Boolean(s.desktop));
+        setBackendVersion(s.version ?? null);
         setDesktopVersion(s.desktop_version ?? null);
         setDesktopPlatform(s.desktop_platform ?? null);
       })
@@ -79,7 +81,9 @@ export default function UpdatesPage() {
       {error && <div className="border border-red-900/60 text-red-300 p-3 text-sm">{error}</div>}
 
       <section className="border border-border bg-background/70 p-4 flex flex-col gap-3">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">Web App &amp; Backend</div>
+        <div className="text-xs uppercase tracking-wider text-muted-foreground">
+          Web App &amp; Backend{(desktopVersion ?? backendVersion) ? ` · v${desktopVersion ?? backendVersion}` : ""}
+        </div>
         <p className="text-xs text-muted-foreground">
           Pulls the latest Spark source and reinstalls the package. The web UI may restart automatically.
         </p>
