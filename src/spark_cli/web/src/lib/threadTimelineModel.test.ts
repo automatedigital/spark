@@ -118,15 +118,23 @@ describe("thread timeline model", () => {
     expect(failed.status).toBe("failed");
     expect(failed.visibleItems.some((item) => item.kind === "tool")).toBe(true);
 
+    const completed = buildThreadTimeline([
+      user("u5", "Inspect logs"),
+      tool("t5", "terminal", { result: "The report explains how to recover from this error." }),
+      assistant("a5", "The logs are healthy."),
+    ]).turns[0];
+    expect(completed.status).toBe("settled");
+    expect(completed.workItems.some((item) => item.kind === "tool" && item.failed)).toBe(false);
+
     const approval = buildThreadTimeline([
-      user("u5"),
+      user("u6"),
       { id: "p5", role: "approval", approval: { command: "rm" } },
     ]).turns[0];
     expect(approval.status).toBe("awaiting-approval");
     expect(approval.visibleItems.some((item) => item.kind === "approval")).toBe(true);
 
     const requested = buildThreadTimeline([
-      user("u6"),
+      user("u7"),
       { id: "input6", role: "note", text: "Need input", requestedInput: { prompt: "Which option?" } },
     ]).turns[0];
     expect(requested.status).toBe("awaiting-input");

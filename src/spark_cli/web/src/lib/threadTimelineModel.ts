@@ -266,7 +266,13 @@ function messageIdentity(message: ThreadTimelineMessage, index: number): string 
 }
 
 function isFailureText(value: string | undefined): boolean {
-  return Boolean(value && /\b(error|failed|failure|traceback|exception)\b/i.test(value));
+  if (!value) return false;
+  const text = value.trim();
+  return Boolean(
+    /^(?:error|fatal|failed|failure|traceback|exception)\b/i.test(text) ||
+    /\b(?:command|process|task|request|build|test|tool)\s+(?:has\s+)?failed\b/i.test(text) ||
+    /\bexit(?:ed)?\s+(?:with\s+)?(?:code\s+)?[1-9]\d*\b/i.test(text),
+  );
 }
 
 function isInterruptedMessage(message: ThreadTimelineMessage): boolean {
