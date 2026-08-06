@@ -129,6 +129,23 @@ class TestContextMessageAugmentation:
         assert "important data here" in result
         assert "use this" in result
 
+    def test_binary_full_mode_does_not_inline_raw_bytes(self, spark_home):
+        workspace = spark_home / "workspace"
+        workspace.mkdir(parents=True)
+        (workspace / "screenshot.png").write_bytes(
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRbinary-payload"
+        )
+
+        from spark_cli.web_server import _build_context_augmented_message
+        items = [{"id": "x", "type": "file", "source_path": "screenshot.png", "inclusion_mode": "full",
+                  "content": None, "label": "screenshot.png", "excerpt_range": None, "search_query": None}]
+        result = _build_context_augmented_message("sid", "describe this", items)
+
+        assert "describe this" in result
+        assert "PNG" not in result
+        assert "binary-payload" not in result
+        assert "Raw bytes were not added" in result
+
     def test_empty_items_returns_original_message(self, spark_home):
         from spark_cli.web_server import _build_context_augmented_message
         result = _build_context_augmented_message("sid", "hello world", [])

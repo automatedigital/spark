@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { ChatSubagentEventData, SubagentRun } from "@/lib/api";
-import { mergeSubagentLiveEvents, mergeSubagentSnapshot } from "@/lib/subagents";
+import { mergeSubagentLiveEvents, mergeSubagentSnapshot, replaceSubagentSnapshot } from "@/lib/subagents";
 import { BUS_RECONNECTED_TOPIC, useEventBus } from "@/hooks/useEventBus";
 
 export interface UseSubagentsResult {
@@ -45,7 +45,7 @@ export function useSubagents(sessionId: string | null): UseSubagentsResult {
     try {
       const snapshot = await api.getConversationSubagents(sid);
       if (loadSeqRef.current !== seq || sessionRef.current !== sid) return;
-      setSubagents((prev) => mergeSubagentSnapshot(prev, snapshot.subagents ?? []));
+      setSubagents(() => replaceSubagentSnapshot(snapshot.subagents ?? []));
       setError(null);
     } catch (e) {
       if (loadSeqRef.current !== seq || sessionRef.current !== sid) return;

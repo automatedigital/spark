@@ -4,6 +4,7 @@ import {
   mergeSubagentLiveEvents,
   mergeSubagentLiveEvent,
   mergeSubagentSnapshot,
+  replaceSubagentSnapshot,
   preserveSelectedSubagentId,
   subagentDisplayName,
   subagentVisual,
@@ -148,6 +149,14 @@ describe("subagent state merger", () => {
 
     expect(preserveSelectedSubagentId("run-selected", recovered)).toBe("run-selected");
     expect(preserveSelectedSubagentId("missing", recovered)).toBeNull();
+  });
+
+  it("replaces stale runs from an authoritative reconnect snapshot", () => {
+    const runs = replaceSubagentSnapshot([
+      { id: "current", status: "completed", task: "Current work" },
+    ] as SubagentRun[]);
+
+    expect(runs.map((run) => run.id)).toEqual(["current"]);
   });
 
   it("normalizes persisted lifecycle event rows into readable transcript events", () => {

@@ -123,6 +123,15 @@ describe("chatStreamReducer", () => {
     expect(answered.state.turnState).toBe("streaming");
   });
 
+  it("keeps subagent lifecycle events out of the parent feed", () => {
+    const initial = createChatStreamState({ sessionId: "s1" });
+    const created = reduce(initial, event("chat.subagent.created", {
+      subagent: { id: "child-1", name: "Worker", task: "Inspect files" },
+    }));
+
+    expect(created.state.messages).toEqual([]);
+  });
+
   it("preserves migration aliases so old and new session events remain guarded", () => {
     const initial = createChatStreamState({ sessionId: "old" });
     const migrated = reduce(initial, event("chat.session_migrated", {

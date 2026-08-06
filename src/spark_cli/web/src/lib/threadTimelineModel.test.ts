@@ -169,7 +169,21 @@ describe("thread timeline model", () => {
     expect(turn.changedFiles).toEqual([{ path: "src/a.ts", additions: 4, deletions: 1 }]);
     expect(turn.usage).toEqual({ totalTokens: 123, costUsd: 0.01 });
     expect(turn.timestamps.durationMs).toBe(134000);
-    expect(turn.workSummary.label).toBe("Worked for 2m 14s · 2 actions");
+    expect(turn.workSummary.label).toBe("Worked for 2m 14s · 1 action");
+  });
+
+  it("does not let a child status fail the parent turn or add feed work", () => {
+    const turn = buildThreadTimeline([
+      user("u-child", "Run the work"),
+      tool("t-child", "terminal"),
+      assistant("a-child", "The work is complete.", {
+        subagents: [{ id: "child-1", name: "Worker", status: "interrupted" }],
+      }),
+    ]).turns[0];
+
+    expect(turn.status).toBe("settled");
+    expect(turn.workItems.some((item) => item.kind === "subagent")).toBe(false);
+    expect(turn.workSummary.actionCount).toBe(1);
   });
 
   it("retains resumed-session content and uses resolved approvals as settled work", () => {

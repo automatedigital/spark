@@ -8503,6 +8503,29 @@ def _get_workspace_root(slug: Optional[str] = None) -> "Path":
     return base
 
 
+def _binary_context_note(source_path: str | None) -> str:
+    label = source_path or "the attached file"
+    return f"[Binary context file: {label}. Raw bytes were not added to the text prompt. Use an appropriate file or image tool to inspect it.]"
+
+
+def _looks_like_binary_context_file(path: "Path") -> bool:
+    if path.suffix.lower() in _BINARY_EXTENSIONS:
+        return True
+    try:
+        sample = path.read_bytes()[:8192]
+    except OSError:
+        return False
+    if b"\x00" in sample:
+        return True
+    return sample.startswith((b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"%PDF-", b"PK\x03\x04", b"RIFF"))
+
+
+def _looks_like_binary_context_text(content: str) -> bool:
+    if "\x00" in content:
+        return True
+    return content.startswith(("\ufffdPNG", "\ufffdJFIF", "%PDF-", "PK\x03\x04"))
+
+
 def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional[str]:
     """Return the text to inject for a context item, or None if nothing to inject."""
     from spark_cli.context_models import InclusionMode
@@ -8512,6 +8535,9 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional
     content = item.get("content")
 
     if content:
+        source_is_binary = bool(source_path and Path(source_path).suffix.lower() in _BINARY_EXTENSIONS)
+        if source_is_binary or _looks_like_binary_context_text(content):
+            return _binary_context_note(source_path)
         return content
 
     if not source_path:
@@ -8528,6 +8554,9 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional
 
     if not resolved.exists() or not resolved.is_file():
         return None
+
+    if _looks_like_binary_context_file(resolved):
+        return _binary_context_note(source_path)
 
     try:
         if mode == InclusionMode.full:

@@ -291,8 +291,8 @@ function isExplicitFailure(message: ThreadTimelineMessage): boolean {
   const status = `${metadata.status ?? ""} ${metadata.turnStatus ?? ""}`.toLowerCase();
   if (typeof metadata.failure === "boolean") return metadata.failure;
   return Boolean(
-    typeof metadata.failure === "string" ||
-    metadata.error ||
+    (typeof metadata.failure === "string" && metadata.failure.trim()) ||
+    (typeof metadata.error === "string" && metadata.error.trim()) ||
     /\b(failed|failure|error|exception)\b/.test(status),
   );
 }
@@ -419,7 +419,7 @@ function turnTimestamps(messages: readonly ThreadTimelineMessage[]): TimelineTur
 }
 
 function actionCount(workItems: readonly TimelineWorkItem[], metadata: readonly ThreadTimelineMessage[]): number {
-  const counted = workItems.filter((item) => item.kind === "tool" || item.kind === "subagent").length;
+  const counted = workItems.filter((item) => item.kind === "tool").length;
   return Math.max(counted, ...metadata.map((message) => metadataOf(message).activityCount ?? 0), 0);
 }
 
@@ -470,7 +470,7 @@ function reuseArray<T extends object>(previous: readonly T[] | undefined, candid
 function statusOf(
   messages: readonly ThreadTimelineMessage[],
   workItems: readonly TimelineWorkItem[],
-  subagents: readonly TimelineSubagent[],
+  _subagents: readonly TimelineSubagent[],
   approvals: readonly TimelineApprovalItem[],
   requestedInputs: readonly TimelineRequestedInputItem[],
   interrupted: boolean,
@@ -488,13 +488,11 @@ function statusOf(
   if (interrupted || messages.some(isInterruptedMessage)) return "interrupted";
   if (
     workItems.some((item) => item.kind === "tool" && item.failed) ||
-    subagents.some((subagent) => /\b(failed|error|cancelled|canceled)\b/i.test(subagent.status ?? "") || Boolean(subagent.error)) ||
     messages.some(isExplicitFailure)
   ) return "failed";
   if (
     messages.some((message) => message.role === "assistant" && message.streaming) ||
     workItems.some((item) => item.kind === "tool" && !item.done) ||
-    subagents.some((subagent) => /\b(active|starting|running|thinking|working|pending)\b/i.test(subagent.status ?? "")) ||
     messages.some(isActiveStatus)
   ) return "active";
   return "settled";
@@ -575,7 +573,8 @@ function buildTurn(draft: TurnDraft, previous: TimelineTurn | undefined): Timeli
     .filter((message): message is TimelineAssistantMessage => message !== undefined);
   const finalAnswer = assistantMessages.at(-1);
   const intermediateAssistantMessages = finalAnswer ? assistantMessages.slice(0, -1) : assistantMessages;
-  const workItems = messages.flatMap((message, index) => messageItems(message, index));
+  const workItems = messages.flatMap((message, index) => messageItems(message, index))
+    .filter((item) => item.kind !== "subagent");
   const requestedInputItems: TimelineRequestedInputItem[] = messages.flatMap((message, index) => {
     const requestedInput = requestedInputOf(message);
     if (!requestedInput) return [];
@@ -588,14 +587,7 @@ function buildTurn(draft: TurnDraft, previous: TimelineTurn | undefined): Timeli
     }];
   });
   const subagents = messages.flatMap(subagentsOf);
-  const subagentItems: TimelineSubagentItem[] = subagents.map((subagent, index) => ({
-    kind: "subagent",
-    id: `${draft.id}:subagent:${subagent.id}:${index}`,
-    subagent,
-    timestamp: normalizeTimestamp(subagent.startedAt),
-    sourceMessageIds: [subagent.id],
-  }));
-  const allWorkItems = [...workItems, ...requestedInputItems, ...subagentItems, ...intermediateAssistantMessages.map((assistant) => ({
+  const allWorkItems = [...workItems, ...requestedInputItems, ...intermediateAssistantMessages.map((assistant) => ({
     kind: "assistant" as const,
     id: `${draft.id}:assistant:${assistant.id}`,
     content: assistant.content,

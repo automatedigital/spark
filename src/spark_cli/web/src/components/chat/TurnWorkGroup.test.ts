@@ -51,4 +51,24 @@ describe("TurnWorkGroup", () => {
     expect(html).toContain('data-work-item="tool"');
     expect(html).toContain(">build</span>");
   });
+
+  it("does not render child runs in the parent feed", () => {
+    const html = renderToStaticMarkup(createElement(TurnWorkGroup, {
+      turn: turn([
+        { id: "u1", role: "user", content: "Delegate", turnId: "t1" } as ThreadTimelineMessage,
+        { id: "tool1", role: "tool", toolId: "tool1", name: "terminal", args: {}, result: "ok", done: true, turnId: "t1" } as ThreadTimelineMessage,
+        {
+          id: "a1",
+          role: "assistant",
+          content: "Complete",
+          subagents: [{ id: "child-1", name: "Worker", status: "interrupted" }],
+          turnId: "t1",
+        } as ThreadTimelineMessage,
+      ]),
+    }));
+
+    expect(html).not.toContain("Worker");
+    expect(html).not.toContain("turn-subagents");
+    expect(html).toContain('data-state="settled"');
+  });
 });

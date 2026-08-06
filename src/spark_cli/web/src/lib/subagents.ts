@@ -253,6 +253,10 @@ export function mergeSubagentSnapshot(current: SubagentRun[], snapshot: Subagent
   return sortSubagents(Array.from(byId.values()));
 }
 
+export function replaceSubagentSnapshot(snapshot: SubagentRun[]): SubagentRun[] {
+  return mergeSubagentSnapshot([], snapshot);
+}
+
 function eventFromLiveData(topic: string, data: ChatSubagentEventData): SubagentEvent | null {
   if (data.event) return normalizeEvent(data.event, topic.split(".").pop() ?? "event");
   const text = firstString(data.text, data.content, data.message, data.summary, data.error);

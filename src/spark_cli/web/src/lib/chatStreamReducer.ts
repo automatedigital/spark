@@ -565,14 +565,7 @@ function reduceEvent(state: ChatStreamState, event: ChatStreamEvent): ChatStream
       next = copyState(next, { statusLabel: stringValue(data.message) ?? next.statusLabel });
       break;
     case "chat.subagent.created": {
-      const run = isRecord(data.subagent) ? data.subagent : data;
-      const name = stringValue(run.name)?.trim() || "sub-agent";
-      const task = stringValue(run.task)?.trim();
-      next = appendMessage(next, {
-        role: "note",
-        text: `Created ${name}${task ? `: ${task.slice(0, 140)}` : ""}`,
-      });
-      next = copyState(next, { statusLabel: `Created ${name}` });
+      // Child runs are rendered by the side panel. Do not add a normal feed row.
       break;
     }
     case "chat.approval_requested": {

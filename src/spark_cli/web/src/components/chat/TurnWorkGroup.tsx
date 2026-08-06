@@ -4,7 +4,6 @@ import type {
   TimelineApprovalItem,
   TimelineFeedbackItem,
   TimelineRequestedInputItem,
-  TimelineSubagentItem,
   TimelineToolItem,
   TimelineTurn,
   TimelineWorkItem,
@@ -25,10 +24,6 @@ export interface TurnWorkGroupProps {
   onFetchFullResult?: (toolId: string) => Promise<string | null>;
   onSubagentSelect?: (subagentId: string) => void;
   onFeedbackSubmit?: (item: TimelineFeedbackItem, data: { name: string; email: string; area: string; note: string }) => Promise<void>;
-}
-
-function subagentStatus(status: string | undefined): string {
-  return status?.trim() || "running";
 }
 
 function statusCopy(turn: TimelineTurn): string {
@@ -103,20 +98,6 @@ function RequestedInputItem({ item }: { item: TimelineRequestedInputItem }) {
   );
 }
 
-function SubagentItem({ item }: { item: TimelineSubagentItem }) {
-  const status = subagentStatus(item.subagent.status);
-  return (
-    <div className="flex items-start gap-2 rounded-md border border-primary/15 bg-primary/5 px-3 py-2 text-xs">
-      <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${/failed|error/i.test(status) ? "bg-destructive" : /active|running|starting/i.test(status) ? "bg-success animate-pulse" : "bg-primary/70"}`} />
-      <div className="min-w-0">
-        <div className="font-medium text-foreground">{item.subagent.name ?? item.subagent.id}</div>
-        {item.subagent.task && <div className="truncate text-muted-foreground">{item.subagent.task}</div>}
-        <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">{status}</div>
-      </div>
-    </div>
-  );
-}
-
 function WorkItem({ item, safeMode, approvalBusy, onApprovalChoice, onAttachPath, onFetchFullResult, onFeedbackSubmit }: {
   item: TimelineWorkItem;
   safeMode: boolean;
@@ -137,8 +118,6 @@ function WorkItem({ item, safeMode, approvalBusy, onApprovalChoice, onAttachPath
       return <RequestedInputItem item={item} />;
     case "feedback":
       return <FeedbackForm submitted={item.submitted} onSubmit={(data) => onFeedbackSubmit?.(item, data) ?? Promise.resolve()} />;
-    case "subagent":
-      return <SubagentItem item={item} />;
     case "assistant":
       return <div className="rounded-md border border-border/50 bg-background/35 px-3 py-2 text-sm"><Markdown content={item.content} safeMode={safeMode} /></div>;
     case "note":
@@ -153,10 +132,9 @@ export const TurnWorkGroup = memo(function TurnWorkGroup({
   onApprovalChoice,
   onAttachPath,
   onFetchFullResult,
-  onSubagentSelect,
   onFeedbackSubmit,
 }: TurnWorkGroupProps) {
-  const hasWork = turn.workItems.length > 0 || turn.subagents.length > 0;
+  const hasWork = turn.workItems.length > 0;
   const [open, setOpen] = useState(turn.isExpanded);
 
   useEffect(() => {
@@ -165,7 +143,7 @@ export const TurnWorkGroup = memo(function TurnWorkGroup({
 
   if (!hasWork) return null;
 
-  const visibleWork = turn.workItems.filter((item) => item.kind !== "subagent");
+  const visibleWork = turn.workItems;
   return (
     <section className="ml-8 mt-1 max-w-[85%]" data-turn-work-group={turn.id} data-state={turn.status}>
       <button
@@ -181,21 +159,6 @@ export const TurnWorkGroup = memo(function TurnWorkGroup({
       </button>
       {open && (
         <div id={`${turn.id}-work`} className="mt-2 space-y-2 border-l border-border/55 pl-3">
-          {turn.subagents.length > 0 && (
-            <div className="space-y-2" data-testid="turn-subagents">
-              {turn.subagents.map((subagent) => (
-                <button
-                  key={subagent.id}
-                  type="button"
-                  className="block w-full text-left disabled:cursor-default"
-                  disabled={!onSubagentSelect}
-                  onClick={() => onSubagentSelect?.(subagent.id)}
-                >
-                  <SubagentItem item={{ kind: "subagent", id: `${turn.id}:subagent:${subagent.id}`, subagent, sourceMessageIds: [subagent.id] }} />
-                </button>
-              ))}
-            </div>
-          )}
           {visibleWork.map((item) => (
             <div key={item.id} data-work-item={item.kind}>
               <WorkItem
