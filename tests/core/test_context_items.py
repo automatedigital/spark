@@ -146,6 +146,20 @@ class TestContextMessageAugmentation:
         assert "binary-payload" not in result
         assert "Raw bytes were not added" in result
 
+    def test_binary_magic_without_extension_does_not_inline_raw_bytes(self, spark_home):
+        workspace = spark_home / "workspace"
+        workspace.mkdir(parents=True)
+        (workspace / "archive").write_bytes(b"\x1f\x8b\x08compressed-payload")
+
+        from spark_cli.web_server import _build_context_augmented_message
+        items = [{"id": "x", "type": "file", "source_path": "archive", "inclusion_mode": "full",
+                  "content": None, "label": "archive", "excerpt_range": None, "search_query": None}]
+        result = _build_context_augmented_message("sid", "inspect this", items)
+
+        assert "inspect this" in result
+        assert "compressed-payload" not in result
+        assert "Raw bytes were not added" in result
+
     def test_empty_items_returns_original_message(self, spark_home):
         from spark_cli.web_server import _build_context_augmented_message
         result = _build_context_augmented_message("sid", "hello world", [])

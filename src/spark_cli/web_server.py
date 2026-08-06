@@ -8517,7 +8517,7 @@ def _looks_like_binary_context_file(path: "Path") -> bool:
         return False
     if b"\x00" in sample:
         return True
-    return sample.startswith((b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"%PDF-", b"PK\x03\x04", b"RIFF"))
+    return sample.startswith((b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"%PDF-", b"PK\x03\x04", b"RIFF", b"\x1f\x8b"))
 
 
 def _looks_like_binary_context_text(content: str) -> bool:
