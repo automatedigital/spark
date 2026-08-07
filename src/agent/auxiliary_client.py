@@ -1847,7 +1847,7 @@ def shutdown_cached_clients() -> None:
     import inspect
 
     with _client_cache_lock:
-        for key, entry in list(_client_cache.items()):
+        for _key, entry in list(_client_cache.items()):
             client = entry[0]
             if client is None:
                 continue

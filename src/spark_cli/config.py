@@ -3246,7 +3246,7 @@ def sanitize_env_file() -> int:
     fixes = abs(len(sanitized) - len(original_lines))
     if fixes == 0:
         # Lines changed content (e.g. *** removal) even if count is same
-        fixes = sum(1 for a, b in zip(original_lines, sanitized) if a != b)
+        fixes = sum(1 for a, b in zip(original_lines, sanitized, strict=False) if a != b)
         fixes += abs(len(sanitized) - len(original_lines))
 
     fd, tmp_path = tempfile.mkstemp(

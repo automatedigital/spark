@@ -1763,7 +1763,7 @@ class MatrixAdapter(BasePlatformAdapter):
             return
 
         dm_room_ids: Set[str] = set()
-        for user_id, rooms in dm_data.items():
+        for _user_id, rooms in dm_data.items():
             if isinstance(rooms, list):
                 dm_room_ids.update(str(r) for r in rooms)
 

@@ -799,6 +799,9 @@ class TestEnvironmentHints:
     def test_build_environment_hints_not_wsl(self, monkeypatch):
         import agent.prompt_builder as _pb
         monkeypatch.setattr(_pb, "is_wsl", lambda: False)
+        # Also pin the server check: on a headless CI runner it returns True
+        # and appends its own hint, which is unrelated to WSL detection.
+        monkeypatch.setattr(_pb, "is_server_environment", lambda: False)
         result = _pb.build_environment_hints()
         assert result == ""
 

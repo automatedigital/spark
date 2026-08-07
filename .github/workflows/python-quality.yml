@@ -32,7 +32,7 @@ jobs:
         run: >-
           ruff check src/
           --select UP015,F,B
-          --ignore B904,B007,B027,B905,B008,F401,F841
+          --ignore B904,B027,F401
 
   pytest:
     runs-on: ubuntu-latest
@@ -44,12 +44,20 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install Spark with dev extras
+      # The [web] extra is required, not optional, for the test suite: the
+      # workflow io nodes import spark_cli.workspace_routes, which imports
+      # FastAPI, so without it ~576 tests fail with ModuleNotFoundError.
+      - name: Install Spark with dev and web extras
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev,web]"
 
       # Integration tests are already deselected by the addopts in
       # pyproject.toml; -m "not slow" keeps this job under the timeout.
       - name: Run the fast test suite
+        env:
+          # Some tests construct a client at import/init time and only need a
+          # syntactically valid key; no request is ever sent (integration
+          # tests are deselected).
+          OPENAI_API_KEY: sk-test-not-a-real-key
         run: python -m pytest tests/ -m "not slow" -q --timeout=60

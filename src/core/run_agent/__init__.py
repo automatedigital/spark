@@ -7034,7 +7034,7 @@ class AIAgent(_PromptCacheMixin):
         tool_names_str = ", ".join(name for _, name, _ in parsed_calls)
         if not self.quiet_mode:
             print(f"  ⚡ Concurrent: {num_tools} tool calls — {tool_names_str}")
-            for i, (tc, name, args) in enumerate(parsed_calls, 1):
+            for i, (_tc, name, args) in enumerate(parsed_calls, 1):
                 args_str = json.dumps(args, ensure_ascii=False)
                 if self.verbose_logging:
                     print(f"  📞 Tool {i}: {name}({list(args.keys())})")
@@ -7043,7 +7043,7 @@ class AIAgent(_PromptCacheMixin):
                     args_preview = args_str[:self.log_prefix_chars] + "..." if len(args_str) > self.log_prefix_chars else args_str
                     print(f"  📞 Tool {i}: {name}({list(args.keys())}) - {args_preview}")
 
-        for tc, name, args in parsed_calls:
+        for _tc, name, args in parsed_calls:
             if self.tool_progress_callback:
                 preview = _build_tool_preview(name, args)
                 self._queue_tool_callback(
@@ -11080,7 +11080,7 @@ def main(
         composite_toolsets = []
         scenario_toolsets = []
         
-        for name, toolset in all_toolsets.items():
+        for name, _toolset in all_toolsets.items():
             info = get_toolset_info(name)
             if info:
                 entry = (name, info)

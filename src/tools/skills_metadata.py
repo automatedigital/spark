@@ -592,7 +592,7 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
     records_by_name: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         records_by_name.setdefault(str(record.get("name") or ""), []).append(record)
-    for name, matching_records in records_by_name.items():
+    for _name, matching_records in records_by_name.items():
         if len(matching_records) < 2:
             continue
         sources = sorted({str(record.get("source") or record.get("provenance") or "unknown") for record in matching_records})

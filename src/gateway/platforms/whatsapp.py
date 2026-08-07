@@ -387,7 +387,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
             import aiohttp
             http_ready = False
             data = {}
-            for attempt in range(15):
+            for _attempt in range(15):
                 await asyncio.sleep(1)
                 if self._bridge_process.poll() is not None:
                     print(f"[{self.name}] Bridge process died (exit code {self._bridge_process.returncode})")
@@ -419,7 +419,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
             # Give it more time to authenticate with saved credentials.
             if data.get("status") != "connected":
                 print(f"[{self.name}] Bridge HTTP ready, waiting for WhatsApp connection...")
-                for attempt in range(15):
+                for _attempt in range(15):
                     await asyncio.sleep(1)
                     if self._bridge_process.poll() is not None:
                         print(f"[{self.name}] Bridge process died during connection")

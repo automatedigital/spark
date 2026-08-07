@@ -1990,7 +1990,7 @@ def register_mcp_servers(servers: Dict[str, dict]) -> List[str]:
             *(_discover_one(name, cfg) for name, cfg in new_servers.items()),
             return_exceptions=True,
         )
-        for name, result in zip(server_names, results):
+        for name, result in zip(server_names, results, strict=True):
             if isinstance(result, Exception):
                 command = new_servers.get(name, {}).get("command")
                 logger.warning(
@@ -2151,7 +2151,7 @@ def probe_mcp_server_tools() -> Dict[str, List[tuple]]:
 
         outcomes = await asyncio.gather(*coros, return_exceptions=True)
 
-        for name, outcome in zip(names, outcomes):
+        for name, outcome in zip(names, outcomes, strict=True):
             if isinstance(outcome, Exception):
                 logger.debug("Probe: failed to connect to '%s': %s", name, outcome)
                 continue
@@ -2198,7 +2198,7 @@ def shutdown_mcp_servers():
             *(server.shutdown() for server in servers_snapshot),
             return_exceptions=True,
         )
-        for server, result in zip(servers_snapshot, results):
+        for server, result in zip(servers_snapshot, results, strict=True):
             if isinstance(result, Exception):
                 logger.debug(
                     "Error closing MCP server '%s': %s", server.name, result,

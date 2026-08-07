@@ -442,7 +442,7 @@ def session_search(
             }, ensure_ascii=False)
 
         summaries = []
-        for (session_id, match_info, conversation_text, _), result in zip(tasks, results):
+        for (session_id, match_info, conversation_text, _), result in zip(tasks, results, strict=True):
             if isinstance(result, Exception):
                 logging.warning(
                     "Failed to summarize session %s: %s",

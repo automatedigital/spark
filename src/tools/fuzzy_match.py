@@ -416,7 +416,7 @@ def _strategy_context_aware(content: str, pattern: str) -> List[Tuple[int, int]]
         
         # Calculate line-by-line similarity
         high_similarity_count = 0
-        for p_line, c_line in zip(pattern_lines, block_lines):
+        for p_line, c_line in zip(pattern_lines, block_lines, strict=False):
             sim = SequenceMatcher(None, p_line.strip(), c_line.strip()).ratio()
             if sim >= 0.80:
                 high_similarity_count += 1

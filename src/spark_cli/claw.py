@@ -588,7 +588,7 @@ def _cmd_cleanup(args):
         if state_files:
             print()
             print(color(f"  {len(state_files)} state file(s) found:", Colors.YELLOW))
-            for path, desc in state_files[:8]:
+            for _path, desc in state_files[:8]:
                 print(f"      {desc}")
             if len(state_files) > 8:
                 print(f"      ... and {len(state_files) - 8} more")

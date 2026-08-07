@@ -483,11 +483,10 @@ def check_cronjob_requirements() -> bool:
 # --- Registry ---
 from tools.registry import registry, tool_error
 
-registry.register(
-    name="cronjob",
-    toolset="cronjob",
-    schema=CRONJOB_SCHEMA,
-    handler=lambda args, **kw: (lambda _mo=_resolve_model_override(args.get("model")): cronjob(
+def _cronjob_handler(args, **kw):
+    """Resolve the model override once, then dispatch to cronjob()."""
+    provider_override, model_override = _resolve_model_override(args.get("model"))
+    return cronjob(
         action=args.get("action", ""),
         job_id=args.get("job_id"),
         prompt=args.get("prompt"),
@@ -498,13 +497,20 @@ registry.register(
         include_disabled=args.get("include_disabled", True),
         skill=args.get("skill"),
         skills=args.get("skills"),
-        model=_mo[1],
-        provider=_mo[0] or args.get("provider"),
+        model=model_override,
+        provider=provider_override or args.get("provider"),
         base_url=args.get("base_url"),
         reason=args.get("reason"),
         script=args.get("script"),
         task_id=kw.get("task_id"),
-    ))(),
+    )
+
+
+registry.register(
+    name="cronjob",
+    toolset="cronjob",
+    schema=CRONJOB_SCHEMA,
+    handler=_cronjob_handler,
     check_fn=check_cronjob_requirements,
     emoji="⏰",
 )

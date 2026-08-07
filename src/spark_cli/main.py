@@ -5231,7 +5231,7 @@ def cmd_update(args):
                 except Exception:
                     pass
 
-                for scope, scope_cmd in [
+                for _scope, scope_cmd in [
                     ("user", ["systemctl", "--user"]),
                     ("system", ["systemctl"]),
                 ]:

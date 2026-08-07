@@ -1038,8 +1038,8 @@ def cmd_migrate(args) -> None:
         print("  (Spark calls migrate_memory_files() on first session init.)")
         print()
         print("  If you want to migrate them now without starting a session:")
-        for f in user_files:
-            print("    spark honcho migrate  — this step handles it interactively")
+        # One instruction, not one per file — the message is the same regardless.
+        print("    spark honcho migrate  — this step handles it interactively")
         if has_key:
             answer = _prompt("  Upload user memory files to Honcho now?", default="y")
             if answer.lower() in ("y", "yes"):

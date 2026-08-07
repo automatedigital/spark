@@ -535,7 +535,7 @@ class FactRetriever:
         max_rank = max(max_rank, 1e-6)  # avoid div by zero
 
         results = []
-        for row, raw_rank in zip(rows, raw_ranks):
+        for row, raw_rank in zip(rows, raw_ranks, strict=False):
             fact = dict(row)
             fact.pop("fts_rank_raw", None)
             fact["fts_rank"] = raw_rank / max_rank  # normalize to [0, 1]

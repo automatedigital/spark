@@ -108,7 +108,7 @@ def clear_session_vars(tokens: list) -> None:
         _SESSION_USER_NAME,
         _SESSION_KEY,
     ]
-    for var, token in zip(vars_in_order, tokens):
+    for var, token in zip(vars_in_order, tokens, strict=False):
         var.reset(token)
 
 

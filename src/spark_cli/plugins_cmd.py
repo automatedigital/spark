@@ -874,7 +874,6 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
             # We need to map logical cursor positions to screen rows
             # accounting for non-navigable separator/headers
 
-            draw_row = 0  # tracks navigable item index
 
             # --- General Plugins section ---
             if n_plugins > 0:
@@ -1088,7 +1087,7 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
     # Provider categories
     if categories:
         print(color("\n  Provider Plugins", Colors.YELLOW))
-        for ci, (cat_name, cat_current, cat_fn) in enumerate(categories):
+        for ci, (cat_name, cat_current, _cat_fn) in enumerate(categories):
             print(f"  {ci + 1}. {cat_name} [{cat_current}]")
         print()
         try:

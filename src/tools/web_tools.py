@@ -1558,7 +1558,7 @@ async def web_extract_tool(
                 if _web_extract_fast_fetch_enabled() and format != "html":
                     fast_results = await _fast_fetch_extract(safe_urls, format=format)
                     fallback_urls: List[str] = []
-                    for original_url, fast_result in zip(safe_urls, fast_results):
+                    for original_url, fast_result in zip(safe_urls, fast_results, strict=False):
                         if fast_result.get("error") and not fast_result.get("blocked_by_policy"):
                             fallback_urls.append(original_url)
 
@@ -1845,7 +1845,7 @@ async def web_crawl_tool(
 
                 tasks = [_process_tavily_crawl(r) for r in response.get('results', [])]
                 processed_results = await asyncio.gather(*tasks)
-                for result, metrics, status in processed_results:
+                for _result, metrics, status in processed_results:
                     if status == "processed":
                         debug_call_data["compression_metrics"].append(metrics)
                         debug_call_data["pages_processed_with_llm"] += 1

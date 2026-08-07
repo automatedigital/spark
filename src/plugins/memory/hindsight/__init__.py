@@ -371,7 +371,6 @@ class HindsightMemoryProvider(MemoryProvider):
         # Step 4: Save everything
         provider_config["bank_id"] = "spark"
         provider_config["recall_budget"] = "mid"
-        bank_id = "spark"
         config["memory"]["provider"] = "hindsight"
         save_config(config)
 

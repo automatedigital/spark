@@ -70,7 +70,7 @@ def _select_platform() -> Optional[str]:
     options = [("global", "All platforms (global default)")] + list(PLATFORMS.items())
     print()
     print(color("  Configure skills for:", Colors.BOLD))
-    for i, (key, label) in enumerate(options, 1):
+    for i, (_key, label) in enumerate(options, 1):
         print(f"  {i}. {label}")
     print()
     try:

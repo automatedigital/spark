@@ -570,7 +570,7 @@ class _ModelMixin:
                     ):
                         print(line)
                 elif curated:
-                    for mid, desc in curated:
+                    for mid, _desc in curated:
                         current_marker = (
                             " ← current" if (is_active and mid == self.model) else ""
                         )

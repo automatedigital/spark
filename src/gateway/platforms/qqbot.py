@@ -1597,7 +1597,7 @@ class QQAdapter(BasePlatformAdapter):
         self, openid: str, content: str, reply_to: Optional[str] = None
     ) -> SendResult:
         """Send text to a C2C user via REST API."""
-        msg_seq = self._next_msg_seq(reply_to or openid)
+        # _build_text_body assigns its own msg_seq.
         body = self._build_text_body(content, reply_to)
         if reply_to:
             body["msg_id"] = reply_to
@@ -1610,7 +1610,7 @@ class QQAdapter(BasePlatformAdapter):
         self, group_openid: str, content: str, reply_to: Optional[str] = None
     ) -> SendResult:
         """Send text to a group via REST API."""
-        msg_seq = self._next_msg_seq(reply_to or group_openid)
+        # _build_text_body assigns its own msg_seq.
         body = self._build_text_body(content, reply_to)
         if reply_to:
             body["msg_id"] = reply_to
@@ -1749,7 +1749,6 @@ class QQAdapter(BasePlatformAdapter):
 
             # Route
             chat_type = self._guess_chat_type(chat_id)
-            target_path = f"/v2/users/{chat_id}/files" if chat_type == "c2c" else f"/v2/groups/{chat_id}/files"
 
             if chat_type == "guild":
                 # Guild channels don't support native media upload in the same way

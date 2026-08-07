@@ -884,6 +884,9 @@ class SlashCommandCompleter(Completer):
             ["rg", "--files", "--sortr=modified", cwd],
             ["rg", "--files", cwd],
             ["fd", "--type", "f", "--base-directory", cwd],
+            # find is the last resort so that @-completion still works on a
+            # machine with neither rg nor fd installed.
+            ["find", ".", "-type", "f", "-not", "-path", "*/.git/*"],
         ]:
             tool = cmd[0]
             if not shutil.which(tool):

@@ -152,7 +152,7 @@ def _get_available_providers() -> list:
         raw = []
 
     results = []
-    for name, desc, available in raw:
+    for name, _desc, _available in raw:
         try:
             provider = load_memory_provider(name)
             if not provider:

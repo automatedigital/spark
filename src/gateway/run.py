@@ -5311,7 +5311,7 @@ class GatewayRunner:
             _VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp'}
             _IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
 
-            for media_path, is_voice in media_files:
+            for media_path, _is_voice in media_files:
                 try:
                     ext = Path(media_path).suffix.lower()
                     if ext in _AUDIO_EXTS:

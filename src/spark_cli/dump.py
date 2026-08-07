@@ -86,7 +86,7 @@ def _count_skills(spark_home: Path) -> int:
     if not skills_dir.is_dir():
         return 0
     count = 0
-    for item in skills_dir.rglob("SKILL.md"):
+    for _item in skills_dir.rglob("SKILL.md"):
         count += 1
     return count
 

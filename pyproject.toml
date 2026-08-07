@@ -189,7 +189,10 @@ ignore = [
     "B904",   # raise from inside except — gradual adoption
     "UP007",  # X | Y union syntax — requires Python 3.10+; keep Optional[] for 3.11 compat
 ]
-per-file-ignores = {"tests/**" = ["B"]}
+per-file-ignores = {"tests/**" = ["B"], "src/spark_cli/*routes*.py" = ["B008"]}
+# B008 flags function calls in argument defaults.  FastAPI route signatures
+# require exactly that (File(...), Form(...), Depends(...)), so the rule is
+# disabled for route modules rather than worked around.
 
 [tool.mypy]
 python_version = "3.11"
