@@ -1,7 +1,10 @@
 name: python-quality
 
+# Runs on pull requests, and on pushes to main only.  Previously every push
+# to a PR branch triggered a second, identical run of the same commit.
 on:
   push:
+    branches: [main]
     paths:
       - "src/**/*.py"
       - "tests/**/*.py"
@@ -13,6 +16,11 @@ on:
       - "tests/**/*.py"
       - "pyproject.toml"
       - ".github/workflows/python-quality.yml"
+
+# A new push supersedes the previous run on the same branch.
+concurrency:
+  group: python-quality-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ruff-ratchet:

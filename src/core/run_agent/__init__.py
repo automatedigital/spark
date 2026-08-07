@@ -832,11 +832,18 @@ class AIAgent(_PromptCacheMixin):
                 # Anthropic, or a local model.  Say which provider was tried
                 # and how to fix it.
                 if not client_kwargs.get("api_key"):
-                    _prov = (self.provider or "auto").strip() or "auto"
+                    _prov = (self.provider or "auto").strip().lower() or "auto"
+                    if _prov in ("auto", "openrouter", "custom", ""):
+                        # No provider was chosen, so naming one would be a
+                        # guess ("AUTO_API_KEY" does not exist).
+                        raise RuntimeError(
+                            "No AI provider is configured. Run `spark setup` to connect "
+                            "one — subscription logins (Codex, Copilot) and API keys are "
+                            f"both supported. Original error: {e}"
+                        )
                     raise RuntimeError(
-                        f"No API credentials found for provider '{_prov}'. "
-                        f"Run `spark setup` to connect a provider, or set the "
-                        f"matching key (for example {_prov.upper().replace('-', '_')}_API_KEY) "
+                        f"No credentials found for provider '{_prov}'. Run `spark setup` "
+                        f"to connect it, or set {_prov.upper().replace('-', '_')}_API_KEY "
                         f"in ~/.spark/.env. Original error: {e}"
                     )
                 raise RuntimeError(f"Failed to initialize OpenAI client: {e}")

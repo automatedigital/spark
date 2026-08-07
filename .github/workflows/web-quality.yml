@@ -2,6 +2,7 @@ name: web-quality
 
 on:
   push:
+    branches: [main]
     paths:
       - "src/spark_cli/web/**"
       - ".github/workflows/web-quality.yml"
@@ -9,6 +10,10 @@ on:
     paths:
       - "src/spark_cli/web/**"
       - ".github/workflows/web-quality.yml"
+
+concurrency:
+  group: web-quality-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
