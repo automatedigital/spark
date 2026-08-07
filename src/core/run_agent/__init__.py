@@ -109,6 +109,17 @@ def cleanup_browser(*args, **kwargs):
 
 from core.spark_constants import OPENROUTER_BASE_URL
 
+# Providers authenticated by a subscription login rather than an API key.
+# Users of these never set a <PROVIDER>_API_KEY, so credential errors must
+# point them at `spark login` instead.
+_OAUTH_LOGIN_PROVIDERS = frozenset({
+    "openai-codex",
+    "copilot",
+    "copilot-acp",
+    "qwen-oauth",
+    "qwen-portal",
+})
+
 # Agent internals extracted to agent/ package for modularity
 from agent.memory_manager import build_memory_context_block
 from core.run_agent.retry_policy import jittered_backoff
@@ -749,14 +760,30 @@ class AIAgent(_PromptCacheMixin):
                     # message instead of silently routing through OpenRouter.
                     _explicit = (self.provider or "").strip().lower()
                     if _explicit and _explicit not in ("auto", "openrouter", "custom"):
+                        # These providers authenticate with a subscription
+                        # login, not an API key.  Telling their users to set
+                        # <PROVIDER>_API_KEY sends them down the wrong path.
+                        if _explicit in _OAUTH_LOGIN_PROVIDERS:
+                            raise RuntimeError(
+                                f"Provider '{_explicit}' is set in config.yaml but you are not "
+                                f"signed in. Run `spark login` to authenticate with your "
+                                f"subscription, or switch provider with `spark model`."
+                            )
+                        # Env var names use underscores; the provider id may
+                        # contain hyphens (e.g. "z-ai" -> Z_AI_API_KEY).
+                        _env_name = _explicit.upper().replace("-", "_")
                         raise RuntimeError(
                             f"Provider '{_explicit}' is set in config.yaml but no API key "
-                            f"was found. Set the {_explicit.upper()}_API_KEY environment "
+                            f"was found. Set the {_env_name}_API_KEY environment "
                             f"variable, or switch to a different provider with `spark model`."
                         )
-                    # Final fallback: try raw OpenRouter key
+                    # Final fallback: try raw OpenRouter key.  Prefer an
+                    # explicitly passed api_key — it is only ignored above
+                    # because no base_url came with it, and discarding it here
+                    # produces a confusing "Missing credentials" crash for a
+                    # caller that did supply a key.
                     client_kwargs = {
-                        "api_key": os.getenv("OPENROUTER_API_KEY", ""),
+                        "api_key": api_key or os.getenv("OPENROUTER_API_KEY", ""),
                         "base_url": OPENROUTER_BASE_URL,
                         "default_headers": {
                             "HTTP-Referer": "https://spark.automatedigital.ai",
@@ -800,6 +827,18 @@ class AIAgent(_PromptCacheMixin):
                     else:
                         print(f"⚠️  Warning: API key appears invalid or missing (got: '{key_used[:20] if key_used else 'none'}...')")
             except Exception as e:
+                # The SDK's own message names OPENAI_API_KEY regardless of the
+                # provider actually in use, which misleads anyone on Codex,
+                # Anthropic, or a local model.  Say which provider was tried
+                # and how to fix it.
+                if not client_kwargs.get("api_key"):
+                    _prov = (self.provider or "auto").strip() or "auto"
+                    raise RuntimeError(
+                        f"No API credentials found for provider '{_prov}'. "
+                        f"Run `spark setup` to connect a provider, or set the "
+                        f"matching key (for example {_prov.upper().replace('-', '_')}_API_KEY) "
+                        f"in ~/.spark/.env. Original error: {e}"
+                    )
                 raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
         
         # Provider fallback chain — ordered list of backup providers tried
