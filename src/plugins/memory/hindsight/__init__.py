@@ -24,7 +24,6 @@ import logging
 import os
 import threading
 
-from core.spark_constants import get_spark_home
 from typing import Any, Dict, List
 
 from agent.memory_provider import MemoryProvider

@@ -704,7 +704,7 @@ class SparkACPAgent(acp.Agent):
         if state is None:
             logger.warning("Session %s: mode switch requested for missing session", session_id)
             return None
-        setattr(state, "mode", mode_id)
+        state.mode = mode_id
         self.session_manager.save_session(session_id)
         logger.info("Session %s: mode switched to %s", session_id, mode_id)
         return SetSessionModeResponse()
@@ -722,7 +722,7 @@ class SparkACPAgent(acp.Agent):
         if not isinstance(options, dict):
             options = {}
         options[str(config_id)] = value
-        setattr(state, "config_options", options)
+        state.config_options = options
         self.session_manager.save_session(session_id)
         logger.info("Session %s: config option %s updated", session_id, config_id)
         return SetSessionConfigOptionResponse(config_options=[])

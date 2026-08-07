@@ -795,8 +795,9 @@ class SlashCommandCompleter(Completer):
             return None
         return word
 
-    @staticmethod
-    def _context_completions(word: str, limit: int = 30):
+    # Not a staticmethod: the bare-@ branch delegates to the instance method
+    # _fuzzy_file_completions.
+    def _context_completions(self, word: str, limit: int = 30):
         """Yield Claude Code-style @ context completions.
 
         Bare ``@`` or ``@partial`` shows static references and matching

@@ -25,7 +25,13 @@ import hmac
 import logging
 import os
 import urllib.parse
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    # aiohttp is an optional extra; it is imported lazily at each call site so
+    # that the adapter still imports without it.  This binding exists only so
+    # the string annotations below resolve for type checkers.
+    import aiohttp
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (

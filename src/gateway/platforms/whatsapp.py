@@ -25,7 +25,12 @@ import subprocess
 
 _IS_WINDOWS = platform.system() == "Windows"
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import TYPE_CHECKING, Dict, Optional, Any
+
+if TYPE_CHECKING:
+    # aiohttp is an optional extra, imported lazily at each call site.  This
+    # binding exists only so the string annotations below resolve.
+    import aiohttp
 
 from core.spark_constants import get_spark_dir
 

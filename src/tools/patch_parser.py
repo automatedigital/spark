@@ -31,7 +31,12 @@ Usage:
 import difflib
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Any
+from typing import TYPE_CHECKING, List, Optional, Tuple, Any
+
+if TYPE_CHECKING:
+    # Imported lazily inside apply_v4a_operations to avoid a circular import
+    # with tools.file_operations; bound here only for the return annotation.
+    from tools.file_operations import PatchResult
 from enum import Enum
 
 

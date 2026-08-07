@@ -41,7 +41,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000

@@ -1,0 +1,39 @@
+name: web-quality
+
+on:
+  push:
+    paths:
+      - "src/spark_cli/web/**"
+      - ".github/workflows/web-quality.yml"
+  pull_request:
+    paths:
+      - "src/spark_cli/web/**"
+      - ".github/workflows/web-quality.yml"
+
+defaults:
+  run:
+    working-directory: src/spark_cli/web
+
+jobs:
+  lint-types-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/spark_cli/web/package-lock.json
+
+      - name: Install with frozen lockfile
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      - name: Unit tests
+        run: npx vitest run

@@ -956,10 +956,15 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
                 # One-shot jobs are left alone so they can retry on restart.
                 advance_next_run(job["id"])
 
-                def job_cancelled() -> bool:
-                    current = get_job(job["id"])
+                # Bind the loop variables as defaults so the callback stays
+                # correct even if run_job retains it beyond this iteration.
+                def job_cancelled(
+                    _job_id: str = job["id"],
+                    _tracked_at_start: bool = tracked_at_start,
+                ) -> bool:
+                    current = get_job(_job_id)
                     if current is None:
-                        return tracked_at_start
+                        return _tracked_at_start
                     return not current.get("enabled", True) or current.get("state") == "paused"
 
                 success, output, final_response, error = run_job(job, is_cancelled=job_cancelled)
