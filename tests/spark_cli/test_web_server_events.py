@@ -2773,12 +2773,26 @@ class TestConversationControl:
 
         # turn_active can clear a moment before chat.turn_done is published, so
         # wait for the event itself rather than inferring it from the status.
-        assert _wait_for(
+        got = _wait_for(
             lambda: any(
                 event[0] == "chat.turn_done" and event[1].get("backend_error_class")
                 for event in events
             )
-        ), "no chat.turn_done carrying a backend_error_class"
+        )
+        if not got:
+            # This has failed only on CI. Report the captured stream so the
+            # failure is diagnosable from the run log instead of by guesswork.
+            summary = [
+                (topic, sorted(data.keys()) if isinstance(data, dict) else type(data).__name__, sid)
+                for topic, data, sid in events
+            ]
+            done_payloads = [d for t, d, _ in events if t == "chat.turn_done"]
+            pytest.fail(
+                "no chat.turn_done carrying a backend_error_class\n"
+                f"session_id={session_id}\n"
+                f"captured {len(events)} events: {summary}\n"
+                f"turn_done payloads: {done_payloads}"
+            )
 
         done = [event for event in events if event[0] == "chat.turn_done"]
         assert done[-1][1]["backend_error_class"] == "RuntimeError"
