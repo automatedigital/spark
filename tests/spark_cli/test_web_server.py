@@ -385,6 +385,9 @@ class TestWebServerEndpoints:
         popen_calls = []
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -429,6 +432,9 @@ class TestWebServerEndpoints:
         import spark_cli.web_server as ws
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -446,6 +452,9 @@ class TestWebServerEndpoints:
         work_dir = tmp_path / "spark-update"
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",

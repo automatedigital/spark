@@ -186,7 +186,10 @@ def test_web_state_delta_resume_and_restart_fallback(web_client):
     }
 
 
-def _wait_for(predicate, timeout: float = 2.0) -> bool:
+# 2s was enough on a developer machine but flaked on shared CI runners, where
+# background turn threads compete with xdist workers.  Polling returns as soon
+# as the predicate holds, so a longer ceiling only costs time on real failures.
+def _wait_for(predicate, timeout: float = 15.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if predicate():
@@ -2758,7 +2761,7 @@ class TestConversationControl:
         assert resp.status_code == 200
         session_id = resp.json()["session_id"]
 
-        deadline = time.time() + 2.0
+        deadline = time.time() + 15.0
         while time.time() < deadline:
             status = web_client.get(f"/api/conversations/{session_id}/turn-status")
             assert status.status_code == 200
@@ -2768,8 +2771,16 @@ class TestConversationControl:
         else:
             pytest.fail("failed web turn still reported active")
 
+        # turn_active can clear a moment before chat.turn_done is published, so
+        # wait for the event itself rather than inferring it from the status.
+        assert _wait_for(
+            lambda: any(
+                event[0] == "chat.turn_done" and event[1].get("backend_error_class")
+                for event in events
+            )
+        ), "no chat.turn_done carrying a backend_error_class"
+
         done = [event for event in events if event[0] == "chat.turn_done"]
-        assert done
         assert done[-1][1]["backend_error_class"] == "RuntimeError"
 
     def test_webview_diagnostics_reports_sidecar_and_activity_monitor_note(self, web_client):

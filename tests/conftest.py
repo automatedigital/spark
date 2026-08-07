@@ -44,6 +44,11 @@ def _isolate_spark_home(tmp_path, monkeypatch):
     monkeypatch.delenv("SPARK_GATEWAY_SESSION", raising=False)
     # Avoid making real calls during tests if this key is set in the env files
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    # Give every test the same placeholder credential.  Without this the suite
+    # passes on a developer machine (which has ~/.spark/.env) and fails on a
+    # clean CI runner, where client construction raises "Missing credentials".
+    # Integration tests that make real calls are deselected by default.
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key")
     # Prevent API server env vars from leaking between tests
     monkeypatch.delenv("API_SERVER_KEY", raising=False)
     monkeypatch.delenv("API_SERVER_ENABLED", raising=False)
