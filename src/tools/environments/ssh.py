@@ -88,8 +88,8 @@ class SSHEnvironment(BaseEnvironment):
             if result.returncode != 0:
                 error_msg = result.stderr.strip() or result.stdout.strip()
                 raise RuntimeError(f"SSH connection failed: {error_msg}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"SSH connection to {self.user}@{self.host} timed out")
+        except subprocess.TimeoutExpired as err:
+            raise RuntimeError(f"SSH connection to {self.user}@{self.host} timed out") from err
 
     def _detect_remote_home(self) -> str:
         """Detect the remote user's home directory."""
@@ -102,7 +102,7 @@ class SSHEnvironment(BaseEnvironment):
                 logger.debug("SSH: remote home = %s", home)
                 return home
         except Exception:
-            pass
+            logger.debug("Ignoring error in _detect_remote_home()", exc_info=True)
         if self.user == "root":
             return "/root"
         return f"/home/{self.user}"
@@ -196,12 +196,12 @@ class SSHEnvironment(BaseEnvironment):
                     _, tar_stderr_raw = tar_proc.communicate(timeout=10)
                 else:
                     tar_stderr_raw = tar_proc.stderr.read() if tar_proc.stderr else b""
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as err:
                 tar_proc.kill()
                 ssh_proc.kill()
                 tar_proc.wait()
                 ssh_proc.wait()
-                raise RuntimeError("SSH bulk upload timed out")
+                raise RuntimeError("SSH bulk upload timed out") from err
 
             if tar_proc.returncode != 0:
                 raise RuntimeError(
@@ -251,8 +251,8 @@ class SSHEnvironment(BaseEnvironment):
                        "-O", "exit", f"{self.user}@{self.host}"]
                 subprocess.run(cmd, capture_output=True, timeout=5)
             except (OSError, subprocess.SubprocessError):
-                pass
+                logger.debug("Ignoring error in cleanup()", exc_info=True)
             try:
                 self.control_socket.unlink()
             except OSError:
-                pass
+                logger.debug("Ignoring error in cleanup()", exc_info=True)

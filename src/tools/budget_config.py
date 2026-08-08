@@ -4,8 +4,11 @@ Overridable at the RL environment level via SparkAgentEnvConfig fields.
 Per-tool resolution: pinned > config overrides > registry > default.
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 # Tools whose thresholds must never be overridden.
 # read_file=inf prevents infinite persist->read->persist loops.
@@ -92,7 +95,7 @@ class BudgetConfig:
                 if count >= 0:
                     return count
             except Exception:
-                pass
+                logger.debug("Ignoring error in count_tokens()", exc_info=True)
         encoded = content.encode("utf-8", errors="surrogatepass")
         return (len(encoded) + 2) // 3
 

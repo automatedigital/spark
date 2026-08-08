@@ -16,10 +16,9 @@ import re
 import secrets
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Any, cast
 
 from core.spark_constants import display_spark_home
-
 
 _SUBSCRIPTIONS_FILENAME = "webhook_subscriptions.json"
 
@@ -33,7 +32,7 @@ def _subscriptions_path() -> Path:
     return _spark_home() / _SUBSCRIPTIONS_FILENAME
 
 
-def _load_subscriptions() -> Dict[str, dict]:
+def _load_subscriptions() -> dict[str, dict]:
     path = _subscriptions_path()
     if not path.exists():
         return {}
@@ -44,7 +43,7 @@ def _load_subscriptions() -> Dict[str, dict]:
         return {}
 
 
-def _save_subscriptions(subs: Dict[str, dict]) -> None:
+def _save_subscriptions(subs: dict[str, dict]) -> None:
     path = _subscriptions_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(".tmp")
@@ -60,7 +59,7 @@ def _get_webhook_config() -> dict:
     try:
         from spark_cli.config import load_config
         cfg = load_config()
-        return cfg.get("platforms", {}).get("webhook", {})
+        return cast("dict[Any, Any]", cfg.get("platforms", {}).get("webhook", {}))
     except Exception:
         return {}
 
@@ -232,8 +231,8 @@ def _cmd_test(args):
 
     payload = args.payload or '{"test": true, "event_type": "test", "message": "Hello from spark webhook test"}'
 
-    import hmac
     import hashlib
+    import hmac
     sig = "sha256=" + hmac.new(
         secret.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()

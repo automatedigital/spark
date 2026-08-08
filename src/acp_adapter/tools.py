@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import acp
 from acp.schema import (
     ToolCallLocation,
-    ToolCallStart,
     ToolCallProgress,
+    ToolCallStart,
     ToolKind,
 )
 
@@ -17,7 +17,7 @@ from acp.schema import (
 # Map spark tool names -> ACP ToolKind
 # ---------------------------------------------------------------------------
 
-TOOL_KIND_MAP: Dict[str, ToolKind] = {
+TOOL_KIND_MAP: dict[str, ToolKind] = {
     # File operations
     "read_file": "read",
     "write_file": "edit",
@@ -60,7 +60,7 @@ def make_tool_call_id() -> str:
     return f"tc-{uuid.uuid4().hex[:12]}"
 
 
-def build_tool_title(tool_name: str, args: Dict[str, Any]) -> str:
+def build_tool_title(tool_name: str, args: dict[str, Any]) -> str:
     """Build a human-readable title for a tool call."""
     if tool_name == "terminal":
         cmd = args.get("command", "")
@@ -104,7 +104,7 @@ def build_tool_title(tool_name: str, args: Dict[str, Any]) -> str:
 def build_tool_start(
     tool_call_id: str,
     tool_name: str,
-    arguments: Dict[str, Any],
+    arguments: dict[str, Any],
 ) -> ToolCallStart:
     """Create a ToolCallStart event for the given spark tool invocation."""
     kind = get_tool_kind(tool_name)
@@ -177,7 +177,7 @@ def build_tool_start(
 def build_tool_complete(
     tool_call_id: str,
     tool_name: str,
-    result: Optional[str] = None,
+    result: str | None = None,
 ) -> ToolCallProgress:
     """Create a ToolCallUpdate (progress) event for a completed tool call."""
     kind = get_tool_kind(tool_name)
@@ -203,10 +203,10 @@ def build_tool_complete(
 
 
 def extract_locations(
-    arguments: Dict[str, Any],
-) -> List[ToolCallLocation]:
+    arguments: dict[str, Any],
+) -> list[ToolCallLocation]:
     """Extract file-system locations from tool arguments."""
-    locations: List[ToolCallLocation] = []
+    locations: list[ToolCallLocation] = []
     path = arguments.get("path")
     if path:
         line = arguments.get("offset") or arguments.get("line")

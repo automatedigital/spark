@@ -14,12 +14,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-from gateway.status import terminate_pid
 from gateway.restart import (
     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT,
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
 )
+from gateway.status import terminate_pid
+from spark_cli.colors import Colors, color
 from spark_cli.config import (
     get_env_value,
     get_spark_home,
@@ -28,14 +29,19 @@ from spark_cli.config import (
     read_raw_config,
     save_env_value,
 )
+
 # display_spark_home is imported lazily at call sites to avoid ImportError
 # when spark_constants is cached from a pre-update version during `spark update`.
 from spark_cli.setup import (
-    print_header, print_info, print_success, print_warning, print_error,
-    prompt, prompt_choice, prompt_yes_no,
+    print_error,
+    print_header,
+    print_info,
+    print_success,
+    print_warning,
+    prompt,
+    prompt_choice,
+    prompt_yes_no,
 )
-from spark_cli.colors import Colors, color
-
 
 # =============================================================================
 # Process Management (for manual gateway runs)
@@ -75,9 +81,9 @@ def _get_service_pids() -> set:
                         if pid > 0:
                             pids.add(pid)
                     except (ValueError, subprocess.TimeoutExpired):
-                        pass
+                        logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
             except (FileNotFoundError, subprocess.TimeoutExpired):
-                pass
+                logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
 
     # --- launchd (macOS) ---
     if is_macos():
@@ -97,9 +103,9 @@ def _get_service_pids() -> set:
                             if pid > 0:
                                 pids.add(pid)
                         except ValueError:
-                            pass
+                            logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
 
     return pids
 
@@ -218,7 +224,7 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
                             if pid != os.getpid() and pid not in pids and pid not in _exclude:
                                 pids.append(pid)
                         except ValueError:
-                            pass
+                            logger.debug("Ignoring error in find_gateway_pids()", exc_info=True)
                     current_cmd = ""
         else:
             result = subprocess.run(
@@ -256,7 +262,7 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
                 if any(pattern in command for pattern in patterns) and (all_profiles or _matches_current_profile(command)):
                     pids.append(pid)
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        logger.debug("Ignoring error in find_gateway_pids()", exc_info=True)
 
     return pids
 
@@ -274,17 +280,17 @@ def kill_gateway_processes(force: bool = False, exclude_pids: set | None = None,
     """
     pids = find_gateway_pids(exclude_pids=exclude_pids, all_profiles=all_profiles)
     killed = 0
-    
+
     for pid in pids:
         try:
             terminate_pid(pid, force=force)
             killed += 1
         except ProcessLookupError:
             # Process already gone
-            pass
+            logger.debug("Ignoring error in kill_gateway_processes()", exc_info=True)
         except PermissionError:
             print(f"⚠ Permission denied to kill PID {pid}")
-    
+
         except OSError as exc:
             print(f"Failed to kill PID {pid}: {exc}")
     return killed
@@ -331,7 +337,11 @@ def is_linux() -> bool:
     return sys.platform.startswith('linux')
 
 
+import logging
+
 from core.spark_constants import is_container, is_termux, is_wsl
+
+logger = logging.getLogger(__name__)
 
 
 def _wsl_systemd_operational() -> bool:
@@ -386,6 +396,7 @@ def _profile_suffix() -> str:
     """
     import hashlib
     import re
+
     from core.spark_constants import get_default_spark_root
     home = get_spark_home().resolve()
     default = get_default_spark_root().resolve()
@@ -399,7 +410,7 @@ def _profile_suffix() -> str:
         if len(parts) == 1 and re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", parts[0]):
             return parts[0]
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _profile_suffix()", exc_info=True)
     # Fallback: short hash for arbitrary SPARK_HOME paths
     return hashlib.sha256(str(home).encode()).hexdigest()[:8]
 
@@ -416,6 +427,7 @@ def _profile_arg(spark_home: str | None = None) -> str:
             service definition for a different user (e.g. system service).
     """
     import re
+
     from core.spark_constants import get_default_spark_root
     home = Path(spark_home or str(get_spark_home())).resolve()
     default = get_default_spark_root().resolve()
@@ -428,7 +440,7 @@ def _profile_arg(spark_home: str | None = None) -> str:
         if len(parts) == 1 and re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", parts[0]):
             return f"--profile {parts[0]}"
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _profile_arg()", exc_info=True)
     return ""
 
 
@@ -1279,10 +1291,10 @@ def generate_launchd_plist() -> str:
     <array>
         {prog_args_xml}
     </array>
-    
+
     <key>WorkingDirectory</key>
     <string>{working_dir}</string>
-    
+
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -1292,19 +1304,19 @@ def generate_launchd_plist() -> str:
         <key>SPARK_HOME</key>
         <string>{spark_home}</string>
     </dict>
-    
+
     <key>RunAtLoad</key>
     <true/>
-    
+
     <key>KeepAlive</key>
     <dict>
         <key>SuccessfulExit</key>
         <false/>
     </dict>
-    
+
     <key>StandardOutPath</key>
     <string>{log_dir}/gateway.log</string>
-    
+
     <key>StandardErrorPath</key>
     <string>{log_dir}/gateway.error.log</string>
 </dict>
@@ -1344,7 +1356,7 @@ def refresh_launchd_plist_if_needed() -> bool:
 
 def launchd_install(force: bool = False):
     plist_path = get_launchd_plist_path()
-    
+
     if plist_path.exists() and not force:
         if not launchd_plist_is_current():
             print(f"↻ Repairing outdated launchd service at: {plist_path}")
@@ -1354,13 +1366,13 @@ def launchd_install(force: bool = False):
         print(f"Service already installed at: {plist_path}")
         print("Use --force to reinstall")
         return
-    
+
     plist_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Installing launchd service to: {plist_path}")
     plist_path.write_text(generate_launchd_plist())
-    
+
     subprocess.run(["launchctl", "bootstrap", _launchd_domain(), str(plist_path)], check=True, timeout=30)
-    
+
     print()
     print("✓ Service installed and loaded!")
     print()
@@ -1373,11 +1385,11 @@ def launchd_uninstall():
     plist_path = get_launchd_plist_path()
     label = get_launchd_label()
     subprocess.run(["launchctl", "bootout", f"{_launchd_domain()}/{label}"], check=False, timeout=90)
-    
+
     if plist_path.exists():
         plist_path.unlink()
         print(f"✓ Removed {plist_path}")
-    
+
     print("✓ Service uninstalled")
 
 def launchd_start():
@@ -1434,6 +1446,7 @@ def _wait_for_gateway_exit(timeout: float = 10.0, force_after: float | None = 5.
         force_after: Seconds of graceful waiting before escalating to force-kill.
     """
     import time
+
     from gateway.status import get_running_pid
 
     deadline = time.monotonic() + timeout
@@ -1445,7 +1458,8 @@ def _wait_for_gateway_exit(timeout: float = 10.0, force_after: float | None = 5.
         if pid is None:
             return True  # Process exited cleanly.
 
-        if force_after is not None and not force_sent and time.monotonic() >= force_deadline:
+        if (force_deadline is not None and not force_sent
+                and time.monotonic() >= force_deadline):
             # Grace period expired — force-kill the specific PID.
             try:
                 terminate_pid(pid, force=True)
@@ -1526,7 +1540,7 @@ def launchd_status(deep: bool = False):
         print("✗ Gateway service is not loaded")
         print("  Service definition exists locally but launchd has not loaded it.")
         print("  Run: spark gateway start")
-    
+
     if deep:
         log_file = get_spark_home() / "logs" / "gateway.log"
         if log_file.exists():
@@ -1541,7 +1555,7 @@ def launchd_status(deep: bool = False):
 
 def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
     """Run the gateway in foreground.
-    
+
     Args:
         verbose: Stderr log verbosity count added on top of default WARNING (0=WARNING, 1=INFO, 2+=DEBUG).
         quiet: Suppress all stderr log output.
@@ -1550,9 +1564,9 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
                  hasn't fully exited yet.
     """
     sys.path.insert(0, str(PROJECT_ROOT))
-    
+
     from gateway.run import start_gateway
-    
+
     print("┌─────────────────────────────────────────────────────────┐")
     print("│           S Spark Gateway Starting...                 │")
     print("├─────────────────────────────────────────────────────────┤")
@@ -1560,7 +1574,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
     print("│  Press Ctrl+C to stop                                   │")
     print("└─────────────────────────────────────────────────────────┘")
     print()
-    
+
     # Exit with code 1 if gateway fails to connect any platform,
     # so systemd Restart=on-failure will retry on transient errors
     verbosity = None if quiet else verbose
@@ -2129,8 +2143,9 @@ def _setup_standard_platform(platform: dict):
 
 def _setup_whatsapp():
     """Delegate to the existing WhatsApp setup flow."""
-    from spark_cli.main import cmd_whatsapp
     import argparse
+
+    from spark_cli.main import cmd_whatsapp
     cmd_whatsapp(argparse.Namespace())
 
 
@@ -2182,7 +2197,7 @@ def _is_service_running() -> bool:
                 if result.stdout.strip() == "active":
                     return True
             except (RuntimeError, subprocess.TimeoutExpired):
-                pass
+                logger.debug("Ignoring error in _is_service_running()", exc_info=True)
 
         if system_unit_exists:
             try:
@@ -2193,7 +2208,7 @@ def _is_service_running() -> bool:
                 if result.stdout.strip() == "active":
                     return True
             except (RuntimeError, subprocess.TimeoutExpired):
-                pass
+                logger.debug("Ignoring error in _is_service_running()", exc_info=True)
 
         return False
     elif is_macos() and get_launchd_plist_path().exists():
@@ -2783,7 +2798,7 @@ def gateway_setup():
 def gateway_command(args):
     """Handle gateway subcommands."""
     subcmd = getattr(args, 'gateway_command', None)
-    
+
     # Default to run if no subcommand
     if subcmd is None or subcmd == "run":
         verbose = getattr(args, 'verbose', 0)
@@ -2839,7 +2854,7 @@ def gateway_command(args):
             print("Service installation not supported on this platform.")
             print("Run manually: spark gateway run")
             sys.exit(1)
-    
+
     elif subcmd == "uninstall":
         if is_managed():
             managed_error("uninstall gateway service (managed by NixOS)")
@@ -2909,13 +2924,13 @@ def gateway_command(args):
                     systemd_stop(system=system)
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
             elif is_macos() and get_launchd_plist_path().exists():
                 try:
                     launchd_stop()
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
             killed = kill_gateway_processes(all_profiles=True)
             total = killed + (1 if service_available else 0)
             if total:
@@ -2930,13 +2945,13 @@ def gateway_command(args):
                     systemd_stop(system=system)
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
             elif is_macos() and get_launchd_plist_path().exists():
                 try:
                     launchd_stop()
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
 
             if not service_available:
                 # No systemd/launchd — use profile-scoped PID file
@@ -2946,28 +2961,28 @@ def gateway_command(args):
                     print("✗ No gateway running for this profile")
             else:
                 print(f"✓ Stopped {get_service_name()} service")
-    
+
     elif subcmd == "restart":
         # Try service first, fall back to killing and restarting
         service_available = False
         system = getattr(args, 'system', False)
         service_configured = False
-        
+
         if supports_systemd_services() and (get_systemd_unit_path(system=False).exists() or get_systemd_unit_path(system=True).exists()):
             service_configured = True
             try:
                 systemd_restart(system=system)
                 service_available = True
             except subprocess.CalledProcessError:
-                pass
+                logger.debug("Ignoring error in gateway_command()", exc_info=True)
         elif is_macos() and get_launchd_plist_path().exists():
             service_configured = True
             try:
                 launchd_restart()
                 service_available = True
             except subprocess.CalledProcessError:
-                pass
-        
+                logger.debug("Ignoring error in gateway_command()", exc_info=True)
+
         if not service_available:
             # systemd/launchd restart failed — check if linger is the issue
             if supports_systemd_services():
@@ -3001,11 +3016,11 @@ def gateway_command(args):
             # Start fresh
             print("Starting gateway...")
             run_gateway(verbose=0)
-    
+
     elif subcmd == "status":
         deep = getattr(args, 'deep', False)
         system = getattr(args, 'system', False)
-        
+
         # Check for service first
         if supports_systemd_services() and (get_systemd_unit_path(system=False).exists() or get_systemd_unit_path(system=True).exists()):
             systemd_status(deep, system=system)

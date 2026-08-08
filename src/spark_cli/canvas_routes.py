@@ -31,7 +31,7 @@ import threading as _threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -207,9 +207,9 @@ def _read_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, Any]
         with path.open(encoding="utf-8") as fh:
             doc = json.load(fh)
         doc["revision"] = _revision(path)
-        return doc
+        return cast("dict[str, Any]", doc)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}") from exc
 
 
 def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) -> dict[str, Any]:
@@ -240,7 +240,7 @@ def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) 
         tmp.replace(path)
     except Exception as exc:  # noqa: BLE001
         tmp.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Failed to write canvas: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to write canvas: {exc}") from exc
     return {
         "ok": True,
         "id": canvas_id,
@@ -258,7 +258,7 @@ def _delete_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, An
     try:
         path.unlink()
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to delete canvas: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete canvas: {exc}") from exc
     return {"ok": True, "deleted": canvas_id}
 
 
@@ -310,7 +310,7 @@ def canvas_interact(body: InteractBody) -> dict[str, Any]:
 
         _publish_event("canvas.interaction", {"canvas_id": body.canvas_id, "widget_id": body.widget_id, "value": body.value})
     except Exception:
-        pass
+        _log.debug("Ignoring error in canvas_interact()", exc_info=True)
     return {"ok": True}
 
 

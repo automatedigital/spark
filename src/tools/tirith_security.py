@@ -163,7 +163,7 @@ def _mark_install_failed(reason: str = ""):
         with open(p, "w") as f:
             f.write(reason)
     except OSError:
-        pass
+        logger.debug("Ignoring error in _mark_install_failed()", exc_info=True)
 
 
 def _clear_install_failed():
@@ -171,7 +171,7 @@ def _clear_install_failed():
     try:
         os.unlink(_failure_marker_path())
     except OSError:
-        pass
+        logger.debug("Ignoring error in _clear_install_failed()", exc_info=True)
 
 
 def _spark_bin_dir() -> str:

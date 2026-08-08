@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 def _load_dotenv_with_fallback(path: Path, *, override: bool) -> None:
@@ -54,7 +57,7 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
                 try:
                     os.unlink(tmp)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _sanitize_env_file_if_needed()", exc_info=True)
                 raise
     except Exception:
         pass  # best-effort — don't block gateway startup

@@ -16,7 +16,7 @@ import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any
 
 from core.network_tls import urllib_request_kwargs
 from core.spark_constants import get_spark_home
@@ -147,7 +147,7 @@ def _detect_claude_code_version() -> str:
                 if version and version[0].isdigit():
                     return version
         except Exception:
-            pass
+            logger.debug("Ignoring error in _detect_claude_code_version()", exc_info=True)
     return _CLAUDE_CODE_VERSION_FALLBACK
 
 
@@ -241,7 +241,7 @@ def _common_betas_for_base_url(base_url: str | None) -> list[str]:
     return _COMMON_BETAS
 
 
-def build_anthropic_client(api_key: str, base_url: Optional[str] = None):
+def build_anthropic_client(api_key: str, base_url: str | None = None):
     """Create an Anthropic client, auto-detecting setup-tokens vs API keys.
 
     Returns an anthropic.Anthropic instance.
@@ -326,7 +326,7 @@ def read_claude_code_credentials() -> dict[str, Any] | None:
                         "expiresAt": oauth_data.get("expiresAt", 0),
                         "source": "claude_code_credentials_file",
                     }
-        except (json.JSONDecodeError, OSError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.debug("Failed to read ~/.claude/.credentials.json: %s", e)
 
     return None
@@ -341,7 +341,7 @@ def read_claude_managed_key() -> str | None:
             primary_key = data.get("primaryApiKey", "")
             if isinstance(primary_key, str) and primary_key.strip():
                 return primary_key.strip()
-        except (json.JSONDecodeError, OSError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.debug("Failed to read ~/.claude.json: %s", e)
     return None
 
@@ -485,7 +485,7 @@ def _write_claude_code_credentials(
         cred_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
         # Restrict permissions (credentials file)
         cred_path.chmod(0o600)
-    except (OSError, IOError) as e:
+    except OSError as e:
         logger.debug("Failed to write refreshed credentials: %s", e)
 
 
@@ -670,7 +670,7 @@ def run_spark_oauth_login_pure() -> dict[str, Any] | None:
         webbrowser.open(auth_url)
         print("  (Browser opened automatically)")
     except Exception:
-        pass
+        logger.debug("Ignoring error in run_spark_oauth_login_pure()", exc_info=True)
 
     print()
     print("After authorizing, you'll see a code. Paste it below.")
@@ -739,7 +739,7 @@ def read_spark_oauth_credentials() -> dict[str, Any] | None:
             data = json.loads(_SPARK_OAUTH_FILE.read_text(encoding="utf-8"))
             if data.get("accessToken"):
                 return data
-        except (json.JSONDecodeError, OSError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.debug("Failed to read Spark OAuth credentials: %s", e)
     return None
 

@@ -225,12 +225,15 @@ class TestConcurrencyIsolation:
                 captured_socket_dirs[task_id] = socket_dir
             return {"success": True, "data": {"url": (args or [""])[0], "title": "ok"}}
 
+        # _is_safe_url performs a real DNS lookup, so the .example hosts below
+        # would otherwise make this unit test depend on network resolution.
         with patch.object(bt, "_get_cdp_override", return_value=""), \
              patch.object(bt, "_get_cloud_provider", return_value=None), \
              patch.object(bt, "_start_browser_cleanup_thread"), \
              patch.object(bt, "_is_camofox_mode", return_value=False), \
              patch.object(bt, "_browser_backend_healthy", return_value=(True, "")), \
              patch.object(bt, "_get_command_timeout", return_value=30), \
+             patch.object(bt, "_is_safe_url", return_value=True), \
              patch.object(bt, "_run_browser_command", side_effect=fake_run):
 
             results: dict = {}

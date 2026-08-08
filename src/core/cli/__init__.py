@@ -13,53 +13,48 @@ Usage:
     python cli.py --list-tools             # List available tools and exit
 """
 
+import atexit
 import logging
 import os
 import shutil
 import sys
-import json
-import atexit
-import tempfile
+import textwrap
 import time
 import uuid
-import textwrap
 from contextlib import contextmanager
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # Suppress startup messages for clean CLI experience
 os.environ["SPARK_QUIET"] = "1"  # Our own modules
 
-import yaml
 
 # prompt_toolkit for fixed input area TUI
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.styles import Style as PTStyle
-from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.application import Application
-from prompt_toolkit.layout import (
-    Layout,
-    HSplit,
-    Window,
-    FormattedTextControl,
-    ConditionalContainer,
-)
-from prompt_toolkit.layout.processors import (
-    Processor,
-    Transformation,
-    PasswordProcessor,
-    ConditionalProcessor,
-)
 from prompt_toolkit.filters import Condition
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import (
+    ConditionalContainer,
+    FormattedTextControl,
+    HSplit,
+    Layout,
+    Window,
+)
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu
+from prompt_toolkit.layout.processors import (
+    ConditionalProcessor,
+    PasswordProcessor,
+    Processor,
+    Transformation,
+)
+from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.styles import Style as PTStyle
 from prompt_toolkit.widgets import TextArea
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit import print_formatted_text as _pt_print
-from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
 
 try:
     from prompt_toolkit.cursor_shapes import CursorShape
@@ -67,8 +62,8 @@ try:
     _STEADY_CURSOR = CursorShape.BLOCK  # Non-blinking block cursor
 except (ImportError, AttributeError):
     _STEADY_CURSOR = None
-import threading
 import queue
+import threading
 
 from agent.usage_pricing import (
     CanonicalUsage,
@@ -142,7 +137,7 @@ _AGENT_VERB_INTERVAL = 2.0  # seconds between verb rotations
 
 # Load .env from ~/.spark/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
-from core.spark_constants import get_spark_home, display_spark_home
+from core.spark_constants import display_spark_home, get_spark_home
 from spark_cli.env_loader import load_spark_dotenv
 
 _spark_home = get_spark_home()
@@ -155,20 +150,17 @@ load_spark_dotenv(spark_home=_spark_home, project_env=_project_env)
 # =============================================================================
 
 
+from core.cli.config_state import (  # noqa: E402  (extracted Phase 3)
+    CLI_CONFIG,
+    load_cli_config,
+    save_config_value,
+)
 from core.cli.parsing import (  # noqa: E402  (extracted Phase 3)
     _get_chrome_debug_candidates,
     _load_prefill_messages,
     _parse_reasoning_config,
     _parse_service_tier_config,
 )
-
-from core.cli.config_state import (  # noqa: E402  (extracted Phase 3)
-    CLI_CONFIG,
-    load_cli_config,
-    save_config_value,
-)
-
-
 
 # Initialize centralized logging early - agent.log + errors.log in ~/"spark/logs/.
 # This ensures CLI sessions produce a log trail even before AIAgent is instantiated.
@@ -185,7 +177,7 @@ try:
 
     print_config_warnings()
 except Exception:
-    pass
+    logger.debug("Ignoring error in __init__()", exc_info=True)
 
 # Initialize the skin engine from config
 try:
@@ -202,7 +194,7 @@ try:
     _tpl = CLI_CONFIG.get("display", {}).get("tool_preview_length", 0)
     set_tool_preview_max_len(int(_tpl) if _tpl else 0)
 except Exception:
-    pass
+    logger.debug("Ignoring error in __init__()", exc_info=True)
 
 # Neuter AsyncHttpxClientWrapper.__del__ before any AsyncOpenAI clients are
 # created.  The SDK's __del__ schedules aclose() on asyncio.get_running_loop()
@@ -214,34 +206,33 @@ try:
 
     neuter_async_httpx_del()
 except Exception:
-    pass
+    logger.debug("Ignoring error in __init__()", exc_info=True)
 
+import fire
 from rich import box as rich_box
 from rich.console import Console
 from rich.markup import escape as _escape
 from rich.panel import Panel
-from rich.text import Text as _RichText
 
-import fire
+from core.model_tools import get_tool_definitions, get_toolset_for_tool
 
 # Import the agent and tool systems
 from core.run_agent import AIAgent
-from core.model_tools import get_tool_definitions, get_toolset_for_tool
-
-# Extracted CLI modules (Phase 3)
-from spark_cli.banner import build_welcome_banner
-from spark_cli.commands import SlashCommandCompleter, SlashCommandAutoSuggest
 from core.toolsets import get_all_toolsets, get_toolset_info, validate_toolset
 
 # Cron job system for scheduled tasks (execution is handled by the gateway)
 from cron import get_job
 
+# Extracted CLI modules (Phase 3)
+from spark_cli.banner import build_welcome_banner
+from spark_cli.callbacks import prompt_for_secret
+from spark_cli.commands import SlashCommandAutoSuggest, SlashCommandCompleter
+from tools.browser_tool import _emergency_cleanup_all_sessions as _cleanup_all_browsers
+from tools.skills_tool import set_secret_capture_callback
+
 # Resource cleanup imports for safe shutdown (terminal VMs, browser sessions)
 from tools.terminal_tool import cleanup_all_environments as _cleanup_all_terminals
-from tools.terminal_tool import set_sudo_password_callback, set_approval_callback
-from tools.skills_tool import set_secret_capture_callback
-from spark_cli.callbacks import prompt_for_secret
-from tools.browser_tool import _emergency_cleanup_all_sessions as _cleanup_all_browsers
+from tools.terminal_tool import set_approval_callback, set_sudo_password_callback
 
 # Guard to prevent cleanup from running multiple times on exit
 _cleanup_done = False
@@ -258,17 +249,17 @@ def _run_cleanup():
     try:
         _cleanup_all_terminals()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     try:
         _cleanup_all_browsers()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     try:
         from tools.mcp_tool import shutdown_mcp_servers
 
         shutdown_mcp_servers()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     # Close cached auxiliary LLM clients (sync + async) so that
     # AsyncHttpxClientWrapper.__del__ doesn't fire on a closed event loop
     # and trigger prompt_toolkit's "Press ENTER to continue..." handler.
@@ -277,7 +268,7 @@ def _run_cleanup():
 
         shutdown_cached_clients()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     # Shut down memory provider (on_session_end + shutdown_all) at actual
     # session boundary - NOT per-turn inside run_conversation().
     try:
@@ -289,63 +280,19 @@ def _run_cleanup():
             platform="cli",
         )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     try:
         if _active_agent_ref and hasattr(_active_agent_ref, "shutdown_memory_provider"):
             _active_agent_ref.shutdown_memory_provider(
                 getattr(_active_agent_ref, "conversation_history", None) or []
             )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
 
 
 # =============================================================================
 # Git Worktree Isolation (#652)
 # =============================================================================
-
-from core.cli.worktree import (  # noqa: E402  (extracted Phase 3)
-    _cleanup_worktree,
-    _git_repo_root,
-    _path_is_within_root,
-    _prune_orphaned_branches,
-    _prune_stale_worktrees,
-    _setup_worktree,
-    set_active_worktree,
-)
-
-
-# ============================================================================
-# ASCII Art & Branding
-# ============================================================================
-
-# Color palette (hex colors for Rich markup):
-# - Gold: #FFD700 (headers, highlights)
-# - Amber: #FFBF00 (secondary highlights)
-# - Bronze: #CD7F32 (tertiary elements)
-# - Light: #FFF8DC (text)
-# - Dim: #B8860B (muted text)
-
-# ANSI building blocks for conversation display
-from core.cli.render import (  # noqa: E402  (extracted Phase 3)
-    _ACCENT,
-    _ACCENT_ANSI_DEFAULT,
-    _BOLD,
-    _DIM,
-    _RST,
-    _SkinAwareAnsi,
-    _accent_hex,
-    _cprint,
-    _hex_to_ansi,
-    _rich_text_from_ansi,
-)
-
-
-# ---------------------------------------------------------------------------
-# File-drop / local attachment detection - extracted as pure helpers for tests.
-# ---------------------------------------------------------------------------
-
-from core.spark_constants import is_termux as _is_termux_environment
-
 
 from core.cli.attachments import (  # noqa: E402  (extracted Phase 3)
     _IMAGE_EXTENSIONS,
@@ -358,6 +305,43 @@ from core.cli.attachments import (  # noqa: E402  (extracted Phase 3)
     _split_path_input,
     _termux_example_image_path,
 )
+
+# ============================================================================
+# ASCII Art & Branding
+# ============================================================================
+# Color palette (hex colors for Rich markup):
+# - Gold: #FFD700 (headers, highlights)
+# - Amber: #FFBF00 (secondary highlights)
+# - Bronze: #CD7F32 (tertiary elements)
+# - Light: #FFF8DC (text)
+# - Dim: #B8860B (muted text)
+# ANSI building blocks for conversation display
+from core.cli.render import (  # noqa: E402  (extracted Phase 3)
+    _ACCENT,
+    _ACCENT_ANSI_DEFAULT,
+    _BOLD,
+    _DIM,
+    _RST,
+    _accent_hex,
+    _cprint,
+    _hex_to_ansi,
+    _rich_text_from_ansi,
+    _SkinAwareAnsi,
+)
+from core.cli.worktree import (  # noqa: E402  (extracted Phase 3)
+    _cleanup_worktree,
+    _git_repo_root,
+    _path_is_within_root,
+    _prune_orphaned_branches,
+    _prune_stale_worktrees,
+    _setup_worktree,
+    set_active_worktree,
+)
+
+# ---------------------------------------------------------------------------
+# File-drop / local attachment detection - extracted as pure helpers for tests.
+# ---------------------------------------------------------------------------
+from core.spark_constants import is_termux as _is_termux_environment
 
 
 class ChatConsole:
@@ -506,10 +490,10 @@ def _looks_like_slash_command(text: str) -> bool:
 # ============================================================================
 
 from agent.skill_commands import (
-    scan_skill_commands,
-    build_skill_invocation_message,
     build_plan_path,
     build_preloaded_skills_prompt,
+    build_skill_invocation_message,
+    scan_skill_commands,
 )
 
 _skill_commands = scan_skill_commands()
@@ -558,37 +542,17 @@ def _parse_skills_argument(
 # ============================================================================
 
 
-from core.cli.commands_mixin import _CommandHandlersMixin  # noqa: E402  (Phase 3)
-
-
-from core.cli.display_mixin import _DisplayCommandsMixin  # noqa: E402  (Phase 3)
-
-
-from core.cli.streaming_mixin import _StreamingMixin  # noqa: E402  (Phase 3)
-
-
-from core.cli.status_bar_mixin import _StatusBarMixin  # noqa: E402  (Phase 3)
-
-
-from core.cli.voice_mixin import _VoiceMixin  # noqa: E402  (Phase 3)
-
-
-from core.cli.callbacks_mixin import _CallbacksMixin  # noqa: E402  (Phase 3)
-
-
-from core.cli.tui_mixin import _TuiMixin  # noqa: E402  (Phase 3)
-
-
-from core.cli.model_mixin import _ModelMixin  # noqa: E402  (Phase 3)
-
-
 from core.cli.agent_setup_mixin import _AgentSetupMixin  # noqa: E402  (Phase 3)
-
-
+from core.cli.callbacks_mixin import _CallbacksMixin  # noqa: E402  (Phase 3)
+from core.cli.commands_mixin import _CommandHandlersMixin  # noqa: E402  (Phase 3)
+from core.cli.display_mixin import _DisplayCommandsMixin  # noqa: E402  (Phase 3)
 from core.cli.info_mixin import _InfoCommandsMixin  # noqa: E402  (Phase 3)
-
-
+from core.cli.model_mixin import _ModelMixin  # noqa: E402  (Phase 3)
 from core.cli.session_ops_mixin import _SessionOpsMixin  # noqa: E402  (Phase 3)
+from core.cli.status_bar_mixin import _StatusBarMixin  # noqa: E402  (Phase 3)
+from core.cli.streaming_mixin import _StreamingMixin  # noqa: E402  (Phase 3)
+from core.cli.tui_mixin import _TuiMixin  # noqa: E402  (Phase 3)
+from core.cli.voice_mixin import _VoiceMixin  # noqa: E402  (Phase 3)
 
 
 class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _StatusBarMixin, _VoiceMixin, _CallbacksMixin, _TuiMixin, _ModelMixin, _AgentSetupMixin, _InfoCommandsMixin, _SessionOpsMixin):
@@ -602,7 +566,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
     def __init__(
         self,
         model: str = None,
-        toolsets: List[str] = None,
+        toolsets: list[str] = None,
         provider: str = None,
         api_key: str = None,
         base_url: str = None,
@@ -717,10 +681,10 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             or os.getenv("SPARK_INFERENCE_PROVIDER")
             or "auto"
         )
-        self._provider_source: Optional[str] = None
+        self._provider_source: str | None = None
         self.provider = self.requested_provider
         self.api_mode = "chat_completions"
-        self.acp_command: Optional[str] = None
+        self.acp_command: str | None = None
         self.acp_args: list[str] = []
         self.base_url = (
             base_url
@@ -823,11 +787,11 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
         self._active_agent_route_signature = None
 
         # Agent will be initialized on first use
-        self.agent: Optional[AIAgent] = None
+        self.agent: AIAgent | None = None
         self._app = None  # prompt_toolkit Application (set in run())
 
         # Conversation state
-        self.conversation_history: List[Dict[str, Any]] = []
+        self.conversation_history: list[dict[str, Any]] = []
         self.session_start = datetime.now()
         self._resumed = False
         # Initialize SQLite session store early so /title works before first message
@@ -843,7 +807,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             )
 
         # Deferred title: stored in memory until the session is created in the DB
-        self._pending_title: Optional[str] = None
+        self._pending_title: str | None = None
 
         # Session ID: reuse existing one when resuming, otherwise generate fresh
         if resume:
@@ -894,7 +858,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
         self.preloaded_skills: list[str] = []
         self._startup_skills_line_shown = False
         self._show_welcome_logo = False
-        self._welcome_logo_ansi: Optional[str] = None
+        self._welcome_logo_ansi: str | None = None
         self._welcome_logo_loaded = False
         self._welcome_splash_text = (
             "Welcome to Spark! Type your message or /help for commands."
@@ -919,7 +883,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
         self._status_bar_visible = True
 
         # Background task tracking: {task_id: threading.Thread}
-        self._background_tasks: Dict[str, threading.Thread] = {}
+        self._background_tasks: dict[str, threading.Thread] = {}
         self._background_task_counter = 0
 
     def process_command(self, command: str) -> bool:
@@ -1017,7 +981,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         _tip_color = "#B8860B"
                     cc.print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in process_command()", exc_info=True)
             else:
                 self.show_banner()
                 print("  Fresh start! Screen cleared and conversation reset.\n")
@@ -1036,7 +1000,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         _tip_color = "#B8860B"
                     self.console.print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in process_command()", exc_info=True)
         elif canonical == "history":
             self.show_history()
         elif canonical == "title":
@@ -1379,7 +1343,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
 
         return True
 
-    def chat(self, message, images: list = None) -> Optional[str]:
+    def chat(self, message, images: list = None) -> str | None:
         """
         Send a message to the agent and get a response.
 
@@ -1502,11 +1466,15 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             if self._voice_tts:
                 try:
                     from tools.tts_tool import (
-                        _load_tts_config as _load_tts_cfg,
                         _get_provider as _get_prov,
+                    )
+                    from tools.tts_tool import (
                         _import_elevenlabs,
                         _import_sounddevice,
                         stream_tts_to_speaker,
+                    )
+                    from tools.tts_tool import (
+                        _load_tts_config as _load_tts_cfg,
                     )
 
                     _tts_cfg = _load_tts_cfg()
@@ -1516,9 +1484,9 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         _import_sounddevice()
                         use_streaming_tts = True
                 except (ImportError, OSError):
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
 
             if use_streaming_tts:
                 text_queue = queue.Queue()
@@ -1635,7 +1603,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                                             f"  child[{_ci}]._interrupt={_ch._interrupt_requested}\n"
                                         )
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in chat()", exc_info=True)
                             break
                     except queue.Empty:
                         # Force prompt_toolkit to flush any pending stdout
@@ -1659,7 +1627,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
 
                 cleanup_stale_async_clients()
             except Exception:
-                pass
+                logger.debug("Ignoring error in chat()", exc_info=True)
 
             # Flush any remaining streamed text and close the box
             self._flush_stream()
@@ -1707,7 +1675,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         self.conversation_history,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
 
             # Handle failed or partial results (e.g., non-retryable errors, rate limits,
             # truncated output, invalid tool calls). Both "failed" and "partial" with
@@ -1880,7 +1848,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 try:
                     text_queue.put_nowait(None)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
             if stop_event is not None:
                 stop_event.set()
             if tts_thread is not None and tts_thread.is_alive():
@@ -1917,7 +1885,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 try:
                     session_title = self._session_db.get_session_title(self.session_id)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _print_exit_summary()", exc_info=True)
 
             print("Resume this session with:")
             print(f"  spark --resume {self.session_id}")
@@ -1954,7 +1922,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 if _term_lines > 2:
                     print("\n" * (_term_lines - 1), end="", flush=True)
             except Exception:
-                pass
+                logger.debug("Ignoring error in run()", exc_info=True)
 
         # In centered splash mode we suppress the legacy scrollback banner,
         # otherwise it creates a large visual gap above the splash block.
@@ -2242,7 +2210,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                                     f"agent_running={self._agent_running}\n"
                                 )
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in handle_enter()", exc_info=True)
                 else:
                     self._pending_input.put(payload)
                 event.app.current_buffer.reset(append_to_history=True)
@@ -2489,7 +2457,6 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             the partial response is kept and the user drops back to the prompt
             where typing + Enter redirects the agent.
             """
-            import time as _time
 
             if self._agent_running and self.agent:
                 # Don't prime the double-Ctrl+C force-exit window.
@@ -2515,8 +2482,11 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 _cprint(f"\n{_DIM}Suspend (Ctrl+Z) is not supported on Windows.{_RST}")
                 event.app.invalidate()
                 return
-            import os, signal as _sig
+            import os
+            import signal as _sig
+
             from prompt_toolkit.application import run_in_terminal
+
             from spark_cli.skin_engine import get_active_skin
 
             agent_name = get_active_skin().get_branding("agent_name", "Spark Agent")
@@ -2585,7 +2555,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         stop_playback()
                         cli_ref._voice_tts_done.set()
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in handle_voice_record()", exc_info=True)
 
                 with cli_ref._voice_lock:
                     cli_ref._voice_continuous = True
@@ -3562,7 +3532,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                                         if _synth:
                                             self._pending_input.put(_synth)
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in process_loop()", exc_info=True)
                         continue
 
                     if not user_input:
@@ -3809,10 +3779,10 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                     _loop = _aio.get_event_loop()
                     _loop.set_exception_handler(_suppress_closed_loop_errors)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
                 app.run()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
-            pass
+            logger.debug("Ignoring error in run()", exc_info=True)
         except (KeyError, OSError) as _stdin_err:
             # Catch selector registration failures from broken stdin (#6393).
             # This is the fallback for cases that slip past the fstat() guard.
@@ -3836,19 +3806,19 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 try:
                     self.agent.interrupt()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
             # Flush memories before exit (only for substantial conversations)
             if self.agent and self.conversation_history:
                 try:
                     self.agent.flush_memories(self.conversation_history)
                 except (Exception, KeyboardInterrupt):
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
             # Shut down voice recorder (release persistent audio stream)
             if hasattr(self, "_voice_recorder") and self._voice_recorder:
                 try:
                     self._voice_recorder.shutdown()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
                 self._voice_recorder = None
             # Clean up old temp voice recordings
             try:
@@ -3856,7 +3826,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
 
                 cleanup_temp_recordings()
             except Exception:
-                pass
+                logger.debug("Ignoring error in run()", exc_info=True)
             # Unregister callbacks to avoid dangling references
             set_sudo_password_callback(None)
             set_approval_callback(None)
@@ -3884,7 +3854,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         platform=getattr(self.agent, "platform", None) or "cli",
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
             _run_cleanup()
             self._print_exit_summary()
 
@@ -3958,6 +3928,7 @@ def main(
     # Handle gateway mode (messaging + cron)
     if gateway:
         import asyncio
+
         from gateway.run import start_gateway
 
         print("Starting Spark Gateway (messaging platforms)...")

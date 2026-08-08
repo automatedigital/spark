@@ -30,8 +30,9 @@ from __future__ import annotations
 
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from typing import Any
 
 _PREFETCH_TIMEOUT_S = 2.0  # max seconds to wait for any single provider
 
@@ -83,8 +84,8 @@ class MemoryManager:
     """
 
     def __init__(self) -> None:
-        self._providers: List[MemoryProvider] = []
-        self._tool_to_provider: Dict[str, MemoryProvider] = {}
+        self._providers: list[MemoryProvider] = []
+        self._tool_to_provider: dict[str, MemoryProvider] = {}
         self._has_external: bool = False  # True once a non-builtin provider is added
 
     # -- Registration --------------------------------------------------------
@@ -136,11 +137,11 @@ class MemoryManager:
         )
 
     @property
-    def providers(self) -> List[MemoryProvider]:
+    def providers(self) -> list[MemoryProvider]:
         """All registered providers in order."""
         return list(self._providers)
 
-    def get_provider(self, name: str) -> Optional[MemoryProvider]:
+    def get_provider(self, name: str) -> MemoryProvider | None:
         """Get a provider by name, or None if not registered."""
         for p in self._providers:
             if p.name == name:
@@ -238,7 +239,7 @@ class MemoryManager:
 
     # -- Tools ---------------------------------------------------------------
 
-    def get_all_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_all_tool_schemas(self) -> list[dict[str, Any]]:
         """Collect tool schemas from all providers."""
         schemas = []
         seen = set()
@@ -265,7 +266,7 @@ class MemoryManager:
         return tool_name in self._tool_to_provider
 
     def handle_tool_call(
-        self, tool_name: str, args: Dict[str, Any], **kwargs
+        self, tool_name: str, args: dict[str, Any], **kwargs
     ) -> str:
         """Route a tool call to the correct provider.
 
@@ -300,7 +301,7 @@ class MemoryManager:
                     provider.name, e,
                 )
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         """Notify all providers of session end."""
         for provider in self._providers:
             try:
@@ -311,7 +312,7 @@ class MemoryManager:
                     provider.name, e,
                 )
 
-    def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
+    def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         """Notify all providers before context compression.
 
         Returns combined text from providers to include in the compression

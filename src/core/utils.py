@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import yaml
 
@@ -32,7 +32,7 @@ def env_var_enabled(name: str, default: str = "") -> bool:
 
 
 def atomic_json_write(
-    path: Union[str, Path],
+    path: str | Path,
     data: Any,
     *,
     indent: int = 2,
@@ -77,12 +77,12 @@ def atomic_json_write(
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in atomic_json_write()", exc_info=True)
         raise
 
 
 def atomic_yaml_write(
-    path: Union[str, Path],
+    path: str | Path,
     data: Any,
     *,
     default_flow_style: bool = False,
@@ -125,7 +125,7 @@ def atomic_yaml_write(
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in atomic_yaml_write()", exc_info=True)
         raise
 
 

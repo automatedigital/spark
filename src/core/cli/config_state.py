@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _spark_home = get_spark_home()
 
 
-def load_cli_config() -> Dict[str, Any]:
+def load_cli_config() -> dict[str, Any]:
     """
     Load CLI configuration from config files.
 
@@ -419,7 +419,7 @@ def save_config_value(key_path: str, value: any) -> bool:
         try:
             os.chmod(config_path, 0o600)
         except (OSError, NotImplementedError):
-            pass
+            logger.debug("Ignoring error in save_config_value()", exc_info=True)
 
         return True
     except Exception as e:

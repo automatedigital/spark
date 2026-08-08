@@ -187,7 +187,7 @@ class _PromptCacheMixin:
             if _goal_block:
                 add("goal", _goal_block, StabilityScope.SESSION, "session:goal")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _build_system_prompt()", exc_info=True)
 
         # External memory provider system prompt block (additive to built-in)
         if self._memory_manager:
@@ -196,7 +196,7 @@ class _PromptCacheMixin:
                 if _ext_mem_block:
                     add("memory-provider", _ext_mem_block, StabilityScope.PROFILE, "profile:memory-provider")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _build_system_prompt()", exc_info=True)
 
         has_skills_tools = any(name in self.valid_tool_names for name in ['skills_list', 'skill_view', 'skill_manage', 'skills'])
         if has_skills_tools:

@@ -20,6 +20,7 @@ Usage::
 """
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,7 +29,9 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import List, Optional
+from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 _PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
@@ -185,7 +188,7 @@ def profile_exists(name: str) -> bool:
 # Alias / wrapper script management
 # ---------------------------------------------------------------------------
 
-def check_alias_collision(name: str) -> Optional[str]:
+def check_alias_collision(name: str) -> str | None:
     """Return a human-readable collision message, or None if the name is safe.
 
     Checks: reserved names, spark subcommands, existing binaries in PATH.
@@ -210,10 +213,10 @@ def check_alias_collision(name: str) -> Optional[str]:
                     if "spark -p" in content:
                         return None  # it's our wrapper, safe to overwrite
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in check_alias_collision()", exc_info=True)
             return f"'{name}' conflicts with an existing command ({existing_path})"
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+        logger.debug("Ignoring error in check_alias_collision()", exc_info=True)
 
     return None  # safe
 
@@ -224,7 +227,7 @@ def _is_wrapper_dir_in_path() -> bool:
     return wrapper_dir in os.environ.get("PATH", "").split(os.pathsep)
 
 
-def create_wrapper_script(name: str) -> Optional[Path]:
+def create_wrapper_script(name: str) -> Path | None:
     """Create a shell wrapper script at ~/.local/bin/<name>.
 
     Returns the path to the created wrapper, or None if creation failed.
@@ -257,7 +260,7 @@ def remove_wrapper_script(name: str) -> bool:
                 wrapper_path.unlink()
                 return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in remove_wrapper_script()", exc_info=True)
     return False
 
 
@@ -272,11 +275,11 @@ class ProfileInfo:
     path: Path
     is_default: bool
     gateway_running: bool
-    model: Optional[str] = None
-    provider: Optional[str] = None
+    model: str | None = None
+    provider: str | None = None
     has_env: bool = False
     skill_count: int = 0
-    alias_path: Optional[Path] = None
+    alias_path: Path | None = None
 
 
 def _read_config_model(profile_dir: Path) -> tuple:
@@ -332,7 +335,7 @@ def _count_skills(profile_dir: Path) -> int:
 # CRUD operations
 # ---------------------------------------------------------------------------
 
-def list_profiles() -> List[ProfileInfo]:
+def list_profiles() -> list[ProfileInfo]:
     """Return info for all profiles, including the default."""
     profiles = []
     wrapper_dir = _get_wrapper_dir()
@@ -380,7 +383,7 @@ def list_profiles() -> List[ProfileInfo]:
 
 def create_profile(
     name: str,
-    clone_from: Optional[str] = None,
+    clone_from: str | None = None,
     clone_all: bool = False,
     clone_config: bool = False,
     no_alias: bool = False,
@@ -472,7 +475,7 @@ def create_profile(
     return profile_dir
 
 
-def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict]:
+def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> dict | None:
     """Seed bundled skills into a profile via subprocess.
 
     Uses subprocess because sync_skills() caches SPARK_HOME at module level.
@@ -489,7 +492,7 @@ def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict
             capture_output=True, text=True, timeout=60,
         )
         if result.returncode == 0 and result.stdout.strip():
-            return json.loads(result.stdout.strip())
+            return cast("dict[Any, Any] | None", json.loads(result.stdout.strip()))
         if not quiet:
             print(f"⚠ Skill seeding returned exit code {result.returncode}")
             if result.stderr.strip():
@@ -591,7 +594,7 @@ def delete_profile(name: str, yes: bool = False) -> Path:
             set_active_profile("default")
             print("✓ Active profile reset to default")
     except Exception:
-        pass
+        logger.debug("Ignoring error in delete_profile()", exc_info=True)
 
     print(f"\nProfile '{name}' deleted.")
     return profile_dir
@@ -606,7 +609,7 @@ def _cleanup_gateway_service(name: str, profile_dir: Path) -> None:
     old_home = os.environ.get("SPARK_HOME")
     try:
         os.environ["SPARK_HOME"] = str(profile_dir)
-        from spark_cli.gateway import get_service_name, get_launchd_plist_path
+        from spark_cli.gateway import get_launchd_plist_path, get_service_name
 
         if _platform.system() == "Linux":
             svc_name = get_service_name()
@@ -671,7 +674,7 @@ def _stop_gateway_process(profile_dir: Path) -> None:
         try:
             os.kill(pid, _signal.SIGKILL)
         except ProcessLookupError:
-            pass
+            logger.debug("Ignoring error in _stop_gateway_process()", exc_info=True)
         print(f"✓ Gateway force-stopped (PID {pid})")
     except (ProcessLookupError, PermissionError):
         print("✓ Gateway already stopped")
@@ -744,7 +747,7 @@ def get_active_profile_name() -> str:
         if len(parts) == 1 and _PROFILE_ID_RE.match(parts[0]):
             return parts[0]
     except ValueError:
-        pass
+        logger.debug("Ignoring error in get_active_profile_name()", exc_info=True)
 
     return "custom"
 
@@ -820,7 +823,7 @@ def export_profile(name: str, output_path: str) -> Path:
         return Path(result)
 
 
-def _normalize_profile_archive_parts(member_name: str) -> List[str]:
+def _normalize_profile_archive_parts(member_name: str) -> list[str]:
     """Return safe path parts for a profile archive member."""
     normalized_name = member_name.replace("\\", "/")
     posix_path = PurePosixPath(normalized_name)
@@ -869,10 +872,10 @@ def _safe_extract_profile_archive(archive: Path, destination: Path) -> None:
             try:
                 os.chmod(target, member.mode & 0o777)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _safe_extract_profile_archive()", exc_info=True)
 
 
-def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
+def import_profile(archive_path: str, name: str | None = None) -> Path:
     """Import a profile from a tar.gz archive.
 
     If *name* is not given, infers it from the archive's top-level directory.
@@ -982,7 +985,7 @@ def rename_profile(old_name: str, new_name: str) -> Path:
             set_active_profile(new_name)
             print(f"✓ Active profile updated: {new_name}")
     except Exception:
-        pass
+        logger.debug("Ignoring error in rename_profile()", exc_info=True)
 
     return new_dir
 

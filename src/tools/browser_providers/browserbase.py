@@ -3,7 +3,7 @@
 import logging
 import os
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 
@@ -30,7 +30,7 @@ class BrowserbaseProvider(CloudBrowserProvider):
     # Session lifecycle
     # ------------------------------------------------------------------
 
-    def _get_config_or_none(self) -> Optional[Dict[str, Any]]:
+    def _get_config_or_none(self) -> dict[str, Any] | None:
         api_key = os.environ.get("BROWSERBASE_API_KEY")
         project_id = os.environ.get("BROWSERBASE_PROJECT_ID")
         if api_key and project_id:
@@ -41,7 +41,7 @@ class BrowserbaseProvider(CloudBrowserProvider):
             }
         return None
 
-    def _get_config(self) -> Dict[str, Any]:
+    def _get_config(self) -> dict[str, Any]:
         config = self._get_config_or_none()
         if config is None:
             raise ValueError(
@@ -50,7 +50,7 @@ class BrowserbaseProvider(CloudBrowserProvider):
             )
         return config
 
-    def create_session(self, task_id: str) -> Dict[str, object]:
+    def create_session(self, task_id: str) -> dict[str, object]:
         config = self._get_config()
 
         # Optional env-var knobs
@@ -67,7 +67,7 @@ class BrowserbaseProvider(CloudBrowserProvider):
             "custom_timeout": False,
         }
 
-        session_config: Dict[str, object] = {"projectId": config["project_id"]}
+        session_config: dict[str, object] = {"projectId": config["project_id"]}
 
         if enable_keep_alive:
             session_config["keepAlive"] = True

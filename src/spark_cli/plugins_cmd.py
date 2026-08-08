@@ -62,10 +62,10 @@ def _sanitize_plugin_name(name: str, plugins_dir: Path) -> Path:
 
     try:
         target.relative_to(plugins_resolved)
-    except ValueError:
+    except ValueError as err:
         raise ValueError(
             f"Invalid plugin name '{name}': resolves outside the plugins directory."
-        )
+        ) from err
 
     return target
 
@@ -172,8 +172,8 @@ def _prompt_plugin_env_vars(manifest: dict, console) -> None:
     if not requires_env:
         return
 
-    from spark_cli.config import get_env_value, save_env_value  # noqa: F811
     from core.spark_constants import display_spark_home
+    from spark_cli.config import get_env_value, save_env_value  # noqa: F811
 
     # Normalise to list-of-dicts
     env_specs: list[dict] = []
@@ -284,6 +284,7 @@ def _require_installed_plugin(name: str, plugins_dir: Path, console) -> Path:
 def cmd_install(identifier: str, force: bool = False) -> None:
     """Install a plugin from a Git URL or owner/repo shorthand."""
     import tempfile
+
     from rich.console import Console
 
     console = Console()
@@ -577,7 +578,7 @@ def cmd_list() -> None:
                 version = manifest.get("version", "")
                 description = manifest.get("description", "")
             except Exception:
-                pass
+                logger.debug("Ignoring error in cmd_list()", exc_info=True)
 
         # Check if it's a git repo (installed via spark plugins install)
         if (d / ".git").exists():
@@ -770,7 +771,7 @@ def cmd_toggle() -> None:
                 name = manifest.get("name", d.name)
                 description = manifest.get("description", "")
             except Exception:
-                pass
+                logger.debug("Ignoring error in cmd_toggle()", exc_info=True)
 
         plugin_names.append(name)
         label = f"{name} \u2014 {description}" if description else name
@@ -852,7 +853,7 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
                     max_x - 1, curses.A_DIM,
                 )
             except curses.error:
-                pass
+                logger.debug("Ignoring error in _draw()", exc_info=True)
 
             # Build display rows
             # Row layout:
@@ -874,7 +875,6 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
             # We need to map logical cursor positions to screen rows
             # accounting for non-navigable separator/headers
 
-            draw_row = 0  # tracks navigable item index
 
             # --- General Plugins section ---
             if n_plugins > 0:
@@ -886,7 +886,7 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
                             sattr |= curses.color_pair(2)
                         stdscr.addnstr(y, 0, "  General Plugins", max_x - 1, sattr)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _draw()", exc_info=True)
                     y += 1
 
                 for i in range(n_plugins):
@@ -903,7 +903,7 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
                     try:
                         stdscr.addnstr(y, 0, line, max_x - 1, attr)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _draw()", exc_info=True)
                     y += 1
 
             # --- Separator ---
@@ -918,7 +918,7 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
                         sattr |= curses.color_pair(2)
                     stdscr.addnstr(y, 0, "  Provider Plugins", max_x - 1, sattr)
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _draw()", exc_info=True)
                 y += 1
 
                 for ci, (cat_name, cat_current, _cat_fn) in enumerate(categories):
@@ -935,7 +935,7 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
                     try:
                         stdscr.addnstr(y, 0, line, max_x - 1, attr)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _draw()", exc_info=True)
                     y += 1
 
             stdscr.refresh()
@@ -1088,7 +1088,7 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
     # Provider categories
     if categories:
         print(color("\n  Provider Plugins", Colors.YELLOW))
-        for ci, (cat_name, cat_current, cat_fn) in enumerate(categories):
+        for ci, (cat_name, cat_current, _cat_fn) in enumerate(categories):
             print(f"  {ci + 1}. {cat_name} [{cat_current}]")
         print()
         try:
@@ -1098,7 +1098,7 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
                 if 0 <= ci < len(categories):
                     categories[ci][2]()  # call the configure function
         except (ValueError, KeyboardInterrupt, EOFError):
-            pass
+            logger.debug("Ignoring error in _run_composite_fallback()", exc_info=True)
 
     print()
 

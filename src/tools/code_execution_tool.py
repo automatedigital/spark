@@ -1114,7 +1114,7 @@ def execute_code(
                         oldest = tail_buf.popleft()
                         tail_collected -= len(oldest)
             except (ValueError, OSError):
-                pass
+                logger.debug("Ignoring error in _drain_head_tail()", exc_info=True)
             # Transfer final tail to output list
             tail_chunks.extend(tail_buf)
 

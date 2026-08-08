@@ -293,7 +293,7 @@ def is_local_endpoint(base_url: str) -> bool:
         addr = ipaddress.ip_address(host)
         return addr.is_private or addr.is_loopback or addr.is_link_local
     except ValueError:
-        pass
+        logger.debug("Ignoring error in is_local_endpoint()", exc_info=True)
     # Bare IP that looks like a private range (e.g. 172.26.x.x for WSL)
     parts = host.split(".")
     if len(parts) == 4:
@@ -306,7 +306,7 @@ def is_local_endpoint(base_url: str) -> bool:
             if first == 192 and second == 168:
                 return True
         except ValueError:
-            pass
+            logger.debug("Ignoring error in is_local_endpoint()", exc_info=True)
     return False
 
 
@@ -330,7 +330,7 @@ def detect_local_server_type(base_url: str) -> str | None:
                 if r.status_code == 200:
                     return "lm-studio"
             except Exception:
-                pass
+                logger.debug("Ignoring error in detect_local_server_type()", exc_info=True)
             # Ollama exposes /api/tags and responds with {"models": [...]}
             # LM Studio returns {"error": "Unexpected endpoint"} with status 200
             # on this path, so we must verify the response contains "models".
@@ -342,9 +342,9 @@ def detect_local_server_type(base_url: str) -> str | None:
                         if "models" in data:
                             return "ollama"
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in detect_local_server_type()", exc_info=True)
             except Exception:
-                pass
+                logger.debug("Ignoring error in detect_local_server_type()", exc_info=True)
             # llama.cpp exposes /v1/props (older builds used /props without the /v1 prefix)
             try:
                 r = client.get(f"{server_url}/v1/props")
@@ -353,7 +353,7 @@ def detect_local_server_type(base_url: str) -> str | None:
                 if r.status_code == 200 and "default_generation_settings" in r.text:
                     return "llamacpp"
             except Exception:
-                pass
+                logger.debug("Ignoring error in detect_local_server_type()", exc_info=True)
             # vLLM: /version
             try:
                 r = client.get(f"{server_url}/version")
@@ -362,9 +362,9 @@ def detect_local_server_type(base_url: str) -> str | None:
                     if "version" in data:
                         return "vllm"
             except Exception:
-                pass
+                logger.debug("Ignoring error in detect_local_server_type()", exc_info=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in detect_local_server_type()", exc_info=True)
 
     return None
 
@@ -630,7 +630,7 @@ def fetch_endpoint_model_metadata(
                         if n_ctx and model_alias and model_alias in cache:
                             cache[model_alias]["context_length"] = n_ctx
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in fetch_endpoint_model_metadata()", exc_info=True)
 
             _endpoint_model_metadata_cache[normalized] = cache
             _endpoint_model_metadata_cache_time[normalized] = time.time()
@@ -832,7 +832,7 @@ def query_ollama_num_ctx(model: str, base_url: str) -> int | None:
                             try:
                                 return int(parts[-1])
                             except ValueError:
-                                pass
+                                logger.debug("Ignoring error in query_ollama_num_ctx()", exc_info=True)
 
             # Fall back to GGUF model_info context_length (training max)
             model_info = data.get("model_info", {})
@@ -840,7 +840,7 @@ def query_ollama_num_ctx(model: str, base_url: str) -> int | None:
                 if "context_length" in key and isinstance(value, (int, float)):
                     return int(value)
     except Exception:
-        pass
+        logger.debug("Ignoring error in query_ollama_num_ctx()", exc_info=True)
     return None
 
 
@@ -884,7 +884,7 @@ def _query_local_context_length(model: str, base_url: str) -> int | None:
                                     try:
                                         return int(parts[-1])
                                     except ValueError:
-                                        pass
+                                        logger.debug("Ignoring error in _query_local_context_length()", exc_info=True)
                     # Fall back to GGUF model_info context_length (training max)
                     model_info = data.get("model_info", {})
                     for key, value in model_info.items():
@@ -934,7 +934,7 @@ def _query_local_context_length(model: str, base_url: str) -> int | None:
                         if ctx and isinstance(ctx, (int, float)):
                             return int(ctx)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _query_local_context_length()", exc_info=True)
 
     return None
 

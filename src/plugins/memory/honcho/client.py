@@ -14,13 +14,13 @@ Resolution order for host-specific settings:
 from __future__ import annotations
 
 import json
-import os
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from core.spark_constants import get_spark_home
-from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from honcho import Honcho
@@ -49,7 +49,7 @@ def resolve_active_host() -> str:
         if profile and profile not in ("default", "custom"):
             return f"{HOST}.{profile}"
     except Exception:
-        pass
+        logger.debug("Ignoring error in resolve_active_host()", exc_info=True)
     return HOST
 
 
@@ -414,7 +414,7 @@ class HonchoClientConfig:
             if root.returncode == 0:
                 return Path(root.stdout.strip()).name
         except (OSError, subprocess.TimeoutExpired):
-            pass
+            logger.debug("Ignoring error in _git_repo_name()", exc_info=True)
         return None
 
     def resolve_session_name(
@@ -502,11 +502,11 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
 
     try:
         from honcho import Honcho
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
             "honcho-ai is required for Honcho integration. "
             "Install it with: pip install honcho-ai"
-        )
+        ) from err
 
     # Allow config.yaml honcho.base_url to override the SDK's environment
     # mapping, enabling remote self-hosted Honcho deployments without
@@ -520,7 +520,7 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
             if isinstance(honcho_cfg, dict):
                 resolved_base_url = honcho_cfg.get("base_url", "").strip() or None
         except Exception:
-            pass
+            logger.debug("Ignoring error in get_honcho_client()", exc_info=True)
 
     if resolved_base_url:
         logger.info("Initializing Honcho client (base_url: %s, workspace: %s)", resolved_base_url, config.workspace_id)

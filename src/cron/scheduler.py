@@ -33,8 +33,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.spark_constants import get_spark_home
-from spark_cli.config import load_config
 from core.spark_time import now as _spark_now
+from spark_cli.config import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ def _resolve_delivery_target(job: dict) -> dict | None:
                 else:
                     chat_id = resolved
         except Exception:
-            pass
+            logger.debug("Ignoring error in _resolve_delivery_target()", exc_info=True)
 
         return {
             "platform": platform_name,
@@ -207,7 +207,7 @@ def _build_delivery_content(job: dict, content: str) -> tuple[str, list]:
         user_cfg = load_config()
         wrap_response = user_cfg.get("cron", {}).get("wrap_response", True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _build_delivery_content()", exc_info=True)
 
     if wrap_response:
         task_name = job.get("name", job["id"])
@@ -324,7 +324,7 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> str | 
             job["id"], platform_name, chat_id, thread_id,
         )
 
-    from gateway.config import load_gateway_config, Platform
+    from gateway.config import Platform, load_gateway_config
 
     platform_map = {p.value: p for p in Platform}
     platform = platform_map.get(platform_name.lower())
@@ -461,7 +461,7 @@ def _run_job_script(script_path: str, timeout: int | None = None) -> tuple[bool,
             stdout = redact_sensitive_text(stdout)
             stderr = redact_sensitive_text(stderr)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _run_job_script()", exc_info=True)
 
         if result.returncode != 0:
             parts = [f"Script exited with code {result.returncode}"]
@@ -630,7 +630,7 @@ def _setup_job_environment(job: dict) -> dict:
         if isinstance(_net_cfg, dict) and _net_cfg.get("force_ipv4"):
             apply_ipv4_preference(force=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _setup_job_environment()", exc_info=True)
 
     from core.spark_constants import parse_reasoning_effort
     effort = str(_cfg.get("agent", {}).get("reasoning_effort", "")).strip()
@@ -677,9 +677,9 @@ def _setup_job_environment(job: dict) -> dict:
 
 def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session_id: str):
     """Resolve provider/model routing and construct the AIAgent for a cron job."""
-    from core.run_agent import AIAgent
-    from spark_cli.runtime_provider import resolve_runtime_provider, format_runtime_provider_error
     from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
+    from core.run_agent import AIAgent
+    from spark_cli.runtime_provider import format_runtime_provider_error, resolve_runtime_provider
 
     job_id = job["id"]
     model = env["model"]
@@ -784,7 +784,7 @@ def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict, is_cance
                     try:
                         _idle_secs = agent.get_activity_summary().get("seconds_since_activity", 0.0)
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _execute_job_with_timeout()", exc_info=True)
                 if _idle_secs >= _cron_inactivity_limit:
                     _inactivity_timeout = True
                     break
@@ -800,7 +800,7 @@ def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict, is_cance
             try:
                 _activity = agent.get_activity_summary()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _execute_job_with_timeout()", exc_info=True)
         _last_desc = _activity.get("last_activity_desc", "unknown")
         _secs_ago = _activity.get("seconds_since_activity", 0)
         _cur_tool = _activity.get("current_tool")
@@ -901,15 +901,15 @@ def run_job(job: dict, is_cancelled=None) -> tuple[bool, str, str, str | None]:
 def tick(verbose: bool = True, adapters=None, loop=None) -> int:
     """
     Check and run all due jobs.
-    
+
     Uses a file lock so only one tick runs at a time, even if the gateway's
     in-process ticker and a standalone daemon or manual tick overlap.
-    
+
     Args:
         verbose: Whether to print status messages
         adapters: Optional dict mapping Platform → live adapter (from gateway)
         loop: Optional asyncio event loop (from gateway) for live adapter sends
-    
+
     Returns:
         Number of jobs executed (0 if another tick is already running)
     """
@@ -923,7 +923,7 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         elif msvcrt:
             msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
-    except (OSError, IOError):
+    except OSError:
         logger.debug("Tick skipped — another instance holds the lock")
         if lock_fd is not None:
             lock_fd.close()
@@ -956,10 +956,15 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
                 # One-shot jobs are left alone so they can retry on restart.
                 advance_next_run(job["id"])
 
-                def job_cancelled() -> bool:
-                    current = get_job(job["id"])
+                # Bind the loop variables as defaults so the callback stays
+                # correct even if run_job retains it beyond this iteration.
+                def job_cancelled(
+                    _job_id: str = job["id"],
+                    _tracked_at_start: bool = tracked_at_start,
+                ) -> bool:
+                    current = get_job(_job_id)
                     if current is None:
-                        return tracked_at_start
+                        return _tracked_at_start
                     return not current.get("enabled", True) or current.get("state") == "paused"
 
                 success, output, final_response, error = run_job(job, is_cancelled=job_cancelled)
@@ -1000,7 +1005,7 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
                         summary = error or (final_response[:200] if final_response else "completed")
                         _ws.push_job_notification(job["id"], job.get("name", job["id"]), success, summary)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in tick()", exc_info=True)
 
             except Exception as e:
                 logger.error("Error processing job %s: %s", job['id'], e)
@@ -1013,8 +1018,8 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
         elif msvcrt:
             try:
                 msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
-            except (OSError, IOError):
-                pass
+            except OSError:
+                logger.debug("Ignoring error in tick()", exc_info=True)
         lock_fd.close()
 
 

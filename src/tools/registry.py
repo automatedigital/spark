@@ -543,7 +543,7 @@ def reload_pipeline_settings():
         from tools.normalize import reload_default_rules
         reload_default_rules()
     except Exception:
-        pass
+        logger.debug("Ignoring error in reload_pipeline_settings()", exc_info=True)
 
 
 def _argv_from_args(args: dict | None) -> list[str] | None:

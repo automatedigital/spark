@@ -24,7 +24,7 @@ class _VoiceMixin:
         """Start capturing audio from the microphone."""
         if getattr(self, "_should_exit", False):
             return
-        from tools.voice_mode import create_audio_recorder, check_voice_requirements
+        from tools.voice_mode import check_voice_requirements, create_audio_recorder
 
         reqs = check_voice_requirements()
         if not reqs["audio_available"]:
@@ -67,7 +67,7 @@ class _VoiceMixin:
 
             voice_cfg = load_config().get("voice", {})
         except Exception:
-            pass
+            logger.debug("Ignoring error in _voice_start_recording()", exc_info=True)
 
         if self._voice_recorder is None:
             self._voice_recorder = create_audio_recorder()
@@ -94,7 +94,7 @@ class _VoiceMixin:
 
             play_beep(frequency=880, count=1)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _voice_start_recording()", exc_info=True)
 
         try:
             self._voice_recorder.start(on_silence_stop=_on_silence)
@@ -148,7 +148,7 @@ class _VoiceMixin:
 
                 play_beep(frequency=660, count=2)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _voice_stop_and_transcribe()", exc_info=True)
 
             if wav_path is None:
                 _cprint(f"{_DIM}No speech detected.{_RST}")
@@ -167,7 +167,7 @@ class _VoiceMixin:
                 stt_config = load_config().get("stt", {})
                 stt_model = stt_config.get("model")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _voice_stop_and_transcribe()", exc_info=True)
 
             from tools.voice_mode import transcribe_recording
 
@@ -199,18 +199,21 @@ class _VoiceMixin:
                 if wav_path and os.path.isfile(wav_path):
                     os.unlink(wav_path)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _voice_stop_and_transcribe()", exc_info=True)
 
             # Track consecutive no-speech cycles to avoid infinite restart loops.
+            # A bare `return` here would sit inside `finally` and silently
+            # swallow any in-flight KeyboardInterrupt, so guard with a flag.
+            _give_up_on_speech = False
             if not submitted:
                 self._no_speech_count = getattr(self, "_no_speech_count", 0) + 1
                 if self._no_speech_count >= 3:
                     self._voice_continuous = False
                     self._no_speech_count = 0
+                    _give_up_on_speech = True
                     _cprint(
                         f"{_DIM}No speech detected 3 times, continuous mode stopped.{_RST}"
                     )
-                    return
             else:
                 self._no_speech_count = 0
 
@@ -218,7 +221,12 @@ class _VoiceMixin:
             # restart recording so the user can keep talking.
             # (When transcript IS submitted, process_loop handles restart
             # after chat() completes.)
-            if self._voice_continuous and not submitted and not self._voice_recording:
+            if (
+                not _give_up_on_speech
+                and self._voice_continuous
+                and not submitted
+                and not self._voice_recording
+            ):
 
                 def _restart_recording():
                     try:
@@ -236,9 +244,10 @@ class _VoiceMixin:
             return
         self._voice_tts_done.clear()
         try:
+            import re
+
             from tools.tts_tool import text_to_speech_tool
             from tools.voice_mode import play_audio_file
-            import re
 
             # Strip markdown and non-speech content for cleaner TTS
             tts_text = text[:4000] if len(text) > 4000 else text
@@ -283,7 +292,7 @@ class _VoiceMixin:
                     if os.path.isfile(ogg_path):
                         os.unlink(ogg_path)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _voice_speak_response()", exc_info=True)
         except Exception as e:
             logger.warning("Voice TTS playback failed: %s", e)
             _cprint(f"{_DIM}TTS playback failed: {e}{_RST}")
@@ -362,7 +371,7 @@ class _VoiceMixin:
                 with self._voice_lock:
                     self._voice_tts = True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _enable_voice_mode()", exc_info=True)
 
         # Voice mode instruction is injected as a user message prefix (not a
         # system prompt change) to avoid invalidating the prompt cache.  See
@@ -401,7 +410,7 @@ class _VoiceMixin:
                 try:
                     rec.shutdown()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _bg_shutdown()", exc_info=True)
 
             threading.Thread(target=_bg_shutdown, daemon=True).start()
             self._voice_recorder = None
@@ -412,7 +421,7 @@ class _VoiceMixin:
 
             stop_playback()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _disable_voice_mode()", exc_info=True)
         self._voice_tts_done.set()
 
         _cprint(f"\n{_DIM}Voice mode disabled.{_RST}")

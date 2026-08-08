@@ -136,7 +136,7 @@ def _can_open_browser() -> bool:
         if os.uname().sysname == "Darwin":
             return True
     except AttributeError:
-        pass
+        logger.debug("Ignoring error in _can_open_browser()", exc_info=True)
     # Linux/other posix: need DISPLAY or WAYLAND_DISPLAY
     if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
         return True
@@ -329,13 +329,13 @@ async def _wait_for_callback() -> tuple[str, str | None]:
     # Start a temporary server on the known port
     try:
         server = HTTPServer(("127.0.0.1", _oauth_port), handler_cls)
-    except OSError:
+    except OSError as err:
         # Port already in use — the server from build_oauth_auth is running.
         # Fall back to polling the server started by build_oauth_auth.
         raise OAuthNonInteractiveError(
             "OAuth callback timed out — could not bind callback port. "
             "Complete the authorization in a browser first, then retry."
-        )
+        ) from err
 
     server_thread = threading.Thread(target=server.handle_request, daemon=True)
     server_thread.start()

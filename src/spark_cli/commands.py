@@ -10,6 +10,7 @@ To add an alias: set ``aliases=("short",)`` on the existing ``CommandDef``.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,8 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # prompt_toolkit is an optional CLI dependency — only needed for
 # SlashCommandCompleter and SlashCommandAutoSuggest.  Gateway and test
@@ -463,7 +466,7 @@ def _collect_gateway_skill_entries(
     max_slots: int,
     reserved_names: set[str],
     desc_limit: int = 100,
-    sanitize_name: "Callable[[str], str] | None" = None,
+    sanitize_name: Callable[[str], str] | None = None,
 ) -> tuple[list[tuple[str, str, str]], int]:
     """Collect plugin + skill entries for a gateway platform.
 
@@ -510,7 +513,7 @@ def _collect_gateway_skill_entries(
                 desc = desc[:desc_limit - 3] + "..."
             plugin_pairs.append((name, desc))
     except Exception:
-        pass
+        logger.debug("Ignoring error in _collect_gateway_skill_entries()", exc_info=True)
 
     plugin_pairs = _clamp_command_names(plugin_pairs, reserved_names)
     reserved_names.update(n for n, _ in plugin_pairs)
@@ -524,7 +527,7 @@ def _collect_gateway_skill_entries(
         from agent.skill_utils import get_disabled_skill_names
         _platform_disabled = get_disabled_skill_names(platform=platform)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _collect_gateway_skill_entries()", exc_info=True)
 
     skill_triples: list[tuple[str, str, str]] = []
     try:
@@ -552,7 +555,7 @@ def _collect_gateway_skill_entries(
                 desc = desc[:desc_limit - 3] + "..."
             skill_triples.append((name, desc, cmd_key))
     except Exception:
-        pass
+        logger.debug("Ignoring error in _collect_gateway_skill_entries()", exc_info=True)
 
     # Clamp names; _clamp_command_names works on (name, desc) pairs so we
     # need to zip/unzip.
@@ -795,8 +798,9 @@ class SlashCommandCompleter(Completer):
             return None
         return word
 
-    @staticmethod
-    def _context_completions(word: str, limit: int = 30):
+    # Not a staticmethod: the bare-@ branch delegates to the instance method
+    # _fuzzy_file_completions.
+    def _context_completions(self, word: str, limit: int = 30):
         """Yield Claude Code-style @ context completions.
 
         Bare ``@`` or ``@partial`` shows static references and matching
@@ -883,6 +887,9 @@ class SlashCommandCompleter(Completer):
             ["rg", "--files", "--sortr=modified", cwd],
             ["rg", "--files", cwd],
             ["fd", "--type", "f", "--base-directory", cwd],
+            # find is the last resort so that @-completion still works on a
+            # machine with neither rg nor fd installed.
+            ["find", ".", "-type", "f", "-not", "-path", "*/.git/*"],
         ]:
             tool = cmd[0]
             if not shutil.which(tool):
@@ -1001,7 +1008,9 @@ class SlashCommandCompleter(Completer):
         # Config-based direct aliases (preferred — include provider info)
         try:
             from spark_cli.model_switch import (
-                _ensure_direct_aliases, DIRECT_ALIASES, MODEL_ALIASES,
+                DIRECT_ALIASES,
+                MODEL_ALIASES,
+                _ensure_direct_aliases,
             )
             _ensure_direct_aliases()
             for name, da in DIRECT_ALIASES.items():
@@ -1026,7 +1035,7 @@ class SlashCommandCompleter(Completer):
                         display_meta=f"{identity.vendor}/{identity.family}",
                     )
         except Exception:
-            pass
+            logger.debug("Ignoring error in _model_completions()", exc_info=True)
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor

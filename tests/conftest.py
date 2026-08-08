@@ -42,7 +42,7 @@ def _isolate_spark_home(tmp_path, monkeypatch):
     monkeypatch.delenv("SPARK_SESSION_CHAT_NAME", raising=False)
     monkeypatch.delenv("SPARK_SESSION_CHAT_TYPE", raising=False)
     monkeypatch.delenv("SPARK_GATEWAY_SESSION", raising=False)
-    # Avoid making real calls during tests if this key is set in the env files
+    # Avoid making real calls during tests if this key is set in the env files.
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     # Prevent API server env vars from leaking between tests
     monkeypatch.delenv("API_SERVER_KEY", raising=False)

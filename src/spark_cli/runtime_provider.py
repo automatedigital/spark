@@ -5,39 +5,39 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from spark_cli import auth as auth_mod
 from agent.credential_pool import (
     CredentialPool,
     PooledCredential,
     get_custom_provider_pool_key,
     load_pool,
 )
+from core.spark_constants import OPENROUTER_BASE_URL
+from spark_cli import auth as auth_mod
 from spark_cli.auth import (
-    AuthError,
     DEFAULT_CODEX_BASE_URL,
     DEFAULT_QWEN_BASE_URL,
     PROVIDER_REGISTRY,
+    AuthError,
     format_auth_error,
-    resolve_provider,
-    resolve_codex_runtime_credentials,
-    resolve_qwen_runtime_credentials,
-    resolve_api_key_provider_credentials,
-    resolve_external_process_provider_credentials,
     has_usable_secret,
+    resolve_api_key_provider_credentials,
+    resolve_codex_runtime_credentials,
+    resolve_external_process_provider_credentials,
+    resolve_provider,
+    resolve_qwen_runtime_credentials,
 )
 from spark_cli.config import get_compatible_custom_providers, load_config
-from core.spark_constants import OPENROUTER_BASE_URL
 
 
 def _normalize_custom_provider_name(value: str) -> str:
     return value.strip().lower().replace(" ", "-")
 
 
-def _detect_api_mode_for_url(base_url: str) -> Optional[str]:
+def _detect_api_mode_for_url(base_url: str) -> str | None:
     """Auto-detect api_mode from the resolved base URL.
 
     Direct api.openai.com endpoints need the Responses API for GPT-5.x
@@ -67,11 +67,11 @@ def _auto_detect_local_model(base_url: str) -> str:
                 if model_id:
                     return model_id
     except Exception:
-        pass
+        logger.debug("Ignoring error in _auto_detect_local_model()", exc_info=True)
     return ""
 
 
-def _get_model_config() -> Dict[str, Any]:
+def _get_model_config() -> dict[str, Any]:
     config = load_config()
     model_cfg = config.get("model")
     if isinstance(model_cfg, dict):
@@ -94,7 +94,7 @@ def _get_model_config() -> Dict[str, Any]:
 
 
 def _provider_supports_explicit_api_mode(
-    provider: Optional[str], configured_provider: Optional[str] = None
+    provider: str | None, configured_provider: str | None = None
 ) -> bool:
     """Check whether a persisted api_mode should be honored for a given provider.
 
@@ -114,7 +114,7 @@ def _provider_supports_explicit_api_mode(
     return normalized_configured == normalized_provider
 
 
-def _copilot_runtime_api_mode(model_cfg: Dict[str, Any], api_key: str) -> str:
+def _copilot_runtime_api_mode(model_cfg: dict[str, Any], api_key: str) -> str:
     configured_provider = str(model_cfg.get("provider") or "").strip().lower()
     configured_mode = _parse_api_mode(model_cfg.get("api_mode"))
     if configured_mode and _provider_supports_explicit_api_mode(
@@ -137,7 +137,7 @@ def _copilot_runtime_api_mode(model_cfg: Dict[str, Any], api_key: str) -> str:
 _VALID_API_MODES = {"chat_completions", "codex_responses", "anthropic_messages"}
 
 
-def _parse_api_mode(raw: Any) -> Optional[str]:
+def _parse_api_mode(raw: Any) -> str | None:
     """Validate an api_mode value from config. Returns None if invalid."""
     if isinstance(raw, str):
         normalized = raw.strip().lower()
@@ -155,9 +155,9 @@ def _resolve_runtime_from_pool_entry(
     provider: str,
     entry: PooledCredential,
     requested_provider: str,
-    model_cfg: Optional[Dict[str, Any]] = None,
-    pool: Optional[CredentialPool] = None,
-) -> Dict[str, Any]:
+    model_cfg: dict[str, Any] | None = None,
+    pool: CredentialPool | None = None,
+) -> dict[str, Any]:
     model_cfg = model_cfg or _get_model_config()
     base_url = (
         getattr(entry, "runtime_base_url", None)
@@ -231,7 +231,7 @@ def _resolve_runtime_from_pool_entry(
     }
 
 
-def resolve_requested_provider(requested: Optional[str] = None) -> str:
+def resolve_requested_provider(requested: str | None = None) -> str:
     """Resolve provider request from explicit arg, config, then env."""
 
     def _normalize_deprecated_provider(value: str) -> str:
@@ -257,8 +257,8 @@ def resolve_requested_provider(requested: Optional[str] = None) -> str:
 def _try_resolve_from_custom_pool(
     base_url: str,
     provider_label: str,
-    api_mode_override: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    api_mode_override: str | None = None,
+) -> dict[str, Any] | None:
     """Check if a credential pool exists for a custom endpoint and return a runtime dict if so."""
     pool_key = get_custom_provider_pool_key(base_url)
     if not pool_key:
@@ -289,7 +289,7 @@ def _try_resolve_from_custom_pool(
         return None
 
 
-def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, Any]]:
+def _get_named_custom_provider(requested_provider: str) -> dict[str, Any] | None:
     requested_norm = _normalize_custom_provider_name(requested_provider or "")
     if not requested_norm or requested_norm == "custom":
         return None
@@ -303,7 +303,7 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
         try:
             auth_mod.resolve_provider(requested_norm)
         except AuthError:
-            pass
+            logger.debug("Ignoring error in _get_named_custom_provider()", exc_info=True)
         else:
             return None
 
@@ -432,9 +432,9 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
 def _resolve_named_custom_runtime(
     *,
     requested_provider: str,
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> dict[str, Any] | None:
     custom_provider = _get_named_custom_provider(requested_provider)
     if not custom_provider:
         return None
@@ -488,9 +488,9 @@ def _resolve_named_custom_runtime(
 def _resolve_openrouter_runtime(
     *,
     requested_provider: str,
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Dict[str, Any]:
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> dict[str, Any]:
     model_cfg = _get_model_config()
     cfg_base_url = (
         model_cfg.get("base_url") if isinstance(model_cfg.get("base_url"), str) else ""
@@ -596,10 +596,10 @@ def _resolve_explicit_runtime(
     *,
     provider: str,
     requested_provider: str,
-    model_cfg: Dict[str, Any],
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    model_cfg: dict[str, Any],
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> dict[str, Any] | None:
     explicit_api_key = str(explicit_api_key or "").strip()
     explicit_base_url = str(explicit_base_url or "").strip().rstrip("/")
     if not explicit_api_key and not explicit_base_url:
@@ -695,10 +695,10 @@ def _resolve_explicit_runtime(
 
 def resolve_runtime_provider(
     *,
-    requested: Optional[str] = None,
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
-) -> Dict[str, Any]:
+    requested: str | None = None,
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
+) -> dict[str, Any]:
     """Resolve runtime provider credentials for agent execution."""
     requested_provider = resolve_requested_provider(requested)
 

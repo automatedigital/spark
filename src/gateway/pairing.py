@@ -19,16 +19,17 @@ Storage: ~/.spark/pairing/
 """
 
 import json
+import logging
 import os
 import secrets
 import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_dir
 
+logger = logging.getLogger(__name__)
 
 # Unambiguous alphabet -- excludes 0/O, 1/I to prevent confusion
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -68,7 +69,7 @@ def _secure_write(path: Path, data: str) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in _secure_write()", exc_info=True)
         raise
 
 
@@ -149,7 +150,7 @@ class PairingStore:
 
     def generate_code(
         self, platform: str, user_id: str, user_name: str = ""
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Generate a pairing code for a new user.
 
@@ -190,7 +191,7 @@ class PairingStore:
 
             return code
 
-    def approve_code(self, platform: str, code: str) -> Optional[dict]:
+    def approve_code(self, platform: str, code: str) -> dict | None:
         """
         Approve a pairing code. Adds the user to the approved list.
 

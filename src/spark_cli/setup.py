@@ -18,7 +18,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from core.spark_constants import get_optional_skills_dir
 
@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 _DOCS_BASE = "https://spark.automatedigital.ai/docs"
 
 
-def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
+def _model_config_dict(config: dict[str, Any]) -> dict[str, Any]:
     current_model = config.get("model")
     if isinstance(current_model, dict):
         return dict(current_model)
@@ -38,12 +38,12 @@ def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def _get_credential_pool_strategies(config: Dict[str, Any]) -> Dict[str, str]:
+def _get_credential_pool_strategies(config: dict[str, Any]) -> dict[str, str]:
     strategies = config.get("credential_pool_strategies")
     return dict(strategies) if isinstance(strategies, dict) else {}
 
 
-def _set_credential_pool_strategy(config: Dict[str, Any], provider: str, strategy: str) -> None:
+def _set_credential_pool_strategy(config: dict[str, Any], provider: str, strategy: str) -> None:
     if not provider:
         return
     strategies = _get_credential_pool_strategies(config)
@@ -109,14 +109,14 @@ _DEFAULT_PROVIDER_MODELS = {
 }
 
 
-def _current_reasoning_effort(config: Dict[str, Any]) -> str:
+def _current_reasoning_effort(config: dict[str, Any]) -> str:
     agent_cfg = config.get("agent")
     if isinstance(agent_cfg, dict):
         return str(agent_cfg.get("reasoning_effort") or "").strip().lower()
     return ""
 
 
-def _set_reasoning_effort(config: Dict[str, Any], effort: str) -> None:
+def _set_reasoning_effort(config: dict[str, Any], effort: str) -> None:
     agent_cfg = config.get("agent")
     if not isinstance(agent_cfg, dict):
         agent_cfg = {}
@@ -586,7 +586,7 @@ def _prompt_container_resources(config: dict):
     try:
         terminal["container_cpu"] = float(cpu_str)
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _prompt_container_resources()", exc_info=True)
 
     # Memory
     current_mem = terminal.get("container_memory", 5120)
@@ -594,7 +594,7 @@ def _prompt_container_resources(config: dict):
     try:
         terminal["container_memory"] = int(mem_str)
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _prompt_container_resources()", exc_info=True)
 
     # Disk
     current_disk = terminal.get("container_disk", 51200)
@@ -602,7 +602,7 @@ def _prompt_container_resources(config: dict):
     try:
         terminal["container_disk"] = int(disk_str)
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _prompt_container_resources()", exc_info=True)
 
 
 # Tool categories and provider config are now in tools_config.py (shared
@@ -672,7 +672,6 @@ def setup_model_provider(config: dict, *, quick: bool = False):
             from types import SimpleNamespace
 
             from agent.credential_pool import load_pool
-
             from spark_cli.auth_commands import auth_add_command
 
             pool = load_pool(selected_provider)
@@ -1440,7 +1439,7 @@ def setup_agent_settings(config: dict):
         if 0.5 <= threshold <= 0.95:
             config["compression"]["threshold"] = threshold
     except ValueError:
-        pass
+        logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
 
     print_success(
         f"Context compression threshold set to {config['compression'].get('threshold', 0.50)}"
@@ -1495,14 +1494,14 @@ def setup_agent_settings(config: dict):
             if idle_val > 0:
                 config["session_reset"]["idle_minutes"] = idle_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         hour_str = prompt("  Daily reset hour (0-23, local time)", str(current_hour))
         try:
             hour_val = int(hour_str)
             if 0 <= hour_val <= 23:
                 config["session_reset"]["at_hour"] = hour_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         print_success(
             f"Sessions reset after {config['session_reset'].get('idle_minutes', 1440)} min idle or daily at {config['session_reset'].get('at_hour', 4)}:00"
         )
@@ -1514,7 +1513,7 @@ def setup_agent_settings(config: dict):
             if idle_val > 0:
                 config["session_reset"]["idle_minutes"] = idle_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         print_success(
             f"Sessions reset after {config['session_reset'].get('idle_minutes', 1440)} min of inactivity"
         )
@@ -1526,7 +1525,7 @@ def setup_agent_settings(config: dict):
             if 0 <= hour_val <= 23:
                 config["session_reset"]["at_hour"] = hour_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         print_success(
             f"Sessions reset daily at {config['session_reset'].get('at_hour', 4)}:00"
         )
@@ -2510,7 +2509,7 @@ def setup_memory(config: dict):
 # =============================================================================
 
 
-def _get_section_config_summary(config: dict, section_key: str) -> Optional[str]:
+def _get_section_config_summary(config: dict, section_key: str) -> str | None:
     """Return a short summary if a setup section is already configured, else None.
 
     Used after OpenClaw migration to detect which sections can be skipped.
@@ -2530,7 +2529,7 @@ def _get_section_config_summary(config: dict, section_key: str) -> Optional[str]
                 if get_active_provider():
                     has_key = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in _get_section_config_summary()", exc_info=True)
         if not has_key:
             return None
         model = config.get("model")
@@ -3122,7 +3121,7 @@ def run_setup_wizard(args):
     _offer_launch_chat()
 
 
-def _resolve_spark_chat_argv() -> Optional[list[str]]:
+def _resolve_spark_chat_argv() -> list[str] | None:
     """Resolve argv for launching ``spark chat`` in a fresh process."""
     spark_bin = shutil.which("spark")
     if spark_bin:
@@ -3132,7 +3131,7 @@ def _resolve_spark_chat_argv() -> Optional[list[str]]:
         if importlib.util.find_spec("spark_cli") is not None:
             return [sys.executable, "-m", "spark_cli.main", "chat"]
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_spark_chat_argv()", exc_info=True)
 
     return None
 
@@ -3172,13 +3171,13 @@ def _offer_launch_chat():
                     real_tty = _path
                     break
             except OSError:
-                pass
+                logger.debug("Ignoring error in _offer_launch_chat()", exc_info=True)
         if real_tty:
             _new = os.open(real_tty, os.O_RDWR | os.O_NOCTTY)
             os.dup2(_new, 0)
             os.close(_new)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _offer_launch_chat()", exc_info=True)
 
     os.execvp(chat_argv[0], chat_argv)
 

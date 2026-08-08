@@ -10,9 +10,12 @@ whole board is written through the same storage the Canvas UI reads. A
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from tools.registry import registry
+
+logger = logging.getLogger(__name__)
 
 # widget type → engine nodeType (the UI derives the render component via
 # renderTypeFor(type) on load, so we store the engine type only).
@@ -98,7 +101,7 @@ def canvas_render(
 
         _publish_event("canvas.updated", {"id": canvas_id, "scope": scope, "slug": slug})
     except Exception:
-        pass
+        logger.debug("Ignoring error in canvas_render()", exc_info=True)
 
     return json.dumps({
         "ok": True,

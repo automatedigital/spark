@@ -8,6 +8,8 @@ clear error when it's missing, and reads degrade to ``None``.
 
 from __future__ import annotations
 
+from typing import cast
+
 _SERVICE_PREFIX = "spark-preview"
 
 
@@ -17,7 +19,7 @@ class KeychainUnavailable(RuntimeError):
 
 def _keyring():
     try:
-        import keyring  # type: ignore
+        import keyring
     except ImportError as exc:
         raise KeychainUnavailable(
             "keyring is not installed — run `pip install 'spark-agent[keychain]'`"
@@ -37,7 +39,7 @@ def set_secret(slug: str, key: str, value: str) -> None:
 def get_secret(slug: str, key: str) -> str | None:
     """Read a secret from the keychain; returns None if absent or backend missing."""
     try:
-        return _keyring().get_password(_service(slug), key)
+        return cast("str | None", _keyring().get_password(_service(slug), key))
     except KeychainUnavailable:
         return None
 

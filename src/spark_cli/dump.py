@@ -7,14 +7,17 @@ No ANSI colors, no checkmarks — just data.
 """
 
 import json
+import logging
 import os
 import platform
 import subprocess
 import sys
 from pathlib import Path
 
-from spark_cli.config import get_spark_home, get_env_path, get_project_root, load_config
 from core.spark_constants import display_spark_home
+from spark_cli.config import get_env_path, get_project_root, get_spark_home, load_config
+
+logger = logging.getLogger(__name__)
 
 
 def _get_git_commit(project_root: Path) -> str:
@@ -28,7 +31,7 @@ def _get_git_commit(project_root: Path) -> str:
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_git_commit()", exc_info=True)
     return "(unknown)"
 
 
@@ -86,7 +89,7 @@ def _count_skills(spark_home: Path) -> int:
     if not skills_dir.is_dir():
         return 0
     count = 0
-    for item in skills_dir.rglob("SKILL.md"):
+    for _item in skills_dir.rglob("SKILL.md"):
         count += 1
     return count
 
@@ -160,7 +163,7 @@ def _get_model_and_provider(config: dict) -> tuple[str, str]:
 
 def _config_overrides(config: dict) -> dict[str, str]:
     """Find non-default config values worth reporting.
-    
+
     Returns a flat dict of dotpath -> value for interesting overrides.
     """
     from spark_cli.config import DEFAULT_CONFIG
@@ -229,7 +232,7 @@ def run_dump(args):
     spark_home = get_spark_home()
 
     try:
-        from spark_cli import __version__, __release_date__
+        from spark_cli import __release_date__, __version__
     except ImportError:
         __version__ = "(unknown)"
         __release_date__ = ""

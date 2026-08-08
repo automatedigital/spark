@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections.abc import Mapping
@@ -11,6 +12,8 @@ from typing import Any
 
 from core.utils import is_truthy_value
 from spark_cli.model_config import AUTO_ROLE_NAMES
+
+logger = logging.getLogger(__name__)
 
 
 class RequestClass(StrEnum):
@@ -169,7 +172,7 @@ def classify_request(
         try:
             return RequestClass(ctx.task_class)
         except ValueError:
-            pass
+            logger.debug("Ignoring error in classify_request()", exc_info=True)
     if _FORMAT_RE.search(text):
         return RequestClass.FORMAT_CONTRACT
     if _DESTRUCTIVE_RE.search(text) or _HIGH_STAKES_RE.search(text):

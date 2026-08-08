@@ -20,11 +20,11 @@ import json
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from agent.usage_pricing import (
-    CanonicalUsage,
     DEFAULT_PRICING,
+    CanonicalUsage,
     estimate_usage_cost,
     format_duration_compact,
     has_known_pricing,
@@ -39,7 +39,7 @@ def _has_known_pricing(model_name: str, provider: str = None, base_url: str = No
 
 
 def _estimate_cost(
-    session_or_model: Dict[str, Any] | str,
+    session_or_model: dict[str, Any] | str,
     input_tokens: int = 0,
     output_tokens: int = 0,
     *,
@@ -82,7 +82,7 @@ def _format_duration(seconds: float) -> str:
     return format_duration_compact(seconds)
 
 
-def _bar_chart(values: List[int], max_width: int = 20) -> List[str]:
+def _bar_chart(values: list[int], max_width: int = 20) -> list[str]:
     """Create simple horizontal bar chart strings from values."""
     peak = max(values) if values else 1
     if peak == 0:
@@ -108,7 +108,7 @@ class InsightsEngine:
         self.db = db
         self._conn = db._conn
 
-    def generate(self, days: int = 30, source: str = None) -> Dict[str, Any]:
+    def generate(self, days: int = 30, source: str = None) -> dict[str, Any]:
         """
         Generate a complete insights report.
 
@@ -184,7 +184,7 @@ class InsightsEngine:
         " ORDER BY started_at DESC"
     )
 
-    def _get_sessions(self, cutoff: float, source: str = None) -> List[Dict]:
+    def _get_sessions(self, cutoff: float, source: str = None) -> list[dict]:
         """Fetch sessions within the time window."""
         if source:
             cursor = self._conn.execute(self._GET_SESSIONS_WITH_SOURCE, (cutoff, source))
@@ -192,7 +192,7 @@ class InsightsEngine:
             cursor = self._conn.execute(self._GET_SESSIONS_ALL, (cutoff,))
         return [dict(row) for row in cursor.fetchall()]
 
-    def _get_tool_usage(self, cutoff: float, source: str = None) -> List[Dict]:
+    def _get_tool_usage(self, cutoff: float, source: str = None) -> list[dict]:
         """Get tool call counts from messages.
 
         Uses two sources:
@@ -284,7 +284,7 @@ class InsightsEngine:
             for name, count in tool_counts.most_common()
         ]
 
-    def _get_message_stats(self, cutoff: float, source: str = None) -> Dict:
+    def _get_message_stats(self, cutoff: float, source: str = None) -> dict:
         """Get aggregate message statistics."""
         if source:
             cursor = self._conn.execute(
@@ -320,7 +320,7 @@ class InsightsEngine:
     # Computation
     # =========================================================================
 
-    def _compute_overview(self, sessions: List[Dict], message_stats: Dict) -> Dict:
+    def _compute_overview(self, sessions: list[dict], message_stats: dict) -> dict:
         """Compute high-level overview statistics."""
         total_input = sum(s.get("input_tokens") or 0 for s in sessions)
         total_output = sum(s.get("output_tokens") or 0 for s in sessions)
@@ -394,7 +394,7 @@ class InsightsEngine:
             "included_cost_sessions": included_cost_sessions,
         }
 
-    def _compute_model_breakdown(self, sessions: List[Dict]) -> List[Dict]:
+    def _compute_model_breakdown(self, sessions: list[dict]) -> list[dict]:
         """Break down usage by model."""
         model_data = defaultdict(lambda: {
             "sessions": 0, "input_tokens": 0, "output_tokens": 0,
@@ -431,7 +431,7 @@ class InsightsEngine:
         result.sort(key=lambda x: (x["total_tokens"], x["sessions"]), reverse=True)
         return result
 
-    def _compute_platform_breakdown(self, sessions: List[Dict]) -> List[Dict]:
+    def _compute_platform_breakdown(self, sessions: list[dict]) -> list[dict]:
         """Break down usage by platform/source."""
         platform_data = defaultdict(lambda: {
             "sessions": 0, "messages": 0, "input_tokens": 0,
@@ -462,7 +462,7 @@ class InsightsEngine:
         result.sort(key=lambda x: x["sessions"], reverse=True)
         return result
 
-    def _compute_tool_breakdown(self, tool_usage: List[Dict]) -> List[Dict]:
+    def _compute_tool_breakdown(self, tool_usage: list[dict]) -> list[dict]:
         """Process tool usage data into a ranked list with percentages."""
         total_calls = sum(t["count"] for t in tool_usage) if tool_usage else 0
         result = []
@@ -475,7 +475,7 @@ class InsightsEngine:
             })
         return result
 
-    def _compute_activity_patterns(self, sessions: List[Dict]) -> Dict:
+    def _compute_activity_patterns(self, sessions: list[dict]) -> dict:
         """Analyze activity patterns by day of week and hour."""
         day_counts = Counter()  # 0=Monday ... 6=Sunday
         hour_counts = Counter()
@@ -533,7 +533,7 @@ class InsightsEngine:
             "max_streak": max_streak,
         }
 
-    def _compute_top_sessions(self, sessions: List[Dict]) -> List[Dict]:
+    def _compute_top_sessions(self, sessions: list[dict]) -> list[dict]:
         """Find notable sessions (longest, most messages, most tokens)."""
         top = []
 
@@ -595,7 +595,7 @@ class InsightsEngine:
     # Formatting
     # =========================================================================
 
-    def format_terminal(self, report: Dict) -> str:
+    def format_terminal(self, report: dict) -> str:
         """Format the insights report for terminal display (CLI)."""
         if report.get("empty"):
             days = report.get("days", 30)
@@ -725,7 +725,7 @@ class InsightsEngine:
 
         return "\n".join(lines)
 
-    def format_gateway(self, report: Dict) -> str:
+    def format_gateway(self, report: dict) -> str:
         """Format the insights report for gateway/messaging (shorter)."""
         if report.get("empty"):
             days = report.get("days", 30)

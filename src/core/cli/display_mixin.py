@@ -7,6 +7,7 @@ command handlers and their show_* helpers. Combined into SparkCLI via inheritanc
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -15,6 +16,9 @@ from typing import Any
 
 from rich.markup import escape as _escape
 
+# Defined in core/cli/__init__.py before this module is imported, so these
+# resolve at import time without a circular dependency.
+from core.cli import ChatConsole, _skill_commands  # noqa: E402
 from core.cli.attachments import (
     _IMAGE_EXTENSIONS,
     _resolve_attachment_path,
@@ -28,9 +32,7 @@ from core.spark_constants import display_spark_home, get_spark_home
 from core.spark_constants import is_termux as _is_termux_environment
 from core.toolsets import get_all_toolsets, get_toolset_info
 
-# Defined in core/cli/__init__.py before this module is imported, so these
-# resolve at import time without a circular dependency.
-from core.cli import ChatConsole, _skill_commands  # noqa: E402
+logger = logging.getLogger(__name__)
 
 
 class _DisplayCommandsMixin:
@@ -156,13 +158,13 @@ class _DisplayCommandsMixin:
             /snapshot restore <id>     - restore state from snapshot
             /snapshot prune [N]        - prune to N snapshots (default 20)
         """
+        from core.spark_constants import display_spark_home
         from spark_cli.backup import (
             create_quick_snapshot,
             list_quick_snapshots,
-            restore_quick_snapshot,
             prune_quick_snapshots,
+            restore_quick_snapshot,
         )
-        from core.spark_constants import display_spark_home
 
         parts = command.split()
         subcmd = parts[1].lower() if len(parts) > 1 else "list"
@@ -216,7 +218,7 @@ class _DisplayCommandsMixin:
                     print(f"  Invalid snapshot number. Use 1-{len(snaps)}.")
                     return
             except ValueError:
-                pass
+                logger.debug("Ignoring error in _handle_snapshot_command()", exc_info=True)
             if restore_quick_snapshot(snap_id):
                 print(f"  Restored state from: {snap_id}")
                 print("  Restart recommended for state.db changes to take effect.")
@@ -335,6 +337,7 @@ class _DisplayCommandsMixin:
         """
         import asyncio as _asyncio
         import json as _json
+
         from tools.vision_tools import vision_analyze_tool
 
         analysis_prompt = (
@@ -495,7 +498,7 @@ class _DisplayCommandsMixin:
                 updated_at = datetime.fromtimestamp(float(value))
                 break
             except Exception:
-                pass
+                logger.debug("Ignoring error in _show_session_status()", exc_info=True)
 
         agent = getattr(self, "agent", None)
         total_tokens = getattr(agent, "session_total_tokens", 0) or 0
@@ -636,6 +639,7 @@ class _DisplayCommandsMixin:
         """
         import shlex
         from argparse import Namespace
+
         from spark_cli.tools_config import tools_disable_enable_command
 
         try:
@@ -671,8 +675,8 @@ class _DisplayCommandsMixin:
         )
 
         # Reset session so the new tool config is picked up from a clean state
-        from spark_cli.tools_config import _get_platform_tools
         from spark_cli.config import load_config
+        from spark_cli.tools_config import _get_platform_tools
 
         self.enabled_toolsets = _get_platform_tools(load_config(), "cli")
         self.new_session()
@@ -715,7 +719,7 @@ class _DisplayCommandsMixin:
 
     def _handle_profile_command(self):
         """Display active profile name and home directory."""
-        from core.spark_constants import get_spark_home, display_spark_home
+        from core.spark_constants import display_spark_home, get_spark_home
 
         home = get_spark_home()
         display = display_spark_home()
@@ -920,7 +924,7 @@ class _DisplayCommandsMixin:
                 platform=getattr(self, "platform", None) or "cli",
             )
         except Exception:
-            pass
+            logger.debug("Ignoring error in _notify_session_boundary()", exc_info=True)
 
     def new_session(self, silent=False):
         """Start a fresh session with a new session ID and cleared agent state."""
@@ -928,7 +932,7 @@ class _DisplayCommandsMixin:
             try:
                 self.agent.flush_memories(self.conversation_history)
             except (Exception, KeyboardInterrupt):
-                pass
+                logger.debug("Ignoring error in new_session()", exc_info=True)
             self._notify_session_boundary("on_session_finalize")
         elif self.agent:
             # First session or empty history - still finalize the old session
@@ -939,7 +943,7 @@ class _DisplayCommandsMixin:
             try:
                 self._session_db.end_session(old_session_id, "new_session")
             except Exception:
-                pass
+                logger.debug("Ignoring error in new_session()", exc_info=True)
 
         self.session_start = datetime.now()
         timestamp_str = self.session_start.strftime("%Y%m%d_%H%M%S")
@@ -961,7 +965,7 @@ class _DisplayCommandsMixin:
 
                     self.agent._todo_store = TodoStore()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in new_session()", exc_info=True)
             if hasattr(self.agent, "_invalidate_system_prompt"):
                 self.agent._invalidate_system_prompt()
 
@@ -977,7 +981,7 @@ class _DisplayCommandsMixin:
                         },
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in new_session()", exc_info=True)
             self._notify_session_boundary("on_session_reset")
 
         if not silent:
@@ -1021,7 +1025,7 @@ class _DisplayCommandsMixin:
         try:
             self._session_db.end_session(self.session_id, "resumed_other")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_resume_command()", exc_info=True)
 
         # Switch to the target session
         self.session_id = target_id
@@ -1037,7 +1041,7 @@ class _DisplayCommandsMixin:
         try:
             self._session_db.reopen_session(target_id)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_resume_command()", exc_info=True)
 
         # Sync the agent if already initialised
         if self.agent:
@@ -1051,7 +1055,7 @@ class _DisplayCommandsMixin:
 
                     self.agent._todo_store = TodoStore()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_resume_command()", exc_info=True)
             if hasattr(self.agent, "_invalidate_system_prompt"):
                 self.agent._invalidate_system_prompt()
 
@@ -1114,7 +1118,7 @@ class _DisplayCommandsMixin:
                 _cprint(f"  Added @{rel} to your message.")
                 return
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            logger.debug("Ignoring error in _handle_files_command()", exc_info=True)
         # Fallback: simple glob-based picker using curses
         try:
             import glob
@@ -1240,7 +1244,7 @@ class _DisplayCommandsMixin:
         try:
             self._session_db.end_session(self.session_id, "branched")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_branch_command()", exc_info=True)
 
         # Create the new session with parent link
         try:
@@ -1277,7 +1281,7 @@ class _DisplayCommandsMixin:
         try:
             self._session_db.set_session_title(new_session_id, branch_title)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_branch_command()", exc_info=True)
 
         # Switch to the new session
         self.session_id = new_session_id
@@ -1298,7 +1302,7 @@ class _DisplayCommandsMixin:
 
                     self.agent._todo_store = TodoStore()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_branch_command()", exc_info=True)
             if hasattr(self.agent, "_invalidate_system_prompt"):
                 self.agent._invalidate_system_prompt()
 

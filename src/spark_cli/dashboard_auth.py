@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 import secrets
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 _TOKEN_FILENAME = "dashboard.token"
 _ENV_KEYS = ("SPARK_DASHBOARD_TOKEN", "SPARK_DASHBOARD_SECRET")
@@ -31,7 +33,7 @@ def ensure_dashboard_token_file() -> str:
     try:
         path.chmod(0o600)
     except OSError:
-        pass
+        logger.debug("Ignoring error in ensure_dashboard_token_file()", exc_info=True)
     return token
 
 
@@ -47,7 +49,7 @@ def get_configured_dashboard_secret() -> str:
     return ""
 
 
-def client_host_is_trusted_local(host: Optional[str]) -> bool:
+def client_host_is_trusted_local(host: str | None) -> bool:
     """True if TCP peer is loopback (safe to skip bearer token)."""
     if not host:
         return False
@@ -61,7 +63,7 @@ def client_host_is_trusted_local(host: Optional[str]) -> bool:
         return host in ("localhost", "::1")
 
 
-def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
+def extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
     parts = authorization.split()
@@ -71,12 +73,12 @@ def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
 
 
 def validate_dashboard_request(
-    client_host: Optional[str],
-    authorization: Optional[str],
+    client_host: str | None,
+    authorization: str | None,
     *,
     require_for_remote: bool,
     secret: str,
-    query_token: Optional[str] = None,
+    query_token: str | None = None,
 ) -> bool:
     """Return True if the request may access protected API routes."""
     if not require_for_remote:

@@ -105,7 +105,7 @@ def _load_quality_artifacts() -> tuple[
                 item_copy["_audit_date"] = audit_date
                 audit_by_name.setdefault(str(item["name"]), []).append(item_copy)
     except (OSError, TypeError, ValueError):
-        pass
+        logger.debug("Ignoring error in _load_quality_artifacts()", exc_info=True)
 
     eval_by_name: dict[str, tuple[str, str | None]] = {}
     docs_dir = root / "docs" / "skills"
@@ -206,7 +206,6 @@ def _quality_metadata(
     source = str((audit or {}).get("source_kind") or source_fallback)
 
     from agent.model_metadata import estimate_tokens_rough
-
     from agent.skill_utils import extract_skill_description, get_skill_invocation_metadata
 
     invocation = get_skill_invocation_metadata(frontmatter)
@@ -486,7 +485,7 @@ def resolve_skill(
             if len(relative.parts) > 1:
                 category = relative.parts[-2]
         except ValueError:
-            pass
+            logger.debug("Ignoring error in resolve_skill()", exc_info=True)
 
         detail = {
             "label": {
@@ -592,7 +591,7 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
     records_by_name: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         records_by_name.setdefault(str(record.get("name") or ""), []).append(record)
-    for name, matching_records in records_by_name.items():
+    for _name, matching_records in records_by_name.items():
         if len(matching_records) < 2:
             continue
         sources = sorted({str(record.get("source") or record.get("provenance") or "unknown") for record in matching_records})

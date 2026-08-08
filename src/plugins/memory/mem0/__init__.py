@@ -20,7 +20,7 @@ import logging
 import os
 import threading
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error
@@ -61,7 +61,7 @@ def _load_config() -> dict:
             config.update({k: v for k, v in file_cfg.items()
                            if v is not None and v != ""})
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_config()", exc_info=True)
 
     return config
 
@@ -153,7 +153,7 @@ class Mem0MemoryProvider(MemoryProvider):
             try:
                 existing = json.loads(config_path.read_text())
             except Exception:
-                pass
+                logger.debug("Ignoring error in save_config()", exc_info=True)
         existing.update(values)
         config_path.write_text(json.dumps(existing, indent=2))
 
@@ -174,8 +174,8 @@ class Mem0MemoryProvider(MemoryProvider):
                 from mem0 import MemoryClient
                 self._client = MemoryClient(api_key=self._api_key)
                 return self._client
-            except ImportError:
-                raise RuntimeError("mem0 package not installed. Run: pip install mem0ai")
+            except ImportError as err:
+                raise RuntimeError("mem0 package not installed. Run: pip install mem0ai") from err
 
     def _is_breaker_open(self) -> bool:
         """Return True if the circuit breaker is tripped (too many failures)."""
@@ -209,11 +209,11 @@ class Mem0MemoryProvider(MemoryProvider):
         self._agent_id = self._config.get("agent_id", "spark")
         self._rerank = self._config.get("rerank", True)
 
-    def _read_filters(self) -> Dict[str, Any]:
+    def _read_filters(self) -> dict[str, Any]:
         """Filters for search/get_all — scoped to user only for cross-session recall."""
         return {"user_id": self._user_id}
 
-    def _write_filters(self) -> Dict[str, Any]:
+    def _write_filters(self) -> dict[str, Any]:
         """Filters for add — scoped to user + agent for attribution."""
         return {"user_id": self._user_id, "agent_id": self._agent_id}
 
@@ -294,7 +294,7 @@ class Mem0MemoryProvider(MemoryProvider):
         self._sync_thread = threading.Thread(target=_sync, daemon=True, name="mem0-sync")
         self._sync_thread.start()
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [PROFILE_SCHEMA, SEARCH_SCHEMA, CONCLUDE_SCHEMA]
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs) -> str:

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
 
 from core.spark_constants import get_spark_home
 
@@ -24,7 +23,7 @@ def get_camofox_state_dir() -> Path:
     return get_spark_home() / CAMOFOX_STATE_DIR_NAME / CAMOFOX_STATE_SUBDIR
 
 
-def get_camofox_identity(task_id: Optional[str] = None) -> Dict[str, str]:
+def get_camofox_identity(task_id: str | None = None) -> dict[str, str]:
     """Return the stable Spark-managed Camofox identity for this profile.
 
     The user identity is profile-scoped (same Spark profile = same userId).

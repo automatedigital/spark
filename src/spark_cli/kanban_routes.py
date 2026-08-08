@@ -6,7 +6,7 @@ import json
 import logging
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -33,20 +33,20 @@ class TaskCreateBody(BaseModel):
     title: str
     body: str = ""
     board: str = "default"
-    assignee: Optional[str] = None
-    tenant: Optional[str] = None
+    assignee: str | None = None
+    tenant: str | None = None
     priority: int = 0
-    parents: List[str] = Field(default_factory=list)
-    idempotency_key: Optional[str] = None
+    parents: list[str] = Field(default_factory=list)
+    idempotency_key: str | None = None
     workspace_kind: str = "scratch"
-    workspace_path: Optional[str] = None
-    skills: List[str] = Field(default_factory=list)
-    owner_profile: Optional[str] = None
-    owner_platform: Optional[str] = None
-    owner_channel: Optional[str] = None
-    owner_thread_id: Optional[str] = None
-    creator_session_key: Optional[str] = None
-    creator_session_source: Dict[str, Any] = Field(default_factory=dict)
+    workspace_path: str | None = None
+    skills: list[str] = Field(default_factory=list)
+    owner_profile: str | None = None
+    owner_platform: str | None = None
+    owner_channel: str | None = None
+    owner_thread_id: str | None = None
+    creator_session_key: str | None = None
+    creator_session_source: dict[str, Any] = Field(default_factory=dict)
     notify_on_changes: bool = False
     wake_on_changes: bool = False
     triage: bool = False
@@ -54,47 +54,47 @@ class TaskCreateBody(BaseModel):
 
 
 class TaskPatchBody(BaseModel):
-    status: Optional[str] = None
-    title: Optional[str] = None
-    body: Optional[str] = None
-    assignee: Optional[str] = None
-    priority: Optional[int] = None
-    tenant: Optional[str] = None
-    result: Optional[str] = None
-    in_triage: Optional[bool] = None
-    workspace_path: Optional[str] = None
-    actor: Optional[str] = None
-    origin_session_key: Optional[str] = None
-    origin_kind: Optional[str] = None
+    status: str | None = None
+    title: str | None = None
+    body: str | None = None
+    assignee: str | None = None
+    priority: int | None = None
+    tenant: str | None = None
+    result: str | None = None
+    in_triage: bool | None = None
+    workspace_path: str | None = None
+    actor: str | None = None
+    origin_session_key: str | None = None
+    origin_kind: str | None = None
     internal_event: bool = False
 
 
 class BulkPatchBody(BaseModel):
-    ids: List[str]
-    status: Optional[str] = None
-    assignee: Optional[str] = None
-    priority: Optional[int] = None
+    ids: list[str]
+    status: str | None = None
+    assignee: str | None = None
+    priority: int | None = None
 
 
 class BulkPatchResponse(BaseModel):
     ok: bool
-    errors: Dict[str, str] = Field(default_factory=dict)
+    errors: dict[str, str] = Field(default_factory=dict)
 
 
 class DispatchResponse(BaseModel):
-    ok: Optional[bool] = None
-    claimed: Optional[int] = None
-    task_ids: Optional[List[str]] = None
-    dry_run: Optional[bool] = None
-    ready: Optional[List[str]] = None
-    blocked_by_assignee: Optional[List[str]] = None
+    ok: bool | None = None
+    claimed: int | None = None
+    task_ids: list[str] | None = None
+    dry_run: bool | None = None
+    ready: list[str] | None = None
+    blocked_by_assignee: list[str] | None = None
 
 
 class CommentBody(BaseModel):
     body: str
-    author: Optional[str] = None
-    origin_session_key: Optional[str] = None
-    origin_kind: Optional[str] = None
+    author: str | None = None
+    origin_session_key: str | None = None
+    origin_kind: str | None = None
     internal_event: bool = False
 
 
@@ -105,29 +105,29 @@ class LinkBody(BaseModel):
 
 class CompleteBody(BaseModel):
     summary: str = ""
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     result: str = ""
-    actor: Optional[str] = None
-    origin_session_key: Optional[str] = None
-    origin_kind: Optional[str] = None
+    actor: str | None = None
+    origin_session_key: str | None = None
+    origin_kind: str | None = None
     internal_event: bool = False
 
 
 class BlockBody(BaseModel):
     reason: str
-    actor: Optional[str] = None
-    origin_session_key: Optional[str] = None
-    origin_kind: Optional[str] = None
+    actor: str | None = None
+    origin_session_key: str | None = None
+    origin_kind: str | None = None
     internal_event: bool = False
 
 
 @router.get("/board")
 async def board(
     board: str = "default",
-    tenant: Optional[str] = None,
-    assignee: Optional[str] = None,
+    tenant: str | None = None,
+    assignee: str | None = None,
     archived: bool = False,
-    q: Optional[str] = None,
+    q: str | None = None,
 ):
     try:
         return kb.get_board(
@@ -151,7 +151,7 @@ async def board(
             except Exception as retry_error:
                 e = retry_error
         _log_board_error(e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/tasks/{task_id}")
@@ -189,9 +189,9 @@ async def task_create(body: TaskCreateBody):
             max_runtime_seconds=body.max_runtime_seconds,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except sqlite3.IntegrityError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.patch("/tasks/{task_id}")
@@ -221,7 +221,7 @@ async def task_patch(task_id: str, body: TaskPatchBody):
             raise HTTPException(status_code=404, detail="Task not found")
         return row
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.delete("/tasks/{task_id}")
@@ -233,7 +233,7 @@ async def task_delete(task_id: str):
 
 @router.post("/tasks/bulk", response_model=BulkPatchResponse)
 async def task_bulk(body: BulkPatchBody):
-    fields: Dict[str, Any] = {
+    fields: dict[str, Any] = {
         "status": body.status,
         "assignee": body.assignee,
         "priority": body.priority,
@@ -254,7 +254,7 @@ async def task_comment(task_id: str, body: CommentBody):
             internal_event=body.internal_event,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return {"ok": True, "id": cid}
 
 
@@ -264,9 +264,9 @@ async def link_add(body: LinkBody):
         kb.add_link(body.parent_id, body.child_id)
         return {"ok": True}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except sqlite3.IntegrityError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.delete("/links")
@@ -351,7 +351,7 @@ async def kanban_events(request: Request, since: int = 0):
                 import asyncio
                 await asyncio.sleep(0.8)
         except Exception:
-            pass
+            _log.debug("Ignoring error in gen()", exc_info=True)
 
     return StreamingResponse(
         gen(),

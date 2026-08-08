@@ -13,6 +13,7 @@ trust-boundary decisions in their own modules.
 
 from __future__ import annotations
 
+import logging
 import shlex
 import time
 import uuid
@@ -22,6 +23,8 @@ from typing import Any
 
 from tools.environments.base import BaseEnvironment
 from tools.interrupt import is_interrupted
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -110,7 +113,7 @@ class BaseModalExecutionEnvironment(BaseEnvironment):
                 try:
                     self._cancel_modal_exec(start.handle)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in execute()", exc_info=True)
                 return self._result(self._interrupt_output, 130)
 
             try:
@@ -125,7 +128,7 @@ class BaseModalExecutionEnvironment(BaseEnvironment):
                 try:
                     self._cancel_modal_exec(start.handle)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in execute()", exc_info=True)
                 return self._timeout_result_for_modal(prepared.timeout)
 
             time.sleep(self._poll_interval_seconds)

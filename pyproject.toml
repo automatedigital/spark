@@ -53,6 +53,9 @@ dev = [
   # Lint + type checking — pinned so CI and local dev stay in sync
   "ruff>=0.9.0,<1",
   "mypy>=1.13.0,<2",
+  # Stub packages mypy needs.  Without these a clean environment reports
+  # import-untyped errors that a developer machine does not show.
+  "types-PyYAML>=6.0,<7",
   # Desktop app: freeze the Python backend into a sidecar binary
   "pyinstaller>=6.0,<7",
 ]
@@ -186,10 +189,27 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "W"]
 ignore = [
     "E501",   # line too long — handled case-by-case in large files
-    "B904",   # raise from inside except — gradual adoption
-    "UP007",  # X | Y union syntax — requires Python 3.10+; keep Optional[] for 3.11 compat
+    # B027 flags empty methods on an ABC that lack @abstractmethod.  Spark's
+    # base classes (MemoryProvider, ContextEngine, BasePlatformAdapter,
+    # BaseEnvironment) use those as OPTIONAL hooks with a documented no-op
+    # default.  Marking them abstract would force every subclass to implement
+    # hooks it does not need, so the rule does not fit this design.
+    "B027",
 ]
-per-file-ignores = {"tests/**" = ["B"]}
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B"]
+# B008 flags function calls in argument defaults.  FastAPI route signatures
+# require exactly that (File(...), Form(...), Depends(...)), so the rule is
+# disabled for route modules rather than worked around.
+"src/spark_cli/*routes*.py" = ["B008"]
+# This module is the compatibility surface left behind when SparkCLI was split
+# into mixins.  Its "unused" imports are re-exports that callers still do
+# `from core.cli import X` for, and names the test suite monkeypatches as
+# `core.cli.<name>`.  Removing them breaks both.
+"src/core/cli/__init__.py" = ["F401"]
+# Imports used only to probe whether the optional Honcho extra is installed;
+# the bound name is deliberately never referenced.
+"src/plugins/memory/honcho/__init__.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -207,3 +227,54 @@ exclude = [
     "src/spark_cli/web/src-tauri/resources/",
     "src/spark_cli/web/src-tauri/target/",
 ]
+
+# --- mypy ratchet -------------------------------------------------------
+# These modules still have type errors and are exempt.  Everything else in
+# src/agent and src/spark_cli is clean and gated in CI, so a new error in a
+# clean module fails the build.  Fix a module, delete its line here.
+# Remaining: 41 modules.
+[[tool.mypy.overrides]]
+module = [
+    "agent.anthropic_adapter",
+    "agent.auxiliary_client",
+    "agent.context_checkpoint",
+    "agent.context_compressor",
+    "agent.copilot_acp_client",
+    "agent.credential_pool",
+    "agent.display",
+    "agent.error_classifier",
+    "agent.insights",
+    "agent.model_metadata",
+    "agent.models_dev",
+    "agent.skill_commands",
+    "agent.subagents",
+    "spark_cli.auth",
+    "spark_cli.auth_commands",
+    "spark_cli.banner",
+    "spark_cli.callbacks",
+    "spark_cli.codex_models",
+    "spark_cli.commands",
+    "spark_cli.config",
+    "spark_cli.debug",
+    "spark_cli.doctor",
+    "spark_cli.env_loader",
+    "spark_cli.google_connector",
+    "spark_cli.kanban_routes",
+    "spark_cli.main",
+    "spark_cli.model_switch",
+    "spark_cli.models",
+    "spark_cli.oauth_connectors",
+    "spark_cli.plugins",
+    "spark_cli.plugins_cmd",
+    "spark_cli.preview_browser",
+    "spark_cli.providers",
+    "spark_cli.runtime_provider",
+    "spark_cli.setup",
+    "spark_cli.skills_config",
+    "spark_cli.tools_config",
+    "spark_cli.web_embed",
+    "spark_cli.web_server",
+    "spark_cli.workflow_nodes",
+    "spark_cli.workspace_routes",
+]
+ignore_errors = true

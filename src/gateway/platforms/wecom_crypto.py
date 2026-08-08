@@ -12,7 +12,6 @@ import os
 import secrets
 import socket
 import struct
-from typing import Optional
 from xml.etree import ElementTree as ET
 
 from cryptography.hazmat.backends import default_backend
@@ -111,7 +110,7 @@ class WXBizMsgCrypt:
             raise DecryptError("receive_id mismatch")
         return xml_content
 
-    def encrypt(self, plaintext: str, nonce: Optional[str] = None, timestamp: Optional[str] = None) -> str:
+    def encrypt(self, plaintext: str, nonce: str | None = None, timestamp: str | None = None) -> str:
         nonce = nonce or self._random_nonce()
         timestamp = timestamp or str(int(__import__("time").time()))
         encrypt = self._encrypt_bytes(plaintext.encode("utf-8"))

@@ -106,7 +106,7 @@ Activate with ``/skin <name>`` in the CLI or ``display.skin: <name>`` in config.
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from core.spark_constants import get_spark_home
 
@@ -124,11 +124,11 @@ class SkinConfig:
 
     name: str
     description: str = ""
-    colors: Dict[str, str] = field(default_factory=dict)
-    spinner: Dict[str, Any] = field(default_factory=dict)
-    branding: Dict[str, str] = field(default_factory=dict)
+    colors: dict[str, str] = field(default_factory=dict)
+    spinner: dict[str, Any] = field(default_factory=dict)
+    branding: dict[str, str] = field(default_factory=dict)
     tool_prefix: str = "┊"
-    tool_emojis: Dict[str, str] = field(
+    tool_emojis: dict[str, str] = field(
         default_factory=dict
     )  # per-tool emoji overrides
     banner_logo: str = ""  # Rich-markup ASCII art logo (replaces SPARK_AGENT_LOGO)
@@ -138,7 +138,7 @@ class SkinConfig:
         """Get a color value with fallback."""
         return self.colors.get(key, fallback)
 
-    def get_spinner_wings(self) -> List[Tuple[str, str]]:
+    def get_spinner_wings(self) -> list[tuple[str, str]]:
         """Get spinner wing pairs, or empty list if none."""
         raw = self.spinner.get("wings", [])
         result = []
@@ -156,7 +156,7 @@ class SkinConfig:
 # Built-in skin definitions
 # =============================================================================
 
-_BUILTIN_SKINS: Dict[str, Dict[str, Any]] = {
+_BUILTIN_SKINS: dict[str, dict[str, Any]] = {
     "default": {
         "name": "default",
         "description": "Classic Spark — gold and kawaii",
@@ -611,7 +611,7 @@ _BUILTIN_SKINS: Dict[str, Dict[str, Any]] = {
 # Skin loading and management
 # =============================================================================
 
-_active_skin: Optional[SkinConfig] = None
+_active_skin: SkinConfig | None = None
 _active_skin_name: str = "default"
 
 
@@ -620,7 +620,7 @@ def _skins_dir() -> Path:
     return get_spark_home() / "skins"
 
 
-def _load_skin_from_yaml(path: Path) -> Optional[Dict[str, Any]]:
+def _load_skin_from_yaml(path: Path) -> dict[str, Any] | None:
     """Load a skin definition from a YAML file."""
     try:
         import yaml
@@ -634,7 +634,7 @@ def _load_skin_from_yaml(path: Path) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _build_skin_config(data: Dict[str, Any]) -> SkinConfig:
+def _build_skin_config(data: dict[str, Any]) -> SkinConfig:
     """Build a SkinConfig from a raw dict (built-in or loaded from YAML)."""
     # Start with default values as base for missing keys
     default = _BUILTIN_SKINS["default"]
@@ -658,7 +658,7 @@ def _build_skin_config(data: Dict[str, Any]) -> SkinConfig:
     )
 
 
-def list_skins() -> List[Dict[str, str]]:
+def list_skins() -> list[dict[str, str]]:
     """List all available skins (built-in + user-installed).
 
     Returns list of {"name": ..., "description": ..., "source": "builtin"|"user"}.
@@ -676,16 +676,16 @@ def list_skins() -> List[Dict[str, str]]:
     skins_path = _skins_dir()
     if skins_path.is_dir():
         for f in sorted(skins_path.glob("*.yaml")):
-            data = _load_skin_from_yaml(f)
-            if data:
-                skin_name = data.get("name", f.stem)
+            skin_data: dict[str, Any] | None = _load_skin_from_yaml(f)
+            if skin_data:
+                skin_name = skin_data.get("name", f.stem)
                 # Skip if it shadows a built-in
                 if any(s["name"] == skin_name for s in result):
                     continue
                 result.append(
                     {
                         "name": skin_name,
-                        "description": data.get("description", ""),
+                        "description": skin_data.get("description", ""),
                         "source": "user",
                     }
                 )
@@ -775,7 +775,7 @@ def get_active_goodbye(fallback: str = "Goodbye! S") -> str:
         return fallback
 
 
-def get_prompt_toolkit_style_overrides() -> Dict[str, str]:
+def get_prompt_toolkit_style_overrides() -> dict[str, str]:
     """Return prompt_toolkit style overrides derived from the active skin.
 
     These are layered on top of the CLI's base TUI style so /skin can refresh

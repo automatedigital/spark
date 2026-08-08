@@ -12,13 +12,13 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
-def _load_prefill_messages(file_path: str) -> List[Dict[str, Any]]:
+def _load_prefill_messages(file_path: str) -> list[dict[str, Any]]:
     """Load ephemeral prefill messages from a JSON file.
 
     The file should contain a JSON array of {role, content} dicts, e.g.:

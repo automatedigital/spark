@@ -48,7 +48,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def _require_tty(command_name: str) -> None:
@@ -163,8 +162,8 @@ except Exception:
 
 # Apply IPv4 preference early, before any HTTP clients are created.
 try:
-    from spark_cli.config import load_config as _load_config_early
     from core.spark_constants import apply_ipv4_preference as _apply_ipv4
+    from spark_cli.config import load_config as _load_config_early
 
     _early_cfg = _load_config_early()
     _net = _early_cfg.get("network", {})
@@ -176,10 +175,10 @@ except Exception:
 
 import logging
 import time as _time
-from datetime import datetime
+from datetime import UTC, datetime
 
-from spark_cli import __version__, __release_date__
 from core.spark_constants import OPENROUTER_BASE_URL
+from spark_cli import __release_date__, __version__
 
 logger = logging.getLogger(__name__)
 
@@ -204,14 +203,13 @@ def _relative_time(ts) -> str:
 
 def _has_any_provider_configured() -> bool:
     """Check if at least one inference provider is usable."""
-    from spark_cli.config import get_env_path, get_spark_home, load_config
     from spark_cli.auth import get_auth_status
 
     # Determine whether Spark itself has been explicitly configured (model
     # in config that isn't the hardcoded default). Used below to gate external
     # tool credentials (Claude Code, Codex CLI) that shouldn't silently skip
     # the setup wizard on a fresh install.
-    from spark_cli.config import DEFAULT_CONFIG
+    from spark_cli.config import DEFAULT_CONFIG, get_env_path, get_spark_home, load_config
 
     _DEFAULT_MODEL = DEFAULT_CONFIG.get("model", "")
     cfg = load_config()
@@ -256,7 +254,7 @@ def _has_any_provider_configured() -> bool:
                 if key.strip() in provider_env_vars and val:
                     return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     # Check provider-specific auth fallbacks (for example, Copilot via gh auth).
     try:
@@ -267,7 +265,7 @@ def _has_any_provider_configured() -> bool:
             if status.get("logged_in"):
                 return True
     except Exception:
-        pass
+        logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     # Check for active OAuth credentials
     auth_file = get_spark_home() / "auth.json"
@@ -282,7 +280,7 @@ def _has_any_provider_configured() -> bool:
                 if status.get("logged_in"):
                     return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     # Check config.yaml — if model is a dict with an explicit provider set,
     # the user has gone through setup (fresh installs have model as a plain
@@ -301,8 +299,8 @@ def _has_any_provider_configured() -> bool:
     if _has_spark_config:
         try:
             from agent.anthropic_adapter import (
-                read_claude_code_credentials,
                 is_claude_code_token_valid,
+                read_claude_code_credentials,
             )
 
             creds = read_claude_code_credentials()
@@ -311,12 +309,12 @@ def _has_any_provider_configured() -> bool:
             ):
                 return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     return False
 
 
-def _session_browse_picker(sessions: list) -> Optional[str]:
+def _session_browse_picker(sessions: list) -> str | None:
     """Interactive curses-based session browser with live search filtering.
 
     Returns the selected session ID, or None if cancelled.
@@ -388,7 +386,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
                     try:
                         stdscr.addstr(0, 0, "Terminal too small")
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _curses_browse()", exc_info=True)
                     stdscr.refresh()
                     stdscr.getch()
                     return
@@ -407,7 +405,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
                 try:
                     stdscr.addnstr(0, 0, header, max_x - 1, header_attr)
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 # Column header line
                 fixed_cols = 3 + 12 + 6 + 18 + 6
@@ -419,7 +417,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
                     )
                     stdscr.addnstr(1, 0, col_header, max_x - 1, dim_attr)
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 # Compute visible area
                 visible_rows = max_y - 4  # header + col header + blank + footer
@@ -432,7 +430,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
                         msg = "  No sessions match the filter."
                         stdscr.addnstr(3, 0, msg, max_x - 1, curses.A_DIM)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _curses_browse()", exc_info=True)
                 else:
                     if cursor >= len(filtered):
                         cursor = len(filtered) - 1
@@ -463,7 +461,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
                         try:
                             stdscr.addnstr(y, 0, row, max_x - 1, attr)
                         except curses.error:
-                            pass
+                            logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 # Footer
                 footer_y = max_y - 1
@@ -482,7 +480,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
                         curses.color_pair(4) if curses.has_colors() else curses.A_DIM,
                     )
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 stdscr.refresh()
                 key = stdscr.getch()
@@ -529,7 +527,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
         return result_holder[0]
 
     except Exception:
-        pass
+        logger.debug("Ignoring error in _session_browse_picker()", exc_info=True)
 
     # Fallback: numbered list (Windows without curses, etc.)
     print("\n  Browse sessions  (enter number to resume, q to cancel)\n")
@@ -559,7 +557,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
             return None
 
 
-def _resolve_last_cli_session() -> Optional[str]:
+def _resolve_last_cli_session() -> str | None:
     """Look up the most recent CLI session ID from SQLite. Returns None if unavailable."""
     try:
         from core.spark_state import SessionDB
@@ -570,7 +568,7 @@ def _resolve_last_cli_session() -> Optional[str]:
         if sessions:
             return sessions[0]["id"]
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_last_cli_session()", exc_info=True)
     return None
 
 
@@ -686,7 +684,7 @@ def _exec_in_container(container_info: dict, cli_args: list):
     os.execvp(exec_cmd[0], exec_cmd)
 
 
-def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
+def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
     """Resolve a session name (title) or ID to a session ID.
 
     - If it looks like a session ID (contains underscore + hex), try direct lookup first.
@@ -709,7 +707,7 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
         db.close()
         return session_id
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_session_by_name_or_id()", exc_info=True)
     return None
 
 
@@ -783,7 +781,7 @@ def cmd_chat(args):
 
         prefetch_update_check()
     except Exception:
-        pass
+        logger.debug("Ignoring error in cmd_chat()", exc_info=True)
 
     # Sync bundled skills on every CLI launch (fast -- skips unchanged skills)
     try:
@@ -791,7 +789,7 @@ def cmd_chat(args):
 
         sync_skills(quiet=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in cmd_chat()", exc_info=True)
 
     # --yolo: bypass all dangerous command approvals
     if getattr(args, "yolo", False):
@@ -842,6 +840,7 @@ def cmd_whatsapp(args):
     _require_tty("whatsapp")
     import subprocess
     from pathlib import Path
+
     from spark_cli.config import get_env_value, save_env_value
 
     print()
@@ -1007,7 +1006,7 @@ def cmd_whatsapp(args):
             cwd=str(bridge_dir),
         )
     except KeyboardInterrupt:
-        pass
+        logger.debug("Ignoring error in cmd_whatsapp()", exc_info=True)
 
     # ── Step 7: Post-pairing ─────────────────────────────────────────────
     print()
@@ -1176,7 +1175,7 @@ def _do_multi_model_selection(args=None) -> None:
 
 
 def select_provider_and_model(
-    args=None, _inner: bool = False, routing_slot: Optional[str] = None
+    args=None, _inner: bool = False, routing_slot: str | None = None
 ):
     """Core provider selection + model picking logic.
 
@@ -1223,15 +1222,15 @@ def select_provider_and_model(
                 save_config(_cfg)
 
     from spark_cli.auth import (
-        resolve_provider,
         AuthError,
         format_auth_error,
         model_routing_slot_selection_context,
+        resolve_provider,
     )
     from spark_cli.config import (
         get_compatible_custom_providers,
-        load_config,
         get_env_value,
+        load_config,
     )
 
     with model_routing_slot_selection_context(routing_slot):
@@ -1240,16 +1239,16 @@ def select_provider_and_model(
         if isinstance(current_model, dict):
             current_model = current_model.get("default", "")
         current_model = current_model or "(not set)"
-    
+
         # Read effective provider the same way the CLI does at startup:
         # config.yaml model.provider > env var > auto-detect
         import os
-    
+
         config_provider = None
         model_cfg = config.get("model")
         if isinstance(model_cfg, dict):
             config_provider = model_cfg.get("provider")
-    
+
         effective_provider = (
             config_provider or os.getenv("SPARK_INFERENCE_PROVIDER") or "auto"
         )
@@ -1262,16 +1261,16 @@ def select_provider_and_model(
                 active = resolve_provider("auto")
             except AuthError:
                 active = None  # no provider yet; default to first in list
-    
+
         # Detect custom endpoint
         if active == "openrouter" and get_env_value("OPENAI_BASE_URL"):
             active = "custom"
-    
-        from spark_cli.models import CANONICAL_PROVIDERS, _PROVIDER_LABELS
-    
+
+        from spark_cli.models import _PROVIDER_LABELS, CANONICAL_PROVIDERS
+
         provider_labels = dict(_PROVIDER_LABELS)  # derive from canonical list
         active_label = provider_labels.get(active, active) if active else "none"
-    
+
         print()
         if routing_slot == "smart":
             print("  Picking for:      SMART model (complex / coding tasks)")
@@ -1283,7 +1282,7 @@ def select_provider_and_model(
 
         # Step 1: Provider selection — flat list from CANONICAL_PROVIDERS
         all_providers = [(p.slug, p.tui_desc) for p in CANONICAL_PROVIDERS]
-    
+
         def _named_custom_provider_map(cfg) -> dict[str, dict[str, str]]:
             custom_provider_map = {}
             for entry in get_compatible_custom_providers(cfg):
@@ -1310,7 +1309,7 @@ def select_provider_and_model(
                     "provider_key": provider_key,
                 }
             return custom_provider_map
-    
+
         # Add user-defined custom providers from config.yaml
         _custom_provider_map = _named_custom_provider_map(
             config
@@ -1322,7 +1321,7 @@ def select_provider_and_model(
             saved_model = provider_info.get("model", "")
             model_hint = f" — {saved_model}" if saved_model else ""
             all_providers.append((key, f"{name} ({short_url}){model_hint}"))
-    
+
         # Build the menu
         ordered = []
         default_idx = 0
@@ -1332,7 +1331,7 @@ def select_provider_and_model(
                 default_idx = len(ordered) - 1
             else:
                 ordered.append((key, label))
-    
+
         ordered.append(("custom", "Custom endpoint (enter URL manually)"))
         _has_saved_custom_list = isinstance(config.get("custom_providers"), list) and bool(
             config.get("custom_providers")
@@ -1340,7 +1339,7 @@ def select_provider_and_model(
         if _has_saved_custom_list:
             ordered.append(("remove-custom", "Remove a saved custom provider"))
         ordered.append(("cancel", "Cancel"))
-    
+
         provider_idx = _prompt_provider_choice(
             [label for _, label in ordered],
             default=default_idx,
@@ -1348,9 +1347,9 @@ def select_provider_and_model(
         if provider_idx is None or ordered[provider_idx][0] == "cancel":
             print("No change.")
             return
-    
+
         selected_provider = ordered[provider_idx][0]
-    
+
         # Step 2: Provider-specific setup + model selection
         if selected_provider == "openrouter":
             _model_flow_openrouter(config, current_model)
@@ -1402,7 +1401,7 @@ def select_provider_and_model(
             "arcee",
         ):
             _model_flow_api_key_provider(config, selected_provider, current_model)
-    
+
         # ── Post-switch cleanup: clear stale OPENAI_BASE_URL ──────────────
         # When the user switches to a named provider (anything except "custom"),
         # a leftover OPENAI_BASE_URL in ~/.spark/.env can poison auxiliary
@@ -1423,7 +1422,7 @@ def _clear_stale_openai_base_url():
     requests to the old custom endpoint instead of the newly selected
     provider.  See issue #5161.
     """
-    from spark_cli.config import get_env_value, save_env_value, load_config
+    from spark_cli.config import get_env_value, load_config, save_env_value
 
     cfg = load_config()
     model_cfg = cfg.get("model", {})
@@ -1470,7 +1469,7 @@ def _prompt_provider_choice(choices, *, default=0):
             print()
             return idx
     except Exception:
-        pass
+        logger.debug("Ignoring error in _prompt_provider_choice()", exc_info=True)
 
     # Fallback: numbered list
     print(_q)
@@ -1522,7 +1521,7 @@ def _model_flow_openrouter(config, current_model=""):
         print("API key saved.")
         print()
 
-    from spark_cli.models import model_ids, get_pricing_for_provider
+    from spark_cli.models import get_pricing_for_provider, model_ids
 
     openrouter_models = model_ids(force_refresh=True)
 
@@ -1557,19 +1556,20 @@ def _model_flow_openrouter(config, current_model=""):
 
 def _model_flow_openai_codex(config, current_model=""):
     """OpenAI Codex provider: ensure logged in, then pick model."""
+    import argparse
+
     from spark_cli.auth import (
-        get_codex_auth_status,
-        get_model_routing_slot_selection,
-        resolve_codex_runtime_credentials,
+        DEFAULT_CODEX_BASE_URL,
+        PROVIDER_REGISTRY,
+        _login_openai_codex,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
-        _login_openai_codex,
-        PROVIDER_REGISTRY,
-        DEFAULT_CODEX_BASE_URL,
+        get_codex_auth_status,
+        get_model_routing_slot_selection,
+        resolve_codex_runtime_credentials,
     )
     from spark_cli.codex_models import get_codex_model_ids
-    import argparse
 
     status = get_codex_auth_status()
     if not status.get("logged_in"):
@@ -1591,13 +1591,13 @@ def _model_flow_openai_codex(config, current_model=""):
         if _codex_status.get("logged_in"):
             _codex_token = _codex_status.get("api_key")
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_openai_codex()", exc_info=True)
     if not _codex_token:
         try:
             _codex_creds = resolve_codex_runtime_credentials()
             _codex_token = _codex_creds.get("api_key")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _model_flow_openai_codex()", exc_info=True)
 
     # Use live Codex discovery for fresh model slugs, but keep the interactive
     # picker responsive by bounding the request tightly. Slow or failed live
@@ -1627,12 +1627,12 @@ _DEFAULT_QWEN_PORTAL_MODELS = [
 def _model_flow_qwen_oauth(_config, current_model=""):
     """Qwen OAuth provider: reuse local Qwen CLI login, then pick model."""
     from spark_cli.auth import (
-        get_qwen_auth_status,
-        resolve_qwen_runtime_credentials,
+        DEFAULT_QWEN_BASE_URL,
         _prompt_model_selection,
         _save_model_choice,
         _update_config_for_provider,
-        DEFAULT_QWEN_BASE_URL,
+        get_qwen_auth_status,
+        resolve_qwen_runtime_credentials,
     )
     from spark_cli.models import fetch_api_models
 
@@ -1653,7 +1653,7 @@ def _model_flow_qwen_oauth(_config, current_model=""):
         creds = resolve_qwen_runtime_credentials(refresh_if_expiring=True)
         models = fetch_api_models(creds["api_key"], creds["base_url"])
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_qwen_oauth()", exc_info=True)
     if not models:
         models = list(_DEFAULT_QWEN_PORTAL_MODELS)
 
@@ -2304,7 +2304,7 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             return "none"
         return None
     except (ImportError, NotImplementedError, OSError, subprocess.SubprocessError):
-        pass
+        logger.debug("Ignoring error in _prompt_reasoning_effort_selection()", exc_info=True)
 
     print("Select reasoning effort:")
     for i, effort in enumerate(ordered, 1):
@@ -2342,12 +2342,12 @@ def _model_flow_copilot(config, current_model=""):
         deactivate_provider,
         resolve_api_key_provider_credentials,
     )
-    from spark_cli.config import save_env_value, load_config, save_config
+    from spark_cli.config import load_config, save_config, save_env_value
     from spark_cli.models import (
+        copilot_model_api_mode,
         fetch_api_models,
         fetch_github_model_catalog,
         github_model_reasoning_efforts,
-        copilot_model_api_mode,
         normalize_copilot_model_id,
     )
 
@@ -2415,7 +2415,7 @@ def _model_flow_copilot(config, current_model=""):
                     print(f"  ✗ {msg}")
                     return
             except ImportError:
-                pass
+                logger.debug("Ignoring error in _model_flow_copilot()", exc_info=True)
             save_env_value("COPILOT_GITHUB_TOKEN", new_key)
             print("  Token saved.")
             print()
@@ -2535,11 +2535,11 @@ def _model_flow_copilot_acp(config, current_model=""):
         resolve_api_key_provider_credentials,
         resolve_external_process_provider_credentials,
     )
+    from spark_cli.config import load_config, save_config
     from spark_cli.models import (
         fetch_github_model_catalog,
         normalize_copilot_model_id,
     )
-    from spark_cli.config import load_config, save_config
 
     del config
 
@@ -2575,7 +2575,7 @@ def _model_flow_copilot_acp(config, current_model=""):
         catalog_creds = resolve_api_key_provider_credentials("copilot")
         catalog_api_key = catalog_creds.get("api_key", "")
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_copilot_acp()", exc_info=True)
 
     catalog = fetch_github_model_catalog(catalog_api_key)
     normalized_current_model = (
@@ -2646,13 +2646,13 @@ def _model_flow_kimi(config, current_model=""):
     No manual base URL prompt — endpoint is determined by key prefix.
     """
     from spark_cli.auth import (
-        PROVIDER_REGISTRY,
         KIMI_CODE_BASE_URL,
+        PROVIDER_REGISTRY,
         _prompt_model_selection,
         _save_model_choice,
         deactivate_provider,
     )
-    from spark_cli.config import get_env_value, save_env_value, load_config, save_config
+    from spark_cli.config import get_env_value, load_config, save_config, save_env_value
 
     provider_id = "kimi-coding"
     pconfig = PROVIDER_REGISTRY[provider_id]
@@ -2750,11 +2750,11 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
         _save_model_choice,
         deactivate_provider,
     )
-    from spark_cli.config import get_env_value, save_env_value, load_config, save_config
+    from spark_cli.config import get_env_value, load_config, save_config, save_env_value
     from spark_cli.models import (
         fetch_api_models,
-        opencode_model_api_mode,
         normalize_opencode_model_id,
+        opencode_model_api_mode,
     )
 
     pconfig = PROVIDER_REGISTRY[provider_id]
@@ -2821,7 +2821,7 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
 
         mdev_models = list_agentic_models(provider_id)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_api_key_provider()", exc_info=True)
 
     if mdev_models:
         model_list = mdev_models
@@ -2890,9 +2890,9 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
 def _run_anthropic_oauth_flow(save_env_value):
     """Run the Claude OAuth setup-token flow. Returns True if credentials were saved."""
     from agent.anthropic_adapter import (
-        run_oauth_setup_token,
-        read_claude_code_credentials,
         is_claude_code_token_valid,
+        read_claude_code_credentials,
+        run_oauth_setup_token,
     )
     from spark_cli.config import (
         save_anthropic_oauth_token,
@@ -2982,35 +2982,34 @@ def _run_anthropic_oauth_flow(save_env_value):
 
 def _model_flow_anthropic(config, current_model=""):
     """Flow for Anthropic provider — OAuth subscription, API key, or Claude Code creds."""
+    # Check ALL credential sources
     from spark_cli.auth import (
         _prompt_model_selection,
         _save_model_choice,
         deactivate_provider,
+        get_anthropic_key,
     )
     from spark_cli.config import (
-        save_env_value,
         load_config,
-        save_config,
         save_anthropic_api_key,
+        save_config,
+        save_env_value,
     )
     from spark_cli.models import _PROVIDER_MODELS
-
-    # Check ALL credential sources
-    from spark_cli.auth import get_anthropic_key
 
     existing_key = get_anthropic_key()
     cc_available = False
     try:
         from agent.anthropic_adapter import (
-            read_claude_code_credentials,
             is_claude_code_token_valid,
+            read_claude_code_credentials,
         )
 
         cc_creds = read_claude_code_credentials()
         if cc_creds and is_claude_code_token_valid(cc_creds):
             cc_available = True
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_anthropic()", exc_info=True)
 
     has_creds = bool(existing_key) or cc_available
     needs_auth = not has_creds
@@ -3230,7 +3229,7 @@ def cmd_version(args):
         elif behind == 0:
             print("Up to date")
     except Exception:
-        pass
+        logger.debug("Ignoring error in cmd_version()", exc_info=True)
 
 
 def cmd_uninstall(args):
@@ -3266,7 +3265,7 @@ def _clear_bytecode_cache(root: Path) -> int:
                 _shutil.rmtree(dirpath)
                 removed += 1
             except OSError:
-                pass
+                logger.debug("Ignoring error in _clear_bytecode_cache()", exc_info=True)
             dirnames.clear()  # nothing left to recurse into
     return removed
 
@@ -3283,6 +3282,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     """
     import json as _json
     import uuid as _uuid
+
     from core.spark_constants import get_spark_home
 
     home = get_spark_home()
@@ -3298,7 +3298,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
             prompt_path.unlink(missing_ok=True)
             return answer if answer else default
         except (OSError, ValueError):
-            pass
+            logger.debug("Ignoring error in _gateway_prompt()", exc_info=True)
 
     payload = {
         "prompt": prompt_text,
@@ -3321,7 +3321,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
                 prompt_path.unlink(missing_ok=True)
                 return answer if answer else default
             except (OSError, ValueError):
-                pass
+                logger.debug("Ignoring error in _gateway_prompt()", exc_info=True)
         _time.sleep(0.5)
 
     # Timeout — clean up and use default
@@ -3331,15 +3331,15 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     return default
 
 
-def _find_npm(*, require_compatible: bool = False) -> Optional[str]:
+def _find_npm(*, require_compatible: bool = False) -> str | None:
     """Find npm, preferring a Node.js version ≥20 (required by Vite 7).
 
     Checks nvm-managed versions newest-first, then PATH, then Homebrew/system
     locations.  Falls back to any npm found if none satisfies the version
     requirement (avoids hard failure on older setups).
     """
-    import shutil
     import glob
+    import shutil
 
     def _node_major(npm_path: str) -> int:
         """Return the Node.js major version for the given npm binary, or 0 on error."""
@@ -3381,7 +3381,7 @@ def _find_npm(*, require_compatible: bool = False) -> Optional[str]:
     return None if require_compatible else (candidates[0] if candidates else None)
 
 
-def _install_managed_node() -> Optional[str]:
+def _install_managed_node() -> str | None:
     """Install a verified Node.js 22 runtime under SPARK_HOME without sudo."""
     import hashlib
     import json
@@ -3656,7 +3656,7 @@ def _update_via_zip(args):
         if not result["copied"] and not result.get("updated"):
             print("  ✓ Skills are up to date")
     except Exception:
-        pass
+        logger.debug("Ignoring error in _update_via_zip()", exc_info=True)
 
     print()
     print("✓ Update complete!")
@@ -3730,7 +3730,7 @@ def _sync_default_soul_for_update(*, include_profiles: bool = True) -> None:
                     if profile_home != active_home:
                         _seed_soul(profile_home)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _sync_default_soul_for_update()", exc_info=True)
 
         if seeded:
             print()
@@ -3870,7 +3870,7 @@ def _sync_bundled_skills_to_dashboard_homes_for_update(
 
         already.add(get_spark_home().resolve())
     except Exception:
-        pass
+        logger.debug("Ignoring error in _sync_bundled_skills_to_dashboard_homes_for_update()", exc_info=True)
 
     pending: list[Path] = []
     for home in homes:
@@ -3911,7 +3911,7 @@ def _sync_bundled_skills_to_dashboard_homes_for_update(
             print(f"  {home}: error ({exc})")
 
 
-def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
+def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> str | None:
     # Dashboard bundles are generated output, not user customizations. Clean
     # them before inspecting/stashing so stale or unmerged web_dist files can
     # never block either the terminal updater or the Web UI update button.
@@ -3950,9 +3950,9 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
         if not status.stdout.strip():
             return None
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    stash_name = datetime.now(timezone.utc).strftime(
+    stash_name = datetime.now(UTC).strftime(
         "spark-update-autostash-%Y%m%d-%H%M%S"
     )
     print("→ Local changes detected — stashing before update...")
@@ -3983,7 +3983,7 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
 
 def _resolve_stash_selector(
     git_cmd: list[str], cwd: Path, stash_ref: str
-) -> Optional[str]:
+) -> str | None:
     stash_list = subprocess.run(
         git_cmd + ["stash", "list", "--format=%gd %H"],
         cwd=cwd,
@@ -3999,7 +3999,7 @@ def _resolve_stash_selector(
 
 
 def _print_stash_cleanup_guidance(
-    stash_ref: str, stash_selector: Optional[str] = None
+    stash_ref: str, stash_selector: str | None = None
 ) -> None:
     print(
         "  Check `git status` first so you don't accidentally reapply the same change twice."
@@ -4165,7 +4165,7 @@ OFFICIAL_REPO_URL = "https://github.com/automatedigital/spark.git"
 SKIP_UPSTREAM_PROMPT_FILE = ".skip_upstream_prompt"
 
 
-def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
+def _get_origin_url(git_cmd: list[str], cwd: Path) -> str | None:
     """Get the URL of the origin remote, or None if not set."""
     try:
         result = subprocess.run(
@@ -4177,11 +4177,11 @@ def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_origin_url()", exc_info=True)
     return None
 
 
-def _is_fork(origin_url: Optional[str]) -> bool:
+def _is_fork(origin_url: str | None) -> bool:
     """Check if the origin remote points to a fork (not the official repo)."""
     if not origin_url:
         return False
@@ -4238,7 +4238,7 @@ def _count_commits_between(git_cmd: list[str], cwd: Path, base: str, head: str) 
         if result.returncode == 0:
             return int(result.stdout.strip())
     except Exception:
-        pass
+        logger.debug("Ignoring error in _count_commits_between()", exc_info=True)
     return -1
 
 
@@ -4256,7 +4256,7 @@ def _mark_skip_upstream_prompt():
 
         (get_spark_home() / SKIP_UPSTREAM_PROMPT_FILE).touch()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _mark_skip_upstream_prompt()", exc_info=True)
 
 
 def _sync_fork_with_upstream(git_cmd: list[str], cwd: Path) -> bool:
@@ -4415,7 +4415,7 @@ def _invalidate_update_cache():
             if cache_file.exists():
                 cache_file.unlink()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _invalidate_update_cache()", exc_info=True)
 
 
 def _load_installable_optional_extras() -> list[str]:
@@ -4545,6 +4545,8 @@ def _maybe_offer_cua_driver(*, gateway_mode: bool = False, input_fn=None) -> Non
         from tools.computer_use.cua_backend import (
             cua_driver_install_command,
             cua_driver_resolution_hint,
+        )
+        from tools.computer_use.cua_backend import (
             is_available as _cua_is_available,
         )
     except Exception:
@@ -4612,8 +4614,8 @@ def _ensure_dream_databases() -> None:
     If memory_store.db is corrupt, renames it to .bak and recreates it.
     Does NOT touch state.db — that is managed by SessionDB on startup.
     """
-    import sys
     import sqlite3
+    import sys
     from pathlib import Path as _Path
 
     # Ensure src/ is in sys.path so plugin packages are importable.
@@ -4655,7 +4657,7 @@ def _write_update_exit_code(code: int) -> None:
     try:
         _exit_code_path.write_text(str(code))
     except OSError:
-        pass
+        logger.debug("Ignoring error in _write_update_exit_code()", exc_info=True)
 
 
 def _verify_dashboard_after_update(*, gateway_mode: bool = False) -> bool:
@@ -4689,6 +4691,7 @@ def _verify_dashboard_after_update(*, gateway_mode: bool = False) -> bool:
 def cmd_update(args):
     """Update Spark Agent to the latest version."""
     import shutil
+
     from spark_cli.config import is_managed, managed_error
 
     if is_managed():
@@ -5083,6 +5086,7 @@ def cmd_update(args):
         # attributes like display_spark_home() added since the last release.
         try:
             import importlib
+
             import core.spark_constants as _hc
 
             importlib.reload(_hc)
@@ -5112,9 +5116,9 @@ def cmd_update(args):
         print("→ Checking configuration for new options...")
 
         from spark_cli.config import (
-            get_missing_env_vars,
-            get_missing_config_fields,
             check_config_version,
+            get_missing_config_fields,
+            get_missing_env_vars,
             migrate_config,
         )
 
@@ -5209,14 +5213,15 @@ def cmd_update(args):
         # running gateway needs restarting to pick up the new code.
         dashboard_check_needed = False
         try:
+            import signal as _signal
+
             from spark_cli.gateway import (
+                _ensure_user_systemd_env,
+                _get_service_pids,
+                find_gateway_pids,
                 is_macos,
                 supports_systemd_services,
-                _ensure_user_systemd_env,
-                find_gateway_pids,
-                _get_service_pids,
             )
-            import signal as _signal
 
             restarted_services = []
             killed_pids = set()
@@ -5229,9 +5234,9 @@ def cmd_update(args):
                 try:
                     _ensure_user_systemd_env()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
-                for scope, scope_cmd in [
+                for _scope, scope_cmd in [
                     ("user", ["systemctl", "--user"]),
                     ("system", ["systemctl"]),
                 ]:
@@ -5272,15 +5277,15 @@ def cmd_update(args):
                                     f"  ⚠ Failed to restart {svc_name}: {restart.stderr.strip()}"
                                 )
                     except (FileNotFoundError, subprocess.TimeoutExpired):
-                        pass
+                        logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             # --- Launchd services (macOS) ---
             if is_macos():
                 try:
                     from spark_cli.gateway import (
-                        launchd_restart,
                         get_launchd_label,
                         get_launchd_plist_path,
+                        launchd_restart,
                     )
 
                     plist_path = get_launchd_plist_path()
@@ -5299,7 +5304,7 @@ def cmd_update(args):
                                 stderr = (getattr(e, "stderr", "") or "").strip()
                                 print(f"  ⚠ Gateway restart failed: {stderr}")
                 except (FileNotFoundError, subprocess.TimeoutExpired, ImportError):
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             # --- Manual (non-service) gateways ---
             # Kill any remaining gateway processes not managed by a service,
@@ -5314,7 +5319,7 @@ def cmd_update(args):
                     os.kill(pid, _signal.SIGTERM)
                     killed_pids.add(pid)
                 except (ProcessLookupError, PermissionError):
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             if killed_pids:
                 # Brief pause so the old process releases its port/socket
@@ -5365,7 +5370,7 @@ def cmd_update(args):
                         else:
                             print("  ⚠ Gateway may still be starting — run: spark gateway status")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             if not restarted_services and not killed_pids:
                 # No gateways were running — nothing to do
@@ -5456,20 +5461,20 @@ def _coalesce_session_name_args(argv: list) -> list:
 
 def cmd_profile(args):
     """Profile management — create, delete, list, switch, alias."""
+    from core.spark_constants import display_spark_home
     from spark_cli.profiles import (
-        list_profiles,
+        _get_wrapper_dir,
+        _is_wrapper_dir_in_path,
+        check_alias_collision,
         create_profile,
+        create_wrapper_script,
         delete_profile,
+        get_active_profile_name,
+        list_profiles,
+        remove_wrapper_script,
         seed_profile_skills,
         set_active_profile,
-        get_active_profile_name,
-        check_alias_collision,
-        create_wrapper_script,
-        remove_wrapper_script,
-        _is_wrapper_dir_in_path,
-        _get_wrapper_dir,
     )
-    from core.spark_constants import display_spark_home
 
     action = getattr(args, "profile_action", None)
 
@@ -5582,9 +5587,7 @@ def cmd_profile(args):
                     print(f"{copied} bundled skills synced.")
                 else:
                     print(
-                        "⚠ Skills could not be seeded. Run `{} update` to retry.".format(
-                            name
-                        )
+                        f"⚠ Skills could not be seeded. Run `{name} update` to retry."
                     )
 
             # Create wrapper alias
@@ -5645,11 +5648,11 @@ def cmd_profile(args):
     elif action == "show":
         name = args.profile_name
         from spark_cli.profiles import (
-            get_profile_dir,
-            profile_exists,
-            _read_config_model,
             _check_gateway_running,
             _count_skills,
+            _read_config_model,
+            get_profile_dir,
+            profile_exists,
         )
 
         if not profile_exists(name):
@@ -5769,6 +5772,7 @@ def cmd_kanban(args):
 
     if action == "dispatch":
         import asyncio
+
         from spark_cli.kanban_dispatch import run_dispatch_tick
 
         result = asyncio.run(run_dispatch_tick(max_tasks=getattr(args, "max", 3)))
@@ -5861,7 +5865,7 @@ def cmd_completion(args):
 
 def cmd_logs(args):
     """View and filter Spark log files."""
-    from spark_cli.logs import tail_log, list_logs
+    from spark_cli.logs import list_logs, tail_log
 
     log_name = getattr(args, "log_name", "agent") or "agent"
 
@@ -7440,8 +7444,8 @@ Examples:
 
     def cmd_insights(args):
         try:
-            from core.spark_state import SessionDB
             from agent.insights import InsightsEngine
+            from core.spark_state import SessionDB
 
             db = SessionDB()
             engine = InsightsEngine(db)

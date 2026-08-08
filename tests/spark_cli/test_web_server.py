@@ -200,10 +200,13 @@ class TestWebServerEndpoints:
         data = resp.json()
         assert data["provider"] == "openai-codex"
         assert data["strict"] is True
-        assert data["source"] in {"live", "offline-fallback"}
+        assert data["source"] in {"live", "cache", "offline-fallback"}
         if not data["live"]:
-            assert "gpt-5.6-sol" not in data["models"]
             assert data["warning"]
+            # "cache" is a real account catalog fetched earlier, so it may list
+            # any model.  Only the hardcoded offline fallback is constrained.
+            if data["source"] == "offline-fallback":
+                assert "gpt-5.6-sol" not in data["models"]
 
     def test_available_models_codex_uses_exact_live_account_catalog(self):
         with (
@@ -382,6 +385,9 @@ class TestWebServerEndpoints:
         popen_calls = []
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -426,6 +432,9 @@ class TestWebServerEndpoints:
         import spark_cli.web_server as ws
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -443,6 +452,9 @@ class TestWebServerEndpoints:
         work_dir = tmp_path / "spark-update"
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -1568,7 +1580,14 @@ class TestNewEndpoints:
 
         assert resp.status_code == 200
         assert sync_calls == [True]
-        assert resp.json() == [
+        # Compare only the keys this test is about, so that adding a field to
+        # the /api/skills payload does not break an unrelated assertion.
+        _KEYS = (
+            "name", "description", "category", "enabled",
+            "use_count", "view_count", "patch_count", "skill_state",
+        )
+        actual = [{k: entry[k] for k in _KEYS} for entry in resp.json()]
+        assert actual == [
             {
                 "name": "active-skill",
                 "description": "active",
