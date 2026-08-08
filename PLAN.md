@@ -108,9 +108,24 @@ nothing broke.
 ### 5. Widen the CI ratchet beyond one rule
 
 - [x] Add `F` and `B` rule families to the CI ratchet
-- [x] Clear `F841`, `B007`, `B905` and `B008`
-- [ ] Clear the remaining ignore list: `B904` (115), `B027` (15), `F401` (34)
-- [ ] Add `I`, `UP`, and `W` after an auto-fix sweep
+- [x] Clear `F841`, `B007`, `B905`, `B008`, `B904` and `F401`
+- [x] Add `I` and `W` to the ratchet
+- [x] `UP` swept (`UP015` gated; `UP035`/`UP031` remainder is not auto-fixable)
+
+**Final state.** The ratchet is
+`ruff check src/ --select UP015,F,B,I,W --ignore B027`. Total findings fell
+from 6,944 to about 300, and the remainder is deliberate: 269 `E402` late
+imports (this codebase manipulates `sys.path` before importing packages), 17
+`E741`, and a handful of `UP035`/`UP031` that have no safe autofix.
+
+`B027` is a permanent documented ignore. Spark's base classes use empty
+methods as optional hooks with a no-op default, so making them abstract would
+force every subclass to implement hooks it never uses.
+
+The `UP` sweep exposed three latent bugs, because PEP 604 unions are evaluated
+at runtime where `Optional[...]` was not: two callbacks annotated `callable`
+(the builtin function) instead of `Callable`, and a lock annotated
+`multiprocessing.Lock`, which is a factory function rather than a type.
 
 **Evidence.** CI enforces `UP015` only. `ruff check src/ --statistics` reports
 6,944 findings. Most are cosmetic (1,981 `UP006`, 1,981 `W293`, 1,665 `UP045`),
@@ -154,7 +169,21 @@ the largest block and is already an intentional gradual-adoption ignore.
 
 ### 6. Stop swallowing exceptions silently
 
-- [ ] Replace bare `except Exception: pass` with logged handlers
+- [x] Replace bare `except Exception: pass` with logged handlers
+
+**Done: 873 of 955.** An AST transform rewrote every handler whose body is
+exactly `pass` into `logger.debug(..., exc_info=True)`, naming the enclosing
+function so a log line identifies the site. 44 modules had no logger at all
+and had one added.
+
+The count is 955, not the 551 in the original estimate: that number came from
+a grep for `except Exception` followed by `pass`, which missed other exception
+types and multi-line handlers. The AST pass finds all of them.
+
+**Remaining: 82.** Formatting cases the transform deliberately declines —
+`except X: pass` on a single line, or a `pass` sharing its line with a
+comment. Three more sites in `gateway/run.py` run at import time before the
+module logger exists and keep their `pass` with a comment saying why.
 
 **Evidence.** 551 sites match `except Exception:` followed directly by `pass`,
 across 241 files. The worst areas are `src/tools/` (`voice_mode.py`,
@@ -173,7 +202,29 @@ with `src/tools/`.
 
 ### 7. Get `mypy` to zero on its declared scope
 
-- [ ] Reduce `mypy src/agent/ src/spark_cli/` to 0 errors
+- [x] Gate the clean modules in CI so they cannot regress
+- [ ] Clear the 41 modules still listed in the mypy overrides block
+
+**Partly done.** 588 errors -> 563, and files with errors 56 -> 41, so 70 of
+111 modules are clean. `mypy src/agent/ src/spark_cli/` now exits clean and
+runs as a CI job, because the 41 modules that still have errors are listed in
+a `[[tool.mypy.overrides]]` block with `ignore_errors`. Fix a module, delete
+its line, and the gate covers it.
+
+Fixed along the way: 12 stale `type: ignore` comments, `Any` leaking from
+untyped boundaries (`keyring`, `json.loads`, `dict.get`) now cast at the
+boundary, missing annotations, and three real bugs — `_format_size` declared
+an `int` it divides into a float, a gateway deadline compared against `None`,
+and a loop variable rebound from an earlier loop.
+
+`types-PyYAML` was added to the dev extras: without it a clean machine reports
+six `import-untyped` errors that a developer machine never shows.
+
+**Remaining.** The 41 modules hold 563 errors, concentrated in
+`agent/auxiliary_client.py` (122), `spark_cli/web_server.py` (95),
+`agent/model_metadata.py` (47) and `agent/error_classifier.py` (37). The
+dominant codes are `arg-type` (223), `assignment` (115) and `no-any-return`
+(108).
 
 **Evidence.** `pyproject.toml` declares `files = ["src/agent/", "src/spark_cli/"]`
 as the strict-adoption scope. Running it now gives 589 errors in 56 files of 111
