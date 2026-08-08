@@ -173,7 +173,7 @@ def _ensure_docker_available() -> None:
             text=True,
             timeout=5,
         )
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         logger.error(
             "Docker backend selected but the resolved docker executable '%s' could "
             "not be executed.",
@@ -182,8 +182,8 @@ def _ensure_docker_available() -> None:
         )
         raise RuntimeError(
             "Docker executable could not be executed. Check your Docker installation."
-        )
-    except subprocess.TimeoutExpired:
+        ) from err
+    except subprocess.TimeoutExpired as err:
         logger.error(
             "Docker backend selected but '%s version' timed out. "
             "The Docker daemon may not be running.",
@@ -192,7 +192,7 @@ def _ensure_docker_available() -> None:
         )
         raise RuntimeError(
             "Docker daemon is not responding. Ensure Docker is running and try again."
-        )
+        ) from err
     except Exception:
         logger.error(
             "Unexpected error while checking Docker availability.",

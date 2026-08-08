@@ -151,7 +151,7 @@ async def board(
             except Exception as retry_error:
                 e = retry_error
         _log_board_error(e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/tasks/{task_id}")
@@ -189,9 +189,9 @@ async def task_create(body: TaskCreateBody):
             max_runtime_seconds=body.max_runtime_seconds,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except sqlite3.IntegrityError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.patch("/tasks/{task_id}")
@@ -221,7 +221,7 @@ async def task_patch(task_id: str, body: TaskPatchBody):
             raise HTTPException(status_code=404, detail="Task not found")
         return row
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.delete("/tasks/{task_id}")
@@ -254,7 +254,7 @@ async def task_comment(task_id: str, body: CommentBody):
             internal_event=body.internal_event,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return {"ok": True, "id": cid}
 
 
@@ -264,9 +264,9 @@ async def link_add(body: LinkBody):
         kb.add_link(body.parent_id, body.child_id)
         return {"ok": True}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except sqlite3.IntegrityError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.delete("/links")

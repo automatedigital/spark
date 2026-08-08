@@ -643,9 +643,9 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
                     lock_file.seek(0)
                     msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
                 break
-            except (BlockingIOError, OSError, PermissionError):
+            except (BlockingIOError, OSError, PermissionError) as err:
                 if time.time() >= deadline:
-                    raise TimeoutError("Timed out waiting for auth store lock")
+                    raise TimeoutError("Timed out waiting for auth store lock") from err
                 time.sleep(0.05)
 
         _auth_lock_holder.depth = 1
@@ -1807,9 +1807,9 @@ def _poll_for_token(
 
         try:
             error_payload = response.json()
-        except Exception:
+        except Exception as err:
             response.raise_for_status()
-            raise RuntimeError("Token endpoint returned a non-JSON error response")
+            raise RuntimeError("Token endpoint returned a non-JSON error response") from err
 
         error_code = error_payload.get("error", "")
         if error_code == "authorization_pending":
@@ -2461,7 +2461,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
             f"Failed to request device code: {exc}",
             provider="openai-codex",
             code="device_code_request_failed",
-        )
+        ) from exc
 
     if resp.status_code != 200:
         raise AuthError(
@@ -2519,9 +2519,9 @@ def _codex_device_code_login() -> Dict[str, Any]:
                         provider="openai-codex",
                         code="device_code_poll_error",
                     )
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as err:
         print("\nLogin cancelled.")
-        raise SystemExit(130)
+        raise SystemExit(130) from err
 
     if code_resp is None:
         raise AuthError(
@@ -2560,7 +2560,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
             f"Token exchange failed: {exc}",
             provider="openai-codex",
             code="token_exchange_failed",
-        )
+        ) from exc
 
     if token_resp.status_code != 200:
         raise AuthError(

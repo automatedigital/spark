@@ -62,10 +62,10 @@ def _sanitize_plugin_name(name: str, plugins_dir: Path) -> Path:
 
     try:
         target.relative_to(plugins_resolved)
-    except ValueError:
+    except ValueError as err:
         raise ValueError(
             f"Invalid plugin name '{name}': resolves outside the plugins directory."
-        )
+        ) from err
 
     return target
 

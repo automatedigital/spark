@@ -603,11 +603,11 @@ def _parse_env_var(name: str, default: str, converter=int, type_label: str = "in
     raw = os.getenv(name, default)
     try:
         return converter(raw)
-    except (ValueError, json.JSONDecodeError):
+    except (ValueError, json.JSONDecodeError) as err:
         raise ValueError(
             f"Invalid value for {name}: {raw!r} (expected {type_label}). "
             f"Check ~/.spark/.env or environment variables."
-        )
+        ) from err
 
 
 def _get_env_config() -> Dict[str, Any]:

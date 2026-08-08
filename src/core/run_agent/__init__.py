@@ -840,13 +840,13 @@ class AIAgent(_PromptCacheMixin):
                             "No AI provider is configured. Run `spark setup` to connect "
                             "one — subscription logins (Codex, Copilot) and API keys are "
                             f"both supported. Original error: {e}"
-                        )
+                        ) from e
                     raise RuntimeError(
                         f"No credentials found for provider '{_prov}'. Run `spark setup` "
                         f"to connect it, or set {_prov.upper().replace('-', '_')}_API_KEY "
                         f"in ~/.spark/.env. Original error: {e}"
-                    )
-                raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
+                    ) from e
+                raise RuntimeError(f"Failed to initialize OpenAI client: {e}") from e
         
         # Provider fallback chain — ordered list of backup providers tried
         # when the primary is exhausted (rate-limit, overload, connection

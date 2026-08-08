@@ -17,9 +17,7 @@ import logging
 import os
 import shutil
 import sys
-import json
 import atexit
-import tempfile
 import time
 import uuid
 import textwrap
@@ -33,7 +31,6 @@ logger = logging.getLogger(__name__)
 # Suppress startup messages for clean CLI experience
 os.environ["SPARK_QUIET"] = "1"  # Our own modules
 
-import yaml
 
 # prompt_toolkit for fixed input area TUI
 from prompt_toolkit.history import FileHistory
@@ -58,8 +55,6 @@ from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.widgets import TextArea
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit import print_formatted_text as _pt_print
-from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
 
 try:
     from prompt_toolkit.cursor_shapes import CursorShape
@@ -220,7 +215,6 @@ from rich import box as rich_box
 from rich.console import Console
 from rich.markup import escape as _escape
 from rich.panel import Panel
-from rich.text import Text as _RichText
 
 import fire
 
@@ -2489,7 +2483,6 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             the partial response is kept and the user drops back to the prompt
             where typing + Enter redirects the agent.
             """
-            import time as _time
 
             if self._agent_running and self.agent:
                 # Don't prime the double-Ctrl+C force-exit window.

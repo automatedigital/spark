@@ -84,11 +84,11 @@ try:
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel, Field
     from starlette.middleware.base import BaseHTTPMiddleware
-except ImportError:
+except ImportError as err:
     raise SystemExit(
         "Web UI requires fastapi and uvicorn.\n"
         "Run 'spark web' to auto-install, or: pip install spark-agent[web]"
-    )
+    ) from err
 
 WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
@@ -4423,9 +4423,9 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
             }
         finally:
             db.close()
-    except Exception:
+    except Exception as err:
         _log.exception("GET /api/sessions failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 @app.get("/api/sessions/search")
@@ -4469,9 +4469,9 @@ async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = 
             return {"results": list(seen.values())}
         finally:
             db.close()
-    except Exception:
+    except Exception as err:
         _log.exception("GET /api/sessions/search failed")
-        raise HTTPException(status_code=500, detail="Search failed")
+        raise HTTPException(status_code=500, detail="Search failed") from err
 
 
 def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -5392,9 +5392,9 @@ async def update_config(body: ConfigUpdate):
         return {"ok": True}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception:
+    except Exception as err:
         _log.exception("PUT /api/config failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 @app.get("/api/auth/session-token")
@@ -5435,9 +5435,9 @@ async def set_env_var(body: EnvVarUpdate):
         return {"ok": True, "key": body.key}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception:
+    except Exception as err:
         _log.exception("PUT /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 @app.delete("/api/env")
@@ -5449,9 +5449,9 @@ async def remove_env_var(body: EnvVarDelete):
         return {"ok": True, "key": body.key}
     except HTTPException:
         raise
-    except Exception:
+    except Exception as err:
         _log.exception("DELETE /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 @app.post("/api/env/reveal")
@@ -5770,7 +5770,7 @@ async def disconnect_oauth_provider(provider_id: str, request: Request):
         return {"ok": bool(cleared), "provider": provider_id}
     except Exception as e:
         _log.exception("disconnect %s failed", provider_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -6391,7 +6391,7 @@ async def start_oauth_login(provider_id: str, request: Request):
         raise
     except Exception as e:
         _log.exception("oauth/start %s failed", provider_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     raise HTTPException(status_code=400, detail="Unsupported flow")
 
 
@@ -6572,11 +6572,11 @@ def _resolve_workspace_media_path(path: str) -> Path:
     workspace_root = _get_workspace_root()
     try:
         resolved.relative_to(workspace_root)
-    except ValueError:
+    except ValueError as err:
         raise HTTPException(
             status_code=403,
             detail="Media previews are limited to Spark workspace files",
-        )
+        ) from err
     if not resolved.exists():
         raise HTTPException(status_code=404, detail=f"Media file not found: {path!r}")
     if resolved.is_dir():
@@ -6605,7 +6605,7 @@ async def update_session_title(session_id: str, body: dict[str, Any]):
         try:
             updated = db.set_session_title(sid, title)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         if not updated:
             raise HTTPException(status_code=404, detail="Session not found")
         row = db.get_session(sid)
@@ -6633,8 +6633,8 @@ def _normalize_web_session_source(source: Optional[str]) -> str:
     project_path = (_get_workspace_root() / slug).resolve()
     try:
         project_path.relative_to(_get_workspace_root().resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid workspace project: {slug!r}")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=f"Invalid workspace project: {slug!r}") from err
     if not project_path.is_dir():
         raise HTTPException(status_code=404, detail=f"Workspace project not found: {slug!r}")
     return f"workspace:{slug}"
@@ -6916,7 +6916,7 @@ async def create_cron_job(body: CronJobCreate):
         return job
     except Exception as e:
         _log.exception("POST /api/cron/jobs failed")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @app.put("/api/cron/jobs/{job_id}")
@@ -6930,7 +6930,7 @@ async def update_cron_job(job_id: str, body: CronJobUpdate):
         job = update_job(job_id, updates)
     except Exception as e:
         _log.exception("PUT /api/cron/jobs/%s failed", job_id)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -7124,10 +7124,10 @@ async def get_skill_detail(skill_id: str):
         if size > 1_048_576:
             raise HTTPException(status_code=413, detail="SKILL.md exceeds the 1 MiB view limit.")
         content = skill_md.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=422, detail="SKILL.md is not valid UTF-8.")
-    except OSError:
-        raise HTTPException(status_code=404, detail="Skill content is unavailable.")
+    except UnicodeDecodeError as err:
+        raise HTTPException(status_code=422, detail="SKILL.md is not valid UTF-8.") from err
+    except OSError as err:
+        raise HTTPException(status_code=404, detail="Skill content is unavailable.") from err
 
     supporting_files: list[dict[str, Any]] = []
     allowed_roots = {"references", "templates", "scripts", "assets"}
@@ -7310,7 +7310,7 @@ async def update_config_raw(body: RawConfigUpdate):
                 _close_web_agent(sid)
         return {"ok": True}
     except yaml.YAMLError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -9440,11 +9440,11 @@ def _validate_context_items(raw_items: list, workspace_slug: Optional[str] = Non
             try:
                 resolved = (project_root / item.source_path.lstrip("/")).resolve()
                 resolved.relative_to(project_root)
-            except ValueError:
+            except ValueError as err:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Path traversal detected in context item: {item.source_path!r}",
-                )
+                ) from err
 
         if item.inclusion_mode == InclusionMode.full and item.size_bytes > _MAX_CONTEXT_ITEM_BYTES:
             raise HTTPException(
@@ -9645,9 +9645,9 @@ async def update_session_kanban(session_id: str, body: KanbanUpdate):
             db.close()
     except HTTPException:
         raise
-    except Exception:
+    except Exception as err:
         _log.exception("PATCH /api/sessions/%s/kanban failed", session_id)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 # ---------------------------------------------------------------------------
@@ -9804,7 +9804,7 @@ async def canvas_chat(body: CanvasChatBody):
     try:
         reply = await _run_blocking(_run)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return {"ok": True, "reply": reply, "model": turn_route["model"]}
 
 
@@ -9817,7 +9817,7 @@ async def create_conversation(body: ConversationCreate):
     try:
         from tools.approval import register_gateway_notify, unregister_gateway_notify
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}") from e
 
     request_received_at = time.time()
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
@@ -10213,7 +10213,7 @@ async def interrupt_conversation_subagent(
     try:
         target_child.interrupt(body.message)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     status = "stopping"
     payload = {
@@ -10501,7 +10501,7 @@ async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
             )
         _persist_interrupted_turn_boundary(agent_session_id or session_id, body.message)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     _publish_event(
         "chat.status",
         {"kind": "interrupt_requested", "message": status},
@@ -10735,8 +10735,8 @@ async def summarize_file(body: SummarizeFileRequest):
     try:
         resolved = (workspace_root / body.path.lstrip("/")).resolve()
         resolved.relative_to(workspace_root)
-    except (ValueError, Exception):
-        raise HTTPException(status_code=400, detail="Path traversal not allowed")
+    except (ValueError, Exception) as err:
+        raise HTTPException(status_code=400, detail="Path traversal not allowed") from err
 
     if not resolved.exists() or not resolved.is_file():
         raise HTTPException(status_code=404, detail="File not found")
@@ -11073,7 +11073,7 @@ async def conversation_feedback(session_id: str, body: FeedbackSubmitBody):
             )
             resp.raise_for_status()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to submit feedback: {exc}")
+        raise HTTPException(status_code=502, detail=f"Failed to submit feedback: {exc}") from exc
 
     _publish_event("chat.feedback_submitted", {}, session_id)
     return {"ok": True}
@@ -11408,7 +11408,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     try:
         from tools.approval import register_gateway_notify, unregister_gateway_notify
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}") from e
 
     from spark_cli.workspace_routes import _project_dir
 

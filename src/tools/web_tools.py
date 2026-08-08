@@ -875,7 +875,7 @@ Create a markdown summary that captures all key information in a well-organized,
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, 60)
             else:
-                raise last_error
+                raise last_error from api_error
     
     return None
 

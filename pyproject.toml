@@ -186,13 +186,28 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "W"]
 ignore = [
     "E501",   # line too long — handled case-by-case in large files
-    "B904",   # raise from inside except — gradual adoption
     "UP007",  # X | Y union syntax — requires Python 3.10+; keep Optional[] for 3.11 compat
+    # B027 flags empty methods on an ABC that lack @abstractmethod.  Spark's
+    # base classes (MemoryProvider, ContextEngine, BasePlatformAdapter,
+    # BaseEnvironment) use those as OPTIONAL hooks with a documented no-op
+    # default.  Marking them abstract would force every subclass to implement
+    # hooks it does not need, so the rule does not fit this design.
+    "B027",
 ]
-per-file-ignores = {"tests/**" = ["B"], "src/spark_cli/*routes*.py" = ["B008"]}
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B"]
 # B008 flags function calls in argument defaults.  FastAPI route signatures
 # require exactly that (File(...), Form(...), Depends(...)), so the rule is
 # disabled for route modules rather than worked around.
+"src/spark_cli/*routes*.py" = ["B008"]
+# This module is the compatibility surface left behind when SparkCLI was split
+# into mixins.  Its "unused" imports are re-exports that callers still do
+# `from core.cli import X` for, and names the test suite monkeypatches as
+# `core.cli.<name>`.  Removing them breaks both.
+"src/core/cli/__init__.py" = ["F401"]
+# Imports used only to probe whether the optional Honcho extra is installed;
+# the bound name is deliberately never referenced.
+"src/plugins/memory/honcho/__init__.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -174,8 +174,8 @@ class Mem0MemoryProvider(MemoryProvider):
                 from mem0 import MemoryClient
                 self._client = MemoryClient(api_key=self._api_key)
                 return self._client
-            except ImportError:
-                raise RuntimeError("mem0 package not installed. Run: pip install mem0ai")
+            except ImportError as err:
+                raise RuntimeError("mem0 package not installed. Run: pip install mem0ai") from err
 
     def _is_breaker_open(self) -> bool:
         """Return True if the circuit breaker is tripped (too many failures)."""

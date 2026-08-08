@@ -209,7 +209,7 @@ def _read_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, Any]
         doc["revision"] = _revision(path)
         return doc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}") from exc
 
 
 def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) -> dict[str, Any]:
@@ -240,7 +240,7 @@ def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) 
         tmp.replace(path)
     except Exception as exc:  # noqa: BLE001
         tmp.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Failed to write canvas: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to write canvas: {exc}") from exc
     return {
         "ok": True,
         "id": canvas_id,
@@ -258,7 +258,7 @@ def _delete_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, An
     try:
         path.unlink()
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to delete canvas: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete canvas: {exc}") from exc
     return {"ok": True, "deleted": canvas_id}
 
 

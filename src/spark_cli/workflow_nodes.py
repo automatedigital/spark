@@ -525,7 +525,7 @@ def _tool_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list
         try:
             args = json.loads(args) if args.strip() else {}
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Tool args are not valid JSON: {exc}")
+            raise ValueError(f"Tool args are not valid JSON: {exc}") from exc
     raw = registry.dispatch(tool_name, args)
     try:
         parsed = json.loads(raw) if isinstance(raw, str) else raw
