@@ -20,7 +20,7 @@ V4A Format:
 
 Usage:
     from tools.patch_parser import parse_v4a_patch, apply_v4a_operations
-    
+
     operations, error = parse_v4a_patch(patch_content)
     if error:
         print(f"Parse error: {error}")
@@ -74,10 +74,10 @@ class PatchOperation:
 def parse_v4a_patch(patch_content: str) -> tuple[list[PatchOperation], str | None]:
     """
     Parse a V4A format patch.
-    
+
     Args:
         patch_content: The patch text in V4A format
-    
+
     Returns:
         Tuple of (operations, error_message)
         - If successful: (list_of_operations, None)

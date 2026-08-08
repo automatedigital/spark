@@ -13,7 +13,6 @@ import time
 
 from spark_cli.config import get_spark_home
 
-
 CACHE_PATH = get_spark_home() / "sticker_cache.json"
 
 # Vision prompt for describing stickers -- kept concise to save tokens

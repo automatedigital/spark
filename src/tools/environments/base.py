@@ -15,9 +15,9 @@ import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 from typing import IO, Protocol
-from collections.abc import Callable
 
 from core.spark_constants import get_spark_home
 from tools.interrupt import is_interrupted

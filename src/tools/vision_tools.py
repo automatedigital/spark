@@ -20,7 +20,7 @@ Features:
 Usage:
     from vision_tools import vision_analyze_tool
     import asyncio
-    
+
     # Analyze an image
     result = await vision_analyze_tool(
         image_url="https://example.com/image.jpg",
@@ -33,15 +33,17 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any
-from collections.abc import Awaitable
 from urllib.parse import urlparse
+
 import httpx
+
 from agent.auxiliary_client import async_call_llm, extract_content_or_reasoning
+from core.spark_constants import get_spark_home
 from tools.debug_helpers import DebugSession
 from tools.website_policy import check_website_access
-from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -77,10 +79,10 @@ _VISION_MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
 def _validate_image_url(url: str) -> bool:
     """
     Basic validation of image URL format.
-    
+
     Args:
         url (str): The URL to validate
-        
+
     Returns:
         bool: True if URL appears to be valid, False otherwise
     """
@@ -130,15 +132,15 @@ def _detect_image_mime_type(image_path: Path) -> str | None:
 async def _download_image(image_url: str, destination: Path, max_retries: int = 3) -> Path:
     """
     Download an image from a URL to a local destination (async) with retry logic.
-    
+
     Args:
         image_url (str): The URL of the image to download
         destination (Path): The path where the image should be saved
         max_retries (int): Maximum number of retry attempts (default: 3)
-        
+
     Returns:
         Path: The path to the downloaded image
-        
+
     Raises:
         Exception: If download fails after all retries
     """
@@ -233,10 +235,10 @@ async def _download_image(image_url: str, destination: Path, max_retries: int = 
 def _determine_mime_type(image_path: Path) -> str:
     """
     Determine the MIME type of an image based on its file extension.
-    
+
     Args:
         image_path (Path): Path to the image file
-        
+
     Returns:
         str: The MIME type (defaults to image/jpeg if unknown)
     """
@@ -256,11 +258,11 @@ def _determine_mime_type(image_path: Path) -> str:
 def _image_to_base64_data_url(image_path: Path, mime_type: str | None = None) -> str:
     """
     Convert an image file to a base64-encoded data URL.
-    
+
     Args:
         image_path (Path): Path to the image file
         mime_type (Optional[str]): MIME type of the image (auto-detected if None)
-        
+
     Returns:
         str: Base64-encoded data URL (e.g., "data:image/jpeg;base64,...")
     """
@@ -322,8 +324,9 @@ def _resize_image_for_vision(image_path: Path, mime_type: str | None = None,
 
     # Attempt auto-resize with Pillow (soft dependency)
     try:
-        from PIL import Image
         import io as _io
+
+        from PIL import Image
     except ImportError:
         logger.info("Pillow not installed — cannot auto-resize oversized image")
         if data_url is None:
@@ -414,31 +417,31 @@ async def vision_analyze_tool(
 ) -> str:
     """
     Analyze an image from a URL or local file path using vision AI.
-    
+
     This tool accepts either an HTTP/HTTPS URL or a local file path. For URLs,
     it downloads the image first. In both cases, the image is converted to base64
     and processed using Gemini 3 Flash Preview via OpenRouter API.
-    
+
     The user_prompt parameter is expected to be pre-formatted by the calling
     function (typically model_tools.py) to include both full description
     requests and specific questions.
-    
+
     Args:
         image_url (str): The URL or local file path of the image to analyze.
                          Accepts http://, https:// URLs or absolute/relative file paths.
         user_prompt (str): The pre-formatted prompt for the vision model
         model (str): The vision model to use (default: google/gemini-3-flash-preview)
-    
+
     Returns:
         str: JSON string containing the analysis results with the following structure:
              {
                  "success": bool,
                  "analysis": str (defaults to error message if None)
              }
-    
+
     Raises:
         Exception: If download fails, analysis fails, or API key is not set
-        
+
     Note:
         - For URLs, temporary images are stored in ~/.spark/cache/vision/ and cleaned up
         - For local file paths, the file is used directly and NOT deleted

@@ -20,9 +20,9 @@ Other modules import from this file.  No parallel registries.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
-from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 

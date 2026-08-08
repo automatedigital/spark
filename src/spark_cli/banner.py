@@ -9,12 +9,12 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from core.spark_constants import get_spark_home
-
-from rich.console import Console
 
 from prompt_toolkit import print_formatted_text as _pt_print
 from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
+from rich.console import Console
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,8 @@ def _skin_branding(key: str, fallback: str) -> str:
 # ASCII Art & Branding
 # =========================================================================
 
-from spark_cli import __version__ as VERSION, __release_date__ as RELEASE_DATE
+from spark_cli import __release_date__ as RELEASE_DATE
+from spark_cli import __version__ as VERSION
 
 SPARK_AGENT_LOGO = """[bold #FFD700]███████╗██████╗  █████╗ ██████╗ ██╗  ██╗        █████╗  ██████╗ ███████╗███╗   ██╗████████╗[/]
 [bold #FFD700]██╔════╝██╔══██╗██╔══██╗██╔══██╗██║ ██╔╝       ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝[/]

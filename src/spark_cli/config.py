@@ -100,7 +100,6 @@ import yaml
 from spark_cli.colors import Colors, color
 from spark_cli.default_soul import read_default_soul_md, should_replace_with_default_soul
 
-
 # =============================================================================
 # Managed mode (NixOS declarative config)
 # =============================================================================
@@ -1802,8 +1801,8 @@ def get_missing_skill_config_vars() -> list[dict[str, Any]]:
     """
     try:
         from agent.skill_utils import (
-            discover_all_skill_config_vars,
             SKILL_CONFIG_PREFIX,
+            discover_all_skill_config_vars,
         )
     except Exception:
         return []

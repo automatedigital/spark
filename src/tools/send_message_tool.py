@@ -14,11 +14,11 @@ import time
 
 from agent.redact import redact_sensitive_text
 from core.channel_utils import (
-    parse_target_ref,
-    _TELEGRAM_TOPIC_TARGET_RE,
     _FEISHU_TARGET_RE,
-    _WEIXIN_TARGET_RE,
     _NUMERIC_TOPIC_RE,
+    _TELEGRAM_TOPIC_TARGET_RE,
+    _WEIXIN_TARGET_RE,
+    parse_target_ref,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ def _handle_send(args):
         return tool_error("Interrupted")
 
     try:
-        from gateway.config import load_gateway_config, Platform
+        from gateway.config import Platform, load_gateway_config
         config = load_gateway_config()
     except Exception as e:
         return json.dumps(_error(f"Failed to load gateway config: {e}"))
@@ -328,9 +328,9 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
     """
     from gateway.config import Platform
     from gateway.platforms.base import BasePlatformAdapter, utf16_len
-    from gateway.platforms.telegram import TelegramAdapter
     from gateway.platforms.discord import DiscordAdapter
     from gateway.platforms.slack import SlackAdapter
+    from gateway.platforms.telegram import TelegramAdapter
 
     # Feishu adapter import is optional (requires lark-oapi)
     try:
@@ -585,7 +585,7 @@ async def _send_discord(token, chat_id, message, thread_id=None):
     except ImportError:
         return {"error": "aiohttp not installed. Run: pip install aiohttp"}
     try:
-        from gateway.platforms.base import resolve_proxy_url, proxy_kwargs_for_aiohttp
+        from gateway.platforms.base import proxy_kwargs_for_aiohttp, resolve_proxy_url
         _proxy = resolve_proxy_url(platform_env_var="DISCORD_PROXY")
         _sess_kw, _req_kw = proxy_kwargs_for_aiohttp(_proxy)
         # Thread endpoint: Discord threads are channels; send directly to the thread ID.
@@ -612,7 +612,7 @@ async def _send_slack(token, chat_id, message):
     except ImportError:
         return {"error": "aiohttp not installed. Run: pip install aiohttp"}
     try:
-        from gateway.platforms.base import resolve_proxy_url, proxy_kwargs_for_aiohttp
+        from gateway.platforms.base import proxy_kwargs_for_aiohttp, resolve_proxy_url
         _proxy = resolve_proxy_url()
         _sess_kw, _req_kw = proxy_kwargs_for_aiohttp(_proxy)
         url = "https://slack.com/api/chat.postMessage"
@@ -755,7 +755,7 @@ async def _send_sms(auth_token, chat_id, message):
     message = message.strip()
 
     try:
-        from gateway.platforms.base import resolve_proxy_url, proxy_kwargs_for_aiohttp
+        from gateway.platforms.base import proxy_kwargs_for_aiohttp, resolve_proxy_url
         _proxy = resolve_proxy_url()
         _sess_kw, _req_kw = proxy_kwargs_for_aiohttp(_proxy)
         creds = f"{account_sid}:{auth_token}"
@@ -978,7 +978,7 @@ async def _send_bluebubbles(extra, chat_id, message):
 async def _send_feishu(pconfig, chat_id, message, media_files=None, thread_id=None):
     """Send via Feishu/Lark using the adapter's send pipeline."""
     try:
-        from gateway.platforms.feishu import FeishuAdapter, FEISHU_AVAILABLE
+        from gateway.platforms.feishu import FEISHU_AVAILABLE, FeishuAdapter
         if not FEISHU_AVAILABLE:
             return {"error": "Feishu dependencies not installed. Run: pip install 'spark-agent[feishu]'"}
         from gateway.platforms.feishu import FEISHU_DOMAIN, LARK_DOMAIN

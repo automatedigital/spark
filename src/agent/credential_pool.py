@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
+import re
 import threading
 import time
 import uuid
-import os
-import re
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from typing import Any
 
-from core.spark_constants import OPENROUTER_BASE_URL
 import spark_cli.auth as auth_mod
+from core.spark_constants import OPENROUTER_BASE_URL
 from spark_cli.auth import (
     CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
     PROVIDER_REGISTRY,
@@ -22,13 +22,13 @@ from spark_cli.auth import (
     _codex_access_token_is_expiring,
     _decode_jwt_claims,
     _import_codex_cli_tokens,
-    _write_codex_cli_tokens,
     _load_auth_store,
     _load_provider_state,
     _resolve_kimi_base_url,
     _resolve_zai_base_url,
     _save_auth_store,
     _save_provider_state,
+    _write_codex_cli_tokens,
     read_credential_pool,
     write_credential_pool,
 )
@@ -1047,7 +1047,10 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
         except ImportError:
             pass
 
-        from agent.anthropic_adapter import read_claude_code_credentials, read_spark_oauth_credentials
+        from agent.anthropic_adapter import (
+            read_claude_code_credentials,
+            read_spark_oauth_credentials,
+        )
 
         for source_name, creds in (
             ("spark_pkce", read_spark_oauth_credentials()),

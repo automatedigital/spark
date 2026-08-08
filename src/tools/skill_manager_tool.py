@@ -39,15 +39,16 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from core.spark_constants import get_spark_home
 from typing import Any
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
 # Import security scanner — agent-created skills get the same scrutiny as
 # community hub installs.
 try:
-    from tools.skills_guard import scan_skill, should_allow_install, format_scan_report
+    from tools.skills_guard import format_scan_report, scan_skill, should_allow_install
     _GUARD_AVAILABLE = True
 except ImportError:
     _GUARD_AVAILABLE = False
@@ -74,7 +75,6 @@ def _security_scan_skill(skill_dir: Path) -> str | None:
     return None
 
 import yaml
-
 
 # All skills live in ~/.spark/skills/ (single source of truth)
 SPARK_HOME = get_spark_home()
@@ -256,11 +256,11 @@ def _resolve_skill_target(skill_dir: Path, file_path: str) -> tuple[Path | None,
 def _atomic_write_text(file_path: Path, content: str, encoding: str = "utf-8") -> None:
     """
     Atomically write text content to a file.
-    
+
     Uses a temporary file in the same directory and os.replace() to ensure
     the target file is never left in a partially-written state if the process
     crashes or is interrupted.
-    
+
     Args:
         file_path: Target file path
         content: Content to write
@@ -433,8 +433,8 @@ def save_skill_content(skill_dir: Path, content: str, *, allow_external: bool = 
             return {"success": False, "error": scan_error}
 
         try:
-            from tools.skill_usage import bump_patch
             from agent.skill_utils import parse_frontmatter
+            from tools.skill_usage import bump_patch
 
             frontmatter, _ = parse_frontmatter(content)
             bump_patch(str(frontmatter.get("name") or skill_dir.name))
@@ -709,7 +709,7 @@ def skill_manage(
         except Exception:
             pass
         try:
-            from tools.skill_usage import mark_agent_created, bump_patch
+            from tools.skill_usage import bump_patch, mark_agent_created
             if action == "create":
                 mark_agent_created(name)
             elif action in ("patch", "edit"):

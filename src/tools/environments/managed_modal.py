@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import os
-import requests
 import uuid
 from dataclasses import dataclass
 from typing import Any
+
+import requests
 
 from tools.environments.modal_utils import (
     BaseModalExecutionEnvironment,

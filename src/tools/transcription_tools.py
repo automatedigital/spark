@@ -426,7 +426,7 @@ def _transcribe_groq(file_path: str, model_name: str) -> dict[str, Any]:
         model_name = DEFAULT_GROQ_STT_MODEL
 
     try:
-        from openai import OpenAI, APIError, APIConnectionError, APITimeoutError
+        from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
         client = OpenAI(api_key=api_key, base_url=GROQ_BASE_URL, timeout=30, max_retries=0)
         try:
             with open(file_path, "rb") as audio_file:
@@ -483,7 +483,7 @@ def _transcribe_openai(file_path: str, model_name: str) -> dict[str, Any]:
         model_name = DEFAULT_STT_MODEL
 
     try:
-        from openai import OpenAI, APIError, APIConnectionError, APITimeoutError
+        from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
         client = OpenAI(api_key=api_key, base_url=base_url, timeout=30, max_retries=0)
         try:
             with open(file_path, "rb") as audio_file:

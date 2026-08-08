@@ -11,8 +11,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from spark_cli.config import get_spark_home
 from core.utils import atomic_json_write
+from spark_cli.config import get_spark_home
 
 logger = logging.getLogger(__name__)
 

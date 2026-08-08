@@ -2,7 +2,7 @@
 """
 Image Generation Tools Module
 
-This module provides image generation tools using FAL.ai's FLUX 2 Pro model with 
+This module provides image generation tools using FAL.ai's FLUX 2 Pro model with
 automatic upscaling via FAL.ai's Clarity Upscaler for enhanced image quality.
 
 Available tools:
@@ -19,7 +19,7 @@ Features:
 Usage:
     from image_generation_tool import image_generate_tool
     import asyncio
-    
+
     # Generate and automatically upscale an image
     result = await image_generate_tool(
         prompt="A serene mountain landscape with cherry blossoms",
@@ -28,14 +28,15 @@ Usage:
     )
 """
 
+import datetime
 import json
 import logging
 import os
-import datetime
 import threading
 import uuid
 from typing import Any
 from urllib.parse import urlencode
+
 try:
     import fal_client
 except ImportError:  # Optional image extra; schema discovery must still work.
@@ -226,7 +227,7 @@ def _validate_parameters(
 ) -> dict[str, Any]:
     """
     Validate and normalize image generation parameters for FLUX 2 Pro model.
-    
+
     Args:
         image_size: Either a preset string or custom size dict
         num_inference_steps: Number of inference steps
@@ -234,10 +235,10 @@ def _validate_parameters(
         num_images: Number of images to generate
         output_format: Output format for images
         acceleration: Acceleration mode for generation speed
-    
+
     Returns:
         Dict[str, Any]: Validated and normalized parameters
-    
+
     Raises:
         ValueError: If any parameter is invalid
     """
@@ -292,14 +293,14 @@ def _validate_parameters(
 def _upscale_image(image_url: str, original_prompt: str) -> dict[str, Any]:
     """
     Upscale an image using FAL.ai's Clarity Upscaler.
-    
+
     Uses the synchronous fal_client API to avoid event loop lifecycle issues
     when called from threaded contexts (e.g. gateway thread pool).
-    
+
     Args:
         image_url (str): URL of the image to upscale
         original_prompt (str): Original prompt used to generate the image
-    
+
     Returns:
         Dict[str, Any]: Upscaled image data or None if upscaling fails
     """
@@ -361,12 +362,12 @@ def image_generate_tool(
 ) -> str:
     """
     Generate images from text prompts using FAL.ai's FLUX 2 Pro model with automatic upscaling.
-    
+
     Uses the synchronous fal_client API to avoid event loop lifecycle issues.
     The async API's global httpx.AsyncClient (cached via @cached_property) breaks
     when asyncio.run() destroys and recreates event loops between calls, which
     happens in the gateway's thread-pool pattern.
-    
+
     Args:
         prompt (str): The text prompt describing the desired image
         aspect_ratio (str): Image aspect ratio - "landscape", "square", or "portrait" (default: "landscape")
@@ -375,7 +376,7 @@ def image_generate_tool(
         num_images (int): Number of images to generate (1-4, default: 1)
         output_format (str): Image format "jpeg" or "png" (default: "png")
         seed (Optional[int]): Random seed for reproducible results (optional)
-    
+
     Returns:
         str: JSON string containing minimal generation results:
              {
@@ -535,7 +536,7 @@ def image_generate_tool(
 def check_fal_api_key() -> bool:
     """
     Check if the FAL.ai API key is available in environment variables.
-    
+
     Returns:
         bool: True if API key is set, False otherwise
     """
@@ -545,7 +546,7 @@ def check_fal_api_key() -> bool:
 def check_image_generation_requirements() -> bool:
     """
     Check if all requirements for image generation tools are met.
-    
+
     Returns:
         bool: True if requirements are met, False otherwise
     """

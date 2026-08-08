@@ -34,8 +34,8 @@ def _import_audio():
     Raises ImportError or OSError if the libraries are not available
     (e.g. PortAudio missing on headless servers).
     """
-    import sounddevice as sd
     import numpy as np
+    import sounddevice as sd
     return sd, np
 
 

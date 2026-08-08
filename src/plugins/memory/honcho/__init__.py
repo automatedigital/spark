@@ -189,6 +189,7 @@ class HonchoMemoryProvider(MemoryProvider):
     def post_setup(self, spark_home: str, config: dict) -> None:
         """Run the full Honcho setup wizard after provider selection."""
         import types
+
         from plugins.memory.honcho.cli import cmd_setup
         cmd_setup(types.SimpleNamespace())
 

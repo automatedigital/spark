@@ -163,8 +163,8 @@ def copilot_device_code_login(
 
     This replicates the flow used by opencode and the Copilot CLI.
     """
-    import urllib.request
     import urllib.parse
+    import urllib.request
 
     domain = host.rstrip("/")
     device_code_url = f"https://{domain}/login/device/code"

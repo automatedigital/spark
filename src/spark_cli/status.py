@@ -5,19 +5,21 @@ Shows the status of all Spark Agent components.
 """
 
 import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
+from datetime import UTC
+
+from core.spark_constants import OPENROUTER_MODELS_URL
 from spark_cli.auth import AuthError, resolve_provider
 from spark_cli.colors import Colors, color
 from spark_cli.config import get_env_path, get_env_value, get_spark_home, load_config
 from spark_cli.models import provider_label
 from spark_cli.runtime_provider import resolve_requested_provider
-from core.spark_constants import OPENROUTER_MODELS_URL
-from datetime import UTC
+
 
 def check_mark(ok: bool) -> str:
     if ok:

@@ -14,7 +14,6 @@ a thin dispatcher that delegates to a platform-provided callback.
 import json
 from collections.abc import Callable
 
-
 # Maximum number of predefined choices the agent can offer.
 # A 5th "Other (type your answer)" option is always appended by the UI.
 MAX_CHOICES = 4

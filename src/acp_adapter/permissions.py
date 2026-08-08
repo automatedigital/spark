@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from concurrent.futures import TimeoutError as FutureTimeout
 from collections.abc import Callable
+from concurrent.futures import TimeoutError as FutureTimeout
 
 from acp.schema import (
     AllowedOutcome,

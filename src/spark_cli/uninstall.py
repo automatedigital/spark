@@ -12,8 +12,8 @@ import subprocess
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
-
 from spark_cli.colors import Colors, color
+
 
 def log_info(msg: str):
     print(f"{color('→', Colors.CYAN)} {msg}")
@@ -174,7 +174,7 @@ def uninstall_gateway_service():
 def run_uninstall(args):
     """
     Run the uninstall process.
-    
+
     Options:
     - Full uninstall: removes code + ~/.spark/ (configs, data, logs)
     - Keep data: removes code but keeps ~/.spark/ for future reinstall

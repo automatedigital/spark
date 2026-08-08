@@ -12,8 +12,8 @@ Config stored in ~/.spark/config.yaml under:
       cli: []
 """
 
-from spark_cli.config import load_config, save_config
 from spark_cli.colors import Colors, color
+from spark_cli.config import load_config, save_config
 from spark_cli.platforms import PLATFORMS as _PLATFORMS
 
 # Backward-compatible view: {key: label_string} so existing code that

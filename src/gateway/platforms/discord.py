@@ -18,8 +18,8 @@ import tempfile
 import threading
 import time
 from collections import defaultdict
-from typing import Any
 from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,8 @@ VALID_THREAD_AUTO_ARCHIVE_MINUTES = {60, 1440, 4320, 10080}
 
 try:
     import discord
-    from discord import Message as DiscordMessage, Intents
+    from discord import Intents
+    from discord import Message as DiscordMessage
     from discord.ext import commands
 
     DISCORD_AVAILABLE = True
@@ -43,24 +44,24 @@ from pathlib import Path as _Path
 
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
-from gateway.config import Platform, PlatformConfig
 import re
 
-from gateway.platforms.helpers import (
-    MessageDeduplicator,
-    TextBatchAggregator,
-    ThreadParticipationTracker,
-)
+from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
+    SUPPORTED_DOCUMENT_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     ProcessingOutcome,
     SendResult,
-    cache_image_from_url,
     cache_audio_from_url,
     cache_document_from_bytes,
-    SUPPORTED_DOCUMENT_TYPES,
+    cache_image_from_url,
+)
+from gateway.platforms.helpers import (
+    MessageDeduplicator,
+    TextBatchAggregator,
+    ThreadParticipationTracker,
 )
 from tools.url_safety import is_safe_url
 
@@ -605,7 +606,7 @@ class DiscordAdapter(BasePlatformAdapter):
             intents.voice_states = True
 
             # Resolve proxy (DISCORD_PROXY > generic env vars > macOS system proxy)
-            from gateway.platforms.base import resolve_proxy_url, proxy_kwargs_for_bot
+            from gateway.platforms.base import proxy_kwargs_for_bot, resolve_proxy_url
 
             proxy_url = resolve_proxy_url(platform_env_var="DISCORD_PROXY")
             if proxy_url:
@@ -1514,8 +1515,8 @@ class DiscordAdapter(BasePlatformAdapter):
             # Download the image and send as a Discord file attachment
             # (Discord renders attachments inline, unlike plain URLs)
             from gateway.platforms.base import (
-                resolve_proxy_url,
                 proxy_kwargs_for_aiohttp,
+                resolve_proxy_url,
             )
 
             _proxy = resolve_proxy_url(platform_env_var="DISCORD_PROXY")
@@ -2790,9 +2791,10 @@ class DiscordAdapter(BasePlatformAdapter):
                     else:
                         try:
                             import aiohttp
+
                             from gateway.platforms.base import (
-                                resolve_proxy_url,
                                 proxy_kwargs_for_aiohttp,
+                                resolve_proxy_url,
                             )
 
                             _proxy = resolve_proxy_url(platform_env_var="DISCORD_PROXY")

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.request
 import urllib.error
+import urllib.request
 from difflib import get_close_matches
 from typing import Any, NamedTuple
 
@@ -1131,7 +1131,7 @@ def _fetch_anthropic_models(timeout: float = 5.0) -> list[str] | None:
     Claude Code auto-discovery).  Returns sorted model IDs or None.
     """
     try:
-        from agent.anthropic_adapter import resolve_anthropic_token, _is_oauth_token
+        from agent.anthropic_adapter import _is_oauth_token, resolve_anthropic_token
     except ImportError:
         return None
 

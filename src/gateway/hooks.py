@@ -21,13 +21,12 @@ Errors in hooks are caught and logged but never block the main pipeline.
 
 import asyncio
 import importlib.util
-from typing import Any
 from collections.abc import Callable
+from typing import Any
 
 import yaml
 
 from spark_cli.config import get_spark_home
-
 
 HOOKS_DIR = get_spark_home() / "hooks"
 

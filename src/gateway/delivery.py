@@ -9,9 +9,9 @@ Routes messages to the appropriate destination based on:
 """
 
 import logging
-from pathlib import Path
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from spark_cli.config import get_spark_home
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 MAX_PLATFORM_OUTPUT = 4000
 TRUNCATED_VISIBLE = 3800
 
-from .config import Platform, GatewayConfig
+from .config import GatewayConfig, Platform
 from .session import SessionSource
 
 
@@ -29,7 +29,7 @@ from .session import SessionSource
 class DeliveryTarget:
     """
     A single delivery target.
-    
+
     Represents where a message should be sent:
     - "origin" → back to source
     - "local" → save to local files
@@ -46,7 +46,7 @@ class DeliveryTarget:
     def parse(cls, target: str, origin: SessionSource | None = None) -> "DeliveryTarget":
         """
         Parse a delivery target string.
-        
+
         Formats:
         - "origin" → back to source
         - "local" → local files only
@@ -107,7 +107,7 @@ class DeliveryTarget:
 class DeliveryRouter:
     """
     Routes messages to appropriate destinations.
-    
+
     Handles the logic of resolving delivery targets and dispatching
     messages to the right platform adapters.
     """
@@ -115,7 +115,7 @@ class DeliveryRouter:
     def __init__(self, config: GatewayConfig, adapters: dict[Platform, Any] = None):
         """
         Initialize the delivery router.
-        
+
         Args:
             config: Gateway configuration
             adapters: Dict mapping platforms to their adapter instances
@@ -134,14 +134,14 @@ class DeliveryRouter:
     ) -> dict[str, Any]:
         """
         Deliver content to all specified targets.
-        
+
         Args:
             content: The message/output to deliver
             targets: List of delivery targets
             job_id: Optional job ID (for cron jobs)
             job_name: Optional job name
             metadata: Additional metadata to include
-        
+
         Returns:
             Dict with delivery results per target
         """

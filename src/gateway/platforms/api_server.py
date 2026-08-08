@@ -25,8 +25,8 @@ import hmac
 import json
 import logging
 import os
-import socket as _socket
 import re
+import socket as _socket
 import sqlite3
 import time
 import uuid
@@ -524,7 +524,11 @@ class APIServerAdapter(BasePlatformAdapter):
         gateway platforms), falling back to the spark-api-server default.
         """
         from core.run_agent import AIAgent
-        from gateway.run import _resolve_runtime_agent_kwargs, _resolve_gateway_model, _load_gateway_config
+        from gateway.run import (
+            _load_gateway_config,
+            _resolve_gateway_model,
+            _resolve_runtime_agent_kwargs,
+        )
         from spark_cli.tools_config import _get_platform_tools
 
         runtime_kwargs = _resolve_runtime_agent_kwargs()
@@ -1161,14 +1165,28 @@ class APIServerAdapter(BasePlatformAdapter):
     _CRON_AVAILABLE = False
     try:
         from cron.jobs import (
-            list_jobs as _cron_list,
-            get_job as _cron_get,
             create_job as _cron_create,
-            update_job as _cron_update,
-            remove_job as _cron_remove,
+        )
+        from cron.jobs import (
+            get_job as _cron_get,
+        )
+        from cron.jobs import (
+            list_jobs as _cron_list,
+        )
+        from cron.jobs import (
             pause_job as _cron_pause,
+        )
+        from cron.jobs import (
+            remove_job as _cron_remove,
+        )
+        from cron.jobs import (
             resume_job as _cron_resume,
+        )
+        from cron.jobs import (
             trigger_job as _cron_trigger,
+        )
+        from cron.jobs import (
+            update_job as _cron_update,
         )
         # Wrap as staticmethod to prevent descriptor binding — these are plain
         # module functions, not instance methods.  Without this, self._cron_*()

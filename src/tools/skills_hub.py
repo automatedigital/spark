@@ -23,17 +23,19 @@ import subprocess
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from core.spark_constants import get_spark_home
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx
 import yaml
 
+from core.spark_constants import get_spark_home
 from tools.skills_guard import (
-    ScanResult, content_hash, TRUSTED_REPOS,
+    TRUSTED_REPOS,
+    ScanResult,
+    content_hash,
 )
 
 logger = logging.getLogger(__name__)

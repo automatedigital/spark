@@ -6,13 +6,13 @@ as its first argument and uses its state (queues, app reference) to coordinate
 with the TUI.
 """
 
+import getpass
 import queue
 import time as _time
-import getpass
 
-from spark_cli.banner import cprint, _DIM, _RST
-from spark_cli.config import save_env_value_secure
 from core.spark_constants import display_spark_home
+from spark_cli.banner import _DIM, _RST, cprint
+from spark_cli.config import save_env_value_secure
 
 
 def clarify_callback(cli, question, choices):

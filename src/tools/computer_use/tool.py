@@ -4,14 +4,14 @@ import json
 import logging
 from typing import Any
 
-from tools.registry import registry, tool_error, tool_result
-from tools.computer_use.schema import COMPUTER_USE_SCHEMA
 from tools.computer_use.cua_backend import (
-    CuaDriverBackend,
-    CaptureResult,
     ActionResult,
+    CaptureResult,
+    CuaDriverBackend,
     is_available,
 )
+from tools.computer_use.schema import COMPUTER_USE_SCHEMA
+from tools.registry import registry, tool_error, tool_result
 
 logger = logging.getLogger(__name__)
 

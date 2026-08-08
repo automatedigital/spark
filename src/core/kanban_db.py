@@ -14,10 +14,10 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterator, Sequence
 
 from core.spark_constants import get_spark_home
 

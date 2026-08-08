@@ -9,14 +9,14 @@ Handles:
 """
 
 import hashlib
+import json
 import logging
 import os
-import json
 import threading
 import uuid
-from pathlib import Path
-from datetime import datetime, timedelta
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -55,10 +55,10 @@ def _hash_chat_id(value: str) -> str:
 
 
 from .config import (
-    Platform,
     GatewayConfig,
-    SessionResetPolicy,  # noqa: F401 — re-exported via gateway/__init__.py
     HomeChannel,
+    Platform,
+    SessionResetPolicy,  # noqa: F401 — re-exported via gateway/__init__.py
 )
 
 
@@ -66,7 +66,7 @@ from .config import (
 class SessionSource:
     """
     Describes where a message originated from.
-    
+
     This information is used to:
     1. Route responses back to the right place
     2. Inject context into the system prompt
@@ -145,7 +145,7 @@ class SessionSource:
 class SessionContext:
     """
     Full context for a session, used for dynamic system prompt injection.
-    
+
     The agent receives this information to understand:
     - Where messages are coming from
     - What platforms are available
@@ -193,7 +193,7 @@ def build_session_context_prompt(
 ) -> str:
     """
     Build the dynamic system prompt section that tells the agent about its context.
-    
+
     This is injected into the system prompt so the agent knows:
     - Where messages are coming from
     - What platforms are connected
@@ -331,7 +331,7 @@ def build_session_context_prompt(
 class SessionEntry:
     """
     Entry in the session store.
-    
+
     Maps a session key to its current session ID and metadata.
     """
     session_key: str
@@ -524,7 +524,7 @@ def build_session_key(
 class SessionStore:
     """
     Manages session storage and retrieval.
-    
+
     Uses SQLite (via SessionDB) for session metadata and message transcripts.
     Falls back to legacy JSONL files if SQLite is unavailable.
     """
@@ -608,7 +608,7 @@ class SessionStore:
 
     def _is_session_expired(self, entry: SessionEntry) -> bool:
         """Check if a session has expired based on its reset policy.
-        
+
         Works from the entry alone — no SessionSource needed.
         Used by the background expiry watcher to proactively flush memories.
         Sessions with active background processes are never considered expired.
@@ -647,10 +647,10 @@ class SessionStore:
     def _should_reset(self, entry: SessionEntry, source: SessionSource) -> str | None:
         """
         Check if a session should be reset based on policy.
-        
+
         Returns the reset reason ("idle" or "daily") if a reset is needed,
         or None if the session is still valid.
-        
+
         Sessions with active background processes are never reset.
         """
         if self._has_active_processes_fn:
@@ -1005,7 +1005,7 @@ class SessionStore:
 
     def rewrite_transcript(self, session_id: str, messages: list[dict[str, Any]]) -> None:
         """Replace the entire transcript for a session with new messages.
-        
+
         Used by /retry, /undo, and /compress to persist modified conversation history.
         Rewrites both SQLite and legacy JSONL storage.
         """
@@ -1091,7 +1091,7 @@ def build_session_context(
 ) -> SessionContext:
     """
     Build a full session context from a source and config.
-    
+
     This is used to inject context into the agent's system prompt.
     """
     connected = config.get_connected_platforms()

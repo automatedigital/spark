@@ -18,7 +18,7 @@ import logging
 import os
 import random
 import time
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
@@ -31,9 +31,9 @@ from gateway.platforms.base import (
     MessageEvent,
     MessageType,
     SendResult,
-    cache_image_from_bytes,
     cache_audio_from_bytes,
     cache_document_from_bytes,
+    cache_image_from_bytes,
     cache_image_from_url,
 )
 from gateway.platforms.helpers import redact_phone

@@ -14,11 +14,13 @@ import logging
 import sys
 from pathlib import Path
 
-
-from spark_cli.config import (
-    load_config, save_config, get_env_value, save_env_value,
-)
 from spark_cli.colors import Colors, color
+from spark_cli.config import (
+    get_env_value,
+    load_config,
+    save_config,
+    save_env_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +31,17 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 from spark_cli.cli_output import (  # noqa: E402 — late import block
     print_error as _print_error,
+)
+from spark_cli.cli_output import (
     print_info as _print_info,
+)
+from spark_cli.cli_output import (
     print_success as _print_success,
+)
+from spark_cli.cli_output import (
     print_warning as _print_warning,
+)
+from spark_cli.cli_output import (
     prompt as _prompt,
 )
 
@@ -725,8 +735,8 @@ def _estimate_tool_tokens() -> dict[str, int]:
 
 def _prompt_toolset_checklist(platform_label: str, enabled: set[str]) -> set[str]:
     """Multi-select checklist of toolsets. Returns set of selected toolset keys."""
-    from spark_cli.curses_ui import curses_checklist
     from core.toolsets import resolve_toolset
+    from spark_cli.curses_ui import curses_checklist
 
     # Pre-compute per-tool token counts (cached after first call).
     tool_tokens = _estimate_tool_tokens()
@@ -774,7 +784,7 @@ def _prompt_toolset_checklist(platform_label: str, enabled: set[str]) -> set[str
 
 def _configure_toolset(ts_key: str, config: dict):
     """Configure a toolset - provider selection + API keys.
-    
+
     Uses TOOL_CATEGORIES for provider-aware config, falls back to simple
     env var prompts for toolsets not in TOOL_CATEGORIES.
     """

@@ -11,17 +11,17 @@ Probabilities should sum to 100, but the system will normalize if they don't.
 
 Usage:
     from core.toolset_distributions import get_distribution, list_distributions
-    
+
     # Get a specific distribution
     dist = get_distribution("image_gen")
-    
+
     # List all available distributions
     all_dists = list_distributions()
 """
 
 import random
-from core.toolsets import validate_toolset
 
+from core.toolsets import validate_toolset
 
 # Distribution definitions
 # Each key is a distribution name, and the value is a dict of toolset_name: probability_percentage
@@ -222,10 +222,10 @@ DISTRIBUTIONS = {
 def get_distribution(name: str) -> dict[str, any] | None:
     """
     Get a toolset distribution by name.
-    
+
     Args:
         name (str): Name of the distribution
-        
+
     Returns:
         Dict: Distribution definition with description and toolsets
         None: If distribution not found
@@ -236,7 +236,7 @@ def get_distribution(name: str) -> dict[str, any] | None:
 def list_distributions() -> dict[str, dict]:
     """
     List all available distributions.
-    
+
     Returns:
         Dict: All distribution definitions
     """
@@ -246,16 +246,16 @@ def list_distributions() -> dict[str, dict]:
 def sample_toolsets_from_distribution(distribution_name: str) -> list[str]:
     """
     Sample toolsets based on a distribution's probabilities.
-    
+
     Each toolset in the distribution has a % chance of being included.
     This allows multiple toolsets to be active simultaneously.
-    
+
     Args:
         distribution_name (str): Name of the distribution to sample from
-        
+
     Returns:
         List[str]: List of sampled toolset names
-        
+
     Raises:
         ValueError: If distribution name is not found
     """
@@ -290,10 +290,10 @@ def sample_toolsets_from_distribution(distribution_name: str) -> list[str]:
 def validate_distribution(distribution_name: str) -> bool:
     """
     Check if a distribution name is valid.
-    
+
     Args:
         distribution_name (str): Distribution name to validate
-        
+
     Returns:
         bool: True if valid, False otherwise
     """
@@ -303,7 +303,7 @@ def validate_distribution(distribution_name: str) -> bool:
 def print_distribution_info(distribution_name: str) -> None:
     """
     Print detailed information about a distribution.
-    
+
     Args:
         distribution_name (str): Distribution name
     """

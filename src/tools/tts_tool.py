@@ -36,9 +36,9 @@ import subprocess
 import tempfile
 import threading
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)

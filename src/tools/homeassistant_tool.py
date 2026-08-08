@@ -10,8 +10,8 @@ Authentication uses a Long-Lived Access Token via ``HASS_TOKEN`` env var.
 The HA instance URL is read from ``HASS_URL`` (default: http://homeassistant.local:8123).
 """
 
-import json
 import asyncio
+import json
 import logging
 import os
 import re

@@ -27,10 +27,10 @@ import logging
 import os
 import tempfile
 import threading
-from datetime import datetime, timedelta, UTC
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 

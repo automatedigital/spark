@@ -63,13 +63,15 @@ def preview_console(slug: str) -> str:
 
 
 def preview_click(slug: str, selector: str) -> str:
-    from spark_cli.workspace_routes import PreviewBrowserAction, preview_click as _preview_click
+    from spark_cli.workspace_routes import PreviewBrowserAction
+    from spark_cli.workspace_routes import preview_click as _preview_click
 
     return _call("preview_click", _preview_click, slug, PreviewBrowserAction(selector=selector))
 
 
 def preview_type(slug: str, selector: str, text: str) -> str:
-    from spark_cli.workspace_routes import PreviewBrowserAction, preview_type as _preview_type
+    from spark_cli.workspace_routes import PreviewBrowserAction
+    from spark_cli.workspace_routes import preview_type as _preview_type
 
     return _call(
         "preview_type",
@@ -80,7 +82,8 @@ def preview_type(slug: str, selector: str, text: str) -> str:
 
 
 def preview_evaluate(slug: str, expression: str) -> str:
-    from spark_cli.workspace_routes import PreviewBrowserAction, preview_evaluate as _preview_evaluate
+    from spark_cli.workspace_routes import PreviewBrowserAction
+    from spark_cli.workspace_routes import preview_evaluate as _preview_evaluate
 
     return _call(
         "preview_evaluate",

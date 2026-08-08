@@ -23,9 +23,9 @@ Header schema (12 headers total):
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
-from collections.abc import Mapping
 
 
 @dataclass

@@ -7,9 +7,9 @@ import mimetypes
 import os
 import re
 import subprocess
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Awaitable, Callable
 
 from agent.model_metadata import estimate_tokens_rough
 

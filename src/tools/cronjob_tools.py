@@ -30,7 +30,6 @@ from cron.jobs import (
     update_job,
 )
 
-
 # ---------------------------------------------------------------------------
 # Cron prompt scanning — critical-severity patterns only, since cron prompts
 # run in fresh sessions with full tool access.
@@ -482,6 +481,7 @@ def check_cronjob_requirements() -> bool:
 
 # --- Registry ---
 from tools.registry import registry, tool_error
+
 
 def _cronjob_handler(args, **kw):
     """Resolve the model override once, then dispatch to cronjob()."""

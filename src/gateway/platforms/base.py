@@ -233,20 +233,19 @@ def proxy_kwargs_for_aiohttp(proxy_url: str | None) -> tuple[dict, dict]:
     return {}, {"proxy": proxy_url}
 
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Optional, Any
-from collections.abc import Callable, Awaitable
 from enum import Enum
-
+from pathlib import Path
 from pathlib import Path as _Path
+from typing import Any, Optional
+
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
+from core.spark_constants import get_spark_dir
 from gateway.config import Platform, PlatformConfig
 from gateway.session import SessionSource, build_session_key
-from core.spark_constants import get_spark_dir
-
 
 GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE = (
     "Secure secret entry is not supported over messaging. "
@@ -395,8 +394,9 @@ async def cache_image_from_url(url: str, ext: str = ".jpg", retries: int = 2) ->
         raise ValueError(f"Blocked unsafe URL (SSRF protection): {safe_url_for_log(url)}")
 
     import asyncio
-    import httpx
     import logging as _logging
+
+    import httpx
     _log = _logging.getLogger(__name__)
 
     last_exc = None
@@ -514,8 +514,9 @@ async def cache_audio_from_url(url: str, ext: str = ".ogg", retries: int = 2) ->
         raise ValueError(f"Blocked unsafe URL (SSRF protection): {safe_url_for_log(url)}")
 
     import asyncio
-    import httpx
     import logging as _logging
+
+    import httpx
     _log = _logging.getLogger(__name__)
 
     last_exc = None
@@ -660,7 +661,7 @@ class ProcessingOutcome(Enum):
 class MessageEvent:
     """
     Incoming message from a platform.
-    
+
     Normalized representation that all adapters produce.
     """
     # Message content
@@ -783,7 +784,7 @@ MessageHandler = Callable[[MessageEvent], Awaitable[str | None]]
 class BasePlatformAdapter(ABC):
     """
     Base class for platform adapters.
-    
+
     Subclasses implement platform-specific logic for:
     - Connecting and authenticating
     - Receiving messages
@@ -923,7 +924,7 @@ class BasePlatformAdapter(ABC):
     def set_message_handler(self, handler: MessageHandler) -> None:
         """
         Set the handler for incoming messages.
-        
+
         The handler receives a MessageEvent and should return
         an optional response string.
         """
@@ -936,7 +937,7 @@ class BasePlatformAdapter(ABC):
     def set_session_store(self, session_store: Any) -> None:
         """
         Set the session store for checking active sessions.
-        
+
         Used by adapters that need to check if a thread/conversation
         has an active session before processing messages (e.g., Slack
         thread replies without explicit mentions).
@@ -947,7 +948,7 @@ class BasePlatformAdapter(ABC):
     async def connect(self) -> bool:
         """
         Connect to the platform and start receiving messages.
-        
+
         Returns True if connection was successful.
         """
         pass
@@ -967,13 +968,13 @@ class BasePlatformAdapter(ABC):
     ) -> SendResult:
         """
         Send a message to a chat.
-        
+
         Args:
             chat_id: The chat/channel ID to send to
             content: Message content (may be markdown)
             reply_to: Optional message ID to reply to
             metadata: Additional platform-specific options
-        
+
         Returns:
             SendResult with success status and message ID
         """
@@ -995,7 +996,7 @@ class BasePlatformAdapter(ABC):
     async def send_typing(self, chat_id: str, metadata=None) -> None:
         """
         Send a typing indicator.
-        
+
         Override in subclasses if the platform supports it.
         metadata: optional dict with platform-specific context (e.g. thread_id for Slack).
         """
@@ -1019,7 +1020,7 @@ class BasePlatformAdapter(ABC):
     ) -> SendResult:
         """
         Send an image natively via the platform API.
-        
+
         Override in subclasses to send images as proper attachments
         instead of plain-text URLs. Default falls back to sending the
         URL as a text message.
@@ -1038,7 +1039,7 @@ class BasePlatformAdapter(ABC):
     ) -> SendResult:
         """
         Send an animated GIF natively via the platform API.
-        
+
         Override in subclasses to send GIFs as proper animations
         (e.g., Telegram send_animation) so they auto-play inline.
         Default falls back to send_image.
@@ -1055,15 +1056,15 @@ class BasePlatformAdapter(ABC):
     def extract_images(content: str) -> tuple[list[tuple[str, str]], str]:
         """
         Extract image URLs from markdown and HTML image tags in a response.
-        
+
         Finds patterns like:
         - ![alt text](https://example.com/image.png)
         - <img src="https://example.com/image.png">
         - <img src="https://example.com/image.png"></img>
-        
+
         Args:
             content: The response text to scan.
-        
+
         Returns:
             Tuple of (list of (url, alt_text) pairs, cleaned content with image tags removed).
         """
@@ -1109,7 +1110,7 @@ class BasePlatformAdapter(ABC):
     ) -> SendResult:
         """
         Send an audio file as a native voice message via the platform API.
-        
+
         Override in subclasses to send audio as voice bubbles (Telegram)
         or file attachments (Discord). Default falls back to sending the
         file path as text.
@@ -1216,14 +1217,14 @@ class BasePlatformAdapter(ABC):
     def extract_media(content: str) -> tuple[list[tuple[str, bool]], str]:
         """
         Extract MEDIA:<path> tags and [[audio_as_voice]] directives from response text.
-        
+
         The TTS tool returns responses like:
             [[audio_as_voice]]
             MEDIA:/path/to/audio.ogg
-        
+
         Args:
             content: The response text to scan.
-        
+
         Returns:
             Tuple of (list of (path, is_voice) pairs, cleaned content with tags removed).
         """
@@ -1325,10 +1326,10 @@ class BasePlatformAdapter(ABC):
     async def _keep_typing(self, chat_id: str, interval: float = 2.0, metadata=None) -> None:
         """
         Continuously send typing indicator until cancelled.
-        
+
         Telegram/Discord typing status expires after ~5 seconds, so we refresh every 2
         to recover quickly after progress messages interrupt it.
-        
+
         Skips send_typing when the chat is in ``_typing_paused`` (e.g. while
         the agent is waiting for dangerous-command approval).  This is critical
         for Slack's Assistant API where ``assistant_threads_setStatus`` disables
@@ -1517,7 +1518,7 @@ class BasePlatformAdapter(ABC):
     async def handle_message(self, event: MessageEvent) -> None:
         """
         Process an incoming message.
-        
+
         This method returns quickly by spawning background tasks.
         This allows new messages to be processed even while an agent is running,
         enabling interruption support.
@@ -1687,7 +1688,7 @@ class BasePlatformAdapter(ABC):
                         and not media_files
                         and event.source.chat_id not in self._auto_tts_disabled_chats):
                     try:
-                        from tools.tts_tool import text_to_speech_tool, check_tts_requirements
+                        from tools.tts_tool import check_tts_requirements, text_to_speech_tool
                         if check_tts_requirements():
                             import json as _json
                             speech_text = re.sub(r'[*_`#\[\]()]', '', text_content)[:4000].strip()
@@ -1957,7 +1958,7 @@ class BasePlatformAdapter(ABC):
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """
         Get information about a chat/channel.
-        
+
         Returns dict with at least:
         - name: Chat name
         - type: "dm", "group", "channel"
@@ -1967,10 +1968,10 @@ class BasePlatformAdapter(ABC):
     def format_message(self, content: str) -> str:
         """
         Format a message for this platform.
-        
+
         Override in subclasses to handle platform-specific formatting
         (e.g., Telegram MarkdownV2, Discord markdown).
-        
+
         Default implementation returns content as-is.
         """
         return content

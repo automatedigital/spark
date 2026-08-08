@@ -172,8 +172,8 @@ def _prompt_plugin_env_vars(manifest: dict, console) -> None:
     if not requires_env:
         return
 
-    from spark_cli.config import get_env_value, save_env_value  # noqa: F811
     from core.spark_constants import display_spark_home
+    from spark_cli.config import get_env_value, save_env_value  # noqa: F811
 
     # Normalise to list-of-dicts
     env_specs: list[dict] = []
@@ -284,6 +284,7 @@ def _require_installed_plugin(name: str, plugins_dir: Path, console) -> Path:
 def cmd_install(identifier: str, force: bool = False) -> None:
     """Install a plugin from a Git URL or owner/repo shorthand."""
     import tempfile
+
     from rich.console import Console
 
     console = Console()

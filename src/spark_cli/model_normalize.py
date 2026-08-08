@@ -25,7 +25,6 @@ Inspired by Clawdbot's ``normalizeAnthropicModelId`` pattern.
 
 from __future__ import annotations
 
-
 # ---------------------------------------------------------------------------
 # Vendor prefix mapping
 # ---------------------------------------------------------------------------

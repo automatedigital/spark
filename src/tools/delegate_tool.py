@@ -18,17 +18,17 @@ never the child's intermediate tool calls or reasoning.
 
 import json
 import logging
+
 logger = logging.getLogger(__name__)
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agent import subagents as subagent_lifecycle
 from core.toolsets import TOOLSETS
-
 
 # Tools that children must never have access to
 DELEGATE_BLOCKED_TOOLS = frozenset([

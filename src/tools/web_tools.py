@@ -29,26 +29,28 @@ Debug Mode:
 
 Usage:
     from web_tools import web_search_tool, web_extract_tool, web_crawl_tool
-    
+
     # Search the web
     results = web_search_tool("Python machine learning libraries", limit=3)
-    
-    # Extract content from URLs  
+
+    # Extract content from URLs
     content = web_extract_tool(["https://example.com"], format="markdown")
-    
+
     # Crawl a website
     crawl_data = web_crawl_tool("example.com", "Find contact information")
 """
 
+import asyncio
 import json
 import logging
 import os
 import re
-import asyncio
 from html.parser import HTMLParser
-from urllib.parse import urlparse
 from typing import Any
+from urllib.parse import urlparse
+
 import httpx
+
 try:
     import warnings
     with warnings.catch_warnings():
@@ -673,21 +675,21 @@ async def process_content_with_llm(
 ) -> str | None:
     """
     Process web content using LLM to create intelligent summaries with key excerpts.
-    
-    This function uses Gemini 3 Flash Preview (or specified model) via OpenRouter API 
+
+    This function uses Gemini 3 Flash Preview (or specified model) via OpenRouter API
     to intelligently extract key information and create markdown summaries,
     significantly reducing token usage while preserving all important information.
-    
+
     For very large content (>500k chars), uses chunked processing with synthesis.
     For extremely large content (>2M chars), refuses to process entirely.
-    
+
     Args:
         content (str): The raw content to process
         url (str): The source URL (for context, optional)
         title (str): The page title (for context, optional)
         model (str): The model to use for processing (default: google/gemini-3-flash-preview)
         min_length (int): Minimum content length to trigger processing (default: 5000)
-        
+
     Returns:
         Optional[str]: Processed markdown content, or None if content too short or processing fails
     """
@@ -774,7 +776,7 @@ async def _call_summarizer_llm(
 ) -> str | None:
     """
     Make a single LLM call to summarize content.
-    
+
     Args:
         content: The content to summarize
         context_str: Context information (title, URL)
@@ -782,7 +784,7 @@ async def _call_summarizer_llm(
         max_tokens: Maximum output tokens
         is_chunk: Whether this is a chunk of a larger document
         chunk_info: Information about chunk position (e.g., "Chunk 2/5")
-        
+
     Returns:
         Summarized content or None on failure
     """
@@ -890,14 +892,14 @@ async def _process_large_content_chunked(
     """
     Process large content by chunking, summarizing each chunk in parallel,
     then synthesizing the summaries.
-    
+
     Args:
         content: The large content to process
         context_str: Context information
         model: Model to use
         chunk_size: Size of each chunk in characters
         max_output_size: Maximum final output size
-        
+
     Returns:
         Synthesized summary or None on failure
     """
@@ -957,7 +959,7 @@ async def _process_large_content_chunked(
 
     combined_summaries = "\n\n---\n\n".join(summaries)
 
-    synthesis_prompt = f"""You have been given summaries of different sections of a large document. 
+    synthesis_prompt = f"""You have been given summaries of different sections of a large document.
 Synthesize these into ONE cohesive, comprehensive summary that:
 1. Removes redundancy between sections
 2. Preserves all key facts, figures, and actionable information
@@ -1030,16 +1032,16 @@ Create a single, unified markdown summary."""
 def clean_base64_images(text: str) -> str:
     """
     Remove base64 encoded images from text to reduce token count and clutter.
-    
+
     This function finds and removes base64 encoded images in various formats:
     - (data:image/png;base64,...)
     - (data:image/jpeg;base64,...)
     - (data:image/svg+xml;base64,...)
     - data:image/[type];base64,... (without parentheses)
-    
+
     Args:
         text: The text content to clean
-        
+
     Returns:
         Cleaned text with base64 images replaced with placeholders
     """
@@ -1230,11 +1232,11 @@ def web_search_tool(query: str, limit: int = 5) -> str:
 
     Note: This function returns search result metadata only (URLs, titles, descriptions).
     Use web_extract_tool to get full content from specific URLs.
-    
+
     Args:
         query (str): The search query to look up
         limit (int): Maximum number of results to return (default: 5)
-    
+
     Returns:
         str: JSON string containing search results with the following structure:
              {
@@ -1251,7 +1253,7 @@ def web_search_tool(query: str, limit: int = 5) -> str:
                      ]
                  }
              }
-    
+
     Raises:
         Exception: If search fails or API key is not set
     """
@@ -1374,18 +1376,19 @@ async def web_extract_tool(
         max_chars_per_page (Optional[int]): Raw extraction cap per page when LLM processing is disabled.
 
     Security: URLs are checked for embedded secrets before fetching.
-    
+
     Returns:
         str: JSON string containing extracted content. If LLM processing is enabled and successful,
              the 'content' field will contain the processed markdown summary instead of raw content.
-    
+
     Raises:
         Exception: If extraction fails or API key is not set
     """
     # Block URLs containing embedded secrets (exfiltration prevention).
     # URL-decode first so percent-encoded secrets (%73k- = sk-) are caught.
-    from agent.redact import _PREFIX_RE
     from urllib.parse import unquote
+
+    from agent.redact import _PREFIX_RE
     for _url in urls:
         if _PREFIX_RE.search(_url) or _PREFIX_RE.search(unquote(_url)):
             return json.dumps({
@@ -1736,10 +1739,10 @@ async def web_crawl_tool(
 ) -> str:
     """
     Crawl a website with specific instructions using available crawling API backend.
-    
+
     This function provides a generic interface for web crawling that can work
     with multiple backends. Currently uses Firecrawl.
-    
+
     Args:
         url (str): The base URL to crawl (can include or exclude https://)
         instructions (str): Instructions for what to crawl/extract using LLM intelligence (optional)
@@ -1747,12 +1750,12 @@ async def web_crawl_tool(
         use_llm_processing (bool): Whether to process content with LLM for summarization (default: True)
         model (Optional[str]): The model to use for LLM processing (defaults to current auxiliary backend model)
         min_length (int): Minimum content length to trigger LLM processing (default: 5000)
-    
+
     Returns:
         str: JSON string containing crawled content. If LLM processing is enabled and successful,
              the 'content' field will contain the processed markdown summary instead of raw content.
              Each page is processed individually.
-    
+
     Raises:
         Exception: If crawling fails or API key is not set
     """

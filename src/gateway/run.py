@@ -8,7 +8,7 @@ This module provides:
 Usage:
     # Start the gateway
     python -m gateway.run
-    
+
     # Or from CLI
     python cli.py --gateway
 """
@@ -19,15 +19,16 @@ import logging
 import os
 import re
 import shlex
-import sys
 import signal
+import sys
 import tempfile
 import threading
 import time
-from pathlib import Path
-from datetime import datetime
-from typing import Any
 from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 
 # ---------------------------------------------------------------------------
 # SSL certificate auto-detection for NixOS and other non-standard systems.
@@ -76,9 +77,10 @@ _ensure_ssl_certs()
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Resolve Spark home directory (respects SPARK_HOME override)
-from core.spark_constants import get_spark_home, get_spark_workspace
 from core.async_runtime import get_async_runtime
+from core.spark_constants import get_spark_home, get_spark_workspace
 from core.utils import atomic_yaml_write, is_truthy_value
+
 _spark_home = get_spark_home()
 
 
@@ -89,7 +91,9 @@ async def _run_blocking(function, /, *args, **kwargs):
 # Load environment variables from ~/.spark/.env first.
 # User-managed env files should override stale shell exports on restart.
 from dotenv import load_dotenv  # backward-compat for tests that monkeypatch this symbol
+
 from spark_cli.env_loader import load_spark_dotenv
+
 _env_path = _spark_home / '.env'
 load_spark_dotenv(spark_home=_spark_home, project_env=Path(__file__).resolve().parents[1] / '.env')
 
@@ -264,17 +268,9 @@ if not _configured_cwd or _configured_cwd in (".", "auto", "cwd"):
     os.environ["TERMINAL_CWD"] = messaging_cwd.strip()
 
 from gateway.config import (
-    Platform,
     GatewayConfig,
+    Platform,
     load_gateway_config,
-)
-from gateway.session import (
-    SessionStore,
-    SessionSource,
-    SessionContext,
-    build_session_context,
-    build_session_context_prompt,
-    build_session_key,
 )
 from gateway.delivery import DeliveryRouter
 from gateway.platforms.base import (
@@ -287,6 +283,14 @@ from gateway.restart import (
     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT,
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
+)
+from gateway.session import (
+    SessionContext,
+    SessionSource,
+    SessionStore,
+    build_session_context,
+    build_session_context_prompt,
+    build_session_key,
 )
 
 
@@ -407,8 +411,8 @@ def _check_unavailable_skill(command_name: str) -> str | None:
     # Normalize: command uses hyphens, skill names may use hyphens or underscores
     normalized = command_name.lower().replace("_", "-")
     try:
-        from tools.skills_tool import _get_disabled_skill_names
         from agent.skill_utils import get_all_skills_dirs
+        from tools.skills_tool import _get_disabled_skill_names
         disabled = _get_disabled_skill_names()
 
         # Check disabled skills across all dirs (local + external)
@@ -1100,7 +1104,7 @@ class GatewayRunner:
     @staticmethod
     def _load_prefill_messages() -> list[dict[str, Any]]:
         """Load ephemeral prefill messages from config or env var.
-        
+
         Checks SPARK_PREFILL_MESSAGES_FILE env var first, then falls back to
         the prefill_messages_file key in ~/.spark/config.yaml.
         Relative paths are resolved from ~/.spark/.
@@ -1139,7 +1143,7 @@ class GatewayRunner:
     @staticmethod
     def _load_ephemeral_system_prompt() -> str:
         """Load ephemeral system prompt from config or env var.
-        
+
         Checks SPARK_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
         agent.system_prompt in ~/.spark/config.yaml.
         """
@@ -1502,7 +1506,7 @@ class GatewayRunner:
     async def start(self) -> bool:
         """
         Start the gateway and all configured platform adapters.
-        
+
         Returns True if at least one adapter connected successfully.
         """
         logger.info("Starting Spark Gateway...")
@@ -1903,7 +1907,7 @@ class GatewayRunner:
 
     async def _session_expiry_watcher(self, interval: int = 300):
         """Background task that proactively flushes memories for expired sessions.
-        
+
         Runs every `interval` seconds (default 5 min).  For each session that
         has expired according to its reset policy, flushes memories in a thread
         pool and marks the session so it won't be flushed again.
@@ -2380,7 +2384,10 @@ class GatewayRunner:
             return WeixinAdapter(config)
 
         elif platform == Platform.MATTERMOST:
-            from gateway.platforms.mattermost import MattermostAdapter, check_mattermost_requirements
+            from gateway.platforms.mattermost import (
+                MattermostAdapter,
+                check_mattermost_requirements,
+            )
             if not check_mattermost_requirements():
                 logger.warning("Mattermost: MATTERMOST_TOKEN or MATTERMOST_URL not set, or aiohttp missing")
                 return None
@@ -2410,7 +2417,10 @@ class GatewayRunner:
             return adapter
 
         elif platform == Platform.BLUEBUBBLES:
-            from gateway.platforms.bluebubbles import BlueBubblesAdapter, check_bluebubbles_requirements
+            from gateway.platforms.bluebubbles import (
+                BlueBubblesAdapter,
+                check_bluebubbles_requirements,
+            )
             if not check_bluebubbles_requirements():
                 logger.warning("BlueBubbles: aiohttp/httpx missing or BLUEBUBBLES_SERVER_URL/BLUEBUBBLES_PASSWORD not configured")
                 return None
@@ -2428,7 +2438,7 @@ class GatewayRunner:
     def _is_user_authorized(self, source: SessionSource) -> bool:
         """
         Check if a user is authorized to use the bot.
-        
+
         Checks in order:
         1. Per-platform allow-all flag (e.g., DISCORD_ALLOW_ALL_USERS=true)
         2. Environment variable allowlists (TELEGRAM_ALLOWED_USERS, etc.)
@@ -2544,7 +2554,7 @@ class GatewayRunner:
     async def _handle_message(self, event: MessageEvent) -> str | None:
         """
         Handle an incoming message from any platform.
-        
+
         This is the core message processing pipeline:
         1. Check user authorization
         2. Check for commands (/new, /reset, etc.)
@@ -2756,7 +2766,8 @@ class GatewayRunner:
                     return "Usage: /queue <prompt>"
                 adapter = self.adapters.get(source.platform)
                 if adapter:
-                    from gateway.platforms.base import MessageEvent as _ME, MessageType as _MT
+                    from gateway.platforms.base import MessageEvent as _ME
+                    from gateway.platforms.base import MessageType as _MT
                     queued_event = _ME(
                         text=queued_text,
                         message_type=_MT.TEXT,
@@ -2828,7 +2839,8 @@ class GatewayRunner:
         # Emit command:* hook for any recognized slash command.
         # GATEWAY_KNOWN_COMMANDS is derived from the central COMMAND_REGISTRY
         # in spark_cli/commands.py — no hardcoded set to maintain here.
-        from spark_cli.commands import GATEWAY_KNOWN_COMMANDS, resolve_command as _resolve_cmd
+        from spark_cli.commands import GATEWAY_KNOWN_COMMANDS
+        from spark_cli.commands import resolve_command as _resolve_cmd
         if command and command in GATEWAY_KNOWN_COMMANDS:
             await self.hooks.emit(f"command:{command}", {
                 "platform": source.platform.value if source.platform else "",
@@ -3107,8 +3119,8 @@ class GatewayRunner:
         if command:
             try:
                 from agent.skill_commands import (
-                    get_skill_commands,
                     build_skill_invocation_message,
+                    get_skill_commands,
                     resolve_skill_command_key,
                 )
                 skill_cmds = get_skill_commands()
@@ -3463,7 +3475,7 @@ class GatewayRunner:
         if _is_new_session and _auto:
             _skill_names = [_auto] if isinstance(_auto, str) else list(_auto)
             try:
-                from agent.skill_commands import _load_skill_payload, _build_skill_message
+                from agent.skill_commands import _build_skill_message, _load_skill_payload
                 _combined_parts: list[str] = []
                 _loaded_names: list[str] = []
                 for _sname in _skill_names:
@@ -4113,7 +4125,7 @@ class GatewayRunner:
         users can immediately see if context detection went wrong (e.g.
         local models falling to the 128K default).
         """
-        from agent.model_metadata import get_model_context_length, DEFAULT_FALLBACK_CONTEXT
+        from agent.model_metadata import DEFAULT_FALLBACK_CONTEXT, get_model_context_length
 
         model = _resolve_gateway_model()
         config_context_length = None
@@ -4297,8 +4309,9 @@ class GatewayRunner:
 
     async def _handle_profile_command(self, event: MessageEvent) -> str:
         """Handle /profile — show active profile name and home directory."""
-        from core.spark_constants import get_spark_home, display_spark_home
         from pathlib import Path
+
+        from core.spark_constants import display_spark_home, get_spark_home
 
         home = get_spark_home()
         display = display_spark_home()
@@ -4517,11 +4530,14 @@ class GatewayRunner:
           /model <name> --provider <provider> — switch provider + model
           /model --provider <provider>        — switch to provider, auto-detect model
         """
-        from spark_cli.model_switch import (
-            switch_model as _switch_model, parse_model_flags,
-            list_authenticated_providers,
-        )
         from spark_cli.model_config import read_global_model_config, write_model_switch_result
+        from spark_cli.model_switch import (
+            list_authenticated_providers,
+            parse_model_flags,
+        )
+        from spark_cli.model_switch import (
+            switch_model as _switch_model,
+        )
         from spark_cli.providers import get_label
 
         raw_args = event.get_command_args().strip()
@@ -4724,10 +4740,11 @@ class GatewayRunner:
     async def _handle_provider_command(self, event: MessageEvent) -> str:
         """Handle /provider command - show available providers."""
         import yaml
+
         from spark_cli.models import (
+            _PROVIDER_LABELS,
             list_available_providers,
             normalize_provider,
-            _PROVIDER_LABELS,
         )
 
         # Resolve current provider from config
@@ -5234,7 +5251,7 @@ class GatewayRunner:
         audio_path = None
         actual_path = None
         try:
-            from tools.tts_tool import text_to_speech_tool, _strip_markdown_for_tts
+            from tools.tts_tool import _strip_markdown_for_tts, text_to_speech_tool
 
             tts_text = _strip_markdown_for_tts(text[:4000])
             if not tts_text:
@@ -5443,8 +5460,9 @@ class GatewayRunner:
     async def _handle_config_command(self, event: MessageEvent) -> str:
         """Handle /config — show current configuration."""
         try:
-            from spark_cli.config import load_config
             import yaml
+
+            from spark_cli.config import load_config
             cfg = load_config()
             if hasattr(cfg, "_data"):
                 data = cfg._data
@@ -5479,9 +5497,11 @@ class GatewayRunner:
             if not names:
                 return f"Usage: `/tools {subcommand} <name> [name …]`"
             try:
+                import io
+                import sys
                 from argparse import Namespace
+
                 from spark_cli.tools_config import tools_disable_enable_command
-                import io, sys
                 buf = io.StringIO()
                 old_stdout = sys.stdout
                 sys.stdout = buf
@@ -5515,6 +5535,7 @@ class GatewayRunner:
         """Handle /toolsets — list available toolsets."""
         try:
             from tools.toolsets import get_all_toolsets, get_toolset_info
+
             from spark_cli.config import load_config
             from spark_cli.tools_config import _get_platform_tools
             cfg = load_config()
@@ -5574,8 +5595,9 @@ class GatewayRunner:
     async def _handle_cron_gateway_command(self, event: MessageEvent) -> str:
         """Handle /cron [list] — list scheduled tasks."""
         try:
-            from tools.cronjob_tools import cronjob as cronjob_tool
             import json
+
+            from tools.cronjob_tools import cronjob as cronjob_tool
             result = json.loads(cronjob_tool(action="list"))
             jobs = result.get("jobs", []) if isinstance(result, dict) else []
             if not jobs:
@@ -5621,8 +5643,8 @@ class GatewayRunner:
 
     async def _handle_files_gateway_command(self, event: MessageEvent) -> str:
         """Handle /files — list workspace files."""
-        import os
         import glob
+        import os
         try:
             cwd = os.environ.get("TERMINAL_CWD", os.getcwd())
             files = sorted(glob.glob("**/*", recursive=True, root_dir=cwd))
@@ -5645,6 +5667,7 @@ class GatewayRunner:
         """Handle /save — save conversation transcript to a file."""
         import json
         from datetime import datetime
+
         from core.spark_constants import get_spark_home
         source = event.source
         session_entry = self.session_store.get_or_create_session(source)
@@ -6177,6 +6200,7 @@ class GatewayRunner:
     async def _handle_goal_command(self, event: MessageEvent) -> str:
         """Handle /goal — durable cross-session objective tracking via Kanban board."""
         import re as _re
+
         from core import goal as goal_mod
 
         args = event.get_command_args().strip()
@@ -6353,6 +6377,7 @@ class GatewayRunner:
     async def _handle_fast_command(self, event: MessageEvent) -> str:
         """Handle /fast — mirror the CLI Priority Processing toggle in gateway chats."""
         import yaml
+
         from spark_cli.models import model_supports_fast_mode
 
         args = event.get_command_args().strip().lower()
@@ -6513,9 +6538,9 @@ class GatewayRunner:
         focus_topic = (event.get_command_args() or "").strip() or None
 
         try:
-            from core.run_agent import AIAgent
             from agent.manual_compression_feedback import summarize_manual_compression
             from agent.model_metadata import estimate_messages_tokens_rough
+            from core.run_agent import AIAgent
 
             session_key = self._session_key_for_source(source)
             model, runtime_kwargs = self._resolve_session_agent_runtime(
@@ -6926,8 +6951,8 @@ class GatewayRunner:
                     i += 1
 
         try:
-            from core.spark_state import SessionDB
             from agent.insights import InsightsEngine
+            from core.spark_state import SessionDB
 
             def _run_insights():
                 db = SessionDB()
@@ -7014,7 +7039,7 @@ class GatewayRunner:
     async def _handle_reload_mcp_command(self, event: MessageEvent) -> str:
         """Handle /reload-mcp command -- disconnect and reconnect all MCP servers."""
         try:
-            from tools.mcp_tool import shutdown_mcp_servers, discover_mcp_tools, _servers, _lock
+            from tools.mcp_tool import _lock, _servers, discover_mcp_tools, shutdown_mcp_servers
 
             # Capture old server names before shutdown
             with _lock:
@@ -7107,7 +7132,8 @@ class GatewayRunner:
         session_key = self._session_key_for_source(source)
 
         from tools.approval import (
-            resolve_gateway_approval, has_blocking_approval,
+            has_blocking_approval,
+            resolve_gateway_approval,
         )
 
         if not has_blocking_approval(session_key):
@@ -7156,7 +7182,8 @@ class GatewayRunner:
         session_key = self._session_key_for_source(source)
 
         from tools.approval import (
-            resolve_gateway_approval, has_blocking_approval,
+            has_blocking_approval,
+            resolve_gateway_approval,
         )
 
         if not has_blocking_approval(session_key):
@@ -7193,6 +7220,7 @@ class GatewayRunner:
     async def _handle_feedback_command(self, event: MessageEvent) -> str:
         """Handle /feedback — accept inline note and POST to n8n webhook."""
         import shlex
+
         import httpx
 
         AREAS = ["Workspace", "Tasks", "Chat", "Cron", "Skills", "Settings"]
@@ -7252,7 +7280,9 @@ class GatewayRunner:
     async def _handle_debug_command(self, event: MessageEvent) -> str:
         """Handle /debug — upload debug report + logs and return paste URLs."""
         from spark_cli.debug import (
-            _capture_dump, collect_debug_report, _read_full_log,
+            _capture_dump,
+            _read_full_log,
+            collect_debug_report,
             upload_to_pastebin,
         )
 
@@ -7313,7 +7343,8 @@ class GatewayRunner:
         import shutil
         import subprocess
         from datetime import datetime
-        from spark_cli.config import is_managed, format_managed_message
+
+        from spark_cli.config import format_managed_message, is_managed
 
         # Block non-messaging platforms (API server, webhooks, ACP)
         platform = event.source.platform
@@ -7784,8 +7815,9 @@ class GatewayRunner:
         Returns:
             The enriched message string with vision descriptions prepended.
         """
-        from tools.vision_tools import vision_analyze_tool
         import json as _json
+
+        from tools.vision_tools import vision_analyze_tool
 
         analysis_prompt = (
             "Describe everything visible in this image in thorough detail. "
@@ -8017,9 +8049,9 @@ class GatewayRunner:
                             break
                     if adapter and chat_id:
                         try:
+                            from gateway.config import Platform
                             from gateway.platforms.base import MessageEvent, MessageType
                             from gateway.session import SessionSource
-                            from gateway.config import Platform
                             _platform_enum = Platform(platform_name)
                             _source = SessionSource(
                                 platform=_platform_enum,
@@ -8106,7 +8138,8 @@ class GatewayRunner:
         reused — preserving the frozen system prompt and tool schemas for
         prompt cache hits.
         """
-        import hashlib, json as _j
+        import hashlib
+        import json as _j
 
         # Fingerprint the FULL credential string instead of using a short
         # prefix. OAuth/JWT-style tokens frequently share a common prefix
@@ -8162,18 +8195,19 @@ class GatewayRunner:
     ) -> dict[str, Any]:
         """
         Run the agent with the given message and context.
-        
+
         Returns the full result dict from run_conversation, including:
           - "final_response": str (the text to send back)
           - "messages": list (full conversation including tool calls)
           - "api_calls": int
           - "completed": bool
-        
+
         This is run in a thread pool to not block the event loop.
         Supports interruption via new messages.
         """
-        from core.run_agent import AIAgent
         import queue
+
+        from core.run_agent import AIAgent
 
         user_config = _load_gateway_config()
         self._refresh_live_config_state(user_config)
@@ -9508,7 +9542,7 @@ class GatewayRunner:
 def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, interval: int = 60):
     """
     Background thread that ticks the cron scheduler at a regular interval.
-    
+
     Runs inside the gateway process so cronjobs fire automatically without
     needing a separate `spark cron daemon` or system cron entry.
 
@@ -9519,7 +9553,7 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     image/audio/document cache once per hour.
     """
     from cron.scheduler import tick as cron_tick
-    from gateway.platforms.base import cleanup_image_cache, cleanup_document_cache
+    from gateway.platforms.base import cleanup_document_cache, cleanup_image_cache
 
     IMAGE_CACHE_EVERY = 60   # ticks — once per hour at default 60s interval
     CHANNEL_DIR_EVERY = 5    # ticks — every 5 minutes
@@ -9567,11 +9601,11 @@ async def start_gateway(
 ) -> bool:
     """
     Start the gateway and run until interrupted.
-    
+
     This is the main entry point for running the gateway.
     Returns True if the gateway ran successfully, False if it failed to start.
     A False return causes a non-zero exit code so systemd can auto-restart.
-    
+
     Args:
         config: Optional gateway configuration override.
         replace: If True, kill any existing gateway instance before starting.
@@ -9584,6 +9618,7 @@ async def start_gateway(
     # setups (each profile using a distinct SPARK_HOME) will naturally
     # allow concurrent instances without tripping this guard.
     import time as _time
+
     from gateway.status import get_running_pid, remove_pid_file, terminate_pid
     existing_pid = get_running_pid()
     if existing_pid is not None and existing_pid != os.getpid():
@@ -9719,7 +9754,8 @@ async def start_gateway(
 
     # Write PID file so CLI can detect gateway is running
     import atexit
-    from gateway.status import write_pid_file, remove_pid_file
+
+    from gateway.status import remove_pid_file, write_pid_file
     write_pid_file()
     atexit.register(remove_pid_file)
 

@@ -188,7 +188,9 @@ def do_browse(page: int = 1, page_size: int = 20, source: str = "all",
     Official skills are always shown first, regardless of source filter.
     """
     from tools.skills_hub import (
-        GitHubAuth, create_source_router, parallel_search_sources,
+        GitHubAuth,
+        create_source_router,
+        parallel_search_sources,
     )
 
     # Clamp page_size to safe range
@@ -311,11 +313,15 @@ def do_install(identifier: str, category: str = "", force: bool = False,
                console: Console | None = None, skip_confirm: bool = False,
                invalidate_cache: bool = True) -> None:
     """Fetch, quarantine, scan, confirm, and install a skill."""
+    from tools.skills_guard import format_scan_report, scan_skill, should_allow_install
     from tools.skills_hub import (
-        GitHubAuth, create_source_router, ensure_hub_dirs,
-        quarantine_bundle, install_from_quarantine, HubLockFile,
+        GitHubAuth,
+        HubLockFile,
+        create_source_router,
+        ensure_hub_dirs,
+        install_from_quarantine,
+        quarantine_bundle,
     )
-    from tools.skills_guard import scan_skill, should_allow_install, format_scan_report
 
     c = console or _console
     ensure_hub_dirs()
@@ -618,8 +624,8 @@ def do_update(name: str | None = None, console: Console | None = None) -> None:
 
 def do_audit(name: str | None = None, console: Console | None = None) -> None:
     """Re-run security scan on installed hub skills."""
-    from tools.skills_hub import HubLockFile, SKILLS_DIR
-    from tools.skills_guard import scan_skill, format_scan_report
+    from tools.skills_guard import format_scan_report, scan_skill
+    from tools.skills_hub import SKILLS_DIR, HubLockFile
 
     c = console or _console
     lock = HubLockFile()
@@ -730,8 +736,8 @@ def do_tap(action: str, repo: str = "", console: Console | None = None) -> None:
 def do_publish(skill_path: str, target: str = "github", repo: str = "",
                console: Console | None = None) -> None:
     """Publish a local skill to a registry (GitHub PR or ClawHub submission)."""
-    from tools.skills_hub import GitHubAuth, SKILLS_DIR
-    from tools.skills_guard import scan_skill, format_scan_report
+    from tools.skills_guard import format_scan_report, scan_skill
+    from tools.skills_hub import SKILLS_DIR, GitHubAuth
 
     c = console or _console
     path = Path(skill_path)

@@ -22,13 +22,13 @@ from pathlib import Path
 from typing import Any
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     SendResult,
 )
+from gateway.platforms.helpers import MessageDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +411,7 @@ class MattermostAdapter(BasePlatformAdapter):
             return await self.send(chat_id, f"{caption or ''}\n{url}".strip(), reply_to)
 
         import asyncio
+
         import aiohttp
 
         file_data = None
@@ -681,7 +682,10 @@ class MattermostAdapter(BasePlatformAdapter):
                 ) as resp:
                     if resp.status < 400:
                         file_data = await resp.read()
-                        from gateway.platforms.base import cache_image_from_bytes, cache_document_from_bytes
+                        from gateway.platforms.base import (
+                            cache_document_from_bytes,
+                            cache_image_from_bytes,
+                        )
                         if mime.startswith("image/"):
                             local_path = cache_image_from_bytes(file_data, ext or ".png")
                             media_urls.append(local_path)

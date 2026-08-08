@@ -11,35 +11,35 @@ so we wrap the terminal backend's execute() interface to provide a unified file 
 Usage:
     from tools.file_operations import ShellFileOperations
     from tools.terminal_tool import _active_environments
-    
+
     # Get file operations for a terminal environment
     file_ops = ShellFileOperations(terminal_env)
-    
+
     # Read a file
     result = file_ops.read_file("/path/to/file.py")
-    
+
     # Write a file
     result = file_ops.write_file("/path/to/new.py", "print('hello')")
-    
+
     # Search for content
     result = file_ops.search("TODO", path=".", file_glob="*.py")
 """
 
-import os
-import re
 import difflib
 import fnmatch
+import os
+import re
+import shlex
 import shutil
 import subprocess
 import tempfile
-import shlex
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
 from pathlib import Path
+from typing import Any
+
 from core.spark_constants import get_spark_home
 from tools.binary_extensions import BINARY_EXTENSIONS
-
 
 # ---------------------------------------------------------------------------
 # Write-path deny list — blocks writes to sensitive system/credential files
@@ -327,7 +327,7 @@ MAX_FILE_SIZE = 50 * 1024  # 50KB
 class ShellFileOperations(FileOperations):
     """
     File operations implemented via shell commands.
-    
+
     Works with ANY terminal backend that has execute(command, cwd) method.
     This includes local, docker, singularity, ssh, modal, and daytona environments.
     """
@@ -335,7 +335,7 @@ class ShellFileOperations(FileOperations):
     def __init__(self, terminal_env, cwd: str = None):
         """
         Initialize file operations with a terminal environment.
-        
+
         Args:
             terminal_env: Any object with execute(command, cwd) method.
                          Returns {"output": str, "returncode": int}
@@ -355,7 +355,7 @@ class ShellFileOperations(FileOperations):
     def _exec(self, command: str, cwd: str = None, timeout: int = None,
               stdin_data: str = None) -> ExecuteResult:
         """Execute command via terminal backend.
-        
+
         Args:
             stdin_data: If provided, piped to the process's stdin instead of
                         embedding in the command string. Bypasses ARG_MAX.
@@ -382,7 +382,7 @@ class ShellFileOperations(FileOperations):
     def _is_likely_binary(self, path: str, content_sample: str = None) -> bool:
         """
         Check if a file is likely binary.
-        
+
         Uses extension check (fast) + content analysis (fallback).
         """
         ext = os.path.splitext(path)[1].lower()
@@ -416,7 +416,7 @@ class ShellFileOperations(FileOperations):
     def _expand_path(self, path: str) -> str:
         """
         Expand shell-style paths like ~ and ~user to absolute paths.
-        
+
         This must be done BEFORE shell escaping, since ~ doesn't expand
         inside single quotes.
         """
@@ -473,12 +473,12 @@ class ShellFileOperations(FileOperations):
     def read_file(self, path: str, offset: int = 1, limit: int = 500) -> ReadResult:
         """
         Read a file with pagination, binary detection, and line numbers.
-        
+
         Args:
             path: File path (absolute or relative to cwd)
             offset: Line number to start from (1-indexed, default 1)
             limit: Maximum lines to return (default 500, max 2000)
-        
+
         Returns:
             ReadResult with content, metadata, or error info
         """
@@ -789,7 +789,7 @@ class ShellFileOperations(FileOperations):
     def patch_v4a(self, patch_content: str) -> PatchResult:
         """
         Apply a V4A format patch.
-        
+
         V4A format:
             *** Begin Patch
             *** Update File: path/to/file.py
@@ -798,15 +798,15 @@ class ShellFileOperations(FileOperations):
             -removed line
             +added line
             *** End Patch
-        
+
         Args:
             patch_content: V4A format patch string
-        
+
         Returns:
             PatchResult with changes made
         """
         # Import patch parser
-        from tools.patch_parser import parse_v4a_patch, apply_v4a_operations
+        from tools.patch_parser import apply_v4a_operations, parse_v4a_patch
 
         operations, parse_error = parse_v4a_patch(patch_content)
         if parse_error:
@@ -819,10 +819,10 @@ class ShellFileOperations(FileOperations):
     def _check_lint(self, path: str) -> LintResult:
         """
         Run syntax check on a file after editing.
-        
+
         Args:
             path: File path to lint
-        
+
         Returns:
             LintResult with status and any errors
         """
@@ -857,7 +857,7 @@ class ShellFileOperations(FileOperations):
                output_mode: str = "content", context: int = 0) -> SearchResult:
         """
         Search for content or files.
-        
+
         Args:
             pattern: Regex (for content) or glob pattern (for files)
             path: Directory/file to search (default: cwd)
@@ -867,7 +867,7 @@ class ShellFileOperations(FileOperations):
             offset: Skip first N results
             output_mode: "content", "files_only", or "count"
             context: Lines of context around matches
-        
+
         Returns:
             SearchResult with matches or file list
         """

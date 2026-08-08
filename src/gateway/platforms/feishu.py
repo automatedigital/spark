@@ -89,20 +89,20 @@ except ImportError:
 FEISHU_WEBSOCKET_AVAILABLE = websockets is not None
 FEISHU_WEBHOOK_AVAILABLE = aiohttp is not None
 
+from core.spark_constants import get_spark_home
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
+    SUPPORTED_DOCUMENT_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     SendResult,
-    SUPPORTED_DOCUMENT_TYPES,
-    cache_document_from_bytes,
-    cache_image_from_url,
     cache_audio_from_bytes,
+    cache_document_from_bytes,
     cache_image_from_bytes,
+    cache_image_from_url,
 )
 from gateway.status import acquire_scoped_lock, release_scoped_lock
-from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 

@@ -605,7 +605,7 @@ def _cleanup_gateway_service(name: str, profile_dir: Path) -> None:
     old_home = os.environ.get("SPARK_HOME")
     try:
         os.environ["SPARK_HOME"] = str(profile_dir)
-        from spark_cli.gateway import get_service_name, get_launchd_plist_path
+        from spark_cli.gateway import get_launchd_plist_path, get_service_name
 
         if _platform.system() == "Linux":
             svc_name = get_service_name()

@@ -33,10 +33,10 @@ import importlib.util
 import logging
 import sys
 import types
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 from core.spark_constants import get_spark_home
 from core.utils import env_var_enabled

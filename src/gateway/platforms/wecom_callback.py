@@ -37,7 +37,7 @@ except ImportError:
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
-from gateway.platforms.wecom_crypto import WXBizMsgCrypt, WeComCryptoError
+from gateway.platforms.wecom_crypto import WeComCryptoError, WXBizMsgCrypt
 
 logger = logging.getLogger(__name__)
 

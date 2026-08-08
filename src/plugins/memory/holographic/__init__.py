@@ -24,8 +24,9 @@ from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error
-from .store import MemoryStore
+
 from .retrieval import FactRetriever
+from .store import MemoryStore
 
 logger = logging.getLogger(__name__)
 

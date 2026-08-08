@@ -23,6 +23,7 @@ import re
 from typing import Any
 
 from agent.auxiliary_client import async_call_llm, extract_content_or_reasoning
+
 MAX_SESSION_CHARS = 100_000
 MAX_SUMMARY_TOKENS = 10000
 

@@ -126,10 +126,10 @@ try:
     # Notification types for dynamic tool discovery (tools/list_changed)
     try:
         from mcp.types import (
-            ServerNotification,
-            ToolListChangedNotification,
             PromptListChangedNotification,
             ResourceListChangedNotification,
+            ServerNotification,
+            ToolListChangedNotification,
         )
         _MCP_NOTIFICATION_TYPES = True
     except ImportError:
@@ -794,8 +794,8 @@ class MCPServerTask:
         After the initial ``await`` (list_tools), all mutations are synchronous
         — atomic from the event loop's perspective.
         """
-        from tools.registry import registry
         from core.toolsets import TOOLSETS
+        from tools.registry import registry
 
         async with self._refresh_lock:
             # 1. Fetch current tool list from server
@@ -1810,8 +1810,8 @@ def _register_server_tools(name: str, server: MCPServerTask, config: dict) -> li
     Returns:
         List of registered prefixed tool names.
     """
+    from core.toolsets import TOOLSETS, create_custom_toolset
     from tools.registry import registry
-    from core.toolsets import create_custom_toolset, TOOLSETS
 
     registered_names: list[str] = []
     toolset_name = f"mcp-{name}"

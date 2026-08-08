@@ -25,9 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.utils import atomic_json_write
-
 import requests
+
+from core.utils import atomic_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -447,6 +447,7 @@ def list_provider_models(provider: str) -> list[str]:
 # Patterns that indicate non-agentic or noise models (TTS, embedding,
 # dated preview snapshots, live/streaming-only, image-only).
 import re
+
 _NOISE_PATTERNS: re.Pattern = re.compile(
     r"-tts\b|embedding|live-|-(preview|exp)-\d{2,4}[-_]|"
     r"-image\b|-image-preview\b|-customtools\b",

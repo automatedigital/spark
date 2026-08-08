@@ -23,13 +23,12 @@ import json
 import logging
 import os
 import threading
-
+from datetime import UTC
 from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from core.spark_constants import get_spark_home
 from tools.registry import tool_error
-from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -261,13 +260,12 @@ class HindsightMemoryProvider(MemoryProvider):
     def post_setup(self, spark_home: str, config: dict) -> None:
         """Custom setup wizard — installs only the deps needed for the selected mode."""
         import getpass
-        import subprocess
         import shutil
+        import subprocess
         import sys
         from pathlib import Path
 
         from spark_cli.config import save_config
-
         from spark_cli.memory_setup import _curses_select
 
         print("\n  Configuring Hindsight memory:\n")
@@ -471,12 +469,15 @@ class HindsightMemoryProvider(MemoryProvider):
         # Check client version and auto-upgrade if needed
         try:
             from importlib.metadata import version as pkg_version
+
             from packaging.version import Version
             installed = pkg_version("hindsight-client")
             if Version(installed) < Version(_MIN_CLIENT_VERSION):
                 logger.warning("hindsight-client %s is outdated (need >=%s), attempting upgrade...",
                                installed, _MIN_CLIENT_VERSION)
-                import shutil, subprocess, sys
+                import shutil
+                import subprocess
+                import sys
                 uv_path = shutil.which("uv")
                 if uv_path:
                     try:

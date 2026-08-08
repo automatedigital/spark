@@ -33,8 +33,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.spark_constants import get_spark_home
-from spark_cli.config import load_config
 from core.spark_time import now as _spark_now
+from spark_cli.config import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +324,7 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> str | 
             job["id"], platform_name, chat_id, thread_id,
         )
 
-    from gateway.config import load_gateway_config, Platform
+    from gateway.config import Platform, load_gateway_config
 
     platform_map = {p.value: p for p in Platform}
     platform = platform_map.get(platform_name.lower())
@@ -677,9 +677,9 @@ def _setup_job_environment(job: dict) -> dict:
 
 def _initialize_job_agent(job: dict, env: dict, prompt: str, session_db, session_id: str):
     """Resolve provider/model routing and construct the AIAgent for a cron job."""
-    from core.run_agent import AIAgent
-    from spark_cli.runtime_provider import resolve_runtime_provider, format_runtime_provider_error
     from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
+    from core.run_agent import AIAgent
+    from spark_cli.runtime_provider import format_runtime_provider_error, resolve_runtime_provider
 
     job_id = job["id"]
     model = env["model"]
@@ -901,15 +901,15 @@ def run_job(job: dict, is_cancelled=None) -> tuple[bool, str, str, str | None]:
 def tick(verbose: bool = True, adapters=None, loop=None) -> int:
     """
     Check and run all due jobs.
-    
+
     Uses a file lock so only one tick runs at a time, even if the gateway's
     in-process ticker and a standalone daemon or manual tick overlap.
-    
+
     Args:
         verbose: Whether to print status messages
         adapters: Optional dict mapping Platform → live adapter (from gateway)
         loop: Optional asyncio event loop (from gateway) for live adapter sends
-    
+
     Returns:
         Number of jobs executed (0 if another tick is already running)
     """

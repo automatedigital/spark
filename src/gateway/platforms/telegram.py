@@ -18,16 +18,18 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 try:
-    from telegram import Update, Bot, Message, InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+    from telegram.constants import ChatType, ParseMode
     from telegram.ext import (
         Application,
-        CommandHandler,
         CallbackQueryHandler,
-        MessageHandler as TelegramMessageHandler,
+        CommandHandler,
         ContextTypes,
         filters,
     )
-    from telegram.constants import ParseMode, ChatType
+    from telegram.ext import (
+        MessageHandler as TelegramMessageHandler,
+    )
     from telegram.request import HTTPXRequest
     TELEGRAM_AVAILABLE = True
 except ImportError:
@@ -54,22 +56,23 @@ except ImportError:
 
 import sys
 from pathlib import Path as _Path
+
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
+    SUPPORTED_DOCUMENT_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     ProcessingOutcome,
     SendResult,
-    cache_image_from_bytes,
+    _prefix_within_utf16_limit,
     cache_audio_from_bytes,
     cache_document_from_bytes,
+    cache_image_from_bytes,
     resolve_proxy_url,
-    SUPPORTED_DOCUMENT_TYPES,
     utf16_len,
-    _prefix_within_utf16_limit,
 )
 from gateway.platforms.helpers import TextBatchAggregator
 from gateway.platforms.telegram_network import (
@@ -126,7 +129,7 @@ def _plain_telegram_text(text: str) -> str:
 class TelegramAdapter(BasePlatformAdapter):
     """
     Telegram bot adapter.
-    
+
     Handles:
     - Receiving messages from users and groups
     - Sending responses with Telegram markdown
@@ -703,6 +706,7 @@ class TelegramAdapter(BasePlatformAdapter):
             # gateway command there automatically adds it to the Telegram menu.
             try:
                 from telegram import BotCommand
+
                 from spark_cli.commands import telegram_menu_commands
                 # Telegram allows up to 100 commands but has an undocumented
                 # payload size limit.  Skill descriptions are truncated to 40
@@ -1909,7 +1913,7 @@ class TelegramAdapter(BasePlatformAdapter):
         metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an image natively as a Telegram photo.
-        
+
         Tries URL-based send first (fast, works for <5MB images).
         Falls back to downloading and uploading as file (supports up to 10MB).
         """
@@ -2788,11 +2792,11 @@ class TelegramAdapter(BasePlatformAdapter):
         a placeholder noting the emoji.
         """
         from gateway.sticker_cache import (
-            get_cached_description,
-            cache_sticker_description,
-            build_sticker_injection,
-            build_animated_sticker_injection,
             STICKER_VISION_PROMPT,
+            build_animated_sticker_injection,
+            build_sticker_injection,
+            cache_sticker_description,
+            get_cached_description,
         )
 
         sticker = msg.sticker
@@ -2820,8 +2824,9 @@ class TelegramAdapter(BasePlatformAdapter):
             cached_path = cache_image_from_bytes(bytes(image_bytes), ext=".webp")
             logger.info("[Telegram] Analyzing sticker at %s", cached_path)
 
-            from tools.vision_tools import vision_analyze_tool
             import json as _json
+
+            from tools.vision_tools import vision_analyze_tool
 
             result_json = await vision_analyze_tool(
                 image_url=cached_path,

@@ -28,7 +28,6 @@ from pathlib import Path
 
 from core.spark_constants import get_spark_dir
 
-
 # Unambiguous alphabet -- excludes 0/O, 1/I to prevent confusion
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 8

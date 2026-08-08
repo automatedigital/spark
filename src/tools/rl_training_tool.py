@@ -32,17 +32,18 @@ import ast
 import asyncio
 import importlib.util
 import json
+import logging
 import os
 import subprocess
 import sys
 import time
 import uuid
-import logging
-from datetime import datetime
-import yaml
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from core.spark_constants import get_spark_home
 
@@ -219,7 +220,7 @@ def _scan_environments() -> list[EnvironmentInfo]:
 def _get_env_config_fields(env_file_path: str) -> dict[str, dict[str, Any]]:
     """
     Dynamically import an environment and extract its config fields.
-    
+
     Uses config_init() to get the actual config class, with fallback to
     directly importing BaseEnvConfig if config_init fails.
     """
@@ -509,22 +510,22 @@ def _stop_training_run(run_state: RunState):
 async def rl_list_environments() -> str:
     """
     List all available RL environments.
-    
+
     Scans tinker-atropos/tinker_atropos/environments/ for Python files
     containing classes that inherit from BaseEnv.
-    
+
     Returns information about each environment including:
     - name: Environment identifier
     - class_name: Python class name
     - file_path: Path to the environment file
     - description: Brief description if available
-    
+
     TIP: To create or modify RL environments:
     1. Use terminal/file tools to inspect existing environments
     2. Study how they load datasets, define verifiers, and structure rewards
     3. Inspect HuggingFace datasets to understand data formats
     4. Copy an existing environment as a template
-    
+
     Returns:
         JSON string with list of environments
     """
@@ -554,17 +555,17 @@ async def rl_list_environments() -> str:
 async def rl_select_environment(name: str) -> str:
     """
     Select an RL environment for training.
-    
+
     This loads the environment's configuration fields into memory.
     After selecting, use rl_get_current_config() to see all configurable options
     and rl_edit_config() to modify specific fields.
-    
+
     Args:
         name: Name of the environment to select (from rl_list_environments)
-    
+
     Returns:
         JSON string with selection result, file path, and configurable field count
-    
+
     TIP: Read the returned file_path to understand how the environment works.
     """
     global _current_env, _current_config
@@ -613,14 +614,14 @@ async def rl_select_environment(name: str) -> str:
 async def rl_get_current_config() -> str:
     """
     Get the current environment configuration.
-    
+
     Returns all configurable fields for the selected environment.
     Each environment may have different configuration options.
-    
+
     Fields are divided into:
     - configurable_fields: Can be changed with rl_edit_config()
     - locked_fields: Infrastructure settings that cannot be changed
-    
+
     Returns:
         JSON string with configurable and locked fields
     """
@@ -660,16 +661,16 @@ async def rl_get_current_config() -> str:
 async def rl_edit_config(field: str, value: Any) -> str:
     """
     Update a configuration field.
-    
+
     Use rl_get_current_config() first to see available fields for the
     selected environment. Each environment has different options.
-    
+
     Locked fields (infrastructure settings) cannot be changed.
-    
+
     Args:
         field: Name of the field to update (from rl_get_current_config)
         value: New value for the field
-    
+
     Returns:
         JSON string with updated config or error message
     """
@@ -710,18 +711,18 @@ async def rl_edit_config(field: str, value: Any) -> str:
 async def rl_start_training() -> str:
     """
     Start a new RL training run with the current environment and config.
-    
+
     Requires an environment to be selected first using rl_select_environment().
     Use rl_edit_config() to adjust configuration before starting.
-    
+
     This spawns three processes:
     1. run-api (Atropos trajectory API)
     2. launch_training.py (Tinker trainer + inference server)
     3. environment.py serve (the selected environment)
-    
+
     WARNING: Training runs take hours. Use rl_check_status() to monitor
     progress (recommended: check every 30 minutes at most).
-    
+
     Returns:
         JSON string with run_id and initial status
     """
@@ -815,13 +816,13 @@ async def rl_start_training() -> str:
 async def rl_check_status(run_id: str) -> str:
     """
     Get status and metrics for a training run.
-    
+
     RATE LIMITED: For long-running training, this function enforces a
     minimum 30-minute interval between checks for the same run_id.
-    
+
     Args:
         run_id: The run ID returned by rl_start_training()
-    
+
     Returns:
         JSON string with run status and metrics
     """
@@ -904,10 +905,10 @@ async def rl_check_status(run_id: str) -> str:
 async def rl_stop_training(run_id: str) -> str:
     """
     Stop a running training job.
-    
+
     Args:
         run_id: The run ID to stop
-    
+
     Returns:
         JSON string with stop confirmation
     """
@@ -936,10 +937,10 @@ async def rl_stop_training(run_id: str) -> str:
 async def rl_get_results(run_id: str) -> str:
     """
     Get final results and metrics for a training run.
-    
+
     Args:
         run_id: The run ID to get results for
-    
+
     Returns:
         JSON string with final results
     """
@@ -980,7 +981,7 @@ async def rl_get_results(run_id: str) -> str:
 async def rl_list_runs() -> str:
     """
     List all training runs (active and completed).
-    
+
     Returns:
         JSON string with list of runs and their status
     """
@@ -1023,26 +1024,26 @@ async def rl_test_inference(
 ) -> str:
     """
     Quick inference test for any environment using Atropos's `process` mode.
-    
+
     Runs a few steps of inference + scoring to validate:
     - Environment loads correctly
     - Prompt construction works
     - Inference parsing is robust (tested with multiple model scales)
     - Verifier/scoring logic works
-    
+
     Default: 3 steps × 16 completions = 48 total rollouts per model.
     Tests 3 models = 144 total rollouts. Quick sanity check.
-    
+
     Test models (varying intelligence levels for robustness):
     - qwen/qwen3-8b (small)
     - zhipu-ai/glm-4-flash (medium)
     - minimax/minimax-m1 (large)
-    
+
     Args:
         num_steps: Steps to run (default: 3, max recommended for testing)
         group_size: Completions per step (default: 16, like training)
         models: Optional model IDs to test. If None, uses all 3 test models.
-    
+
     Returns:
         JSON with results per model: steps_tested, accuracy, scores
     """
@@ -1319,7 +1320,7 @@ async def rl_test_inference(
 def check_rl_python_version() -> bool:
     """
     Check if Python version meets the minimum for RL tools.
-    
+
     tinker-atropos depends on the 'tinker' package which requires Python >= 3.11.
     """
     return sys.version_info >= (3, 11)
@@ -1328,7 +1329,7 @@ def check_rl_python_version() -> bool:
 def check_rl_api_keys() -> bool:
     """
     Check if required API keys and Python version are available.
-    
+
     RL training requires:
     - Python >= 3.11 (tinker package requirement)
     - TINKER_API_KEY for the Tinker training API

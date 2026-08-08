@@ -30,10 +30,9 @@ import mimetypes
 import os
 import re
 import time
+from html import escape as _html_escape
 from pathlib import Path
 from typing import Any
-
-from html import escape as _html_escape
 
 try:
     from mautrix.types import (
@@ -103,6 +102,7 @@ MAX_MESSAGE_LENGTH = 4000
 # Store directory for E2EE keys and sync state.
 # Uses get_spark_home() so each profile gets its own Matrix store.
 from core.spark_constants import get_spark_dir as _get_spark_dir
+
 _STORE_DIR = _get_spark_dir("platforms/matrix/store", "matrix/store")
 _CRYPTO_DB_PATH = _STORE_DIR / "crypto.db"
 

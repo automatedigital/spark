@@ -15,16 +15,15 @@ Features:
 
 Usage:
     from core.toolsets import get_toolset, resolve_toolset, get_all_toolsets
-    
+
     # Get tools for a specific toolset
     tools = get_toolset("research")
-    
+
     # Resolve a toolset to get all tool names (including from composed toolsets)
     all_tools = resolve_toolset("full_stack")
 """
 
 from typing import Any
-
 
 # Shared tool list for CLI and all messaging platform toolsets.
 # Edit this once to update all platforms simultaneously.
@@ -448,10 +447,10 @@ TOOLSETS = {
 def get_toolset(name: str) -> dict[str, Any] | None:
     """
     Get a toolset definition by name.
-    
+
     Args:
         name (str): Name of the toolset
-        
+
     Returns:
         Dict: Toolset definition with description, tools, and includes
         None: If toolset not found
@@ -463,14 +462,14 @@ def get_toolset(name: str) -> dict[str, Any] | None:
 def resolve_toolset(name: str, visited: set[str] = None) -> list[str]:
     """
     Recursively resolve a toolset to get all tool names.
-    
+
     This function handles toolset composition by recursively resolving
     included toolsets and combining all tools.
-    
+
     Args:
         name (str): Name of the toolset to resolve
         visited (Set[str]): Set of already visited toolsets (for cycle detection)
-        
+
     Returns:
         List[str]: List of all tool names in the toolset
     """
@@ -523,10 +522,10 @@ def resolve_toolset(name: str, visited: set[str] = None) -> list[str]:
 def resolve_multiple_toolsets(toolset_names: list[str]) -> list[str]:
     """
     Resolve multiple toolsets and combine their tools.
-    
+
     Args:
         toolset_names (List[str]): List of toolset names to resolve
-        
+
     Returns:
         List[str]: Combined list of all tool names (deduplicated)
     """
@@ -561,7 +560,7 @@ def get_all_toolsets() -> dict[str, dict[str, Any]]:
     Get all available toolsets with their definitions.
 
     Includes both statically-defined toolsets and plugin-registered ones.
-    
+
     Returns:
         Dict: All toolset definitions
     """
@@ -586,7 +585,7 @@ def get_toolset_names() -> list[str]:
     Get names of all available toolsets (excluding aliases).
 
     Includes plugin-registered toolset names.
-    
+
     Returns:
         List[str]: List of toolset names
     """
@@ -600,10 +599,10 @@ def get_toolset_names() -> list[str]:
 def validate_toolset(name: str) -> bool:
     """
     Check if a toolset name is valid.
-    
+
     Args:
         name (str): Toolset name to validate
-        
+
     Returns:
         bool: True if valid, False otherwise
     """
@@ -624,7 +623,7 @@ def create_custom_toolset(
 ) -> None:
     """
     Create a custom toolset at runtime.
-    
+
     Args:
         name (str): Name for the new toolset
         description (str): Description of the toolset
@@ -643,10 +642,10 @@ def create_custom_toolset(
 def get_toolset_info(name: str) -> dict[str, Any]:
     """
     Get detailed information about a toolset including resolved tools.
-    
+
     Args:
         name (str): Toolset name
-        
+
     Returns:
         Dict: Detailed toolset information
     """

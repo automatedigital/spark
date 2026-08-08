@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
-    from slack_bolt.async_app import AsyncApp
     from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+    from slack_bolt.async_app import AsyncApp
     from slack_sdk.web.async_client import AsyncWebClient
     SLACK_AVAILABLE = True
 except ImportError:
@@ -30,20 +30,20 @@ except ImportError:
 
 import sys
 from pathlib import Path as _Path
+
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
+    SUPPORTED_DOCUMENT_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     SendResult,
-    SUPPORTED_DOCUMENT_TYPES,
-    safe_url_for_log,
     cache_document_from_bytes,
+    safe_url_for_log,
 )
-
+from gateway.platforms.helpers import MessageDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -1591,6 +1591,7 @@ class SlackAdapter(BasePlatformAdapter):
     async def _download_slack_file(self, url: str, ext: str, audio: bool = False, team_id: str = "") -> str:
         """Download a Slack file using the bot token for auth, with retry."""
         import asyncio
+
         import httpx
 
         bot_token = self._team_clients[team_id].token if team_id and team_id in self._team_clients else self.config.token
@@ -1638,6 +1639,7 @@ class SlackAdapter(BasePlatformAdapter):
     async def _download_slack_file_bytes(self, url: str, team_id: str = "") -> bytes:
         """Download a Slack file and return raw bytes, with retry."""
         import asyncio
+
         import httpx
 
         bot_token = self._team_clients[team_id].token if team_id and team_id in self._team_clients else self.config.token

@@ -14,12 +14,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-from gateway.status import terminate_pid
 from gateway.restart import (
     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT,
     GATEWAY_SERVICE_RESTART_EXIT_CODE,
     parse_restart_drain_timeout,
 )
+from gateway.status import terminate_pid
+from spark_cli.colors import Colors, color
 from spark_cli.config import (
     get_env_value,
     get_spark_home,
@@ -28,14 +29,19 @@ from spark_cli.config import (
     read_raw_config,
     save_env_value,
 )
+
 # display_spark_home is imported lazily at call sites to avoid ImportError
 # when spark_constants is cached from a pre-update version during `spark update`.
 from spark_cli.setup import (
-    print_header, print_info, print_success, print_warning, print_error,
-    prompt, prompt_choice, prompt_yes_no,
+    print_error,
+    print_header,
+    print_info,
+    print_success,
+    print_warning,
+    prompt,
+    prompt_choice,
+    prompt_yes_no,
 )
-from spark_cli.colors import Colors, color
-
 
 # =============================================================================
 # Process Management (for manual gateway runs)
@@ -386,6 +392,7 @@ def _profile_suffix() -> str:
     """
     import hashlib
     import re
+
     from core.spark_constants import get_default_spark_root
     home = get_spark_home().resolve()
     default = get_default_spark_root().resolve()
@@ -416,6 +423,7 @@ def _profile_arg(spark_home: str | None = None) -> str:
             service definition for a different user (e.g. system service).
     """
     import re
+
     from core.spark_constants import get_default_spark_root
     home = Path(spark_home or str(get_spark_home())).resolve()
     default = get_default_spark_root().resolve()
@@ -1279,10 +1287,10 @@ def generate_launchd_plist() -> str:
     <array>
         {prog_args_xml}
     </array>
-    
+
     <key>WorkingDirectory</key>
     <string>{working_dir}</string>
-    
+
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -1292,19 +1300,19 @@ def generate_launchd_plist() -> str:
         <key>SPARK_HOME</key>
         <string>{spark_home}</string>
     </dict>
-    
+
     <key>RunAtLoad</key>
     <true/>
-    
+
     <key>KeepAlive</key>
     <dict>
         <key>SuccessfulExit</key>
         <false/>
     </dict>
-    
+
     <key>StandardOutPath</key>
     <string>{log_dir}/gateway.log</string>
-    
+
     <key>StandardErrorPath</key>
     <string>{log_dir}/gateway.error.log</string>
 </dict>
@@ -1434,6 +1442,7 @@ def _wait_for_gateway_exit(timeout: float = 10.0, force_after: float | None = 5.
         force_after: Seconds of graceful waiting before escalating to force-kill.
     """
     import time
+
     from gateway.status import get_running_pid
 
     deadline = time.monotonic() + timeout
@@ -1541,7 +1550,7 @@ def launchd_status(deep: bool = False):
 
 def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
     """Run the gateway in foreground.
-    
+
     Args:
         verbose: Stderr log verbosity count added on top of default WARNING (0=WARNING, 1=INFO, 2+=DEBUG).
         quiet: Suppress all stderr log output.
@@ -2129,8 +2138,9 @@ def _setup_standard_platform(platform: dict):
 
 def _setup_whatsapp():
     """Delegate to the existing WhatsApp setup flow."""
-    from spark_cli.main import cmd_whatsapp
     import argparse
+
+    from spark_cli.main import cmd_whatsapp
     cmd_whatsapp(argparse.Namespace())
 
 

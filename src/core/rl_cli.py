@@ -54,14 +54,12 @@ else:
 
 # Import agent and tools
 from core.run_agent import AIAgent
-from tools.rl_training_tool import get_missing_keys
-
 
 # ============================================================================
 # Config Loading
 # ============================================================================
-
-from core.spark_constants import get_spark_home, OPENROUTER_BASE_URL
+from core.spark_constants import OPENROUTER_BASE_URL, get_spark_home
+from tools.rl_training_tool import get_missing_keys
 
 DEFAULT_MODEL = "anthropic/claude-opus-4.5"
 DEFAULT_BASE_URL = OPENROUTER_BASE_URL
@@ -70,7 +68,7 @@ DEFAULT_BASE_URL = OPENROUTER_BASE_URL
 def load_spark_config() -> dict:
     """
     Load configuration from ~/.spark/config.yaml.
-    
+
     Returns:
         dict: Configuration with model, base_url, etc.
     """
@@ -219,8 +217,9 @@ def check_tinker_atropos():
 
 def list_environments_sync():
     """List available environments (synchronous wrapper)."""
-    from tools.rl_training_tool import rl_list_environments
     import json
+
+    from tools.rl_training_tool import rl_list_environments
 
     async def _list():
         result = await rl_list_environments()
@@ -247,7 +246,7 @@ def main(
 ):
     """
     RL Training CLI - Dedicated runner for RL training workflows.
-    
+
     Args:
         task: The training task/goal (e.g., "Train a model on GSM8k for math")
         model: Model to use for the agent (reads from ~/.spark/config.yaml if not provided)
@@ -259,17 +258,17 @@ def main(
         check_server: Check if RL API server is running and exit
         verbose: Enable verbose logging
         save_trajectories: Save conversation trajectories (default: True for RL)
-    
+
     Examples:
         # Train on a specific environment
         python rl_cli.py "Train a model on GSM8k math problems"
-        
+
         # Interactive mode
         python rl_cli.py --interactive
-        
+
         # List available environments
         python rl_cli.py --list-environments
-        
+
         # Check server status
         python rl_cli.py --check-server
     """
@@ -399,8 +398,9 @@ def main(
 
                 if user_input.lower() == 'status':
                     # Quick status check
-                    from tools.rl_training_tool import rl_list_runs
                     import json
+
+                    from tools.rl_training_tool import rl_list_runs
                     result = asyncio.run(rl_list_runs())
                     runs = json.loads(result)
                     if isinstance(runs, list) and runs:

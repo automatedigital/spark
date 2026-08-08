@@ -17,11 +17,11 @@ import sys
 import tempfile
 import time
 import zipfile
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from core.spark_constants import get_default_spark_root, get_spark_home, display_spark_home
+from core.spark_constants import display_spark_home, get_default_spark_root, get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -397,8 +397,10 @@ def run_import(args) -> None:
         if profiles_dir.is_dir():
             try:
                 from spark_cli.profiles import (
-                    create_wrapper_script, check_alias_collision,
-                    _is_wrapper_dir_in_path, _get_wrapper_dir,
+                    _get_wrapper_dir,
+                    _is_wrapper_dir_in_path,
+                    check_alias_collision,
+                    create_wrapper_script,
                 )
                 for entry in sorted(profiles_dir.iterdir()):
                     if not entry.is_dir():

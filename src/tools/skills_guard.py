@@ -22,14 +22,11 @@ Usage:
         print(format_scan_report(result))
 """
 
-import re
 import hashlib
+import re
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
-
-
-
 
 # ---------------------------------------------------------------------------
 # Hardcoded trust configuration

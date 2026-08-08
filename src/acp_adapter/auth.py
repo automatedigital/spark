@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 def detect_provider() -> str | None:
     """Resolve the active Spark runtime provider, or None if unavailable."""
     try:

@@ -16,6 +16,7 @@ class _ModelMixin:
     ) -> int | None:
         """Run curses_single_select via run_in_terminal so prompt_toolkit handles terminal ownership cleanly."""
         import threading
+
         from spark_cli.curses_ui import curses_single_select
 
         result = [None]
@@ -259,9 +260,9 @@ class _ModelMixin:
           /model --provider <provider>        - switch to provider, auto-detect model
         """
         from spark_cli.model_switch import (
-            switch_model,
-            parse_model_flags,
             list_authenticated_providers,
+            parse_model_flags,
+            switch_model,
         )
         from spark_cli.providers import get_label
 
@@ -334,7 +335,8 @@ class _ModelMixin:
             else:
                 # Simple mode: disable multi-model routing if it was on
                 try:
-                    from spark_cli.config import load_config as _lc3, save_config as _sc
+                    from spark_cli.config import load_config as _lc3
+                    from spark_cli.config import save_config as _sc
                     _cfg = _lc3()
                     _smr = _cfg.get("smart_model_routing")
                     if isinstance(_smr, dict) and _smr.get("enabled"):
@@ -518,15 +520,15 @@ class _ModelMixin:
         Shows current model + provider, then lists all authenticated
         providers with their available models.
         """
+        from spark_cli.auth import resolve_provider as _resolve_provider
         from spark_cli.models import (
+            _PROVIDER_LABELS,
             curated_models_for_provider,
+            format_model_pricing_table,
+            get_pricing_for_provider,
             list_available_providers,
             normalize_provider,
-            _PROVIDER_LABELS,
-            get_pricing_for_provider,
-            format_model_pricing_table,
         )
-        from spark_cli.auth import resolve_provider as _resolve_provider
 
         # Resolve current provider
         raw_provider = normalize_provider(self.provider)

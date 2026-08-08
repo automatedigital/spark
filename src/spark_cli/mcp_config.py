@@ -15,15 +15,15 @@ import re
 import time
 from typing import Any
 
+from core.spark_constants import display_spark_home
+from spark_cli.colors import Colors, color
 from spark_cli.config import (
+    get_env_value,
+    get_spark_home,  # noqa: F401 — used by test mocks
     load_config,
     save_config,
-    get_env_value,
     save_env_value,
-    get_spark_home,  # noqa: F401 — used by test mocks
 )
-from spark_cli.colors import Colors, color
-from core.spark_constants import display_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +166,9 @@ def _probe_single_server(
     Raises on connection failure.
     """
     from tools.mcp_tool import (
+        _connect_server,
         _ensure_mcp_loop,
         _run_on_mcp_loop,
-        _connect_server,
         _stop_mcp_loop,
     )
 

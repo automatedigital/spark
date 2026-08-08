@@ -20,11 +20,11 @@ Usage examples::
 import re
 import sys
 import time
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
-from collections.abc import Sequence
 
-from core.spark_constants import get_spark_home, display_spark_home
+from core.spark_constants import display_spark_home, get_spark_home
 
 # Known log files (name → filename)
 LOG_FILES = {

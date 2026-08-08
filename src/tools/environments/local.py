@@ -1,12 +1,12 @@
 """Local execution environment — spawn-per-call with session snapshot."""
 
+import base64
 import os
 import platform
 import shutil
 import signal
 import subprocess
 import tempfile
-import base64
 
 from tools.env_passthrough import build_tool_subprocess_env
 from tools.environments.base import BaseEnvironment, _pipe_stdin

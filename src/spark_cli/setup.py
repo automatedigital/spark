@@ -672,7 +672,6 @@ def setup_model_provider(config: dict, *, quick: bool = False):
             from types import SimpleNamespace
 
             from agent.credential_pool import load_pool
-
             from spark_cli.auth_commands import auth_add_command
 
             pool = load_pool(selected_provider)

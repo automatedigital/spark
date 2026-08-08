@@ -52,8 +52,9 @@ except ImportError:  # pragma: no cover - dependency gate
     modes = None  # type: ignore[assignment]
     CRYPTO_AVAILABLE = False
 
+from core.spark_constants import get_spark_home
+from core.utils import atomic_json_write
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -63,8 +64,7 @@ from gateway.platforms.base import (
     cache_document_from_bytes,
     cache_image_from_bytes,
 )
-from core.spark_constants import get_spark_home
-from core.utils import atomic_json_write
+from gateway.platforms.helpers import MessageDeduplicator
 
 ILINK_BASE_URL = "https://ilinkai.weixin.qq.com"
 WEIXIN_CDN_BASE_URL = "https://novac2c.cdn.weixin.qq.com/c2c"

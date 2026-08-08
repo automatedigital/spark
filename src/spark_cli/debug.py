@@ -14,7 +14,6 @@ from pathlib import Path
 
 from core.spark_constants import get_spark_home
 
-
 # ---------------------------------------------------------------------------
 # Paste services — try paste.rs first, dpaste.com as fallback.
 # ---------------------------------------------------------------------------

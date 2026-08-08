@@ -15,7 +15,7 @@ Features:
 
 Usage:
     from core.run_agent import AIAgent
-    
+
     agent = AIAgent(base_url="http://localhost:30000/v1", model="claude-opus-4-20250514")
     response = agent.run_conversation("Tell me about the latest Python updates")
 """
@@ -26,20 +26,21 @@ import copy
 import hashlib
 import json
 import logging
+
 logger = logging.getLogger(__name__)
 import os
 import random
 import re
 import sys
 import tempfile
-import time
 import threading
-from types import SimpleNamespace
+import time
 import uuid
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
 from core.spark_constants import get_spark_home
 
@@ -71,13 +72,13 @@ else:
 
 # Import our tool system
 from core.model_tools import (
+    check_toolset_requirements,
     get_tool_definitions,
     handle_function_call,
-    check_toolset_requirements,
 )
 from tools.budget_config import BudgetConfig
-from tools.tool_result_storage import maybe_persist_tool_result, enforce_turn_budget
 from tools.interrupt import set_interrupt as _set_interrupt
+from tools.tool_result_storage import enforce_turn_budget, maybe_persist_tool_result
 
 
 def cleanup_vm(*args, **kwargs):
@@ -122,26 +123,20 @@ _OAUTH_LOGIN_PROVIDERS = frozenset({
 })
 
 # Agent internals extracted to agent/ package for modularity
-from agent.memory_manager import build_memory_context_block
-from core.run_agent.retry_policy import jittered_backoff
-from agent.error_classifier import classify_api_error, FailoverReason
-# Most prompt-content helpers/constants moved with _build_system_prompt into
-# run_agent/prompt_cache.py (Phase 4). DEFAULT_AGENT_IDENTITY is still used
-# elsewhere in this module (e.g. the codex_responses instructions fallback).
-from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
-from agent.model_metadata import (
-    fetch_model_metadata,
-    estimate_tokens_rough, estimate_messages_tokens_rough, estimate_request_tokens_rough,
-    get_next_probe_tier, parse_context_limit_from_error,
-    parse_available_output_tokens_from_error,
-    save_context_length, is_local_endpoint,
-    query_ollama_num_ctx,
-)
 from agent.context_compressor import ContextCompressor
-from agent.subdirectory_hints import SubdirectoryHintTracker
-from agent.prompt_caching import apply_anthropic_cache_control
-from agent.prompt_builder import DEVELOPER_ROLE_MODELS
-from agent.usage_pricing import estimate_usage_cost, normalize_usage
+from agent.display import (
+    KawaiiSpinner,
+    _detect_tool_failure,
+)
+from agent.display import (
+    build_tool_preview as _build_tool_preview,
+)
+from agent.display import (
+    get_cute_tool_message as _get_cute_tool_message_impl,
+)
+from agent.display import (
+    get_tool_emoji as _get_tool_emoji,
+)
 from agent.efficiency_metrics import (
     EfficiencyRecorder,
     ModelIterationAccounting,
@@ -149,19 +144,35 @@ from agent.efficiency_metrics import (
     estimate_response_tokens,
     measure_request,
 )
-from agent.display import (
-    KawaiiSpinner, build_tool_preview as _build_tool_preview,
-    get_cute_tool_message as _get_cute_tool_message_impl,
-    _detect_tool_failure,
-    get_tool_emoji as _get_tool_emoji,
+from agent.error_classifier import FailoverReason, classify_api_error
+from agent.memory_manager import build_memory_context_block
+from agent.model_metadata import (
+    estimate_messages_tokens_rough,
+    estimate_request_tokens_rough,
+    estimate_tokens_rough,
+    fetch_model_metadata,
+    get_next_probe_tier,
+    is_local_endpoint,
+    parse_available_output_tokens_from_error,
+    parse_context_limit_from_error,
+    query_ollama_num_ctx,
+    save_context_length,
+)
+
+# Most prompt-content helpers/constants moved with _build_system_prompt into
+# run_agent/prompt_cache.py (Phase 4). DEFAULT_AGENT_IDENTITY is still used
+# elsewhere in this module (e.g. the codex_responses instructions fallback).
+from agent.prompt_builder import DEFAULT_AGENT_IDENTITY, DEVELOPER_ROLE_MODELS
+from agent.prompt_caching import apply_anthropic_cache_control
+from agent.subdirectory_hints import SubdirectoryHintTracker
+from agent.trajectory import (
+    convert_scratchpad_to_think,
+    has_incomplete_scratchpad,
 )
 from agent.trajectory import (
-    convert_scratchpad_to_think, has_incomplete_scratchpad,
     save_trajectory as _save_trajectory_to_file,
 )
-from core.utils import atomic_json_write, env_var_enabled
-
-
+from agent.usage_pricing import estimate_usage_cost, normalize_usage
 
 # Crash-safe stdio (_SafeWriter/_install_safe_stdio) and per-agent iteration
 # budgeting (IterationBudget) live in run_agent/stdio.py and
@@ -170,22 +181,6 @@ from core.utils import atomic_json_write, env_var_enabled
 # / `IterationBudget` and the bare-name references below keep resolving. noqa:
 # mid-module placement keeps the names bound before the AIAgent class body.
 from core.run_agent.iteration_budget import IterationBudget as IterationBudget  # noqa: E402,I001
-from core.run_agent.stdio import (  # noqa: E402,I001
-    _SafeWriter as _SafeWriter,
-    _install_safe_stdio as _install_safe_stdio,
-)
-
-# Caching-sensitive system-prompt assembly (ADR-0001 named home). Mixed into
-# AIAgent below; kept in its own module so the prompt-cache invariant has one
-# obvious place to live. noqa: import sits mid-module so the mixin is bound
-# before the AIAgent class statement.
-from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
-from core.tool_scheduler import (  # noqa: E402,I001
-    OrderedCallbackDispatcher,
-    ToolBatchScheduler,
-    build_tool_dag,
-)
-
 
 # Tool-batch parallelism heuristics live in run_agent/parallelism.py (Phase 4
 # split). Re-exported (redundant `as` alias to mark intentional re-export) so
@@ -194,18 +189,41 @@ from core.tool_scheduler import (  # noqa: E402,I001
 # mid-module so the names are bound before the AIAgent class uses them.
 from core.run_agent.parallelism import (  # noqa: E402,I001
     _DESTRUCTIVE_PATTERNS as _DESTRUCTIVE_PATTERNS,
+)
+from core.run_agent.parallelism import (
     _MAX_TOOL_WORKERS as _MAX_TOOL_WORKERS,
+)
+from core.run_agent.parallelism import (
     _NEVER_PARALLEL_TOOLS as _NEVER_PARALLEL_TOOLS,
+)
+from core.run_agent.parallelism import (
     _PARALLEL_SAFE_TOOLS as _PARALLEL_SAFE_TOOLS,
+)
+from core.run_agent.parallelism import (
     _PATH_SCOPED_TOOLS as _PATH_SCOPED_TOOLS,
+)
+from core.run_agent.parallelism import (
     _REDIRECT_OVERWRITE as _REDIRECT_OVERWRITE,
+)
+from core.run_agent.parallelism import (
     _extract_parallel_scope_path as _extract_parallel_scope_path,
+)
+from core.run_agent.parallelism import (
     _is_destructive_command as _is_destructive_command,
+)
+from core.run_agent.parallelism import (
     _paths_overlap as _paths_overlap,
+)
+from core.run_agent.parallelism import (
     _should_parallelize_tool_batch as _should_parallelize_tool_batch,
 )
 
-
+# Caching-sensitive system-prompt assembly (ADR-0001 named home). Mixed into
+# AIAgent below; kept in its own module so the prompt-cache invariant has one
+# obvious place to live. noqa: import sits mid-module so the mixin is bound
+# before the AIAgent class statement.
+from core.run_agent.prompt_cache import _PromptCacheMixin  # noqa: E402,I001
+from core.run_agent.retry_policy import jittered_backoff
 
 # Payload sanitization (surrogate + non-ASCII) lives in run_agent/sanitize.py
 # (Phase 4 split). Re-exported here (redundant `as` alias = intentional re-export)
@@ -214,17 +232,37 @@ from core.run_agent.parallelism import (  # noqa: E402,I001
 # mid-module placement is required so the names bind before the AIAgent class.
 from core.run_agent.sanitize import (  # noqa: E402,I001
     _SURROGATE_RE as _SURROGATE_RE,
+)
+from core.run_agent.sanitize import (
     _sanitize_messages_non_ascii as _sanitize_messages_non_ascii,
+)
+from core.run_agent.sanitize import (
     _sanitize_messages_surrogates as _sanitize_messages_surrogates,
+)
+from core.run_agent.sanitize import (
     _sanitize_structure_non_ascii as _sanitize_structure_non_ascii,
+)
+from core.run_agent.sanitize import (
     _sanitize_surrogates as _sanitize_surrogates,
+)
+from core.run_agent.sanitize import (
     _sanitize_tools_non_ascii as _sanitize_tools_non_ascii,
+)
+from core.run_agent.sanitize import (
     _strip_non_ascii as _strip_non_ascii,
 )
-
-
-
-
+from core.run_agent.stdio import (
+    _install_safe_stdio as _install_safe_stdio,
+)
+from core.run_agent.stdio import (  # noqa: E402,I001
+    _SafeWriter as _SafeWriter,
+)
+from core.tool_scheduler import (  # noqa: E402,I001
+    OrderedCallbackDispatcher,
+    ToolBatchScheduler,
+    build_tool_dag,
+)
+from core.utils import atomic_json_write, env_var_enabled
 
 # =========================================================================
 # Large tool result handler — save oversized output to temp file
@@ -1041,7 +1079,8 @@ class AIAgent(_PromptCacheMixin):
                             _mem_provider_name = "honcho"
                             # Persist so this only auto-migrates once
                             try:
-                                from spark_cli.config import load_config as _lc, save_config as _sc
+                                from spark_cli.config import load_config as _lc
+                                from spark_cli.config import save_config as _sc
                                 _cfg = _lc()
                                 _cfg.setdefault("memory", {})["provider"] = "honcho"
                                 _sc(_cfg)
@@ -1389,7 +1428,7 @@ class AIAgent(_PromptCacheMixin):
 
     def reset_session_state(self):
         """Reset all session-scoped token counters to 0 for a fresh session.
-        
+
         This method encapsulates the reset logic for all session-level metrics
         including:
         - Token usage counters (input, output, total, prompt, completion)
@@ -1398,10 +1437,10 @@ class AIAgent(_PromptCacheMixin):
         - Reasoning tokens
         - Estimated cost tracking
         - Context compressor internal counters
-        
+
         The method safely handles optional attributes (e.g., context compressor)
         using ``hasattr`` checks.
-        
+
         This keeps the counter reset logic DRY and maintainable in one place
         rather than scattering it across multiple methods.
         """
@@ -1441,6 +1480,7 @@ class AIAgent(_PromptCacheMixin):
         turn-scoped).
         """
         import logging
+
         from spark_cli.providers import determine_api_mode
 
         # ── Determine api_mode if not provided ──
@@ -1461,9 +1501,9 @@ class AIAgent(_PromptCacheMixin):
         # ── Build new client ──
         if api_mode == "anthropic_messages":
             from agent.anthropic_adapter import (
+                _is_oauth_token,
                 build_anthropic_client,
                 resolve_anthropic_token,
-                _is_oauth_token,
             )
             # Only fall back to ANTHROPIC_TOKEN when the provider is actually Anthropic.
             # Other anthropic_messages providers (MiniMax, Alibaba, etc.) must use their own
@@ -1801,7 +1841,7 @@ class AIAgent(_PromptCacheMixin):
 
     def _max_tokens_param(self, value: int) -> dict:
         """Return the correct max tokens kwarg for the current provider.
-        
+
         OpenAI's newer models (gpt-4o, o-series, gpt-5+) require
         'max_completion_tokens'. OpenRouter, local models, and older
         OpenAI models use 'max_tokens'.
@@ -1955,15 +1995,15 @@ class AIAgent(_PromptCacheMixin):
     def _extract_reasoning(self, assistant_message) -> str | None:
         """
         Extract reasoning/thinking content from an assistant message.
-        
+
         OpenRouter and various providers can return reasoning in multiple formats:
         1. message.reasoning - Direct reasoning field (DeepSeek, Qwen, etc.)
         2. message.reasoning_content - Alternative field (Moonshot AI, Novita, etc.)
         3. message.reasoning_details - Array of {type, summary, ...} objects (OpenRouter unified)
-        
+
         Args:
             assistant_message: The assistant message object from the API response
-            
+
         Returns:
             Combined reasoning text, or None if no reasoning found
         """
@@ -2111,7 +2151,8 @@ class AIAgent(_PromptCacheMixin):
             prompt = self._SKILL_REVIEW_PROMPT
 
         def _run_review():
-            import contextlib, os as _os
+            import contextlib
+            import os as _os
             review_agent = None
             try:
                 with open(_os.devnull, "w") as _devnull, \
@@ -2286,14 +2327,14 @@ class AIAgent(_PromptCacheMixin):
     def _get_messages_up_to_last_assistant(self, messages: list[dict]) -> list[dict]:
         """
         Get messages up to (but not including) the last assistant turn.
-        
+
         This is used when we need to "roll back" to the last successful point
         in the conversation, typically when the final assistant message is
         incomplete or malformed.
-        
+
         Args:
             messages: Full message list
-            
+
         Returns:
             Messages up to the last complete assistant turn (ending with user/tool message)
         """
@@ -2317,7 +2358,7 @@ class AIAgent(_PromptCacheMixin):
     def _format_tools_for_system_message(self) -> str:
         """
         Format tool definitions for the system message in the trajectory format.
-        
+
         Returns:
             str: JSON string representation of tool definitions
         """
@@ -2341,12 +2382,12 @@ class AIAgent(_PromptCacheMixin):
     def _convert_to_trajectory_format(self, messages: list[dict[str, Any]], user_query: str, completed: bool) -> list[dict[str, Any]]:
         """
         Convert internal message format to trajectory format for saving.
-        
+
         Args:
             messages (List[Dict]): Internal message history
             user_query (str): Original user query
             completed (bool): Whether the conversation completed successfully
-            
+
         Returns:
             List[Dict]: Messages in trajectory format
         """
@@ -2506,7 +2547,7 @@ class AIAgent(_PromptCacheMixin):
     def _save_trajectory(self, messages: list[dict[str, Any]], user_query: str, completed: bool):
         """
         Save conversation trajectory to JSONL file.
-        
+
         Args:
             messages (List[Dict]): Complete message history
             user_query (str): Original user query
@@ -2569,10 +2610,10 @@ class AIAgent(_PromptCacheMixin):
     def _clean_error_message(self, error_msg: str) -> str:
         """
         Clean up error messages for user display, removing HTML content and truncating.
-        
+
         Args:
             error_msg: Raw error message from API or exception
-            
+
         Returns:
             Clean, user-friendly error message
         """
@@ -2857,22 +2898,22 @@ class AIAgent(_PromptCacheMixin):
     def interrupt(self, message: str = None) -> None:
         """
         Request the agent to interrupt its current tool-calling loop.
-        
+
         Call this from another thread (e.g., input handler, message receiver)
         to gracefully stop the agent and process a new message.
-        
+
         Also signals long-running tool executions (e.g. terminal commands)
         to terminate early, so the agent can respond immediately.
-        
+
         Args:
             message: Optional new message that triggered the interrupt.
                      If provided, the agent will include this in its response context.
-        
+
         Example (CLI):
             # In a separate input thread:
             if user_typed_something:
                 agent.interrupt(user_input)
-        
+
         Example (Messaging):
             # When new message arrives for active session:
             if session_has_running_agent:
@@ -3045,7 +3086,7 @@ class AIAgent(_PromptCacheMixin):
     def _hydrate_todo_store(self, history: list[dict[str, Any]]) -> None:
         """
         Recover todo state from conversation history.
-        
+
         The gateway creates a fresh AIAgent per message, so the in-memory
         TodoStore is empty. We scan the history for the most recent todo
         tool response and replay it to reconstruct the state.
@@ -4400,7 +4441,7 @@ class AIAgent(_PromptCacheMixin):
             return False
 
         try:
-            from agent.anthropic_adapter import resolve_anthropic_token, build_anthropic_client
+            from agent.anthropic_adapter import build_anthropic_client, resolve_anthropic_token
 
             new_token = resolve_anthropic_token()
         except Exception as exc:
@@ -4452,7 +4493,7 @@ class AIAgent(_PromptCacheMixin):
         runtime_base = getattr(entry, "runtime_base_url", None) or getattr(entry, "base_url", None) or self.base_url
 
         if self.api_mode == "anthropic_messages":
-            from agent.anthropic_adapter import build_anthropic_client, _is_oauth_token
+            from agent.anthropic_adapter import _is_oauth_token, build_anthropic_client
 
             try:
                 self._anthropic_client.close()
@@ -5506,7 +5547,11 @@ class AIAgent(_PromptCacheMixin):
 
             if fb_api_mode == "anthropic_messages":
                 # Build native Anthropic client instead of using OpenAI client
-                from agent.anthropic_adapter import build_anthropic_client, resolve_anthropic_token, _is_oauth_token
+                from agent.anthropic_adapter import (
+                    _is_oauth_token,
+                    build_anthropic_client,
+                    resolve_anthropic_token,
+                )
                 effective_key = (fb_client.api_key or resolve_anthropic_token() or "") if fb_provider == "anthropic" else (fb_client.api_key or "")
                 self.api_key = effective_key
                 self._anthropic_api_key = effective_key
@@ -7796,7 +7841,8 @@ class AIAgent(_PromptCacheMixin):
                     summary_kwargs["extra_body"] = summary_extra_body
 
                 if self.api_mode == "anthropic_messages":
-                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak, normalize_anthropic_response as _nar
+                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak
+                    from agent.anthropic_adapter import normalize_anthropic_response as _nar
                     _ant_kw = _bak(model=self.model, messages=api_messages, tools=None,
                                    max_tokens=self.max_tokens, reasoning_config=self.reasoning_config,
                                    is_oauth=self._is_anthropic_oauth,
@@ -7828,7 +7874,8 @@ class AIAgent(_PromptCacheMixin):
                     retry_msg, _ = self._normalize_codex_response(retry_response)
                     final_response = (retry_msg.content or "").strip() if retry_msg else ""
                 elif self.api_mode == "anthropic_messages":
-                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak2, normalize_anthropic_response as _nar2
+                    from agent.anthropic_adapter import build_anthropic_kwargs as _bak2
+                    from agent.anthropic_adapter import normalize_anthropic_response as _nar2
                     _ant_kw2 = _bak2(model=self.model, messages=api_messages, tools=None,
                                     is_oauth=self._is_anthropic_oauth,
                                     max_tokens=self.max_tokens, reasoning_config=self.reasoning_config,
@@ -11111,7 +11158,11 @@ def main(
 
     # Handle tool listing
     if list_tools:
-        from core.model_tools import get_all_tool_names, get_toolset_for_tool, get_available_toolsets
+        from core.model_tools import (
+            get_all_tool_names,
+            get_available_toolsets,
+            get_toolset_for_tool,
+        )
         from core.toolsets import get_all_toolsets, get_toolset_info
 
         print("📋 Available Tools & Toolsets:")

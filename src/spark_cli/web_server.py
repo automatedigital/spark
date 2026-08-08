@@ -19,8 +19,8 @@ import os
 import platform
 import queue as thread_queue
 import re
-import shutil
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,12 +30,12 @@ import urllib.parse
 import urllib.request
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic as _steady_clock
 from typing import Any
-from collections.abc import Callable
 
 import yaml
 
@@ -43,27 +43,26 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from spark_cli import __version__, __release_date__
+from core.async_runtime import get_async_runtime
+from gateway.status import get_running_pid, read_runtime_status
+from spark_cli import __release_date__, __version__
+from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.config import (
     DEFAULT_CONFIG,
     OPTIONAL_ENV_VARS,
+    check_config_version,
     get_config_path,
     get_env_path,
     get_spark_home,
     load_config,
     load_env,
+    redact_key,
+    remove_env_value,
     save_config,
     save_env_value,
-    remove_env_value,
-    check_config_version,
-    redact_key,
 )
-from spark_cli.onboarding_validation import (
-    normalize_http_base_url,
-    normalize_model_name,
-    validate_env_assignment,
-)
-from gateway.status import get_running_pid, read_runtime_status
+from spark_cli.connectors_routes import register_connectors_routes
+from spark_cli.connectors_routes import set_server_port as _set_connectors_port
 from spark_cli.dashboard_auth import (
     dashboard_token_path,
     ensure_dashboard_token_file,
@@ -71,12 +70,14 @@ from spark_cli.dashboard_auth import (
     get_configured_dashboard_secret,
     validate_dashboard_request,
 )
-from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.kanban_routes import register_kanban_routes
+from spark_cli.onboarding_validation import (
+    normalize_http_base_url,
+    normalize_model_name,
+    validate_env_assignment,
+)
 from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
-from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
-from core.async_runtime import get_async_runtime
 
 try:
     from fastapi import FastAPI, HTTPException, Request
@@ -1908,12 +1909,12 @@ def _prewarm_agent_stack() -> None:
     """
     try:
         import core.model_tools  # noqa: F401  (runs _discover_tools at import)
-        from core.run_agent import AIAgent  # noqa: F401
 
         # Warm the models.dev metadata fetch now (during the desktop loading
         # screen) rather than on the first chat turn — it runs synchronously in
         # AIAgent.__init__ and can stall for seconds when models.dev is slow.
         from agent.models_dev import fetch_models_dev
+        from core.run_agent import AIAgent  # noqa: F401
 
         fetch_models_dev()
     except Exception:
@@ -2588,8 +2589,9 @@ async def sse_events_bus(
     server_epoch: str | None = None,
 ):
     """Shared SSE bus with an optional v1 snapshot-plus-delta resume cursor."""
-    from spark_cli.web_state import web_state_journal
     from fastapi.responses import StreamingResponse as _StreamingResponse
+
+    from spark_cli.web_state import web_state_journal
 
     prefixes = tuple(p.strip() for p in topics.split(",") if p.strip())
     session_ids = frozenset({session_id}) if session_id else frozenset()
@@ -4741,8 +4743,9 @@ def get_codex_usage():
         # Fetch live usage from the wham/usage endpoint (discovered via CodexBar)
         # Requires the ChatGPT-Account-Id header extracted from the JWT claims.
         try:
-            import httpx as _httpx
             import base64 as _base64
+
+            import httpx as _httpx
 
             access_token = status.get("api_key", "")
             # Extract chatgpt_account_id from JWT payload
@@ -5530,9 +5533,9 @@ def _anthropic_oauth_status() -> dict[str, Any]:
     """
     try:
         from agent.anthropic_adapter import (
-            read_spark_oauth_credentials,
-            read_claude_code_credentials,
             _SPARK_OAUTH_FILE,
+            read_claude_code_credentials,
+            read_spark_oauth_credentials,
         )
     except ImportError:
         read_claude_code_credentials = None  # type: ignore
@@ -5820,9 +5823,17 @@ _oauth_sessions_lock = threading.Lock()
 try:
     from agent.anthropic_adapter import (
         _OAUTH_CLIENT_ID as _ANTHROPIC_OAUTH_CLIENT_ID,
-        _OAUTH_TOKEN_URL as _ANTHROPIC_OAUTH_TOKEN_URL,
+    )
+    from agent.anthropic_adapter import (
         _OAUTH_REDIRECT_URI as _ANTHROPIC_OAUTH_REDIRECT_URI,
+    )
+    from agent.anthropic_adapter import (
         _OAUTH_SCOPES as _ANTHROPIC_OAUTH_SCOPES,
+    )
+    from agent.anthropic_adapter import (
+        _OAUTH_TOKEN_URL as _ANTHROPIC_OAUTH_TOKEN_URL,
+    )
+    from agent.anthropic_adapter import (
         _generate_pkce as _generate_pkce_pair,
     )
 
@@ -5880,13 +5891,14 @@ def _save_anthropic_oauth_creds(
     # the file write — pool registration only matters for the rotation
     # strategy, not for runtime credential resolution.
     try:
+        import uuid
+
         from agent.credential_pool import (
-            PooledCredential,
-            load_pool,
             AUTH_TYPE_OAUTH,
             SOURCE_MANUAL,
+            PooledCredential,
+            load_pool,
         )
-        import uuid
 
         pool = load_pool("anthropic")
         # Avoid duplicate entries: delete any prior dashboard-issued OAuth entry
@@ -6092,6 +6104,7 @@ def _codex_full_login_worker(session_id: str) -> None:
             return
 
         import httpx
+
         from spark_cli.auth import (
             CODEX_OAUTH_CLIENT_ID,
             CODEX_OAUTH_TOKEN_URL,
@@ -6811,7 +6824,7 @@ async def get_logs(
     component: str | None = None,
     search: str | None = None,
 ):
-    from spark_cli.logs import _read_tail, LOG_FILES
+    from spark_cli.logs import LOG_FILES, _read_tail
 
     log_name = LOG_FILES.get(file)
     if not log_name:
@@ -6993,8 +7006,8 @@ class SkillSave(BaseModel):
 
 def _skill_public_records() -> list[dict[str, Any]]:
     """Return canonical skill records while keeping legacy list semantics."""
-    from tools.skills_tool import canonical_skill_metadata
     from spark_cli.skills_config import get_disabled_skills
+    from tools.skills_tool import canonical_skill_metadata
 
     config = load_config()
     disabled = get_disabled_skills(config)
@@ -7022,9 +7035,9 @@ def _apply_skill_quality_defaults(record: dict[str, Any]) -> None:
 
 @app.get("/api/skills")
 async def get_skills():
-    from tools.skills_tool import _find_all_skills
-    from tools.skills_sync import sync_skills
     from spark_cli.skills_config import get_disabled_skills
+    from tools.skills_sync import sync_skills
+    from tools.skills_tool import _find_all_skills
 
     try:
         sync_skills(quiet=True)
@@ -7248,12 +7261,12 @@ async def restore_skill(skill_id: str):
 
 @app.get("/api/tools/toolsets")
 async def get_toolsets():
+    from core.toolsets import resolve_toolset
     from spark_cli.tools_config import (
         _get_effective_configurable_toolsets,
         _get_platform_tools,
         _toolset_has_keys,
     )
-    from core.toolsets import resolve_toolset
 
     config = load_config()
     enabled_toolsets = _get_platform_tools(
@@ -7385,7 +7398,7 @@ async def get_usage_analytics(days: int = 30):
 @app.get("/api/analytics/skills")
 async def get_skills_analytics(limit: int = 20):
     try:
-        from tools.skill_usage import top_skills, lifecycle_counts
+        from tools.skill_usage import lifecycle_counts, top_skills
         return {
             "top_skills": top_skills(limit=limit),
             "lifecycle_counts": lifecycle_counts(),
@@ -8293,8 +8306,10 @@ def _web_cmd_tools(args: str) -> str:
         if not names:
             return f"Usage: `/tools {subcommand} <name> [name …]`"
         try:
-            import io, sys
+            import io
+            import sys
             from argparse import Namespace
+
             from spark_cli.tools_config import tools_disable_enable_command
             buf = io.StringIO()
             old_stdout, sys.stdout = sys.stdout, buf
@@ -8324,6 +8339,7 @@ def _web_cmd_tools(args: str) -> str:
 def _web_cmd_toolsets() -> str:
     try:
         from tools.toolsets import get_all_toolsets, get_toolset_info
+
         from spark_cli.tools_config import _get_platform_tools
         cfg = load_config()
         enabled = set(_get_platform_tools(cfg, "web") or [])
@@ -8376,6 +8392,7 @@ def _web_cmd_skills(args: str) -> str:
 def _web_cmd_cron() -> str:
     try:
         import json
+
         from tools.cronjob_tools import cronjob as cronjob_tool
         result = json.loads(cronjob_tool(action="list"))
         jobs = result.get("jobs", []) if isinstance(result, dict) else []
@@ -8443,6 +8460,7 @@ def _web_cmd_files() -> str:
 def _web_cmd_save(session_id: str) -> str:
     import json
     from datetime import datetime
+
     from core.spark_constants import get_spark_home
     try:
         from core.spark_state import SessionDB
@@ -9466,8 +9484,9 @@ def _persist_context_items(session_id: str, raw_items: list) -> None:
     try:
         import json as _json
         import time as _time
-        from spark_cli.context_models import ContextItem
+
         from core.spark_state import SessionDB
+        from spark_cli.context_models import ContextItem
 
         items = [ContextItem.model_validate(i) for i in raw_items]
         db = SessionDB()
@@ -10697,9 +10716,10 @@ class SummarizeFileRequest(BaseModel):
 
 async def _generate_summary(text: str, filename: str) -> str:
     """Generate a summary via the configured LLM."""
+    import openai as _openai
+
     from spark_cli.model_config import read_global_model_config
     from spark_cli.runtime_provider import resolve_runtime_provider
-    import openai as _openai
 
     runtime = resolve_runtime_provider(requested=None)
     model_cfg = read_global_model_config()
@@ -11362,10 +11382,12 @@ register_workspace_routes(app)
 register_connectors_routes(app)
 register_canvas_routes(app)
 from spark_cli.memory_routes import register_memory_routes
+
 register_memory_routes(app)
 register_workflow_routes(app)
 from spark_cli.artifacts_routes import register_artifacts_routes
 from spark_cli.messaging_routes import register_messaging_routes
+
 register_messaging_routes(app)
 register_artifacts_routes(app)
 
@@ -11608,6 +11630,7 @@ mount_spa(app)
 def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool = True):
     """Start the web UI server."""
     import uvicorn
+
     from core.spark_constants import get_public_base_url, is_server_environment
 
     ensure_dashboard_token_file()

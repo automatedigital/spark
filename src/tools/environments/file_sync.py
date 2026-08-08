@@ -10,8 +10,8 @@ import logging
 import os
 import shlex
 import time
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 
 from tools.environments.base import _file_mtime_key
 

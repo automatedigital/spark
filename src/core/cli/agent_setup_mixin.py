@@ -146,8 +146,8 @@ class _AgentSetupMixin:
         Returns True if credentials are ready, False on auth failure.
         """
         from spark_cli.runtime_provider import (
-            resolve_runtime_provider,
             format_runtime_provider_error,
+            resolve_runtime_provider,
         )
 
         try:

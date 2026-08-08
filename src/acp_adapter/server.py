@@ -11,6 +11,7 @@ from typing import Any
 import acp
 from acp.schema import (
     AgentCapabilities,
+    AudioContentBlock,
     AuthenticateResponse,
     AvailableCommand,
     AvailableCommandsUpdate,
@@ -18,7 +19,6 @@ from acp.schema import (
     EmbeddedResourceContentBlock,
     ForkSessionResponse,
     ImageContentBlock,
-    AudioContentBlock,
     Implementation,
     InitializeResponse,
     ListSessionsResponse,
@@ -28,16 +28,16 @@ from acp.schema import (
     McpServerStdio,
     NewSessionResponse,
     PromptResponse,
+    ResourceContentBlock,
     ResumeSessionResponse,
+    SessionCapabilities,
+    SessionForkCapabilities,
+    SessionInfo,
+    SessionListCapabilities,
+    SessionResumeCapabilities,
     SetSessionConfigOptionResponse,
     SetSessionModelResponse,
     SetSessionModeResponse,
-    ResourceContentBlock,
-    SessionCapabilities,
-    SessionForkCapabilities,
-    SessionListCapabilities,
-    SessionResumeCapabilities,
-    SessionInfo,
     TextContentBlock,
     UnstructuredCommandInput,
     Usage,
@@ -562,7 +562,7 @@ class SparkACPAgent(acp.Agent):
 
         # Auto-detect provider for the requested model
         try:
-            from spark_cli.models import parse_model_input, detect_provider_for_model
+            from spark_cli.models import detect_provider_for_model, parse_model_input
             target_provider, new_model = parse_model_input(new_model, current_provider)
             if target_provider == current_provider:
                 detected = detect_provider_for_model(new_model, current_provider)

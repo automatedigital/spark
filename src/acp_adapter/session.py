@@ -8,8 +8,6 @@ history.
 """
 from __future__ import annotations
 
-from core.spark_constants import get_spark_home
-
 import copy
 import json
 import logging
@@ -18,6 +16,8 @@ import uuid
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 

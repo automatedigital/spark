@@ -29,9 +29,9 @@ import logging
 import os
 import threading
 import uuid
+from collections.abc import Sequence
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from collections.abc import Sequence
 
 from core.spark_constants import get_config_path, get_spark_home
 

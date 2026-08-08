@@ -8,14 +8,15 @@ Output is saved to ~/.spark/cron/output/{job_id}/{timestamp}.md
 import copy
 import json
 import logging
-import tempfile
 import os
 import re
+import tempfile
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from core.spark_constants import get_spark_home
 from typing import Any
+
+from core.spark_constants import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ def ensure_dirs():
 def parse_duration(s: str) -> int:
     """
     Parse duration string into minutes.
-    
+
     Examples:
         "30m" → 30
         "2h" → 120
@@ -117,13 +118,13 @@ def parse_duration(s: str) -> int:
 def parse_schedule(schedule: str) -> dict[str, Any]:
     """
     Parse schedule string into structured format.
-    
+
     Returns dict with:
         - kind: "once" | "interval" | "cron"
         - For "once": "run_at" (ISO timestamp)
         - For "interval": "minutes" (int)
         - For "cron": "expr" (cron expression)
-    
+
     Examples:
         "30m"              → once in 30 minutes
         "2h"               → once in 2 hours
@@ -601,7 +602,7 @@ def mark_job_run(job_id: str, success: bool, error: str | None = None,
                  delivery_error: str | None = None):
     """
     Mark a job as having been run.
-    
+
     Updates last_run_at, last_status, increments completed count,
     computes next_run_at, and auto-deletes if repeat limit reached.
 

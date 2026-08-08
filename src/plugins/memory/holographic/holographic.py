@@ -21,8 +21,8 @@ References:
 
 import hashlib
 import logging
-import struct
 import math
+import struct
 
 try:
     import numpy as np

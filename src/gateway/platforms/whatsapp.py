@@ -72,24 +72,25 @@ def _kill_port_process(port: int) -> None:
         pass
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
+    SUPPORTED_DOCUMENT_TYPES,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
     SendResult,
-    SUPPORTED_DOCUMENT_TYPES,
-    cache_image_from_url,
     cache_audio_from_url,
+    cache_image_from_url,
 )
 
 
 def check_whatsapp_requirements() -> bool:
     """
     Check if WhatsApp dependencies are available.
-    
+
     WhatsApp requires a Node.js bridge for most implementations.
     """
     # Check for Node.js
@@ -108,17 +109,17 @@ def check_whatsapp_requirements() -> bool:
 class WhatsAppAdapter(BasePlatformAdapter):
     """
     WhatsApp adapter.
-    
+
     This implementation uses a simple HTTP bridge pattern where:
     1. A Node.js process runs the WhatsApp Web client
     2. Messages are forwarded via HTTP/IPC to this Python adapter
     3. Responses are sent back through the bridge
-    
+
     The actual Node.js bridge implementation can vary:
     - whatsapp-web.js based
     - Baileys based
     - Business API based
-    
+
     Configuration:
     - bridge_script: Path to the Node.js bridge script
     - bridge_port: Port for HTTP communication (default: 3000)
@@ -279,7 +280,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
     async def connect(self) -> bool:
         """
         Start the WhatsApp bridge.
-        
+
         This launches the Node.js bridge process and waits for it to be ready.
         """
         if not check_whatsapp_requirements():
@@ -325,8 +326,9 @@ class WhatsAppAdapter(BasePlatformAdapter):
             self._session_path.mkdir(parents=True, exist_ok=True)
 
             # Check if bridge is already running and connected
-            import aiohttp
             import asyncio
+
+            import aiohttp
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(

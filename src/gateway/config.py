@@ -8,16 +8,16 @@ Handles loading and validating configuration for:
 - Delivery preferences
 """
 
+import json
 import logging
 import os
-import json
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Any
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
-from spark_cli.config import get_spark_home
 from core.utils import is_truthy_value
+from spark_cli.config import get_spark_home
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class Platform(Enum):
 class HomeChannel:
     """
     Default destination for a platform.
-    
+
     When a cron job specifies deliver="telegram" without a specific chat ID,
     messages are sent to this home channel.
     """
@@ -101,7 +101,7 @@ class HomeChannel:
 class SessionResetPolicy:
     """
     Controls when sessions reset (lose context).
-    
+
     Modes:
     - "daily": Reset at a specific hour each day
     - "idle": Reset after N minutes of inactivity
@@ -222,7 +222,7 @@ class StreamingConfig:
 class GatewayConfig:
     """
     Main gateway configuration.
-    
+
     Manages all platform connections, session policies, and delivery settings.
     """
     # Platform configurations
@@ -323,7 +323,7 @@ class GatewayConfig:
     ) -> SessionResetPolicy:
         """
         Get the appropriate reset policy for a session.
-        
+
         Priority: platform override > type override > default
         """
         # Platform-specific override takes precedence

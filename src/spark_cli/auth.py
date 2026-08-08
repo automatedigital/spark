@@ -15,14 +15,14 @@ Architecture:
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 import os
-import shutil
 import shlex
+import shutil
 import stat
-import base64
-import hashlib
 import subprocess
 import threading
 import time
@@ -30,15 +30,15 @@ import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
 import yaml
 
-from spark_cli.config import get_spark_home, get_config_path, read_raw_config
 from core.spark_constants import OPENROUTER_BASE_URL
+from spark_cli.config import get_config_path, get_spark_home, read_raw_config
 
 logger = logging.getLogger(__name__)
 
@@ -1962,6 +1962,7 @@ def get_auth_status(provider_id: str | None = None) -> dict[str, Any]:
         # active provider (model.provider == "ollama") or the env var is set.
         try:
             import os as _os
+
             from spark_cli.config import load_config as _load_config
 
             _cfg = _load_config()

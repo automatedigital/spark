@@ -19,7 +19,6 @@ from pathlib import Path
 
 from core.spark_constants import display_spark_home
 
-
 _SUBSCRIPTIONS_FILENAME = "webhook_subscriptions.json"
 
 
@@ -231,8 +230,8 @@ def _cmd_test(args):
 
     payload = args.payload or '{"test": true, "event_type": "test", "message": "Hello from spark webhook test"}'
 
-    import hmac
     import hashlib
+    import hmac
     sig = "sha256=" + hmac.new(
         secret.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()

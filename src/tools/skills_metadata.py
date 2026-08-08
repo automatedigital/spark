@@ -206,7 +206,6 @@ def _quality_metadata(
     source = str((audit or {}).get("source_kind") or source_fallback)
 
     from agent.model_metadata import estimate_tokens_rough
-
     from agent.skill_utils import extract_skill_description, get_skill_invocation_metadata
 
     invocation = get_skill_invocation_metadata(frontmatter)

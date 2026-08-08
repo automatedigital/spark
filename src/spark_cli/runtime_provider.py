@@ -9,28 +9,28 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from spark_cli import auth as auth_mod
 from agent.credential_pool import (
     CredentialPool,
     PooledCredential,
     get_custom_provider_pool_key,
     load_pool,
 )
+from core.spark_constants import OPENROUTER_BASE_URL
+from spark_cli import auth as auth_mod
 from spark_cli.auth import (
-    AuthError,
     DEFAULT_CODEX_BASE_URL,
     DEFAULT_QWEN_BASE_URL,
     PROVIDER_REGISTRY,
+    AuthError,
     format_auth_error,
-    resolve_provider,
-    resolve_codex_runtime_credentials,
-    resolve_qwen_runtime_credentials,
-    resolve_api_key_provider_credentials,
-    resolve_external_process_provider_credentials,
     has_usable_secret,
+    resolve_api_key_provider_credentials,
+    resolve_codex_runtime_credentials,
+    resolve_external_process_provider_credentials,
+    resolve_provider,
+    resolve_qwen_runtime_credentials,
 )
 from spark_cli.config import get_compatible_custom_providers, load_config
-from core.spark_constants import OPENROUTER_BASE_URL
 
 
 def _normalize_custom_provider_name(value: str) -> str:

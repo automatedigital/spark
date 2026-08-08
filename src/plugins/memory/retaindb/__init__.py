@@ -28,7 +28,7 @@ import re
 import sqlite3
 import threading
 import time
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -283,6 +283,7 @@ class _Client:
 
     def upload_file(self, data: bytes, filename: str, remote_path: str, mime_type: str, scope: str, project_id: str | None) -> dict:
         import io
+
         import requests
         url = f"{self.base_url}/v1/files"
         token = self.api_key.replace("Bearer ", "").strip()

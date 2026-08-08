@@ -20,7 +20,7 @@ Multi-occurrence matching is handled via the replace_all flag.
 
 Usage:
     from tools.fuzzy_match import fuzzy_find_and_replace
-    
+
     new_content, match_count, strategy, error = fuzzy_find_and_replace(
         content="def foo():\\n    pass",
         old_string="def foo():",
@@ -104,12 +104,12 @@ def fuzzy_find_and_replace(content: str, old_string: str, new_string: str,
 def _apply_replacements(content: str, matches: list[tuple[int, int]], new_string: str) -> str:
     """
     Apply replacements at the given positions.
-    
+
     Args:
         content: Original content
         matches: List of (start, end) positions to replace
         new_string: Replacement text
-    
+
     Returns:
         Content with replacements applied
     """
@@ -144,7 +144,7 @@ def _strategy_exact(content: str, pattern: str) -> list[tuple[int, int]]:
 def _strategy_line_trimmed(content: str, pattern: str) -> list[tuple[int, int]]:
     """
     Strategy 2: Match with line-by-line whitespace trimming.
-    
+
     Strips leading/trailing whitespace from each line before matching.
     """
     # Normalize pattern and content by trimming each line
@@ -185,7 +185,7 @@ def _strategy_whitespace_normalized(content: str, pattern: str) -> list[tuple[in
 def _strategy_indentation_flexible(content: str, pattern: str) -> list[tuple[int, int]]:
     """
     Strategy 4: Ignore indentation differences entirely.
-    
+
     Strips all leading whitespace from lines before matching.
     """
     content_lines = content.split('\n')
@@ -201,7 +201,7 @@ def _strategy_indentation_flexible(content: str, pattern: str) -> list[tuple[int
 def _strategy_escape_normalized(content: str, pattern: str) -> list[tuple[int, int]]:
     """
     Strategy 5: Convert escape sequences to actual characters.
-    
+
     Handles \\n -> newline, \\t -> tab, etc.
     """
     def unescape(s):
@@ -220,7 +220,7 @@ def _strategy_escape_normalized(content: str, pattern: str) -> list[tuple[int, i
 def _strategy_trimmed_boundary(content: str, pattern: str) -> list[tuple[int, int]]:
     """
     Strategy 6: Trim whitespace from first and last lines only.
-    
+
     Useful when the pattern boundaries have whitespace differences.
     """
     pattern_lines = pattern.split('\n')
@@ -399,7 +399,7 @@ def _strategy_block_anchor(content: str, pattern: str) -> list[tuple[int, int]]:
 def _strategy_context_aware(content: str, pattern: str) -> list[tuple[int, int]]:
     """
     Strategy 9: Line-by-line similarity with 50% threshold.
-    
+
     Finds blocks where at least 50% of lines have high similarity.
     """
     pattern_lines = pattern.split('\n')
@@ -460,14 +460,14 @@ def _find_normalized_matches(content: str, content_lines: list[str],
                               pattern: str, pattern_normalized: str) -> list[tuple[int, int]]:
     """
     Find matches in normalized content and map back to original positions.
-    
+
     Args:
         content: Original content string
         content_lines: Original content split by lines
         content_normalized_lines: Normalized content lines
         pattern: Original pattern
         pattern_normalized: Normalized pattern
-    
+
     Returns:
         List of (start, end) positions in the original content
     """
@@ -494,7 +494,7 @@ def _map_normalized_positions(original: str, normalized: str,
                                normalized_matches: list[tuple[int, int]]) -> list[tuple[int, int]]:
     """
     Map positions from normalized string back to original.
-    
+
     This is a best-effort mapping that works for whitespace normalization.
     """
     if not normalized_matches:
