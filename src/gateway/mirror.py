@@ -12,7 +12,6 @@ the full SessionStore machinery.
 import json
 import logging
 from datetime import datetime
-from typing import Optional
 
 from spark_cli.config import get_spark_home
 

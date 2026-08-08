@@ -23,7 +23,7 @@ Public API (signatures preserved from the original 2,400-line version):
 import json
 import logging
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from core.toolsets import resolve_toolset, validate_toolset
 from tools.registry import registry

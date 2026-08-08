@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from tools.registry import registry, tool_error, tool_result
 from tools.computer_use.schema import COMPUTER_USE_SCHEMA

@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 from collections import defaultdict
-from typing import Dict, Optional, Any
+from typing import Any
 from collections.abc import Callable
 
 logger = logging.getLogger(__name__)

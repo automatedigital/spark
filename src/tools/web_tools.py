@@ -47,7 +47,7 @@ import re
 import asyncio
 from html.parser import HTMLParser
 from urllib.parse import urlparse
-from typing import List, Dict, Any, Optional
+from typing import Any
 import httpx
 try:
     import warnings

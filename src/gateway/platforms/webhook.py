@@ -30,7 +30,7 @@ import logging
 import re
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from aiohttp import web

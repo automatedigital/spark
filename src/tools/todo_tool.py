@@ -15,7 +15,7 @@ Design:
 """
 
 import json
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 
 # Valid status values for todo items

@@ -74,7 +74,7 @@ import os
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Any
 
 from tools.registry import registry, tool_error
 

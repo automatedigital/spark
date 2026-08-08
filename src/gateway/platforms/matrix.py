@@ -31,7 +31,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any
 
 from html import escape as _html_escape
 

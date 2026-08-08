@@ -30,7 +30,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from gateway.platforms.base import (
     BasePlatformAdapter,

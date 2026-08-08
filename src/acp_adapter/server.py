@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Deque, Optional
+from typing import Any
 
 import acp
 from acp.schema import (

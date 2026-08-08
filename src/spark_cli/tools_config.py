@@ -13,7 +13,6 @@ import json as _json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
 
 from spark_cli.config import (

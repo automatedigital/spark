@@ -28,7 +28,7 @@ import json
 import logging
 import os
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error

@@ -17,9 +17,9 @@ import sys
 import tempfile
 import time
 import zipfile
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from core.spark_constants import get_default_spark_root, get_spark_home, display_spark_home
 

@@ -31,7 +31,6 @@ import threading
 import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
 from collections.abc import Sequence
 
 from core.spark_constants import get_config_path, get_spark_home

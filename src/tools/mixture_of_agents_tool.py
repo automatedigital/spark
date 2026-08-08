@@ -50,7 +50,7 @@ import logging
 import os
 import asyncio
 import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any
 from tools.openrouter_client import get_async_client as _get_openrouter_client, check_api_key as check_openrouter_api_key
 from agent.auxiliary_client import extract_content_or_reasoning
 from tools.debug_helpers import DebugSession

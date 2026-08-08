@@ -16,7 +16,7 @@ import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any
 
 from core.network_tls import urllib_request_kwargs
 from core.spark_constants import get_spark_home

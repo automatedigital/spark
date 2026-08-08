@@ -40,7 +40,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from core.spark_constants import get_spark_home
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

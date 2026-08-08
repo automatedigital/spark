@@ -11,7 +11,7 @@ import os
 import re
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from core.spark_constants import OPENROUTER_BASE_URL
 import spark_cli.auth as auth_mod

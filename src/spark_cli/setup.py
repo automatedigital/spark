@@ -18,7 +18,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from core.spark_constants import get_optional_skills_dir
 

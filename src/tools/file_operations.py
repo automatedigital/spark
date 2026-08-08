@@ -35,7 +35,7 @@ import tempfile
 import shlex
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Any
 from pathlib import Path
 from core.spark_constants import get_spark_home
 from tools.binary_extensions import BINARY_EXTENSIONS

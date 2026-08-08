@@ -22,7 +22,7 @@ import asyncio
 import logging
 import os
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from gateway.run import GatewayRunner

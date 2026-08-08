@@ -26,7 +26,6 @@ import shutil
 import subprocess
 from pathlib import Path
 from core.spark_constants import get_spark_home
-from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 

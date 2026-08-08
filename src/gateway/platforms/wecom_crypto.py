@@ -12,7 +12,6 @@ import os
 import secrets
 import socket
 import struct
-from typing import Optional
 from xml.etree import ElementTree as ET
 
 from cryptography.hazmat.backends import default_backend

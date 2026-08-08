@@ -13,7 +13,7 @@ import os
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Any
 from enum import Enum
 
 from spark_cli.config import get_spark_home

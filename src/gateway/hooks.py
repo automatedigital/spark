@@ -21,7 +21,7 @@ Errors in hooks are caught and logged but never block the main pipeline.
 
 import asyncio
 import importlib.util
-from typing import Any, Dict, List, Optional
+from typing import Any
 from collections.abc import Callable
 
 import yaml

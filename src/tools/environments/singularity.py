@@ -12,7 +12,6 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_home
 from tools.environments.base import (

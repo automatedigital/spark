@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from decimal import Decimal
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 from agent.model_metadata import fetch_endpoint_model_metadata, fetch_model_metadata
 

@@ -13,7 +13,6 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,6 @@ import logging
 import os
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 

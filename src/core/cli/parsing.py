@@ -12,7 +12,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from core.spark_constants import get_spark_home
 

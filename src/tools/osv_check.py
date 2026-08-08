@@ -15,7 +15,6 @@ import logging
 import os
 import re
 import urllib.request
-from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 

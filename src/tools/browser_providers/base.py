@@ -1,7 +1,6 @@
 """Abstract base class for cloud browser providers."""
 
 from abc import ABC, abstractmethod
-from typing import Dict
 
 
 class CloudBrowserProvider(ABC):

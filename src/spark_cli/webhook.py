@@ -16,7 +16,6 @@ import re
 import secrets
 import time
 from pathlib import Path
-from typing import Dict
 
 from core.spark_constants import display_spark_home
 

@@ -9,7 +9,7 @@ action="list" and for resolving human-friendly channel names to numeric IDs.
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from spark_cli.config import get_spark_home
 from core.utils import atomic_json_write

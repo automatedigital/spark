@@ -48,7 +48,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def _require_tty(command_name: str) -> None:
@@ -3950,7 +3949,7 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> str | None:
         if not status.stdout.strip():
             return None
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     stash_name = datetime.now(UTC).strftime(
         "spark-update-autostash-%Y%m%d-%H%M%S"

@@ -6,7 +6,6 @@ without risk of a circular dependency.
 """
 
 import re
-from typing import Optional, Tuple
 
 _TELEGRAM_TOPIC_TARGET_RE = re.compile(r"^\s*(-?\d+)(?::(\d+))?\s*$")
 _FEISHU_TARGET_RE = re.compile(

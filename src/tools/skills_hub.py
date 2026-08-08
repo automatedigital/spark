@@ -23,10 +23,10 @@ import subprocess
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from pathlib import Path, PurePosixPath
 from core.spark_constants import get_spark_home
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx

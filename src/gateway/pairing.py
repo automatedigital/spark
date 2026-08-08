@@ -25,7 +25,6 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_dir
 

@@ -26,7 +26,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 from core.spark_constants import get_spark_home
 

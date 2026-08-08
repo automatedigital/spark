@@ -16,7 +16,7 @@ import asyncio
 import logging
 import socket as _socket
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 from xml.etree import ElementTree as ET
 
 try:

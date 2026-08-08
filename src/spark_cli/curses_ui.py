@@ -5,7 +5,6 @@ Provides a curses multi-select with keyboard navigation, plus a
 text-based numbered fallback for terminals without curses support.
 """
 import sys
-from typing import List, Optional, Set
 from collections.abc import Callable
 
 from spark_cli.colors import Colors, color

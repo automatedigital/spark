@@ -18,9 +18,9 @@ import logging
 import os
 import random
 import time
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any
 from urllib.parse import quote, unquote
 
 import httpx

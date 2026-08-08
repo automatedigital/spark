@@ -20,7 +20,7 @@ import logging
 import os
 import threading
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error

@@ -24,7 +24,7 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error

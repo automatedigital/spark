@@ -34,7 +34,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 from collections.abc import Awaitable
 from urllib.parse import urlparse
 import httpx

@@ -30,7 +30,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 from urllib.parse import urljoin
 
 from core.utils import is_truthy_value

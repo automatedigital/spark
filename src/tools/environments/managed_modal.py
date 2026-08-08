@@ -8,7 +8,7 @@ import os
 import requests
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 from tools.environments.modal_utils import (
     BaseModalExecutionEnvironment,

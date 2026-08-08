@@ -37,7 +37,7 @@ import threading
 from types import SimpleNamespace
 import uuid
 from collections.abc import Callable
-from typing import TYPE_CHECKING, List, Dict, Any, Optional
+from typing import TYPE_CHECKING, Any
 from datetime import datetime
 from pathlib import Path
 

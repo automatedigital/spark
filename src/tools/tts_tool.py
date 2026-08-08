@@ -37,7 +37,7 @@ import tempfile
 import threading
 import uuid
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 from collections.abc import Callable
 from urllib.parse import urljoin
 

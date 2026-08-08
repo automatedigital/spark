@@ -3,7 +3,6 @@
 import logging
 import os
 import uuid
-from typing import Dict
 
 import requests
 

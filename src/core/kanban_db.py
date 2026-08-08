@@ -16,7 +16,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from collections.abc import Iterator, Sequence
 
 from core.spark_constants import get_spark_home

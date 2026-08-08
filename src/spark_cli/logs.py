@@ -22,7 +22,6 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 from collections.abc import Sequence
 
 from core.spark_constants import get_spark_home, display_spark_home

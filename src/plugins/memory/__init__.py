@@ -22,7 +22,7 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from agent.memory_provider import MemoryProvider

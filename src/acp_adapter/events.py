@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 from collections import deque
-from typing import Any, Deque, Dict
+from typing import Any
 from collections.abc import Callable
 
 import acp

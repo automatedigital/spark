@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import sys
 import uuid
-from typing import Optional
 
 from tools.environments.base import BaseEnvironment, _popen_bash
 from tools.environments.local import _SPARK_PROVIDER_ENV_BLOCKLIST

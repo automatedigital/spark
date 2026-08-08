@@ -42,7 +42,7 @@ from datetime import datetime
 import yaml
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from core.spark_constants import get_spark_home
 

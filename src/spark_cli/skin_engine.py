@@ -106,7 +106,7 @@ Activate with ``/skin <name>`` in the CLI or ``display.skin: <name>`` in config.
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from core.spark_constants import get_spark_home
 

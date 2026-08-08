@@ -11,7 +11,6 @@ import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional
 
 from agent.skill_utils import (
     extract_skill_conditions,

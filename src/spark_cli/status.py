@@ -37,7 +37,7 @@ def _format_iso_timestamp(value) -> str:
     """Format ISO timestamps for status output, converting to local timezone."""
     if not value or not isinstance(value, str):
         return "(unknown)"
-    from datetime import datetime, timezone
+    from datetime import datetime
     text = value.strip()
     if not text:
         return "(unknown)"
@@ -79,7 +79,6 @@ def _effective_provider_label() -> str:
 
 
 from core.spark_constants import is_termux as _is_termux
-from datetime import UTC
 
 
 def show_status(args):
@@ -184,7 +183,7 @@ def show_status(args):
         print(f"    Auth file:  {qwen_auth_file}")
     qwen_exp = qwen_status.get("expires_at_ms")
     if qwen_exp:
-        from datetime import datetime, timezone
+        from datetime import datetime
         print(f"    Access exp: {datetime.fromtimestamp(int(qwen_exp) / 1000, tz=UTC).isoformat()}")
     if qwen_status.get("error") and not qwen_logged_in:
         print(f"    Error:      {qwen_status.get('error')}")

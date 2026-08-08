@@ -12,7 +12,6 @@ a thin dispatcher that delegates to a platform-provided callback.
 """
 
 import json
-from typing import List, Optional
 from collections.abc import Callable
 
 

@@ -6,7 +6,6 @@ import ipaddress
 import os
 import secrets
 from pathlib import Path
-from typing import Optional
 
 from core.spark_constants import get_spark_home
 

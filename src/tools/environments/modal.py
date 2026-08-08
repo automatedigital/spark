@@ -12,7 +12,7 @@ import shlex
 import tarfile
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from core.spark_constants import get_spark_home
 from tools.environments.base import (

@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error

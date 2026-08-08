@@ -34,7 +34,7 @@ import os
 import datetime
 import threading
 import uuid
-from typing import Dict, Any, Optional, Union
+from typing import Any
 from urllib.parse import urlencode
 try:
     import fal_client

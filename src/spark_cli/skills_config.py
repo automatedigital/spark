@@ -11,7 +11,6 @@ Config stored in ~/.spark/config.yaml under:
       telegram: [skill-c]
       cli: []
 """
-from typing import List, Optional, Set
 
 from spark_cli.config import load_config, save_config
 from spark_cli.colors import Colors, color

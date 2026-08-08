@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional
+from typing import NamedTuple
 
 from spark_cli.providers import (
     custom_provider_slug,

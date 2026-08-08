@@ -17,7 +17,6 @@ import logging
 import os
 from datetime import datetime
 from core.spark_constants import get_config_path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

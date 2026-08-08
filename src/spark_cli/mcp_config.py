@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from spark_cli.config import (
     load_config,

@@ -22,8 +22,8 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone, UTC
-from typing import Any, Dict, Optional
+from datetime import datetime, UTC
+from typing import Any
 
 try:
     import dingtalk_stream

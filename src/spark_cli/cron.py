@@ -8,7 +8,6 @@ pause/resume/run/remove, status, and tick.
 import json
 import sys
 from pathlib import Path
-from typing import List, Optional
 from collections.abc import Iterable
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()

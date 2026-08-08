@@ -24,7 +24,7 @@ import logging
 import os
 import threading
 
-from typing import Any, Dict, List
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from core.spark_constants import get_spark_home
@@ -720,7 +720,7 @@ class HindsightMemoryProvider(MemoryProvider):
             logger.debug("sync_turn: skipped (auto_retain disabled)")
             return
 
-        from datetime import datetime, timezone
+        from datetime import datetime
         now = datetime.now(UTC).isoformat()
 
         messages = [

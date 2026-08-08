@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import shutil
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from agent.usage_pricing import format_duration_compact, format_token_count_compact
 from spark_cli.banner import _format_context_length

@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any
 
 from core import kanban_db as kb
 from spark_cli.config import load_config

@@ -25,7 +25,7 @@ import hmac
 import logging
 import os
 import urllib.parse
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     # aiohttp is an optional extra; it is imported lazily at each call site so

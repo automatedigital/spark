@@ -12,7 +12,7 @@ import os
 import urllib.request
 import urllib.error
 from difflib import get_close_matches
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple
 
 from core.network_tls import urllib_request_kwargs
 

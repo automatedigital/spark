@@ -13,9 +13,9 @@ import re
 import threading
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error

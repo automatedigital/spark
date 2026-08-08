@@ -10,7 +10,6 @@ Cache location: ~/.spark/sticker_cache.json
 
 import json
 import time
-from typing import Optional
 
 from spark_cli.config import get_spark_home
 

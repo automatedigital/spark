@@ -19,7 +19,7 @@ Improvements over v2:
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agent.context_engine import ContextEngine
 from agent.model_metadata import (
