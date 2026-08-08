@@ -17,6 +17,7 @@ from spark_cli.config import get_env_path, get_env_value, get_spark_home, load_c
 from spark_cli.models import provider_label
 from spark_cli.runtime_provider import resolve_requested_provider
 from core.spark_constants import OPENROUTER_MODELS_URL
+from datetime import UTC
 
 def check_mark(ok: bool) -> str:
     if ok:
@@ -45,7 +46,7 @@ def _format_iso_timestamp(value) -> str:
     try:
         parsed = datetime.fromisoformat(text)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
     except Exception:
         return value
     return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -78,18 +79,19 @@ def _effective_provider_label() -> str:
 
 
 from core.spark_constants import is_termux as _is_termux
+from datetime import UTC
 
 
 def show_status(args):
     """Show status of all Spark Agent components."""
     show_all = getattr(args, 'all', False)
     deep = getattr(args, 'deep', False)
-    
+
     print()
     print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
     print(color("│                 S Spark Agent Status                  │", Colors.CYAN))
     print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
-    
+
     # =========================================================================
     # Environment
     # =========================================================================
@@ -97,7 +99,7 @@ def show_status(args):
     print(color("◆ Environment", Colors.CYAN, Colors.BOLD))
     print(f"  Project:      {PROJECT_ROOT}")
     print(f"  Python:       {sys.version.split()[0]}")
-    
+
     env_path = get_env_path()
     print(f"  .env file:    {check_mark(env_path.exists())} {'exists' if env_path.exists() else 'not found'}")
 
@@ -108,13 +110,13 @@ def show_status(args):
 
     print(f"  Model:        {_configured_model_label(config)}")
     print(f"  Provider:     {_effective_provider_label()}")
-    
+
     # =========================================================================
     # API Keys
     # =========================================================================
     print()
     print(color("◆ API Keys", Colors.CYAN, Colors.BOLD))
-    
+
     keys = {
         "OpenRouter": "OPENROUTER_API_KEY",
         "OpenAI": "OPENAI_API_KEY",
@@ -132,7 +134,7 @@ def show_status(args):
         "ElevenLabs": "ELEVENLABS_API_KEY",
         "GitHub": "GITHUB_TOKEN",
     }
-    
+
     for name, env_var in keys.items():
         value = get_env_value(env_var) or ""
         has_key = bool(value)
@@ -183,7 +185,7 @@ def show_status(args):
     qwen_exp = qwen_status.get("expires_at_ms")
     if qwen_exp:
         from datetime import datetime, timezone
-        print(f"    Access exp: {datetime.fromtimestamp(int(qwen_exp) / 1000, tz=timezone.utc).isoformat()}")
+        print(f"    Access exp: {datetime.fromtimestamp(int(qwen_exp) / 1000, tz=UTC).isoformat()}")
     if qwen_status.get("error") and not qwen_logged_in:
         print(f"    Error:      {qwen_status.get('error')}")
 
@@ -214,7 +216,7 @@ def show_status(args):
     # =========================================================================
     print()
     print(color("◆ Terminal Backend", Colors.CYAN, Colors.BOLD))
-    
+
     terminal_env = os.getenv("TERMINAL_ENV", "")
     if not terminal_env:
         # Fall back to config file value when env var isn't set
@@ -225,7 +227,7 @@ def show_status(args):
         except Exception:
             terminal_env = "local"
     print(f"  Backend:      {terminal_env}")
-    
+
     if terminal_env == "ssh":
         ssh_host = os.getenv("TERMINAL_SSH_HOST", "")
         ssh_user = os.getenv("TERMINAL_SSH_USER", "")
@@ -237,16 +239,16 @@ def show_status(args):
     elif terminal_env == "daytona":
         daytona_image = os.getenv("TERMINAL_DAYTONA_IMAGE", "nikolaik/python-nodejs:python3.11-nodejs20")
         print(f"  Daytona Image: {daytona_image}")
-    
+
     sudo_password = os.getenv("SUDO_PASSWORD", "")
     print(f"  Sudo:         {check_mark(bool(sudo_password))} {'enabled' if sudo_password else 'disabled'}")
-    
+
     # =========================================================================
     # Messaging Platforms
     # =========================================================================
     print()
     print(color("◆ Messaging Platforms", Colors.CYAN, Colors.BOLD))
-    
+
     platforms = {
         "Telegram": ("TELEGRAM_BOT_TOKEN", "TELEGRAM_HOME_CHANNEL"),
         "Discord": ("DISCORD_BOT_TOKEN", "DISCORD_HOME_CHANNEL"),
@@ -263,27 +265,27 @@ def show_status(args):
         "BlueBubbles": ("BLUEBUBBLES_SERVER_URL", "BLUEBUBBLES_HOME_CHANNEL"),
         "QQBot": ("QQ_APP_ID", "QQ_HOME_CHANNEL"),
     }
-    
+
     for name, (token_var, home_var) in platforms.items():
         token = os.getenv(token_var, "")
         has_token = bool(token)
-        
+
         home_channel = ""
         if home_var:
             home_channel = os.getenv(home_var, "")
-        
+
         status = "configured" if has_token else "not configured"
         if home_channel:
             status += f" (home: {home_channel})"
-        
+
         print(f"  {name:<12}  {check_mark(has_token)} {status}")
-    
+
     # =========================================================================
     # Gateway Status
     # =========================================================================
     print()
     print(color("◆ Gateway Service", Colors.CYAN, Colors.BOLD))
-    
+
     if _is_termux():
         try:
             from spark_cli.gateway import find_gateway_pids
@@ -332,7 +334,7 @@ def show_status(args):
                 is_active = False
             print(f"  Status:       {check_mark(is_active)} {'running' if is_active else 'stopped'}")
             print("  Manager:      systemd (user)")
-        
+
     elif sys.platform == 'darwin':
         from spark_cli.gateway import get_launchd_label
         try:
@@ -350,13 +352,13 @@ def show_status(args):
     else:
         print(f"  Status:       {color('N/A', Colors.DIM)}")
         print("  Manager:      (not supported on this platform)")
-    
+
     # =========================================================================
     # Cron Jobs
     # =========================================================================
     print()
     print(color("◆ Scheduled Jobs", Colors.CYAN, Colors.BOLD))
-    
+
     jobs_file = get_spark_home() / "cron" / "jobs.json"
     if jobs_file.exists():
         import json
@@ -370,13 +372,13 @@ def show_status(args):
             print("  Jobs:         (error reading jobs file)")
     else:
         print("  Jobs:         0")
-    
+
     # =========================================================================
     # Sessions
     # =========================================================================
     print()
     print(color("◆ Sessions", Colors.CYAN, Colors.BOLD))
-    
+
     sessions_file = get_spark_home() / "sessions" / "sessions.json"
     if sessions_file.exists():
         import json
@@ -388,14 +390,14 @@ def show_status(args):
             print("  Active:       (error reading sessions file)")
     else:
         print("  Active:       0")
-    
+
     # =========================================================================
     # Deep checks
     # =========================================================================
     if deep:
         print()
         print(color("◆ Deep Checks", Colors.CYAN, Colors.BOLD))
-        
+
         # Check OpenRouter connectivity
         openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
         if openrouter_key:
@@ -410,7 +412,7 @@ def show_status(args):
                 print(f"  OpenRouter:   {check_mark(ok)} {'reachable' if ok else f'error ({response.status_code})'}")
             except Exception as e:
                 print(f"  OpenRouter:   {check_mark(False)} error: {e}")
-        
+
         # Check gateway port
         try:
             import socket
@@ -424,7 +426,7 @@ def show_status(args):
             print(f"  Port 18789:   {'in use' if port_in_use else 'available'}")
         except OSError:
             pass
-    
+
     print()
     print(color("─" * 60, Colors.DIM))
     print(color("  Run 'spark doctor' for detailed diagnostics", Colors.DIM))

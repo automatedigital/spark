@@ -186,7 +186,6 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "W"]
 ignore = [
     "E501",   # line too long — handled case-by-case in large files
-    "UP007",  # X | Y union syntax — requires Python 3.10+; keep Optional[] for 3.11 compat
     # B027 flags empty methods on an ABC that lack @abstractmethod.  Spark's
     # base classes (MemoryProvider, ContextEngine, BasePlatformAdapter,
     # BaseEnvironment) use those as OPTIONAL hooks with a documented no-op

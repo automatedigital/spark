@@ -18,7 +18,8 @@ import tempfile
 import threading
 import time
 from collections import defaultdict
-from typing import Callable, Dict, Optional, Any
+from typing import Dict, Optional, Any
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -106,20 +107,20 @@ class VoiceReceiver:
         self._running = False
 
         # Decryption
-        self._secret_key: Optional[bytes] = None
+        self._secret_key: bytes | None = None
         self._dave_session = None
         self._bot_ssrc: int = 0
 
         # SSRC -> user_id mapping (populated from SPEAKING events)
-        self._ssrc_to_user: Dict[int, int] = {}
+        self._ssrc_to_user: dict[int, int] = {}
         self._lock = threading.Lock()
 
         # Per-user audio buffers
-        self._buffers: Dict[int, bytearray] = defaultdict(bytearray)
-        self._last_packet_time: Dict[int, float] = {}
+        self._buffers: dict[int, bytearray] = defaultdict(bytearray)
+        self._last_packet_time: dict[int, float] = {}
 
         # Opus decoder per SSRC (each user needs own decoder state)
-        self._decoders: Dict[int, object] = {}
+        self._decoders: dict[int, object] = {}
 
         # Pause flag: don't capture while bot is playing TTS
         self._paused = False
@@ -478,11 +479,11 @@ class DiscordAdapter(BasePlatformAdapter):
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.DISCORD)
-        self._client: Optional[commands.Bot] = None
+        self._client: commands.Bot | None = None
         self._ready_event = asyncio.Event()
         self._allowed_user_ids: set = set()  # For button approval authorization
         # Voice channel state (per-guild)
-        self._voice_clients: Dict[int, Any] = {}  # guild_id -> VoiceClient
+        self._voice_clients: dict[int, Any] = {}  # guild_id -> VoiceClient
         # Text batching: merge rapid successive messages (Telegram-style)
         self._text_batch_delay_seconds = float(
             os.getenv("SPARK_DISCORD_TEXT_BATCH_DELAY_SECONDS", "0.6")
@@ -499,31 +500,31 @@ class DiscordAdapter(BasePlatformAdapter):
         )
         self._pending_text_batches = self._text_batcher.pending_events
         self._pending_text_batch_tasks = self._text_batcher.pending_tasks
-        self._voice_text_channels: Dict[int, int] = {}  # guild_id -> text_channel_id
-        self._voice_sources: Dict[
-            int, Dict[str, Any]
+        self._voice_text_channels: dict[int, int] = {}  # guild_id -> text_channel_id
+        self._voice_sources: dict[
+            int, dict[str, Any]
         ] = {}  # guild_id -> linked text channel source metadata
-        self._voice_timeout_tasks: Dict[
+        self._voice_timeout_tasks: dict[
             int, asyncio.Task
         ] = {}  # guild_id -> timeout task
         # Phase 2: voice listening
-        self._voice_receivers: Dict[
+        self._voice_receivers: dict[
             int, VoiceReceiver
         ] = {}  # guild_id -> VoiceReceiver
-        self._voice_listen_tasks: Dict[
+        self._voice_listen_tasks: dict[
             int, asyncio.Task
         ] = {}  # guild_id -> listen loop
-        self._voice_input_callback: Optional[Callable] = None  # set by run.py
-        self._on_voice_disconnect: Optional[Callable] = None  # set by run.py
+        self._voice_input_callback: Callable | None = None  # set by run.py
+        self._on_voice_disconnect: Callable | None = None  # set by run.py
         # Track threads where the bot has participated so follow-up messages
         # in those threads don't require @mention.  Persisted to disk so the
         # set survives gateway restarts.
         self._threads = ThreadParticipationTracker("discord")
         # Persistent typing indicator loops per channel (DMs don't reliably
         # show the standard typing gateway event for bots)
-        self._typing_tasks: Dict[str, asyncio.Task] = {}
-        self._bot_task: Optional[asyncio.Task] = None
-        self._post_connect_task: Optional[asyncio.Task] = None
+        self._typing_tasks: dict[str, asyncio.Task] = {}
+        self._bot_task: asyncio.Task | None = None
+        self._post_connect_task: asyncio.Task | None = None
         # Dedup cache: prevents duplicate bot responses when Discord
         # RESUME replays events after reconnects.
         self._dedup = MessageDeduplicator()
@@ -760,7 +761,7 @@ class DiscordAdapter(BasePlatformAdapter):
             self._running = True
             return True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "[%s] Timeout waiting for connection to Discord",
                 self.name,
@@ -817,7 +818,7 @@ class DiscordAdapter(BasePlatformAdapter):
         try:
             synced = await asyncio.wait_for(self._client.tree.sync(), timeout=30)
             logger.info("[%s] Synced %d slash command(s)", self.name, len(synced))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[%s] Slash command sync timed out after 30s", self.name)
         except asyncio.CancelledError:
             raise
@@ -887,8 +888,8 @@ class DiscordAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a message to a Discord channel or thread.
 
@@ -1012,8 +1013,8 @@ class DiscordAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
     ) -> SendResult:
         """Send a local file as a Discord attachment."""
         if not self._client:
@@ -1055,9 +1056,9 @@ class DiscordAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         audio_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> SendResult:
         """Send audio as a Discord file attachment."""
@@ -1238,7 +1239,7 @@ class DiscordAdapter(BasePlatformAdapter):
             vc.play(source, after=_after)
             try:
                 await asyncio.wait_for(done.wait(), timeout=self.PLAYBACK_TIMEOUT)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "Voice playback timed out after %ds", self.PLAYBACK_TIMEOUT
                 )
@@ -1297,7 +1298,7 @@ class DiscordAdapter(BasePlatformAdapter):
         vc = self._voice_clients.get(guild_id)
         return vc is not None and vc.is_connected()
 
-    def get_voice_channel_info(self, guild_id: int) -> Optional[Dict[str, Any]]:
+    def get_voice_channel_info(self, guild_id: int) -> dict[str, Any] | None:
         """Return voice channel awareness info for the given guild.
 
         Returns None if the bot is not in a voice channel.  Otherwise
@@ -1459,9 +1460,9 @@ class DiscordAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a local image file natively as a Discord file attachment."""
         try:
@@ -1485,9 +1486,9 @@ class DiscordAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an image natively as a Discord file attachment."""
         if not self._client:
@@ -1568,9 +1569,9 @@ class DiscordAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         video_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send a local video file natively as a Discord attachment."""
         try:
@@ -1594,10 +1595,10 @@ class DiscordAdapter(BasePlatformAdapter):
         self,
         chat_id: str,
         file_path: str,
-        caption: Optional[str] = None,
-        file_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        caption: str | None = None,
+        file_name: str | None = None,
+        reply_to: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an arbitrary file natively as a Discord attachment."""
         try:
@@ -1664,7 +1665,7 @@ class DiscordAdapter(BasePlatformAdapter):
             except (asyncio.CancelledError, Exception):
                 pass
 
-    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+    async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Get information about a Discord channel."""
         if not self._client:
             return {"name": "Unknown", "type": "dm"}
@@ -2232,7 +2233,7 @@ class DiscordAdapter(BasePlatformAdapter):
 
     async def _resolve_interaction_channel(
         self, interaction: discord.Interaction
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """Return the interaction channel, fetching it if the payload is partial."""
         channel = getattr(interaction, "channel", None)
         if channel is not None:
@@ -2257,7 +2258,7 @@ class DiscordAdapter(BasePlatformAdapter):
         name: str,
         message: str = "",
         auto_archive_duration: int = 1440,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a thread in the current Discord channel.
 
         Tries ``parent_channel.create_thread()`` first.  If Discord rejects
@@ -2336,7 +2337,7 @@ class DiscordAdapter(BasePlatformAdapter):
     # Auto-thread helpers
     # ------------------------------------------------------------------
 
-    async def _auto_create_thread(self, message: "DiscordMessage") -> Optional[Any]:
+    async def _auto_create_thread(self, message: DiscordMessage) -> Any | None:
         """Create a thread from a user message for auto-threading.
 
         Returns the created thread object, or ``None`` on failure.
@@ -2362,7 +2363,7 @@ class DiscordAdapter(BasePlatformAdapter):
         command: str,
         session_key: str,
         description: str = "dangerous command",
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> SendResult:
         """
         Send a button-based exec approval prompt for a dangerous command.
@@ -2448,7 +2449,7 @@ class DiscordAdapter(BasePlatformAdapter):
         current_provider: str,
         session_key: str,
         on_model_selected,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SendResult:
         """Send an interactive select-menu model picker.
 
@@ -2501,7 +2502,7 @@ class DiscordAdapter(BasePlatformAdapter):
             logger.warning("[%s] send_model_picker failed: %s", self.name, e)
             return SendResult(success=False, error=str(e))
 
-    def _get_parent_channel_id(self, channel: Any) -> Optional[str]:
+    def _get_parent_channel_id(self, channel: Any) -> str | None:
         """Return the parent channel ID for a Discord thread-like channel, if present."""
         parent = getattr(channel, "parent", None)
         if parent is not None and getattr(parent, "id", None) is not None:
@@ -2527,7 +2528,7 @@ class DiscordAdapter(BasePlatformAdapter):
 
     def _get_effective_topic(
         self, channel: Any, is_thread: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """Return the channel topic, falling back to the parent forum's topic for forum threads."""
         topic = getattr(channel, "topic", None)
         if not topic and is_thread:
@@ -2728,7 +2729,7 @@ class DiscordAdapter(BasePlatformAdapter):
         # vision tool can access them reliably (Discord CDN URLs can expire).
         media_urls = []
         media_types = []
-        pending_text_injection: Optional[str] = None
+        pending_text_injection: str | None = None
         for att in message.attachments:
             content_type = att.content_type or "unknown"
             if content_type.startswith("image/"):

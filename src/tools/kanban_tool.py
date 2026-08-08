@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from tools.registry import registry
 
 
-def _session_context_metadata() -> Dict[str, Any]:
+def _session_context_metadata() -> dict[str, Any]:
     """Return current gateway session metadata when available."""
     try:
         from gateway.session_context import get_session_env
@@ -28,7 +28,7 @@ def _session_context_metadata() -> Dict[str, Any]:
     user_id = _get("SPARK_SESSION_USER_ID").strip()
     user_name = _get("SPARK_SESSION_USER_NAME").strip()
     session_key = _get("SPARK_SESSION_KEY").strip()
-    source: Dict[str, Any] = {}
+    source: dict[str, Any] = {}
     if platform and chat_id:
         source = {
             "platform": platform,
@@ -51,7 +51,7 @@ def _session_context_metadata() -> Dict[str, Any]:
     }
 
 
-def _kanban_config() -> Dict[str, Any]:
+def _kanban_config() -> dict[str, Any]:
     try:
         from spark_cli.config import load_config
 
@@ -72,7 +72,7 @@ def _kanban_available() -> bool:
     return bool(os.getenv("SPARK_KANBAN_TASK"))
 
 
-def kanban_show(task_id: Optional[str] = None, **kw: Any) -> str:
+def kanban_show(task_id: str | None = None, **kw: Any) -> str:
     from core import kanban_db as kb
 
     tid = task_id or os.getenv("SPARK_KANBAN_TASK")
@@ -96,7 +96,7 @@ def kanban_heartbeat(note: str = "", **kw: Any) -> str:
 
 def kanban_complete(
     summary: str = "",
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
     result: str = "",
 ) -> str:
     from core import kanban_db as kb
@@ -157,7 +157,7 @@ def kanban_create_tool(
     title: str,
     assignee: str,
     body: str = "",
-    parents: Optional[List[str]] = None,
+    parents: list[str] | None = None,
     tenant: str = "",
     priority: int = 0,
     **kw: Any,

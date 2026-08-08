@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _spark_home = get_spark_home()
 
 
-def load_cli_config() -> Dict[str, Any]:
+def load_cli_config() -> dict[str, Any]:
     """
     Load CLI configuration from config files.
 

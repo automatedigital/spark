@@ -32,7 +32,7 @@ def env_var_enabled(name: str, default: str = "") -> bool:
 
 
 def atomic_json_write(
-    path: Union[str, Path],
+    path: str | Path,
     data: Any,
     *,
     indent: int = 2,
@@ -82,7 +82,7 @@ def atomic_json_write(
 
 
 def atomic_yaml_write(
-    path: Union[str, Path],
+    path: str | Path,
     data: Any,
     *,
     default_flow_style: bool = False,

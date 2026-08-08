@@ -149,7 +149,7 @@ class PairingStore:
 
     def generate_code(
         self, platform: str, user_id: str, user_name: str = ""
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Generate a pairing code for a new user.
 
@@ -190,7 +190,7 @@ class PairingStore:
 
             return code
 
-    def approve_code(self, platform: str, code: str) -> Optional[dict]:
+    def approve_code(self, platform: str, code: str) -> dict | None:
         """
         Approve a pairing code. Adds the user to the approved list.
 

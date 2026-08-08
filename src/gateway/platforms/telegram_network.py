@@ -13,7 +13,8 @@ import asyncio
 import ipaddress
 import logging
 import socket
-from typing import Iterable, Optional
+from typing import Optional
+from collections.abc import Iterable
 
 import httpx
 
@@ -94,7 +95,7 @@ class TelegramFallbackTransport(httpx.AsyncBaseTransport):
         self._fallbacks = {
             ip: httpx.AsyncHTTPTransport(**transport_kwargs) for ip in self._fallback_ips
         }
-        self._sticky_ip: Optional[str] = None
+        self._sticky_ip: str | None = None
         self._sticky_lock = asyncio.Lock()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
@@ -102,7 +103,7 @@ class TelegramFallbackTransport(httpx.AsyncBaseTransport):
             return await self._primary.handle_async_request(request)
 
         sticky_ip = self._sticky_ip
-        attempt_order: list[Optional[str]] = [sticky_ip] if sticky_ip else [None]
+        attempt_order: list[str | None] = [sticky_ip] if sticky_ip else [None]
         for ip in self._fallback_ips:
             if ip != sticky_ip:
                 attempt_order.append(ip)

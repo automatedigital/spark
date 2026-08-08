@@ -596,7 +596,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
     def __init__(
         self,
         model: str = None,
-        toolsets: List[str] = None,
+        toolsets: list[str] = None,
         provider: str = None,
         api_key: str = None,
         base_url: str = None,
@@ -711,10 +711,10 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             or os.getenv("SPARK_INFERENCE_PROVIDER")
             or "auto"
         )
-        self._provider_source: Optional[str] = None
+        self._provider_source: str | None = None
         self.provider = self.requested_provider
         self.api_mode = "chat_completions"
-        self.acp_command: Optional[str] = None
+        self.acp_command: str | None = None
         self.acp_args: list[str] = []
         self.base_url = (
             base_url
@@ -817,11 +817,11 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
         self._active_agent_route_signature = None
 
         # Agent will be initialized on first use
-        self.agent: Optional[AIAgent] = None
+        self.agent: AIAgent | None = None
         self._app = None  # prompt_toolkit Application (set in run())
 
         # Conversation state
-        self.conversation_history: List[Dict[str, Any]] = []
+        self.conversation_history: list[dict[str, Any]] = []
         self.session_start = datetime.now()
         self._resumed = False
         # Initialize SQLite session store early so /title works before first message
@@ -837,7 +837,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
             )
 
         # Deferred title: stored in memory until the session is created in the DB
-        self._pending_title: Optional[str] = None
+        self._pending_title: str | None = None
 
         # Session ID: reuse existing one when resuming, otherwise generate fresh
         if resume:
@@ -888,7 +888,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
         self.preloaded_skills: list[str] = []
         self._startup_skills_line_shown = False
         self._show_welcome_logo = False
-        self._welcome_logo_ansi: Optional[str] = None
+        self._welcome_logo_ansi: str | None = None
         self._welcome_logo_loaded = False
         self._welcome_splash_text = (
             "Welcome to Spark! Type your message or /help for commands."
@@ -913,7 +913,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
         self._status_bar_visible = True
 
         # Background task tracking: {task_id: threading.Thread}
-        self._background_tasks: Dict[str, threading.Thread] = {}
+        self._background_tasks: dict[str, threading.Thread] = {}
         self._background_task_counter = 0
 
     def process_command(self, command: str) -> bool:
@@ -1373,7 +1373,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
 
         return True
 
-    def chat(self, message, images: list = None) -> Optional[str]:
+    def chat(self, message, images: list = None) -> str | None:
         """
         Send a message to the agent and get a response.
 

@@ -7,7 +7,8 @@ test without starting FastAPI or an agent worker.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 
 def _file_map(snapshot: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:

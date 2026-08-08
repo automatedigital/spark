@@ -11,7 +11,7 @@ import os
 import shlex
 import time
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from tools.environments.base import _file_mtime_key
 

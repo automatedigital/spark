@@ -224,7 +224,7 @@ def _strip_matching_provider_prefix(model_name: str, target_provider: str) -> st
     return model_name
 
 
-def detect_vendor(model_name: str) -> Optional[str]:
+def detect_vendor(model_name: str) -> str | None:
     """Detect the vendor slug from a bare model name.
 
     Uses the first hyphen-delimited token of the model name to look up

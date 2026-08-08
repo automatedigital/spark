@@ -34,7 +34,8 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic as _steady_clock
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from collections.abc import Callable
 
 import yaml
 
@@ -172,7 +173,7 @@ def _apply_web_turn_active_state(rows: list[dict[str, Any]]) -> None:
         row["is_active"] = _is_web_turn_active(str(sid)) if sid else False
 
 # Captured at startup — fan-out SSE events from sync agent threads
-_web_event_loop: Optional[asyncio.AbstractEventLoop] = None
+_web_event_loop: asyncio.AbstractEventLoop | None = None
 _event_subscribers: set = set()  # _EventSubscriber (raw queues remain test-compatible)
 _admin_runs: dict[str, dict[str, Any]] = {}
 _admin_run_queues: dict[str, thread_queue.Queue] = {}
@@ -242,7 +243,7 @@ class WebActiveTurn:
     last_event_at: float
     status: str
     interrupt_requested: bool
-    active_agent_session_id: Optional[str]
+    active_agent_session_id: str | None
     phase: str
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     workspace_slug: str | None = None
@@ -525,7 +526,7 @@ class _EventSubscriber:
     gap_sessions: set[str] = field(default_factory=set)
     local_sequence: int = 0
 
-    def accepts(self, topic: str, session_id: Optional[str]) -> bool:
+    def accepts(self, topic: str, session_id: str | None) -> bool:
         topic_matches = _topic_allowed(topic, self.prefixes) or (
             topic == "bus.gap" and _topic_allowed("chat", self.prefixes)
         )
@@ -668,7 +669,7 @@ class _EventSubscriber:
         except (asyncio.QueueEmpty, asyncio.QueueFull):
             _record_event_drop(str(envelope.get("topic") or "unknown"), envelope.get("session_id"))
 
-    def _record_gap(self, topic: str, session_id: Optional[str], sequence: int) -> None:
+    def _record_gap(self, topic: str, session_id: str | None, sequence: int) -> None:
         _record_event_drop(topic, session_id)
         key = str(session_id or "-")
         if key in self.gap_sessions:
@@ -684,7 +685,7 @@ class _EventSubscriber:
             }
         )
 
-    def acknowledge_gap(self, session_id: Optional[str]) -> None:
+    def acknowledge_gap(self, session_id: str | None) -> None:
         self.gap_sessions.discard(str(session_id or "-"))
 
 # strip_ansi handles complete ECMA-48 sequences. Web streaming can occasionally
@@ -719,7 +720,7 @@ def _sanitize_web_chat_value(value: Any) -> Any:
     return value
 
 
-def _resolve_web_turn_ids(session_id: Optional[str]) -> dict[str, Optional[str]]:
+def _resolve_web_turn_ids(session_id: str | None) -> dict[str, str | None]:
     """Resolve a user-facing session id to the latest active conversation leaf."""
     if not session_id:
         return {"requested": session_id, "resolved": session_id, "latest": session_id}
@@ -738,7 +739,7 @@ def _resolve_web_turn_ids(session_id: Optional[str]) -> dict[str, Optional[str]]
         return {"requested": session_id, "resolved": session_id, "latest": session_id}
 
 
-def _web_turn_candidates(session_id: Optional[str]) -> set[str]:
+def _web_turn_candidates(session_id: str | None) -> set[str]:
     ids = _resolve_web_turn_ids(session_id)
     return {str(v) for v in ids.values() if v}
 
@@ -748,13 +749,13 @@ def _web_turn_key(session_id: str) -> str:
     return str(ids.get("latest") or ids.get("resolved") or session_id)
 
 
-def _web_turn_alias_set(session_id: Optional[str]) -> set[str]:
+def _web_turn_alias_set(session_id: str | None) -> set[str]:
     if not session_id:
         return set()
     return _web_turn_candidates(session_id) | {session_id}
 
 
-def _web_turn_candidate_keys(session_id: Optional[str], *, resolve: bool = True) -> list[str]:
+def _web_turn_candidate_keys(session_id: str | None, *, resolve: bool = True) -> list[str]:
     if not session_id:
         return []
     candidates = [session_id]
@@ -1234,7 +1235,7 @@ def _mark_web_turn_active(
     *,
     status: str = "Starting…",
     phase: str = "starting",
-    active_agent_session_id: Optional[str] = None,
+    active_agent_session_id: str | None = None,
 ) -> WebActiveTurn:
     key = _web_turn_key(session_id)
     now = time.time()
@@ -1262,10 +1263,10 @@ def _mark_web_turn_active(
 
 
 def _record_web_turn_timing(
-    session_id: Optional[str],
+    session_id: str | None,
     name: str,
     *,
-    when: Optional[float] = None,
+    when: float | None = None,
     only_if_absent: bool = True,
 ) -> None:
     if not session_id or not name:
@@ -1288,7 +1289,7 @@ def _record_web_turn_timing(
         turn.timings[name] = time.time() if when is None else when
 
 
-def _web_turn_timing_payload(turn: Optional[WebActiveTurn]) -> dict[str, Any]:
+def _web_turn_timing_payload(turn: WebActiveTurn | None) -> dict[str, Any]:
     if not turn:
         return {}
     with turn.lock:
@@ -1312,18 +1313,18 @@ def _web_turn_timing_payload(turn: Optional[WebActiveTurn]) -> dict[str, Any]:
     return {"absolute": timings, "relative_seconds": relative}
 
 
-def _record_web_first_visible_event(session_id: Optional[str], kind: str) -> None:
+def _record_web_first_visible_event(session_id: str | None, kind: str) -> None:
     _record_web_turn_timing(session_id, "first_visible_event")
     _record_web_turn_timing(session_id, f"first_{kind}_event")
 
 
 def _touch_web_turn(
-    session_id: Optional[str],
+    session_id: str | None,
     *,
-    status: Optional[str] = None,
-    phase: Optional[str] = None,
-    interrupt_requested: Optional[bool] = None,
-    active_agent_session_id: Optional[str] = None,
+    status: str | None = None,
+    phase: str | None = None,
+    interrupt_requested: bool | None = None,
+    active_agent_session_id: str | None = None,
 ) -> None:
     if not session_id:
         return
@@ -1346,7 +1347,7 @@ def _touch_web_turn(
         return
 
 
-def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
+def _append_web_turn_token(session_id: str | None, token: str) -> None:
     if not session_id or not token:
         return
     token = _sanitize_web_chat_text(token)
@@ -1658,9 +1659,9 @@ _checkpoint_writer = _CheckpointWriter()
 
 
 def _web_turn_state(
-    turn: Optional[WebActiveTurn],
+    turn: WebActiveTurn | None,
     *,
-    now: Optional[float] = None,
+    now: float | None = None,
 ) -> tuple[str, str | None, float | None]:
     """Return a backend-owned lifecycle state for chat recovery.
 
@@ -1831,7 +1832,7 @@ def _clear_web_turn(session_id: str) -> None:
         )
 
 
-def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTurn]]:
+def _get_web_turn(session_id: str) -> tuple[str | None, WebActiveTurn | None]:
     candidates = _web_turn_candidate_keys(session_id)
     with _with_web_turn_lock():
         for candidate in candidates:
@@ -1841,13 +1842,13 @@ def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTur
     return None, None
 
 
-def _is_web_turn_active(session_id: Optional[str]) -> bool:
+def _is_web_turn_active(session_id: str | None) -> bool:
     if not session_id:
         return False
     return _get_web_turn(session_id)[1] is not None
 
 
-def _get_web_agent_for_turn(session_id: str) -> tuple[Optional[str], Any]:
+def _get_web_agent_for_turn(session_id: str) -> tuple[str | None, Any]:
     ids = _resolve_web_turn_ids(session_id)
     candidates = [
         ids.get("latest"),
@@ -2011,7 +2012,7 @@ _SERVER_INSTANCE_ID = uuid.uuid4().hex
 _SESSION_TOKEN = secrets.token_urlsafe(32)
 
 # Simple rate limiter for the reveal endpoint
-_reveal_timestamps: List[float] = []
+_reveal_timestamps: list[float] = []
 _REVEAL_MAX_PER_WINDOW = 5
 _REVEAL_WINDOW_SECONDS = 30
 
@@ -2185,7 +2186,7 @@ def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
     return preview
 
 
-def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> None:
+def _publish_event(topic: str, data: dict, session_id: str | None = None) -> None:
     global _pending_token_events, _pending_token_gap_sessions, _token_flush_scheduled
     loop = _web_event_loop
     if loop is None:
@@ -2383,7 +2384,7 @@ def _fanout_event_envelope(envelope: dict[str, Any], published_at: float) -> Non
             _event_subscribers.discard(subscriber)
 
 
-def _record_event_drop(topic: str, session_id: Optional[str]) -> None:
+def _record_event_drop(topic: str, session_id: str | None) -> None:
     key = f"{session_id or '-'}:{topic}"
     count = _event_drop_counts.get(key, 0) + 1
     _event_drop_counts[key] = count
@@ -2436,9 +2437,9 @@ def _topic_allowed(topic: str, prefixes: tuple[str, ...]) -> bool:
 
 
 def _emit_sessions_changed(
-    action: str, session_id: str, session: Optional[dict] = None
+    action: str, session_id: str, session: dict | None = None
 ) -> None:
-    payload: Dict[str, Any] = {"action": action, "session_id": session_id}
+    payload: dict[str, Any] = {"action": action, "session_id": session_id}
     if session is not None:
         payload["session"] = _web_session_list_row(session)
     _publish_event("sessions.changed", payload, session_id)
@@ -2580,11 +2581,11 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
 async def sse_events_bus(
     request: Request,
     topics: str = "sessions,chat",
-    session_id: Optional[str] = None,
-    detail_session_id: Optional[str] = None,
+    session_id: str | None = None,
+    detail_session_id: str | None = None,
     after_sequence: int = 0,
     projection_version: int = 1,
-    server_epoch: Optional[str] = None,
+    server_epoch: str | None = None,
 ):
     """Shared SSE bus with an optional v1 snapshot-plus-delta resume cursor."""
     from spark_cli.web_state import web_state_journal
@@ -2639,7 +2640,7 @@ async def sse_events_bus(
                     break
                 try:
                     env = await asyncio.wait_for(subscriber.get(), timeout=30.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield "event: ping\ndata: {}\n\n"
                     continue
                 if env.get("topic") == "bus.gap":
@@ -2669,7 +2670,7 @@ async def sse_events_bus(
 
 @app.get("/api/web-state/snapshot")
 async def get_web_state_snapshot(
-    selected_session_id: Optional[str] = None,
+    selected_session_id: str | None = None,
     session_limit: int = 50,
     message_limit: int = 200,
 ):
@@ -2734,7 +2735,7 @@ async def get_web_state_deltas(
     after_sequence: int,
     projection_version: int,
     server_epoch: str,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
 ):
     """Return ordered retained deltas or an explicit snapshot requirement."""
     from spark_cli.web_state import web_state_journal
@@ -2759,7 +2760,7 @@ async def get_web_state_deltas(
 # ---------------------------------------------------------------------------
 
 # Manual overrides for fields that need select options or custom types
-_SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
+_SCHEMA_OVERRIDES: dict[str, dict[str, Any]] = {
     "agent.name": {
         "type": "string",
         "description": "The name your agent uses for itself. Applies to new conversations.",
@@ -2954,7 +2955,7 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
 }
 
 # Categories with fewer fields get merged into "general" to avoid tab sprawl.
-_CATEGORY_MERGE: Dict[str, str] = {
+_CATEGORY_MERGE: dict[str, str] = {
     "privacy": "security",
     "context": "agent",
     "skills": "agent",
@@ -3003,11 +3004,11 @@ def _infer_type(value: Any) -> str:
 
 
 def _build_schema_from_config(
-    config: Dict[str, Any],
+    config: dict[str, Any],
     prefix: str = "",
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Walk DEFAULT_CONFIG and produce a flat dot-path → field schema dict."""
-    schema: Dict[str, Dict[str, Any]] = {}
+    schema: dict[str, dict[str, Any]] = {}
     for key, value in config.items():
         full_key = f"{prefix}.{key}" if prefix else key
 
@@ -3028,7 +3029,7 @@ def _build_schema_from_config(
             # Recurse into nested dicts
             schema.update(_build_schema_from_config(value, full_key))
         else:
-            entry: Dict[str, Any] = {
+            entry: dict[str, Any] = {
                 "type": _infer_type(value),
                 "description": full_key.replace(".", " → ").replace("_", " ").title(),
                 "category": category,
@@ -3055,7 +3056,7 @@ _model_virtual_entries = [
     ("model_api_mode", _SCHEMA_OVERRIDES["model_api_mode"]),
     ("model_context_length", _SCHEMA_OVERRIDES["model_context_length"]),
 ]
-_ordered_schema: Dict[str, Dict[str, Any]] = {}
+_ordered_schema: dict[str, dict[str, Any]] = {}
 for _k, _v in CONFIG_SCHEMA.items():
     _ordered_schema[_k] = _v
     if _k == "model":
@@ -3082,7 +3083,7 @@ class EnvVarReveal(BaseModel):
 
 
 class AdminActionStart(BaseModel):
-    args: Dict[str, Any] = {}
+    args: dict[str, Any] = {}
     confirm: bool = False
 
 
@@ -3093,7 +3094,7 @@ class GatewayControlRequest(BaseModel):
 
 class ProfileCreateRequest(BaseModel):
     name: str
-    clone_from: Optional[str] = None
+    clone_from: str | None = None
     clone_config: bool = False
     clone_all: bool = False
     no_alias: bool = True
@@ -3105,22 +3106,22 @@ class ProfileRenameRequest(BaseModel):
 
 
 class ProfileExportRequest(BaseModel):
-    output_path: Optional[str] = None
+    output_path: str | None = None
     confirm: bool = False
 
 
 class ProfileImportRequest(BaseModel):
     archive_path: str
-    name: Optional[str] = None
+    name: str | None = None
     confirm: bool = False
 
 
 class McpServerCreate(BaseModel):
     name: str
-    url: Optional[str] = None
-    command: Optional[str] = None
-    args: List[str] = []
-    env: Dict[str, str] = {}
+    url: str | None = None
+    command: str | None = None
+    args: list[str] = []
+    env: dict[str, str] = {}
 
 
 class PluginActionRequest(BaseModel):
@@ -3142,12 +3143,12 @@ class AdminAction:
         label: str,
         description: str,
         risk: str,
-        command: Callable[[Dict[str, Any]], List[str]],
+        command: Callable[[dict[str, Any]], list[str]],
         *,
         requires_confirmation: bool = False,
         long_running: bool = False,
-        args_schema: Optional[dict] = None,
-        availability: Optional[Callable[[], tuple[bool, Optional[str]]]] = None,
+        args_schema: dict | None = None,
+        availability: Callable[[], tuple[bool, str | None]] | None = None,
     ):
         self.id = action_id
         self.label = label
@@ -3177,15 +3178,15 @@ class AdminAction:
         }
 
 
-def _spark_command(*parts: str) -> List[str]:
+def _spark_command(*parts: str) -> list[str]:
     return [sys.executable, "-m", "spark_cli.main", *parts]
 
 
-def _gateway_command(action: str) -> List[str]:
+def _gateway_command(action: str) -> list[str]:
     return _spark_command("gateway", action)
 
 
-def _update_command(check_only: bool) -> List[str]:
+def _update_command(check_only: bool) -> list[str]:
     try:
         from core.spark_constants import get_spark_home
         spark_home = get_spark_home()
@@ -3201,7 +3202,7 @@ def _update_command(check_only: bool) -> List[str]:
     return _spark_command("update", "--gateway")
 
 
-def _debug_command(args: Dict[str, Any]) -> List[str]:
+def _debug_command(args: dict[str, Any]) -> list[str]:
     lines = int(args.get("lines") or 200)
     lines = max(20, min(lines, 2000))
     return _spark_command("debug", "share", "--local", "--lines", str(lines))
@@ -4230,10 +4231,10 @@ async def diagnostics_summary():
 
 @app.get("/api/diagnostics/webview")
 async def diagnostics_webview(
-    active_session_id: Optional[str] = None,
-    safe_mode: Optional[bool] = None,
-    recent_long_task_count: Optional[int] = None,
-    connection_mode: Optional[str] = None,
+    active_session_id: str | None = None,
+    safe_mode: bool | None = None,
+    recent_long_task_count: int | None = None,
+    connection_mode: str | None = None,
 ):
     """Runtime diagnostics for the desktop/web chat shell.
 
@@ -4283,7 +4284,7 @@ def _conversation_diagnostics_payload(session_id: str) -> dict[str, Any]:
     relative = timings.get("relative_seconds") if isinstance(timings.get("relative_seconds"), dict) else {}
     absolute = timings.get("absolute") if isinstance(timings.get("absolute"), dict) else {}
 
-    def _rounded_number(value: Any) -> Optional[float]:
+    def _rounded_number(value: Any) -> float | None:
         if isinstance(value, (int, float)):
             return round(float(value), 3)
         return None
@@ -4400,7 +4401,7 @@ def _secret_reveal_authorized(request: Request) -> bool:
 
 
 @app.get("/api/sessions")
-async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] = None):
+async def get_sessions(limit: int = 20, offset: int = 0, source: str | None = None):
     try:
         from core.spark_state import SessionDB
 
@@ -4429,7 +4430,7 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
 
 
 @app.get("/api/sessions/search")
-async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = None):
+async def search_sessions(q: str = "", limit: int = 20, source: str | None = None):
     """Full-text search across session message content using FTS5."""
     if not q or not q.strip():
         return {"results": []}
@@ -4474,7 +4475,7 @@ async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = 
         raise HTTPException(status_code=500, detail="Search failed") from err
 
 
-def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_config_for_web(config: dict[str, Any]) -> dict[str, Any]:
     """Normalize config for the web UI.
 
     Spark supports ``model`` as either a bare string (``"anthropic/claude-sonnet-4"``)
@@ -4948,7 +4949,7 @@ def get_model_status():
 
 # Provider-aware model name catalogs. Used by both the quick-settings popover
 # (/api/model/suggestions) and the Config editor dropdown (/api/model/available).
-_PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
+_PROVIDER_MODEL_SUGGESTIONS: dict[str, list] = {
     "openai-codex": [
         "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2-codex",
     ],
@@ -5186,7 +5187,7 @@ def get_model_suggestions():
 
 
 @app.put("/api/model/fast")
-def set_fast_model(body: Dict[str, Any]):
+def set_fast_model(body: dict[str, Any]):
     """Update just the fast model name, preserving other routing config."""
     try:
         from spark_cli.config import save_config
@@ -5210,7 +5211,7 @@ def set_fast_model(body: Dict[str, Any]):
 
 
 @app.put("/api/model/smart")
-def set_smart_model(body: Dict[str, Any]):
+def set_smart_model(body: dict[str, Any]):
     """Update just the smart model name, preserving provider/url/api_mode."""
     try:
         from spark_cli.config import save_config
@@ -5273,7 +5274,7 @@ def get_reasoning_effort():
 
 
 @app.put("/api/model/reasoning")
-def set_reasoning_effort(body: Dict[str, Any]):
+def set_reasoning_effort(body: dict[str, Any]):
     """Set reasoning effort level. Valid values: none, minimal, low, medium, high, xhigh."""
     try:
         from core.spark_constants import parse_reasoning_effort
@@ -5294,7 +5295,7 @@ def set_reasoning_effort(body: Dict[str, Any]):
         return JSONResponse({"error": "Failed to save reasoning effort"}, status_code=500)
 
 
-def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
     """Reverse _normalize_config_for_web before saving.
 
     Reconstructs ``model`` as a dict by reading the current on-disk config
@@ -5326,7 +5327,7 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
 
     model_val = config.get("model")
     if isinstance(model_val, str) and model_val:
-        def _apply_model_virtuals(model_config: Dict[str, Any]) -> Dict[str, Any]:
+        def _apply_model_virtuals(model_config: dict[str, Any]) -> dict[str, Any]:
             model_config["default"] = model_val
             if model_provider:
                 model_config["provider"] = model_provider
@@ -5363,7 +5364,7 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def _validate_config_update_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _validate_config_update_from_web(config: dict[str, Any]) -> dict[str, Any]:
     """Validate onboarding-sensitive fields before saving web config updates."""
     model = config.get("model")
     if isinstance(model, dict):
@@ -5499,7 +5500,7 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
 # can surface a one-click copy.
 
 
-def _truncate_token(value: Optional[str], visible: int = 6) -> str:
+def _truncate_token(value: str | None, visible: int = 6) -> str:
     """Return ``...XXXXXX`` (last N chars) for safe display in the UI.
 
     We never expose more than the trailing ``visible`` characters of an
@@ -5518,7 +5519,7 @@ def _truncate_token(value: Optional[str], visible: int = 6) -> str:
     return f"…{s[-visible:]}"
 
 
-def _anthropic_oauth_status() -> Dict[str, Any]:
+def _anthropic_oauth_status() -> dict[str, Any]:
     """Combined status across the three Anthropic credential sources we read.
 
     Spark resolves Anthropic creds in this order at runtime:
@@ -5583,7 +5584,7 @@ def _anthropic_oauth_status() -> Dict[str, Any]:
     return {"logged_in": False, "source": None}
 
 
-def _claude_code_only_status() -> Dict[str, Any]:
+def _claude_code_only_status() -> dict[str, Any]:
     """Surface Claude Code CLI credentials as their own provider entry.
 
     Independent of the Anthropic entry above so users can see whether their
@@ -5615,7 +5616,7 @@ def _claude_code_only_status() -> Dict[str, Any]:
 # right UI: ``pkce`` = open URL + paste callback code, ``device_code`` =
 # show code + verification URL + poll, ``external`` = read-only (delegated
 # to a third-party CLI like Claude Code or Qwen).
-_OAUTH_PROVIDER_CATALOG: tuple[Dict[str, Any], ...] = (
+_OAUTH_PROVIDER_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "anthropic",
         "name": "Anthropic (Claude API)",
@@ -5651,7 +5652,7 @@ _OAUTH_PROVIDER_CATALOG: tuple[Dict[str, Any], ...] = (
 )
 
 
-def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
+def _resolve_provider_status(provider_id: str, status_fn) -> dict[str, Any]:
     """Dispatch to the right status helper for an OAuth provider entry."""
     if status_fn is not None:
         try:
@@ -5810,7 +5811,7 @@ async def disconnect_oauth_provider(provider_id: str, request: Request):
 # expired sessions so the dict doesn't grow without bound.
 
 _OAUTH_SESSION_TTL_SECONDS = 15 * 60
-_oauth_sessions: Dict[str, Dict[str, Any]] = {}
+_oauth_sessions: dict[str, dict[str, Any]] = {}
 _oauth_sessions_lock = threading.Lock()
 
 # Import OAuth constants from canonical source instead of duplicating.
@@ -5842,7 +5843,7 @@ def _gc_oauth_sessions() -> None:
             _oauth_sessions.pop(sid, None)
 
 
-def _new_oauth_session(provider_id: str, flow: str) -> tuple[str, Dict[str, Any]]:
+def _new_oauth_session(provider_id: str, flow: str) -> tuple[str, dict[str, Any]]:
     """Create + register a new OAuth session, return (session_id, session_dict)."""
     sid = secrets.token_urlsafe(16)
     sess = {
@@ -5915,7 +5916,7 @@ def _save_anthropic_oauth_creds(
         _log.warning("anthropic pool add (dashboard) failed: %s", e)
 
 
-def _start_anthropic_pkce() -> Dict[str, Any]:
+def _start_anthropic_pkce() -> dict[str, Any]:
     """Begin PKCE flow. Returns the auth URL the UI should open."""
     if not _ANTHROPIC_OAUTH_AVAILABLE:
         raise HTTPException(
@@ -5944,7 +5945,7 @@ def _start_anthropic_pkce() -> Dict[str, Any]:
     }
 
 
-def _submit_anthropic_pkce(session_id: str, code_input: str) -> Dict[str, Any]:
+def _submit_anthropic_pkce(session_id: str, code_input: str) -> dict[str, Any]:
     """Exchange authorization code for tokens. Persists on success."""
     with _oauth_sessions_lock:
         sess = _oauth_sessions.get(session_id)
@@ -6012,7 +6013,7 @@ def _submit_anthropic_pkce(session_id: str, code_input: str) -> Dict[str, Any]:
     return {"ok": True, "status": "approved"}
 
 
-async def _start_device_code_flow(provider_id: str) -> Dict[str, Any]:
+async def _start_device_code_flow(provider_id: str) -> dict[str, Any]:
     """Initiate a device-code flow (OpenAI Codex).
 
     Calls the provider's device-auth endpoint via the existing CLI helpers,
@@ -6482,7 +6483,7 @@ async def get_session_messages(
     request: Request,
     session_id: str,
     limit: int = 0,
-    before_id: Optional[str] = None,
+    before_id: str | None = None,
     include_tool_results: bool = False,
 ):
     def _load_page() -> tuple[str, dict[str, Any] | None]:
@@ -6616,10 +6617,10 @@ async def update_session_title(session_id: str, body: dict[str, Any]):
 
 
 class SessionSourceUpdate(BaseModel):
-    source: Optional[str] = None
+    source: str | None = None
 
 
-def _normalize_web_session_source(source: Optional[str]) -> str:
+def _normalize_web_session_source(source: str | None) -> str:
     raw = (source or "").strip()
     if raw in {"", "web"}:
         return "web"
@@ -6806,9 +6807,9 @@ async def warm_session_agent(session_id: str):
 async def get_logs(
     file: str = "agent",
     lines: int = 100,
-    level: Optional[str] = None,
-    component: Optional[str] = None,
-    search: Optional[str] = None,
+    level: str | None = None,
+    component: str | None = None,
+    search: str | None = None,
 ):
     from spark_cli.logs import _read_tail, LOG_FILES
 
@@ -7400,12 +7401,12 @@ async def get_skills_analytics(limit: int = 20):
 _KANBAN_STATUSES = {"backlog", "active", "review", "done"}
 
 # In-memory state for web chat sessions
-_web_queues: Dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
+_web_queues: dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
 _web_agents: "OrderedDict[str, Any]" = OrderedDict()  # session_id → AIAgent (multi-turn context)
-_web_agent_signatures: Dict[str, Any] = {}    # session_id → effective model/runtime signature
-_web_agent_last_used: Dict[str, float] = {}
+_web_agent_signatures: dict[str, Any] = {}    # session_id → effective model/runtime signature
+_web_agent_last_used: dict[str, float] = {}
 _web_warm_inflight: set[str] = set()
-_web_warm_recent: Dict[str, float] = {}
+_web_warm_recent: dict[str, float] = {}
 
 
 def _web_turn_worker_count() -> int:
@@ -7513,7 +7514,7 @@ def _web_max_iterations() -> int:
 
 # Codex usage-limit hit state — updated when a usage_limit_reached error occurs during inference.
 # Shape: {"hit_at": float, "resets_at": float | None, "resets_in_seconds": int | None}
-_codex_usage_limit_hit: Dict[str, Any] = {}
+_codex_usage_limit_hit: dict[str, Any] = {}
 
 
 class KanbanUpdate(BaseModel):
@@ -7522,29 +7523,29 @@ class KanbanUpdate(BaseModel):
 
 class ConversationCreate(BaseModel):
     message: str
-    model: Optional[str] = None
+    model: str | None = None
     context_items: list = []
-    source: Optional[str] = None
+    source: str | None = None
 
 
 class FakeStreamEvent(BaseModel):
     type: str
     text: str = ""
-    kind: Optional[str] = None
-    phase: Optional[str] = None
-    name: Optional[str] = None
-    tool_call_id: Optional[str] = None
-    args: Dict[str, Any] = Field(default_factory=dict)
+    kind: str | None = None
+    phase: str | None = None
+    name: str | None = None
+    tool_call_id: str | None = None
+    args: dict[str, Any] = Field(default_factory=dict)
     result: Any = None
     delay_ms: int = 0
 
 
 class FakeStreamStart(BaseModel):
     message: str
-    session_id: Optional[str] = None
-    model: Optional[str] = None
-    source: Optional[str] = None
-    title: Optional[str] = None
+    session_id: str | None = None
+    model: str | None = None
+    source: str | None = None
+    title: str | None = None
     reuse_existing: bool = False
     events: list[FakeStreamEvent] = Field(default_factory=list)
 
@@ -7555,7 +7556,7 @@ class ConversationMessage(BaseModel):
 
 
 class ConversationInterrupt(BaseModel):
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class ConversationModelBody(BaseModel):
@@ -7563,18 +7564,18 @@ class ConversationModelBody(BaseModel):
 
 
 class ConversationForkBody(BaseModel):
-    from_message_index: Optional[int] = None
+    from_message_index: int | None = None
 
 
 class ConversationRetryBody(BaseModel):
     message_index: int
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class ConversationApprovalBody(BaseModel):
     choice: str
     resolve_all: bool = False
-    action_id: Optional[str] = None
+    action_id: str | None = None
 
 
 class ConversationInputBody(BaseModel):
@@ -7582,7 +7583,7 @@ class ConversationInputBody(BaseModel):
     response: str
 
 
-def _publish_web_status(session_id: str, kind: str, message: str, *, phase: Optional[str] = None) -> None:
+def _publish_web_status(session_id: str, kind: str, message: str, *, phase: str | None = None) -> None:
     text = _truncate_str(message, 2000)
     _touch_web_turn(session_id, status=text, phase=phase or str(kind or "status"))
     _publish_event(
@@ -7603,11 +7604,11 @@ def _make_web_chat_callbacks(
     turn_context = _WebTurnCallbackContext(session_id)
     tool_started_monotonic: dict[str, float] = {}
 
-    def publish_status(kind: str, message: str, *, phase: Optional[str] = None) -> None:
+    def publish_status(kind: str, message: str, *, phase: str | None = None) -> None:
         _record_web_first_visible_event(turn_context.session_id, "status")
         _publish_web_status(turn_context.session_id, kind, message, phase=phase)
 
-    def token_callback(token: Optional[str]) -> None:
+    def token_callback(token: str | None) -> None:
         if token is None:
             return
         token = _sanitize_web_chat_text(token)
@@ -7767,8 +7768,8 @@ def _create_fake_stream_session(
     session_id: str,
     *,
     source: str,
-    model: Optional[str],
-    title: Optional[str],
+    model: str | None,
+    title: str | None,
     reuse_existing: bool = False,
 ) -> dict[str, Any] | None:
     try:
@@ -7819,7 +7820,7 @@ def _run_fake_stream_task(
     session_migrated_callback = callbacks[5]
     compaction_failed_callback = callbacks[7]
     final_text_chunks: list[str] = []
-    explicit_final: Optional[str] = None
+    explicit_final: str | None = None
     result: dict[str, Any] = {"final_response": ""}
     failed = False
     interrupted = False
@@ -7961,7 +7962,7 @@ def _run_fake_stream_task(
         _emit_web_session_updated(session_id)
 
 
-def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
+def _last_assistant_message_info(session_id: str) -> dict[str, Any]:
     try:
         from core.spark_state import SessionDB
 
@@ -7982,14 +7983,14 @@ def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
 
 def _turn_done_payload(
     result: Any,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
     *,
     interrupted: bool = False,
-    migrated_session_id: Optional[str] = None,
+    migrated_session_id: str | None = None,
     turn_outcome: dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Extract token/cost stats from a run_conversation() result for chat.turn_done."""
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "session_id": session_id,
         "message_count": _session_message_count(session_id) if session_id else 0,
         "interrupted": interrupted,
@@ -8495,7 +8496,7 @@ def _web_cmd_status(session_id: str) -> str:
     return "\n".join(lines)
 
 
-def _get_workspace_root(slug: Optional[str] = None) -> "Path":
+def _get_workspace_root(slug: str | None = None) -> "Path":
     """Return the resolved workspace root, optionally scoped to a project slug."""
     base = (get_spark_home() / "workspace").resolve()
     if slug:
@@ -8526,7 +8527,7 @@ def _looks_like_binary_context_text(content: str) -> bool:
     return content.startswith(("\ufffdPNG", "\ufffdJFIF", "%PDF-", "PK\x03\x04"))
 
 
-def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional[str]:
+def _resolve_context_item_content(item: Any, workspace_root: "Path") -> str | None:
     """Return the text to inject for a context item, or None if nothing to inject."""
     from spark_cli.context_models import InclusionMode
 
@@ -8704,8 +8705,8 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
-    conversation_history: Optional[list[dict[str, Any]]] = None,
-    context_items: Optional[list] = None,
+    conversation_history: list[dict[str, Any]] | None = None,
+    context_items: list | None = None,
 ) -> Any:
     from tools.approval import reset_current_session_key, set_current_session_key
 
@@ -8729,7 +8730,7 @@ def _run_web_agent_turn(
         reset_current_session_key(tok)
 
 
-def _final_web_turn_session_id(requested_session_id: str, agent: Any, turn: Optional[WebActiveTurn]) -> str:
+def _final_web_turn_session_id(requested_session_id: str, agent: Any, turn: WebActiveTurn | None) -> str:
     """Return the concrete session that owns the finished turn."""
     if turn and turn.active_agent_session_id:
         return turn.active_agent_session_id
@@ -8799,7 +8800,7 @@ def _resolve_web_turn_route(
     user_message: str,
     *,
     explicit_model: str | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
     from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
     from spark_cli.model_config import read_global_model_config
@@ -8867,8 +8868,8 @@ def _new_web_agent(
     *,
     session_id: str,
     model: str,
-    runtime: Optional[dict[str, Any]] = None,
-    request_overrides: Optional[dict[str, Any]] = None,
+    runtime: dict[str, Any] | None = None,
+    request_overrides: dict[str, Any] | None = None,
     signature: Any = None,
     token_callback: Any,
     tool_start_callback: Any,
@@ -8877,7 +8878,7 @@ def _new_web_agent(
     status_callback: Any,
     session_migrated_callback: Any = None,
     subagent_event_callback: Any = None,
-    working_dir: Optional[str] = None,
+    working_dir: str | None = None,
 ) -> Any:
     from core.run_agent import AIAgent
     from core.spark_state import SessionDB
@@ -9390,7 +9391,7 @@ def _cached_web_agent_matches_history(
     return matches
 
 
-def _persist_interrupted_turn_boundary(session_id: str, message: Optional[str] = None) -> None:
+def _persist_interrupted_turn_boundary(session_id: str, message: str | None = None) -> None:
     """Persist a small assistant boundary if interruption leaves a dangling user row."""
     try:
         from core.spark_state import SessionDB
@@ -9415,7 +9416,7 @@ _MAX_CONTEXT_ITEMS = 20
 _MAX_CONTEXT_ITEM_BYTES = 500 * 1024  # 500 KB per item in full mode
 
 
-def _validate_context_items(raw_items: list, workspace_slug: Optional[str] = None) -> list:
+def _validate_context_items(raw_items: list, workspace_slug: str | None = None) -> list:
     """Validate incoming context items. Returns validated list or raises HTTPException."""
     if not raw_items:
         return []
@@ -9519,9 +9520,9 @@ class TokenEstimateRequest(BaseModel):
     prompt: str = ""
     context_items: list = []
     brief: str = ""
-    session_id: Optional[str] = None
+    session_id: str | None = None
     history_message_count: int = 0
-    model: Optional[str] = None
+    model: str | None = None
 
 
 @app.post("/api/estimate-tokens")
@@ -9534,7 +9535,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
     attached_tokens = 0
     item_buckets: list[ContextBucket] = []
     if body.context_items:
-        workspace_root: Optional[Path] = None
+        workspace_root: Path | None = None
         for raw in body.context_items:
             item = raw if isinstance(raw, dict) else (raw.model_dump() if hasattr(raw, "model_dump") else {})
             label = item.get("label") or item.get("source_path") or item.get("id", "item")
@@ -9750,8 +9751,8 @@ async def get_conversation_models():
 class CanvasChatBody(BaseModel):
     message: str
     history: list[dict] = []
-    model: Optional[str] = None
-    slug: Optional[str] = None
+    model: str | None = None
+    slug: str | None = None
 
 
 @app.post("/api/canvas/chat")
@@ -10268,7 +10269,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
 
     from core.spark_state import SessionDB
 
-    conversation_history: Optional[list[dict[str, Any]]] = None
+    conversation_history: list[dict[str, Any]] | None = None
     db = SessionDB()
     try:
         requested_session_id = session_id
@@ -10691,7 +10692,7 @@ _SUMMARIZE_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 class SummarizeFileRequest(BaseModel):
     path: str
-    workspace_slug: Optional[str] = None
+    workspace_slug: str | None = None
 
 
 async def _generate_summary(text: str, filename: str) -> str:
@@ -11159,8 +11160,8 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
 @app.get("/api/conversations/{session_id}/stream-snapshot")
 async def conversation_stream_snapshot(
     session_id: str,
-    after_chars: Optional[int] = None,
-    tail_chars: Optional[int] = None,
+    after_chars: int | None = None,
+    tail_chars: int | None = None,
 ):
     """Return the accumulated in-flight assistant text for recovery.
 
@@ -11218,8 +11219,8 @@ async def conversation_plan(session_id: str):
 def _bounded_stream_snapshot_text(
     stream_text: str | _ChunkedStreamText | tuple[tuple[str, ...], int],
     *,
-    after_chars: Optional[int] = None,
-    tail_chars: Optional[int] = None,
+    after_chars: int | None = None,
+    tail_chars: int | None = None,
 ) -> tuple[str, int, str, bool]:
     if isinstance(stream_text, tuple):
         chunks, total_chars = stream_text
@@ -11246,8 +11247,8 @@ def _bounded_stream_snapshot_text(
 def _conversation_stream_snapshot_payload(
     session_id: str,
     *,
-    after_chars: Optional[int] = None,
-    tail_chars: Optional[int] = None,
+    after_chars: int | None = None,
+    tail_chars: int | None = None,
 ) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
@@ -11374,7 +11375,7 @@ register_artifacts_routes(app)
 
 class WorkspaceConvCreate(BaseModel):
     message: str
-    model: Optional[str] = None
+    model: str | None = None
     context_items: list = []
 
 

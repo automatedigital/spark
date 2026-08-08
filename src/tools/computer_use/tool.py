@@ -23,7 +23,7 @@ def _check_cua_requirements() -> bool:
     return is_available()
 
 
-def handle_computer_use(args: Dict[str, Any], **_kwargs: Any) -> str:
+def handle_computer_use(args: dict[str, Any], **_kwargs: Any) -> str:
     action = args.get("action")
     if not action:
         return tool_error("'action' is required")
@@ -126,7 +126,7 @@ def handle_computer_use(args: Dict[str, Any], **_kwargs: Any) -> str:
 # ---------------------------------------------------------------------------
 
 def _capture_result(capture: CaptureResult) -> str:
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "success": True,
         "mode": capture.mode,
         "app": capture.app,
@@ -148,7 +148,7 @@ def _capture_result(capture: CaptureResult) -> str:
 
 def _action_result(result: ActionResult) -> str:
     if result.success:
-        payload: Dict[str, Any] = {"success": True, "message": result.message}
+        payload: dict[str, Any] = {"success": True, "message": result.message}
         if result.data:
             payload["data"] = result.data
         return json.dumps(payload, ensure_ascii=False)

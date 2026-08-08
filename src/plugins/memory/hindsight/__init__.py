@@ -29,6 +29,7 @@ from typing import Any, Dict, List
 from agent.memory_provider import MemoryProvider
 from core.spark_constants import get_spark_home
 from tools.registry import tool_error
+from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -720,7 +721,7 @@ class HindsightMemoryProvider(MemoryProvider):
             return
 
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         messages = [
             {"role": "user", "content": user_content, "timestamp": now},
@@ -769,7 +770,7 @@ class HindsightMemoryProvider(MemoryProvider):
         self._sync_thread = threading.Thread(target=_sync, daemon=True, name="hindsight-sync")
         self._sync_thread.start()
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         if self._memory_mode == "context":
             return []
         return [RETAIN_SCHEMA, RECALL_SCHEMA, REFLECT_SCHEMA]

@@ -64,11 +64,11 @@ class ClassifiedError:
     """Structured classification of an API error with recovery hints."""
 
     reason: FailoverReason
-    status_code: Optional[int] = None
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    status_code: int | None = None
+    provider: str | None = None
+    model: str | None = None
     message: str = ""
-    error_context: Dict[str, Any] = field(default_factory=dict)
+    error_context: dict[str, Any] = field(default_factory=dict)
 
     # Recovery action hints — the retry loop checks these instead of
     # re-classifying the error itself.
@@ -420,7 +420,7 @@ def _classify_by_status(
     context_length: int,
     num_messages: int = 0,
     result_fn,
-) -> Optional[ClassifiedError]:
+) -> ClassifiedError | None:
     """Classify based on HTTP status code with message-aware refinement."""
 
     if status_code == 401:
@@ -623,7 +623,7 @@ def _classify_400(
 
 def _classify_by_error_code(
     error_code: str, error_msg: str, result_fn,
-) -> Optional[ClassifiedError]:
+) -> ClassifiedError | None:
     """Classify by structured error codes from the response body."""
     code_lower = error_code.lower()
 
@@ -668,7 +668,7 @@ def _classify_by_message(
     approx_tokens: int,
     context_length: int,
     result_fn,
-) -> Optional[ClassifiedError]:
+) -> ClassifiedError | None:
     """Classify based on error message patterns when no status code is available."""
 
     # Payload-too-large patterns (from message text when no status_code)
@@ -752,7 +752,7 @@ def _classify_by_message(
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
-def _extract_status_code(error: Exception) -> Optional[int]:
+def _extract_status_code(error: Exception) -> int | None:
     """Walk the error and its cause chain to find an HTTP status code."""
     current = error
     for _ in range(5):  # Max depth to prevent infinite loops

@@ -176,7 +176,7 @@ except Exception:
 
 import logging
 import time as _time
-from datetime import datetime
+from datetime import datetime, UTC
 
 from spark_cli import __version__, __release_date__
 from core.spark_constants import OPENROUTER_BASE_URL
@@ -316,7 +316,7 @@ def _has_any_provider_configured() -> bool:
     return False
 
 
-def _session_browse_picker(sessions: list) -> Optional[str]:
+def _session_browse_picker(sessions: list) -> str | None:
     """Interactive curses-based session browser with live search filtering.
 
     Returns the selected session ID, or None if cancelled.
@@ -559,7 +559,7 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
             return None
 
 
-def _resolve_last_cli_session() -> Optional[str]:
+def _resolve_last_cli_session() -> str | None:
     """Look up the most recent CLI session ID from SQLite. Returns None if unavailable."""
     try:
         from core.spark_state import SessionDB
@@ -686,7 +686,7 @@ def _exec_in_container(container_info: dict, cli_args: list):
     os.execvp(exec_cmd[0], exec_cmd)
 
 
-def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
+def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
     """Resolve a session name (title) or ID to a session ID.
 
     - If it looks like a session ID (contains underscore + hex), try direct lookup first.
@@ -1176,7 +1176,7 @@ def _do_multi_model_selection(args=None) -> None:
 
 
 def select_provider_and_model(
-    args=None, _inner: bool = False, routing_slot: Optional[str] = None
+    args=None, _inner: bool = False, routing_slot: str | None = None
 ):
     """Core provider selection + model picking logic.
 
@@ -1240,16 +1240,16 @@ def select_provider_and_model(
         if isinstance(current_model, dict):
             current_model = current_model.get("default", "")
         current_model = current_model or "(not set)"
-    
+
         # Read effective provider the same way the CLI does at startup:
         # config.yaml model.provider > env var > auto-detect
         import os
-    
+
         config_provider = None
         model_cfg = config.get("model")
         if isinstance(model_cfg, dict):
             config_provider = model_cfg.get("provider")
-    
+
         effective_provider = (
             config_provider or os.getenv("SPARK_INFERENCE_PROVIDER") or "auto"
         )
@@ -1262,16 +1262,16 @@ def select_provider_and_model(
                 active = resolve_provider("auto")
             except AuthError:
                 active = None  # no provider yet; default to first in list
-    
+
         # Detect custom endpoint
         if active == "openrouter" and get_env_value("OPENAI_BASE_URL"):
             active = "custom"
-    
+
         from spark_cli.models import CANONICAL_PROVIDERS, _PROVIDER_LABELS
-    
+
         provider_labels = dict(_PROVIDER_LABELS)  # derive from canonical list
         active_label = provider_labels.get(active, active) if active else "none"
-    
+
         print()
         if routing_slot == "smart":
             print("  Picking for:      SMART model (complex / coding tasks)")
@@ -1283,7 +1283,7 @@ def select_provider_and_model(
 
         # Step 1: Provider selection — flat list from CANONICAL_PROVIDERS
         all_providers = [(p.slug, p.tui_desc) for p in CANONICAL_PROVIDERS]
-    
+
         def _named_custom_provider_map(cfg) -> dict[str, dict[str, str]]:
             custom_provider_map = {}
             for entry in get_compatible_custom_providers(cfg):
@@ -1310,7 +1310,7 @@ def select_provider_and_model(
                     "provider_key": provider_key,
                 }
             return custom_provider_map
-    
+
         # Add user-defined custom providers from config.yaml
         _custom_provider_map = _named_custom_provider_map(
             config
@@ -1322,7 +1322,7 @@ def select_provider_and_model(
             saved_model = provider_info.get("model", "")
             model_hint = f" — {saved_model}" if saved_model else ""
             all_providers.append((key, f"{name} ({short_url}){model_hint}"))
-    
+
         # Build the menu
         ordered = []
         default_idx = 0
@@ -1332,7 +1332,7 @@ def select_provider_and_model(
                 default_idx = len(ordered) - 1
             else:
                 ordered.append((key, label))
-    
+
         ordered.append(("custom", "Custom endpoint (enter URL manually)"))
         _has_saved_custom_list = isinstance(config.get("custom_providers"), list) and bool(
             config.get("custom_providers")
@@ -1340,7 +1340,7 @@ def select_provider_and_model(
         if _has_saved_custom_list:
             ordered.append(("remove-custom", "Remove a saved custom provider"))
         ordered.append(("cancel", "Cancel"))
-    
+
         provider_idx = _prompt_provider_choice(
             [label for _, label in ordered],
             default=default_idx,
@@ -1348,9 +1348,9 @@ def select_provider_and_model(
         if provider_idx is None or ordered[provider_idx][0] == "cancel":
             print("No change.")
             return
-    
+
         selected_provider = ordered[provider_idx][0]
-    
+
         # Step 2: Provider-specific setup + model selection
         if selected_provider == "openrouter":
             _model_flow_openrouter(config, current_model)
@@ -1402,7 +1402,7 @@ def select_provider_and_model(
             "arcee",
         ):
             _model_flow_api_key_provider(config, selected_provider, current_model)
-    
+
         # ── Post-switch cleanup: clear stale OPENAI_BASE_URL ──────────────
         # When the user switches to a named provider (anything except "custom"),
         # a leftover OPENAI_BASE_URL in ~/.spark/.env can poison auxiliary
@@ -3331,7 +3331,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     return default
 
 
-def _find_npm(*, require_compatible: bool = False) -> Optional[str]:
+def _find_npm(*, require_compatible: bool = False) -> str | None:
     """Find npm, preferring a Node.js version ≥20 (required by Vite 7).
 
     Checks nvm-managed versions newest-first, then PATH, then Homebrew/system
@@ -3381,7 +3381,7 @@ def _find_npm(*, require_compatible: bool = False) -> Optional[str]:
     return None if require_compatible else (candidates[0] if candidates else None)
 
 
-def _install_managed_node() -> Optional[str]:
+def _install_managed_node() -> str | None:
     """Install a verified Node.js 22 runtime under SPARK_HOME without sudo."""
     import hashlib
     import json
@@ -3911,7 +3911,7 @@ def _sync_bundled_skills_to_dashboard_homes_for_update(
             print(f"  {home}: error ({exc})")
 
 
-def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[str]:
+def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> str | None:
     # Dashboard bundles are generated output, not user customizations. Clean
     # them before inspecting/stashing so stale or unmerged web_dist files can
     # never block either the terminal updater or the Web UI update button.
@@ -3952,7 +3952,7 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
 
     from datetime import datetime, timezone
 
-    stash_name = datetime.now(timezone.utc).strftime(
+    stash_name = datetime.now(UTC).strftime(
         "spark-update-autostash-%Y%m%d-%H%M%S"
     )
     print("→ Local changes detected — stashing before update...")
@@ -3983,7 +3983,7 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
 
 def _resolve_stash_selector(
     git_cmd: list[str], cwd: Path, stash_ref: str
-) -> Optional[str]:
+) -> str | None:
     stash_list = subprocess.run(
         git_cmd + ["stash", "list", "--format=%gd %H"],
         cwd=cwd,
@@ -3999,7 +3999,7 @@ def _resolve_stash_selector(
 
 
 def _print_stash_cleanup_guidance(
-    stash_ref: str, stash_selector: Optional[str] = None
+    stash_ref: str, stash_selector: str | None = None
 ) -> None:
     print(
         "  Check `git status` first so you don't accidentally reapply the same change twice."
@@ -4165,7 +4165,7 @@ OFFICIAL_REPO_URL = "https://github.com/automatedigital/spark.git"
 SKIP_UPSTREAM_PROMPT_FILE = ".skip_upstream_prompt"
 
 
-def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
+def _get_origin_url(git_cmd: list[str], cwd: Path) -> str | None:
     """Get the URL of the origin remote, or None if not set."""
     try:
         result = subprocess.run(
@@ -4181,7 +4181,7 @@ def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
     return None
 
 
-def _is_fork(origin_url: Optional[str]) -> bool:
+def _is_fork(origin_url: str | None) -> bool:
     """Check if the origin remote points to a fork (not the official repo)."""
     if not origin_url:
         return False
@@ -5582,9 +5582,7 @@ def cmd_profile(args):
                     print(f"{copied} bundled skills synced.")
                 else:
                     print(
-                        "⚠ Skills could not be seeded. Run `{} update` to retry.".format(
-                            name
-                        )
+                        f"⚠ Skills could not be seeded. Run `{name} update` to retry."
                     )
 
             # Create wrapper alias

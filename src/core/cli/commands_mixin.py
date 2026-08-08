@@ -1175,7 +1175,7 @@ class _CommandHandlersMixin:
                 s.connect(("127.0.0.1", _port))
                 s.close()
                 _already_open = True
-            except (OSError, socket.timeout):
+            except (TimeoutError, OSError):
                 pass
 
             if _already_open:
@@ -1198,7 +1198,7 @@ class _CommandHandlersMixin:
                             s.close()
                             _already_open = True
                             break
-                        except (OSError, socket.timeout):
+                        except (TimeoutError, OSError):
                             _time.sleep(0.5)
                     if _already_open:
                         print(f"   OK: Chrome launched and listening on port {_port}")

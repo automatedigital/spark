@@ -29,8 +29,8 @@ except ImportError:
 
 # Cached state — resolved once, reused on every call.
 # Call reset_cache() to force re-resolution (e.g. after config changes).
-_cached_tz: Optional[ZoneInfo] = None
-_cached_tz_name: Optional[str] = None
+_cached_tz: ZoneInfo | None = None
+_cached_tz_name: str | None = None
 _cache_resolved: bool = False
 
 
@@ -61,7 +61,7 @@ def _resolve_timezone_name() -> str:
     return ""
 
 
-def _get_zoneinfo(name: str) -> Optional[ZoneInfo]:
+def _get_zoneinfo(name: str) -> ZoneInfo | None:
     """Validate and return a ZoneInfo, or None if invalid."""
     if not name:
         return None
@@ -75,7 +75,7 @@ def _get_zoneinfo(name: str) -> Optional[ZoneInfo]:
         return None
 
 
-def get_timezone() -> Optional[ZoneInfo]:
+def get_timezone() -> ZoneInfo | None:
     """Return the user's configured ZoneInfo, or None (meaning server-local).
 
     Resolved once and cached. Call ``reset_cache()`` after config changes.

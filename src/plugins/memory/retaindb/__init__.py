@@ -28,7 +28,7 @@ import re
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import quote
@@ -367,7 +367,7 @@ class _WriteQueue:
         return conn.execute("SELECT id, user_id, session_id, messages_json FROM pending ORDER BY id ASC LIMIT 200").fetchall()
 
     def enqueue(self, user_id: str, session_id: str, messages: list) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         conn = self._get_conn()
         cur = conn.execute(
             "INSERT INTO pending (user_id, session_id, messages_json, created_at) VALUES (?,?,?,?)",
@@ -477,7 +477,7 @@ class RetainDBMemoryProvider(MemoryProvider):
     def is_available(self) -> bool:
         return bool(os.environ.get("RETAINDB_API_KEY"))
 
-    def get_config_schema(self) -> List[Dict[str, Any]]:
+    def get_config_schema(self) -> list[dict[str, Any]]:
         return [
             {"key": "api_key", "description": "RetainDB API key", "secret": True, "required": True, "env_var": "RETAINDB_API_KEY", "url": "https://retaindb.com"},
             {"key": "base_url", "description": "API endpoint", "default": _DEFAULT_BASE_URL},
@@ -628,7 +628,7 @@ class RetainDBMemoryProvider(MemoryProvider):
         """Queue turn for async ingest. Returns immediately."""
         if not self._queue or not user_content:
             return
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         self._queue.enqueue(
             self._user_id,
             session_id or self._session_id,
@@ -640,7 +640,7 @@ class RetainDBMemoryProvider(MemoryProvider):
 
     # ── Tools ──────────────────────────────────────────────────────────────
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [
             PROFILE_SCHEMA, SEARCH_SCHEMA, CONTEXT_SCHEMA,
             REMEMBER_SCHEMA, FORGET_SCHEMA,
