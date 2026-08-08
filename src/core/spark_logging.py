@@ -35,6 +35,8 @@ from pathlib import Path
 
 from core.spark_constants import get_config_path, get_spark_home
 
+logger = logging.getLogger(__name__)
+
 # Sentinel to track whether setup_logging() has already run.  The function
 # is idempotent — calling it twice is safe but the second call is a no-op
 # unless ``force=True``.
@@ -353,7 +355,7 @@ class _ManagedRotatingFileHandler(RotatingFileHandler):
             try:
                 os.chmod(self.baseFilename, 0o660)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _chmod_if_managed()", exc_info=True)
 
     def _open(self):
         stream = super()._open()
@@ -449,5 +451,5 @@ def _read_logging_config():
                     log_cfg.get("backup_count"),
                 )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _read_logging_config()", exc_info=True)
     return (None, None, None)

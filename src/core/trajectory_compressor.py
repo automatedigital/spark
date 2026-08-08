@@ -59,6 +59,8 @@ from rich.progress import (
 from agent.retry_utils import jittered_backoff
 from core.spark_constants import OPENROUTER_BASE_URL
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 
@@ -1428,7 +1430,7 @@ def main(
                                 try:
                                     entries.append(json.loads(line))
                                 except json.JSONDecodeError:
-                                    pass
+                                    logger.debug("Ignoring error in main()", exc_info=True)
 
                     total_original += len(entries)
                     sample_size = max(1, int(len(entries) * sample_percent / 100))

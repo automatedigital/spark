@@ -11,12 +11,15 @@ web UI can poll a pending/error connect state.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any
 
 from tools.connectors.base import Connector, ConnectorState, ConnectorStatus, Transport
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -156,13 +159,13 @@ class McpConnector(Connector):
 
             remove_oauth_tokens(self.server_name)
         except Exception:
-            pass
+            logger.debug("Ignoring error in disconnect()", exc_info=True)
         try:
             from spark_cli.mcp_config import _remove_mcp_server
 
             _remove_mcp_server(self.server_name)
         except Exception:
-            pass
+            logger.debug("Ignoring error in disconnect()", exc_info=True)
         self.write_meta({})
         return self.status()
 

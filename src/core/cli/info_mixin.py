@@ -16,6 +16,8 @@ from agent.usage_pricing import (
     format_duration_compact,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class _InfoCommandsMixin:
     def _show_usage(self):

@@ -4,6 +4,7 @@ Doctor command for spark CLI.
 Diagnoses issues with Spark Agent setup.
 """
 
+import logging
 import os
 import shutil
 import subprocess
@@ -19,6 +20,8 @@ from core.spark_constants import OPENROUTER_MODELS_URL, display_spark_home
 from core.spark_constants import is_termux as _is_termux
 from spark_cli.colors import Colors, color
 from spark_cli.config import get_env_path, get_project_root, get_spark_home
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = get_project_root()
 SPARK_HOME = get_spark_home()
@@ -193,7 +196,7 @@ def _load_doctor_env() -> dict[str, str]:
                     continue
                 values[key] = value.strip().strip("\"'")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_doctor_env()", exc_info=True)
     values.update(os.environ)
     return values
 
@@ -857,7 +860,7 @@ def run_doctor(args):
             else:
                 check_ok(f"Config version up to date (v{current_ver})")
         except Exception:
-            pass
+            logger.debug("Ignoring error in run_doctor()", exc_info=True)
 
         # Detect stale root-level model keys (known bug source — PR #4329)
         try:
@@ -884,7 +887,7 @@ def run_doctor(args):
                 else:
                     issues.append("Stale root-level provider/base_url in config.yaml — run 'spark doctor --fix'")
         except Exception:
-            pass
+            logger.debug("Ignoring error in run_doctor()", exc_info=True)
 
         # Validate config structure (catches malformed custom_providers, etc.)
         try:
@@ -903,7 +906,7 @@ def run_doctor(args):
                         check_info(hint_line)
                     issues.append(ci.message)
         except Exception:
-            pass
+            logger.debug("Ignoring error in run_doctor()", exc_info=True)
 
     # =========================================================================
     # Check: Auth providers
@@ -1051,7 +1054,7 @@ def run_doctor(args):
             elif wal_size > 10 * 1024 * 1024:  # 10 MB
                 check_info(f"WAL file is {wal_size // (1024*1024)} MB (normal for active sessions)")
         except Exception:
-            pass
+            logger.debug("Ignoring error in run_doctor()", exc_info=True)
 
     _check_gateway_service_linger(issues)
 
@@ -1272,7 +1275,7 @@ def run_doctor(args):
                 else:
                     check_ok(f"{label} deps", f"({moderate} moderate vulnerability(ies))")
             except Exception:
-                pass
+                logger.debug("Ignoring error in run_doctor()", exc_info=True)
 
     # =========================================================================
     # Check: API connectivity
@@ -1507,7 +1510,7 @@ def run_doctor(args):
                 _raw_cfg = _yaml.safe_load(_f) or {}
             _active_memory_provider = (_raw_cfg.get("memory") or {}).get("provider", "")
     except Exception:
-        pass
+        logger.debug("Ignoring error in run_doctor()", exc_info=True)
 
     if not _active_memory_provider:
         check_ok("Built-in memory active", "(no external provider configured — this is fine)")
@@ -1613,11 +1616,11 @@ def run_doctor(args):
                             if _m and not profile_exists(_m.group(1)):
                                 check_warn(f"Orphan alias: {wrapper.name} → profile '{_m.group(1)}' no longer exists")
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in run_doctor()", exc_info=True)
     except ImportError:
-        pass
+        logger.debug("Ignoring error in run_doctor()", exc_info=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in run_doctor()", exc_info=True)
 
     # =========================================================================
     # Summary

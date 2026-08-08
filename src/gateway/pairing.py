@@ -19,6 +19,7 @@ Storage: ~/.spark/pairing/
 """
 
 import json
+import logging
 import os
 import secrets
 import tempfile
@@ -27,6 +28,8 @@ import time
 from pathlib import Path
 
 from core.spark_constants import get_spark_dir
+
+logger = logging.getLogger(__name__)
 
 # Unambiguous alphabet -- excludes 0/O, 1/I to prevent confusion
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -66,7 +69,7 @@ def _secure_write(path: Path, data: str) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in _secure_write()", exc_info=True)
         raise
 
 

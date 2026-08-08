@@ -27,6 +27,7 @@ Usage:
 
 import difflib
 import fnmatch
+import logging
 import os
 import re
 import shlex
@@ -40,6 +41,8 @@ from typing import Any
 
 from core.spark_constants import get_spark_home
 from tools.binary_extensions import BINARY_EXTENSIONS
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Write-path deny list — blocks writes to sensitive system/credential files
@@ -1061,7 +1064,7 @@ class ShellFileOperations(FileOperations):
                         try:
                             counts[parts[0]] = int(parts[1])
                         except ValueError:
-                            pass
+                            logger.debug("Ignoring error in _search_with_grep()", exc_info=True)
             return SearchResult(counts=counts, total_count=sum(counts.values()))
 
         else:
@@ -1174,7 +1177,7 @@ class ShellFileOperations(FileOperations):
                         try:
                             counts[parts[0]] = int(parts[1])
                         except ValueError:
-                            pass
+                            logger.debug("Ignoring error in _search_with_rg()", exc_info=True)
             return SearchResult(counts=counts, total_count=sum(counts.values()))
 
         else:
@@ -1332,7 +1335,7 @@ class NativeFileOperations(ShellFileOperations):
                 try:
                     os.unlink(temp_name)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in write_file()", exc_info=True)
 
     def delete_file(self, path: str) -> WriteResult:
         try:

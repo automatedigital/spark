@@ -8,6 +8,7 @@ Add, remove, or reorder entries here — both `spark setup` and
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
@@ -15,6 +16,8 @@ from difflib import get_close_matches
 from typing import Any, NamedTuple
 
 from core.network_tls import urllib_request_kwargs
+
+logger = logging.getLogger(__name__)
 
 COPILOT_BASE_URL = "https://api.githubcopilot.com"
 COPILOT_MODELS_URL = f"{COPILOT_BASE_URL}/models"
@@ -730,7 +733,7 @@ def list_available_providers() -> list[dict[str, str]]:
                 status = get_auth_status(pid)
                 has_creds = bool(status.get("logged_in") or status.get("configured"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in list_available_providers()", exc_info=True)
         result.append(
             {
                 "id": pid,
@@ -787,7 +790,7 @@ def _get_custom_base_url() -> str:
         if isinstance(model_cfg, dict):
             return str(model_cfg.get("base_url", "")).strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_custom_base_url()", exc_info=True)
     return ""
 
 
@@ -810,7 +813,7 @@ def _get_ollama_base_url() -> str:
             if cfg_url:
                 return cfg_url
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_ollama_base_url()", exc_info=True)
     return "http://localhost:11434/v1"
 
 
@@ -908,7 +911,7 @@ def detect_provider_for_model(
                         has_creds = True
                         break
         except Exception:
-            pass
+            logger.debug("Ignoring error in detect_provider_for_model()", exc_info=True)
 
         if has_creds:
             return (direct_match, name)
@@ -1092,7 +1095,7 @@ def provider_model_ids(
             if live:
                 return live
         except Exception:
-            pass
+            logger.debug("Ignoring error in provider_model_ids()", exc_info=True)
         if normalized == "copilot-acp":
             return list(_PROVIDER_MODELS.get("copilot", []))
     if normalized == "anthropic":

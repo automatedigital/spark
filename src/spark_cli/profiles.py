@@ -20,6 +20,7 @@ Usage::
 """
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,8 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
+
+logger = logging.getLogger(__name__)
 
 _PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
@@ -209,10 +212,10 @@ def check_alias_collision(name: str) -> str | None:
                     if "spark -p" in content:
                         return None  # it's our wrapper, safe to overwrite
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in check_alias_collision()", exc_info=True)
             return f"'{name}' conflicts with an existing command ({existing_path})"
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+        logger.debug("Ignoring error in check_alias_collision()", exc_info=True)
 
     return None  # safe
 
@@ -256,7 +259,7 @@ def remove_wrapper_script(name: str) -> bool:
                 wrapper_path.unlink()
                 return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in remove_wrapper_script()", exc_info=True)
     return False
 
 
@@ -590,7 +593,7 @@ def delete_profile(name: str, yes: bool = False) -> Path:
             set_active_profile("default")
             print("✓ Active profile reset to default")
     except Exception:
-        pass
+        logger.debug("Ignoring error in delete_profile()", exc_info=True)
 
     print(f"\nProfile '{name}' deleted.")
     return profile_dir
@@ -670,7 +673,7 @@ def _stop_gateway_process(profile_dir: Path) -> None:
         try:
             os.kill(pid, _signal.SIGKILL)
         except ProcessLookupError:
-            pass
+            logger.debug("Ignoring error in _stop_gateway_process()", exc_info=True)
         print(f"✓ Gateway force-stopped (PID {pid})")
     except (ProcessLookupError, PermissionError):
         print("✓ Gateway already stopped")
@@ -743,7 +746,7 @@ def get_active_profile_name() -> str:
         if len(parts) == 1 and _PROFILE_ID_RE.match(parts[0]):
             return parts[0]
     except ValueError:
-        pass
+        logger.debug("Ignoring error in get_active_profile_name()", exc_info=True)
 
     return "custom"
 
@@ -868,7 +871,7 @@ def _safe_extract_profile_archive(archive: Path, destination: Path) -> None:
             try:
                 os.chmod(target, member.mode & 0o777)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _safe_extract_profile_archive()", exc_info=True)
 
 
 def import_profile(archive_path: str, name: str | None = None) -> Path:
@@ -981,7 +984,7 @@ def rename_profile(old_name: str, new_name: str) -> Path:
             set_active_profile(new_name)
             print(f"✓ Active profile updated: {new_name}")
     except Exception:
-        pass
+        logger.debug("Ignoring error in rename_profile()", exc_info=True)
 
     return new_dir
 

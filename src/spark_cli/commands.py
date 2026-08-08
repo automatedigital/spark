@@ -10,6 +10,7 @@ To add an alias: set ``aliases=("short",)`` on the existing ``CommandDef``.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,8 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # prompt_toolkit is an optional CLI dependency — only needed for
 # SlashCommandCompleter and SlashCommandAutoSuggest.  Gateway and test
@@ -510,7 +513,7 @@ def _collect_gateway_skill_entries(
                 desc = desc[:desc_limit - 3] + "..."
             plugin_pairs.append((name, desc))
     except Exception:
-        pass
+        logger.debug("Ignoring error in _collect_gateway_skill_entries()", exc_info=True)
 
     plugin_pairs = _clamp_command_names(plugin_pairs, reserved_names)
     reserved_names.update(n for n, _ in plugin_pairs)
@@ -524,7 +527,7 @@ def _collect_gateway_skill_entries(
         from agent.skill_utils import get_disabled_skill_names
         _platform_disabled = get_disabled_skill_names(platform=platform)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _collect_gateway_skill_entries()", exc_info=True)
 
     skill_triples: list[tuple[str, str, str]] = []
     try:
@@ -552,7 +555,7 @@ def _collect_gateway_skill_entries(
                 desc = desc[:desc_limit - 3] + "..."
             skill_triples.append((name, desc, cmd_key))
     except Exception:
-        pass
+        logger.debug("Ignoring error in _collect_gateway_skill_entries()", exc_info=True)
 
     # Clamp names; _clamp_command_names works on (name, desc) pairs so we
     # need to zip/unzip.
@@ -1032,7 +1035,7 @@ class SlashCommandCompleter(Completer):
                         display_meta=f"{identity.vendor}/{identity.family}",
                     )
         except Exception:
-            pass
+            logger.debug("Ignoring error in _model_completions()", exc_info=True)
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor

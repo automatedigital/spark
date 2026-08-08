@@ -4,10 +4,13 @@ Used by `spark tools` and `spark skills` for interactive checklists.
 Provides a curses multi-select with keyboard navigation, plus a
 text-based numbered fallback for terminals without curses support.
 """
+import logging
 import sys
 from collections.abc import Callable
 
 from spark_cli.colors import Colors, color
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_checklist_enter(
@@ -42,7 +45,7 @@ def flush_stdin() -> None:
         import termios
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
     except Exception:
-        pass
+        logger.debug("Ignoring error in flush_stdin()", exc_info=True)
 
 
 def curses_checklist(
@@ -114,7 +117,7 @@ def curses_checklist(
                         max_x - 1, curses.A_DIM,
                     )
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _draw()", exc_info=True)
 
                 # Scrollable item list
                 visible_rows = max_y - 3 - footer_rows
@@ -140,7 +143,7 @@ def curses_checklist(
                     try:
                         stdscr.addnstr(y, 0, line, max_x - 1, attr)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _draw()", exc_info=True)
 
                 # Status bar (bottom row, right-aligned)
                 if status_fn:
@@ -154,7 +157,7 @@ def curses_checklist(
                                 sattr |= curses.color_pair(3)
                             stdscr.addnstr(max_y - 1, sx, status_text, max_x - sx - 1, sattr)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _draw()", exc_info=True)
 
                 stdscr.refresh()
                 key = stdscr.getch()
@@ -235,7 +238,7 @@ def curses_radiolist(
                         max_x - 1, curses.A_DIM,
                     )
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _draw()", exc_info=True)
 
                 # Scrollable item list
                 visible_rows = max_y - 4
@@ -261,7 +264,7 @@ def curses_radiolist(
                     try:
                         stdscr.addnstr(y, 0, line, max_x - 1, attr)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _draw()", exc_info=True)
 
                 stdscr.refresh()
                 key = stdscr.getch()
@@ -358,7 +361,7 @@ def curses_single_select(
                         max_x - 1, curses.A_DIM,
                     )
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _draw()", exc_info=True)
 
                 visible_rows = max_y - 3
                 if cursor < scroll_offset:
@@ -382,7 +385,7 @@ def curses_single_select(
                     try:
                         stdscr.addnstr(y, 0, line, max_x - 1, attr)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _draw()", exc_info=True)
 
                 stdscr.refresh()
                 key = stdscr.getch()
@@ -430,7 +433,7 @@ def _numbered_single_fallback(
         if idx == cancel_idx:
             return None
     except (ValueError, KeyboardInterrupt, EOFError):
-        pass
+        logger.debug("Ignoring error in _numbered_single_fallback()", exc_info=True)
     return None
 
 

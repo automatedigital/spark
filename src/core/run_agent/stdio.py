@@ -11,7 +11,10 @@ behavior change). Re-exported from ``core.run_agent`` so the tests'
 ``from core.run_agent import _SafeWriter`` keep working.
 """
 
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 class _SafeWriter:
@@ -48,7 +51,7 @@ class _SafeWriter:
         try:
             self._inner.flush()
         except (OSError, ValueError):
-            pass
+            logger.debug("Ignoring error in flush()", exc_info=True)
 
     def fileno(self):
         return self._inner.fileno()

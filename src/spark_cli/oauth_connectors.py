@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -26,6 +27,8 @@ from urllib.parse import urlencode
 import httpx
 
 from core.spark_constants import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -114,7 +117,7 @@ def save_token(provider_id: str, token: dict) -> None:
     try:
         os.chmod(token_path(provider_id), 0o600)
     except OSError:
-        pass
+        logger.debug("Ignoring error in save_token()", exc_info=True)
 
 
 def clear_token(provider_id: str) -> None:
@@ -328,7 +331,7 @@ def enrich_token(provider_id: str, token: dict) -> dict:
         if account:
             token["account"] = account
     except Exception:
-        pass
+        logger.debug("Ignoring error in enrich_token()", exc_info=True)
     return token
 
 

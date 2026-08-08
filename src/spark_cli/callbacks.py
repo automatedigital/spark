@@ -7,12 +7,15 @@ with the TUI.
 """
 
 import getpass
+import logging
 import queue
 import time as _time
 
 from core.spark_constants import display_spark_home
 from spark_cli.banner import _DIM, _RST, cprint
 from spark_cli.config import save_env_value_secure
+
+logger = logging.getLogger(__name__)
 
 
 def clarify_callback(cli, question, choices):
@@ -114,12 +117,12 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
         try:
             cli._clear_secret_input_buffer()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
     elif hasattr(cli, "_app") and cli._app:
         try:
             cli._app.current_buffer.reset()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
 
     if hasattr(cli, "_app") and cli._app:
         cli._app.invalidate()
@@ -164,12 +167,12 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
         try:
             cli._clear_secret_input_buffer()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
     elif hasattr(cli, "_app") and cli._app:
         try:
             cli._app.current_buffer.reset()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
     if hasattr(cli, "_app") and cli._app:
         cli._app.invalidate()
     cprint(f"\n{_DIM}  ⏱ Timeout — secret capture cancelled{_RST}")

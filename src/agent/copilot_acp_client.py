@@ -9,6 +9,7 @@ back into the minimal shape Spark expects from an OpenAI client.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import re
@@ -20,6 +21,8 @@ from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 ACP_MARKER_BASE_URL = "acp://copilot"
 _DEFAULT_TIMEOUT_SECONDS = 900.0
@@ -295,7 +298,7 @@ class CopilotACPClient:
             try:
                 proc.kill()
             except Exception:
-                pass
+                logger.debug("Ignoring error in close()", exc_info=True)
 
     def _create_chat_completion(
         self,

@@ -80,7 +80,11 @@ def _effective_provider_label() -> str:
     return provider_label(effective)
 
 
+import logging
+
 from core.spark_constants import is_termux as _is_termux
+
+logger = logging.getLogger(__name__)
 
 
 def show_status(args):
@@ -426,7 +430,7 @@ def show_status(args):
             # This is informational, not necessarily bad
             print(f"  Port 18789:   {'in use' if port_in_use else 'available'}")
         except OSError:
-            pass
+            logger.debug("Ignoring error in show_status()", exc_info=True)
 
     print()
     print(color("─" * 60, Colors.DIM))

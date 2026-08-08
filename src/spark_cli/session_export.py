@@ -8,10 +8,13 @@ file leaves the machine. Written under ``SPARK_HOME/exports/``.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from spark_cli.config import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 
 def _redact(text: str) -> str:
@@ -83,7 +86,7 @@ def export_session_redacted(session_id: str, db: Any | None = None) -> dict[str,
             try:
                 db.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in export_session_redacted()", exc_info=True)
     if not raw:
         return {"error": f"Session not found: {session_id}"}
 

@@ -12,9 +12,13 @@ Config stored in ~/.spark/config.yaml under:
       cli: []
 """
 
+import logging
+
 from spark_cli.colors import Colors, color
 from spark_cli.config import load_config, save_config
 from spark_cli.platforms import PLATFORMS as _PLATFORMS
+
+logger = logging.getLogger(__name__)
 
 # Backward-compatible view: {key: label_string} so existing code that
 # iterates ``PLATFORMS.items()`` or calls ``PLATFORMS.get(key)`` keeps
@@ -84,7 +88,7 @@ def _select_platform() -> str | None:
             key = options[idx][0]
             return None if key == "global" else key
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _select_platform()", exc_info=True)
     return None
 
 

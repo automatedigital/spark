@@ -8,6 +8,7 @@ SparkCLI via inheritance; methods run with full access to SparkCLI state (self).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -26,6 +27,8 @@ from core.cli.render import _ACCENT, _DIM, _RST, _accent_hex, _cprint, _rich_tex
 from core.run_agent import AIAgent
 from core.spark_constants import display_spark_home
 from cron import get_job
+
+logger = logging.getLogger(__name__)
 
 
 class _CommandHandlersMixin:
@@ -1112,7 +1115,7 @@ class _CommandHandlersMixin:
                         self.conversation_history,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_computer_use_command()", exc_info=True)
             _cprint(
                 "  Computer-use enabled. Describe the desktop task in your next message."
             )
@@ -1130,7 +1133,7 @@ class _CommandHandlersMixin:
                 if _hint:
                     _cprint(_hint)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_computer_use_command()", exc_info=True)
 
     def _handle_browser_command(self, cmd: str):
         """Handle /browser connect|disconnect|status - manage live Chrome CDP connection."""
@@ -1157,7 +1160,7 @@ class _CommandHandlersMixin:
 
                 cleanup_all_browsers()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
 
             print()
 
@@ -1166,7 +1169,7 @@ class _CommandHandlersMixin:
             try:
                 _port = int(cdp_url.rsplit(":", 1)[-1].split("/")[0])
             except (ValueError, IndexError):
-                pass
+                logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
 
             # Check if Chrome is already listening on the debug port
             import socket
@@ -1179,7 +1182,7 @@ class _CommandHandlersMixin:
                 s.close()
                 _already_open = True
             except (TimeoutError, OSError):
-                pass
+                logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
 
             if _already_open:
                 print(f"   OK: Chrome is already listening on port {_port}")
@@ -1267,7 +1270,7 @@ class _CommandHandlersMixin:
 
                     cleanup_all_browsers()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
                 print()
                 print("🌐 Browser disconnected from live Chrome")
                 print(
@@ -1297,7 +1300,7 @@ class _CommandHandlersMixin:
                 try:
                     _port = int(current.rsplit(":", 1)[-1].split("/")[0])
                 except (ValueError, IndexError):
-                    pass
+                    logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
                 try:
                     import socket
 

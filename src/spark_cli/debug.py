@@ -6,6 +6,7 @@ Currently supports:
 """
 
 import io
+import logging
 import sys
 import urllib.error
 import urllib.parse
@@ -13,6 +14,8 @@ import urllib.request
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Paste services — try paste.rs first, dpaste.com as fallback.
@@ -194,7 +197,7 @@ def _capture_dump() -> str:
     try:
         run_dump(_FakeArgs())
     except SystemExit:
-        pass
+        logger.debug("Ignoring error in _capture_dump()", exc_info=True)
     finally:
         sys.stdout = old_stdout
 

@@ -243,7 +243,11 @@ def get_container_exec_info() -> dict | None:
 # =============================================================================
 
 # Re-export from spark_constants — canonical definition lives there.
+import logging
+
 from core.spark_constants import get_spark_home  # noqa: F811,E402
+
+logger = logging.getLogger(__name__)
 
 
 def get_config_path() -> Path:
@@ -284,7 +288,7 @@ def _secure_dir(path):
     try:
         os.chmod(path, mode)
     except (OSError, NotImplementedError):
-        pass
+        logger.debug("Ignoring error in _secure_dir()", exc_info=True)
 
 
 def _secure_file(path):
@@ -299,7 +303,7 @@ def _secure_file(path):
         if os.path.exists(str(path)):
             os.chmod(path, 0o600)
     except (OSError, NotImplementedError):
-        pass
+        logger.debug("Ignoring error in _secure_file()", exc_info=True)
 
 
 def _ensure_default_wiki_readme(home: Path) -> None:
@@ -2378,7 +2382,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
                 if not quiet:
                     print("  ✓ Cleared ANTHROPIC_TOKEN from .env (no longer used)")
         except Exception:
-            pass
+            logger.debug("Ignoring error in migrate_config()", exc_info=True)
 
     # ── Version 11 → 12: migrate custom_providers list → providers dict ──
     if current_ver < 12:
@@ -2467,7 +2471,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
                             f"  ✓ Cleared {dead_var} from .env (no longer used — config.yaml is source of truth)"
                         )
             except Exception:
-                pass
+                logger.debug("Ignoring error in migrate_config()", exc_info=True)
 
     # ── Version 13 → 14: migrate legacy flat stt.model to provider section ──
     # Old configs (and cli-config.yaml.example) had a flat `stt.model` key
@@ -2970,7 +2974,7 @@ def read_raw_config() -> dict[str, Any]:
             with open(config_path, encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
     except Exception:
-        pass
+        logger.debug("Ignoring error in read_raw_config()", exc_info=True)
     return {}
 
 
@@ -3261,7 +3265,7 @@ def sanitize_env_file() -> int:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in sanitize_env_file()", exc_info=True)
         raise
     _secure_file(env_path)
     return fixes
@@ -3317,7 +3321,7 @@ def save_env_value(key: str, value: str):
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_env_value()", exc_info=True)
         raise
     _secure_file(env_path)
 
@@ -3328,7 +3332,7 @@ def save_env_value(key: str, value: str):
         try:
             os.chmod(env_path, stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_env_value()", exc_info=True)
 
 
 # Defaults for gateway HTTP API (OpenAI-compatible); must match gateway.platforms.api_server
@@ -3405,7 +3409,7 @@ def save_http_api_env_block(api_key: str) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_http_api_env_block()", exc_info=True)
         raise
     _secure_file(env_path)
 
@@ -3418,7 +3422,7 @@ def save_http_api_env_block(api_key: str) -> None:
         try:
             os.chmod(env_path, stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_http_api_env_block()", exc_info=True)
 
 
 def remove_env_value(key: str) -> bool:
@@ -3460,7 +3464,7 @@ def remove_env_value(key: str) -> bool:
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in remove_env_value()", exc_info=True)
             raise
         _secure_file(env_path)
 
@@ -3732,7 +3736,7 @@ def show_config():
                     f"  {key:<20s} {display_val}  {color(f'[{skill_name}]', Colors.DIM)}"
                 )
     except Exception:
-        pass
+        logger.debug("Ignoring error in show_config()", exc_info=True)
 
     print()
     print(color("─" * 60, Colors.DIM))

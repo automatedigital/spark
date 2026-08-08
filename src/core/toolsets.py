@@ -23,7 +23,10 @@ Usage:
     all_tools = resolve_toolset("full_stack")
 """
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Shared tool list for CLI and all messaging platform toolsets.
 # Edit this once to update all platforms simultaneously.
@@ -503,7 +506,7 @@ def resolve_toolset(name: str, visited: set[str] = None) -> list[str]:
                 from tools.registry import registry
                 return registry.get_tool_names_for_toolset(name)
             except Exception:
-                pass
+                logger.debug("Ignoring error in resolve_toolset()", exc_info=True)
         return []
 
     # Collect direct tools
@@ -576,7 +579,7 @@ def get_all_toolsets() -> dict[str, dict[str, Any]]:
                     "tools": tools,
                 }
             except Exception:
-                pass
+                logger.debug("Ignoring error in get_all_toolsets()", exc_info=True)
     return result
 
 

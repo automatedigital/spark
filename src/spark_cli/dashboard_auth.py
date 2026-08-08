@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 import secrets
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 _TOKEN_FILENAME = "dashboard.token"
 _ENV_KEYS = ("SPARK_DASHBOARD_TOKEN", "SPARK_DASHBOARD_SECRET")
@@ -30,7 +33,7 @@ def ensure_dashboard_token_file() -> str:
     try:
         path.chmod(0o600)
     except OSError:
-        pass
+        logger.debug("Ignoring error in ensure_dashboard_token_file()", exc_info=True)
     return token
 
 

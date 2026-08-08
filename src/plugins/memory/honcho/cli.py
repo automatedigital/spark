@@ -6,12 +6,15 @@ Handles: spark honcho setup | status | sessions | map | peer
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
 from plugins.memory.honcho.client import HOST, resolve_active_host, resolve_config_path
+
+logger = logging.getLogger(__name__)
 
 
 def clone_honcho_for_profile(profile_name: str) -> bool:
@@ -259,7 +262,7 @@ def _read_config() -> dict:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _read_config()", exc_info=True)
     return {}
 
 
@@ -300,7 +303,7 @@ def _ensure_sdk_installed() -> bool:
         import honcho  # noqa: F401
         return True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in _ensure_sdk_installed()", exc_info=True)
 
     print("  honcho-ai is not installed.")
     answer = _prompt("Install it now? (honcho-ai>=2.0.1)", default="y")

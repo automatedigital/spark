@@ -7,6 +7,7 @@ No ANSI colors, no checkmarks — just data.
 """
 
 import json
+import logging
 import os
 import platform
 import subprocess
@@ -15,6 +16,8 @@ from pathlib import Path
 
 from core.spark_constants import display_spark_home
 from spark_cli.config import get_env_path, get_project_root, get_spark_home, load_config
+
+logger = logging.getLogger(__name__)
 
 
 def _get_git_commit(project_root: Path) -> str:
@@ -28,7 +31,7 @@ def _get_git_commit(project_root: Path) -> str:
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_git_commit()", exc_info=True)
     return "(unknown)"
 
 

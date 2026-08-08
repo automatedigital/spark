@@ -81,9 +81,9 @@ def _get_service_pids() -> set:
                         if pid > 0:
                             pids.add(pid)
                     except (ValueError, subprocess.TimeoutExpired):
-                        pass
+                        logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
             except (FileNotFoundError, subprocess.TimeoutExpired):
-                pass
+                logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
 
     # --- launchd (macOS) ---
     if is_macos():
@@ -103,9 +103,9 @@ def _get_service_pids() -> set:
                             if pid > 0:
                                 pids.add(pid)
                         except ValueError:
-                            pass
+                            logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            logger.debug("Ignoring error in _get_service_pids()", exc_info=True)
 
     return pids
 
@@ -224,7 +224,7 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
                             if pid != os.getpid() and pid not in pids and pid not in _exclude:
                                 pids.append(pid)
                         except ValueError:
-                            pass
+                            logger.debug("Ignoring error in find_gateway_pids()", exc_info=True)
                     current_cmd = ""
         else:
             result = subprocess.run(
@@ -262,7 +262,7 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
                 if any(pattern in command for pattern in patterns) and (all_profiles or _matches_current_profile(command)):
                     pids.append(pid)
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        logger.debug("Ignoring error in find_gateway_pids()", exc_info=True)
 
     return pids
 
@@ -287,7 +287,7 @@ def kill_gateway_processes(force: bool = False, exclude_pids: set | None = None,
             killed += 1
         except ProcessLookupError:
             # Process already gone
-            pass
+            logger.debug("Ignoring error in kill_gateway_processes()", exc_info=True)
         except PermissionError:
             print(f"⚠ Permission denied to kill PID {pid}")
 
@@ -337,7 +337,11 @@ def is_linux() -> bool:
     return sys.platform.startswith('linux')
 
 
+import logging
+
 from core.spark_constants import is_container, is_termux, is_wsl
+
+logger = logging.getLogger(__name__)
 
 
 def _wsl_systemd_operational() -> bool:
@@ -406,7 +410,7 @@ def _profile_suffix() -> str:
         if len(parts) == 1 and re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", parts[0]):
             return parts[0]
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _profile_suffix()", exc_info=True)
     # Fallback: short hash for arbitrary SPARK_HOME paths
     return hashlib.sha256(str(home).encode()).hexdigest()[:8]
 
@@ -436,7 +440,7 @@ def _profile_arg(spark_home: str | None = None) -> str:
         if len(parts) == 1 and re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", parts[0]):
             return f"--profile {parts[0]}"
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _profile_arg()", exc_info=True)
     return ""
 
 
@@ -2192,7 +2196,7 @@ def _is_service_running() -> bool:
                 if result.stdout.strip() == "active":
                     return True
             except (RuntimeError, subprocess.TimeoutExpired):
-                pass
+                logger.debug("Ignoring error in _is_service_running()", exc_info=True)
 
         if system_unit_exists:
             try:
@@ -2203,7 +2207,7 @@ def _is_service_running() -> bool:
                 if result.stdout.strip() == "active":
                     return True
             except (RuntimeError, subprocess.TimeoutExpired):
-                pass
+                logger.debug("Ignoring error in _is_service_running()", exc_info=True)
 
         return False
     elif is_macos() and get_launchd_plist_path().exists():
@@ -2919,13 +2923,13 @@ def gateway_command(args):
                     systemd_stop(system=system)
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
             elif is_macos() and get_launchd_plist_path().exists():
                 try:
                     launchd_stop()
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
             killed = kill_gateway_processes(all_profiles=True)
             total = killed + (1 if service_available else 0)
             if total:
@@ -2940,13 +2944,13 @@ def gateway_command(args):
                     systemd_stop(system=system)
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
             elif is_macos() and get_launchd_plist_path().exists():
                 try:
                     launchd_stop()
                     service_available = True
                 except subprocess.CalledProcessError:
-                    pass
+                    logger.debug("Ignoring error in gateway_command()", exc_info=True)
 
             if not service_available:
                 # No systemd/launchd — use profile-scoped PID file
@@ -2969,14 +2973,14 @@ def gateway_command(args):
                 systemd_restart(system=system)
                 service_available = True
             except subprocess.CalledProcessError:
-                pass
+                logger.debug("Ignoring error in gateway_command()", exc_info=True)
         elif is_macos() and get_launchd_plist_path().exists():
             service_configured = True
             try:
                 launchd_restart()
                 service_available = True
             except subprocess.CalledProcessError:
-                pass
+                logger.debug("Ignoring error in gateway_command()", exc_info=True)
 
         if not service_available:
             # systemd/launchd restart failed — check if linger is the issue

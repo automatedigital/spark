@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import contextvars
 import json
+import logging
 import threading
 import time
 from collections import defaultdict
@@ -15,6 +16,8 @@ from typing import Any
 from core.async_runtime import get_async_runtime
 from tools.effects import USER_INTERACTION, ToolEffects, resources_overlap
 from tools.registry import ToolRegistry, registry
+
+logger = logging.getLogger(__name__)
 
 _execution_cancel: contextvars.ContextVar[threading.Event | None] = contextvars.ContextVar(
     "tool_execution_cancel", default=None
@@ -81,7 +84,7 @@ def _parse_call(call: Any) -> tuple[str, str, dict[str, Any]]:
             if isinstance(normalized_name, str) and isinstance(normalized_args, dict):
                 return str(call.id), normalized_name, normalized_args
     except (ImportError, ValueError, TypeError):
-        pass
+        logger.debug("Ignoring error in _parse_call()", exc_info=True)
     return str(call.id), str(function.name), args
 
 

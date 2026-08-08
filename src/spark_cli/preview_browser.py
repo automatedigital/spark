@@ -12,6 +12,7 @@ is imported lazily — callers get a clear error when it isn't installed.
 
 from __future__ import annotations
 
+import logging
 import queue
 import re
 import threading
@@ -21,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from spark_cli.config import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 _VIEWPORT = (1280, 800)
 _COMMAND_TIMEOUT = 20.0
@@ -59,7 +62,7 @@ def _harden_dir_permissions(path: Path) -> None:
         if parent.name == _safe_slug(parent.name) or parent.name:
             os.chmod(parent, 0o700)
     except OSError:
-        pass
+        logger.debug("Ignoring error in _harden_dir_permissions()", exc_info=True)
 
 
 class StreamedBrowserSession:
@@ -131,7 +134,7 @@ class StreamedBrowserSession:
             try:
                 self.on_log(text, stream)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _log()", exc_info=True)
 
     def _wire_logging(self, page: Any) -> None:
         """Forward the page's console + network activity to the log callback."""

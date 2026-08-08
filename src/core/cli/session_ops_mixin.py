@@ -7,6 +7,7 @@ save/retry/undo, and gateway-status display. Combined into SparkCLI via inherita
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 from datetime import datetime
@@ -16,6 +17,8 @@ from core.cli.render import _accent_hex
 from core.model_tools import get_tool_definitions
 from core.spark_constants import display_spark_home, get_spark_home
 from spark_cli.banner import build_welcome_banner
+
+logger = logging.getLogger(__name__)
 
 
 class _SessionOpsMixin:
@@ -175,7 +178,7 @@ class _SessionOpsMixin:
             )
             self._session_db._conn.commit()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _preload_resumed_session()", exc_info=True)
 
         return True
 

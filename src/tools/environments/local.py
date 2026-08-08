@@ -1,6 +1,7 @@
 """Local execution environment — spawn-per-call with session snapshot."""
 
 import base64
+import logging
 import os
 import platform
 import shutil
@@ -10,6 +11,8 @@ import tempfile
 
 from tools.env_passthrough import build_tool_subprocess_env
 from tools.environments.base import BaseEnvironment, _pipe_stdin
+
+logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = platform.system() == "Windows"
 
@@ -29,7 +32,7 @@ def _build_provider_env_blocklist() -> frozenset:
             if pconfig.base_url_env_var:
                 blocked.add(pconfig.base_url_env_var)
     except ImportError:
-        pass
+        logger.debug("Ignoring error in _build_provider_env_blocklist()", exc_info=True)
 
     try:
         from spark_cli.config import OPTIONAL_ENV_VARS
@@ -40,7 +43,7 @@ def _build_provider_env_blocklist() -> frozenset:
             elif category == "setting" and metadata.get("password"):
                 blocked.add(name)
     except ImportError:
-        pass
+        logger.debug("Ignoring error in _build_provider_env_blocklist()", exc_info=True)
 
     blocked.update({
         "OPENAI_BASE_URL",
@@ -291,7 +294,7 @@ class LocalEnvironment(BaseEnvironment):
             try:
                 proc.kill()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _kill_process()", exc_info=True)
 
     def _update_cwd(self, result: dict):
         """Read CWD from temp file (local-only, no round-trip needed)."""
@@ -300,7 +303,7 @@ class LocalEnvironment(BaseEnvironment):
             if cwd_path:
                 self.cwd = cwd_path
         except (OSError, FileNotFoundError):
-            pass
+            logger.debug("Ignoring error in _update_cwd()", exc_info=True)
 
         # Still strip the marker from output so it's not visible
         self._extract_cwd_from_output(result)
@@ -311,4 +314,4 @@ class LocalEnvironment(BaseEnvironment):
             try:
                 os.unlink(f)
             except OSError:
-                pass
+                logger.debug("Ignoring error in cleanup()", exc_info=True)

@@ -11,6 +11,7 @@ handler are thin wrappers that parse args and delegate.
 """
 
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,8 @@ from rich.table import Table
 # Lazy imports to avoid circular dependencies and slow startup.
 # tools.skills_hub and tools.skills_guard are imported inside functions.
 from core.spark_constants import display_spark_home
+
+logger = logging.getLogger(__name__)
 
 _console = Console()
 
@@ -465,7 +468,7 @@ def do_install(identifier: str, category: str = "", force: bool = False,
             from agent.prompt_builder import clear_skills_system_prompt_cache
             clear_skills_system_prompt_cache(clear_snapshot=True)
         except Exception:
-            pass
+            logger.debug("Ignoring error in do_install()", exc_info=True)
     else:
         c.print("[dim]Skill will be available in your next session.[/]")
         c.print("[dim]Use /reset to start a new session now, or --now to activate immediately (invalidates prompt cache).[/]\n")
@@ -682,7 +685,7 @@ def do_uninstall(name: str, console: Console | None = None,
                 from agent.prompt_builder import clear_skills_system_prompt_cache
                 clear_skills_system_prompt_cache(clear_snapshot=True)
             except Exception:
-                pass
+                logger.debug("Ignoring error in do_uninstall()", exc_info=True)
         else:
             c.print("[dim]Change will take effect in your next session.[/]")
             c.print("[dim]Use /reset to start a new session now, or --now to apply immediately (invalidates prompt cache).[/]\n")
@@ -760,7 +763,7 @@ def do_publish(skill_path: str, target: str = "github", repo: str = "",
             try:
                 fm = yaml.safe_load(skill_md[3:match.start() + 3]) or {}
             except yaml.YAMLError:
-                pass
+                logger.debug("Ignoring error in do_publish()", exc_info=True)
 
     name = fm.get("name", path.name)
     description = fm.get("description", "")
@@ -1087,13 +1090,13 @@ def handle_skills_slash(cmd: str, console: Console | None = None) -> None:
                 try:
                     page = int(args[i + 1])
                 except ValueError:
-                    pass
+                    logger.debug("Ignoring error in handle_skills_slash()", exc_info=True)
                 i += 2
             elif args[i] == "--size" and i + 1 < len(args):
                 try:
                     page_size = int(args[i + 1])
                 except ValueError:
-                    pass
+                    logger.debug("Ignoring error in handle_skills_slash()", exc_info=True)
                 i += 2
             elif args[i] == "--source" and i + 1 < len(args):
                 source = args[i + 1]
@@ -1118,7 +1121,7 @@ def handle_skills_slash(cmd: str, console: Console | None = None) -> None:
                 try:
                     limit = int(args[i + 1])
                 except ValueError:
-                    pass
+                    logger.debug("Ignoring error in handle_skills_slash()", exc_info=True)
                 i += 2
             else:
                 query_parts.append(args[i])
