@@ -393,7 +393,7 @@ def _resolve_api_key_provider_secret(
         except ValueError as exc:
             logger.warning("Copilot token validation failed: %s", exc)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _resolve_api_key_provider_secret()", exc_info=True)
         return "", ""
 
     for env_var in pconfig.api_key_env_vars:
@@ -660,7 +660,7 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
                     lock_file.seek(0)
                     msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _auth_store_lock()", exc_info=True)
 
 
 def _load_auth_store(auth_file: Path | None = None) -> dict[str, Any]:
@@ -712,12 +712,12 @@ def _save_auth_store(auth_store: dict[str, Any]) -> Path:
             if tmp_path.exists():
                 tmp_path.unlink()
         except OSError:
-            pass
+            logger.debug("Ignoring error in _save_auth_store()", exc_info=True)
     # Restrict file permissions to owner only
     try:
         auth_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
     except OSError:
-        pass
+        logger.debug("Ignoring error in _save_auth_store()", exc_info=True)
     return auth_file
 
 
@@ -821,7 +821,7 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
         if active and active == normalized:
             return True
     except Exception:
-        pass
+        logger.debug("Ignoring error in is_provider_explicitly_configured()", exc_info=True)
 
     # 2. Check config.yaml model.provider
     try:
@@ -834,7 +834,7 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
             if cfg_provider == normalized:
                 return True
     except Exception:
-        pass
+        logger.debug("Ignoring error in is_provider_explicitly_configured()", exc_info=True)
 
     # 3. Check provider-specific env vars
     # Exclude CLAUDE_CODE_OAUTH_TOKEN — it's set by Claude Code itself,
@@ -1506,7 +1506,7 @@ def refresh_codex_oauth_pure(
                 if isinstance(err_desc, str) and err_desc.strip():
                     message = f"Codex token refresh failed: {err_desc.strip()}"
         except Exception:
-            pass
+            logger.debug("Ignoring error in refresh_codex_oauth_pure()", exc_info=True)
         if code in {"invalid_grant", "invalid_token", "invalid_request"}:
             relogin_required = True
         if code == "refresh_token_reused":
@@ -1862,7 +1862,7 @@ def get_codex_auth_status() -> dict[str, Any]:
                         "api_key": api_key,
                     }
     except Exception:
-        pass
+        logger.debug("Ignoring error in get_codex_auth_status()", exc_info=True)
 
     # Fall back to legacy provider state
     try:
@@ -1974,7 +1974,7 @@ def get_auth_status(provider_id: str | None = None) -> dict[str, Any]:
             if _is_active or _has_env:
                 return {"logged_in": True, "configured": True, "auth_type": "none"}
         except Exception:
-            pass
+            logger.debug("Ignoring error in get_auth_status()", exc_info=True)
         return {"logged_in": False, "configured": False}
     # API-key providers
     pconfig = PROVIDER_REGISTRY.get(target)
@@ -2293,7 +2293,7 @@ def _prompt_model_selection(
             return custom if custom else None
         return None
     except (ImportError, NotImplementedError, OSError, subprocess.SubprocessError):
-        pass
+        logger.debug("Ignoring error in _prompt_model_selection()", exc_info=True)
 
     # Fallback: numbered list
     print(menu_title)
@@ -2385,7 +2385,7 @@ def _login_openai_codex(args, pconfig: ProviderConfig) -> None:
         else:
             print("Existing Codex credentials are expired. Starting fresh login...")
     except AuthError:
-        pass
+        logger.debug("Ignoring error in _login_openai_codex()", exc_info=True)
 
     # Check for existing Codex CLI tokens we can import
     cli_tokens = _import_codex_cli_tokens()

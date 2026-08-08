@@ -254,7 +254,7 @@ def _has_any_provider_configured() -> bool:
                 if key.strip() in provider_env_vars and val:
                     return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     # Check provider-specific auth fallbacks (for example, Copilot via gh auth).
     try:
@@ -265,7 +265,7 @@ def _has_any_provider_configured() -> bool:
             if status.get("logged_in"):
                 return True
     except Exception:
-        pass
+        logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     # Check for active OAuth credentials
     auth_file = get_spark_home() / "auth.json"
@@ -280,7 +280,7 @@ def _has_any_provider_configured() -> bool:
                 if status.get("logged_in"):
                     return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     # Check config.yaml — if model is a dict with an explicit provider set,
     # the user has gone through setup (fresh installs have model as a plain
@@ -309,7 +309,7 @@ def _has_any_provider_configured() -> bool:
             ):
                 return True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _has_any_provider_configured()", exc_info=True)
 
     return False
 
@@ -386,7 +386,7 @@ def _session_browse_picker(sessions: list) -> str | None:
                     try:
                         stdscr.addstr(0, 0, "Terminal too small")
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _curses_browse()", exc_info=True)
                     stdscr.refresh()
                     stdscr.getch()
                     return
@@ -405,7 +405,7 @@ def _session_browse_picker(sessions: list) -> str | None:
                 try:
                     stdscr.addnstr(0, 0, header, max_x - 1, header_attr)
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 # Column header line
                 fixed_cols = 3 + 12 + 6 + 18 + 6
@@ -417,7 +417,7 @@ def _session_browse_picker(sessions: list) -> str | None:
                     )
                     stdscr.addnstr(1, 0, col_header, max_x - 1, dim_attr)
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 # Compute visible area
                 visible_rows = max_y - 4  # header + col header + blank + footer
@@ -430,7 +430,7 @@ def _session_browse_picker(sessions: list) -> str | None:
                         msg = "  No sessions match the filter."
                         stdscr.addnstr(3, 0, msg, max_x - 1, curses.A_DIM)
                     except curses.error:
-                        pass
+                        logger.debug("Ignoring error in _curses_browse()", exc_info=True)
                 else:
                     if cursor >= len(filtered):
                         cursor = len(filtered) - 1
@@ -461,7 +461,7 @@ def _session_browse_picker(sessions: list) -> str | None:
                         try:
                             stdscr.addnstr(y, 0, row, max_x - 1, attr)
                         except curses.error:
-                            pass
+                            logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 # Footer
                 footer_y = max_y - 1
@@ -480,7 +480,7 @@ def _session_browse_picker(sessions: list) -> str | None:
                         curses.color_pair(4) if curses.has_colors() else curses.A_DIM,
                     )
                 except curses.error:
-                    pass
+                    logger.debug("Ignoring error in _curses_browse()", exc_info=True)
 
                 stdscr.refresh()
                 key = stdscr.getch()
@@ -527,7 +527,7 @@ def _session_browse_picker(sessions: list) -> str | None:
         return result_holder[0]
 
     except Exception:
-        pass
+        logger.debug("Ignoring error in _session_browse_picker()", exc_info=True)
 
     # Fallback: numbered list (Windows without curses, etc.)
     print("\n  Browse sessions  (enter number to resume, q to cancel)\n")
@@ -568,7 +568,7 @@ def _resolve_last_cli_session() -> str | None:
         if sessions:
             return sessions[0]["id"]
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_last_cli_session()", exc_info=True)
     return None
 
 
@@ -707,7 +707,7 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
         db.close()
         return session_id
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_session_by_name_or_id()", exc_info=True)
     return None
 
 
@@ -781,7 +781,7 @@ def cmd_chat(args):
 
         prefetch_update_check()
     except Exception:
-        pass
+        logger.debug("Ignoring error in cmd_chat()", exc_info=True)
 
     # Sync bundled skills on every CLI launch (fast -- skips unchanged skills)
     try:
@@ -789,7 +789,7 @@ def cmd_chat(args):
 
         sync_skills(quiet=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in cmd_chat()", exc_info=True)
 
     # --yolo: bypass all dangerous command approvals
     if getattr(args, "yolo", False):
@@ -1006,7 +1006,7 @@ def cmd_whatsapp(args):
             cwd=str(bridge_dir),
         )
     except KeyboardInterrupt:
-        pass
+        logger.debug("Ignoring error in cmd_whatsapp()", exc_info=True)
 
     # ── Step 7: Post-pairing ─────────────────────────────────────────────
     print()
@@ -1469,7 +1469,7 @@ def _prompt_provider_choice(choices, *, default=0):
             print()
             return idx
     except Exception:
-        pass
+        logger.debug("Ignoring error in _prompt_provider_choice()", exc_info=True)
 
     # Fallback: numbered list
     print(_q)
@@ -1591,13 +1591,13 @@ def _model_flow_openai_codex(config, current_model=""):
         if _codex_status.get("logged_in"):
             _codex_token = _codex_status.get("api_key")
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_openai_codex()", exc_info=True)
     if not _codex_token:
         try:
             _codex_creds = resolve_codex_runtime_credentials()
             _codex_token = _codex_creds.get("api_key")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _model_flow_openai_codex()", exc_info=True)
 
     # Use live Codex discovery for fresh model slugs, but keep the interactive
     # picker responsive by bounding the request tightly. Slow or failed live
@@ -1653,7 +1653,7 @@ def _model_flow_qwen_oauth(_config, current_model=""):
         creds = resolve_qwen_runtime_credentials(refresh_if_expiring=True)
         models = fetch_api_models(creds["api_key"], creds["base_url"])
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_qwen_oauth()", exc_info=True)
     if not models:
         models = list(_DEFAULT_QWEN_PORTAL_MODELS)
 
@@ -2304,7 +2304,7 @@ def _prompt_reasoning_effort_selection(efforts, current_effort=""):
             return "none"
         return None
     except (ImportError, NotImplementedError, OSError, subprocess.SubprocessError):
-        pass
+        logger.debug("Ignoring error in _prompt_reasoning_effort_selection()", exc_info=True)
 
     print("Select reasoning effort:")
     for i, effort in enumerate(ordered, 1):
@@ -2415,7 +2415,7 @@ def _model_flow_copilot(config, current_model=""):
                     print(f"  ✗ {msg}")
                     return
             except ImportError:
-                pass
+                logger.debug("Ignoring error in _model_flow_copilot()", exc_info=True)
             save_env_value("COPILOT_GITHUB_TOKEN", new_key)
             print("  Token saved.")
             print()
@@ -2575,7 +2575,7 @@ def _model_flow_copilot_acp(config, current_model=""):
         catalog_creds = resolve_api_key_provider_credentials("copilot")
         catalog_api_key = catalog_creds.get("api_key", "")
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_copilot_acp()", exc_info=True)
 
     catalog = fetch_github_model_catalog(catalog_api_key)
     normalized_current_model = (
@@ -2821,7 +2821,7 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
 
         mdev_models = list_agentic_models(provider_id)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_api_key_provider()", exc_info=True)
 
     if mdev_models:
         model_list = mdev_models
@@ -3009,7 +3009,7 @@ def _model_flow_anthropic(config, current_model=""):
         if cc_creds and is_claude_code_token_valid(cc_creds):
             cc_available = True
     except Exception:
-        pass
+        logger.debug("Ignoring error in _model_flow_anthropic()", exc_info=True)
 
     has_creds = bool(existing_key) or cc_available
     needs_auth = not has_creds
@@ -3229,7 +3229,7 @@ def cmd_version(args):
         elif behind == 0:
             print("Up to date")
     except Exception:
-        pass
+        logger.debug("Ignoring error in cmd_version()", exc_info=True)
 
 
 def cmd_uninstall(args):
@@ -3265,7 +3265,7 @@ def _clear_bytecode_cache(root: Path) -> int:
                 _shutil.rmtree(dirpath)
                 removed += 1
             except OSError:
-                pass
+                logger.debug("Ignoring error in _clear_bytecode_cache()", exc_info=True)
             dirnames.clear()  # nothing left to recurse into
     return removed
 
@@ -3298,7 +3298,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
             prompt_path.unlink(missing_ok=True)
             return answer if answer else default
         except (OSError, ValueError):
-            pass
+            logger.debug("Ignoring error in _gateway_prompt()", exc_info=True)
 
     payload = {
         "prompt": prompt_text,
@@ -3321,7 +3321,7 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
                 prompt_path.unlink(missing_ok=True)
                 return answer if answer else default
             except (OSError, ValueError):
-                pass
+                logger.debug("Ignoring error in _gateway_prompt()", exc_info=True)
         _time.sleep(0.5)
 
     # Timeout — clean up and use default
@@ -3656,7 +3656,7 @@ def _update_via_zip(args):
         if not result["copied"] and not result.get("updated"):
             print("  ✓ Skills are up to date")
     except Exception:
-        pass
+        logger.debug("Ignoring error in _update_via_zip()", exc_info=True)
 
     print()
     print("✓ Update complete!")
@@ -3730,7 +3730,7 @@ def _sync_default_soul_for_update(*, include_profiles: bool = True) -> None:
                     if profile_home != active_home:
                         _seed_soul(profile_home)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _sync_default_soul_for_update()", exc_info=True)
 
         if seeded:
             print()
@@ -3870,7 +3870,7 @@ def _sync_bundled_skills_to_dashboard_homes_for_update(
 
         already.add(get_spark_home().resolve())
     except Exception:
-        pass
+        logger.debug("Ignoring error in _sync_bundled_skills_to_dashboard_homes_for_update()", exc_info=True)
 
     pending: list[Path] = []
     for home in homes:
@@ -4177,7 +4177,7 @@ def _get_origin_url(git_cmd: list[str], cwd: Path) -> str | None:
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_origin_url()", exc_info=True)
     return None
 
 
@@ -4238,7 +4238,7 @@ def _count_commits_between(git_cmd: list[str], cwd: Path, base: str, head: str) 
         if result.returncode == 0:
             return int(result.stdout.strip())
     except Exception:
-        pass
+        logger.debug("Ignoring error in _count_commits_between()", exc_info=True)
     return -1
 
 
@@ -4256,7 +4256,7 @@ def _mark_skip_upstream_prompt():
 
         (get_spark_home() / SKIP_UPSTREAM_PROMPT_FILE).touch()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _mark_skip_upstream_prompt()", exc_info=True)
 
 
 def _sync_fork_with_upstream(git_cmd: list[str], cwd: Path) -> bool:
@@ -4415,7 +4415,7 @@ def _invalidate_update_cache():
             if cache_file.exists():
                 cache_file.unlink()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _invalidate_update_cache()", exc_info=True)
 
 
 def _load_installable_optional_extras() -> list[str]:
@@ -4657,7 +4657,7 @@ def _write_update_exit_code(code: int) -> None:
     try:
         _exit_code_path.write_text(str(code))
     except OSError:
-        pass
+        logger.debug("Ignoring error in _write_update_exit_code()", exc_info=True)
 
 
 def _verify_dashboard_after_update(*, gateway_mode: bool = False) -> bool:
@@ -5234,7 +5234,7 @@ def cmd_update(args):
                 try:
                     _ensure_user_systemd_env()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
                 for _scope, scope_cmd in [
                     ("user", ["systemctl", "--user"]),
@@ -5277,7 +5277,7 @@ def cmd_update(args):
                                     f"  ⚠ Failed to restart {svc_name}: {restart.stderr.strip()}"
                                 )
                     except (FileNotFoundError, subprocess.TimeoutExpired):
-                        pass
+                        logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             # --- Launchd services (macOS) ---
             if is_macos():
@@ -5304,7 +5304,7 @@ def cmd_update(args):
                                 stderr = (getattr(e, "stderr", "") or "").strip()
                                 print(f"  ⚠ Gateway restart failed: {stderr}")
                 except (FileNotFoundError, subprocess.TimeoutExpired, ImportError):
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             # --- Manual (non-service) gateways ---
             # Kill any remaining gateway processes not managed by a service,
@@ -5319,7 +5319,7 @@ def cmd_update(args):
                     os.kill(pid, _signal.SIGTERM)
                     killed_pids.add(pid)
                 except (ProcessLookupError, PermissionError):
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             if killed_pids:
                 # Brief pause so the old process releases its port/socket
@@ -5370,7 +5370,7 @@ def cmd_update(args):
                         else:
                             print("  ⚠ Gateway may still be starting — run: spark gateway status")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in cmd_update()", exc_info=True)
 
             if not restarted_services and not killed_pids:
                 # No gateways were running — nothing to do

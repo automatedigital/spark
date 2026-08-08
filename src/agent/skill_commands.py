@@ -282,7 +282,7 @@ def scan_skill_commands() -> dict[str, dict[str, Any]]:
                         if canonical:
                             provenance = str(canonical.get("provenance") or provenance)
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in scan_skill_commands()", exc_info=True)
                     _skill_commands[f"/{cmd_name}"] = {
                         "name": name,
                         "description": description or f"Invoke the {name} skill",

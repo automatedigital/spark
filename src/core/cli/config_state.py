@@ -419,7 +419,7 @@ def save_config_value(key_path: str, value: any) -> bool:
         try:
             os.chmod(config_path, 0o600)
         except (OSError, NotImplementedError):
-            pass
+            logger.debug("Ignoring error in save_config_value()", exc_info=True)
 
         return True
     except Exception as e:

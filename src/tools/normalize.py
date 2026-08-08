@@ -221,7 +221,7 @@ def default_rules() -> CompiledRules:
             from core.spark_constants import get_spark_home
             user_dir = get_spark_home() / "normalization_rules"
         except Exception:
-            pass
+            logger.debug("Ignoring error in default_rules()", exc_info=True)
         project_dir = Path.cwd() / ".spark" / "normalization_rules"
         _default_rules = load_rules(user_dir=user_dir, project_dir=project_dir)
     return _default_rules

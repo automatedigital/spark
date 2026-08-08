@@ -159,7 +159,7 @@ class DingTalkAdapter(BasePlatformAdapter):
             try:
                 await self._stream_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._stream_task = None
 
         if self._http_client:
@@ -204,7 +204,7 @@ class DingTalkAdapter(BasePlatformAdapter):
                 try:
                     self._session_webhooks.pop(next(iter(self._session_webhooks)))
                 except StopIteration:
-                    pass
+                    logger.debug("Ignoring error in _on_message()", exc_info=True)
             self._session_webhooks[chat_id] = session_webhook
 
         source = self.build_source(

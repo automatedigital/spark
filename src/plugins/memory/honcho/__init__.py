@@ -176,7 +176,7 @@ class HonchoMemoryProvider(MemoryProvider):
             try:
                 existing = json.loads(config_path.read_text())
             except Exception:
-                pass
+                logger.debug("Ignoring error in save_config()", exc_info=True)
         existing.update(values)
         config_path.write_text(json.dumps(existing, indent=2))
 
@@ -711,7 +711,7 @@ class HonchoMemoryProvider(MemoryProvider):
             try:
                 self._manager.flush_all()
             except Exception:
-                pass
+                logger.debug("Ignoring error in shutdown()", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

@@ -203,7 +203,7 @@ class HomeAssistantAdapter(BasePlatformAdapter):
             try:
                 await self._listen_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._listen_task = None
 
         await self._cleanup_ws()

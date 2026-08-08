@@ -123,7 +123,7 @@ def _redirect_uri(provider: str = "google") -> str:
             if base:
                 return f"{base.rstrip('/')}{path}"
     except Exception:
-        pass
+        logger.debug("Ignoring error in _redirect_uri()", exc_info=True)
 
     # 2. Server / public deployment → reachable host
     try:
@@ -133,7 +133,7 @@ def _redirect_uri(provider: str = "google") -> str:
             base = get_public_base_url("0.0.0.0", _server_port).rstrip("/")
             return f"{base}{path}"
     except Exception:
-        pass
+        logger.debug("Ignoring error in _redirect_uri()", exc_info=True)
 
     # 3. Local default
     return f"http://localhost:{_server_port}{path}"
@@ -308,7 +308,7 @@ async def connector_save_api_key(connector_id: str, payload: ApiKeyRequest):
 
                 remove_env_value(env_var)
             except Exception:
-                pass
+                logger.debug("Ignoring error in connector_save_api_key()", exc_info=True)
             return JSONResponse(
                 {"error": "validation_failed", "message": status.detail},
                 status_code=400,
@@ -832,7 +832,7 @@ async def google_disconnect(disable_skills: bool = True):
                         timeout=5,
                     )
             except Exception:
-                pass
+                logger.debug("Ignoring error in google_disconnect()", exc_info=True)
 
         clear_token()
         clear_imap_credentials()

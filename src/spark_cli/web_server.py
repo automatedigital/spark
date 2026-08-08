@@ -124,7 +124,7 @@ def _build_git_metadata() -> tuple[str | None, str | None]:
                 timeout=2,
             ).stdout.strip() or None
         except (OSError, subprocess.SubprocessError):
-            pass
+            _log.debug("Ignoring error in _build_git_metadata()", exc_info=True)
     if repository_url is None:
         try:
             remote = subprocess.run(
@@ -137,7 +137,7 @@ def _build_git_metadata() -> tuple[str | None, str | None]:
             ).stdout.strip()
             repository_url = _github_repository_url(remote)
         except (OSError, subprocess.SubprocessError):
-            pass
+            _log.debug("Ignoring error in _build_git_metadata()", exc_info=True)
     return commit, repository_url
 
 
@@ -592,11 +592,11 @@ class _EventSubscriber:
         try:
             priority_head = self.priority_queue._queue[0]  # type: ignore[attr-defined]
         except (AttributeError, IndexError):
-            pass
+            _log.debug("Ignoring error in _get_earliest_ready()", exc_info=True)
         try:
             data_head = self.data_queue._queue[0]  # type: ignore[attr-defined]
         except (AttributeError, IndexError):
-            pass
+            _log.debug("Ignoring error in _get_earliest_ready()", exc_info=True)
         if priority_head is None:
             return self.data_queue.get_nowait() if data_head is not None else None
         if data_head is None:
@@ -658,7 +658,7 @@ class _EventSubscriber:
             self.priority_queue.put_nowait(envelope)
             return
         except asyncio.QueueFull:
-            pass
+            _log.debug("Ignoring error in _enqueue_priority()", exc_info=True)
         # Priority capacity is reserved from token traffic. If lifecycle traffic
         # itself fills it, replace the oldest item and surface a recovery gap.
         try:
@@ -1579,7 +1579,7 @@ class _CheckpointWriter:
                         try:
                             db.close()
                         except Exception:
-                            pass
+                            _log.debug("Ignoring error in _run()", exc_info=True)
                         db = None
                         db_path = None
                     request.attempts += 1
@@ -1610,7 +1610,7 @@ class _CheckpointWriter:
                 try:
                     db.close()
                 except Exception:
-                    pass
+                    _log.debug("Ignoring error in _run()", exc_info=True)
 
     @staticmethod
     def _write_request(db: Any, request: _CheckpointRequest) -> None:
@@ -1821,7 +1821,7 @@ def _clear_web_turn(session_id: str) -> None:
                 try:
                     response_queue.put_nowait(_WEB_INPUT_CANCELLED)
                 except thread_queue.Full:
-                    pass
+                    _log.debug("Ignoring error in _clear_web_turn()", exc_info=True)
 
     for action_id in cancelled_actions:
         action = _get_web_pending_action(action_id)
@@ -1872,7 +1872,7 @@ def _prefetch_update_check() -> None:
         from spark_cli.banner import check_for_updates
         check_for_updates()
     except Exception:
-        pass
+        _log.debug("Ignoring error in _prefetch_update_check()", exc_info=True)
 
 
 def _prefetch_mac_update_check() -> None:
@@ -1881,7 +1881,7 @@ def _prefetch_mac_update_check() -> None:
         if _is_desktop_app() and sys.platform == "darwin":
             _check_mac_update(force=True)
     except Exception:
-        pass
+        _log.debug("Ignoring error in _prefetch_mac_update_check()", exc_info=True)
 
 
 def _init_memory_store() -> None:
@@ -1986,7 +1986,7 @@ async def _lifespan(_app: FastAPI):
             try:
                 response_queue.put_nowait(_WEB_INPUT_CANCELLED)
             except thread_queue.Full:
-                pass
+                _log.debug("Ignoring error in _lifespan()", exc_info=True)
         _web_turn_aliases.clear()
         _web_queues.clear()
         with _pending_token_lock:
@@ -1999,7 +1999,7 @@ async def _lifespan(_app: FastAPI):
         try:
             await loop_lag_task
         except asyncio.CancelledError:
-            pass
+            _log.debug("Ignoring error in _lifespan()", exc_info=True)
 
 
 app = FastAPI(title="Spark Agent", version=__version__, lifespan=_lifespan)
@@ -2048,7 +2048,7 @@ class EfficiencyCounterMiddleware(BaseHTTPMiddleware):
             if size and size.isdigit():
                 increment("json_snapshot_bytes", int(size))
         except Exception:
-            pass
+            _log.debug("Ignoring error in dispatch()", exc_info=True)
         return response
 
 
@@ -2207,7 +2207,7 @@ def _publish_event(topic: str, data: dict, session_id: str | None = None) -> Non
         if detailed_enabled():
             increment("event_payload_bytes", len(json.dumps(envelope, default=str).encode("utf-8")))
     except Exception:
-        pass
+        _log.debug("Ignoring error in _publish_event()", exc_info=True)
     envelope["_seq"] = _next_event_sequence()
 
     # A semantic event is a hard token-batch boundary. Seal the current batch
@@ -2231,7 +2231,7 @@ def _publish_event(topic: str, data: dict, session_id: str | None = None) -> Non
                     sealed_gap_sessions,
                 )
             except Exception:
-                pass
+                _log.debug("Ignoring error in _publish_event()", exc_info=True)
 
     if topic == "chat.token" and session_id:
         should_schedule = False
@@ -2278,7 +2278,7 @@ def _publish_event(topic: str, data: dict, session_id: str | None = None) -> Non
     try:
         loop.call_soon_threadsafe(_fanout_event_envelope, envelope, published_at)
     except Exception:
-        pass
+        _log.debug("Ignoring error in _publish_event()", exc_info=True)
 
 
 def _schedule_pending_token_flush(
@@ -2379,7 +2379,7 @@ def _fanout_event_envelope(envelope: dict[str, Any], published_at: float) -> Non
                     subscriber.put_nowait(envelope)
                     continue
                 except asyncio.QueueFull:
-                    pass
+                    _log.debug("Ignoring error in _fanout_event_envelope()", exc_info=True)
             _record_event_drop(topic, session_id)
         except Exception:
             _event_subscribers.discard(subscriber)
@@ -3198,7 +3198,7 @@ def _update_command(check_only: bool) -> list[str]:
             # Pre-write "y" so _gateway_prompt auto-accepts the "run installer?" question
             (spark_home / ".update_response").write_text("y")
     except Exception:
-        pass
+        _log.debug("Ignoring error in _update_command()", exc_info=True)
     if check_only:
         return _spark_command("version")
     return _spark_command("update", "--gateway")
@@ -3350,7 +3350,7 @@ def _queue_admin_event(run_id: str, event: dict) -> None:
     try:
         queue.put_nowait(event)
     except Exception:
-        pass
+        _log.debug("Ignoring error in _queue_admin_event()", exc_info=True)
 
 
 def _append_admin_output(run_id: str, stream: str, text: str) -> None:
@@ -3536,7 +3536,7 @@ async def get_status():
         finally:
             db.close()
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_status()", exc_info=True)
 
     spark_cfg = load_config()
     _dash = spark_cfg.get("dashboard") if isinstance(spark_cfg, dict) else {}
@@ -3552,7 +3552,7 @@ async def get_status():
             _data = _json.loads(_cache.read_text())
             commits_behind = _data.get("behind")
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_status()", exc_info=True)
 
     return {
         "server_instance_id": _SERVER_INSTANCE_ID,
@@ -4580,7 +4580,7 @@ async def setup_onboarding_skills(req: OnboardingSkillsRequest):
             cfg["skills"] = skills_cfg
             save_config(cfg)
     except Exception:
-        pass
+        _log.debug("Ignoring error in setup_onboarding_skills()", exc_info=True)
 
     return {
         "ok": True,
@@ -4640,7 +4640,7 @@ async def get_schema():
             if main_provider and "delegation.provider" in schema:
                 schema["delegation.provider"] = {**schema["delegation.provider"], "placeholder": main_provider}
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_schema()", exc_info=True)
     return {"fields": schema, "category_order": _CATEGORY_ORDER}
 
 
@@ -4738,7 +4738,7 @@ def get_codex_usage():
             if active_model:
                 active_model = active_model.replace("-", " ").title().replace(" ", "-").replace("Gpt", "GPT")
         except Exception:
-            pass
+            _log.debug("Ignoring error in get_codex_usage()", exc_info=True)
 
         # Fetch live usage from the wham/usage endpoint (discovered via CodexBar)
         # Requires the ChatGPT-Account-Id header extracted from the JWT claims.
@@ -4758,7 +4758,7 @@ def get_codex_usage():
                     auth_ns = jwt_claims.get("https://api.openai.com/auth", {})
                     account_id = auth_ns.get("chatgpt_account_id", "")
             except Exception:
-                pass
+                _log.debug("Ignoring error in get_codex_usage()", exc_info=True)
 
             wham_headers = {
                 "Authorization": f"Bearer {access_token}",
@@ -4866,7 +4866,7 @@ def get_model_info():
                     "model_family": mc.model_family,
                 }
         except Exception:
-            pass
+            _log.debug("Ignoring error in get_model_info()", exc_info=True)
 
         return {
             "model": model_name,
@@ -4915,7 +4915,7 @@ def get_model_status():
                 mc = get_model_capabilities(provider=smart_provider, model=smart_model)
                 reasoning_supported = bool(mc and mc.supports_reasoning)
         except Exception:
-            pass
+            _log.debug("Ignoring error in get_model_status()", exc_info=True)
 
         catalog_source = "unavailable"
         catalog_warning = ""
@@ -4924,7 +4924,7 @@ def get_model_status():
             catalog_source = str(catalog.get("source") or "unavailable")
             catalog_warning = str(catalog.get("warning") or "")
         except Exception:
-            pass
+            _log.debug("Ignoring error in get_model_status()", exc_info=True)
 
         return {
             "smart_model": "auto" if global_model.selection == "auto" else smart_model,
@@ -5268,7 +5268,7 @@ def get_reasoning_effort():
                 mc = get_model_capabilities(provider=provider, model=model_name)
                 supported = bool(mc and mc.supports_reasoning)
         except Exception:
-            pass
+            _log.debug("Ignoring error in get_reasoning_effort()", exc_info=True)
 
         return {"effort": effort, "supported": supported}
     except Exception:
@@ -5755,14 +5755,14 @@ async def disconnect_oauth_provider(provider_id: str, request: Request):
             if _SPARK_OAUTH_FILE.exists():
                 _SPARK_OAUTH_FILE.unlink()
         except Exception:
-            pass
+            _log.debug("Ignoring error in disconnect_oauth_provider()", exc_info=True)
         # Also clear the credential pool entry if present.
         try:
             from spark_cli.auth import clear_provider_auth
 
             clear_provider_auth("anthropic")
         except Exception:
-            pass
+            _log.debug("Ignoring error in disconnect_oauth_provider()", exc_info=True)
         _log.info("oauth/disconnect: %s", provider_id)
         return {"ok": True, "provider": provider_id}
 
@@ -5911,7 +5911,7 @@ def _save_anthropic_oauth_creds(
             try:
                 pool.remove_entry(getattr(e, "id", ""))
             except Exception:
-                pass
+                _log.debug("Ignoring error in _save_anthropic_oauth_creds()", exc_info=True)
         entry = PooledCredential(
             provider="anthropic",
             id=uuid.uuid4().hex[:6],
@@ -6291,7 +6291,7 @@ def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool
             for line in proc.stdout:
                 output.put(line)
         except Exception:
-            pass
+            _log.debug("Ignoring error in _read_output()", exc_info=True)
         finally:
             output.put(None)
 
@@ -6341,7 +6341,7 @@ def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool
                 try:
                     proc.kill()
                 except Exception:
-                    pass
+                    _log.debug("Ignoring error in _codex_cli_device_login_worker()", exc_info=True)
             _log.info(
                 "Codex CLI device auth did not produce a code within %.1fs; falling back to inline flow",
                 code_timeout,
@@ -6353,7 +6353,7 @@ def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool
         try:
             proc.kill()
         except Exception:
-            pass
+            _log.debug("Ignoring error in _codex_cli_device_login_worker()", exc_info=True)
         _log.debug("codex CLI device auth failed while reading output: %s", exc)
         return False
 
@@ -7042,7 +7042,7 @@ async def get_skills():
     try:
         sync_skills(quiet=True)
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_skills()", exc_info=True)
 
     # The metadata resolver is the source of truth for the web API.  Keep the
     # old fallback shape when a test/plugin provides synthetic skill rows that
@@ -7068,7 +7068,7 @@ async def get_skills():
         from tools.skill_usage import all_records
         usage_by_name = all_records()
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_skills()", exc_info=True)
 
     for s in skills:
         _apply_skill_quality_defaults(s)
@@ -7222,7 +7222,7 @@ async def delete_skill(skill_id: str):
 
                 set_state(record["name"], "archived")
             except Exception:
-                pass
+                _log.debug("Ignoring error in delete_skill()", exc_info=True)
             result = {"success": True, "name": record["name"]}
         except (OSError, ValueError) as exc:
             result = {"success": False, "error": str(exc)}
@@ -7234,7 +7234,7 @@ async def delete_skill(skill_id: str):
 
         set_state(record["name"], "archived")
     except Exception:
-        pass
+        _log.debug("Ignoring error in delete_skill()", exc_info=True)
     _publish_event("skills.updated", {"skill_id": skill_id, "action": "delete", "future_context": True})
     return {"ok": True, "name": record["name"], "future_context": True}
 
@@ -7254,7 +7254,7 @@ async def restore_skill(skill_id: str):
 
         set_state(record["name"], "active")
     except Exception:
-        pass
+        _log.debug("Ignoring error in restore_skill()", exc_info=True)
     _publish_event("skills.updated", {"skill_id": skill_id, "action": "restore", "future_context": True})
     return {"ok": True, "skill": (await get_skill_detail(skill_id)), "future_context": True}
 
@@ -7487,7 +7487,7 @@ def _has_pending_web_approval(session_id: str) -> bool:
         if isinstance(pending, dict):
             return session_id in pending
     except Exception:
-        pass
+        _log.debug("Ignoring error in _has_pending_web_approval()", exc_info=True)
     return False
 
 
@@ -7962,7 +7962,7 @@ def _run_fake_stream_task(
         try:
             loop.call_soon_threadsafe(queue.put_nowait, None)
         except Exception:
-            pass
+            _log.debug("Ignoring error in _run_fake_stream_task()", exc_info=True)
         _web_queues.pop(session_id, None)
         _publish_event(
             "chat.turn_done",
@@ -8133,7 +8133,7 @@ def _web_cmd_computer_use(args: str) -> "str | None":
             suffix = f"\n\n{hint}" if hint else ""
             return "computer_use is enabled for the desktop app, but cua-driver is not available yet." + suffix
     except Exception:
-        pass
+        _log.debug("Ignoring error in _web_cmd_computer_use()", exc_info=True)
 
     return "Computer-use is enabled for the desktop app. Describe the desktop task in your next message."
 
@@ -8590,7 +8590,7 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> str | No
                     start, end = _json.loads(excerpt_range) if isinstance(excerpt_range, str) else excerpt_range
                     return "\n".join(lines[max(0, start - 1):end])
                 except Exception:
-                    pass
+                    _log.debug("Ignoring error in _resolve_context_item_content()", exc_info=True)
             return "\n".join(lines[:100])
 
         if mode == InclusionMode.search:
@@ -8680,7 +8680,7 @@ def _inject_brief_if_present(session_id: str, user_message: str) -> str:
         if brief and brief.strip():
             return f"[Session Brief]\n{brief.strip()}\n[/Session Brief]\n\n---\n\n{user_message}"
     except Exception:
-        pass
+        _log.debug("Ignoring error in _inject_brief_if_present()", exc_info=True)
     return user_message
 
 
@@ -8785,14 +8785,14 @@ def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
             if m:
                 resets_in = int(m.group(1)) * 3600
         except Exception:
-            pass
+            _log.debug("Ignoring error in _maybe_capture_codex_usage_limit()", exc_info=True)
         _codex_usage_limit_hit = {
             "hit_at": time.time(),
             "resets_in_seconds": resets_in,
             "resets_at": (time.time() + resets_in) if resets_in else None,
         }
     except Exception:
-        pass
+        _log.debug("Ignoring error in _maybe_capture_codex_usage_limit()", exc_info=True)
 
 
 def _close_web_agent(session_id: str) -> None:
@@ -8805,7 +8805,7 @@ def _close_web_agent(session_id: str) -> None:
         try:
             close()
         except Exception:
-            pass
+            _log.debug("Ignoring error in _close_web_agent()", exc_info=True)
 
 
 def _default_web_chat_model() -> str:
@@ -8834,7 +8834,7 @@ def _resolve_web_turn_route(
 
             model = get_default_model_for_provider(runtime["provider"])
         except Exception:
-            pass
+            _log.debug("Ignoring error in _resolve_web_turn_route()", exc_info=True)
 
     primary = {
         "model": model,
@@ -9574,7 +9574,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
                                 slug = sess["workspace_slug"]
                                 workspace_root = _get_workspace_root(slug)
                         except Exception:
-                            pass
+                            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
                 if not content and item.get("source_path") and workspace_root:
                     content = _resolve_context_item_content(item, workspace_root) or ""
                 t = _count_tokens_fast(content)
@@ -9596,7 +9596,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
             for m in recent:
                 history_tokens += _count_tokens_fast(m.get("content") or "")
         except Exception:
-            pass
+            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
 
     total = prompt_tokens + attached_tokens + pinned_tokens + history_tokens
 
@@ -9609,7 +9609,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
             if mc and mc.context_window > 0:
                 context_window = mc.context_window
         except Exception:
-            pass
+            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
 
     utilization = total / context_window if context_window > 0 else 0.0
     warning = None
@@ -9712,7 +9712,7 @@ async def get_slash_commands():
                 }
             )
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_slash_commands()", exc_info=True)
 
     return out
 
@@ -9749,7 +9749,7 @@ async def get_conversation_models():
             "warning": catalog["warning"],
         }
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_conversation_models()", exc_info=True)
     curated = [
         ("anthropic/claude-sonnet-4.6", "Fast, strong generalist"),
         ("anthropic/claude-opus-4.6", "Highest quality"),
@@ -10376,7 +10376,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         try:
             db.reopen_session(session_id)
         except Exception:
-            pass
+            _log.debug("Ignoring error in send_conversation_message()", exc_info=True)
     finally:
         db.close()
 
@@ -11067,7 +11067,7 @@ async def conversation_input(session_id: str, body: ConversationInputBody):
             try:
                 response_queue.put_nowait(body.response)
             except thread_queue.Full:
-                pass
+                _log.debug("Ignoring error in conversation_input()", exc_info=True)
         _publish_event(
             "chat.input_resolved",
             {"action_id": body.action_id, "response": body.response},
@@ -11641,7 +11641,7 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
         from spark_cli.google_connector import apply_process_env as _apply_gws_env
         _apply_gws_env()
     except Exception:
-        pass
+        _log.debug("Ignoring error in start_server()", exc_info=True)
     public_url = get_public_base_url(host, port)
 
     _LOOPBACK = {"127.0.0.1", "::1", "localhost"}

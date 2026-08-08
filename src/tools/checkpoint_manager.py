@@ -235,7 +235,7 @@ def _dir_file_count(path: str) -> int:
             if count > _MAX_FILES:
                 return count
     except (PermissionError, OSError):
-        pass
+        logger.debug("Ignoring error in _dir_file_count()", exc_info=True)
     return count
 
 

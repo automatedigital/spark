@@ -502,7 +502,7 @@ class AIAgent(_PromptCacheMixin):
                 agent_cfg = (load_config() or {}).get("agent") or {}
                 dependency_scheduler = bool(agent_cfg.get("dependency_scheduler", True))
             except Exception:
-                pass
+                logger.debug("Ignoring error in __init__()", exc_info=True)
         self.dependency_scheduler = bool(dependency_scheduler) and not env_var_enabled(
             "SPARK_CONSERVATIVE_TOOL_SCHEDULER"
         )
@@ -559,7 +559,7 @@ class AIAgent(_PromptCacheMixin):
             if self.provider not in _AGGREGATOR_PROVIDERS:
                 self.model = normalize_model_for_provider(self.model, self.provider)
         except Exception:
-            pass
+            logger.debug("Ignoring error in __init__()", exc_info=True)
 
         # GPT-5.x models require the Responses API path — they are rejected
         # on /v1/chat/completions by both OpenAI and OpenRouter.  Also
@@ -1085,12 +1085,12 @@ class AIAgent(_PromptCacheMixin):
                                 _cfg.setdefault("memory", {})["provider"] = "honcho"
                                 _sc(_cfg)
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in __init__()", exc_info=True)
                             if not self.quiet_mode:
                                 print("  ✓ Auto-migrated Honcho to memory provider plugin.")
                                 print("    Your config and data are preserved.\n")
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in __init__()", exc_info=True)
 
                 if _mem_provider_name:
                     from agent.memory_manager import MemoryManager as _MemoryManager
@@ -1117,7 +1117,7 @@ class AIAgent(_PromptCacheMixin):
                             _init_kwargs["agent_identity"] = _profile
                             _init_kwargs["agent_workspace"] = "spark"
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in __init__()", exc_info=True)
                         self._memory_manager.initialize_all(**_init_kwargs)
                         logger.info("Memory provider '%s' activated", _mem_provider_name)
                     else:
@@ -1142,7 +1142,7 @@ class AIAgent(_PromptCacheMixin):
             skills_config = _agent_cfg.get("skills", {})
             self._skill_nudge_interval = int(skills_config.get("creation_nudge_interval", 10))
         except Exception:
-            pass
+            logger.debug("Ignoring error in __init__()", exc_info=True)
 
         # Tool-use enforcement config: "auto" (default — matches hardcoded
         # model list), true (always), false (never), or list of substrings.
@@ -1204,7 +1204,7 @@ class AIAgent(_PromptCacheMixin):
                                 try:
                                     _config_context_length = int(_cp_ctx)
                                 except (TypeError, ValueError):
-                                    pass
+                                    logger.debug("Ignoring error in __init__()", exc_info=True)
                     break
 
         # Select context engine: config-driven (like memory providers).
@@ -1218,7 +1218,7 @@ class AIAgent(_PromptCacheMixin):
             _ctx_cfg = _agent_cfg.get("context", {}) if isinstance(_agent_cfg, dict) else {}
             _engine_name = _ctx_cfg.get("engine", "compressor") or "compressor"
         except Exception:
-            pass
+            logger.debug("Ignoring error in __init__()", exc_info=True)
 
         if _engine_name != "compressor":
             # Try loading from plugins/context_engine/<name>/
@@ -1236,7 +1236,7 @@ class AIAgent(_PromptCacheMixin):
                     if _candidate and _candidate.name == _engine_name:
                         _selected_engine = _candidate
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in __init__()", exc_info=True)
 
             if _selected_engine is None:
                 logger.warning(
@@ -1610,7 +1610,7 @@ class AIAgent(_PromptCacheMixin):
             fn = self._print_fn or print
             fn(*args, **kwargs)
         except (OSError, ValueError):
-            pass
+            logger.debug("Ignoring error in _safe_print()", exc_info=True)
 
     def _vprint(self, *args, force: bool = False, **kwargs):
         """Verbose print — suppressed when actively streaming tokens.
@@ -1682,7 +1682,7 @@ class AIAgent(_PromptCacheMixin):
         try:
             self._vprint(f"{self.log_prefix}{message}", force=True)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _emit_status()", exc_info=True)
         if self.status_callback:
             try:
                 self.status_callback("lifecycle", message)
@@ -1813,7 +1813,7 @@ class AIAgent(_PromptCacheMixin):
             try:
                 self.status_callback("lifecycle", msg)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _replay_compression_warning()", exc_info=True)
 
     def _is_direct_openai_url(self, base_url: str = None) -> bool:
         """Return True when a base URL targets OpenAI's native API."""
@@ -2212,7 +2212,7 @@ class AIAgent(_PromptCacheMixin):
                         try:
                             _bg_cb(f"💾 {summary}")
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _run_review()", exc_info=True)
 
             except Exception as e:
                 logger.debug("Background memory/skill review failed: %s", e)
@@ -2224,7 +2224,7 @@ class AIAgent(_PromptCacheMixin):
                     try:
                         review_agent.close()
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _run_review()", exc_info=True)
 
         t = threading.Thread(target=_run_review, daemon=True, name="bg-review")
         t.start()
@@ -2659,7 +2659,7 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     context["reset_at"] = time.time() + float(retry_after)
                 except (TypeError, ValueError):
-                    pass
+                    logger.debug("Ignoring error in _extract_api_error_context()", exc_info=True)
 
         response = getattr(error, "response", None)
         headers = getattr(response, "headers", None)
@@ -2669,7 +2669,7 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     context["reset_at"] = time.time() + float(retry_after)
                 except (TypeError, ValueError):
-                    pass
+                    logger.debug("Ignoring error in _extract_api_error_context()", exc_info=True)
             ratelimit_reset = headers.get("x-ratelimit-reset")
             if ratelimit_reset and "reset_at" not in context:
                 context["reset_at"] = ratelimit_reset
@@ -3000,11 +3000,11 @@ class AIAgent(_PromptCacheMixin):
             try:
                 self._memory_manager.on_session_end(messages or [])
             except Exception:
-                pass
+                logger.debug("Ignoring error in shutdown_memory_provider()", exc_info=True)
             try:
                 self._memory_manager.shutdown_all()
             except Exception:
-                pass
+                logger.debug("Ignoring error in shutdown_memory_provider()", exc_info=True)
         # Notify context engine of session end (flush DAG, close DBs, etc.)
         if hasattr(self, "context_compressor") and self.context_compressor:
             try:
@@ -3013,7 +3013,7 @@ class AIAgent(_PromptCacheMixin):
                     messages or [],
                 )
             except Exception:
-                pass
+                logger.debug("Ignoring error in shutdown_memory_provider()", exc_info=True)
 
     def close(self) -> None:
         """Release all resources held by this agent instance.
@@ -3035,21 +3035,21 @@ class AIAgent(_PromptCacheMixin):
             from tools.process_registry import process_registry
             process_registry.kill_all(task_id=task_id)
         except Exception:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
 
         # 2. Clean terminal sandbox environments
         try:
             from tools.terminal_tool import cleanup_vm
             cleanup_vm(task_id)
         except Exception:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
 
         # 3. Clean browser daemon sessions
         try:
             from tools.browser_tool import cleanup_browser
             cleanup_browser(task_id)
         except Exception:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
 
         # 4. Close active child agents
         try:
@@ -3060,9 +3060,9 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     child.close()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in close()", exc_info=True)
         except Exception:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
 
         # 5. Close the OpenAI/httpx client
         try:
@@ -3071,7 +3071,7 @@ class AIAgent(_PromptCacheMixin):
                 self._close_openai_client(client, reason="agent_close", shared=True)
                 self.client = None
         except Exception:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
 
         # 6. Drain and close the ordered display queue.  The scheduler joins
         # tool workers before this point, so no callback can arrive afterwards.
@@ -3081,7 +3081,7 @@ class AIAgent(_PromptCacheMixin):
                 dispatcher.close()
                 self._tool_callback_dispatcher = None
         except Exception:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
 
     def _hydrate_todo_store(self, history: list[dict[str, Any]]) -> None:
         """
@@ -3987,11 +3987,11 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     sock.shutdown(_socket.SHUT_RDWR)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _force_close_tcp_sockets()", exc_info=True)
                 try:
                     sock.close()
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _force_close_tcp_sockets()", exc_info=True)
                 closed += 1
         except Exception as exc:
             logger.debug("Force-close TCP sockets sweep error: %s", exc)
@@ -4112,7 +4112,7 @@ class AIAgent(_PromptCacheMixin):
                     try:
                         sock.setblocking(True)
                     except OSError:
-                        pass
+                        logger.debug("Ignoring error in _cleanup_dead_connections()", exc_info=True)
             if dead_count > 0:
                 logger.warning(
                     "Found %d dead connection(s) in client pool — rebuilding client",
@@ -4197,7 +4197,7 @@ class AIAgent(_PromptCacheMixin):
                             try:
                                 on_progress()
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in _run_codex_stream()", exc_info=True)
                         self._touch_activity("receiving stream response")
                         if self._interrupt_requested:
                             break
@@ -4214,7 +4214,7 @@ class AIAgent(_PromptCacheMixin):
                                         try:
                                             on_first_delta()
                                         except Exception:
-                                            pass
+                                            logger.debug("Ignoring error in _run_codex_stream()", exc_info=True)
                                 self._fire_stream_delta(delta_text)
                         # Track tool calls to suppress text streaming
                         elif "function_call" in event_type:
@@ -4346,7 +4346,7 @@ class AIAgent(_PromptCacheMixin):
                     try:
                         on_progress()
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _run_codex_create_stream_fallback()", exc_info=True)
                 self._touch_activity("receiving stream response")
 
                 # Collect output items and text deltas for backfill
@@ -4397,7 +4397,7 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     close_fn()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _run_codex_create_stream_fallback()", exc_info=True)
 
         if terminal_response is not None:
             return terminal_response
@@ -4457,7 +4457,7 @@ class AIAgent(_PromptCacheMixin):
         try:
             self._anthropic_client.close()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _try_refresh_anthropic_client_credentials()", exc_info=True)
 
         try:
             self._anthropic_client = build_anthropic_client(new_token, getattr(self, "_anthropic_base_url", None))
@@ -4498,7 +4498,7 @@ class AIAgent(_PromptCacheMixin):
             try:
                 self._anthropic_client.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _swap_credential()", exc_info=True)
 
             self._anthropic_api_key = runtime_key
             self._anthropic_base_url = runtime_base
@@ -4656,7 +4656,7 @@ class AIAgent(_PromptCacheMixin):
                             try:
                                 _first_delta()
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in _on_first_delta()", exc_info=True)
 
                     result["response"] = self._run_codex_stream(
                         api_kwargs,
@@ -4767,7 +4767,7 @@ class AIAgent(_PromptCacheMixin):
                         if rc is not None:
                             self._close_request_openai_client(rc, reason="stale_call_kill")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _interruptible_api_call()", exc_info=True)
                 self._touch_activity(
                     f"stale provider call killed after {int(_silent_elapsed)}s without progress"
                 )
@@ -4798,7 +4798,7 @@ class AIAgent(_PromptCacheMixin):
                         if request_client is not None:
                             self._close_request_openai_client(request_client, reason="interrupt_abort")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _interruptible_api_call()", exc_info=True)
                 raise InterruptedError("Agent interrupted during API call")
         if result["error"] is not None:
             raise result["error"]
@@ -4865,7 +4865,7 @@ class AIAgent(_PromptCacheMixin):
                 cb(text)
                 delivered = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in _fire_stream_delta()", exc_info=True)
         if delivered:
             self._record_streamed_assistant_text(text)
 
@@ -4876,7 +4876,7 @@ class AIAgent(_PromptCacheMixin):
             try:
                 cb(text)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _fire_reasoning_delta()", exc_info=True)
 
     def _fire_tool_gen_started(self, tool_name: str) -> None:
         """Notify display layer that the model is generating tool call arguments.
@@ -4891,7 +4891,7 @@ class AIAgent(_PromptCacheMixin):
             try:
                 cb(tool_name)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _fire_tool_gen_started()", exc_info=True)
 
     def _has_stream_consumers(self) -> bool:
         """Return True if any streaming consumer is registered."""
@@ -4944,7 +4944,7 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     on_first_delta()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _fire_first_delta()", exc_info=True)
 
         def _call_chat_completions():
             """Stream a chat completions response."""
@@ -5050,7 +5050,7 @@ class AIAgent(_PromptCacheMixin):
                                 self.stream_delta_callback(delta.content)
                                 self._record_streamed_assistant_text(delta.content)
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in _call_chat_completions()", exc_info=True)
 
                 # Accumulate tool call deltas — notify display on first name
                 if delta and delta.tool_calls:
@@ -5310,7 +5310,7 @@ class AIAgent(_PromptCacheMixin):
                                         reason="stream_retry_pool_cleanup"
                                     )
                                 except Exception:
-                                    pass
+                                    logger.debug("Ignoring error in _call()", exc_info=True)
                                 continue
                             self._emit_status(
                                 "❌ Connection to provider failed after "
@@ -5403,13 +5403,13 @@ class AIAgent(_PromptCacheMixin):
                     if rc is not None:
                         self._close_request_openai_client(rc, reason="stale_stream_kill")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _interruptible_streaming_api_call()", exc_info=True)
                 # Rebuild the primary client too — its connection pool
                 # may hold dead sockets from the same provider outage.
                 try:
                     self._replace_primary_openai_client(reason="stale_stream_pool_cleanup")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _interruptible_streaming_api_call()", exc_info=True)
                 # Reset the timer so we don't kill repeatedly while
                 # the inner thread processes the closure.
                 last_chunk_time["t"] = time.time()
@@ -5432,7 +5432,7 @@ class AIAgent(_PromptCacheMixin):
                         if request_client is not None:
                             self._close_request_openai_client(request_client, reason="stream_interrupt_abort")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _interruptible_streaming_api_call()", exc_info=True)
                 raise InterruptedError("Agent interrupted during streaming API call")
         if result["error"] is not None:
             if deltas_were_sent["yes"]:
@@ -5522,7 +5522,7 @@ class AIAgent(_PromptCacheMixin):
 
                 fb_model = normalize_model_for_provider(fb_model, fb_provider)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _try_activate_fallback()", exc_info=True)
 
             # Determine api_mode from provider / base URL / model
             fb_api_mode = "chat_completions"
@@ -5728,7 +5728,7 @@ class AIAgent(_PromptCacheMixin):
                         self.client, reason="primary_recovery", shared=True,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _try_recover_primary_transport()", exc_info=True)
 
             # Rebuild from primary snapshot
             rt = self._primary_runtime
@@ -5836,7 +5836,7 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     cleanup_path.unlink()
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _describe_image_for_anthropic_fallback()", exc_info=True)
 
         if not description:
             description = "Image analysis failed."
@@ -6386,7 +6386,7 @@ class AIAgent(_PromptCacheMixin):
                 try:
                     self.reasoning_callback(reasoning_text)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _build_assistant_message()", exc_info=True)
 
         msg = {
             "role": "assistant",
@@ -6697,7 +6697,7 @@ class AIAgent(_PromptCacheMixin):
             try:
                 self._memory_manager.on_pre_compress(messages)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _compress_context()", exc_info=True)
 
         _typed_mode = getattr(self.context_compressor, "checkpoint_mode", "legacy") == "typed"
         if hasattr(self.context_compressor, "set_deterministic_state"):
@@ -6815,7 +6815,7 @@ class AIAgent(_PromptCacheMixin):
             from tools.file_tools import reset_file_dedup
             reset_file_dedup(task_id)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _compress_context()", exc_info=True)
 
         logger.info(
             "context compression done: session=%s messages=%d->%d tokens=~%s",
@@ -6956,7 +6956,7 @@ class AIAgent(_PromptCacheMixin):
                 function_name, function_args, task_id=effective_task_id or "",
             )
         except Exception:
-            pass
+            logger.debug("Ignoring error in _invoke_tool()", exc_info=True)
         if block_message is not None:
             return json.dumps({"error": block_message}, ensure_ascii=False)
 
@@ -6998,7 +6998,7 @@ class AIAgent(_PromptCacheMixin):
                             function_args.get("content", ""),
                         )
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _invoke_tool()", exc_info=True)
                 return result
             elif self._memory_manager and self._memory_manager.has_tool(function_name):
                 return self._memory_manager.handle_tool_call(function_name, function_args)
@@ -7106,7 +7106,7 @@ class AIAgent(_PromptCacheMixin):
                         work_dir = self._checkpoint_mgr.get_working_dir_for_path(file_path)
                         self._checkpoint_mgr.ensure_checkpoint(work_dir, f"before {function_name}")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _execute_tool_calls_concurrent()", exc_info=True)
 
             # Checkpoint before destructive terminal commands
             if function_name == "terminal" and self._checkpoint_mgr.enabled:
@@ -7118,7 +7118,7 @@ class AIAgent(_PromptCacheMixin):
                             cwd, f"before terminal: {cmd[:60]}"
                         )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _execute_tool_calls_concurrent()", exc_info=True)
 
             parsed_calls.append((tool_call, function_name, function_args))
 
@@ -7342,7 +7342,7 @@ class AIAgent(_PromptCacheMixin):
                     function_name, function_args, task_id=effective_task_id or "",
                 )
             except Exception:
-                pass
+                logger.debug("Ignoring error in _execute_tool_calls_sequential()", exc_info=True)
 
             if _block_msg is not None:
                 # Tool blocked by plugin policy — skip counter resets.
@@ -7389,12 +7389,12 @@ class AIAgent(_PromptCacheMixin):
                             try:
                                 self.tool_progress_callback("tool.output", _fn, line)
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in _stream_output()", exc_info=True)
                         set_output_callback(_stream_output)
                     else:
                         set_output_callback(None)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _execute_tool_calls_sequential()", exc_info=True)
 
             if _block_msg is None and self.tool_progress_callback:
                 try:
@@ -7994,7 +7994,7 @@ class AIAgent(_PromptCacheMixin):
                         "connection."
                     )
             except Exception:
-                pass
+                logger.debug("Ignoring error in run_conversation()", exc_info=True)
         # Replay compression warning through status_callback for gateway
         # platforms (the callback was not wired during __init__).
         if self._compression_warning:
@@ -8317,7 +8317,7 @@ class AIAgent(_PromptCacheMixin):
                 _query = original_user_message if isinstance(original_user_message, str) else ""
                 _ext_prefetch_cache = self._memory_manager.prefetch_all(_query) or ""
             except Exception:
-                pass
+                logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
         # Sliding window for repeated-tool-call loop detection.
         # Tracks (tool_name, args_json) for the last N single-tool iterations.
@@ -8501,7 +8501,7 @@ class AIAgent(_PromptCacheMixin):
                                 ),
                             }}
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in run_conversation()", exc_info=True)
                     new_tcs.append(tc)
                 am["tool_calls"] = new_tcs
 
@@ -8593,7 +8593,7 @@ class AIAgent(_PromptCacheMixin):
                             max_tokens=self.max_tokens,
                         )
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
                     if env_var_enabled("SPARK_DUMP_REQUESTS"):
                         self._dump_api_request_debug(api_kwargs, reason="preflight")
@@ -8770,7 +8770,7 @@ class AIAgent(_PromptCacheMixin):
                                 try:
                                     _resp_error_code = int(_code_raw)
                                 except (TypeError, ValueError):
-                                    pass
+                                    logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
                         # Build a human-readable failure hint from the error code
                         # and response time, instead of always assuming rate limiting.
@@ -9931,7 +9931,7 @@ class AIAgent(_PromptCacheMixin):
                                 try:
                                     _retry_after = min(int(_ra_raw), 120)  # Cap at 2 minutes
                                 except (TypeError, ValueError):
-                                    pass
+                                    logger.debug("Ignoring error in run_conversation()", exc_info=True)
                     wait_time = _retry_after if _retry_after else jittered_backoff(retry_count, base_delay=2.0, max_delay=60.0)
                     if _web_stale_provider:
                         # The user already sat through the full stale threshold;
@@ -10057,7 +10057,7 @@ class AIAgent(_PromptCacheMixin):
                         assistant_tool_call_count=len(_assistant_tool_calls),
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
                 # Handle assistant response
                 if assistant_message.content and not self.quiet_mode:
@@ -10081,12 +10081,12 @@ class AIAgent(_PromptCacheMixin):
                         try:
                             self.tool_progress_callback("_thinking", first_line)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in run_conversation()", exc_info=True)
                     elif _think_text:
                         try:
                             self.tool_progress_callback("reasoning.available", "_thinking", _think_text[:500], None)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
                 # Check for incomplete <REASONING_SCRATCHPAD> (opened but never closed)
                 # This means the model ran out of output tokens mid-reasoning — retry up to 2 times
@@ -10424,7 +10424,7 @@ class AIAgent(_PromptCacheMixin):
                         try:
                             self.stream_delta_callback(None)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
                     self._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
 
@@ -11053,7 +11053,7 @@ class AIAgent(_PromptCacheMixin):
                 self._memory_manager.sync_all(original_user_message, final_response)
                 self._memory_manager.queue_prefetch_all(original_user_message)
             except Exception:
-                pass
+                logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
         # Background memory/skill review — runs AFTER the response is delivered
         # so it never competes with the user's task for model attention.
@@ -11098,7 +11098,7 @@ class AIAgent(_PromptCacheMixin):
                 from agent.curator import maybe_run_curator as _maybe_curator
                 _maybe_curator()
             except Exception:
-                pass
+                logger.debug("Ignoring error in run_conversation()", exc_info=True)
 
         return result
 

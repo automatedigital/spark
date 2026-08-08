@@ -366,7 +366,7 @@ def _call_synthesis_llm(
     try:
         raw = response.choices[0].message.content or ""
     except Exception:
-        pass
+        logger.debug("Ignoring error in _call_synthesis_llm()", exc_info=True)
 
     return _parse_llm_json(raw)
 
@@ -559,7 +559,7 @@ def resolve_removal(fact_id: int, confirm: bool) -> bool:
                 try:
                     store.close()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in resolve_removal()", exc_info=True)
 
     _write_json(_pending_removals_path(), remaining)
     return True
@@ -581,7 +581,7 @@ def list_recent_dreams(limit: int = 5) -> list[dict]:
                     title = line.split(":", 1)[1].strip()
                     break
         except OSError:
-            pass
+            logger.debug("Ignoring error in list_recent_dreams()", exc_info=True)
         entries.append({
             "name": p.name,
             "path": str(p),
@@ -897,7 +897,7 @@ def run_dream(*, since: float | None = None, dry_run: bool = False) -> DreamResu
         try:
             store.close()
         except Exception:
-            pass
+            logger.debug("Ignoring error in run_dream()", exc_info=True)
 
     return result
 

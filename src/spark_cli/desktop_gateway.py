@@ -124,14 +124,14 @@ class DesktopGatewaySupervisor:
                 start_gateway(on_runner=self._capture_runner)
             )
         except SystemExit:
-            pass
+            logger.debug("Ignoring error in _run()", exc_info=True)
         except Exception:
             logger.warning("Background desktop gateway exited with error", exc_info=True)
         finally:
             try:
                 loop.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _run()", exc_info=True)
             self._loop = None
             self._runner = None
 

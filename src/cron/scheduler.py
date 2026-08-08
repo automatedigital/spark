@@ -130,7 +130,7 @@ def _resolve_delivery_target(job: dict) -> dict | None:
                 else:
                     chat_id = resolved
         except Exception:
-            pass
+            logger.debug("Ignoring error in _resolve_delivery_target()", exc_info=True)
 
         return {
             "platform": platform_name,
@@ -207,7 +207,7 @@ def _build_delivery_content(job: dict, content: str) -> tuple[str, list]:
         user_cfg = load_config()
         wrap_response = user_cfg.get("cron", {}).get("wrap_response", True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _build_delivery_content()", exc_info=True)
 
     if wrap_response:
         task_name = job.get("name", job["id"])
@@ -461,7 +461,7 @@ def _run_job_script(script_path: str, timeout: int | None = None) -> tuple[bool,
             stdout = redact_sensitive_text(stdout)
             stderr = redact_sensitive_text(stderr)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _run_job_script()", exc_info=True)
 
         if result.returncode != 0:
             parts = [f"Script exited with code {result.returncode}"]
@@ -630,7 +630,7 @@ def _setup_job_environment(job: dict) -> dict:
         if isinstance(_net_cfg, dict) and _net_cfg.get("force_ipv4"):
             apply_ipv4_preference(force=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _setup_job_environment()", exc_info=True)
 
     from core.spark_constants import parse_reasoning_effort
     effort = str(_cfg.get("agent", {}).get("reasoning_effort", "")).strip()
@@ -784,7 +784,7 @@ def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict, is_cance
                     try:
                         _idle_secs = agent.get_activity_summary().get("seconds_since_activity", 0.0)
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _execute_job_with_timeout()", exc_info=True)
                 if _idle_secs >= _cron_inactivity_limit:
                     _inactivity_timeout = True
                     break
@@ -800,7 +800,7 @@ def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict, is_cance
             try:
                 _activity = agent.get_activity_summary()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _execute_job_with_timeout()", exc_info=True)
         _last_desc = _activity.get("last_activity_desc", "unknown")
         _secs_ago = _activity.get("seconds_since_activity", 0)
         _cur_tool = _activity.get("current_tool")
@@ -1005,7 +1005,7 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
                         summary = error or (final_response[:200] if final_response else "completed")
                         _ws.push_job_notification(job["id"], job.get("name", job["id"]), success, summary)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in tick()", exc_info=True)
 
             except Exception as e:
                 logger.error("Error processing job %s: %s", job['id'], e)
@@ -1019,7 +1019,7 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
             try:
                 msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
             except OSError:
-                pass
+                logger.debug("Ignoring error in tick()", exc_info=True)
         lock_fd.close()
 
 

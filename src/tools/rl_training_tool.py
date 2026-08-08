@@ -499,7 +499,7 @@ def _stop_training_run(run_state: RunState):
             try:
                 fh.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _stop_training_run()", exc_info=True)
             setattr(run_state, attr, None)
 
 

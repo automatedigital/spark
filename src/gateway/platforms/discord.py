@@ -151,7 +151,7 @@ class VoiceReceiver:
         try:
             self._vc._connection.remove_socket_listener(self._on_packet)
         except Exception:
-            pass
+            logger.debug("Ignoring error in stop()", exc_info=True)
         with self._lock:
             self._buffers.clear()
             self._last_packet_time.clear()
@@ -375,7 +375,7 @@ class VoiceReceiver:
                 )
                 return uid
         except Exception:
-            pass
+            logger.debug("Ignoring error in _infer_user_for_ssrc()", exc_info=True)
         return 0
 
     def check_silence(self) -> list:
@@ -454,7 +454,7 @@ class VoiceReceiver:
             try:
                 os.unlink(pcm_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in pcm_to_wav()", exc_info=True)
 
 
 class DiscordAdapter(BasePlatformAdapter):
@@ -801,7 +801,7 @@ class DiscordAdapter(BasePlatformAdapter):
             try:
                 await self._post_connect_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
 
         self._running = False
         self._client = None
@@ -1285,14 +1285,14 @@ class DiscordAdapter(BasePlatformAdapter):
             try:
                 self._on_voice_disconnect(str(text_ch_id))
             except Exception:
-                pass
+                logger.debug("Ignoring error in _voice_timeout_handler()", exc_info=True)
         if text_ch_id and self._client:
             ch = self._client.get_channel(text_ch_id)
             if ch:
                 try:
                     await ch.send("Left voice channel (inactivity timeout).")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _voice_timeout_handler()", exc_info=True)
 
     def is_in_voice_channel(self, guild_id: int) -> bool:
         """Check if the bot is connected to a voice channel in this guild."""
@@ -1401,7 +1401,7 @@ class DiscordAdapter(BasePlatformAdapter):
                         if vc and vc.is_connected():
                             vc._connection.send_packet(b"\xf8\xff\xfe")
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _voice_listen_loop()", exc_info=True)
 
                 completed = receiver.check_silence()
                 for user_id, pcm_data in completed:
@@ -1409,7 +1409,7 @@ class DiscordAdapter(BasePlatformAdapter):
                         continue
                     await self._process_voice_input(guild_id, user_id, pcm_data)
         except asyncio.CancelledError:
-            pass
+            logger.debug("Ignoring error in _voice_listen_loop()", exc_info=True)
         except Exception as e:
             logger.error("Voice listen loop error: %s", e, exc_info=True)
 
@@ -1449,7 +1449,7 @@ class DiscordAdapter(BasePlatformAdapter):
             try:
                 os.unlink(wav_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _process_voice_input()", exc_info=True)
 
     def _is_allowed_user(self, user_id: str) -> bool:
         """Check if user is in DISCORD_ALLOWED_USERS."""
@@ -1652,7 +1652,7 @@ class DiscordAdapter(BasePlatformAdapter):
                         return
                     await asyncio.sleep(8)
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in _typing_loop()", exc_info=True)
 
         self._typing_tasks[chat_id] = asyncio.create_task(_typing_loop())
 
@@ -1664,7 +1664,7 @@ class DiscordAdapter(BasePlatformAdapter):
             try:
                 await task
             except (asyncio.CancelledError, Exception):
-                pass
+                logger.debug("Ignoring error in stop_typing()", exc_info=True)
 
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Get information about a Discord channel."""
@@ -2839,7 +2839,7 @@ class DiscordAdapter(BasePlatformAdapter):
                                     else:
                                         pending_text_injection = injection
                                 except UnicodeDecodeError:
-                                    pass
+                                    logger.debug("Ignoring error in _handle_message()", exc_info=True)
                         except Exception as e:
                             logger.warning(
                                 "[Discord] Failed to cache document %s: %s",

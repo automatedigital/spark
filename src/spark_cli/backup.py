@@ -167,7 +167,7 @@ def run_backup(args) -> None:
                 if fpath.resolve() == out_path.resolve():
                     continue
             except (OSError, ValueError):
-                pass
+                logger.debug("Ignoring error in run_backup()", exc_info=True)
 
             files_to_add.append((fpath, rel))
 

@@ -102,7 +102,7 @@ def save_state(data: dict[str, Any]) -> None:
             try:
                 os.unlink(tmp)
             except OSError:
-                pass
+                logger.debug("Ignoring error in save_state()", exc_info=True)
             raise
     except Exception as e:
         logger.debug("Failed to save curator state: %s", e, exc_info=True)
@@ -240,7 +240,7 @@ def _render_candidate_list() -> str:
         for rec in agent_created_report():
             usage_by_name[rec["name"]] = rec
     except Exception:
-        pass
+        logger.debug("Ignoring error in _render_candidate_list()", exc_info=True)
 
     lines = [f"Agent-created skills ({len(rows)}):\n"]
     for r in rows:
@@ -383,7 +383,7 @@ def _run_llm_review(prompt: str) -> dict[str, Any]:
             try:
                 review_agent.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _run_llm_review()", exc_info=True)
     return result
 
 
@@ -444,7 +444,7 @@ def run_curator_review(
             try:
                 on_summary(f"curator: {final_summary}")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _llm_pass()", exc_info=True)
 
     if synchronous:
         _llm_pass()

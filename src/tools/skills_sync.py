@@ -111,7 +111,7 @@ def _write_manifest(entries: dict[str, str]):
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _write_manifest()", exc_info=True)
             raise
     except Exception as e:
         logger.debug("Failed to write skills manifest %s: %s", MANIFEST_FILE, e, exc_info=True)
@@ -148,7 +148,7 @@ def _write_tombstones(names: set[str]) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in _write_tombstones()", exc_info=True)
         raise
 
 
@@ -299,7 +299,7 @@ def _dir_hash(directory: Path) -> str:
                 hasher.update(str(rel).encode("utf-8"))
                 hasher.update(fpath.read_bytes())
     except OSError:
-        pass
+        logger.debug("Ignoring error in _dir_hash()", exc_info=True)
     return hasher.hexdigest()
 
 
@@ -435,7 +435,7 @@ def sync_skills(quiet: bool = False, only: set | None = None) -> dict:
                         try:
                             stale.parent.rmdir()
                         except OSError:
-                            pass
+                            logger.debug("Ignoring error in sync_skills()", exc_info=True)
                     except OSError as e:
                         if not quiet:
                             print(f"  ! Failed to relocate {skill_name}: {e}")

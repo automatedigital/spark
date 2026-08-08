@@ -222,14 +222,14 @@ class SignalAdapter(BasePlatformAdapter):
             try:
                 await self._sse_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
 
         if self._health_monitor_task:
             self._health_monitor_task.cancel()
             try:
                 await self._health_monitor_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
 
         # Cancel all typing tasks
         for task in self._typing_tasks.values():
@@ -351,7 +351,7 @@ class SignalAdapter(BasePlatformAdapter):
                 self._background_tasks.add(task)
                 task.add_done_callback(self._background_tasks.discard)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _force_reconnect()", exc_info=True)
             self._sse_response = None
 
     # ------------------------------------------------------------------
@@ -788,7 +788,7 @@ class SignalAdapter(BasePlatformAdapter):
             try:
                 await task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in _stop_typing_indicator()", exc_info=True)
 
     async def stop_typing(self, chat_id: str) -> None:
         """Public interface for stopping typing — called by base adapter's

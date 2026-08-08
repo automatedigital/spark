@@ -310,7 +310,7 @@ def canvas_interact(body: InteractBody) -> dict[str, Any]:
 
         _publish_event("canvas.interaction", {"canvas_id": body.canvas_id, "widget_id": body.widget_id, "value": body.value})
     except Exception:
-        pass
+        _log.debug("Ignoring error in canvas_interact()", exc_info=True)
     return {"ok": True}
 
 

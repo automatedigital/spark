@@ -61,7 +61,7 @@ def discover_context_engines() -> list[tuple[str, str, bool]]:
                     meta = yaml.safe_load(f) or {}
                 desc = meta.get("description", "")
             except Exception:
-                pass
+                logger.debug("Ignoring error in discover_context_engines()", exc_info=True)
 
         # Quick availability check — try loading and calling is_available()
         available = True
@@ -137,7 +137,7 @@ def _load_engine_from_dir(engine_dir: Path) -> ContextEngine | None:
                         try:
                             spec.loader.exec_module(parent_mod)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _load_engine_from_dir()", exc_info=True)
 
         # Now load the engine module
         spec = importlib.util.spec_from_file_location(
@@ -194,7 +194,7 @@ def _load_engine_from_dir(engine_dir: Path) -> ContextEngine | None:
             try:
                 return attr()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _load_engine_from_dir()", exc_info=True)
 
     return None
 

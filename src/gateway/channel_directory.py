@@ -138,7 +138,7 @@ def _build_slack(adapter) -> list[dict[str, str]]:
         from tools.send_message_tool import _send_slack  # noqa: F401
         # Use the Slack Web API directly if available
     except Exception:
-        pass
+        logger.debug("Ignoring error in _build_slack()", exc_info=True)
 
     # Fallback to session data
     return _build_from_sessions("slack")

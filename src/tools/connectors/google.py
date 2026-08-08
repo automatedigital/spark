@@ -131,7 +131,7 @@ class GoogleWorkspaceConnector(Connector):
                     httpx.post(gc.GOOGLE_REVOKE_URL,
                                params={"token": token["access_token"]}, timeout=5)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in disconnect()", exc_info=True)
             gc.clear_token()  # also removes the gws bridge credentials file
             gc.clear_imap_credentials()
         except Exception as exc:

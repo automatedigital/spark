@@ -231,7 +231,7 @@ class WeComAdapter(BasePlatformAdapter):
             try:
                 await self._listen_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._listen_task = None
 
         if self._heartbeat_task:
@@ -239,7 +239,7 @@ class WeComAdapter(BasePlatformAdapter):
             try:
                 await self._heartbeat_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._heartbeat_task = None
 
         self._fail_pending_responses(RuntimeError("WeCom adapter disconnected"))
@@ -369,7 +369,7 @@ class WeComAdapter(BasePlatformAdapter):
                 except Exception as exc:
                     logger.debug("[%s] Heartbeat send failed: %s", self.name, exc)
         except asyncio.CancelledError:
-            pass
+            logger.debug("Ignoring error in _heartbeat_loop()", exc_info=True)
 
     async def _dispatch_payload(self, payload: dict[str, Any]) -> None:
         """Route inbound websocket payloads."""

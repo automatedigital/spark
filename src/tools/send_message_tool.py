@@ -223,7 +223,7 @@ def _handle_send(args):
                 if mirror_to_session(platform_name, chat_id, mirror_text, source_label=source_label, thread_id=thread_id):
                     result["mirrored"] = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_send()", exc_info=True)
 
         if isinstance(result, dict) and "error" in result:
             result["error"] = _sanitize_error_text(result["error"])
@@ -833,7 +833,7 @@ async def _send_matrix(token, extra, chat_id, message):
             payload["format"] = "org.matrix.custom.html"
             payload["formatted_body"] = html
         except ImportError:
-            pass
+            logger.debug("Ignoring error in _send_matrix()", exc_info=True)
 
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             async with session.put(url, headers=headers, json=payload) as resp:

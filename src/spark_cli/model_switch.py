@@ -160,7 +160,7 @@ def _load_direct_aliases() -> dict[str, DirectAlias]:
                         base_url=base_url,
                     )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _load_direct_aliases()", exc_info=True)
     return merged
 
 
@@ -444,7 +444,7 @@ def switch_model(
                     for _ci in _cfg_issues[:3]:
                         _switch_err += f"\n  • {_ci.message}"
             except Exception:
-                pass
+                logger.debug("Ignoring error in switch_model()", exc_info=True)
             return ModelSwitchResult(
                 success=False,
                 is_global=is_global,
@@ -627,7 +627,7 @@ def switch_model(
             base_url = runtime.get("base_url", "")
             api_mode = runtime.get("api_mode", "")
         except Exception:
-            pass
+            logger.debug("Ignoring error in switch_model()", exc_info=True)
 
     # --- Direct alias override: use exact base_url from the alias if set ---
     if resolved_alias:
@@ -944,7 +944,7 @@ def list_authenticated_providers(
                 ):
                     _cp_has_creds = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in list_authenticated_providers()", exc_info=True)
         if not _cp_has_creds:
             try:
                 from agent.credential_pool import load_pool
@@ -953,7 +953,7 @@ def list_authenticated_providers(
                 if _cp_pool.has_credentials():
                     _cp_has_creds = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in list_authenticated_providers()", exc_info=True)
 
         if not _cp_has_creds:
             continue

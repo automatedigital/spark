@@ -177,7 +177,7 @@ try:
 
     print_config_warnings()
 except Exception:
-    pass
+    logger.debug("Ignoring error in __init__()", exc_info=True)
 
 # Initialize the skin engine from config
 try:
@@ -194,7 +194,7 @@ try:
     _tpl = CLI_CONFIG.get("display", {}).get("tool_preview_length", 0)
     set_tool_preview_max_len(int(_tpl) if _tpl else 0)
 except Exception:
-    pass
+    logger.debug("Ignoring error in __init__()", exc_info=True)
 
 # Neuter AsyncHttpxClientWrapper.__del__ before any AsyncOpenAI clients are
 # created.  The SDK's __del__ schedules aclose() on asyncio.get_running_loop()
@@ -206,7 +206,7 @@ try:
 
     neuter_async_httpx_del()
 except Exception:
-    pass
+    logger.debug("Ignoring error in __init__()", exc_info=True)
 
 import fire
 from rich import box as rich_box
@@ -249,17 +249,17 @@ def _run_cleanup():
     try:
         _cleanup_all_terminals()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     try:
         _cleanup_all_browsers()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     try:
         from tools.mcp_tool import shutdown_mcp_servers
 
         shutdown_mcp_servers()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     # Close cached auxiliary LLM clients (sync + async) so that
     # AsyncHttpxClientWrapper.__del__ doesn't fire on a closed event loop
     # and trigger prompt_toolkit's "Press ENTER to continue..." handler.
@@ -268,7 +268,7 @@ def _run_cleanup():
 
         shutdown_cached_clients()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     # Shut down memory provider (on_session_end + shutdown_all) at actual
     # session boundary - NOT per-turn inside run_conversation().
     try:
@@ -280,14 +280,14 @@ def _run_cleanup():
             platform="cli",
         )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
     try:
         if _active_agent_ref and hasattr(_active_agent_ref, "shutdown_memory_provider"):
             _active_agent_ref.shutdown_memory_provider(
                 getattr(_active_agent_ref, "conversation_history", None) or []
             )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _run_cleanup()", exc_info=True)
 
 
 # =============================================================================
@@ -981,7 +981,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         _tip_color = "#B8860B"
                     cc.print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in process_command()", exc_info=True)
             else:
                 self.show_banner()
                 print("  Fresh start! Screen cleared and conversation reset.\n")
@@ -1000,7 +1000,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         _tip_color = "#B8860B"
                     self.console.print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in process_command()", exc_info=True)
         elif canonical == "history":
             self.show_history()
         elif canonical == "title":
@@ -1484,9 +1484,9 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         _import_sounddevice()
                         use_streaming_tts = True
                 except (ImportError, OSError):
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
 
             if use_streaming_tts:
                 text_queue = queue.Queue()
@@ -1603,7 +1603,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                                             f"  child[{_ci}]._interrupt={_ch._interrupt_requested}\n"
                                         )
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in chat()", exc_info=True)
                             break
                     except queue.Empty:
                         # Force prompt_toolkit to flush any pending stdout
@@ -1627,7 +1627,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
 
                 cleanup_stale_async_clients()
             except Exception:
-                pass
+                logger.debug("Ignoring error in chat()", exc_info=True)
 
             # Flush any remaining streamed text and close the box
             self._flush_stream()
@@ -1675,7 +1675,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         self.conversation_history,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
 
             # Handle failed or partial results (e.g., non-retryable errors, rate limits,
             # truncated output, invalid tool calls). Both "failed" and "partial" with
@@ -1848,7 +1848,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 try:
                     text_queue.put_nowait(None)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in chat()", exc_info=True)
             if stop_event is not None:
                 stop_event.set()
             if tts_thread is not None and tts_thread.is_alive():
@@ -1885,7 +1885,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 try:
                     session_title = self._session_db.get_session_title(self.session_id)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _print_exit_summary()", exc_info=True)
 
             print("Resume this session with:")
             print(f"  spark --resume {self.session_id}")
@@ -1922,7 +1922,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 if _term_lines > 2:
                     print("\n" * (_term_lines - 1), end="", flush=True)
             except Exception:
-                pass
+                logger.debug("Ignoring error in run()", exc_info=True)
 
         # In centered splash mode we suppress the legacy scrollback banner,
         # otherwise it creates a large visual gap above the splash block.
@@ -2210,7 +2210,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                                     f"agent_running={self._agent_running}\n"
                                 )
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in handle_enter()", exc_info=True)
                 else:
                     self._pending_input.put(payload)
                 event.app.current_buffer.reset(append_to_history=True)
@@ -2555,7 +2555,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         stop_playback()
                         cli_ref._voice_tts_done.set()
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in handle_voice_record()", exc_info=True)
 
                 with cli_ref._voice_lock:
                     cli_ref._voice_continuous = True
@@ -3532,7 +3532,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                                         if _synth:
                                             self._pending_input.put(_synth)
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in process_loop()", exc_info=True)
                         continue
 
                     if not user_input:
@@ -3779,10 +3779,10 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                     _loop = _aio.get_event_loop()
                     _loop.set_exception_handler(_suppress_closed_loop_errors)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
                 app.run()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
-            pass
+            logger.debug("Ignoring error in run()", exc_info=True)
         except (KeyError, OSError) as _stdin_err:
             # Catch selector registration failures from broken stdin (#6393).
             # This is the fallback for cases that slip past the fstat() guard.
@@ -3806,19 +3806,19 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                 try:
                     self.agent.interrupt()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
             # Flush memories before exit (only for substantial conversations)
             if self.agent and self.conversation_history:
                 try:
                     self.agent.flush_memories(self.conversation_history)
                 except (Exception, KeyboardInterrupt):
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
             # Shut down voice recorder (release persistent audio stream)
             if hasattr(self, "_voice_recorder") and self._voice_recorder:
                 try:
                     self._voice_recorder.shutdown()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
                 self._voice_recorder = None
             # Clean up old temp voice recordings
             try:
@@ -3826,7 +3826,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
 
                 cleanup_temp_recordings()
             except Exception:
-                pass
+                logger.debug("Ignoring error in run()", exc_info=True)
             # Unregister callbacks to avoid dangling references
             set_sudo_password_callback(None)
             set_approval_callback(None)
@@ -3854,7 +3854,7 @@ class SparkCLI(_CommandHandlersMixin, _DisplayCommandsMixin, _StreamingMixin, _S
                         platform=getattr(self.agent, "platform", None) or "cli",
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
             _run_cleanup()
             self._print_exit_summary()
 

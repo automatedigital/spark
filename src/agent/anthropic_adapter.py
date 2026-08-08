@@ -147,7 +147,7 @@ def _detect_claude_code_version() -> str:
                 if version and version[0].isdigit():
                     return version
         except Exception:
-            pass
+            logger.debug("Ignoring error in _detect_claude_code_version()", exc_info=True)
     return _CLAUDE_CODE_VERSION_FALLBACK
 
 
@@ -670,7 +670,7 @@ def run_spark_oauth_login_pure() -> dict[str, Any] | None:
         webbrowser.open(auth_url)
         print("  (Browser opened automatically)")
     except Exception:
-        pass
+        logger.debug("Ignoring error in run_spark_oauth_login_pure()", exc_info=True)
 
     print()
     print("After authorizing, you'll see a code. Paste it below.")

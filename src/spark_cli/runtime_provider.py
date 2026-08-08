@@ -67,7 +67,7 @@ def _auto_detect_local_model(base_url: str) -> str:
                 if model_id:
                     return model_id
     except Exception:
-        pass
+        logger.debug("Ignoring error in _auto_detect_local_model()", exc_info=True)
     return ""
 
 
@@ -303,7 +303,7 @@ def _get_named_custom_provider(requested_provider: str) -> dict[str, Any] | None
         try:
             auth_mod.resolve_provider(requested_norm)
         except AuthError:
-            pass
+            logger.debug("Ignoring error in _get_named_custom_provider()", exc_info=True)
         else:
             return None
 

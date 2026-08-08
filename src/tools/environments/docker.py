@@ -448,7 +448,7 @@ class DockerEnvironment(BaseEnvironment):
             from tools.env_passthrough import get_all_passthrough
             passthrough_keys = set(get_all_passthrough())
         except Exception:
-            pass
+            logger.debug("Ignoring error in _build_init_env_args()", exc_info=True)
         # Explicit docker_forward_env entries are an intentional opt-in and must
         # win over the generic Spark secret blocklist. Only implicit passthrough
         # keys are filtered.
@@ -550,7 +550,7 @@ class DockerEnvironment(BaseEnvironment):
                         shell=True,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in cleanup()", exc_info=True)
             self._container_id = None
 
         if not self._persistent:

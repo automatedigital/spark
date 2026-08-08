@@ -56,7 +56,7 @@ def _resolve_timezone_name() -> str:
             if isinstance(tz_cfg, str) and tz_cfg.strip():
                 return tz_cfg.strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_timezone_name()", exc_info=True)
 
     return ""
 

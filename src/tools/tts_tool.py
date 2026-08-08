@@ -625,7 +625,7 @@ def _generate_piper_tts(text: str, output_path: str, tts_config: dict[str, Any])
             try:
                 os.remove(wav_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _generate_piper_tts()", exc_info=True)
         else:
             os.rename(wav_path, output_path)
 
@@ -850,19 +850,19 @@ def check_tts_requirements() -> bool:
         _import_edge_tts()
         return True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in check_tts_requirements()", exc_info=True)
     try:
         _import_elevenlabs()
         if os.getenv("ELEVENLABS_API_KEY"):
             return True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in check_tts_requirements()", exc_info=True)
     try:
         _import_openai_client()
         if _has_openai_audio_backend():
             return True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in check_tts_requirements()", exc_info=True)
     if os.getenv("MINIMAX_API_KEY"):
         return True
     try:
@@ -870,7 +870,7 @@ def check_tts_requirements() -> bool:
         if os.getenv("MISTRAL_API_KEY"):
             return True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in check_tts_requirements()", exc_info=True)
     if _check_neutts_available():
         return True
     if _check_piper_available():
@@ -1065,7 +1065,7 @@ def stream_tts_to_speaker(
                     try:
                         os.unlink(tmp_path)
                     except OSError:
-                        pass
+                        logger.debug("Ignoring error in _play_via_tempfile()", exc_info=True)
 
         while not stop_event.is_set():
             # Read next delta from queue
@@ -1129,7 +1129,7 @@ def stream_tts_to_speaker(
                 output_stream.stop()
                 output_stream.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in stream_tts_to_speaker()", exc_info=True)
         tts_done_event.set()
 
 

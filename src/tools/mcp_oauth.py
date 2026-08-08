@@ -136,7 +136,7 @@ def _can_open_browser() -> bool:
         if os.uname().sysname == "Darwin":
             return True
     except AttributeError:
-        pass
+        logger.debug("Ignoring error in _can_open_browser()", exc_info=True)
     # Linux/other posix: need DISPLAY or WAYLAND_DISPLAY
     if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
         return True

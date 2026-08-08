@@ -77,7 +77,7 @@ def atomic_json_write(
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in atomic_json_write()", exc_info=True)
         raise
 
 
@@ -125,7 +125,7 @@ def atomic_yaml_write(
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in atomic_yaml_write()", exc_info=True)
         raise
 
 

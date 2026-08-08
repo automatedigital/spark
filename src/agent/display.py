@@ -69,7 +69,7 @@ def _diff_ansi() -> dict[str, str]:
             or_, og, ob = int(ok_h[1:3], 16), int(ok_h[3:5], 16), int(ok_h[5:7], 16)
             plus = f"\033[38;2;255;255;255;48;2;{max(or_ // 4, 10)};{max(og // 2, 20)};{max(ob // 4, 10)}m"
     except Exception:
-        pass
+        logger.debug("Ignoring error in _diff_ansi()", exc_info=True)
 
     _diff_colors_cached = {
         "dim": dim,
@@ -177,7 +177,7 @@ def get_tool_emoji(tool_name: str, default: str = "*") -> str:
         if emoji:
             return emoji
     except Exception:
-        pass
+        logger.debug("Ignoring error in get_tool_emoji()", exc_info=True)
     # 3. Hardcoded fallback
     return default
 
@@ -701,14 +701,14 @@ class KawaiiSpinner:
             try:
                 self._print_fn(text)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _write()", exc_info=True)
             return
         try:
             self._out.write(text + end)
             if flush:
                 self._out.flush()
         except (ValueError, OSError):
-            pass
+            logger.debug("Ignoring error in _write()", exc_info=True)
 
     @property
     def _is_tty(self) -> bool:

@@ -49,7 +49,7 @@ def resolve_active_host() -> str:
         if profile and profile not in ("default", "custom"):
             return f"{HOST}.{profile}"
     except Exception:
-        pass
+        logger.debug("Ignoring error in resolve_active_host()", exc_info=True)
     return HOST
 
 
@@ -414,7 +414,7 @@ class HonchoClientConfig:
             if root.returncode == 0:
                 return Path(root.stdout.strip()).name
         except (OSError, subprocess.TimeoutExpired):
-            pass
+            logger.debug("Ignoring error in _git_repo_name()", exc_info=True)
         return None
 
     def resolve_session_name(
@@ -520,7 +520,7 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
             if isinstance(honcho_cfg, dict):
                 resolved_base_url = honcho_cfg.get("base_url", "").strip() or None
         except Exception:
-            pass
+            logger.debug("Ignoring error in get_honcho_client()", exc_info=True)
 
     if resolved_base_url:
         logger.info("Initializing Honcho client (base_url: %s, workspace: %s)", resolved_base_url, config.workspace_id)

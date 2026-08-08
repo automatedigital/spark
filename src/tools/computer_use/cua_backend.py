@@ -288,7 +288,7 @@ class _CuaDriverSession:
             try:
                 proc.kill()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _terminate_process()", exc_info=True)
 
     async def call_tool(self, name: str, args: dict) -> dict[str, Any]:
         """Call a cua-driver MCP tool and return a normalised result dict.
@@ -440,7 +440,7 @@ class CuaDriverBackend:
                 parsed = json.loads(result["data"])
                 elements = parsed.get("elements", [])
             except (json.JSONDecodeError, AttributeError):
-                pass
+                logger.debug("Ignoring error in _capture_async()", exc_info=True)
 
         width = structured.get("screenshot_width", structured.get("width", 0))
         height = structured.get("screenshot_height", structured.get("height", 0))
@@ -720,7 +720,7 @@ def _parse_windows(result: dict) -> list[dict]:
                 return parsed
             return parsed.get("windows", [])
         except (json.JSONDecodeError, AttributeError):
-            pass
+            logger.debug("Ignoring error in _parse_windows()", exc_info=True)
     return []
 
 
@@ -805,7 +805,7 @@ def _parse_launch_windows(result: dict) -> list[dict]:
             if isinstance(parsed, dict):
                 return parsed.get("windows", [])
         except (json.JSONDecodeError, AttributeError):
-            pass
+            logger.debug("Ignoring error in _parse_launch_windows()", exc_info=True)
     return []
 
 

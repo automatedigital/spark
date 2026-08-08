@@ -41,7 +41,7 @@ def _git_repo_root() -> str | None:
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _git_repo_root()", exc_info=True)
     return None
 
 
@@ -379,7 +379,7 @@ def _prune_orphaned_branches(repo_root: str) -> None:
         if current:
             active_branches.add(current)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _prune_orphaned_branches()", exc_info=True)
     active_branches.add("main")
 
     orphaned = [

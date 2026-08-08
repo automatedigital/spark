@@ -360,13 +360,13 @@ def _to_plain_object(value: Any) -> Any:
         try:
             return value.model_dump()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _to_plain_object()", exc_info=True)
 
     if hasattr(value, "__dict__"):
         try:
             return {k: v for k, v in value.__dict__.items() if not k.startswith("_")}
         except Exception:
-            pass
+            logger.debug("Ignoring error in _to_plain_object()", exc_info=True)
 
     return value
 

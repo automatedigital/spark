@@ -60,7 +60,7 @@ def discover_memory_providers() -> list[tuple[str, str, bool]]:
                     meta = yaml.safe_load(f) or {}
                 desc = meta.get("description", "")
             except Exception:
-                pass
+                logger.debug("Ignoring error in discover_memory_providers()", exc_info=True)
 
         # Quick availability check — try loading and calling is_available()
         available = True
@@ -136,7 +136,7 @@ def _load_provider_from_dir(provider_dir: Path) -> MemoryProvider | None:
                         try:
                             spec.loader.exec_module(parent_mod)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _load_provider_from_dir()", exc_info=True)
 
         # Now load the provider module
         spec = importlib.util.spec_from_file_location(
@@ -194,7 +194,7 @@ def _load_provider_from_dir(provider_dir: Path) -> MemoryProvider | None:
             try:
                 return attr()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _load_provider_from_dir()", exc_info=True)
 
     return None
 
@@ -301,7 +301,7 @@ def discover_plugin_cli_commands() -> list[dict]:
                     help_text = desc
                     description = desc
             except Exception:
-                pass
+                logger.debug("Ignoring error in discover_plugin_cli_commands()", exc_info=True)
 
         handler_fn = getattr(cli_mod, f"{active_provider}_command", None) or \
                      getattr(cli_mod, "honcho_command", None)

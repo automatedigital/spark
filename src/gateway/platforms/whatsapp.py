@@ -57,7 +57,7 @@ def _kill_port_process(port: int) -> None:
                                 capture_output=True, timeout=5,
                             )
                         except subprocess.SubprocessError:
-                            pass
+                            logger.debug("Ignoring error in _kill_port_process()", exc_info=True)
         else:
             result = subprocess.run(
                 ["fuser", f"{port}/tcp"],
@@ -69,7 +69,7 @@ def _kill_port_process(port: int) -> None:
                     capture_output=True, timeout=5,
                 )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _kill_port_process()", exc_info=True)
 
 import sys
 
@@ -470,7 +470,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
             try:
                 self._bridge_log_fh.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _close_bridge_log()", exc_info=True)
             self._bridge_log_fh = None
 
     async def _check_managed_bridge_exit(self) -> str | None:
@@ -524,7 +524,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
             try:
                 await self._poll_task
             except (asyncio.CancelledError, Exception):
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
         self._poll_task = None
 
         # Close the persistent HTTP session

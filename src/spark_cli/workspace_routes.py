@@ -195,7 +195,7 @@ def _terminate_preview_process(proc: subprocess.Popen[Any]) -> None:
             if result.returncode == 0:
                 return
         except (FileNotFoundError, OSError, subprocess.SubprocessError):
-            pass
+            _log.debug("Ignoring error in _terminate_preview_process()", exc_info=True)
         try:
             proc.terminate()
         except Exception:
@@ -219,7 +219,7 @@ def _terminate_preview_process(proc: subprocess.Popen[Any]) -> None:
                 try:
                     proc.kill()
                 except Exception:
-                    pass
+                    _log.debug("Ignoring error in _terminate_preview_process()", exc_info=True)
 
 
 def _workspace_root() -> Path:
@@ -273,7 +273,7 @@ def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = Fa
                         continue
                     children.append(_tree_node(child, project_dir, depth + 1, show_hidden))
             except PermissionError:
-                pass
+                _log.debug("Ignoring error in _tree_node()", exc_info=True)
         return {"name": path.name, "path": rel, "type": "dir", "children": children}
     stat = path.stat()
     mime, _ = mimetypes.guess_type(path.name)
@@ -1169,7 +1169,7 @@ def git_status(slug: str):
                     adds = sum(1 for _ in target.open("rb"))
                     dels = 0
             except OSError:
-                pass
+                _log.debug("Ignoring error in git_status()", exc_info=True)
         total_adds += adds or 0
         total_dels += dels or 0
         files.append({"path": path, "status": category, "adds": adds, "dels": dels})
@@ -1248,7 +1248,7 @@ def _queue_terminal_event(run_id: str, event: dict[str, Any]) -> None:
         try:
             q.put_nowait(event)
         except queue.Full:
-            pass
+            _log.debug("Ignoring error in _queue_terminal_event()", exc_info=True)
 
 
 def _run_terminal_command(run_id: str) -> None:
@@ -1361,7 +1361,7 @@ def _run_terminal_shell(run_id: str) -> None:
         try:
             fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
         except OSError:
-            pass
+            _log.debug("Ignoring error in _run_terminal_shell()", exc_info=True)
         proc = subprocess.Popen(
             [shell, "-i"],
             cwd=cwd,
@@ -1422,7 +1422,7 @@ def _run_terminal_shell(run_id: str) -> None:
             try:
                 os.close(master_fd)
             except OSError:
-                pass
+                _log.debug("Ignoring error in _run_terminal_shell()", exc_info=True)
         q = _terminal_run_queues.get(run_id)
         if q is not None:
             q.put_nowait(None)
@@ -1560,7 +1560,7 @@ def _preview_emit(slug: str, event: dict[str, Any]) -> None:
         try:
             q.put_nowait(event)
         except queue.Full:
-            pass
+            _log.debug("Ignoring error in _preview_emit()", exc_info=True)
 
 
 def _publish_workspace_event(topic: str, data: dict[str, Any]) -> None:
@@ -1569,7 +1569,7 @@ def _publish_workspace_event(topic: str, data: dict[str, Any]) -> None:
 
         _publish_event(topic, data)
     except Exception:
-        pass
+        _log.debug("Ignoring error in _publish_workspace_event()", exc_info=True)
 
 
 def _append_preview_log(slug: str, session: dict[str, Any], text: str, stream: str = "server") -> None:
@@ -1776,7 +1776,7 @@ def _process_cwd(pid: int) -> Path | None:
         if proc_cwd.exists():
             return proc_cwd.resolve()
     except Exception:
-        pass
+        _log.debug("Ignoring error in _process_cwd()", exc_info=True)
     try:
         result = subprocess.run(
             ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
@@ -2036,7 +2036,7 @@ def _declared_project_port(project_dir: Path) -> int | None:
                     if port is not None:
                         return port
         except Exception:
-            pass
+            _log.debug("Ignoring error in _declared_project_port()", exc_info=True)
 
     for compose_name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
         compose = project_dir / compose_name
@@ -2197,7 +2197,7 @@ def _stop_preview_session(slug: str) -> dict[str, Any]:
         except Exception:
             # Preview shutdown must still succeed when an optional browser
             # runtime is absent or already gone.
-            pass
+            _log.debug("Ignoring error in _close_preview_browsers()", exc_info=True)
 
     # Closing agent-browser can wait for an in-flight screenshot/navigation
     # command. Never make the preview stop/restart request wait on that lock.
@@ -2211,7 +2211,7 @@ def _cleanup_preview_sessions() -> None:
         try:
             _stop_preview_session(slug)
         except Exception:
-            pass
+            _log.debug("Ignoring error in _cleanup_preview_sessions()", exc_info=True)
 
 
 def _capture_bound_url_from_log(slug: str, session: dict[str, Any], line: str) -> None:
@@ -2723,7 +2723,7 @@ def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | 
             try:
                 browser.close()
             except Exception:
-                pass
+                _log.debug("Ignoring error in _run_playwright_action()", exc_info=True)
 
 
 @router.post("/projects/{slug}/preview/click")
@@ -2787,7 +2787,7 @@ def _resolve_preview_backend() -> str:
         if is_available():
             return "agent-browser"
     except Exception:
-        pass
+        _log.debug("Ignoring error in _resolve_preview_backend()", exc_info=True)
     return "playwright"
 
 
@@ -2897,7 +2897,7 @@ async def stream_browser_screencast(request: Request, slug: str):
                 frames.get_nowait()
                 frames.put_nowait(frame)
             except queue.Empty:
-                pass
+                _log.debug("Ignoring error in _on_frame()", exc_info=True)
 
     try:
         handle = await asyncio.to_thread(start_screencast, _on_frame)
@@ -2933,7 +2933,7 @@ async def stream_browser_screencast(request: Request, slug: str):
             try:
                 handle.stop()
             except Exception:
-                pass
+                _log.debug("Ignoring error in event_generator()", exc_info=True)
 
     return StreamingResponse(
         event_generator(),

@@ -79,7 +79,7 @@ def _secure_file(path: Path):
         if path.exists():
             os.chmod(path, 0o600)
     except (OSError, NotImplementedError):
-        pass
+        logger.debug("Ignoring error in _secure_file()", exc_info=True)
 
 
 def ensure_dirs():
@@ -193,7 +193,7 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
             "display": f"once in {original}"
         }
     except ValueError:
-        pass
+        logger.debug("Ignoring error in parse_schedule()", exc_info=True)
 
     raise ValueError(
         f"Invalid schedule '{original}'. Use:\n"
@@ -277,7 +277,7 @@ def _compute_grace_seconds(schedule: dict) -> int:
             grace = period_seconds // 2
             return max(MIN_GRACE, min(grace, MAX_GRACE))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _compute_grace_seconds()", exc_info=True)
 
     return MIN_GRACE
 
@@ -382,7 +382,7 @@ def save_jobs(jobs: list[dict[str, Any]]):
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_jobs()", exc_info=True)
         raise
 
 
@@ -777,7 +777,7 @@ def save_job_output(job_id: str, output: str):
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_job_output()", exc_info=True)
         raise
 
     return output_file

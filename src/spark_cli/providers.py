@@ -595,6 +595,6 @@ def resolve_provider_full(
                 source="models.dev",
             )
     except Exception:
-        pass
+        logger.debug("Ignoring error in resolve_provider_full()", exc_info=True)
 
     return None

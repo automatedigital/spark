@@ -389,7 +389,7 @@ class SessionDB:
                         try:
                             self._conn.rollback()
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _execute_write()", exc_info=True)
                         raise
                 # Success — periodic best-effort checkpoint.
                 self._write_count += 1
@@ -460,7 +460,7 @@ class SessionDB:
                 try:
                     self._conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in close()", exc_info=True)
                 self._conn.close()
                 self._conn = None
 
@@ -528,7 +528,7 @@ class SessionDB:
                         safe_name = name.replace('"', '""')
                         cursor.execute(f'ALTER TABLE sessions ADD COLUMN "{safe_name}" {column_type}')
                     except sqlite3.OperationalError:
-                        pass
+                        logger.debug("Ignoring error in _init_schema()", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 5")
             if current_version < 6:
                 # v6: add reasoning columns to messages table — preserves assistant
@@ -566,7 +566,7 @@ class SessionDB:
                         "WHERE kanban_status = 'backlog' AND ended_at IS NOT NULL"
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _init_schema()", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 8")
             if current_version < 9:
                 cursor.executescript(

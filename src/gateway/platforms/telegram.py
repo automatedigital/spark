@@ -211,7 +211,7 @@ class TelegramAdapter(BasePlatformAdapter):
             if isinstance(error, (NetworkError, TimedOut)):
                 return True
         except ImportError:
-            pass
+            logger.debug("Ignoring error in _looks_like_network_error()", exc_info=True)
         return isinstance(error, OSError)
 
     async def _handle_polling_network_error(self, error: Exception) -> None:
@@ -257,7 +257,7 @@ class TelegramAdapter(BasePlatformAdapter):
             if self._app and self._app.updater and self._app.updater.running:
                 await self._app.updater.stop()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_polling_network_error()", exc_info=True)
 
         try:
             await self._app.updater.start_polling(
@@ -304,7 +304,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 if self._app and self._app.updater and self._app.updater.running:
                     await self._app.updater.stop()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_polling_conflict()", exc_info=True)
             await asyncio.sleep(RETRY_DELAY)
             try:
                 await self._app.updater.start_polling(
@@ -938,7 +938,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     try:
                         stream.seek(0)
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _send_telegram_request()", exc_info=True)
             try:
                 return await send_call(**current_kwargs)
             except Exception as send_err:
@@ -1533,7 +1533,7 @@ class TelegramAdapter(BasePlatformAdapter):
                         reply_markup=None,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_model_picker_callback()", exc_info=True)
             await query.answer(text="Model switched!")
 
             # Clean up state

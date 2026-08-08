@@ -351,7 +351,7 @@ async def kanban_events(request: Request, since: int = 0):
                 import asyncio
                 await asyncio.sleep(0.8)
         except Exception:
-            pass
+            _log.debug("Ignoring error in gen()", exc_info=True)
 
     return StreamingResponse(
         gen(),

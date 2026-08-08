@@ -81,7 +81,7 @@ def _pipe_stdin(proc: subprocess.Popen, data: str) -> None:
             proc.stdin.write(data)
             proc.stdin.close()
         except (BrokenPipeError, OSError):
-            pass
+            logger.debug("Ignoring error in _write()", exc_info=True)
 
     threading.Thread(target=_write, daemon=True).start()
 
@@ -114,7 +114,7 @@ def _load_json_store(path: Path) -> dict:
         try:
             return json.loads(path.read_text())
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_json_store()", exc_info=True)
     return {}
 
 
@@ -188,7 +188,7 @@ class _ThreadedProcessHandle:
                 try:
                     os.write(self._write_fd, output.encode("utf-8", errors="replace"))
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _worker()", exc_info=True)
             except Exception as exc:
                 self._error = exc
                 self._returncode = 1
@@ -196,7 +196,7 @@ class _ThreadedProcessHandle:
                 try:
                     os.close(self._write_fd)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _worker()", exc_info=True)
                 self._done.set()
 
         t = threading.Thread(target=_worker, daemon=True)
@@ -218,7 +218,7 @@ class _ThreadedProcessHandle:
             try:
                 self._cancel_fn()
             except Exception:
-                pass
+                logger.debug("Ignoring error in kill()", exc_info=True)
 
     def wait(self, timeout: float | None = None) -> int:
         self._done.wait(timeout=timeout)
@@ -494,14 +494,14 @@ exit $spark_ec
                         try:
                             _output_cb(line)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _drain()", exc_info=True)
             except UnicodeDecodeError:
                 output_chunks.clear()
                 output_chunks.append(
                     "[binary output detected — raw bytes not displayable]"
                 )
             except (ValueError, OSError):
-                pass
+                logger.debug("Ignoring error in _drain()", exc_info=True)
 
         drain_thread = threading.Thread(target=_drain, daemon=True)
         drain_thread.start()
@@ -538,7 +538,7 @@ exit $spark_ec
                         _elapsed = int(_now - (deadline - timeout))
                         _cb(f"terminal command running ({_elapsed}s elapsed)")
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _wait_for_process()", exc_info=True)
             time.sleep(0.2)
 
         drain_thread.join(timeout=5)
@@ -546,7 +546,7 @@ exit $spark_ec
         try:
             proc.stdout.close()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _wait_for_process()", exc_info=True)
 
         return {"output": "".join(output_chunks), "returncode": proc.returncode}
 
@@ -555,7 +555,7 @@ exit $spark_ec
         try:
             proc.kill()
         except (ProcessLookupError, PermissionError, OSError):
-            pass
+            logger.debug("Ignoring error in _kill_process()", exc_info=True)
 
     # ------------------------------------------------------------------
     # CWD extraction
@@ -670,7 +670,7 @@ exit $spark_ec
         try:
             self.cleanup()
         except Exception:
-            pass
+            logger.debug("Ignoring error in __del__()", exc_info=True)
 
     def _prepare_command(self, command: str) -> tuple[str, str | None]:
         """Transform sudo commands if SUDO_PASSWORD is available."""

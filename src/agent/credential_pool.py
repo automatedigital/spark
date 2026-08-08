@@ -1045,7 +1045,7 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
             if not is_provider_explicitly_configured("anthropic"):
                 return changed, active_sources
         except ImportError:
-            pass
+            logger.debug("Ignoring error in _seed_from_singletons()", exc_info=True)
 
         from agent.anthropic_adapter import (
             read_claude_code_credentials,
@@ -1063,7 +1063,7 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
                     if is_source_suppressed(provider, source_name):
                         continue
                 except ImportError:
-                    pass
+                    logger.debug("Ignoring error in _seed_from_singletons()", exc_info=True)
                 active_sources.add(source_name)
                 changed |= _upsert_entry(
                     entries,
@@ -1284,7 +1284,7 @@ def _seed_custom_pool(pool_key: str, entries: list[PooledCredential]) -> tuple[b
                         },
                     )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _seed_custom_pool()", exc_info=True)
 
     return changed, active_sources
 

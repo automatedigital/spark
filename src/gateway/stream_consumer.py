@@ -407,7 +407,7 @@ class GatewayStreamConsumer:
                 try:
                     await self._send_or_edit(self._accumulated)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run()", exc_info=True)
             # If we delivered any content before being cancelled, mark the
             # final response as sent so the gateway's already_sent check
             # doesn't trigger a duplicate message.  The 5-second

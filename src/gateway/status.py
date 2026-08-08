@@ -393,7 +393,7 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: dict[str, Any] | No
         try:
             lock_path.unlink(missing_ok=True)
         except OSError:
-            pass
+            logger.debug("Ignoring error in acquire_scoped_lock()", exc_info=True)
     if existing:
         try:
             existing_pid = int(existing["pid"])
@@ -433,12 +433,12 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: dict[str, Any] | No
                                         stale = True
                                     break
                     except (OSError, PermissionError):
-                        pass
+                        logger.debug("Ignoring error in acquire_scoped_lock()", exc_info=True)
         if stale:
             try:
                 lock_path.unlink(missing_ok=True)
             except OSError:
-                pass
+                logger.debug("Ignoring error in acquire_scoped_lock()", exc_info=True)
         else:
             return False, existing
 
@@ -453,7 +453,7 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: dict[str, Any] | No
         try:
             lock_path.unlink(missing_ok=True)
         except OSError:
-            pass
+            logger.debug("Ignoring error in acquire_scoped_lock()", exc_info=True)
         raise
     return True, None
 
@@ -471,7 +471,7 @@ def release_scoped_lock(scope: str, identity: str) -> None:
     try:
         lock_path.unlink(missing_ok=True)
     except OSError:
-        pass
+        logger.debug("Ignoring error in release_scoped_lock()", exc_info=True)
 
 
 def release_all_scoped_locks() -> int:
@@ -489,7 +489,7 @@ def release_all_scoped_locks() -> int:
                 lock_file.unlink(missing_ok=True)
                 removed += 1
             except OSError:
-                pass
+                logger.debug("Ignoring error in release_all_scoped_locks()", exc_info=True)
     return removed
 
 

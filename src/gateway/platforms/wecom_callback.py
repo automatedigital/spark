@@ -116,7 +116,7 @@ class WecomCallbackAdapter(BasePlatformAdapter):
             logger.error("[WecomCallback] Port %d already in use", self._port)
             return False
         except (ConnectionRefusedError, OSError):
-            pass
+            logger.debug("Ignoring error in connect()", exc_info=True)
 
         try:
             self._http_client = httpx.AsyncClient(timeout=20.0)
@@ -155,7 +155,7 @@ class WecomCallbackAdapter(BasePlatformAdapter):
             try:
                 await self._poll_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._poll_task = None
         await self._cleanup()
         self._mark_disconnected()

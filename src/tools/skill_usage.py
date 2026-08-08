@@ -70,7 +70,7 @@ def _file_lock():
     try:
         lock_file.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
-        pass
+        logger.debug("Ignoring error in _file_lock()", exc_info=True)
 
     try:
         fd = open(str(lock_file), "w")
@@ -97,11 +97,11 @@ def _file_lock():
                 import fcntl
                 fcntl.flock(fd, fcntl.LOCK_UN)
         except OSError:
-            pass
+            logger.debug("Ignoring error in _file_lock()", exc_info=True)
         try:
             fd.close()
         except OSError:
-            pass
+            logger.debug("Ignoring error in _file_lock()", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ def _save_raw(data: dict[str, Any]) -> None:
             try:
                 os.unlink(tmp)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _save_raw()", exc_info=True)
             raise
     except Exception as e:
         logger.debug("skill_usage: failed to write sidecar: %s", e, exc_info=True)

@@ -262,7 +262,7 @@ class QQAdapter(BasePlatformAdapter):
             try:
                 await self._listen_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._listen_task = None
 
         if self._heartbeat_task:
@@ -270,7 +270,7 @@ class QQAdapter(BasePlatformAdapter):
             try:
                 await self._heartbeat_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._heartbeat_task = None
 
         await self._cleanup()
@@ -533,7 +533,7 @@ class QQAdapter(BasePlatformAdapter):
                 except Exception as exc:
                     logger.debug("[%s] Heartbeat failed: %s", self.name, exc)
         except asyncio.CancelledError:
-            pass
+            logger.debug("Ignoring error in _heartbeat_loop()", exc_info=True)
 
     async def _send_identify(self) -> None:
         """Send op 2 Identify to authenticate the WebSocket connection.
@@ -1144,7 +1144,7 @@ class QQAdapter(BasePlatformAdapter):
             try:
                 os.unlink(wav_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _stt_voice_attachment()", exc_info=True)
 
             if transcript:
                 logger.info("[QQ] STT success: %r", transcript[:100])
@@ -1190,7 +1190,7 @@ class QQAdapter(BasePlatformAdapter):
         try:
             os.unlink(src_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in _convert_audio_to_wav_file()", exc_info=True)
 
         return result
 
@@ -1258,7 +1258,7 @@ class QQAdapter(BasePlatformAdapter):
             try:
                 os.unlink(silk_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _convert_silk_to_wav()", exc_info=True)
 
         return None
 
@@ -1436,7 +1436,7 @@ class QQAdapter(BasePlatformAdapter):
             try:
                 os.unlink(src_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _convert_audio_to_wav()", exc_info=True)
 
         # Verify output and cache
         try:
@@ -1939,11 +1939,11 @@ class QQAdapter(BasePlatformAdapter):
         try:
             return datetime.fromisoformat(raw)
         except (ValueError, TypeError):
-            pass
+            logger.debug("Ignoring error in _parse_qq_timestamp()", exc_info=True)
         try:
             return datetime.fromtimestamp(int(raw) / 1000, tz=UTC)
         except (ValueError, TypeError):
-            pass
+            logger.debug("Ignoring error in _parse_qq_timestamp()", exc_info=True)
         return datetime.now(tz=UTC)
 
     def _is_duplicate(self, msg_id: str) -> bool:

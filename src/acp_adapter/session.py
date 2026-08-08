@@ -193,7 +193,7 @@ class SessionManager:
                         try:
                             cwd = json.loads(mc).get("cwd", ".")
                         except (json.JSONDecodeError, TypeError):
-                            pass
+                            logger.debug("Ignoring error in list_sessions()", exc_info=True)
                     results.append({
                         "session_id": sid,
                         "cwd": cwd,
@@ -366,7 +366,7 @@ class SessionManager:
                     restored_base_url = meta.get("base_url") or restored_base_url
                     restored_api_mode = meta.get("api_mode") or restored_api_mode
             except (json.JSONDecodeError, TypeError):
-                pass
+                logger.debug("Ignoring error in _restore()", exc_info=True)
 
         model = row.get("model") or None
 

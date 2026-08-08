@@ -54,7 +54,7 @@ def _ensure_ssl_certs() -> None:
         os.environ["SSL_CERT_FILE"] = certifi.where()
         return
     except ImportError:
-        pass
+        logger.debug("Ignoring error in _ensure_ssl_certs()", exc_info=True)
 
     # 3. Common distro / macOS locations
     for candidate in (
@@ -237,14 +237,14 @@ try:
     if isinstance(_network_cfg, dict) and _network_cfg.get("force_ipv4"):
         apply_ipv4_preference(force=True)
 except Exception:
-    pass
+    pass  # logger is not configured until line 339
 
 # Validate config structure early — log warnings so gateway operators see problems
 try:
     from spark_cli.config import print_config_warnings
     print_config_warnings()
 except Exception:
-    pass
+    pass  # logger is not configured until line 339
 
 # Gateway runs in quiet mode - suppress debug output and use cwd directly (no temp dirs)
 os.environ["SPARK_QUIET"] = "1"
@@ -263,7 +263,7 @@ if not _configured_cwd or _configured_cwd in (".", "auto", "cwd"):
         try:
             _workspace.mkdir(parents=True, exist_ok=True)
         except OSError:
-            pass
+            pass  # logger is not configured until line 339
         messaging_cwd = str(_workspace)
     os.environ["TERMINAL_CWD"] = messaging_cwd.strip()
 
@@ -446,7 +446,7 @@ def _check_unavailable_skill(command_name: str) -> str | None:
                         f"Install it with: `spark skills install {install_path}`"
                     )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _check_unavailable_skill()", exc_info=True)
     return None
 
 
@@ -506,7 +506,7 @@ def _resolve_spark_bin() -> list[str] | None:
         if importlib.util.find_spec("spark_cli") is not None:
             return [sys.executable, "-m", "spark_cli.main"]
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_spark_bin()", exc_info=True)
 
     return None
 
@@ -867,7 +867,7 @@ class GatewayRunner:
                 if isinstance(session_key, str) and session_key:
                     return session_key
             except Exception:
-                pass
+                logger.debug("Ignoring error in _session_key_for_source()", exc_info=True)
         config = getattr(self, "config", None)
         from gateway.session import resolve_agent_name
 
@@ -903,7 +903,7 @@ class GatewayRunner:
                         model, runtime_kwargs["provider"],
                     )
             except Exception:
-                pass
+                logger.debug("Ignoring error in _resolve_session_agent_runtime()", exc_info=True)
 
         return model, runtime_kwargs
 
@@ -980,7 +980,7 @@ class GatewayRunner:
             if service_tier:
                 overrides = resolve_fast_mode_overrides(route.get("model"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _resolve_turn_agent_config()", exc_info=True)
         budget_cfg = (getattr(self, "_smart_model_routing", {}) or {}).get("_response_budget", {}) or {}
         return merge_route_request_overrides(
             route, overrides, soft_caps_enabled=bool(budget_cfg.get("soft_output_caps", True))
@@ -1080,7 +1080,7 @@ class GatewayRunner:
                 active_agents=self._running_agent_count(),
             )
         except Exception:
-            pass
+            logger.debug("Ignoring error in _update_runtime_status()", exc_info=True)
 
     def _update_platform_runtime_status(
         self,
@@ -1099,7 +1099,7 @@ class GatewayRunner:
                 error_message=error_message,
             )
         except Exception:
-            pass
+            logger.debug("Ignoring error in _update_platform_runtime_status()", exc_info=True)
 
     @staticmethod
     def _load_prefill_messages() -> list[dict[str, Any]]:
@@ -1120,7 +1120,7 @@ class GatewayRunner:
                         cfg = _y.safe_load(_f) or {}
                     file_path = cfg.get("prefill_messages_file", "")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _load_prefill_messages()", exc_info=True)
         if not file_path:
             return []
         path = Path(file_path).expanduser()
@@ -1158,7 +1158,7 @@ class GatewayRunner:
                     cfg = _y.safe_load(_f) or {}
                 return (cfg.get("agent", {}).get("system_prompt", "") or "").strip()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_ephemeral_system_prompt()", exc_info=True)
         return ""
 
     @staticmethod
@@ -1179,7 +1179,7 @@ class GatewayRunner:
                     cfg = _y.safe_load(_f) or {}
                 effort = str(cfg.get("agent", {}).get("reasoning_effort", "") or "").strip()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_reasoning_config()", exc_info=True)
         result = parse_reasoning_effort(effort)
         if effort and effort.strip() and result is None:
             logger.warning("Unknown reasoning_effort '%s', using default (medium)", effort)
@@ -1202,7 +1202,7 @@ class GatewayRunner:
                     cfg = _y.safe_load(_f) or {}
                 raw = str(cfg.get("agent", {}).get("service_tier", "") or "").strip()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_service_tier()", exc_info=True)
 
         value = raw.lower()
         if not value or value in {"normal", "default", "standard", "off", "none"}:
@@ -1223,7 +1223,7 @@ class GatewayRunner:
                     cfg = _y.safe_load(_f) or {}
                 return bool(cfg.get("display", {}).get("show_reasoning", False))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_show_reasoning()", exc_info=True)
         return False
 
     @staticmethod
@@ -1239,7 +1239,7 @@ class GatewayRunner:
                         cfg = _y.safe_load(_f) or {}
                     mode = str(cfg.get("display", {}).get("busy_input_mode", "") or "").strip().lower()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _load_busy_input_mode()", exc_info=True)
         return "queue" if mode == "queue" else "interrupt"
 
     @staticmethod
@@ -1255,7 +1255,7 @@ class GatewayRunner:
                         cfg = _y.safe_load(_f) or {}
                     raw = str(cfg.get("agent", {}).get("restart_drain_timeout", "") or "").strip()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _load_restart_drain_timeout()", exc_info=True)
         value = parse_restart_drain_timeout(raw)
         if raw and value == DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT:
             try:
@@ -1292,7 +1292,7 @@ class GatewayRunner:
                     elif raw not in (None, ""):
                         mode = str(raw)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _load_background_notifications_mode()", exc_info=True)
         mode = (mode or "all").strip().lower()
         valid = {"all", "result", "error", "off"}
         if mode not in valid:
@@ -1314,7 +1314,7 @@ class GatewayRunner:
                     cfg = _y.safe_load(_f) or {}
                 return cfg.get("provider_routing", {}) or {}
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_provider_routing()", exc_info=True)
         return {}
 
     @staticmethod
@@ -1335,7 +1335,7 @@ class GatewayRunner:
                 if fb:
                     return fb
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_fallback_model()", exc_info=True)
         return None
 
     @staticmethod
@@ -1351,7 +1351,7 @@ class GatewayRunner:
                 routing["_response_budget"] = cfg.get("response_budget", {}) or {}
                 return routing
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_smart_model_routing()", exc_info=True)
         return {}
 
     def _snapshot_running_agents(self) -> dict[str, Any]:
@@ -1440,12 +1440,12 @@ class GatewayRunner:
                     platform="gateway",
                 )
             except Exception:
-                pass
+                logger.debug("Ignoring error in _finalize_shutdown_agents()", exc_info=True)
             try:
                 if hasattr(agent, "shutdown_memory_provider"):
                     agent.shutdown_memory_provider()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _finalize_shutdown_agents()", exc_info=True)
             # Close tool resources (terminal sandboxes, browser daemons,
             # background processes, httpx clients) to prevent zombie
             # process accumulation.
@@ -1453,7 +1453,7 @@ class GatewayRunner:
                 if hasattr(agent, 'close'):
                     agent.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _finalize_shutdown_agents()", exc_info=True)
 
     async def _launch_detached_restart_command(self) -> None:
         import shutil
@@ -1517,12 +1517,12 @@ class GatewayRunner:
             if _profile and _profile != "default":
                 logger.info("Active profile: %s", _profile)
         except Exception:
-            pass
+            logger.debug("Ignoring error in start()", exc_info=True)
         try:
             from gateway.status import write_runtime_status
             write_runtime_status(gateway_state="starting", exit_reason=None)
         except Exception:
-            pass
+            logger.debug("Ignoring error in start()", exc_info=True)
 
         # Warn if no user allowlists are configured and open access is not opted in
         _any_allowlist = any(
@@ -1589,7 +1589,7 @@ class GatewayRunner:
             try:
                 _clean_marker.unlink()
             except Exception:
-                pass
+                logger.debug("Ignoring error in start()", exc_info=True)
         else:
             try:
                 suspended = self.session_store.suspend_recently_active()
@@ -1705,7 +1705,7 @@ class GatewayRunner:
                     from gateway.status import write_runtime_status
                     write_runtime_status(gateway_state="startup_failed", exit_reason=reason)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in start()", exc_info=True)
                 self._request_clean_exit(reason)
                 return True
             if enabled_platform_count > 0:
@@ -1715,7 +1715,7 @@ class GatewayRunner:
                     from gateway.status import write_runtime_status
                     write_runtime_status(gateway_state="startup_failed", exit_reason=reason)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in start()", exc_info=True)
                 return False
             logger.warning("No messaging platforms enabled.")
             logger.info("Gateway will continue running for cron job execution.")
@@ -1859,7 +1859,7 @@ class GatewayRunner:
                                     return
                                 await asyncio.sleep(1)
                     except asyncio.CancelledError:
-                        pass
+                        logger.debug("Ignoring error in _kanban_dispatch_loop()", exc_info=True)
 
                 _kt = asyncio.create_task(_kanban_dispatch_loop())
                 self._background_tasks.add(_kt)
@@ -1893,7 +1893,7 @@ class GatewayRunner:
                                     return
                                 await asyncio.sleep(1)
                     except asyncio.CancelledError:
-                        pass
+                        logger.debug("Ignoring error in _kanban_workflow_loop()", exc_info=True)
 
                 _kwt = asyncio.create_task(_kanban_workflow_loop())
                 self._background_tasks.add(_kwt)
@@ -1967,12 +1967,12 @@ class GatewayRunner:
                                 if hasattr(_cached_agent, 'shutdown_memory_provider'):
                                     _cached_agent.shutdown_memory_provider()
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in _session_expiry_watcher()", exc_info=True)
                             try:
                                 if hasattr(_cached_agent, 'close'):
                                     _cached_agent.close()
                             except Exception:
-                                pass
+                                logger.debug("Ignoring error in _session_expiry_watcher()", exc_info=True)
                         # Mark as flushed and persist to disk so the flag
                         # survives gateway restarts.
                         with self.session_store._lock:
@@ -2101,7 +2101,7 @@ class GatewayRunner:
                             from gateway.channel_directory import build_channel_directory
                             build_channel_directory(self.adapters)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _platform_reconnect_watcher()", exc_info=True)
                     else:
                         # Check if the failure is non-retryable
                         if adapter.has_fatal_error and not adapter.fatal_error_retryable:
@@ -2177,7 +2177,7 @@ class GatewayRunner:
 
                 stop_dashboard_server()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _stop_impl()", exc_info=True)
             self._running = False
             self._draining = True
 
@@ -2234,17 +2234,17 @@ class GatewayRunner:
                 from tools.process_registry import process_registry
                 process_registry.kill_all()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _stop_impl()", exc_info=True)
             try:
                 from tools.terminal_tool import cleanup_all_environments
                 cleanup_all_environments()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _stop_impl()", exc_info=True)
             try:
                 from tools.browser_tool import cleanup_all_browsers
                 cleanup_all_browsers()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _stop_impl()", exc_info=True)
 
             from gateway.status import remove_pid_file
             remove_pid_file()
@@ -2256,7 +2256,7 @@ class GatewayRunner:
             try:
                 (_spark_home / ".clean_shutdown").touch()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _stop_impl()", exc_info=True)
 
             if self._restart_requested and self._restart_via_service:
                 self._exit_code = GATEWAY_SERVICE_RESTART_EXIT_CODE
@@ -2572,7 +2572,7 @@ class GatewayRunner:
             from core.spark_logging import new_trace_id
             new_trace_id()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_message()", exc_info=True)
 
         # Internal events (e.g. background-process completion notifications)
         # are system-generated and must skip user authorization.
@@ -2684,7 +2684,7 @@ class GatewayRunner:
                         f"| iteration={_sa.get('api_call_count', 0)}/{_sa.get('max_iterations', 0)}"
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_message()", exc_info=True)
             # Evict if: agent is idle beyond timeout, OR wall-clock age is
             # extreme (10x timeout or 2h, whichever is larger — catches
             # cases where the agent object was garbage-collected).
@@ -3272,7 +3272,7 @@ class GatewayRunner:
                                 metadata=_stt_meta,
                             )
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _prepare_inbound_message_text()", exc_info=True)
 
         if event.media_urls and event.message_type == MessageType.DOCUMENT:
             import mimetypes as _mimetypes
@@ -3398,7 +3398,7 @@ class GatewayRunner:
                 _pcfg = _pii_yaml.safe_load(_pf) or {}
             _redact_pii = bool((_pcfg.get("privacy") or {}).get("redact_pii", False))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
 
         # Build the context prompt to inject
         context_prompt = build_session_context_prompt(context, redact_pii=_redact_pii)
@@ -3456,7 +3456,7 @@ class GatewayRunner:
                             if session_info:
                                 notice = f"{notice}\n\n{session_info}"
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
                         await adapter.send(
                             source.chat_id, notice,
                             metadata=getattr(event, 'metadata', None),
@@ -3563,7 +3563,7 @@ class GatewayRunner:
                             try:
                                 _hyg_config_context_length = int(_raw_ctx)
                             except (TypeError, ValueError):
-                                pass
+                                logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
                         # Read provider for accurate context detection
                         _hyg_provider = _model_cfg.get("provider") or None
                         _hyg_base_url = _model_cfg.get("base_url") or None
@@ -3587,7 +3587,7 @@ class GatewayRunner:
                     _hyg_base_url = _hyg_runtime.get("base_url") or _hyg_base_url
                     _hyg_api_key = _hyg_runtime.get("api_key") or _hyg_api_key
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
 
                 # Check custom_providers per-model context_length
                 # (same fallback as run_agent.py lines 1171-1189).
@@ -3615,9 +3615,9 @@ class GatewayRunner:
                                             _hyg_config_context_length = int(_cp_ctx)
                                 break
                     except (TypeError, ValueError):
-                        pass
+                        logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
 
             if _hyg_compression_enabled:
                 _hyg_context_length = get_model_context_length(
@@ -3834,7 +3834,7 @@ class GatewayRunner:
                 if _typing_adapter and hasattr(_typing_adapter, "stop_typing"):
                     await _typing_adapter.stop_typing(source.chat_id)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
 
             response = agent_result.get("final_response") or ""
             agent_messages = agent_result.get("messages", [])
@@ -4066,7 +4066,7 @@ class GatewayRunner:
                 if _err_adapter and hasattr(_err_adapter, "stop_typing"):
                     await _err_adapter.stop_typing(source.chat_id)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
             logger.exception("Agent error in session %s", session_key)
             error_type = type(e).__name__
             error_detail = str(e)[:300] if str(e) else "no details available"
@@ -4083,7 +4083,7 @@ class GatewayRunner:
                     if _err_body is not None:
                         _err_json = _err_body.json().get("error", {})
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_message_with_agent()", exc_info=True)
                 if _err_json.get("type") == "usage_limit_reached":
                     _resets_in = _err_json.get("resets_in_seconds")
                     if _resets_in and _resets_in > 0:
@@ -4146,11 +4146,11 @@ class GatewayRunner:
                         try:
                             config_context_length = int(raw_ctx)
                         except (TypeError, ValueError):
-                            pass
+                            logger.debug("Ignoring error in _format_session_info()", exc_info=True)
                     provider = model_cfg.get("provider") or None
                     base_url = model_cfg.get("base_url") or None
         except Exception:
-            pass
+            logger.debug("Ignoring error in _format_session_info()", exc_info=True)
 
         # Resolve runtime credentials for probing
         try:
@@ -4159,7 +4159,7 @@ class GatewayRunner:
             base_url = base_url or runtime.get("base_url")
             api_key = runtime.get("api_key")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _format_session_info()", exc_info=True)
 
         context_length = get_model_context_length(
             model,
@@ -4229,20 +4229,20 @@ class GatewayRunner:
                     if hasattr(_old_agent, "close"):
                         _old_agent.close()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_reset_command()", exc_info=True)
         self._evict_cached_agent(session_key)
 
         try:
             from tools.env_passthrough import clear_env_passthrough
             clear_env_passthrough()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_reset_command()", exc_info=True)
 
         try:
             from tools.credential_files import clear_credential_files
             clear_credential_files()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_reset_command()", exc_info=True)
 
         # Reset the session
         new_entry = self.session_store.reset_session(session_key)
@@ -4258,7 +4258,7 @@ class GatewayRunner:
             _invoke_hook("on_session_finalize", session_id=_old_sid,
                          platform=source.platform.value if source.platform else "")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_reset_command()", exc_info=True)
 
         # Emit session:end hook (session is ending)
         await self.hooks.emit("session:end", {
@@ -4294,7 +4294,7 @@ class GatewayRunner:
             _invoke_hook("on_session_reset", session_id=_new_sid,
                          platform=source.platform.value if source.platform else "")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_reset_command()", exc_info=True)
 
         # Append a random tip to the reset message
         try:
@@ -4464,7 +4464,7 @@ class GatewayRunner:
                 if len(sorted_cmds) > 10:
                     lines.append(f"\n... and {len(sorted_cmds) - 10} more. Use `/commands` for the full paginated list.")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_help_command()", exc_info=True)
         return "\n".join(lines)
 
     async def _handle_commands_command(self, event: MessageEvent) -> str:
@@ -4492,7 +4492,7 @@ class GatewayRunner:
                     desc = skill_cmds[cmd].get("description", "").strip() or "Skill command"
                     entries.append(f"`{cmd}` — {desc}")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_commands_command()", exc_info=True)
 
         if not entries:
             return "No commands available."
@@ -4668,7 +4668,7 @@ class GatewayRunner:
                         lines.append(f"  `{p['api_url']}`")
                     lines.append("")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_model_command()", exc_info=True)
 
             lines.append("`/model <name>` — switch model")
             lines.append("`/model <name> --provider <slug>` — switch provider")
@@ -4720,7 +4720,7 @@ class GatewayRunner:
                 )
                 lines.append(f"Context: {ctx:,} tokens")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_model_command()", exc_info=True)
 
         # Cache notice
         cache_enabled = (
@@ -4759,7 +4759,7 @@ class GatewayRunner:
                 if isinstance(model_cfg, dict):
                     current_provider = model_cfg.get("provider", current_provider)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_provider_command()", exc_info=True)
 
         current_provider = normalize_provider(current_provider)
         if current_provider == "auto":
@@ -5176,7 +5176,7 @@ class GatewayRunner:
                 safe_text = transcript[:2000].replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
                 await channel.send(f"**[Voice]** <@{user_id}>: {safe_text}")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_voice_channel_input()", exc_info=True)
 
         # Build a synthetic MessageEvent and feed through the normal pipeline
         # Use SimpleNamespace as raw_message so _get_guild_id() can extract
@@ -5302,7 +5302,7 @@ class GatewayRunner:
                 try:
                     os.unlink(p)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _send_voice_reply()", exc_info=True)
 
     async def _deliver_media_from_response(
         self,
@@ -5702,7 +5702,7 @@ class GatewayRunner:
                 if isinstance(cp_cfg, bool):
                     cp_cfg = {"enabled": cp_cfg}
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_rollback_command()", exc_info=True)
 
         if not cp_cfg.get("enabled", False):
             return (
@@ -5879,7 +5879,7 @@ class GatewayRunner:
                             caption=alt_text,
                         )
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _run_background_task()", exc_info=True)
 
                 # Send media files
                 for media_path in (media_files or []):
@@ -5889,7 +5889,7 @@ class GatewayRunner:
                             file_path=media_path,
                         )
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _run_background_task()", exc_info=True)
             else:
                 preview = prompt[:60] + ("..." if len(prompt) > 60 else "")
                 await adapter.send(
@@ -5907,7 +5907,7 @@ class GatewayRunner:
                     metadata=_thread_metadata,
                 )
             except Exception:
-                pass
+                logger.debug("Ignoring error in _run_background_task()", exc_info=True)
 
     async def _handle_btw_command(self, event: MessageEvent) -> str:
         """Handle /btw <question> — ephemeral side question in the same chat."""
@@ -6056,13 +6056,13 @@ class GatewayRunner:
                 try:
                     await adapter.send_image(chat_id=source.chat_id, image_url=image_url, caption=alt_text)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _run_btw_task()", exc_info=True)
 
             for media_path in (media_files or []):
                 try:
                     await adapter.send_file(chat_id=source.chat_id, file_path=media_path)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _run_btw_task()", exc_info=True)
 
         except Exception as e:
             logger.exception("/btw task %s failed", task_id)
@@ -6073,7 +6073,7 @@ class GatewayRunner:
                     metadata=_thread_meta,
                 )
             except Exception:
-                pass
+                logger.debug("Ignoring error in _run_btw_task()", exc_info=True)
 
     async def _handle_dream_command(self, event: MessageEvent) -> str:
         """Handle /dream — reflective consolidation pass over sessions + memory."""
@@ -6810,7 +6810,7 @@ class GatewayRunner:
         try:
             self._session_db.set_session_title(new_session_id, branch_title)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _handle_branch_command()", exc_info=True)
 
         # Switch the session store entry to the new session
         new_entry = self.session_store.switch_session(session_key, new_session_id)
@@ -6897,7 +6897,7 @@ class GatewayRunner:
                 elif cost_result.status == "included":
                     lines.append("Cost: included")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_usage_command()", exc_info=True)
 
             # Context window and compressions
             ctx = agent.context_compressor
@@ -7483,7 +7483,7 @@ class GatewayRunner:
                             session_key = f"{platform_str}:{chat_id}"
                     break
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _watch_update_progress()", exc_info=True)
 
         if not adapter or not chat_id:
             logger.warning("Update watcher: cannot resolve adapter/chat_id, falling back to completion-only")
@@ -7537,7 +7537,7 @@ class GatewayRunner:
                             buffer += content[bytes_sent:]
                             bytes_sent = len(content)
                     except OSError:
-                        pass
+                        logger.debug("Ignoring error in _watch_update_progress()", exc_info=True)
                 await _flush_buffer()
 
                 # Send final status
@@ -7568,7 +7568,7 @@ class GatewayRunner:
                         buffer += content[bytes_sent:]
                         bytes_sent = len(content)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _watch_update_progress()", exc_info=True)
 
             # Flush buffer periodically
             if buffer.strip() and (loop.time() - last_stream_time) >= stream_interval:
@@ -7630,7 +7630,7 @@ class GatewayRunner:
             try:
                 await adapter.send(chat_id, "❌ Spark update timed out after 30 minutes.")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _watch_update_progress()", exc_info=True)
             for p in (pending_path, claimed_path, output_path,
                       exit_code_path, prompt_path):
                 p.unlink(missing_ok=True)
@@ -8231,7 +8231,7 @@ class GatewayRunner:
             _tpl = resolve_display_setting(user_config, platform_key, "tool_preview_length", 0)
             set_tool_preview_max_len(int(_tpl) if _tpl else 0)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _run_agent()", exc_info=True)
 
         # Tool progress mode — resolved per-platform with env var fallback
         _resolved_tp = resolve_display_setting(user_config, platform_key, "tool_progress")
@@ -8456,7 +8456,7 @@ class GatewayRunner:
                                 content=full_text,
                             )
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in send_progress_messages()", exc_info=True)
                     return
                 except Exception as e:
                     logger.error("Progress message error: %s", e)
@@ -8549,7 +8549,7 @@ class GatewayRunner:
             except UnicodeDecodeError:
                 load_dotenv(_env_path, override=True, encoding="latin-1")
             except Exception:
-                pass
+                logger.debug("Ignoring error in run_sync()", exc_info=True)
 
             try:
                 model, runtime_kwargs = self._resolve_session_agent_runtime(
@@ -9005,7 +9005,7 @@ class GatewayRunner:
                         all_msgs,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in run_sync()", exc_info=True)
 
             return {
                 "final_response": final_response,
@@ -9139,7 +9139,7 @@ class GatewayRunner:
                             _parts.append(_a.get("last_activity_desc", ""))
                         _status_detail = " — " + ", ".join(_parts)
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _notify_long_running()", exc_info=True)
                 try:
                     await _notify_adapter.send(
                         source.chat_id,
@@ -9220,7 +9220,7 @@ class GatewayRunner:
                             _act = _agent_ref.get_activity_summary()
                             _idle_secs = _act.get("seconds_since_activity", 0.0)
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _run_agent()", exc_info=True)
                     # Staged warning: fire once before escalating to full timeout.
                     if (not _warning_fired and _agent_warning is not None
                             and _idle_secs >= _agent_warning):
@@ -9269,7 +9269,7 @@ class GatewayRunner:
                     try:
                         _activity = _timed_out_agent.get_activity_summary()
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _run_agent()", exc_info=True)
 
                 _last_desc = _activity.get("last_activity_desc", "unknown")
                 _secs_ago = _activity.get("seconds_since_activity", 0)
@@ -9378,7 +9378,7 @@ class GatewayRunner:
                             pending_event = None
                             pending = None
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _run_agent()", exc_info=True)
 
             if self._draining and (pending_event or pending):
                 logger.info(
@@ -9427,7 +9427,7 @@ class GatewayRunner:
                             try:
                                 await stream_task
                             except asyncio.CancelledError:
-                                pass
+                                logger.debug("Ignoring error in _run_agent()", exc_info=True)
                         except Exception as e:
                             logger.debug("Stream consumer wait before queued message failed: %s", e)
                     _response_previewed = bool(result.get("response_previewed"))
@@ -9500,7 +9500,7 @@ class GatewayRunner:
                     try:
                         await stream_task
                     except asyncio.CancelledError:
-                        pass
+                        logger.debug("Ignoring error in _run_agent()", exc_info=True)
 
             # Clean up tracking
             tracking_task.cancel()
@@ -9517,7 +9517,7 @@ class GatewayRunner:
                     try:
                         await task
                     except asyncio.CancelledError:
-                        pass
+                        logger.debug("Ignoring error in _run_agent()", exc_info=True)
 
         # If streaming already delivered the response, mark it so the
         # caller's send() is skipped (avoiding duplicate messages).
@@ -9654,7 +9654,7 @@ async def start_gateway(
                     terminate_pid(existing_pid, force=True)
                     _time.sleep(0.5)
                 except (ProcessLookupError, PermissionError, OSError):
-                    pass
+                    logger.debug("Ignoring error in start_gateway()", exc_info=True)
             remove_pid_file()
             # Also release all scoped locks left by the old process.
             # Stopped (Ctrl+Z) processes don't release locks on exit,
@@ -9665,7 +9665,7 @@ async def start_gateway(
                 if _released:
                     logger.info("Released %d stale scoped lock(s) from old gateway.", _released)
             except Exception:
-                pass
+                logger.debug("Ignoring error in start_gateway()", exc_info=True)
         else:
             spark_home = str(get_spark_home())
             logger.error(
@@ -9686,7 +9686,7 @@ async def start_gateway(
         from tools.skills_sync import sync_skills
         sync_skills(quiet=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in start_gateway()", exc_info=True)
 
     # Centralized logging — agent.log (INFO+), errors.log (WARNING+),
     # and gateway.log (INFO+, gateway-component records only).
@@ -9734,12 +9734,12 @@ async def start_gateway(
             try:
                 loop.add_signal_handler(sig, shutdown_signal_handler)
             except NotImplementedError:
-                pass
+                logger.debug("Ignoring error in start_gateway()", exc_info=True)
         if hasattr(signal, "SIGUSR1"):
             try:
                 loop.add_signal_handler(signal.SIGUSR1, restart_signal_handler)
             except NotImplementedError:
-                pass
+                logger.debug("Ignoring error in start_gateway()", exc_info=True)
     else:
         logger.info("Skipping signal handlers (not running in main thread).")
 
@@ -9788,7 +9788,7 @@ async def start_gateway(
         from tools.mcp_tool import shutdown_mcp_servers
         shutdown_mcp_servers()
     except Exception:
-        pass
+        logger.debug("Ignoring error in start_gateway()", exc_info=True)
 
     if runner.exit_code is not None:
         raise SystemExit(runner.exit_code)

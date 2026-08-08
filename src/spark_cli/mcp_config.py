@@ -434,7 +434,7 @@ def cmd_mcp_remove(args):
         remove_oauth_tokens(name)
         _success("Cleaned up OAuth tokens")
     except Exception:
-        pass
+        logger.debug("Ignoring error in cmd_mcp_remove()", exc_info=True)
 
 
 # ─── spark mcp list ──────────────────────────────────────────────────────────

@@ -105,7 +105,7 @@ def _load_quality_artifacts() -> tuple[
                 item_copy["_audit_date"] = audit_date
                 audit_by_name.setdefault(str(item["name"]), []).append(item_copy)
     except (OSError, TypeError, ValueError):
-        pass
+        logger.debug("Ignoring error in _load_quality_artifacts()", exc_info=True)
 
     eval_by_name: dict[str, tuple[str, str | None]] = {}
     docs_dir = root / "docs" / "skills"
@@ -485,7 +485,7 @@ def resolve_skill(
             if len(relative.parts) > 1:
                 category = relative.parts[-2]
         except ValueError:
-            pass
+            logger.debug("Ignoring error in resolve_skill()", exc_info=True)
 
         detail = {
             "label": {

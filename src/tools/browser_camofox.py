@@ -76,7 +76,7 @@ def check_camofox_available() -> bool:
                     host = parsed.hostname or "localhost"
                     _vnc_url = f"http://{host}:{vnc_port}"
             except (ValueError, KeyError):
-                pass
+                logger.debug("Ignoring error in check_camofox_available()", exc_info=True)
             _vnc_url_checked = True
         return resp.status_code == 200
     except Exception:
@@ -518,7 +518,7 @@ def camofox_vision(question: str, annotate: bool = False,
                 )
                 annotation_context = f"\n\nAccessibility tree (element refs for interaction):\n{snap_data.get('snapshot', '')[:3000]}"
             except Exception:
-                pass
+                logger.debug("Ignoring error in camofox_vision()", exc_info=True)
 
         # Redact secrets from annotation context before sending to vision LLM.
         # The screenshot image itself cannot be redacted, but at least the

@@ -385,7 +385,7 @@ class MemoryStore:
 
             _publish_event("memory.updated", {"target": target, "entry_count": len(entries)})
         except Exception:
-            pass
+            logger.debug("Ignoring error in _success_response()", exc_info=True)
         return resp
 
     def _render_block(self, target: str, entries: list[str]) -> str:
@@ -454,7 +454,7 @@ class MemoryStore:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _write_file()", exc_info=True)
                 raise
         except OSError as e:
             raise RuntimeError(f"Failed to write memory file {path}: {e}") from e

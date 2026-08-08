@@ -970,7 +970,7 @@ def build_skills_system_prompt(
                 for name, _desc in cat_skills:
                     bump_use(name)
         except Exception:
-            pass
+            logger.debug("Ignoring error in build_skills_system_prompt()", exc_info=True)
 
     # ── Store in LRU cache ────────────────────────────────────────────
     with _SKILLS_PROMPT_CACHE_LOCK:
@@ -1042,7 +1042,7 @@ def _load_spark_md(cwd_path: Path) -> str:
         try:
             rel = str(spark_md_path.relative_to(cwd_path))
         except ValueError:
-            pass
+            logger.debug("Ignoring error in _load_spark_md()", exc_info=True)
         content = _scan_context_content(content, rel)
         result = f"## {rel}\n\n{content}"
         return _truncate_content(result, ".spark.md")

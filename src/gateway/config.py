@@ -379,7 +379,7 @@ class GatewayConfig:
                 platform = Platform(platform_name)
                 reset_by_platform[platform] = SessionResetPolicy.from_dict(policy_data)
             except ValueError:
-                pass
+                logger.debug("Ignoring error in from_dict()", exc_info=True)
 
         default_policy = SessionResetPolicy()
         if "default_reset_policy" in data:
@@ -965,7 +965,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
             try:
                 config.platforms[Platform.API_SERVER].extra["port"] = int(api_server_port)
             except ValueError:
-                pass
+                logger.debug("Ignoring error in _apply_env_overrides()", exc_info=True)
         if api_server_host:
             config.platforms[Platform.API_SERVER].extra["host"] = api_server_host
         api_server_model_name = os.getenv("API_SERVER_MODEL_NAME", "")
@@ -984,7 +984,7 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
             try:
                 config.platforms[Platform.WEBHOOK].extra["port"] = int(webhook_port)
             except ValueError:
-                pass
+                logger.debug("Ignoring error in _apply_env_overrides()", exc_info=True)
         if webhook_secret:
             config.platforms[Platform.WEBHOOK].extra["secret"] = webhook_secret
 
@@ -1150,11 +1150,11 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         try:
             config.default_reset_policy.idle_minutes = int(idle_minutes)
         except ValueError:
-            pass
+            logger.debug("Ignoring error in _apply_env_overrides()", exc_info=True)
 
     reset_hour = os.getenv("SESSION_RESET_HOUR")
     if reset_hour:
         try:
             config.default_reset_policy.at_hour = int(reset_hour)
         except ValueError:
-            pass
+            logger.debug("Ignoring error in _apply_env_overrides()", exc_info=True)

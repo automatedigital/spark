@@ -96,7 +96,7 @@ def _normalize_chat_content(
                         try:
                             parts.append(str(text)[:MAX_NORMALIZED_TEXT_LENGTH])
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _normalize_chat_content()", exc_info=True)
                 # Silently skip image_url / other non-text parts
             elif isinstance(item, list):
                 nested = _normalize_chat_content(item, _max_depth=_max_depth, _depth=_depth + 1)
@@ -221,7 +221,7 @@ class ResponseStore:
         try:
             self._conn.close()
         except Exception:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
 
     def __len__(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM responses").fetchone()
@@ -427,7 +427,7 @@ class APIServerAdapter(BasePlatformAdapter):
             if profile and profile not in ("default", "custom"):
                 return profile
         except Exception:
-            pass
+            logger.debug("Ignoring error in _resolve_model_name()", exc_info=True)
         return "spark-agent"
 
     def _cors_headers_for_origin(self, origin: str) -> dict[str, str] | None:
@@ -912,7 +912,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 result, agent_usage = await agent_task
                 usage = agent_usage or usage
             except Exception:
-                pass
+                logger.debug("Ignoring error in _write_sse_chat_completion()", exc_info=True)
 
             # Finish chunk
             finish_chunk = {
@@ -936,13 +936,13 @@ class APIServerAdapter(BasePlatformAdapter):
                 try:
                     agent.interrupt("SSE client disconnected")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _write_sse_chat_completion()", exc_info=True)
             if not agent_task.done():
                 agent_task.cancel()
                 try:
                     await agent_task
                 except (asyncio.CancelledError, Exception):
-                    pass
+                    logger.debug("Ignoring error in _write_sse_chat_completion()", exc_info=True)
             logger.info("SSE client disconnected; interrupted agent task %s", completion_id)
 
         return response
@@ -1202,7 +1202,7 @@ class APIServerAdapter(BasePlatformAdapter):
         _cron_trigger = staticmethod(_cron_trigger)
         _CRON_AVAILABLE = True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in api_server()", exc_info=True)
 
     _JOB_ID_RE = __import__("re").compile(r"[a-f0-9]{12}")
     # Allowed fields for update — prevents clients injecting arbitrary keys
@@ -1536,7 +1536,7 @@ class APIServerAdapter(BasePlatformAdapter):
             try:
                 loop.call_soon_threadsafe(q.put_nowait, event)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _push()", exc_info=True)
 
         def _callback(event_type: str, tool_name: str = None, preview: str = None, args=None, **kwargs):
             ts = time.time()
@@ -1614,7 +1614,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     "delta": delta,
                 })
             except Exception:
-                pass
+                logger.debug("Ignoring error in _text_cb()", exc_info=True)
 
         instructions = body.get("instructions")
         previous_response_id = body.get("previous_response_id")
@@ -1704,19 +1704,19 @@ class APIServerAdapter(BasePlatformAdapter):
                         "error": str(exc),
                     })
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _run_and_close()", exc_info=True)
             finally:
                 # Sentinel: signal SSE stream to close
                 try:
                     q.put_nowait(None)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _run_and_close()", exc_info=True)
 
         task = asyncio.create_task(_run_and_close())
         try:
             self._background_tasks.add(task)
         except TypeError:
-            pass
+            logger.debug("Ignoring error in _handle_runs()", exc_info=True)
         if hasattr(task, "add_done_callback"):
             task.add_done_callback(self._background_tasks.discard)
 
@@ -1824,7 +1824,7 @@ class APIServerAdapter(BasePlatformAdapter):
             try:
                 self._background_tasks.add(sweep_task)
             except TypeError:
-                pass
+                logger.debug("Ignoring error in connect()", exc_info=True)
             if hasattr(sweep_task, "add_done_callback"):
                 sweep_task.add_done_callback(self._background_tasks.discard)
 
@@ -1852,7 +1852,7 @@ class APIServerAdapter(BasePlatformAdapter):
                         )
                         return False
                 except ImportError:
-                    pass
+                    logger.debug("Ignoring error in connect()", exc_info=True)
 
             # Port conflict detection — fail fast if port is already in use
             try:

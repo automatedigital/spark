@@ -92,7 +92,7 @@ def is_network_accessible(host: str) -> bool:
         return True
     except ValueError:
         # when host variable is a hostname, we should try to resolve below
-        pass
+        logger.debug("Ignoring error in is_network_accessible()", exc_info=True)
 
     try:
         import concurrent.futures
@@ -453,7 +453,7 @@ def cleanup_image_cache(max_age_hours: int = 24) -> int:
                 f.unlink()
                 removed += 1
             except OSError:
-                pass
+                logger.debug("Ignoring error in cleanup_image_cache()", exc_info=True)
     return removed
 
 
@@ -632,7 +632,7 @@ def cleanup_document_cache(max_age_hours: int = 24) -> int:
                 f.unlink()
                 removed += 1
             except OSError:
-                pass
+                logger.debug("Ignoring error in cleanup_document_cache()", exc_info=True)
     return removed
 
 
@@ -846,7 +846,7 @@ class BasePlatformAdapter(ABC):
             from gateway.status import write_runtime_status
             write_runtime_status(platform=self.platform.value, platform_state="connected", error_code=None, error_message=None)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _mark_connected()", exc_info=True)
 
     def _mark_disconnected(self) -> None:
         self._running = False
@@ -856,7 +856,7 @@ class BasePlatformAdapter(ABC):
             from gateway.status import write_runtime_status
             write_runtime_status(platform=self.platform.value, platform_state="disconnected", error_code=None, error_message=None)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _mark_disconnected()", exc_info=True)
 
     def _set_fatal_error(self, code: str, message: str, *, retryable: bool) -> None:
         self._running = False
@@ -872,7 +872,7 @@ class BasePlatformAdapter(ABC):
                 error_message=message,
             )
         except Exception:
-            pass
+            logger.debug("Ignoring error in _set_fatal_error()", exc_info=True)
 
     async def _notify_fatal_error(self) -> None:
         handler = self._fatal_error_handler
@@ -1351,7 +1351,7 @@ class BasePlatformAdapter(ABC):
                 try:
                     await self.stop_typing(chat_id)
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _keep_typing()", exc_info=True)
             self._typing_paused.discard(chat_id)
 
     def pause_typing_for_chat(self, chat_id: str) -> None:
@@ -1714,7 +1714,7 @@ class BasePlatformAdapter(ABC):
                         try:
                             os.remove(_tts_path)
                         except OSError:
-                            pass
+                            logger.debug("Ignoring error in _process_message_background()", exc_info=True)
 
                 # Send the text portion
                 if text_content:
@@ -1849,7 +1849,7 @@ class BasePlatformAdapter(ABC):
                 try:
                     await typing_task
                 except asyncio.CancelledError:
-                    pass
+                    logger.debug("Ignoring error in _process_message_background()", exc_info=True)
                 # Process pending message in new background task
                 await self._process_message_background(pending_event, session_key)
                 return  # Already cleaned up
@@ -1886,14 +1886,14 @@ class BasePlatformAdapter(ABC):
             try:
                 await typing_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in _process_message_background()", exc_info=True)
             # Also cancel any platform-level persistent typing tasks (e.g. Discord)
             # that may have been recreated by _keep_typing after the last stop_typing()
             try:
                 if hasattr(self, "stop_typing"):
                     await self.stop_typing(event.source.chat_id)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _process_message_background()", exc_info=True)
             # Clean up session tracking
             if session_key in self._active_sessions:
                 del self._active_sessions[session_key]

@@ -352,7 +352,7 @@ class MatrixAdapter(BasePlatformAdapter):
             except Exception:
                 # Device deletion often requires UIA or may simply not be
                 # permitted — that's fine, share_keys will try to overwrite.
-                pass
+                logger.debug("Ignoring error in _verify_device_keys_on_server()", exc_info=True)
             try:
                 await olm.share_keys()
             except Exception as exc:
@@ -600,7 +600,7 @@ class MatrixAdapter(BasePlatformAdapter):
             try:
                 await self._sync_task
             except (asyncio.CancelledError, Exception):
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
 
         # Close the SQLite crypto store database.
         if hasattr(self, "_crypto_db") and self._crypto_db:
@@ -613,7 +613,7 @@ class MatrixAdapter(BasePlatformAdapter):
             try:
                 await self._client.api.session.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
             self._client = None
 
         logger.info("Matrix: disconnected")
@@ -711,7 +711,7 @@ class MatrixAdapter(BasePlatformAdapter):
                 if name_evt and hasattr(name_evt, "name") and name_evt.name:
                     name = name_evt.name
             except Exception:
-                pass
+                logger.debug("Ignoring error in get_chat_info()", exc_info=True)
 
         return {"name": name, "type": chat_type}
 
@@ -727,7 +727,7 @@ class MatrixAdapter(BasePlatformAdapter):
             try:
                 await self._client.set_typing(RoomID(chat_id), timeout=30000)
             except Exception:
-                pass
+                logger.debug("Ignoring error in send_typing()", exc_info=True)
 
     async def edit_message(
         self, chat_id: str, message_id: str, content: str
@@ -1740,7 +1740,7 @@ class MatrixAdapter(BasePlatformAdapter):
                 if members and len(members) == 2:
                     return True
             except Exception:
-                pass
+                logger.debug("Ignoring error in _is_dm_room()", exc_info=True)
         return False
 
     async def _refresh_dm_cache(self) -> None:
@@ -1826,7 +1826,7 @@ class MatrixAdapter(BasePlatformAdapter):
                 if member and getattr(member, "displayname", None):
                     return member.displayname
             except Exception:
-                pass
+                logger.debug("Ignoring error in _get_display_name()", exc_info=True)
         # Strip the @...:server format to just the localpart.
         if user_id.startswith("@") and ":" in user_id:
             return user_id[1:].split(":")[0]
@@ -1864,7 +1864,7 @@ class MatrixAdapter(BasePlatformAdapter):
                 html = html.replace("<p>", "").replace("</p>", "")
             return html
         except ImportError:
-            pass
+            logger.debug("Ignoring error in _markdown_to_html()", exc_info=True)
 
         return self._markdown_to_html_fallback(text)
 

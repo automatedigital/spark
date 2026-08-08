@@ -58,7 +58,7 @@ def _resolve_download_timeout() -> float:
         try:
             return float(env_val)
         except ValueError:
-            pass
+            logger.debug("Ignoring error in _resolve_download_timeout()", exc_info=True)
     try:
         from spark_cli.config import load_config
         cfg = load_config()
@@ -66,7 +66,7 @@ def _resolve_download_timeout() -> float:
         if val is not None:
             return float(val)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_download_timeout()", exc_info=True)
     return 30.0
 
 _VISION_DOWNLOAD_TIMEOUT = _resolve_download_timeout()
@@ -569,7 +569,7 @@ async def vision_analyze_tool(
             if _vt is not None:
                 vision_timeout = float(_vt)
         except Exception:
-            pass
+            logger.debug("Ignoring error in vision_analyze_tool()", exc_info=True)
         call_kwargs = {
             "task": "vision",
             "messages": messages,

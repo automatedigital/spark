@@ -136,7 +136,7 @@ class SubdirectoryHintTracker:
                     break  # filesystem root
                 p = parent
         except (OSError, ValueError):
-            pass
+            logger.debug("Ignoring error in _add_path_candidate()", exc_info=True)
 
     def _extract_paths_from_command(self, cmd: str, candidates: set[Path]):
         """Extract path-like tokens from a shell command string."""

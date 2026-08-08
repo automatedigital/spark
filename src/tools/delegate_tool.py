@@ -77,7 +77,7 @@ def _get_max_concurrent_children() -> int:
         try:
             return max(1, int(env_val))
         except (TypeError, ValueError):
-            pass
+            logger.debug("Ignoring error in _get_max_concurrent_children()", exc_info=True)
     return _DEFAULT_MAX_CONCURRENT_CHILDREN
 DEFAULT_MAX_ITERATIONS = 50
 _HEARTBEAT_INTERVAL = 30  # seconds between parent activity heartbeats during delegation
@@ -552,11 +552,11 @@ def _run_single_child(
                         desc = (f"delegate_task: subagent {child_desc} "
                                 f"(iteration {child_iter}/{child_max})")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _heartbeat_loop()", exc_info=True)
             try:
                 touch(desc)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _heartbeat_loop()", exc_info=True)
 
     _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
     _heartbeat_thread.start()
@@ -949,7 +949,7 @@ def delegate_task(
                     child_session_id=getattr(children[entry["task_index"]][2], "session_id", "") if entry["task_index"] < len(children) else "",
                 )
             except Exception:
-                pass
+                logger.debug("Ignoring error in delegate_task()", exc_info=True)
 
     total_duration = round(time.monotonic() - overall_start, 2)
 
@@ -1149,7 +1149,7 @@ def _load_config() -> dict:
         if cfg:
             return cfg
     except Exception:
-        pass
+        logger.debug("Ignoring error in _load_config()", exc_info=True)
     try:
         from spark_cli.config import load_config
         full = load_config()

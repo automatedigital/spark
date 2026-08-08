@@ -1086,7 +1086,7 @@ class MCPServerTask:
                 try:
                     await self._task
                 except asyncio.CancelledError:
-                    pass
+                    logger.debug("Ignoring error in shutdown()", exc_info=True)
         self.session = None
 
 
@@ -1125,14 +1125,14 @@ def _snapshot_child_pids() -> set:
         with open(children_path) as f:
             return {int(p) for p in f.read().split() if p.strip()}
     except (FileNotFoundError, OSError, ValueError):
-        pass
+        logger.debug("Ignoring error in _snapshot_child_pids()", exc_info=True)
 
     # Fallback: psutil
     try:
         import psutil
         return {c.pid for c in psutil.Process(my_pid).children()}
     except Exception:
-        pass
+        logger.debug("Ignoring error in _snapshot_child_pids()", exc_info=True)
 
     return set()
 
@@ -1246,7 +1246,7 @@ def _load_mcp_config() -> dict[str, dict]:
             from spark_cli.env_loader import load_spark_dotenv
             load_spark_dotenv()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_mcp_config()", exc_info=True)
         return {name: _interpolate_env_vars(cfg) for name, cfg in servers.items()}
     except Exception as exc:
         logger.debug("Failed to load MCP config: %s", exc)

@@ -143,7 +143,7 @@ class HolographicMemoryProvider(MemoryProvider):
             with open(config_path, "w") as f:
                 yaml.dump(existing, f, default_flow_style=False)
         except Exception:
-            pass
+            logger.debug("Ignoring error in save_config()", exc_info=True)
 
     def get_config_schema(self):
         from core.spark_constants import display_spark_home
@@ -387,7 +387,7 @@ class HolographicMemoryProvider(MemoryProvider):
                         self._store.add_fact(content[:400], category="user_pref")
                         extracted += 1
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _auto_extract_facts()", exc_info=True)
                     break
 
             for pattern in _DECISION_PATTERNS:
@@ -396,7 +396,7 @@ class HolographicMemoryProvider(MemoryProvider):
                         self._store.add_fact(content[:400], category="project")
                         extracted += 1
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _auto_extract_facts()", exc_info=True)
                     break
 
         if extracted:

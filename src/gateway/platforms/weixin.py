@@ -213,7 +213,7 @@ def save_weixin_account(
     try:
         path.chmod(0o600)
     except OSError:
-        pass
+        logger.debug("Ignoring error in save_weixin_account()", exc_info=True)
 
 
 def load_weixin_account(spark_home: str, account_id: str) -> dict[str, Any] | None:
@@ -1148,7 +1148,7 @@ class WeixinAdapter(BasePlatformAdapter):
             try:
                 await self._poll_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Ignoring error in disconnect()", exc_info=True)
         self._poll_task = None
         if self._session and not self._session.closed:
             await self._session.close()
@@ -1537,7 +1537,7 @@ class WeixinAdapter(BasePlatformAdapter):
                 try:
                     os.unlink(file_path)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in send_image()", exc_info=True)
 
     async def send_image_file(
         self,

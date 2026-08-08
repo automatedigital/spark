@@ -90,7 +90,7 @@ def _get_effective_configurable_toolsets():
         discover_plugins()  # idempotent — ensures plugins are loaded
         result.extend(get_plugin_toolsets())
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_effective_configurable_toolsets()", exc_info=True)
     return result
 
 

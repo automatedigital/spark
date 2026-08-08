@@ -439,7 +439,7 @@ def save_skill_content(skill_dir: Path, content: str, *, allow_external: bool = 
             frontmatter, _ = parse_frontmatter(content)
             bump_patch(str(frontmatter.get("name") or skill_dir.name))
         except Exception:
-            pass
+            logger.debug("Ignoring error in save_skill_content()", exc_info=True)
         return {"success": True, "message": f"Skill '{skill_dir.name}' updated."}
     except (OSError, UnicodeError) as exc:
         return {"success": False, "error": f"Failed to save skill: {exc}"}
@@ -707,7 +707,7 @@ def skill_manage(
             from agent.prompt_builder import clear_skills_system_prompt_cache
             clear_skills_system_prompt_cache(clear_snapshot=True)
         except Exception:
-            pass
+            logger.debug("Ignoring error in skill_manage()", exc_info=True)
         try:
             from tools.skill_usage import bump_patch, mark_agent_created
             if action == "create":
@@ -715,7 +715,7 @@ def skill_manage(
             elif action in ("patch", "edit"):
                 bump_patch(name)
         except Exception:
-            pass
+            logger.debug("Ignoring error in skill_manage()", exc_info=True)
         # Surface the change so the Web (SkillsPage/toast) can refresh and the
         # user sees skills the agent created/updated (incl. background reviews).
         try:
@@ -723,7 +723,7 @@ def skill_manage(
 
             _publish_event("skills.updated", {"action": action, "name": name})
         except Exception:
-            pass
+            logger.debug("Ignoring error in skill_manage()", exc_info=True)
 
     return json.dumps(result, ensure_ascii=False)
 

@@ -1230,7 +1230,7 @@ class SkillsShSource(SkillSource):
                             if self._matches_skill_tokens(meta, tokens):
                                 return meta.identifier
         except Exception:
-            pass
+            logger.debug("Ignoring error in _discover_identifier()", exc_info=True)
 
         return None
 
@@ -2353,7 +2353,7 @@ def _write_index_cache(key: str, data: Any) -> None:
         try:
             ignore_file.write_text("# Exclude hub internals from search tools\n*\n")
         except OSError:
-            pass
+            logger.debug("Ignoring error in _write_index_cache()", exc_info=True)
     cache_file = INDEX_CACHE_DIR / f"{key}.json"
     try:
         cache_file.write_text(json.dumps(data, ensure_ascii=False, default=str))
@@ -2591,7 +2591,7 @@ def install_from_quarantine(
                     f"{skill_size:,}",
                 )
         except OSError:
-            pass
+            logger.debug("Ignoring error in install_from_quarantine()", exc_info=True)
 
     install_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(quarantine_path), str(install_dir))
@@ -2734,7 +2734,7 @@ def _load_spark_index() -> dict | None:
             if age < SPARK_INDEX_TTL:
                 return json.loads(SPARK_INDEX_CACHE_FILE.read_text())
         except (OSError, json.JSONDecodeError):
-            pass
+            logger.debug("Ignoring error in _load_spark_index()", exc_info=True)
 
     # Fetch from docs site
     try:
@@ -2756,7 +2756,7 @@ def _load_spark_index() -> dict | None:
         SPARK_INDEX_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         SPARK_INDEX_CACHE_FILE.write_text(json.dumps(data))
     except OSError:
-        pass
+        logger.debug("Ignoring error in _load_spark_index()", exc_info=True)
 
     return data
 
@@ -2767,7 +2767,7 @@ def _load_stale_index_cache() -> dict | None:
         try:
             return json.loads(SPARK_INDEX_CACHE_FILE.read_text())
         except (OSError, json.JSONDecodeError):
-            pass
+            logger.debug("Ignoring error in _load_stale_index_cache()", exc_info=True)
     return None
 
 
@@ -3029,7 +3029,7 @@ def parallel_search_sources(
                     if on_source_done:
                         on_source_done(sid, len(results))
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in parallel_search_sources()", exc_info=True)
         except TimeoutError:
             timed_out_ids = [
                 futures[f] for f in futures if not f.done()

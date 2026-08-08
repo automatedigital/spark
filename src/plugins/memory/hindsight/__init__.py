@@ -154,7 +154,7 @@ def _load_config() -> dict:
         try:
             return json.loads(profile_path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_config()", exc_info=True)
 
     # Legacy shared path (backward compat)
     legacy_path = Path.home() / ".hindsight" / "config.json"
@@ -162,7 +162,7 @@ def _load_config() -> dict:
         try:
             return json.loads(legacy_path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_config()", exc_info=True)
 
     return {
         "mode": os.environ.get("HINDSIGHT_MODE", "cloud"),
@@ -253,7 +253,7 @@ class HindsightMemoryProvider(MemoryProvider):
             try:
                 existing = json.loads(config_path.read_text())
             except Exception:
-                pass
+                logger.debug("Ignoring error in save_config()", exc_info=True)
         existing.update(values)
         config_path.write_text(json.dumps(existing, indent=2))
 
@@ -543,7 +543,7 @@ class HindsightMemoryProvider(MemoryProvider):
             from importlib.metadata import version as pkg_version
             _client_version = pkg_version("hindsight-client")
         except Exception:
-            pass
+            logger.debug("Ignoring error in initialize()", exc_info=True)
         logger.info("Hindsight initialized: mode=%s, api_url=%s, bank=%s, budget=%s, memory_mode=%s, prefetch_method=%s, client=%s",
                      self._mode, self._api_url, self._bank_id, self._budget, self._memory_mode, self._prefetch_method, _client_version)
         logger.debug("Hindsight config: auto_retain=%s, auto_recall=%s, retain_every_n=%d, "
@@ -863,11 +863,11 @@ class HindsightMemoryProvider(MemoryProvider):
                     try:
                         self._client.close()
                     except RuntimeError:
-                        pass
+                        logger.debug("Ignoring error in shutdown()", exc_info=True)
                 else:
                     _run_sync(self._client.aclose())
             except Exception:
-                pass
+                logger.debug("Ignoring error in shutdown()", exc_info=True)
             self._client = None
         # Stop the background event loop so no tasks are pending at exit
         if _loop is not None and _loop.is_running():

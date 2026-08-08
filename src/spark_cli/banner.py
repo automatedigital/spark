@@ -156,7 +156,7 @@ def check_for_updates() -> int | None:
             if now - cached.get("ts", 0) < _UPDATE_CHECK_CACHE_SECONDS:
                 return cached.get("behind")
     except Exception:
-        pass
+        logger.debug("Ignoring error in check_for_updates()", exc_info=True)
 
     # Fetch latest refs (fast — only downloads ref metadata, no files)
     try:
@@ -189,7 +189,7 @@ def check_for_updates() -> int | None:
     try:
         cache_file.write_text(json.dumps({"ts": now, "behind": behind}))
     except Exception:
-        pass
+        logger.debug("Ignoring error in check_for_updates()", exc_info=True)
 
     return behind
 

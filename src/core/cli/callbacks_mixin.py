@@ -139,7 +139,7 @@ class _CallbacksMixin:
                     )
                     _cprint(f"  {line}")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _on_tool_progress()", exc_info=True)
             self._invalidate()
             return
         if event_type != "tool.started":
@@ -177,7 +177,7 @@ class _CallbacksMixin:
                 daemon=True,
             ).start()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _on_tool_progress()", exc_info=True)
 
     def _on_tool_start(
         self, tool_call_id: str, function_name: str, function_args: dict
@@ -578,7 +578,7 @@ class _CallbacksMixin:
             buf.text = snapshot.get("text", "")
             buf.cursor_position = min(snapshot.get("cursor_position", 0), len(buf.text))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _restore_modal_input_snapshot()", exc_info=True)
 
     def _submit_secret_response(self, value: str) -> None:
         if not self._secret_state:
@@ -596,5 +596,5 @@ class _CallbacksMixin:
             try:
                 self._app.current_buffer.reset()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _clear_secret_input_buffer()", exc_info=True)
 

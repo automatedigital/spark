@@ -668,7 +668,7 @@ def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
                 if not is_provider_explicitly_configured("anthropic"):
                     continue
             except ImportError:
-                pass
+                logger.debug("Ignoring error in _resolve_api_key_provider()", exc_info=True)
             return _try_anthropic()
 
         pool_present, entry = _select_pool_entry(provider_id)
@@ -766,7 +766,7 @@ def _read_main_model() -> str:
             if isinstance(default, str) and default.strip():
                 return default.strip()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _read_main_model()", exc_info=True)
     return ""
 
 
@@ -785,7 +785,7 @@ def _read_main_provider() -> str:
             if isinstance(provider, str) and provider.strip():
                 return provider.strip().lower()
     except Exception:
-        pass
+        logger.debug("Ignoring error in _read_main_provider()", exc_info=True)
     return ""
 
 
@@ -923,7 +923,7 @@ def _try_anthropic() -> tuple[Any | None, str | None]:
                 if cfg_base_url:
                     base_url = cfg_base_url
     except Exception:
-        pass
+        logger.debug("Ignoring error in _try_anthropic()", exc_info=True)
 
     from agent.anthropic_adapter import _is_oauth_token
     is_oauth = _is_oauth_token(token)
@@ -1177,7 +1177,7 @@ def _to_async_client(sync_client, model: str):
         if isinstance(sync_client, CopilotACPClient):
             return sync_client, model
     except ImportError:
-        pass
+        logger.debug("Ignoring error in _to_async_client()", exc_info=True)
 
     async_kwargs = {
         "api_key": sync_client.api_key,
@@ -1422,7 +1422,7 @@ def resolve_provider_client(
                 provider)
             return None, None
     except ImportError:
-        pass
+        logger.debug("Ignoring error in resolve_provider_client()", exc_info=True)
 
     # ── API-key providers from PROVIDER_REGISTRY ─────────────────────
     try:
@@ -1497,7 +1497,7 @@ def resolve_provider_client(
                         final_model)
                     client = CodexAuxiliaryClient(client, final_model)
             except ImportError:
-                pass
+                logger.debug("Ignoring error in resolve_provider_client()", exc_info=True)
 
         # Honor api_mode for any API-key provider (e.g. direct OpenAI with
         # codex-family models).  The copilot-specific wrapping above handles
@@ -1835,7 +1835,7 @@ def _force_close_async_httpx(client: Any) -> None:
         if inner is not None and not getattr(inner, "is_closed", True):
             inner._state = ClientState.CLOSED
     except Exception:
-        pass
+        logger.debug("Ignoring error in _force_close_async_httpx()", exc_info=True)
 
 
 def shutdown_cached_clients() -> None:
@@ -1861,7 +1861,7 @@ def shutdown_cached_clients() -> None:
                 if close_fn and not inspect.iscoroutinefunction(close_fn):
                     close_fn()
             except Exception:
-                pass
+                logger.debug("Ignoring error in shutdown_cached_clients()", exc_info=True)
         _client_cache.clear()
 
 
@@ -1931,7 +1931,7 @@ def _get_cached_client(
             current_loop = _aio.get_event_loop()
             loop_id = id(current_loop)
         except RuntimeError:
-            pass
+            logger.debug("Ignoring error in _get_cached_client()", exc_info=True)
     runtime = _normalize_main_runtime(main_runtime)
     runtime_key = tuple(runtime.get(field, "") for field in _MAIN_RUNTIME_FIELDS) if provider == "auto" else ()
     cache_key = (provider, async_mode, base_url or "", api_key or "", api_mode or "", loop_id, runtime_key)
@@ -2055,7 +2055,7 @@ def _get_task_timeout(task: str, default: float = _DEFAULT_AUX_TIMEOUT) -> float
         try:
             return float(raw)
         except (ValueError, TypeError):
-            pass
+            logger.debug("Ignoring error in _get_task_timeout()", exc_info=True)
     return default
 
 

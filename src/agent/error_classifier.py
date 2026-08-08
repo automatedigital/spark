@@ -295,7 +295,7 @@ def classify_api_error(
                             if isinstance(_inner_err, dict):
                                 _metadata_msg = (_inner_err.get("message") or "").lower()
                     except (json.JSONDecodeError, TypeError):
-                        pass
+                        logger.debug("Ignoring error in classify_api_error()", exc_info=True)
         if not _body_msg:
             _body_msg = (body.get("message") or "").lower()
     # Combine all message sources for pattern matching
@@ -784,7 +784,7 @@ def _extract_error_body(error: Exception) -> dict:
             if isinstance(json_body, dict):
                 return json_body
         except Exception:
-            pass
+            logger.debug("Ignoring error in _extract_error_body()", exc_info=True)
     return {}
 
 

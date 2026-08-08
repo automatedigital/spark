@@ -50,7 +50,7 @@ def _get_max_read_chars() -> int:
             _max_read_chars_cached = int(val)
             return _max_read_chars_cached
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_max_read_chars()", exc_info=True)
     _max_read_chars_cached = _DEFAULT_MAX_READ_CHARS
     return _max_read_chars_cached
 
@@ -400,7 +400,7 @@ def read_file_tool(
                     }
                 )
             except ValueError:
-                pass
+                logger.debug("Ignoring error in read_file_tool()", exc_info=True)
 
         # ── Dedup check ───────────────────────────────────────────────
         # If we already read this exact (path, offset, limit) and the

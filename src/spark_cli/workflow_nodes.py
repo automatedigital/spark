@@ -658,7 +658,7 @@ def _coerce_list(value: Any) -> list[str]:
             if isinstance(parsed, list):
                 return [str(v).strip() for v in parsed if str(v).strip()]
         except json.JSONDecodeError:
-            pass
+            _log.debug("Ignoring error in _coerce_list()", exc_info=True)
         return [v.strip() for v in value.split(",") if v.strip()]
     return [str(value)]
 
