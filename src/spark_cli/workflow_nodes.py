@@ -308,7 +308,7 @@ def _read_table_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -
         rows = list(csv.DictReader(StringIO(file_path.read_text(encoding="utf-8", errors="replace"))))
     else:
         try:
-            import pandas as pd  # type: ignore
+            import pandas as pd
         except ImportError as exc:
             raise ValueError("Spreadsheet reading requires pandas/openpyxl") from exc
         rows = pd.read_excel(file_path).to_dict(orient="records")
@@ -332,7 +332,7 @@ def _write_table_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) 
         file_path.write_text(text, encoding="utf-8")
     elif file_path.suffix.lower() == ".xlsx":
         try:
-            import pandas as pd  # type: ignore
+            import pandas as pd
         except ImportError as exc:
             raise ValueError("Spreadsheet writing requires pandas/openpyxl") from exc
         pd.DataFrame(rows).to_excel(file_path, index=False)

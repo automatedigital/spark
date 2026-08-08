@@ -676,16 +676,16 @@ def list_skins() -> list[dict[str, str]]:
     skins_path = _skins_dir()
     if skins_path.is_dir():
         for f in sorted(skins_path.glob("*.yaml")):
-            data = _load_skin_from_yaml(f)
-            if data:
-                skin_name = data.get("name", f.stem)
+            skin_data: dict[str, Any] | None = _load_skin_from_yaml(f)
+            if skin_data:
+                skin_name = skin_data.get("name", f.stem)
                 # Skip if it shadows a built-in
                 if any(s["name"] == skin_name for s in result):
                     continue
                 result.append(
                     {
                         "name": skin_name,
-                        "description": data.get("description", ""),
+                        "description": skin_data.get("description", ""),
                         "source": "user",
                     }
                 )

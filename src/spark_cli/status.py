@@ -50,7 +50,7 @@ def _format_iso_timestamp(value) -> str:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=UTC)
     except Exception:
-        return value
+        return str(value)
     return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 

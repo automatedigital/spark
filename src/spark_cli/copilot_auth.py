@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from typing import cast
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +242,7 @@ def copilot_device_code_login(
 
         if result.get("access_token"):
             print(" ✓")
-            return result["access_token"]
+            return cast(str, result["access_token"])
 
         error = result.get("error", "")
         if error == "authorization_pending":

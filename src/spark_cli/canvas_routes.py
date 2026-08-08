@@ -31,7 +31,7 @@ import threading as _threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -207,7 +207,7 @@ def _read_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, Any]
         with path.open(encoding="utf-8") as fh:
             doc = json.load(fh)
         doc["revision"] = _revision(path)
-        return doc
+        return cast("dict[str, Any]", doc)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}") from exc
 

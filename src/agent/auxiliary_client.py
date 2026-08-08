@@ -1813,7 +1813,7 @@ def neuter_async_httpx_del() -> None:
     """
     try:
         from openai._base_client import AsyncHttpxClientWrapper
-        AsyncHttpxClientWrapper.__del__ = lambda self: None  # type: ignore[assignment]
+        AsyncHttpxClientWrapper.__del__ = lambda self: None
     except (ImportError, AttributeError):
         pass  # Graceful degradation if the SDK changes its internals
 

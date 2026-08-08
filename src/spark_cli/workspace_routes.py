@@ -2612,7 +2612,7 @@ def get_preview_console(slug: str):
 def get_preview_screenshot(slug: str):
     session = _get_preview_session_or_404(slug)
     try:
-        from playwright.sync_api import sync_playwright  # type: ignore
+        from playwright.sync_api import sync_playwright
     except ImportError as err:
         raise HTTPException(status_code=501, detail="Playwright is not installed") from err
     try:
@@ -2664,7 +2664,7 @@ def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | 
             agent_error = str(agent_result.get("error") or "unknown error")
             _append_preview_log(slug, session, f"agent-browser {action} unavailable: {agent_error}", "error")
     try:
-        from playwright.sync_api import sync_playwright  # type: ignore
+        from playwright.sync_api import sync_playwright
     except ImportError as err:
         detail = "playwright backend unavailable: Playwright is not installed"
         if agent_error:

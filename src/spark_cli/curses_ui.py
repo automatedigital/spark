@@ -331,7 +331,7 @@ def curses_single_select(
 
     try:
         import curses
-        result_holder: list = [None]
+        result_holder: list[int | None] = [None]
 
         all_items = list(items) + [cancel_label]
         cancel_idx = len(items)

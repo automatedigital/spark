@@ -755,7 +755,7 @@ def do_publish(skill_path: str, target: str = "github", repo: str = "",
     # Validate the skill
     import yaml
     skill_md = (path / "SKILL.md").read_text(encoding="utf-8")
-    fm = {}
+    fm: dict[str, Any] = {}
     if skill_md.startswith("---"):
         import re
         match = re.search(r'\n---\s*\n', skill_md[3:])

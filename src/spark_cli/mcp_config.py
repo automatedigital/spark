@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 from core.spark_constants import display_spark_home
 from spark_cli.colors import Colors, color
@@ -74,7 +74,7 @@ def _get_mcp_servers(config: dict | None = None) -> dict[str, dict]:
     servers = config.get("mcp_servers")
     if not servers or not isinstance(servers, dict):
         return {}
-    return servers
+    return cast("dict[str, dict]", servers)
 
 
 def _save_mcp_server(name: str, server_config: dict):

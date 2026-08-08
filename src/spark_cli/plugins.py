@@ -480,7 +480,7 @@ class PluginManager:
         # Ensure the namespace parent package exists
         if _NS_PARENT not in sys.modules:
             ns_pkg = types.ModuleType(_NS_PARENT)
-            ns_pkg.__path__ = []  # type: ignore[attr-defined]
+            ns_pkg.__path__ = []
             ns_pkg.__package__ = _NS_PARENT
             sys.modules[_NS_PARENT] = ns_pkg
 
@@ -495,7 +495,7 @@ class PluginManager:
 
         module = importlib.util.module_from_spec(spec)
         module.__package__ = module_name
-        module.__path__ = [str(plugin_dir)]  # type: ignore[attr-defined]
+        module.__path__ = [str(plugin_dir)]
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
         return module

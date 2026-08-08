@@ -2032,7 +2032,7 @@ app.add_middleware(
 class EfficiencyCounterMiddleware(BaseHTTPMiddleware):
     """Count API polling and response bytes without retaining paths or content."""
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         try:
             from core.runtime_metrics import increment
@@ -2060,7 +2060,7 @@ class DashboardAPIAuthMiddleware(BaseHTTPMiddleware):
 
     _PUBLIC_PATHS = frozenset({"/api/dashboard/auth/info", "/api/status"})
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next):
         if request.method == "OPTIONS":
             return await call_next(request)
         path = request.url.path

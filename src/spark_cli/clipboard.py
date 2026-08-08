@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 from core.spark_constants import is_wsl as _is_wsl
 
@@ -167,7 +168,7 @@ def _get_ps_exe() -> str | None:
     global _ps_exe
     if _ps_exe is False:
         _ps_exe = _find_powershell()
-    return _ps_exe
+    return cast("str | None", _ps_exe)
 
 
 def _windows_has_image() -> bool:

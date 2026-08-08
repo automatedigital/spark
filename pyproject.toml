@@ -224,3 +224,54 @@ exclude = [
     "src/spark_cli/web/src-tauri/resources/",
     "src/spark_cli/web/src-tauri/target/",
 ]
+
+# --- mypy ratchet -------------------------------------------------------
+# These modules still have type errors and are exempt.  Everything else in
+# src/agent and src/spark_cli is clean and gated in CI, so a new error in a
+# clean module fails the build.  Fix a module, delete its line here.
+# Remaining: 41 modules.
+[[tool.mypy.overrides]]
+module = [
+    "agent.anthropic_adapter",
+    "agent.auxiliary_client",
+    "agent.context_checkpoint",
+    "agent.context_compressor",
+    "agent.copilot_acp_client",
+    "agent.credential_pool",
+    "agent.display",
+    "agent.error_classifier",
+    "agent.insights",
+    "agent.model_metadata",
+    "agent.models_dev",
+    "agent.skill_commands",
+    "agent.subagents",
+    "spark_cli.auth",
+    "spark_cli.auth_commands",
+    "spark_cli.banner",
+    "spark_cli.callbacks",
+    "spark_cli.codex_models",
+    "spark_cli.commands",
+    "spark_cli.config",
+    "spark_cli.debug",
+    "spark_cli.doctor",
+    "spark_cli.env_loader",
+    "spark_cli.google_connector",
+    "spark_cli.kanban_routes",
+    "spark_cli.main",
+    "spark_cli.model_switch",
+    "spark_cli.models",
+    "spark_cli.oauth_connectors",
+    "spark_cli.plugins",
+    "spark_cli.plugins_cmd",
+    "spark_cli.preview_browser",
+    "spark_cli.providers",
+    "spark_cli.runtime_provider",
+    "spark_cli.setup",
+    "spark_cli.skills_config",
+    "spark_cli.tools_config",
+    "spark_cli.web_embed",
+    "spark_cli.web_server",
+    "spark_cli.workflow_nodes",
+    "spark_cli.workspace_routes",
+]
+ignore_errors = true

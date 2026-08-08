@@ -1458,7 +1458,8 @@ def _wait_for_gateway_exit(timeout: float = 10.0, force_after: float | None = 5.
         if pid is None:
             return True  # Process exited cleanly.
 
-        if force_after is not None and not force_sent and time.monotonic() >= force_deadline:
+        if (force_deadline is not None and not force_sent
+                and time.monotonic() >= force_deadline):
             # Grace period expired — force-kill the specific PID.
             try:
                 terminate_pid(pid, force=True)

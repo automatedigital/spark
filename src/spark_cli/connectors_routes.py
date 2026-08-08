@@ -111,7 +111,7 @@ def _redirect_uri(provider: str = "google") -> str:
 
     # 1. Explicit override
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
 
         from spark_cli.config import get_spark_home
 

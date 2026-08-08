@@ -93,7 +93,7 @@ class StreamedBrowserSession:
     # ── thread body ────────────────────────────────────────────────────────
     def _run(self) -> None:
         try:
-            from playwright.sync_api import sync_playwright  # type: ignore
+            from playwright.sync_api import sync_playwright
         except ImportError:
             self._start_error = BrowserUnavailable(
                 "Playwright is not installed — run `pip install playwright && playwright install chromium`"

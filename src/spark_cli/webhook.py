@@ -16,6 +16,7 @@ import re
 import secrets
 import time
 from pathlib import Path
+from typing import Any, cast
 
 from core.spark_constants import display_spark_home
 
@@ -58,7 +59,7 @@ def _get_webhook_config() -> dict:
     try:
         from spark_cli.config import load_config
         cfg = load_config()
-        return cfg.get("platforms", {}).get("webhook", {})
+        return cast("dict[Any, Any]", cfg.get("platforms", {}).get("webhook", {}))
     except Exception:
         return {}
 

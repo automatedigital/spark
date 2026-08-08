@@ -295,7 +295,7 @@ def _read_last_n_lines(path: Path, n: int) -> list:
         # For large files, read chunks from the end.
         with open(path, "rb") as f:
             chunk_size = 8192
-            lines = []
+            lines: list[bytes] = []
             pos = size
 
             while pos > 0 and len(lines) <= n + 1:

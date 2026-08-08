@@ -29,6 +29,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -491,7 +492,7 @@ def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> dict | None:
             capture_output=True, text=True, timeout=60,
         )
         if result.returncode == 0 and result.stdout.strip():
-            return json.loads(result.stdout.strip())
+            return cast("dict[Any, Any] | None", json.loads(result.stdout.strip()))
         if not quiet:
             print(f"⚠ Skill seeding returned exit code {result.returncode}")
             if result.stderr.strip():
