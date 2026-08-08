@@ -393,7 +393,39 @@ Fixed in `src/core/run_agent/__init__.py`:
   discarded whenever no `base_url` came with it, so a caller that did supply a
   key still got "Missing credentials".
 
-### Known gap, not yet fixed
+### Known bug, quarantined not fixed
+
+Two tests in `tests/spark_cli/test_web_server_events.py` are skipped on CI:
+`test_backend_exception_publishes_turn_done_and_clears_active` and
+`test_completed_conversation_without_stream_consumer_is_not_active`.
+
+**What happens.** The turn is marked active by `_mark_web_turn_active`, then
+`chat.turn_done` is published about 8ms later without `_run_web_agent_turn`
+ever being called — even though the test patches it to raise. The published
+payload is the evidence: `result` is `None`, `turn_outcome.status` is
+`"completed"`, `backend_error_class` is `None`, and `started_at`/`ended_at`
+are 8ms apart. An early return finalizes the turn while leaving its entry in
+`_web_active_turns`, so `turn_active` never clears.
+
+**Why it matters.** A user can see a turn report success when it never ran.
+
+**Ruled out.** Not a timeout (2s to 15s does not help). Not the shared async
+runtime (resetting it per test does not help). Not stale setup state (the
+fixture already clears every `_web_*` global, and a teardown drain was added).
+Not fixable by xdist grouping (`--dist loadfile` made it worse: 21 failures).
+
+**To fix.** Find the early-return path in the `/api/conversations` handler
+that publishes `turn_done` without entering `run_agent_task`, and make it
+clear the active turn. Reproduce with:
+
+```bash
+docker run --rm -v "$PWD":/w -w /w -e CI=1 python:3.11-slim bash -c \
+  'pip install -q -e ".[dev,web]" && python -m pytest \
+   tests/spark_cli/test_web_server_events.py tests/core/test_async_runtime.py \
+   tests/core/test_tool_scheduler.py tests/spark_cli/test_web_server.py -q'
+```
+
+### Earlier note, superseded
 
 `test_backend_exception_publishes_turn_done_and_clears_active` is skipped on
 CI. The turn publishes `chat.turn_done` with `result=None` and
