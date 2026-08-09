@@ -318,7 +318,33 @@ and wrap it in `await asyncio.to_thread(...)`. Prefer `httpx.AsyncClient` over
 
 ### 9. Split the largest React components
 
-- [ ] Reduce `api.ts` and `ChatPanel.tsx` below 800 lines each
+- [x] Reduce `api.ts` below 800 lines — now **632**
+- [ ] Reduce `ChatPanel.tsx` below 800 lines
+
+**api.ts: 3,052 -> 632.** It was one file holding a 1,456-line `api` object of
+214 members, 139 type declarations, and the transport layer. Now:
+
+| Module | Contents |
+| --- | --- |
+| `apiTypes.ts` | response and payload shapes |
+| `apiHelpers.ts` | connection mode, auth headers, `fetchJSON`, URL builders |
+| `api_*.ts` (18) | endpoint families: workspace, kanban, session, skill, workflow, canvas, connector, cron, memory, browser, env, model, provider, admin, config, mcp, plugin, gateway |
+
+`api.ts` re-exports everything and spreads the family objects into one `api`
+object, so every `import { api } from "./api"` and `api.someMethod()` call site
+is unchanged. Verified with `tsc --noEmit` (0 errors), eslint, and 369 vitest
+tests.
+
+**ChatPanel.tsx is not split, deliberately.** It is 2,047 lines: 1,482 of logic
+across 89 interdependent hooks, then 435 lines of JSX. Unlike `api.ts`, where
+the pieces were independent, these hooks share closure state, so extracting
+them is a real React refactor rather than moving text.
+
+`CLAUDE.md` also names this component as the one needing manual verification of
+loading, streaming, offline, complete, reconnect, refresh and gateway-restart
+states. A mechanical split cannot be checked against those, and the type checker
+would not catch a broken streaming state machine. It needs its own branch with
+the web UI actually exercised.
 
 **Evidence.** The web frontend is 48,587 lines. Two files dominate:
 `src/spark_cli/web/src/lib/api.ts` at 3,052 lines and
@@ -382,7 +408,7 @@ first, then promote it once it is stable.
 | 6 | Log swallowed exceptions | **Done** (873 of 955) | — |
 | 7 | `mypy` to zero | **Partly done** — 70 of 111 modules clean and gated | 1 week for the other 41 |
 | 8 | Unblock the event loop | **Withdrawn — false finding** | — |
-| 9 | Split large React files | Open | 2 days |
+| 9 | Split large React files | **api.ts done** (3,052 -> 632) | 2 days for ChatPanel |
 | 10 | Frontend CI checks | **Done** | — |
 
 ---
