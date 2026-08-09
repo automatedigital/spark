@@ -592,17 +592,17 @@ class TestInit:
 
 class TestInterrupt:
     def test_interrupt_sets_flag(self, agent):
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
             assert agent._interrupt_requested is True
 
     def test_interrupt_with_message(self, agent):
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt("new question")
             assert agent._interrupt_message == "new question"
 
     def test_clear_interrupt(self, agent):
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt("msg")
             agent.clear_interrupt()
             assert agent._interrupt_requested is False
@@ -610,7 +610,7 @@ class TestInterrupt:
 
     def test_is_interrupted_property(self, agent):
         assert agent.is_interrupted is False
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
             assert agent.is_interrupted is True
 
@@ -621,7 +621,7 @@ class TestHydrateTodoStore:
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi"},
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert not agent._todo_store.has_items()
 
@@ -636,7 +636,7 @@ class TestHydrateTodoStore:
                 "tool_call_id": "c1",
             },
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert agent._todo_store.has_items()
 
@@ -648,7 +648,7 @@ class TestHydrateTodoStore:
                 "tool_call_id": "c1",
             },
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert not agent._todo_store.has_items()
 
@@ -660,7 +660,7 @@ class TestHydrateTodoStore:
                 "tool_call_id": "c1",
             },
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert not agent._todo_store.has_items()
 
@@ -1138,7 +1138,7 @@ class TestExecuteToolCalls:
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc1, tc2])
         messages = []
 
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
 
         agent._execute_tool_calls(mock_msg, messages, "task-1")
@@ -1458,7 +1458,7 @@ class TestConcurrentToolExecution:
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc1, tc2])
         messages = []
 
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
 
         agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
@@ -1798,7 +1798,7 @@ class TestRunConversation:
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
-            patch("core.run_agent._set_interrupt"),
+            patch("core.run_agent.agent_support._set_interrupt"),
             patch.object(
                 agent, "_interruptible_api_call", side_effect=interrupt_side_effect
             ),
@@ -3000,7 +3000,7 @@ class TestSaveSessionLogAtomicWrite:
         agent.session_log_file = tmp_path / "session.json"
         messages = [{"role": "user", "content": "hello"}]
 
-        with patch("core.run_agent.atomic_json_write", create=True) as mock_atomic_write:
+        with patch("core.run_agent.agent_session.atomic_json_write", create=True) as mock_atomic_write:
             agent._save_session_log(messages)
 
         mock_atomic_write.assert_called_once()

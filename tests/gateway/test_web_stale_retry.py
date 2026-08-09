@@ -42,8 +42,11 @@ def _patch_agent_bootstrap(monkeypatch):
     )
     monkeypatch.setattr(run_agent, "check_toolset_requirements", lambda: {})
     # Pricing lookup performs a real network fetch for unknown models — stub it.
+    # The turn loop moved into core.run_agent.turn_loop, so stub it there.
+    from core.run_agent import turn_loop as _turn_loop
+
     monkeypatch.setattr(
-        run_agent,
+        _turn_loop,
         "estimate_usage_cost",
         lambda *a, **k: SimpleNamespace(amount_usd=None, status="unknown", source="test"),
     )

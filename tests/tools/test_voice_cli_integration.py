@@ -445,15 +445,20 @@ class TestVprintForceParameter:
     def test_error_messages_use_force_in_run_agent(self):
         """Verify that critical error _vprint calls in run_agent.py
         include force=True."""
-        with open("src/core/run_agent/__init__.py", "r") as f:
-            source = f.read()
+        # The turn loop was split across the run_agent package, so scan every
+        # module in it rather than just __init__.py.
+        from pathlib import Path as _Path
 
-        tree = ast.parse(source)
+        sources = [
+            f.read_text()
+            for f in sorted(_Path("src/core/run_agent").glob("*.py"))
+        ]
 
         forced_error_count = 0
         unforced_error_count = 0
 
-        for node in ast.walk(tree):
+        nodes = [n for source in sources for n in ast.walk(ast.parse(source))]
+        for node in nodes:
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
