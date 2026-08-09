@@ -6,9 +6,15 @@ it too and must not import web_server (that would be circular).
 
 from __future__ import annotations
 
+import secrets
+
 from core.async_runtime import get_async_runtime
 
 
 async def _run_blocking(function, /, *args, **kwargs):
     """Run web-server blocking work in Spark's bounded process worker pool."""
     return await get_async_runtime().run_blocking(function, *args, **kwargs)
+
+
+# Bearer token for this server process; several route modules check it.
+_SESSION_TOKEN = secrets.token_urlsafe(32)

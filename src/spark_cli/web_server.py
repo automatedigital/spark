@@ -61,10 +61,7 @@ from spark_cli.config import (
     get_spark_home,
     load_config,
     load_env,
-    redact_key,
-    remove_env_value,
     save_config,
-    save_env_value,
 )
 from spark_cli.connectors_routes import register_connectors_routes
 from spark_cli.connectors_routes import set_server_port as _set_connectors_port
@@ -72,10 +69,10 @@ from spark_cli.cron_routes import register_cron_routes
 from spark_cli.dashboard_auth import (
     dashboard_token_path,
     ensure_dashboard_token_file,
-    extract_bearer_token,
     get_configured_dashboard_secret,
     validate_dashboard_request,
 )
+from spark_cli.env_routes import _reveal_authorized, register_env_routes
 from spark_cli.gateway_routes import (
     _runtime_gateway_pid,
     _runtime_gateway_running,
@@ -85,14 +82,14 @@ from spark_cli.kanban_routes import register_kanban_routes
 from spark_cli.logs_routes import register_logs_routes
 from spark_cli.mcp_routes import register_mcp_routes
 from spark_cli.model_routes import _resolve_codex_model_catalog, register_model_routes
+from spark_cli.onboarding_routes import register_onboarding_routes
 from spark_cli.onboarding_validation import (
     normalize_http_base_url,
     normalize_model_name,
-    validate_env_assignment,
 )
 from spark_cli.plugins_routes import register_plugins_routes
 from spark_cli.profiles_routes import register_profiles_routes
-from spark_cli.web_runtime import _run_blocking
+from spark_cli.web_runtime import _SESSION_TOKEN, _run_blocking
 from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
 
@@ -2022,12 +2019,8 @@ app = FastAPI(title="Spark Agent", version=__version__, lifespan=_lifespan)
 # Injected into the SPA HTML so only the legitimate web UI can use it.
 # ---------------------------------------------------------------------------
 _SERVER_INSTANCE_ID = uuid.uuid4().hex
-_SESSION_TOKEN = secrets.token_urlsafe(32)
 
 # Simple rate limiter for the reveal endpoint
-_reveal_timestamps: list[float] = []
-_REVEAL_MAX_PER_WINDOW = 5
-_REVEAL_WINDOW_SECONDS = 30
 
 # CORS: LAN dashboard mode uses bearer/token-file auth on API routes, so we
 # allow any Origin (no cookies). For untrusted networks, keep the dashboard
@@ -3083,17 +3076,10 @@ class ConfigUpdate(BaseModel):
     config: dict
 
 
-class EnvVarUpdate(BaseModel):
-    key: str
-    value: str
 
 
-class EnvVarDelete(BaseModel):
-    key: str
 
 
-class EnvVarReveal(BaseModel):
-    key: str
 
 
 
@@ -3619,79 +3605,8 @@ async def run_mac_update():
 
 
 
-@app.get("/api/diagnostics/summary")
-async def diagnostics_summary():
-    cfg = load_config()
-    env = load_env()
-    missing_required: list[str] = []
-    for key, meta in OPTIONAL_ENV_VARS.items():
-        if meta.get("required") and not env.get(key):
-            missing_required.append(key)
-    return {
-        "ok": True,
-        "spark_home": str(get_spark_home()),
-        "config_path": str(get_config_path()),
-        "env_path": str(get_env_path()),
-        "config_version": cfg.get("_config_version") if isinstance(cfg, dict) else None,
-        "platform": platform.platform(),
-        "python": sys.version.split()[0],
-        "missing_required_env": missing_required,
-        "gateway_running": get_running_pid() is not None,
-        "dashboard_auth": {
-            "token_file": str(dashboard_token_path()),
-            "configured": bool(get_configured_dashboard_secret()),
-        },
-        "actions": [a.to_metadata() for a in ADMIN_ACTIONS.values()],
-    }
 
 
-@app.get("/api/diagnostics/webview")
-async def diagnostics_webview(
-    active_session_id: str | None = None,
-    safe_mode: bool | None = None,
-    recent_long_task_count: int | None = None,
-    connection_mode: str | None = None,
-):
-    """Runtime diagnostics for the desktop/web chat shell.
-
-    The browser owns safe-mode and long-task state, so callers can pass those
-    values as query params when collecting a complete diagnostic snapshot.
-    """
-    candidates = {active_session_id} if active_session_id else set()
-    if active_session_id:
-        try:
-            from core.spark_state import SessionDB
-
-            db = SessionDB()
-            try:
-                sid = db.resolve_session_id(active_session_id)
-                if sid:
-                    candidates.add(sid)
-                    latest = db.resolve_latest_descendant(sid)
-                    if latest:
-                        candidates.add(latest)
-            finally:
-                db.close()
-        except Exception:
-            _log.debug("diagnostic session resolution failed session=%s", active_session_id, exc_info=True)
-
-    active_turn = any(_is_web_turn_active(sid) for sid in candidates if sid)
-    return {
-        "ok": True,
-        "sidecar_pid": os.getpid(),
-        "desktop": _is_desktop_app(),
-        "desktop_version": _desktop_app_version(),
-        "active_session_id": active_session_id,
-        "active_turn": active_turn,
-        "safe_mode": safe_mode,
-        "recent_long_task_count": recent_long_task_count,
-        "connection_mode": connection_mode,
-        "activity_monitor_process_name_note": (
-            "Spark desktop is a Tauri shell that navigates its main webview to "
-            "the local sidecar at http://127.0.0.1:9119, so macOS may show the "
-            "webview page URL rather than the Spark app name for the busy renderer."
-        ),
-    }
 
 
 def _conversation_diagnostics_payload(session_id: str) -> dict[str, Any]:
@@ -3778,42 +3693,8 @@ async def dashboard_auth_info():
     }
 
 
-def _reveal_authorized(request: Request) -> bool:
-    auth = request.headers.get("authorization", "")
-    if auth == f"Bearer {_SESSION_TOKEN}":
-        return True
-    secret = get_configured_dashboard_secret()
-    if not secret:
-        secret = ensure_dashboard_token_file()
-    client_host = request.client.host if request.client else None
-    qtoken = request.query_params.get("dashboard_token")
-    return validate_dashboard_request(
-        client_host,
-        auth,
-        require_for_remote=True,
-        secret=secret,
-        query_token=qtoken,
-    )
 
 
-def _secret_reveal_authorized(request: Request) -> bool:
-    """Strict auth gate for endpoints that return *plaintext secrets*.
-
-    Unlike :func:`_reveal_authorized`, this does **not** grant a loopback /
-    trusted-local bypass: revealing an unredacted env var always requires the
-    ephemeral per-process session token (injected into the SPA) or a valid
-    configured dashboard token. A local TCP peer alone is not sufficient.
-    """
-    auth = request.headers.get("authorization", "")
-    if _SESSION_TOKEN and auth == f"Bearer {_SESSION_TOKEN}":
-        return True
-    secret = get_configured_dashboard_secret()
-    if not secret:
-        secret = ensure_dashboard_token_file()
-    if not secret:
-        return False
-    token = extract_bearer_token(auth) or (request.query_params.get("dashboard_token") or "").strip() or None
-    return bool(token and secrets.compare_digest(token, secret))
 
 
 @app.get("/api/sessions")
@@ -3927,81 +3808,13 @@ async def get_config():
     return {k: v for k, v in config.items() if not k.startswith("_")}
 
 
-@app.get("/api/onboarding/status")
-async def get_onboarding_status():
-    """First-run detection for the desktop onboarding wizard.
-
-    ``needs_onboarding`` is true when no config.yaml exists yet, or when
-    ``model.provider`` is unset/empty.
-    """
-    config_exists = get_config_path().exists()
-
-    config = load_config() if config_exists else {}
-    model = config.get("model") if isinstance(config, dict) else {}
-    if not isinstance(model, dict):
-        model = {}
-    provider = (model.get("provider") or "").strip()
-    has_model = bool(provider)
-
-    env_on_disk = load_env()
-    has_api_key = any(
-        bool(env_on_disk.get(var_name))
-        for var_name in ("OPENAI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY")
-    )
-
-    return {
-        "needs_onboarding": (not config_exists) or (not has_model),
-        "has_model": has_model,
-        "has_api_key": has_api_key,
-    }
 
 
 # Skill names seeded for the "minimal" onboarding choice.
-_MINIMAL_SKILLS = {"find-skills", "codebase-inspection", "frontend-design", "excalidraw", "claude-code"}
 
 
-class OnboardingSkillsRequest(BaseModel):
-    mode: str  # "recommended" | "minimal" | "none"
 
 
-@app.post("/api/onboarding/skills")
-async def setup_onboarding_skills(req: OnboardingSkillsRequest):
-    """Seed the user's skills directory according to their onboarding choice.
-
-    - ``recommended``: seed all bundled Spark skills.
-    - ``minimal``: seed a small curated subset.
-    - ``none``: seed nothing (blank slate; Spark creates skills over time).
-
-    The choice is persisted under ``skills.onboarding_mode`` in config.
-    """
-    mode = (req.mode or "").strip().lower()
-    if mode not in {"recommended", "minimal", "none"}:
-        raise HTTPException(status_code=400, detail=f"Unknown skills mode: {mode}")
-
-    result: dict = {"copied": [], "total_bundled": 0}
-    if mode in {"recommended", "minimal"}:
-        from tools.skills_sync import sync_skills
-
-        only = _MINIMAL_SKILLS if mode == "minimal" else None
-        result = await _run_blocking(sync_skills, True, only)
-
-    # Persist the choice so re-running setup / diagnostics knows the intent.
-    try:
-        cfg = load_config()
-        if isinstance(cfg, dict):
-            skills_cfg = dict(cfg.get("skills") or {})
-            skills_cfg["onboarding_mode"] = mode
-            cfg["skills"] = skills_cfg
-            save_config(cfg)
-    except Exception:
-        _log.debug("Ignoring error in setup_onboarding_skills()", exc_info=True)
-
-    return {
-        "ok": True,
-        "mode": mode,
-        "seeded": len(result.get("copied", [])),
-        "total_bundled": result.get("total_bundled", 0),
-    }
 
 
 class OpenExternalRequest(BaseModel):
@@ -4211,83 +4024,12 @@ async def get_session_token():
     return {"token": _SESSION_TOKEN}
 
 
-@app.get("/api/env")
-async def get_env_vars():
-    env_on_disk = load_env()
-    result = {}
-    for var_name, info in OPTIONAL_ENV_VARS.items():
-        value = env_on_disk.get(var_name)
-        result[var_name] = {
-            "is_set": bool(value),
-            "redacted_value": redact_key(value) if value else None,
-            "description": info.get("description", ""),
-            "url": info.get("url"),
-            "category": info.get("category", ""),
-            "is_password": info.get("password", False),
-            "tools": info.get("tools", []),
-            "advanced": info.get("advanced", False),
-        }
-    return result
 
 
-@app.put("/api/env")
-async def set_env_var(body: EnvVarUpdate):
-    try:
-        value = validate_env_assignment(body.key, body.value)
-        save_env_value(body.key, value)
-        return {"ok": True, "key": body.key}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as err:
-        _log.exception("PUT /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
-@app.delete("/api/env")
-async def remove_env_var(body: EnvVarDelete):
-    try:
-        removed = remove_env_value(body.key)
-        if not removed:
-            raise HTTPException(status_code=404, detail=f"{body.key} not found in .env")
-        return {"ok": True, "key": body.key}
-    except HTTPException:
-        raise
-    except Exception as err:
-        _log.exception("DELETE /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
-@app.post("/api/env/reveal")
-async def reveal_env_var(body: EnvVarReveal, request: Request):
-    """Return the real (unredacted) value of a single env var.
-
-    Protected by:
-    - Ephemeral session token (generated per server start, injected into SPA)
-    - Rate limiting (max 5 reveals per 30s window)
-    - Audit logging
-    """
-    # --- Token check (strict: no loopback bypass for plaintext secrets) ---
-    if not _secret_reveal_authorized(request):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    # --- Rate limit ---
-    now = time.time()
-    cutoff = now - _REVEAL_WINDOW_SECONDS
-    _reveal_timestamps[:] = [t for t in _reveal_timestamps if t > cutoff]
-    if len(_reveal_timestamps) >= _REVEAL_MAX_PER_WINDOW:
-        raise HTTPException(
-            status_code=429, detail="Too many reveal requests. Try again shortly."
-        )
-    _reveal_timestamps.append(now)
-
-    # --- Reveal ---
-    env_on_disk = load_env()
-    value = env_on_disk.get(body.key)
-    if value is None:
-        raise HTTPException(status_code=404, detail=f"{body.key} not found in .env")
-
-    _log.info("env/reveal: %s", body.key)
-    return {"key": body.key, "value": value}
 
 
 # ---------------------------------------------------------------------------
@@ -10004,7 +9746,84 @@ def mount_spa(application: FastAPI):
 
 register_cron_routes(app)
 register_analytics_routes(app)
+@app.get("/api/diagnostics/summary")
+async def diagnostics_summary():
+    cfg = load_config()
+    env = load_env()
+    missing_required: list[str] = []
+    for key, meta in OPTIONAL_ENV_VARS.items():
+        if meta.get("required") and not env.get(key):
+            missing_required.append(key)
+    return {
+        "ok": True,
+        "spark_home": str(get_spark_home()),
+        "config_path": str(get_config_path()),
+        "env_path": str(get_env_path()),
+        "config_version": cfg.get("_config_version") if isinstance(cfg, dict) else None,
+        "platform": platform.platform(),
+        "python": sys.version.split()[0],
+        "missing_required_env": missing_required,
+        "gateway_running": get_running_pid() is not None,
+        "dashboard_auth": {
+            "token_file": str(dashboard_token_path()),
+            "configured": bool(get_configured_dashboard_secret()),
+        },
+        "actions": [a.to_metadata() for a in ADMIN_ACTIONS.values()],
+    }
+
+
+@app.get("/api/diagnostics/webview")
+async def diagnostics_webview(
+    active_session_id: str | None = None,
+    safe_mode: bool | None = None,
+    recent_long_task_count: int | None = None,
+    connection_mode: str | None = None,
+):
+    """Runtime diagnostics for the desktop/web chat shell.
+
+    The browser owns safe-mode and long-task state, so callers can pass those
+    values as query params when collecting a complete diagnostic snapshot.
+    """
+    candidates = {active_session_id} if active_session_id else set()
+    if active_session_id:
+        try:
+            from core.spark_state import SessionDB
+
+            db = SessionDB()
+            try:
+                sid = db.resolve_session_id(active_session_id)
+                if sid:
+                    candidates.add(sid)
+                    latest = db.resolve_latest_descendant(sid)
+                    if latest:
+                        candidates.add(latest)
+            finally:
+                db.close()
+        except Exception:
+            _log.debug("diagnostic session resolution failed session=%s", active_session_id, exc_info=True)
+
+    active_turn = any(_is_web_turn_active(sid) for sid in candidates if sid)
+    return {
+        "ok": True,
+        "sidecar_pid": os.getpid(),
+        "desktop": _is_desktop_app(),
+        "desktop_version": _desktop_app_version(),
+        "active_session_id": active_session_id,
+        "active_turn": active_turn,
+        "safe_mode": safe_mode,
+        "recent_long_task_count": recent_long_task_count,
+        "connection_mode": connection_mode,
+        "activity_monitor_process_name_note": (
+            "Spark desktop is a Tauri shell that navigates its main webview to "
+            "the local sidecar at http://127.0.0.1:9119, so macOS may show the "
+            "webview page URL rather than the Spark app name for the busy renderer."
+        ),
+    }
+
+
 register_kanban_routes(app)
+register_onboarding_routes(app)
+register_env_routes(app)
 register_gateway_routes(app)
 register_plugins_routes(app)
 register_admin_routes(app)
