@@ -46,6 +46,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from core.async_runtime import get_async_runtime
 from gateway.status import get_running_pid, read_runtime_status
 from spark_cli import __release_date__, __version__
+from spark_cli.analytics_routes import register_analytics_routes
 from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.config import (
     DEFAULT_CONFIG,
@@ -72,6 +73,7 @@ from spark_cli.dashboard_auth import (
     validate_dashboard_request,
 )
 from spark_cli.kanban_routes import register_kanban_routes
+from spark_cli.logs_routes import register_logs_routes
 from spark_cli.onboarding_validation import (
     normalize_http_base_url,
     normalize_model_name,
@@ -6817,73 +6819,6 @@ async def warm_session_agent(session_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/logs")
-async def get_logs(
-    file: str = "agent",
-    lines: int = 100,
-    level: str | None = None,
-    component: str | None = None,
-    search: str | None = None,
-):
-    from spark_cli.logs import LOG_FILES, _read_tail
-
-    log_name = LOG_FILES.get(file)
-    if not log_name:
-        raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
-    log_path = get_spark_home() / "logs" / log_name
-    if not log_path.exists():
-        return {"file": file, "lines": []}
-
-    try:
-        from core.spark_logging import COMPONENT_PREFIXES
-    except ImportError:
-        COMPONENT_PREFIXES = {}
-
-    # Normalize "ALL" / "all" / empty → no filter. _matches_filters treats an
-    # empty tuple as "must match a prefix" (startswith(()) is always False),
-    # so passing () instead of None silently drops every line.
-    min_level = level if level and level.upper() != "ALL" else None
-    if component and component.lower() != "all":
-        comp_prefixes = COMPONENT_PREFIXES.get(component)
-        if comp_prefixes is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown component: {component}. "
-                f"Available: {', '.join(sorted(COMPONENT_PREFIXES))}",
-            )
-    else:
-        comp_prefixes = None
-
-    has_filters = bool(min_level or comp_prefixes or search)
-    result = _read_tail(
-        log_path,
-        min(lines, 500) if not search else 2000,
-        has_filters=has_filters,
-        min_level=min_level,
-        component_prefixes=comp_prefixes,
-    )
-    # Post-filter by search term (case-insensitive substring match).
-    # _read_tail doesn't support free-text search, so we filter here and
-    # trim to the requested line count afterward.
-    if search:
-        needle = search.lower()
-        result = [l for l in result if needle in l.lower()][-min(lines, 500) :]
-    return {"file": file, "lines": result}
-
-
-@app.get("/api/logs/download")
-async def download_log(file: str = "agent"):
-    from spark_cli.logs import LOG_FILES
-
-    log_name = LOG_FILES.get(file)
-    if not log_name:
-        raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
-    log_path = get_spark_home() / "logs" / log_name
-    if not log_path.exists():
-        raise HTTPException(status_code=404, detail=f"Log file not found: {file}")
-    return FileResponse(log_path, media_type="text/plain", filename=log_name)
-
-
 # ---------------------------------------------------------------------------
 # Cron job management endpoints
 # ---------------------------------------------------------------------------
@@ -7230,81 +7165,6 @@ async def update_config_raw(body: RawConfigUpdate):
 # ---------------------------------------------------------------------------
 # Token / cost analytics endpoint
 # ---------------------------------------------------------------------------
-
-
-@app.get("/api/analytics/usage")
-async def get_usage_analytics(days: int = 30):
-    from core.spark_state import SessionDB
-
-    db = SessionDB()
-    try:
-        cutoff = time.time() - (days * 86400)
-        cur = db._conn.execute(
-            """
-            SELECT date(started_at, 'unixepoch') as day,
-                   SUM(input_tokens) as input_tokens,
-                   SUM(output_tokens) as output_tokens,
-                   SUM(cache_read_tokens) as cache_read_tokens,
-                   SUM(reasoning_tokens) as reasoning_tokens,
-                   COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost,
-                   COALESCE(SUM(actual_cost_usd), 0) as actual_cost,
-                   COUNT(*) as sessions
-            FROM sessions WHERE started_at > ?
-            GROUP BY day ORDER BY day
-        """,
-            (cutoff,),
-        )
-        daily = [dict(r) for r in cur.fetchall()]
-
-        cur2 = db._conn.execute(
-            """
-            SELECT model,
-                   SUM(input_tokens) as input_tokens,
-                   SUM(output_tokens) as output_tokens,
-                   COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost,
-                   COUNT(*) as sessions
-            FROM sessions WHERE started_at > ? AND model IS NOT NULL
-            GROUP BY model ORDER BY SUM(input_tokens) + SUM(output_tokens) DESC
-        """,
-            (cutoff,),
-        )
-        by_model = [dict(r) for r in cur2.fetchall()]
-
-        cur3 = db._conn.execute(
-            """
-            SELECT SUM(input_tokens) as total_input,
-                   SUM(output_tokens) as total_output,
-                   SUM(cache_read_tokens) as total_cache_read,
-                   SUM(reasoning_tokens) as total_reasoning,
-                   COALESCE(SUM(estimated_cost_usd), 0) as total_estimated_cost,
-                   COALESCE(SUM(actual_cost_usd), 0) as total_actual_cost,
-                   COUNT(*) as total_sessions
-            FROM sessions WHERE started_at > ?
-        """,
-            (cutoff,),
-        )
-        totals = dict(cur3.fetchone())
-
-        return {
-            "daily": daily,
-            "by_model": by_model,
-            "totals": totals,
-            "period_days": days,
-        }
-    finally:
-        db.close()
-
-
-@app.get("/api/analytics/skills")
-async def get_skills_analytics(limit: int = 20):
-    try:
-        from tools.skill_usage import lifecycle_counts, top_skills
-        return {
-            "top_skills": top_skills(limit=limit),
-            "lifecycle_counts": lifecycle_counts(),
-        }
-    except Exception as e:
-        return {"top_skills": [], "lifecycle_counts": {"active": 0, "stale": 0, "archived": 0}, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -11305,7 +11165,9 @@ def mount_spa(application: FastAPI):
 
 
 register_cron_routes(app)
+register_analytics_routes(app)
 register_kanban_routes(app)
+register_logs_routes(app)
 register_workspace_routes(app)
 register_connectors_routes(app)
 register_canvas_routes(app)
