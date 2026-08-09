@@ -513,7 +513,7 @@ class TestToolResultPreflightCompression:
         large_result = "x" * 100_000
 
         with (
-            patch("core.run_agent.handle_function_call", return_value=large_result),
+            patch("core.run_agent.tool_execution.handle_function_call", return_value=large_result),
             patch.object(agent, "_compress_context") as mock_compress,
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
