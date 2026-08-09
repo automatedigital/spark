@@ -301,10 +301,17 @@ rendering out of `ChatPanel.tsx` into child components.
 ### 10. Add lint and type checks for the web frontend to CI
 
 - [x] Run `eslint` and `tsc --noEmit` on pull requests
-- [ ] Add the `e2e/` suite as a separate non-blocking job
+- [x] Add the `e2e/` suite as a separate non-blocking job
 
 **Done.** Added `.github/workflows/web-quality.yml`, which runs `npm run lint`,
 `npx tsc --noEmit -p tsconfig.app.json`, and `npx vitest run`.
+
+A second `e2e` job runs `e2e/multi-chat.mjs`, which drives Chromium against a
+real Spark backend that the script starts itself. It is marked
+`continue-on-error` so it reports without gating, as this item planned; it
+passes locally in about four minutes. It needs `PYTHON=python` because the
+script otherwise looks for `<repo>/.venv/bin/python`, which no runner has.
+Promote it by deleting `continue-on-error` once it has been stable.
 
 All three already passed locally, so this locks in a clean state rather than
 fixing a broken one. The notable find is that the repo has a **vitest suite of
@@ -338,7 +345,7 @@ first, then promote it once it is stable.
 | 7 | `mypy` to zero | **Partly done** — 70 of 111 modules clean and gated | 1 week for the other 41 |
 | 8 | Unblock the event loop | **Withdrawn — false finding** | — |
 | 9 | Split large React files | Open | 2 days |
-| 10 | Frontend CI checks | **Done** | 0.5 day for the e2e job |
+| 10 | Frontend CI checks | **Done** | — |
 
 ---
 

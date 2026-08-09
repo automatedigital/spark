@@ -42,3 +42,44 @@ jobs:
 
       - name: Unit tests
         run: npx vitest run
+
+  # Not a gate yet. The e2e suite drives a real browser against a real Python
+  # backend, so it is the most likely thing here to be flaky on a runner.
+  # It reports without failing the build; promote it by deleting
+  # continue-on-error once it has been stable for a while.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/spark_cli/web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # The suite spawns the Spark web server itself, so the backend and its
+      # web extra have to be importable.
+      - name: Install Spark
+        working-directory: .
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,web]"
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # e2e/multi-chat.mjs defaults to <repo>/.venv/bin/python, which does not
+      # exist on a runner; point it at the interpreter set up above.
+      - name: Multi-chat end-to-end
+        env:
+          PYTHON: python
+        run: npm run test:e2e
