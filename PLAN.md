@@ -244,26 +244,39 @@ with `src/tools/`.
 - [x] Gate the clean modules in CI so they cannot regress
 - [ ] Clear the 41 modules still listed in the mypy overrides block
 
-**Partly done.** 588 errors -> 563, and files with errors 56 -> 41, so 70 of
-111 modules are clean. `mypy src/agent/ src/spark_cli/` now exits clean and
-runs as a CI job, because the 41 modules that still have errors are listed in
-a `[[tool.mypy.overrides]]` block with `ignore_errors`. Fix a module, delete
-its line, and the gate covers it.
+**Partly done.** 588 errors -> 336, and 56 of 111 modules with errors -> 17.
+So **94 of 111 modules are clean and gated in CI**, up from 55 when this
+started. `mypy src/agent/ src/spark_cli/` exits clean because the 17 modules
+that still have errors are listed in a `[[tool.mypy.overrides]]` block. Fix a
+module, delete its line, and the gate covers it.
 
-Fixed along the way: 12 stale `type: ignore` comments, `Any` leaking from
-untyped boundaries (`keyring`, `json.loads`, `dict.get`) now cast at the
-boundary, missing annotations, and three real bugs — `_format_size` declared
-an `int` it divides into a float, a gateway deadline compared against `None`,
-and a loop variable rebound from an earlier loop.
+Most of the volume came from two mechanical patterns, applied by script and
+checked by the suite: 51 parameters annotated with a concrete type but
+defaulting to `None` (which `no_implicit_optional` rejects), and 60 returns of
+`Any` from functions with a declared return type, cast where the untyped value
+enters.
 
-`types-PyYAML` was added to the dev extras: without it a clean machine reports
-six `import-untyped` errors that a developer machine never shows.
+Real bugs found along the way, beyond the three in the first pass:
 
-**Remaining.** The 41 modules hold 563 errors, concentrated in
-`agent/auxiliary_client.py` (122), `spark_cli/web_server.py` (95),
-`agent/model_metadata.py` (47) and `agent/error_classifier.py` (37). The
-dominant codes are `arg-type` (223), `assignment` (115) and `no-any-return`
-(108).
+- `codex_models` returned `[]` from a function declared
+  `tuple[...] | None` when the response body was not a dict.
+- `subagents` built a list in a branch whose variable was already bound to a
+  dict, then returned the dict.
+- `skill_manager_tool._resolve_skill_dir` had an implicit `Optional`.
+- `copilot_acp_client` read and wrote `proc.stdout`/`stdin` without narrowing
+  them from `IO | None`.
+- `list_available_providers` declared `list[dict[str, str]]` for rows carrying
+  a list and a bool.
+
+Two of my own fixes were caught by tests rather than by review: an annotation
+that reused a name already bound in the enclosing function, and a
+"duplicate" assignment I removed that was actually the line clearing
+`_previous_summary` on session reset.
+
+**Remaining: 17 modules, 336 errors**, concentrated in `web_server` (74),
+`auxiliary_client` (58), `model_metadata` (45), `config` (36) and
+`error_classifier` (34). The dominant codes are now `arg-type` and
+`union-attr`, which need reading each call site rather than a pattern rewrite.
 
 **Evidence.** `pyproject.toml` declares `files = ["src/agent/", "src/spark_cli/"]`
 as the strict-adoption scope. Running it now gives 589 errors in 56 files of 111
@@ -406,7 +419,7 @@ first, then promote it once it is stable.
 | 4 | Finish `run_agent` + `cli` splits | Open | 4 days |
 | 5 | Widen CI ratchet | **Done** | — |
 | 6 | Log swallowed exceptions | **Done** (873 of 955) | — |
-| 7 | `mypy` to zero | **Partly done** — 70 of 111 modules clean and gated | 1 week for the other 41 |
+| 7 | `mypy` to zero | **94 of 111 modules clean and gated** | 17 modules, 336 errors |
 | 8 | Unblock the event loop | **Withdrawn — false finding** | — |
 | 9 | Split large React files | **api.ts done** (3,052 -> 632) | 2 days for ChatPanel |
 | 10 | Frontend CI checks | **Done** | — |
