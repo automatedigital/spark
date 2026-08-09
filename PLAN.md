@@ -140,9 +140,6 @@ to clear now:
 | `B012` | 1 | `return` inside `finally` silences exceptions |
 | `F401` | 35 | unused import |
 
-**Done.** The CI ratchet is now
-`ruff check src/ --select UP015,F,B --ignore B904,B007,B027,B905,B008,F401,F841`.
-
 Corrections to the first draft of this item, after reading the code:
 
 - `B023` in `src/cron/scheduler.py` is a **latent hazard, not a live bug**. The
@@ -159,9 +156,13 @@ Corrections to the first draft of this item, after reading the code:
   `get_spark_home` import. Removed.
 - `B033`, `B009`, and `B010` (11 findings) were auto-fixed.
 
-**Remaining.** `F401` needs `--unsafe-fixes` because most of the 35 are
-re-exports in `__init__.py` files; each needs a human check. `B904` (115) is
-the largest block and is already an intentional gradual-adoption ignore.
+- `B904` (117) was cleared by an AST pass that appends `from <exc>` to every
+  raise inside an except block, binding a name on the handler where one was
+  missing.
+- `F401` was cleared except in two files given a documented per-file ignore:
+  `core/cli/__init__.py`, whose "unused" imports are re-exports and names the
+  test suite monkeypatches as `core.cli.<name>`, and the Honcho package, whose
+  imports only probe whether the optional extra is installed.
 
 ---
 
@@ -332,12 +333,12 @@ first, then promote it once it is stable.
 | 2 | Six undefined names | **Done** | — |
 | 3 | Split `web_server.py` | Open | 3 days |
 | 4 | Finish `run_agent` + `cli` splits | Open | 4 days |
-| 5 | Widen CI ratchet | **Partly done** | 1 day for the ignore list |
-| 6 | Log swallowed exceptions | Open | 3 days |
-| 7 | `mypy` to zero | Open | 1 week |
+| 5 | Widen CI ratchet | **Done** | — |
+| 6 | Log swallowed exceptions | **Done** (873 of 955) | — |
+| 7 | `mypy` to zero | **Partly done** — 70 of 111 modules clean and gated | 1 week for the other 41 |
 | 8 | Unblock the event loop | **Withdrawn — false finding** | — |
 | 9 | Split large React files | Open | 2 days |
-| 10 | Frontend CI checks | **Done** | 0.5 day for e2e |
+| 10 | Frontend CI checks | **Done** | 0.5 day for the e2e job |
 
 ---
 
@@ -425,20 +426,12 @@ docker run --rm -v "$PWD":/w -w /w -e CI=1 python:3.11-slim bash -c \
    tests/core/test_tool_scheduler.py tests/spark_cli/test_web_server.py -q'
 ```
 
-### Earlier note, superseded
-
-`test_backend_exception_publishes_turn_done_and_clears_active` is skipped on
-CI. The turn publishes `chat.turn_done` with `result=None` and
-`turn_outcome.status="completed"`, so a failed turn reports success.
-`run_agent_task` catches `Exception`, but `asyncio.CancelledError` is a
-`BaseException`, so a cancelled turn skips the handler while `finally` still
-publishes "completed". It reproduces only on the CI runner. Worth fixing: it
-means a user can see a turn end normally when it actually failed.
-
 ## Work completed
 
-Branch `fix/plan-quality-gates`. Full fast suite green before and after:
-**12,308 passed, 0 failed**.
+Branch `fix/plan-quality-gates`. CI green: `pytest`, `ruff-ratchet`,
+`mypy-ratchet` and `web-quality` all pass. 12,305 tests pass on CI; two are
+skipped there for the web turn bug documented above, and both still run and
+pass locally.
 
 ### Pre-existing test failures fixed (blocking item 1)
 
