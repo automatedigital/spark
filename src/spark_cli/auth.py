@@ -45,11 +45,11 @@ logger = logging.getLogger(__name__)
 try:
     import fcntl
 except Exception:
-    fcntl = None
+    fcntl = None  # type: ignore[assignment]
 try:
     import msvcrt
 except Exception:
-    msvcrt = None
+    msvcrt = None  # type: ignore[assignment]
 
 # =============================================================================
 # Constants

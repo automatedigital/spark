@@ -134,7 +134,7 @@ class PooledCredential:
         data.setdefault("priority", 0)
         data.setdefault("source", SOURCE_MANUAL)
         data.setdefault("access_token", "")
-        return cls(provider=provider, **data)
+        return cls(provider=provider, **data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, Any]:
         _ALWAYS_EMIT = {
@@ -208,6 +208,7 @@ def _parse_absolute_timestamp(value: Any) -> float | None:
         raw = value.strip()
         if not raw:
             return None
+        numeric: float | None
         try:
             numeric = float(raw)
         except ValueError:

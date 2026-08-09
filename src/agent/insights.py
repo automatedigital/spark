@@ -200,7 +200,7 @@ class InsightsEngine:
         2. tool_calls JSON on 'assistant' role messages (covers CLI where
            tool_name is not populated on tool responses)
         """
-        tool_counts = Counter()
+        tool_counts: Counter[str] = Counter()
 
         # Source 1: explicit tool_name on tool response messages
         if source:
@@ -249,7 +249,7 @@ class InsightsEngine:
                 (cutoff,),
             )
 
-        tool_calls_counts = Counter()
+        tool_calls_counts: Counter[str] = Counter()
         for row in cursor2.fetchall():
             try:
                 calls = row["tool_calls"]
@@ -273,7 +273,7 @@ class InsightsEngine:
             # Both sources have data — use whichever has the higher count per tool
             # (they may overlap, so take the max to avoid double-counting)
             all_tools = set(tool_counts) | set(tool_calls_counts)
-            merged = Counter()
+            merged: Counter[str] = Counter()
             for tool in all_tools:
                 merged[tool] = max(tool_counts.get(tool, 0), tool_calls_counts.get(tool, 0))
             tool_counts = merged
@@ -396,7 +396,7 @@ class InsightsEngine:
 
     def _compute_model_breakdown(self, sessions: list[dict]) -> list[dict]:
         """Break down usage by model."""
-        model_data = defaultdict(lambda: {
+        model_data: defaultdict[str, dict[str, Any]] = defaultdict(lambda: {
             "sessions": 0, "input_tokens": 0, "output_tokens": 0,
             "cache_read_tokens": 0, "cache_write_tokens": 0,
             "total_tokens": 0, "tool_calls": 0, "cost": 0.0,
@@ -433,7 +433,7 @@ class InsightsEngine:
 
     def _compute_platform_breakdown(self, sessions: list[dict]) -> list[dict]:
         """Break down usage by platform/source."""
-        platform_data = defaultdict(lambda: {
+        platform_data: defaultdict[str, dict[str, Any]] = defaultdict(lambda: {
             "sessions": 0, "messages": 0, "input_tokens": 0,
             "output_tokens": 0, "cache_read_tokens": 0,
             "cache_write_tokens": 0, "total_tokens": 0, "tool_calls": 0,
@@ -477,9 +477,9 @@ class InsightsEngine:
 
     def _compute_activity_patterns(self, sessions: list[dict]) -> dict:
         """Analyze activity patterns by day of week and hour."""
-        day_counts = Counter()  # 0=Monday ... 6=Sunday
-        hour_counts = Counter()
-        daily_counts = Counter()  # date string -> count
+        day_counts: Counter[int] = Counter()  # 0=Monday ... 6=Sunday
+        hour_counts: Counter[int] = Counter()
+        daily_counts: Counter[str] = Counter()  # date string -> count
 
         for s in sessions:
             ts = s.get("started_at")

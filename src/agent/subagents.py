@@ -142,15 +142,17 @@ def _json_safe(value: Any, *, depth: int = 0) -> Any:
 
     if isinstance(value, (list, tuple, set, frozenset)):
         items = list(value)
-        out = [_json_safe(item, depth=depth + 1) for item in items[:MAX_COLLECTION_ITEMS]]
+        seq: list[Any] = [
+            _json_safe(item, depth=depth + 1) for item in items[:MAX_COLLECTION_ITEMS]
+        ]
         if len(items) > MAX_COLLECTION_ITEMS:
-            out.append(
+            seq.append(
                 {
                     "_truncated": True,
                     "_omitted_items": len(items) - MAX_COLLECTION_ITEMS,
                 }
             )
-        return out
+        return seq
 
     return _truncate_text(str(value))
 
@@ -301,7 +303,8 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
     payload = payload or {}
     task_index = int(run_record.get("task_index", 0) or 0)
     task_count = int(run_record.get("task_count", 1) or 1)
-    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    _raw_result = payload.get("result")
+    result: dict[str, Any] = _raw_result if isinstance(_raw_result, dict) else {}
 
     lifecycle_event = make_subagent_event(
         event,
