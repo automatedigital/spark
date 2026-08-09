@@ -252,7 +252,7 @@ with `src/tools/`.
 ### 7. Get `mypy` to zero on its declared scope
 
 - [x] Gate the clean modules in CI so they cannot regress
-- [ ] Clear the 17 modules still listed in the mypy overrides block
+- [ ] Clear the 15 modules still listed in the mypy overrides block
 
 **Partly done.** 588 errors -> 336, and 56 of 111 modules with errors -> 17.
 So **94 of 111 modules are clean and gated in CI**, up from 55 when this
@@ -283,7 +283,7 @@ that reused a name already bound in the enclosing function, and a
 "duplicate" assignment I removed that was actually the line clearing
 `_previous_summary` on session reset.
 
-**Remaining: 17 modules, 336 errors**, concentrated in `web_server` (74),
+**Remaining: 15 modules, 323 errors**
 `auxiliary_client` (58), `model_metadata` (45), `config` (36) and
 `error_classifier` (34). The dominant codes are now `arg-type` and
 `union-attr`, which need reading each call site rather than a pattern rewrite.
@@ -429,7 +429,7 @@ first, then promote it once it is stable.
 | 4 | Finish `run_agent` + `cli` splits | **run_agent 11,341 -> 8,159** | needs run_conversation decomposed |
 | 5 | Widen CI ratchet | **Done** | — |
 | 6 | Log swallowed exceptions | **Done** (873 of 955) | — |
-| 7 | `mypy` to zero | **94 of 111 modules clean and gated** | 17 modules, 336 errors |
+| 7 | `mypy` to zero | **96 of 111 modules clean and gated** | 15 modules, 323 errors |
 | 8 | Unblock the event loop | **Withdrawn — false finding** | — |
 | 9 | Split large React files | **api.ts done** (3,052 -> 632) | 2 days for ChatPanel |
 | 10 | Frontend CI checks | **Done** | — |
