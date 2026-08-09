@@ -124,8 +124,34 @@ lifespan, and router registration. Do one group per PR so review stays possible.
 ### 4. Finish the `run_agent` and `cli` package splits
 
 - [x] Extract cohesive method groups from `AIAgent` into mixins
-- [ ] Reduce `src/core/run_agent/__init__.py` below 1,000 lines
-- [ ] Reduce `src/core/cli/__init__.py` below 1,000 lines
+- [x] Reduce `src/core/run_agent/__init__.py` — **11,341 -> 1,744**
+- [x] Reduce `src/core/cli/__init__.py` — **4,101 -> 1,134**
+
+Both packages already used the mixin pattern (`_PromptCacheMixin` in `run_agent`,
+seven mixins in `cli`), so this extends it rather than inventing anything.
+
+`AIAgent` gained seven mixins — `turn_loop`, `tool_execution`,
+`codex_streaming`, `agent_session`, `agent_context`, `agent_memory`,
+`agent_support` — plus `stream_events` and `qwen_headers` for two helpers both
+`AIAgent` and a mixin need, which would otherwise close an import cycle.
+`SparkCLI` gained `_MainLoopMixin` holding `run`, `chat`, `process_command`
+and `_print_exit_summary`.
+
+**Neither reached 1,000, and the reason is the same in both.** What is left is
+the constructor plus module-level setup: `AIAgent.__init__` is 1,040 lines and
+`SparkCLI.__init__` is 322. Moving a constructor into a mixin works
+mechanically — I did it — but it changed which tool-schema profile got
+resolved, and the byte-exact caching golden test caught it. That file is
+ADR-protected, so the constructor stayed. Going below 1,000 means decomposing
+a 1,040-line constructor, which is a behaviour change rather than a
+relocation, and belongs in its own change with its own review.
+
+**The recurring hazard.** Tests monkeypatch `core.run_agent.<name>` and
+`core.cli.<name>`. A relocated method that binds those at import silently
+stops seeing the patch — the same failure mode that let a mac-update test
+drive the real installer earlier in this work. Where a name is patched widely,
+the mixins resolve it through the package at call time via a `_pkg()` accessor,
+with a comment saying why.
 
 **Done: `run_agent/__init__.py` 11,341 -> 8,159 lines**, a 28% cut. `AIAgent`
 now composes four new mixins next to the `_PromptCacheMixin` the package
