@@ -647,7 +647,7 @@ def enable_computer_use_web_toolset() -> None:
     _apply_toolset_change(config, "cli", ["computer_use"], "enable")
 
 
-def _toolset_has_keys(ts_key: str, config: dict = None) -> bool:
+def _toolset_has_keys(ts_key: str, config: dict | None = None) -> bool:
     """Check if a toolset's required API keys are configured."""
     if config is None:
         config = load_config()
@@ -1194,7 +1194,7 @@ def _reconfigure_simple_requirements(ts_key: str):
 
 # ─── Main Entry Point ─────────────────────────────────────────────────────────
 
-def tools_command(args=None, first_install: bool = False, config: dict = None):
+def tools_command(args=None, first_install: bool = False, config: dict | None = None):
     """Entry point for `spark tools` and `spark setup tools`.
 
     Args:

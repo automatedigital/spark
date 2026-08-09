@@ -21,6 +21,7 @@ OpenRouter variant suffixes (``:free``, ``:extended``, ``:fast``).
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -317,7 +318,7 @@ def resolve_alias(
 
 def get_authenticated_provider_slugs(
     current_provider: str = "",
-    user_providers: dict = None,
+    user_providers: dict | None = None,
     custom_providers: list | None = None,
 ) -> list[str]:
     """Return slugs of providers that have credentials.
@@ -339,7 +340,7 @@ def get_authenticated_provider_slugs(
 
 def _resolve_alias_fallback(
     raw_input: str,
-    authenticated_providers: list[str] = (),
+    authenticated_providers: Sequence[str] = (),
 ) -> tuple[str, str, str] | None:
     """Try to resolve an alias on the user's authenticated providers.
 
@@ -367,7 +368,7 @@ def switch_model(
     current_api_key: str = "",
     is_global: bool = False,
     explicit_provider: str = "",
-    user_providers: dict = None,
+    user_providers: dict | None = None,
     custom_providers: list | None = None,
 ) -> ModelSwitchResult:
     """Core model-switching pipeline shared between CLI and gateway.
@@ -719,7 +720,7 @@ def switch_model(
 
 def list_authenticated_providers(
     current_provider: str = "",
-    user_providers: dict = None,
+    user_providers: dict | None = None,
     custom_providers: list | None = None,
     max_models: int = 8,
 ) -> list[dict]:

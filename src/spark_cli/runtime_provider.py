@@ -505,7 +505,7 @@ def _resolve_openrouter_runtime(
             cfg_api_key = v.strip()
             break
     requested_norm = (requested_provider or "").strip().lower()
-    cfg_provider = cfg_provider.strip().lower()
+    cfg_provider = str(cfg_provider or "").strip().lower()
 
     env_openrouter_base_url = os.getenv("OPENROUTER_BASE_URL", "").strip()
 
@@ -615,7 +615,7 @@ def _resolve_explicit_runtime(
         if not api_key:
             from agent.anthropic_adapter import resolve_anthropic_token
 
-            api_key = resolve_anthropic_token()
+            api_key = resolve_anthropic_token() or ""
             if not api_key:
                 raise AuthError(
                     "No Anthropic credentials found. Set ANTHROPIC_TOKEN or ANTHROPIC_API_KEY, "
@@ -755,7 +755,7 @@ def resolve_runtime_provider(
         if entry is not None:
             pool_api_key = getattr(entry, "runtime_api_key", None) or getattr(
                 entry, "access_token", ""
-            )
+            ) or ""
         if entry is not None and pool_api_key:
             return _resolve_runtime_from_pool_entry(
                 provider=provider,

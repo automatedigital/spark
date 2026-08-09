@@ -181,7 +181,7 @@ class ContextCompressor(ContextEngine):
         self.summary_model = summary_model_override or ""
 
         # Stores the previous compaction summary for iterative updates
-        self._previous_summary: str | None = None
+        self._previous_summary = None
         self._typed_checkpoint = None
         self._last_shadow_checkpoint = None
         self._deterministic_plan: list[dict[str, Any]] = []
