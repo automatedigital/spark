@@ -67,7 +67,45 @@ parameter.
 
 ### 3. Split `web_server.py` into routers
 
-- [ ] Move the 123 inline routes out of `src/spark_cli/web_server.py`
+- [x] Move the extractable route families out of `src/spark_cli/web_server.py`
+- [ ] Extract the event/turn/agent core, then move the remaining 69 routes
+
+**Done: 54 of 123 routes**, in eleven new modules — `cron`, `logs`, `analytics`,
+`profiles`, `model`, `admin`, `mcp`, `plugins`, `gateway`, `env`, `onboarding`,
+`mac`, `providers` — plus two shared modules the families needed:
+`admin_runs.py` (subprocess-backed admin actions) and `web_runtime.py`
+(`_run_blocking`, `_SESSION_TOKEN`, desktop detection).
+
+`web_server.py` went from 11,647 to 9,000 lines. Every extraction was checked
+by diffing the app's full route table against `main`: 251 routes, identical
+paths and methods, every time.
+
+**Why it stops at 54.** The remaining 69 routes are not more of the same work.
+They depend on state `web_server` owns — the turn registry, the event queues,
+the agent cache — so a route module holding them would have to import
+`web_server`, which imports the route modules to register them. That is an
+import cycle, not a refactor.
+
+Measured coupling of what is left:
+
+| Family | Routes | Distinct `web_server` names used |
+| --- | --- | --- |
+| `conversations` | 22 | 66 |
+| `sessions` | 13 | 25 |
+| `config` | 6 | 12 |
+| `skills` | 6 | 9 |
+| `workspace` | 4 | 35 |
+| `web-state`, `diagnostics`, `events`, singles | 18 | 3–6 each |
+
+`skills` and `diagnostics` were both extracted during this work and put back:
+`skills` pulled in `_publish_event`, `_web_agents` and the checkpoint writer
+and never closed; `diagnostics` needs `_is_web_turn_active`.
+
+**The enabling step.** Lift the event system, the turn registry and the agent
+cache into their own modules first. Then the rest of the routes follow the
+pattern already established here. That is a change to the heart of the chat
+pipeline and deserves its own branch and review, which is why it is not
+bolted onto this one.
 
 **Evidence.** `src/spark_cli/web_server.py` is 11,647 lines and declares 123
 route decorators directly on the app object. The pattern to copy already exists:
@@ -338,7 +376,7 @@ first, then promote it once it is stable.
 | --- | --- | --- | --- |
 | 1 | Tests in CI | **Done** | — |
 | 2 | Six undefined names | **Done** | — |
-| 3 | Split `web_server.py` | Open | 3 days |
+| 3 | Split `web_server.py` | **54 of 123 routes** | 3 days for the core extraction |
 | 4 | Finish `run_agent` + `cli` splits | Open | 4 days |
 | 5 | Widen CI ratchet | **Done** | — |
 | 6 | Log swallowed exceptions | **Done** (873 of 955) | — |
