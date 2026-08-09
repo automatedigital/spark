@@ -19,7 +19,7 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import Future
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from spark_cli.config import get_spark_home
 
@@ -163,10 +163,10 @@ class StreamedBrowserSession:
             self.title = page.title()
             return {"url": self.current_url, "title": self.title}
 
-        return self._submit(_go)
+        return cast("dict[str, Any]", self._submit(_go))
 
     def screenshot(self) -> bytes:
-        return self._submit(lambda page: page.screenshot(type="png"))
+        return cast("bytes", self._submit(lambda page: page.screenshot(type="png")))
 
     def click(self, x: float, y: float) -> None:
         self._submit(lambda page: page.mouse.click(x, y))
@@ -187,7 +187,7 @@ class StreamedBrowserSession:
             self.title = page.title()
             return {"url": self.current_url, "title": self.title}
 
-        return self._submit(_back)
+        return cast("dict[str, Any]", self._submit(_back))
 
     def cookies(self) -> list[dict[str, str]]:
         """List cookies (name + domain only) from the persistent context."""
@@ -198,7 +198,7 @@ class StreamedBrowserSession:
                 for c in page.context.cookies()
             ]
 
-        return self._submit(_cookies)
+        return cast("list[dict[str, str]]", self._submit(_cookies))
 
     def go_forward(self) -> dict[str, Any]:
         def _fwd(page: Any) -> dict[str, Any]:
@@ -207,7 +207,7 @@ class StreamedBrowserSession:
             self.title = page.title()
             return {"url": self.current_url, "title": self.title}
 
-        return self._submit(_fwd)
+        return cast("dict[str, Any]", self._submit(_fwd))
 
     def close(self) -> None:
         if self._closed:

@@ -16,7 +16,7 @@ import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from core.network_tls import urllib_request_kwargs
 from core.spark_constants import get_spark_home
@@ -358,7 +358,7 @@ def is_claude_code_token_valid(creds: dict[str, Any]) -> bool:
     # expiresAt is in milliseconds since epoch
     now_ms = int(time.time() * 1000)
     # Allow 60 seconds of buffer
-    return now_ms < (expires_at - 60_000)
+    return cast("bool", now_ms < (expires_at - 60_000))
 
 
 def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) -> dict[str, Any]:
@@ -440,7 +440,7 @@ def _refresh_oauth_token(creds: dict[str, Any]) -> str | None:
             refreshed["expires_at_ms"],
         )
         logger.debug("Successfully refreshed Claude Code OAuth token")
-        return refreshed["access_token"]
+        return cast("str | None", refreshed["access_token"])
     except Exception as e:
         logger.debug("Failed to refresh Claude Code token: %s", e)
         return None
@@ -494,7 +494,7 @@ def _resolve_claude_code_token_from_credentials(creds: dict[str, Any] | None = N
     creds = creds or read_claude_code_credentials()
     if creds and is_claude_code_token_valid(creds):
         logger.debug("Using Claude Code credentials (auto-detected)")
-        return creds["accessToken"]
+        return cast("str | None", creds["accessToken"])
     if creds:
         logger.debug("Claude Code credentials expired — attempting refresh")
         refreshed = _refresh_oauth_token(creds)
@@ -599,7 +599,7 @@ def run_oauth_setup_token() -> str | None:
     # Check if credentials were saved to Claude Code's config files
     creds = read_claude_code_credentials()
     if creds and is_claude_code_token_valid(creds):
-        return creds["accessToken"]
+        return cast("str | None", creds["accessToken"])
 
     # Check env vars that may have been set
     for env_var in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_TOKEN"):
@@ -738,7 +738,7 @@ def read_spark_oauth_credentials() -> dict[str, Any] | None:
         try:
             data = json.loads(_SPARK_OAUTH_FILE.read_text(encoding="utf-8"))
             if data.get("accessToken"):
-                return data
+                return cast("dict[str, Any] | None", data)
         except (json.JSONDecodeError, OSError) as e:
             logger.debug("Failed to read Spark OAuth credentials: %s", e)
     return None

@@ -11,7 +11,7 @@ import time
 import uuid
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import spark_cli.auth as auth_mod
 from core.spark_constants import OPENROUTER_BASE_URL
@@ -334,7 +334,7 @@ def _get_custom_provider_config(pool_key: str) -> dict[str, Any] | None:
     suffix = pool_key[len(CUSTOM_POOL_PREFIX):]
     for norm_name, entry in _iter_custom_providers():
         if norm_name == suffix:
-            return entry
+            return cast("dict[str, Any] | None", entry)
     return None
 
 

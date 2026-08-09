@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # These modules only exist on Unix. Workspace file and preview routes are
 # cross-platform, so importing this module must not make the entire Windows
@@ -2550,13 +2550,13 @@ def _fetch_preview_html(session: dict[str, Any]) -> str:
     for _ in range(attempts):
         try:
             with urllib.request.urlopen(url, timeout=1) as resp:
-                return resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace")
+                return cast("str", resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace"))
         except Exception as exc:
             last_error = exc
             time.sleep(0.05)
     try:
         with urllib.request.urlopen(url, timeout=3) as resp:
-            return resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace")
+            return cast("str", resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace"))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Preview fetch failed: {last_error or exc}") from exc
 

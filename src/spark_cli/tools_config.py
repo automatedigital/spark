@@ -106,6 +106,8 @@ def _get_plugin_toolset_keys() -> set:
 # Platform display config — derived from the canonical registry so every
 # module shares the same data.  Kept as dict-of-dicts for backward
 # compatibility with existing ``PLATFORMS[key]["label"]`` access patterns.
+from typing import cast
+
 from spark_cli.platforms import PLATFORMS as _PLATFORMS_REGISTRY
 
 PLATFORMS = {
@@ -896,13 +898,13 @@ def _is_provider_active(provider: dict, config: dict) -> bool:
         return False
 
     if provider.get("tts_provider"):
-        return config.get("tts", {}).get("provider") == provider["tts_provider"]
+        return cast("bool", config.get("tts", {}).get("provider") == provider["tts_provider"])
     if "browser_provider" in provider:
         current = config.get("browser", {}).get("cloud_provider")
-        return provider["browser_provider"] == current
+        return cast("bool", provider["browser_provider"] == current)
     if provider.get("web_backend"):
         current = config.get("web", {}).get("backend")
-        return current == provider["web_backend"]
+        return cast("bool", current == provider["web_backend"])
     return False
 
 

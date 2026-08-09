@@ -13,7 +13,7 @@ import math
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +290,7 @@ def make_run_record(
         "provider": provider,
         "toolsets": list(toolsets or []),
     }
-    return _json_safe(record)
+    return cast("dict[str, Any]", _json_safe(record))
 
 
 def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dict[str, Any] | None = None) -> None:

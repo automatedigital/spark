@@ -8,7 +8,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import requests
@@ -659,7 +659,7 @@ def _load_context_cache() -> dict[str, int]:
     try:
         with open(path) as f:
             data = yaml.safe_load(f) or {}
-        return data.get("context_lengths", {})
+        return cast("dict[str, int]", data.get("context_lengths", {}))
     except Exception as e:
         logger.debug("Failed to load context length cache: %s", e)
         return {}
@@ -1096,7 +1096,7 @@ def get_model_context_length(
     # 7. OpenRouter live API metadata (provider-unaware fallback)
     metadata = fetch_model_metadata()
     if model in metadata:
-        return metadata[model].get("context_length", 128000)
+        return cast("int", metadata[model].get("context_length", 128000))
 
     # 9. Query local server as last resort
     if base_url and is_local_endpoint(base_url):

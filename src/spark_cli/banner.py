@@ -63,6 +63,8 @@ def _skin_branding(key: str, fallback: str) -> str:
 # ASCII Art & Branding
 # =========================================================================
 
+from typing import cast
+
 from spark_cli import __release_date__ as RELEASE_DATE
 from spark_cli import __version__ as VERSION
 
@@ -154,7 +156,7 @@ def check_for_updates() -> int | None:
         if cache_file.exists():
             cached = json.loads(cache_file.read_text())
             if now - cached.get("ts", 0) < _UPDATE_CHECK_CACHE_SECONDS:
-                return cached.get("behind")
+                return cast("int | None", cached.get("behind"))
     except Exception:
         logger.debug("Ignoring error in check_for_updates()", exc_info=True)
 
@@ -327,10 +329,10 @@ def build_welcome_banner(
     model: str,
     cwd: str,
     tools: list[dict] = None,
-    enabled_toolsets: list[str] = None,
-    session_id: str = None,
+    enabled_toolsets: list[str] | None = None,
+    session_id: str | None = None,
     get_toolset_for_tool=None,
-    context_length: int = None,
+    context_length: int | None = None,
 ):
     """Build and print a minimal startup banner.
 

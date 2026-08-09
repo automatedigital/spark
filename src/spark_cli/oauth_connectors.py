@@ -22,6 +22,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import urlencode
 
 import httpx
@@ -105,7 +106,7 @@ def load_token(provider_id: str) -> dict | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return cast("dict[Any, Any] | None", json.loads(path.read_text(encoding="utf-8")))
     except Exception:
         return None
 
@@ -266,7 +267,7 @@ def exchange_code(
     token = resp.json()
     if "expires_in" in token and "expires_at" not in token:
         token["expires_at"] = int(time.time()) + int(token["expires_in"])
-    return token
+    return cast("dict[Any, Any]", token)
 
 
 def request_device_code(provider_id: str) -> dict:
@@ -286,7 +287,7 @@ def request_device_code(provider_id: str) -> dict:
         timeout=15,
     )
     resp.raise_for_status()
-    return resp.json()
+    return cast("dict[Any, Any]", resp.json())
 
 
 def poll_device_code(provider_id: str, device_code: str) -> dict:
@@ -306,7 +307,7 @@ def poll_device_code(provider_id: str, device_code: str) -> dict:
     token = resp.json()
     if "expires_in" in token and "expires_at" not in token:
         token["expires_at"] = int(time.time()) + int(token["expires_in"])
-    return token
+    return cast("dict[Any, Any]", token)
 
 
 def enrich_token(provider_id: str, token: dict) -> dict:

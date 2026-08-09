@@ -548,7 +548,7 @@ def _session_browse_picker(sessions: list) -> str | None:
                 return None
             idx = int(val) - 1
             if 0 <= idx < len(sessions):
-                return sessions[idx]["id"]
+                return cast("str | None", sessions[idx]["id"])
             print(f"  Invalid selection. Enter 1-{len(sessions)} or q to cancel.")
         except ValueError:
             print("  Invalid input. Enter a number or q to cancel.")
@@ -566,7 +566,7 @@ def _resolve_last_cli_session() -> str | None:
         sessions = db.search_sessions(source="cli", limit=1)
         db.close()
         if sessions:
-            return sessions[0]["id"]
+            return cast("str | None", sessions[0]["id"])
     except Exception:
         logger.debug("Ignoring error in _resolve_last_cli_session()", exc_info=True)
     return None
@@ -700,7 +700,7 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> str | None:
         session = db.get_session(name_or_id)
         if session:
             db.close()
-            return session["id"]
+            return cast("str | None", session["id"])
 
         # Try as title (with auto-latest for lineage)
         session_id = db.resolve_session_by_title(name_or_id)
@@ -2219,6 +2219,8 @@ def _model_flow_named_custom(config, provider_info):
 
 
 # Curated model lists for direct API-key providers — single source in models.py
+from typing import cast
+
 from spark_cli.models import _PROVIDER_MODELS
 
 

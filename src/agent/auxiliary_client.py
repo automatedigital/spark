@@ -39,7 +39,7 @@ import threading
 import time
 from pathlib import Path  # noqa: F401 — used by test mocks
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from openai import OpenAI
 
@@ -1028,7 +1028,7 @@ def _is_connection_error(exc: Exception) -> bool:
 
 def _try_payment_fallback(
     failed_provider: str,
-    task: str = None,
+    task: str | None = None,
     reason: str = "payment error",
 ) -> tuple[Any | None, str | None, str]:
     """Try alternative providers after a payment/credit or connection error.
@@ -1210,12 +1210,12 @@ def _normalize_resolved_model(model_name: str | None, provider: str) -> str | No
 
 def resolve_provider_client(
     provider: str,
-    model: str = None,
+    model: str | None = None,
     async_mode: bool = False,
     raw_codex: bool = False,
-    explicit_base_url: str = None,
-    explicit_api_key: str = None,
-    api_mode: str = None,
+    explicit_base_url: str | None = None,
+    explicit_api_key: str | None = None,
+    api_mode: str | None = None,
     main_runtime: dict[str, Any] | None = None,
 ) -> tuple[Any | None, str | None]:
     """Central router: given a provider name and optional model, return a
@@ -1708,7 +1708,7 @@ def resolve_vision_provider_client(
                 # Known strict backend — use its defaults.
                 sync_client, default_model = _resolve_strict_vision_backend(main_provider)
                 if sync_client is not None:
-                    return _finalize(main_provider, sync_client, default_model)
+                    return cast("tuple[str | None, Any | None, str | None]", _finalize(main_provider, sync_client, default_model))
             else:
                 # Exotic provider (DeepSeek, Alibaba, Xiaomi, named custom, etc.)
                 # Use provider-specific vision model if available, otherwise main model.
@@ -1730,14 +1730,14 @@ def resolve_vision_provider_client(
                 continue  # already tried above
             sync_client, default_model = _resolve_strict_vision_backend(candidate)
             if sync_client is not None:
-                return _finalize(candidate, sync_client, default_model)
+                return cast("tuple[str | None, Any | None, str | None]", _finalize(candidate, sync_client, default_model))
 
         logger.debug("Auxiliary vision client: none available")
         return None, None, None
 
     if requested in _VISION_AUTO_PROVIDER_ORDER:
         sync_client, default_model = _resolve_strict_vision_backend(requested)
-        return _finalize(requested, sync_client, default_model)
+        return cast("tuple[str | None, Any | None, str | None]", _finalize(requested, sync_client, default_model))
 
     client, final_model = _get_cached_client(requested, resolved_model, async_mode,
                                              api_mode=resolved_api_mode)
@@ -1903,11 +1903,11 @@ def _compat_model(client: Any, model: str | None, cached_default: str | None) ->
 
 def _get_cached_client(
     provider: str,
-    model: str = None,
+    model: str | None = None,
     async_mode: bool = False,
-    base_url: str = None,
-    api_key: str = None,
-    api_mode: str = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    api_mode: str | None = None,
     main_runtime: dict[str, Any] | None = None,
 ) -> tuple[Any | None, str | None]:
     """Get or create a cached client for the given provider.
@@ -1974,11 +1974,11 @@ def _get_cached_client(
 
 
 def _resolve_task_provider_model(
-    task: str = None,
-    provider: str = None,
-    model: str = None,
-    base_url: str = None,
-    api_key: str = None,
+    task: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
 ) -> tuple[str, str | None, str | None, str | None, str | None]:
     """Determine provider + model for a call.
 
@@ -2172,7 +2172,7 @@ def _build_call_kwargs(
     return kwargs
 
 
-def _validate_llm_response(response: Any, task: str = None) -> Any:
+def _validate_llm_response(response: Any, task: str | None = None) -> Any:
     """Validate that an LLM response has the expected .choices[0].message shape.
 
     Fails fast with a clear error instead of letting malformed payloads
@@ -2204,18 +2204,18 @@ def _validate_llm_response(response: Any, task: str = None) -> Any:
 
 
 def call_llm(
-    task: str = None,
+    task: str | None = None,
     *,
-    provider: str = None,
-    model: str = None,
-    base_url: str = None,
-    api_key: str = None,
+    provider: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
     main_runtime: dict[str, Any] | None = None,
     messages: list,
-    temperature: float = None,
-    max_tokens: int = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
     tools: list = None,
-    timeout: float = None,
+    timeout: float | None = None,
     extra_body: dict = None,
 ) -> Any:
     """Centralized synchronous LLM call.
@@ -2433,17 +2433,17 @@ def extract_content_or_reasoning(response) -> str:
 
 
 async def async_call_llm(
-    task: str = None,
+    task: str | None = None,
     *,
-    provider: str = None,
-    model: str = None,
-    base_url: str = None,
-    api_key: str = None,
+    provider: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
     messages: list,
-    temperature: float = None,
-    max_tokens: int = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
     tools: list = None,
-    timeout: float = None,
+    timeout: float | None = None,
     extra_body: dict = None,
 ) -> Any:
     """Centralized asynchronous LLM call.

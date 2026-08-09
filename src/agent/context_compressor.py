@@ -19,7 +19,7 @@ Improvements over v2:
 
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 from agent.context_engine import ContextEngine
 from agent.model_metadata import (
@@ -116,7 +116,7 @@ class ContextCompressor(ContextEngine):
         protect_last_n: int = 20,
         summary_target_ratio: float = 0.20,
         quiet_mode: bool = False,
-        summary_model_override: str = None,
+        summary_model_override: str | None = None,
         base_url: str = "",
         api_key: str = "",
         config_context_length: int | None = None,
@@ -205,7 +205,7 @@ class ContextCompressor(ContextEngine):
         self.last_prompt_tokens = usage.get("prompt_tokens", 0)
         self.last_completion_tokens = usage.get("completion_tokens", 0)
 
-    def should_compress(self, prompt_tokens: int = None) -> bool:
+    def should_compress(self, prompt_tokens: int | None = None) -> bool:
         """Check if context exceeds the compression threshold."""
         tokens = prompt_tokens if prompt_tokens is not None else self.last_prompt_tokens
         return tokens >= self.threshold_tokens
@@ -346,7 +346,7 @@ class ContextCompressor(ContextEngine):
 
         return "\n\n".join(parts)
 
-    def _generate_summary(self, turns_to_summarize: list[dict[str, Any]], focus_topic: str = None) -> str | None:
+    def _generate_summary(self, turns_to_summarize: list[dict[str, Any]], focus_topic: str | None = None) -> str | None:
         """Generate a structured summary of conversation turns.
 
         Uses a structured template (Goal, Progress, Decisions, Resolved/Pending
@@ -534,7 +534,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
     def _get_tool_call_id(tc) -> str:
         """Extract the call ID from a tool_call entry (dict or SimpleNamespace)."""
         if isinstance(tc, dict):
-            return tc.get("id", "")
+            return cast("str", tc.get("id", ""))
         return getattr(tc, "id", "") or ""
 
     def _sanitize_tool_pairs(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -697,7 +697,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
     # Main compression entry point
     # ------------------------------------------------------------------
 
-    def compress(self, messages: list[dict[str, Any]], current_tokens: int = None, focus_topic: str = None) -> list[dict[str, Any]]:
+    def compress(self, messages: list[dict[str, Any]], current_tokens: int | None = None, focus_topic: str | None = None) -> list[dict[str, Any]]:
         """Compress conversation messages by summarizing middle turns.
 
         Algorithm:

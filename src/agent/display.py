@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from difflib import unified_diff
 from pathlib import Path
+from typing import cast
 
 from core.utils import safe_json_loads
 
@@ -151,7 +152,7 @@ def get_skin_tool_prefix() -> str:
     """Get tool output prefix character from active skin."""
     skin = _get_skin()
     if skin:
-        return skin.tool_prefix
+        return cast("str", skin.tool_prefix)
     return "|"
 
 
@@ -168,7 +169,7 @@ def get_tool_emoji(tool_name: str, default: str = "*") -> str:
     if skin and skin.tool_emojis:
         override = skin.tool_emojis.get(tool_name)
         if override:
-            return override
+            return cast("str", override)
     # 2. Registry default
     try:
         from tools.registry import registry
@@ -266,7 +267,7 @@ def build_tool_preview(
             return f'~{target}: "{_oneline(args.get("old_text", "")[:20])}"'
         elif action == "remove":
             return f'-{target}: "{_oneline(args.get("old_text", "")[:20])}"'
-        return action
+        return cast("str | None", action)
 
     if tool_name == "send_message":
         target = args.get("target", "?")
@@ -805,7 +806,7 @@ class KawaiiSpinner:
         blanks = " " * max(self.last_line_len + 5, 40)
         self._write(f"\r{blanks}\r  {text}", flush=True)
 
-    def stop(self, final_message: str = None):
+    def stop(self, final_message: str | None = None):
         self.running = False
         if self.thread:
             self.thread.join(timeout=0.5)

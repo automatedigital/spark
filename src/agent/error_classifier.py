@@ -14,7 +14,7 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -495,10 +495,10 @@ def _classify_by_status(
         )
 
     if status_code in (500, 502):
-        return result_fn(FailoverReason.server_error, retryable=True)
+        return cast("ClassifiedError | None", result_fn(FailoverReason.server_error, retryable=True))
 
     if status_code in (503, 529):
-        return result_fn(FailoverReason.overloaded, retryable=True)
+        return cast("ClassifiedError | None", result_fn(FailoverReason.overloaded, retryable=True))
 
     # Other 4xx — non-retryable
     if 400 <= status_code < 500:
@@ -510,7 +510,7 @@ def _classify_by_status(
 
     # Other 5xx — retryable
     if 500 <= status_code < 600:
-        return result_fn(FailoverReason.server_error, retryable=True)
+        return cast("ClassifiedError | None", result_fn(FailoverReason.server_error, retryable=True))
 
     return None
 

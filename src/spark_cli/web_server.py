@@ -33,7 +33,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic as _steady_clock
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -597,7 +597,7 @@ class _EventSubscriber:
                 else:
                     chosen = data
                     self.priority_queue._queue.appendleft(priority_env)  # type: ignore[attr-defined]
-            return chosen.result()
+            return cast("dict[str, Any]", chosen.result())
         finally:
             # Cancellation can arrive while asyncio.wait itself is suspended.
             # Always reap both Queue.get tasks or interpreter shutdown reports
@@ -621,10 +621,10 @@ class _EventSubscriber:
         if priority_head is None:
             return self.data_queue.get_nowait() if data_head is not None else None
         if data_head is None:
-            return self.priority_queue.get_nowait()
+            return cast("dict[str, Any] | None", self.priority_queue.get_nowait())
         if self._sequence_of(priority_head) < self._sequence_of(data_head):
-            return self.priority_queue.get_nowait()
-        return self.data_queue.get_nowait()
+            return cast("dict[str, Any] | None", self.priority_queue.get_nowait())
+        return cast("dict[str, Any] | None", self.data_queue.get_nowait())
 
     @staticmethod
     def _sequence_of(envelope: dict[str, Any]) -> int:
@@ -832,7 +832,7 @@ def _web_workspace_git_status(slug: str | None) -> dict[str, Any] | None:
     try:
         from spark_cli.workspace_routes import git_status
 
-        return _json_safe(git_status(slug))
+        return cast("dict[str, Any] | None", _json_safe(git_status(slug)))
     except Exception:
         _log.debug("web workspace status lookup failed slug=%s", slug, exc_info=True)
         return None
@@ -908,7 +908,7 @@ def _latest_web_turn_projection(session_id: str) -> dict[str, Any] | None:
             if (row := db.get_latest_web_turn_projection(candidate)) is not None
         ]
         if rows:
-            return max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"]
+            return cast("dict[str, Any] | None", max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"])
     finally:
         db.close()
     return None
@@ -2154,7 +2154,7 @@ def _message_for_history_response(msg: dict[str, Any], include_tool_results: boo
     if "content" in out:
         out["content"] = _sanitize_web_chat_value(out.get("content"))
     if out.get("role") != "tool" or include_tool_results:
-        return _sanitize_web_chat_value(out)
+        return cast("dict[str, Any]", _sanitize_web_chat_value(out))
 
     content = out.get("content") or ""
     preview = _tool_result_preview(content)
@@ -2166,7 +2166,7 @@ def _message_for_history_response(msg: dict[str, Any], include_tool_results: boo
         })
     out.update(preview)
     out["content"] = out["result_preview"]
-    return _sanitize_web_chat_value(out)
+    return cast("dict[str, Any]", _sanitize_web_chat_value(out))
 
 
 def _hide_from_web_history(msg: dict[str, Any]) -> bool:
@@ -5707,7 +5707,7 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> str | No
         source_is_binary = bool(source_path and Path(source_path).suffix.lower() in _BINARY_EXTENSIONS)
         if source_is_binary or _looks_like_binary_context_text(content):
             return _binary_context_note(source_path)
-        return content
+        return cast("str | None", content)
 
     if not source_path:
         return None
@@ -5729,7 +5729,7 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> str | No
 
     try:
         if mode == InclusionMode.full:
-            return resolved.read_text(errors="replace")
+            return cast("str | None", resolved.read_text(errors="replace"))
 
         if mode == InclusionMode.excerpt:
             import json as _json
@@ -6556,7 +6556,7 @@ def _cached_web_agent_matches_history(
         flags["migrated"],
         matches,
     )
-    return matches
+    return cast("bool", matches)
 
 
 def _persist_interrupted_turn_boundary(session_id: str, message: str | None = None) -> None:

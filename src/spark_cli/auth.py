@@ -32,7 +32,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import yaml
@@ -486,7 +486,7 @@ def _resolve_zai_base_url(api_key: str, default_url: str, env_override: str) -> 
         key_hash = cached.get("key_hash", "")
         if key_hash == hashlib.sha256(api_key.encode()).hexdigest()[:16]:
             logger.debug("Z.AI: using cached endpoint %s", cached["base_url"])
-            return cached["base_url"]
+            return cast("str", cached["base_url"])
 
     # Probe — may take up to ~8s per endpoint.
     detected = detect_zai_endpoint(api_key)
@@ -1034,7 +1034,7 @@ def resolve_provider(
         if active and active in PROVIDER_REGISTRY:
             status = get_auth_status(active)
             if status.get("logged_in"):
-                return active
+                return cast("str", active)
     except Exception as e:
         logger.debug("Could not detect active auth provider: %s", e)
 
@@ -1446,7 +1446,7 @@ def _write_codex_cli_tokens(
         logger.debug("Failed to write refreshed tokens to %s: %s", auth_path, exc)
 
 
-def _save_codex_tokens(tokens: dict[str, str], last_refresh: str = None) -> None:
+def _save_codex_tokens(tokens: dict[str, str], last_refresh: str | None = None) -> None:
     """Save Codex OAuth tokens to Spark auth store (~/.spark/auth.json)."""
     if last_refresh is None:
         last_refresh = datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -1774,7 +1774,7 @@ def _request_device_code(
     missing = [f for f in required_fields if f not in data]
     if missing:
         raise ValueError(f"Device code response missing fields: {', '.join(missing)}")
-    return data
+    return cast("dict[str, Any]", data)
 
 
 def _poll_for_token(
@@ -1803,7 +1803,7 @@ def _poll_for_token(
             payload = response.json()
             if "access_token" not in payload:
                 raise ValueError("Token response did not include access_token")
-            return payload
+            return cast("dict[str, Any]", payload)
 
         try:
             error_payload = response.json()
@@ -2287,7 +2287,7 @@ def _prompt_model_selection(
             return None
         print()
         if idx < len(ordered):
-            return ordered[idx]
+            return cast("str | None", ordered[idx])
         elif idx == len(ordered):
             custom = input("Enter model name: ").strip()
             return custom if custom else None

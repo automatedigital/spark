@@ -25,6 +25,7 @@ import os
 import secrets
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 
@@ -96,7 +97,7 @@ def _get_google_config() -> dict:
     try:
         from spark_cli.config import load_config
         config = load_config()
-        return config.get("connectors", {}).get("google", {})
+        return cast("dict[Any, Any]", config.get("connectors", {}).get("google", {}))
     except Exception:
         return {}
 
@@ -163,7 +164,7 @@ def claim_relay_tokens(ticket: str) -> dict:
     token = resp.json()
     if "expires_in" in token and "expires_at" not in token:
         token["expires_at"] = int(time.time()) + int(token["expires_in"])
-    return token
+    return cast("dict[Any, Any]", token)
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +183,7 @@ def load_token() -> dict | None:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text())
+        return cast("dict[Any, Any] | None", json.loads(p.read_text()))
     except Exception:
         return None
 
@@ -221,7 +222,7 @@ def load_imap_credentials() -> dict | None:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return cast("dict[Any, Any] | None", json.loads(p.read_text(encoding="utf-8")))
     except Exception:
         return None
 
@@ -399,7 +400,7 @@ def exchange_code(code: str, code_verifier: str, redirect_uri: str) -> dict:
     # Normalize: store absolute expiry timestamp
     if "expires_in" in token and "expires_at" not in token:
         token["expires_at"] = int(time.time()) + int(token["expires_in"])
-    return token
+    return cast("dict[Any, Any]", token)
 
 
 def refresh_access_token(token: dict) -> dict:
@@ -463,7 +464,7 @@ def get_user_info(access_token: str) -> dict:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.json()
+    return cast("dict[Any, Any]", resp.json())
 
 
 async def get_connection_status_async() -> dict:

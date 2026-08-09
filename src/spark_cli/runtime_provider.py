@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def _auto_detect_local_model(base_url: str) -> str:
             if len(models) == 1:
                 model_id = models[0].get("id", "")
                 if model_id:
-                    return model_id
+                    return cast("str", model_id)
     except Exception:
         logger.debug("Ignoring error in _auto_detect_local_model()", exc_info=True)
     return ""

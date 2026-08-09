@@ -192,7 +192,7 @@ def print_noninteractive_setup_guidance(reason: str | None = None) -> None:
     print()
 
 
-def prompt(question: str, default: str = None, password: bool = False) -> str:
+def prompt(question: str, default: str | None = None, password: bool = False) -> str:
     """Prompt for input with optional default."""
     if default:
         display = f"{question} [{default}]: "
@@ -291,7 +291,7 @@ def prompt_validated(
     question: str,
     validator,
     *,
-    default: str = None,
+    default: str | None = None,
     password: bool = False,
     allow_empty: bool = True,
 ) -> str:
