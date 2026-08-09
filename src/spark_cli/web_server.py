@@ -46,6 +46,10 @@ if str(PROJECT_ROOT) not in sys.path:
 from core.async_runtime import get_async_runtime
 from gateway.status import get_running_pid, read_runtime_status
 from spark_cli import __release_date__, __version__
+from spark_cli.admin_routes import register_admin_routes
+from spark_cli.admin_runs import (
+    ADMIN_ACTIONS,
+)
 from spark_cli.analytics_routes import register_analytics_routes
 from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.config import (
@@ -72,15 +76,23 @@ from spark_cli.dashboard_auth import (
     get_configured_dashboard_secret,
     validate_dashboard_request,
 )
+from spark_cli.gateway_routes import (
+    _runtime_gateway_pid,
+    _runtime_gateway_running,
+    register_gateway_routes,
+)
 from spark_cli.kanban_routes import register_kanban_routes
 from spark_cli.logs_routes import register_logs_routes
+from spark_cli.mcp_routes import register_mcp_routes
 from spark_cli.model_routes import _resolve_codex_model_catalog, register_model_routes
 from spark_cli.onboarding_validation import (
     normalize_http_base_url,
     normalize_model_name,
     validate_env_assignment,
 )
+from spark_cli.plugins_routes import register_plugins_routes
 from spark_cli.profiles_routes import register_profiles_routes
+from spark_cli.web_runtime import _run_blocking
 from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
 
@@ -101,9 +113,6 @@ WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
 
-async def _run_blocking(function, /, *args, **kwargs):
-    """Run web-server blocking work in Spark's bounded process worker pool."""
-    return await get_async_runtime().run_blocking(function, *args, **kwargs)
 
 
 def _github_repository_url(remote: str) -> str | None:
@@ -181,8 +190,6 @@ def _apply_web_turn_active_state(rows: list[dict[str, Any]]) -> None:
 # Captured at startup — fan-out SSE events from sync agent threads
 _web_event_loop: asyncio.AbstractEventLoop | None = None
 _event_subscribers: set = set()  # _EventSubscriber (raw queues remain test-compatible)
-_admin_runs: dict[str, dict[str, Any]] = {}
-_admin_run_queues: dict[str, thread_queue.Queue] = {}
 
 
 class _ChunkedStreamText:
@@ -3089,27 +3096,12 @@ class EnvVarReveal(BaseModel):
     key: str
 
 
-class AdminActionStart(BaseModel):
-    args: dict[str, Any] = {}
-    confirm: bool = False
 
 
-class GatewayControlRequest(BaseModel):
-    action: str
-    confirm: bool = False
 
 
-class McpServerCreate(BaseModel):
-    name: str
-    url: str | None = None
-    command: str | None = None
-    args: list[str] = []
-    env: dict[str, str] = {}
 
 
-class PluginActionRequest(BaseModel):
-    name: str
-    confirm: bool = False
 
 
 class FeedbackSubmitBody(BaseModel):
@@ -3119,325 +3111,32 @@ class FeedbackSubmitBody(BaseModel):
     note: str
 
 
-class AdminAction:
-    def __init__(
-        self,
-        action_id: str,
-        label: str,
-        description: str,
-        risk: str,
-        command: Callable[[dict[str, Any]], list[str]],
-        *,
-        requires_confirmation: bool = False,
-        long_running: bool = False,
-        args_schema: dict | None = None,
-        availability: Callable[[], tuple[bool, str | None]] | None = None,
-    ):
-        self.id = action_id
-        self.label = label
-        self.description = description
-        self.risk = risk
-        self.command = command
-        self.requires_confirmation = requires_confirmation
-        self.long_running = long_running
-        self.args_schema = args_schema or {"type": "object", "properties": {}}
-        self.availability = availability
-
-    def to_metadata(self) -> dict:
-        available = True
-        reason = None
-        if self.availability:
-            available, reason = self.availability()
-        return {
-            "id": self.id,
-            "label": self.label,
-            "description": self.description,
-            "risk": self.risk,
-            "requires_confirmation": self.requires_confirmation,
-            "long_running": self.long_running,
-            "args_schema": self.args_schema,
-            "available": available,
-            "unavailable_reason": reason,
-        }
 
 
-def _spark_command(*parts: str) -> list[str]:
-    return [sys.executable, "-m", "spark_cli.main", *parts]
 
 
-def _gateway_command(action: str) -> list[str]:
-    return _spark_command("gateway", action)
 
 
-def _update_command(check_only: bool) -> list[str]:
-    try:
-        from core.spark_constants import get_spark_home
-        spark_home = get_spark_home()
-        # Always clear the cache so we do a fresh git fetch, not a stale 6-hour result
-        (spark_home / ".update_check").unlink(missing_ok=True)
-        if not check_only:
-            # Pre-write "y" so _gateway_prompt auto-accepts the "run installer?" question
-            (spark_home / ".update_response").write_text("y")
-    except Exception:
-        _log.debug("Ignoring error in _update_command()", exc_info=True)
-    if check_only:
-        return _spark_command("version")
-    return _spark_command("update", "--gateway")
 
 
-def _debug_command(args: dict[str, Any]) -> list[str]:
-    lines = int(args.get("lines") or 200)
-    lines = max(20, min(lines, 2000))
-    return _spark_command("debug", "share", "--local", "--lines", str(lines))
 
 
-ADMIN_ACTIONS: dict[str, AdminAction] = {
-    "gateway.start": AdminAction(
-        "gateway.start",
-        "Start gateway",
-        "Start the configured messaging gateway service.",
-        "medium",
-        lambda _args: _gateway_command("start"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "gateway.stop": AdminAction(
-        "gateway.stop",
-        "Stop gateway",
-        "Stop the configured messaging gateway service.",
-        "high",
-        lambda _args: _gateway_command("stop"),
-        requires_confirmation=True,
-    ),
-    "gateway.restart": AdminAction(
-        "gateway.restart",
-        "Restart gateway",
-        "Restart the configured messaging gateway service.",
-        "high",
-        lambda _args: _gateway_command("restart"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "gateway.install": AdminAction(
-        "gateway.install",
-        "Install gateway service",
-        "Install the OS service wrapper for the gateway.",
-        "high",
-        lambda _args: _gateway_command("install"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "gateway.uninstall": AdminAction(
-        "gateway.uninstall",
-        "Uninstall gateway service",
-        "Remove the OS service wrapper for the gateway.",
-        "high",
-        lambda _args: _gateway_command("uninstall"),
-        requires_confirmation=True,
-    ),
-    "gateway.status": AdminAction(
-        "gateway.status",
-        "Gateway service status",
-        "Read foreground, runtime, and service status.",
-        "low",
-        lambda _args: _gateway_command("status"),
-    ),
-    "diagnostics.doctor": AdminAction(
-        "diagnostics.doctor",
-        "Run doctor",
-        "Run Spark diagnostics and report configuration issues.",
-        "low",
-        lambda _args: _spark_command("doctor"),
-    ),
-    "diagnostics.doctor_fix": AdminAction(
-        "diagnostics.doctor_fix",
-        "Run doctor fix",
-        "Run Spark doctor with repair mode where supported.",
-        "medium",
-        lambda _args: _spark_command("doctor", "--fix"),
-        requires_confirmation=True,
-    ),
-    "diagnostics.debug": AdminAction(
-        "diagnostics.debug",
-        "Build debug report",
-        "Generate a local debug preview with bounded log output.",
-        "low",
-        _debug_command,
-        args_schema={
-            "type": "object",
-            "properties": {"lines": {"type": "integer", "minimum": 20, "maximum": 2000}},
-        },
-    ),
-    "backup.quick": AdminAction(
-        "backup.quick",
-        "Quick backup",
-        "Create a quick Spark backup.",
-        "medium",
-        lambda _args: _spark_command("backup", "--quick"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "backup.full": AdminAction(
-        "backup.full",
-        "Full backup",
-        "Create a full Spark backup.",
-        "medium",
-        lambda _args: _spark_command("backup"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "update.check": AdminAction(
-        "update.check",
-        "Check for updates",
-        "Check whether a Spark update is available.",
-        "low",
-        lambda _args: _update_command(True),
-        long_running=True,
-    ),
-    "update.run": AdminAction(
-        "update.run",
-        "Run update",
-        "Run Spark's update flow.",
-        "high",
-        lambda _args: _update_command(False),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-}
 
 
-def _new_admin_run(action_id: str, args: dict) -> tuple[str, thread_queue.Queue]:
-    run_id = uuid.uuid4().hex
-    queue: thread_queue.Queue = thread_queue.Queue(maxsize=512)
-    _admin_runs[run_id] = {
-        "run_id": run_id,
-        "action_id": action_id,
-        "args": args,
-        "status": "queued",
-        "started_at": None,
-        "finished_at": None,
-        "exit_code": None,
-        "output_tail": [],
-        "error": None,
-    }
-    _admin_run_queues[run_id] = queue
-    return run_id, queue
 
 
-def _queue_admin_event(run_id: str, event: dict) -> None:
-    queue = _admin_run_queues.get(run_id)
-    if queue is None:
-        return
-    try:
-        queue.put_nowait(event)
-    except Exception:
-        _log.debug("Ignoring error in _queue_admin_event()", exc_info=True)
 
 
-def _append_admin_output(run_id: str, stream: str, text: str) -> None:
-    run = _admin_runs.get(run_id)
-    if not run:
-        return
-    tail = run.setdefault("output_tail", [])
-    tail.append({"stream": stream, "text": text, "ts": time.time()})
-    del tail[:-200]
 
 
-def _run_admin_action(run_id: str, action: AdminAction, args: dict) -> None:
-    run = _admin_runs[run_id]
-    run["status"] = "running"
-    run["started_at"] = time.time()
-    _queue_admin_event(run_id, {"type": "state", "status": "running"})
-    try:
-        cmd = action.command(args)
-        _queue_admin_event(run_id, {"type": "output", "stream": "system", "text": " ".join(cmd)})
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(PROJECT_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
-        env["PYTHONUNBUFFERED"] = "1"
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(PROJECT_ROOT),
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        if proc.stdout is not None:
-            for line in proc.stdout:
-                text = line.rstrip("\n")
-                _append_admin_output(run_id, "stdout", text)
-                _queue_admin_event(run_id, {"type": "output", "stream": "stdout", "text": text})
-        exit_code = proc.wait()
-        run["exit_code"] = exit_code
-        run["status"] = "done" if exit_code == 0 else "failed"
-    except Exception as exc:
-        run["status"] = "failed"
-        run["error"] = str(exc)
-        _queue_admin_event(run_id, {"type": "output", "stream": "stderr", "text": str(exc)})
-    finally:
-        run["finished_at"] = time.time()
-        _queue_admin_event(run_id, {"type": "done", "run": run})
 
 
-def _list_plugin_dirs() -> list[dict]:
-    plugins_dir = get_spark_home() / "plugins"
-    rows: list[dict] = []
-    if not plugins_dir.is_dir():
-        return rows
-    for entry in sorted(plugins_dir.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("."):
-            continue
-        manifest = entry / "plugin.json"
-        data: dict = {}
-        if manifest.exists():
-            try:
-                data = json.loads(manifest.read_text(encoding="utf-8"))
-            except Exception:
-                data = {}
-        rows.append(
-            {
-                "name": data.get("name") or entry.name,
-                "id": data.get("id") or entry.name,
-                "path": str(entry),
-                "description": data.get("description"),
-                "version": data.get("version"),
-                "enabled": not (entry / ".disabled").exists(),
-            }
-        )
-    return rows
 
 
-def _configured_gateway_platforms() -> list[dict]:
-    try:
-        from gateway.config import load_gateway_config
-
-        gateway_config = load_gateway_config()
-        return [
-            {
-                "id": platform_cfg.value,
-                "configured": True,
-            }
-            for platform_cfg in gateway_config.get_connected_platforms()
-        ]
-    except Exception:
-        return []
 
 
-def _runtime_gateway_pid(runtime: dict | None) -> int | None:
-    if not runtime:
-        return None
-    pid = runtime.get("pid")
-    try:
-        return int(pid) if pid is not None else None
-    except (TypeError, ValueError):
-        return None
 
 
-def _runtime_gateway_running(runtime: dict | None) -> bool:
-    if not runtime:
-        return False
-    return runtime.get("gateway_state") == "running" and _runtime_gateway_pid(runtime) is not None
 
 
 @app.get("/api/status")
@@ -3896,185 +3595,28 @@ async def run_mac_update():
     }
 
 
-@app.get("/api/admin/actions")
-async def admin_actions():
-    """Return bounded admin actions available to the dashboard."""
-    return {"ok": True, "actions": [a.to_metadata() for a in ADMIN_ACTIONS.values()]}
 
 
-@app.post("/api/admin/actions/{action_id}")
-async def start_admin_action(action_id: str, payload: AdminActionStart):
-    action = ADMIN_ACTIONS.get(action_id)
-    if action is None:
-        raise HTTPException(status_code=404, detail=f"Unknown admin action: {action_id}")
-    meta = action.to_metadata()
-    if not meta["available"]:
-        raise HTTPException(status_code=400, detail=meta["unavailable_reason"] or "Action unavailable")
-    if action.requires_confirmation and not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    run_id, _queue = _new_admin_run(action_id, payload.args or {})
-    threading.Thread(target=_run_admin_action, args=(run_id, action, payload.args or {}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
 
 
-@app.get("/api/admin/actions/runs/{run_id}")
-async def get_admin_action_run(run_id: str):
-    run = _admin_runs.get(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return run
 
 
-@app.get("/api/admin/actions/runs/{run_id}/stream")
-async def stream_admin_action_run(request: Request, run_id: str):
-    from fastapi.responses import StreamingResponse as _StreamingResponse
-
-    run = _admin_runs.get(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    queue = _admin_run_queues.get(run_id)
-    if queue is None:
-        queue = thread_queue.Queue(maxsize=512)
-        _admin_run_queues[run_id] = queue
-
-    async def event_generator():
-        yield f"data: {json.dumps({'type': 'state', 'status': run.get('status')})}\n\n"
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    event = await _run_blocking(queue.get, True, 20)
-                except thread_queue.Empty:
-                    yield "event: ping\ndata: {}\n\n"
-                    if run.get("status") in ("done", "failed"):
-                        break
-                    continue
-                yield f"data: {json.dumps(event, default=str)}\n\n"
-                if event.get("type") == "done":
-                    break
-        finally:
-            if run.get("status") in ("done", "failed"):
-                _admin_run_queues.pop(run_id, None)
-
-    return _StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
 
 
-@app.get("/api/gateway/status")
-async def gateway_admin_status():
-    runtime = read_runtime_status() or {}
-    pid = get_running_pid()
-    running = pid is not None
-    if not running and _runtime_gateway_running(runtime):
-        pid = _runtime_gateway_pid(runtime)
-        running = True
-    return {
-        "ok": True,
-        "running": running,
-        "pid": pid,
-        "runtime": runtime,
-        "platforms": runtime.get("platforms") or {},
-        "configured_platforms": _configured_gateway_platforms(),
-        "service_system": platform.system(),
-        "last_error": runtime.get("last_startup_error") or runtime.get("exit_reason"),
-        "state": runtime.get("gateway_state") if running else "stopped",
-    }
 
 
-@app.post("/api/gateway/control")
-async def gateway_control(payload: GatewayControlRequest):
-    action_id = f"gateway.{payload.action}"
-    action = ADMIN_ACTIONS.get(action_id)
-    if action is None:
-        raise HTTPException(status_code=400, detail=f"Unsupported gateway action: {payload.action}")
-    if action.requires_confirmation and not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    run_id, _queue = _new_admin_run(action_id, {})
-    threading.Thread(target=_run_admin_action, args=(run_id, action, {}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
 
 
-@app.get("/api/plugins")
-async def plugins_list():
-    return {"ok": True, "plugins": _list_plugin_dirs()}
 
 
-@app.post("/api/plugins/{action}")
-async def plugins_action(action: str, payload: PluginActionRequest):
-    if action not in {"install", "update", "remove", "enable", "disable"}:
-        raise HTTPException(status_code=400, detail=f"Unsupported plugin action: {action}")
-    if action in {"install", "update", "remove"} and not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    action_id = f"plugins.{action}.{uuid.uuid4().hex[:8]}"
-    command = _spark_command("plugins", action, payload.name)
-    run_id, _queue = _new_admin_run(action_id, {"name": payload.name})
-    _admin_runs[run_id]["action_id"] = action_id
-    temp_action = AdminAction(action_id, f"Plugin {action}", f"Run plugin {action}.", "medium", lambda _args: command)
-    threading.Thread(target=_run_admin_action, args=(run_id, temp_action, {"name": payload.name}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
 
 
-@app.get("/api/mcp/servers")
-async def mcp_servers_list():
-    from spark_cli.mcp_config import _get_mcp_servers
-
-    return {"ok": True, "servers": _get_mcp_servers()}
 
 
-@app.post("/api/mcp/servers")
-async def mcp_servers_create(payload: McpServerCreate):
-    from spark_cli.mcp_config import _save_mcp_server
-
-    if not payload.url and not payload.command:
-        raise HTTPException(status_code=400, detail="Provide url or command")
-    server: dict[str, Any] = {}
-    if payload.url:
-        server["url"] = payload.url
-    if payload.command:
-        server["command"] = payload.command
-    if payload.args:
-        server["args"] = payload.args
-    if payload.env:
-        server["env"] = payload.env
-    try:
-        _save_mcp_server(payload.name, server)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "name": payload.name, "server": server}
 
 
-@app.delete("/api/mcp/servers/{name}")
-async def mcp_servers_delete(name: str, confirm: bool = False):
-    if not confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.mcp_config import _remove_mcp_server
-
-    if not _remove_mcp_server(name):
-        raise HTTPException(status_code=404, detail="MCP server not found")
-    return {"ok": True}
 
 
-@app.post("/api/mcp/servers/{name}/test")
-async def mcp_servers_test(name: str):
-    from spark_cli.mcp_config import _get_mcp_servers
-
-    servers = _get_mcp_servers()
-    if name not in servers:
-        raise HTTPException(status_code=404, detail="MCP server not found")
-    command = _spark_command("mcp", "test", name)
-    action_id = f"mcp.test.{name}"
-    run_id, _queue = _new_admin_run(action_id, {"name": name})
-    temp_action = AdminAction(action_id, "Test MCP server", "Probe one MCP server.", "low", lambda _args: command)
-    threading.Thread(target=_run_admin_action, args=(run_id, temp_action, {"name": name}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
 
 
 @app.get("/api/diagnostics/summary")
@@ -10463,6 +10005,10 @@ def mount_spa(application: FastAPI):
 register_cron_routes(app)
 register_analytics_routes(app)
 register_kanban_routes(app)
+register_gateway_routes(app)
+register_plugins_routes(app)
+register_admin_routes(app)
+register_mcp_routes(app)
 register_model_routes(app)
 register_profiles_routes(app)
 register_logs_routes(app)

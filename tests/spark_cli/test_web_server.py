@@ -1001,16 +1001,16 @@ class TestWebServerEndpoints:
         assert "Confirmation required" in blocked.text
 
     def test_admin_action_run_lifecycle(self, monkeypatch):
-        import spark_cli.web_server as web_server
+        import spark_cli.admin_runs as admin_runs
 
-        action = web_server.AdminAction(
+        action = admin_runs.AdminAction(
             "test.echo",
             "Echo",
             "Test action",
             "low",
             lambda _args: [sys.executable, "-c", "print('admin-ok')"],
         )
-        monkeypatch.setitem(web_server.ADMIN_ACTIONS, "test.echo", action)
+        monkeypatch.setitem(admin_runs.ADMIN_ACTIONS, "test.echo", action)
 
         started = self.client.post("/api/admin/actions/test.echo", json={})
         assert started.status_code == 200
@@ -1104,8 +1104,14 @@ class TestWebServerEndpoints:
                 "feishu": {"state": "connected", "updated_at": "2026-07-09T01:47:00+00:00"},
             },
         }
+        # /api/status still resolves these itself, while the
+        # _runtime_gateway_* helpers it calls now live in gateway_routes.
+        import spark_cli.gateway_routes as gateway_routes
+
         monkeypatch.setattr(web_server, "get_running_pid", lambda: None)
         monkeypatch.setattr(web_server, "read_runtime_status", lambda: runtime)
+        monkeypatch.setattr(gateway_routes, "get_running_pid", lambda: None)
+        monkeypatch.setattr(gateway_routes, "read_runtime_status", lambda: runtime)
         monkeypatch.setattr(web_server, "check_config_version", lambda: (1, 1))
         monkeypatch.setattr(gateway_config, "load_gateway_config", lambda: _GatewayConfig())
 
