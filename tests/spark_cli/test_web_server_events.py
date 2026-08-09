@@ -2655,20 +2655,13 @@ class TestConversationControl:
             time.sleep(0.02)
         else:
             if os.getenv("CI"):
-                # Known bug, reproducible on Linux, not yet fixed.
-                #
-                # The turn is marked active by _mark_web_turn_active, then
-                # something publishes chat.turn_done ~8ms later WITHOUT ever
-                # calling _run_web_agent_turn (which this test patches to
-                # raise). The published payload proves it: result is None,
-                # turn_outcome.status is "completed", backend_error_class is
-                # None, and started_at/ended_at are 8ms apart. So an early
-                # return finalizes the turn while leaving its entry in
-                # _web_active_turns, and turn_active stays True forever.
-                #
-                # It is not a timeout (15s does not help), not the async
-                # runtime (resetting it does not help), and not fixed by
-                # draining turns between tests. Tracked in PLAN.md.
+                # The product bug -- a turn reporting success when it never ran -- is
+                # fixed, and covered by
+                # test_cancelled_web_turn_reports_failure_not_success.
+                # What remains is test isolation: other modules (test_async_runtime,
+                # test_tool_scheduler) shut down the shared AsyncRuntime, so a later
+                # web turn has its work future cancelled and the turn never clears.
+                # Resetting the runtime per test does not help. Tracked in PLAN.md.
                 pytest.skip("web turn can finalize without clearing its active entry; see PLAN.md")
             pytest.fail("completed web turn still reported active")
 
@@ -2799,20 +2792,13 @@ class TestConversationControl:
             time.sleep(0.02)
         else:
             if os.getenv("CI"):
-                # Known bug, reproducible on Linux, not yet fixed.
-                #
-                # The turn is marked active by _mark_web_turn_active, then
-                # something publishes chat.turn_done ~8ms later WITHOUT ever
-                # calling _run_web_agent_turn (which this test patches to
-                # raise). The published payload proves it: result is None,
-                # turn_outcome.status is "completed", backend_error_class is
-                # None, and started_at/ended_at are 8ms apart. So an early
-                # return finalizes the turn while leaving its entry in
-                # _web_active_turns, and turn_active stays True forever.
-                #
-                # It is not a timeout (15s does not help), not the async
-                # runtime (resetting it does not help), and not fixed by
-                # draining turns between tests. Tracked in PLAN.md.
+                # The product bug -- a turn reporting success when it never ran -- is
+                # fixed, and covered by
+                # test_cancelled_web_turn_reports_failure_not_success.
+                # What remains is test isolation: other modules (test_async_runtime,
+                # test_tool_scheduler) shut down the shared AsyncRuntime, so a later
+                # web turn has its work future cancelled and the turn never clears.
+                # Resetting the runtime per test does not help. Tracked in PLAN.md.
                 pytest.skip("web turn can finalize without clearing its active entry; see PLAN.md")
             pytest.fail("failed web turn still reported active")
 
@@ -2825,9 +2811,9 @@ class TestConversationControl:
             )
         )
         if not got and os.getenv("CI"):
-            # Same known bug as the turn-active check below: the turn is
-            # finalized without ever running _run_web_agent_turn, so no
-            # turn_done ever carries a backend_error_class. See PLAN.md.
+            # Same test-isolation issue as the turn-active check below:
+            # the shared AsyncRuntime is dead, so the turn is cancelled
+            # before it can run. See PLAN.md.
             pytest.skip("web turn can finalize without running the turn; see PLAN.md")
         if not got:
             # Report the captured stream so the failure is diagnosable from
@@ -3337,3 +3323,47 @@ class TestConversationControl:
             assert msgs[1]["role"] == "assistant"
         finally:
             db2.close()
+
+
+def test_cancelled_web_turn_reports_failure_not_success(web_client, monkeypatch):
+    """A turn whose work future is cancelled must not report success.
+
+    asyncio.CancelledError is a BaseException, so `except Exception` in
+    run_agent_task does not catch it. Before the fix, `result` stayed None and
+    the finally block published chat.turn_done with status "completed" and no
+    backend_error_class -- a turn that never ran looked like it succeeded.
+    """
+    import spark_cli.web_server as web_server
+
+    class FakeAgent:
+        session_id = "pending"
+
+    def fake_new_agent(**kwargs):
+        agent = FakeAgent()
+        agent.session_id = kwargs["session_id"]
+        return agent
+
+    events = []
+    original_publish = web_server._publish_event
+
+    def capture_event(topic, data, session_id=None):
+        events.append((topic, data, session_id))
+        return original_publish(topic, data, session_id)
+
+    async def cancel_the_work(loop, fn, *args, **kwargs):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(web_server, "_new_web_agent", fake_new_agent)
+    monkeypatch.setattr(web_server, "_run_web_turn_in_executor", cancel_the_work)
+    monkeypatch.setattr(web_server, "_maybe_auto_title_web", lambda *a, **k: None)
+    monkeypatch.setattr(web_server, "_publish_event", capture_event)
+
+    resp = web_client.post("/api/conversations", json={"message": "hi"})
+    assert resp.status_code == 200
+
+    assert _wait_for(
+        lambda: any(event[0] == "chat.turn_done" for event in events)
+    ), "no chat.turn_done was published for a cancelled turn"
+
+    done = [event for event in events if event[0] == "chat.turn_done"]
+    assert done[-1][1]["backend_error_class"] == "CancelledError"

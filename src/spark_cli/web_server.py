@@ -9944,6 +9944,15 @@ async def create_conversation(body: ConversationCreate):
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Web chat turn cancelled session=%s", session_id)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Web chat agent error session=%s", session_id)
             result = {"backend_error_class": type(exc).__name__}
@@ -10419,6 +10428,15 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
                 )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Web chat follow-up cancelled session=%s", session_id)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Web chat follow-up error session=%s", session_id)
             result = {"backend_error_class": type(exc).__name__}
@@ -10915,6 +10933,15 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
                 loop,
                 lambda: _run_web_agent_turn(agent, user_msg, conv_hist),
             )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Web chat retry cancelled session=%s", session_id)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Web chat retry error session=%s", session_id)
             result = {"backend_error_class": type(exc).__name__}
@@ -11548,6 +11575,15 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Workspace chat turn cancelled session=%s slug=%s", session_id, slug)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Workspace chat agent error session=%s slug=%s", session_id, slug)
             result = {"backend_error_class": type(exc).__name__}

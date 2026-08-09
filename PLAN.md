@@ -394,37 +394,51 @@ Fixed in `src/core/run_agent/__init__.py`:
   discarded whenever no `base_url` came with it, so a caller that did supply a
   key still got "Missing credentials".
 
-### Known bug, quarantined not fixed
+### Fixed: a cancelled turn reported success
 
-Two tests in `tests/spark_cli/test_web_server_events.py` are skipped on CI:
+- [x] `run_agent_task` records `CancelledError` instead of reporting success
+
+**The bug.** `asyncio.CancelledError` is a `BaseException`, so the
+`except Exception` in `run_agent_task` never caught it. `result` stayed `None`
+and the `finally` block published `chat.turn_done` with
+`turn_outcome.status: "completed"` and no `backend_error_class`. A turn that
+never ran reported success to the user.
+
+**Confirmed, not guessed.** Patching `_run_web_turn_in_executor` to log what it
+raises printed `EXECUTOR raised CancelledError` immediately followed by
+`PAYLOAD result=None`. An earlier draft of this document dismissed this
+explanation; that was wrong, and the trace is what settled it.
+
+**The fix.** All four `run_agent_task` bodies (`/api/conversations`, its
+`messages` and `retry` variants, and the workspace one) now catch
+`asyncio.CancelledError` ahead of `except Exception`, log a warning, and set
+`backend_error_class` to `"CancelledError"` so the turn reports failure.
+
+**Regression test.**
+`test_cancelled_web_turn_reports_failure_not_success` in
+`tests/spark_cli/test_web_server_events.py`, verified to fail when the handler
+is removed.
+
+### Still open: test isolation for the same two tests
+
 `test_backend_exception_publishes_turn_done_and_clears_active` and
-`test_completed_conversation_without_stream_consumer_is_not_active`.
+`test_completed_conversation_without_stream_consumer_is_not_active` remain
+skipped on CI, but for a narrower reason than before. They additionally assert
+that the turn stops being active. `test_async_runtime` and
+`test_tool_scheduler` shut down the shared `AsyncRuntime`, so a web turn that
+runs afterwards has its work future cancelled and the turn never clears.
 
-**What happens.** The turn is marked active by `_mark_web_turn_active`, then
-`chat.turn_done` is published about 8ms later without `_run_web_agent_turn`
-ever being called — even though the test patches it to raise. The published
-payload is the evidence: `result` is `None`, `turn_outcome.status` is
-`"completed"`, `backend_error_class` is `None`, and `started_at`/`ended_at`
-are 8ms apart. An early return finalizes the turn while leaving its entry in
-`_web_active_turns`, so `turn_active` never clears.
+This is a test-environment artifact — nothing shuts the runtime down mid-request
+in production — but it should still be fixed, because it hides real coverage.
 
-**Why it matters.** A user can see a turn report success when it never ran.
+**Ruled out.** Not a timeout (2s to 15s does not help). Not fixed by resetting
+the runtime in the web fixture, nor by draining turns at teardown, nor by xdist
+grouping (`--dist loadfile` made it worse: 21 failures).
 
-**Ruled out.** Not a timeout (2s to 15s does not help). Not the shared async
-runtime (resetting it per test does not help). Not stale setup state (the
-fixture already clears every `_web_*` global, and a teardown drain was added).
-Not fixable by xdist grouping (`--dist loadfile` made it worse: 21 failures).
-
-**To fix.** Find the early-return path in the `/api/conversations` handler
-that publishes `turn_done` without entering `run_agent_task`, and make it
-clear the active turn. Reproduce with:
-
-```bash
-docker run --rm -v "$PWD":/w -w /w -e CI=1 python:3.11-slim bash -c \
-  'pip install -q -e ".[dev,web]" && python -m pytest \
-   tests/spark_cli/test_web_server_events.py tests/core/test_async_runtime.py \
-   tests/core/test_tool_scheduler.py tests/spark_cli/test_web_server.py -q'
-```
+**Likely fix.** Give `AsyncRuntime.shutdown` responsibility for its named
+executors — it currently closes clients and stops the loop but leaves
+`_named_executors` running — and stop the async-runtime tests from affecting
+the process-wide singleton.
 
 ## Work completed
 
