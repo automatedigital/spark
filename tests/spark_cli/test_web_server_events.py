@@ -2654,15 +2654,6 @@ class TestConversationControl:
                 break
             time.sleep(0.02)
         else:
-            if os.getenv("CI"):
-                # The product bug -- a turn reporting success when it never ran -- is
-                # fixed, and covered by
-                # test_cancelled_web_turn_reports_failure_not_success.
-                # What remains is test isolation: other modules (test_async_runtime,
-                # test_tool_scheduler) shut down the shared AsyncRuntime, so a later
-                # web turn has its work future cancelled and the turn never clears.
-                # Resetting the runtime per test does not help. Tracked in PLAN.md.
-                pytest.skip("web turn can finalize without clearing its active entry; see PLAN.md")
             pytest.fail("completed web turn still reported active")
 
         assert session_id not in web_server._web_queues
@@ -2791,15 +2782,6 @@ class TestConversationControl:
                 break
             time.sleep(0.02)
         else:
-            if os.getenv("CI"):
-                # The product bug -- a turn reporting success when it never ran -- is
-                # fixed, and covered by
-                # test_cancelled_web_turn_reports_failure_not_success.
-                # What remains is test isolation: other modules (test_async_runtime,
-                # test_tool_scheduler) shut down the shared AsyncRuntime, so a later
-                # web turn has its work future cancelled and the turn never clears.
-                # Resetting the runtime per test does not help. Tracked in PLAN.md.
-                pytest.skip("web turn can finalize without clearing its active entry; see PLAN.md")
             pytest.fail("failed web turn still reported active")
 
         # turn_active can clear a moment before chat.turn_done is published, so
@@ -2810,11 +2792,6 @@ class TestConversationControl:
                 for event in events
             )
         )
-        if not got and os.getenv("CI"):
-            # Same test-isolation issue as the turn-active check below:
-            # the shared AsyncRuntime is dead, so the turn is cancelled
-            # before it can run. See PLAN.md.
-            pytest.skip("web turn can finalize without running the turn; see PLAN.md")
         if not got:
             # Report the captured stream so the failure is diagnosable from
             # the run log instead of by guesswork.
@@ -3362,7 +3339,7 @@ def test_cancelled_web_turn_reports_failure_not_success(web_client, monkeypatch)
     assert resp.status_code == 200
 
     assert _wait_for(
-        lambda: any(event[0] == "chat.turn_done" for event in events)
+        lambda: any(event[0] == "chat.turn_done" for event in events), timeout=45.0
     ), "no chat.turn_done was published for a cancelled turn"
 
     done = [event for event in events if event[0] == "chat.turn_done"]

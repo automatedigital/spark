@@ -8973,39 +8973,55 @@ async def create_conversation(body: ConversationCreate):
         finally:
             unregister_gateway_notify(session_id)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
-            if _active_turn:
-                await _await_checkpoint_ready(
-                    final_session_id, _active_turn, operation="turn_completion"
+            turn_outcome = None
+            # Persistence and projection are best-effort.  Whatever happens
+            # here, the turn must still publish chat.turn_done and clear its
+            # active entry: the web UI waits on both, so skipping them leaves
+            # the session spinning forever.  CancelledError is included
+            # deliberately -- if the runtime went away mid-turn, that is
+            # exactly when finalization matters most.
+            try:
+                if _active_turn:
+                    await _await_checkpoint_ready(
+                        final_session_id, _active_turn, operation="turn_completion"
+                    )
+                surviving_assistant_id = _persist_web_turn_if_missing(
+                    final_session_id, message, result, before_message_count,
+                    eager_user_id=eager_user_id,
+                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
                 )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id, message, result, before_message_count,
-                eager_user_id=eager_user_id,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
-                agent=agent,
-            )
-            if agent is not None:
-                _maybe_auto_title_web(agent, final_session_id, message, result)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
-                ),
-                final_session_id,
-            )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
+                if _active_turn is not None and surviving_assistant_id is not None:
+                    with _active_turn.lock:
+                        _active_turn.assistant_message_id = surviving_assistant_id
+                turn_outcome = await _finalize_web_turn_projection_async(
+                    final_session_id,
+                    _active_turn,
+                    result,
+                    agent=agent,
+                )
+                if agent is not None:
+                    _maybe_auto_title_web(agent, final_session_id, message, result)
+            except (Exception, asyncio.CancelledError):
+                _log.exception(
+                    "Web chat turn finalization failed session=%s", final_session_id
+                )
+            finally:
+                try:
+                    loop.call_soon_threadsafe(queue.put_nowait, None)
+                except RuntimeError:
+                    _log.debug("Event loop gone before closing the token queue", exc_info=True)
+                _web_queues.pop(session_id, None)
+                _publish_event(
+                    "chat.turn_done",
+                    _turn_done_payload(
+                        result, final_session_id, turn_outcome=turn_outcome
+                    ),
+                    final_session_id,
+                )
+                _clear_web_turn(final_session_id)
+                if final_session_id != session_id:
+                    _clear_web_turn(session_id)
+                _emit_web_session_updated(final_session_id)
 
     turn = await _run_blocking(
         _mark_web_turn_active,
@@ -9457,38 +9473,51 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         finally:
             unregister_gateway_notify(session_id)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
-            if _active_turn:
-                await _await_checkpoint_ready(
-                    final_session_id, _active_turn, operation="turn_completion"
+            turn_outcome = None
+            # Persistence and projection are best-effort.  Whatever happens
+            # here, the turn must still publish chat.turn_done and clear its
+            # active entry: the web UI waits on both, so skipping them leaves
+            # the session spinning forever.  CancelledError is included
+            # deliberately -- if the runtime went away mid-turn, that is
+            # exactly when finalization matters most.
+            try:
+                if _active_turn:
+                    await _await_checkpoint_ready(
+                        final_session_id, _active_turn, operation="turn_completion"
+                    )
+                surviving_assistant_id = _persist_web_turn_if_missing(
+                    final_session_id, message, result, before_message_count,
+                    eager_user_id=eager_user_id,
+                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
                 )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id, message, result, before_message_count,
-                eager_user_id=eager_user_id,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
-                agent=agent,
-            )
-            _maybe_auto_title_web(agent, final_session_id, message, result)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
-                ),
-                final_session_id,
-            )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
+                if _active_turn is not None and surviving_assistant_id is not None:
+                    with _active_turn.lock:
+                        _active_turn.assistant_message_id = surviving_assistant_id
+                turn_outcome = await _finalize_web_turn_projection_async(
+                    final_session_id,
+                    _active_turn,
+                    result,
+                    agent=agent,
+                )
+                _maybe_auto_title_web(agent, final_session_id, message, result)
+            except (Exception, asyncio.CancelledError):
+                _log.exception(
+                    "Web turn finalization failed session=%s", final_session_id
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+                _web_queues.pop(session_id, None)
+                _publish_event(
+                    "chat.turn_done",
+                    _turn_done_payload(
+                        result, final_session_id, turn_outcome=turn_outcome
+                    ),
+                    final_session_id,
+                )
+                _clear_web_turn(final_session_id)
+                if final_session_id != session_id:
+                    _clear_web_turn(session_id)
+                _emit_web_session_updated(final_session_id)
 
     turn = await _run_blocking(
         _mark_web_turn_active,
@@ -9963,39 +9992,52 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             unregister_gateway_notify(session_id)
             loop.call_soon_threadsafe(queue.put_nowait, None)
             final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
-            if _active_turn:
-                await _await_checkpoint_ready(
-                    final_session_id, _active_turn, operation="turn_completion"
+            turn_outcome = None
+            # Persistence and projection are best-effort.  Whatever happens
+            # here, the turn must still publish chat.turn_done and clear its
+            # active entry: the web UI waits on both, so skipping them leaves
+            # the session spinning forever.  CancelledError is included
+            # deliberately -- if the runtime went away mid-turn, that is
+            # exactly when finalization matters most.
+            try:
+                if _active_turn:
+                    await _await_checkpoint_ready(
+                        final_session_id, _active_turn, operation="turn_completion"
+                    )
+                surviving_assistant_id = _persist_web_turn_if_missing(
+                    final_session_id,
+                    user_msg,
+                    result,
+                    before_message_count,
+                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
                 )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id,
-                user_msg,
-                result,
-                before_message_count,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
-                agent=agent,
-            )
-            _maybe_auto_title_web(agent, final_session_id, user_msg, result)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
-                ),
-                final_session_id,
-            )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
+                if _active_turn is not None and surviving_assistant_id is not None:
+                    with _active_turn.lock:
+                        _active_turn.assistant_message_id = surviving_assistant_id
+                turn_outcome = await _finalize_web_turn_projection_async(
+                    final_session_id,
+                    _active_turn,
+                    result,
+                    agent=agent,
+                )
+                _maybe_auto_title_web(agent, final_session_id, user_msg, result)
+            except (Exception, asyncio.CancelledError):
+                _log.exception(
+                    "Web turn finalization failed session=%s", final_session_id
+                )
+            finally:
+                _web_queues.pop(session_id, None)
+                _publish_event(
+                    "chat.turn_done",
+                    _turn_done_payload(
+                        result, final_session_id, turn_outcome=turn_outcome
+                    ),
+                    final_session_id,
+                )
+                _clear_web_turn(final_session_id)
+                if final_session_id != session_id:
+                    _clear_web_turn(session_id)
+                _emit_web_session_updated(final_session_id)
 
     await _run_blocking(
         _mark_web_turn_active,
@@ -10608,49 +10650,62 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            _strip_user_message_prefix(session_id, context_prefix, raw_message)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
-            if _active_turn:
-                await _await_checkpoint_ready(
+            turn_outcome = None
+            # Persistence and projection are best-effort.  Whatever happens
+            # here, the turn must still publish chat.turn_done and clear its
+            # active entry: the web UI waits on both, so skipping them leaves
+            # the session spinning forever.  CancelledError is included
+            # deliberately -- if the runtime went away mid-turn, that is
+            # exactly when finalization matters most.
+            try:
+                _strip_user_message_prefix(session_id, context_prefix, raw_message)
+                final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
+                if _active_turn:
+                    await _await_checkpoint_ready(
+                        final_session_id,
+                        _active_turn,
+                        operation="workspace_turn_completion",
+                    )
+                surviving_assistant_id = _persist_web_turn_if_missing(
+                    final_session_id, raw_message, result, before_message_count,
+                    eager_user_id=eager_user_id,
+                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
+                )
+                if _active_turn is not None and surviving_assistant_id is not None:
+                    with _active_turn.lock:
+                        _active_turn.assistant_message_id = surviving_assistant_id
+                turn_outcome = await _finalize_web_turn_projection_async(
                     final_session_id,
                     _active_turn,
-                    operation="workspace_turn_completion",
+                    result,
+                    agent=agent,
                 )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id, raw_message, result, before_message_count,
-                eager_user_id=eager_user_id,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
-                agent=agent,
-            )
-            if agent is not None:
-                _maybe_auto_title_web(agent, final_session_id, raw_message, result)
-            try:
-                from spark_cli.workspace_routes import start_preview
+                if agent is not None:
+                    _maybe_auto_title_web(agent, final_session_id, raw_message, result)
+                try:
+                    from spark_cli.workspace_routes import start_preview
 
-                start_preview(slug, None)
-            except Exception:
-                _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
-                ),
-                final_session_id,
-            )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
+                    start_preview(slug, None)
+                except Exception:
+                    _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
+            except (Exception, asyncio.CancelledError):
+                _log.exception(
+                    "Web turn finalization failed session=%s", final_session_id
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+                _web_queues.pop(session_id, None)
+                _publish_event(
+                    "chat.turn_done",
+                    _turn_done_payload(
+                        result, final_session_id, turn_outcome=turn_outcome
+                    ),
+                    final_session_id,
+                )
+                _clear_web_turn(final_session_id)
+                if final_session_id != session_id:
+                    _clear_web_turn(session_id)
+                _emit_web_session_updated(final_session_id)
 
     await _run_blocking(
         _mark_web_turn_active,
