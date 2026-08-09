@@ -233,7 +233,7 @@ exclude = [
 # These modules still have type errors and are exempt.  Everything else in
 # src/agent and src/spark_cli is clean and gated in CI, so a new error in a
 # clean module fails the build.  Fix a module, delete its line here.
-# Remaining: 33 modules, 544 errors.
+# Remaining: 29 modules, 532 errors.
 [[tool.mypy.overrides]]
 module = [
     "agent.anthropic_adapter",
@@ -249,10 +249,8 @@ module = [
     "spark_cli.auth",
     "spark_cli.banner",
     "spark_cli.callbacks",
-    "spark_cli.codex_models",
     "spark_cli.commands",
     "spark_cli.config",
-    "spark_cli.debug",
     "spark_cli.doctor",
     "spark_cli.google_connector",
     "spark_cli.main",
@@ -260,14 +258,12 @@ module = [
     "spark_cli.models",
     "spark_cli.oauth_connectors",
     "spark_cli.plugins",
-    "spark_cli.plugins_cmd",
     "spark_cli.preview_browser",
     "spark_cli.runtime_provider",
     "spark_cli.setup",
     "spark_cli.skills_config",
     "spark_cli.tools_config",
     "spark_cli.web_server",
-    "spark_cli.workflow_nodes",
     "spark_cli.workspace_routes",
 ]
 ignore_errors = true

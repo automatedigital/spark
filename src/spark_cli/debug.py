@@ -79,7 +79,7 @@ def _upload_dpaste_com(content: str, expiry_days: int = 7) -> str:
         },
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
-        url = resp.read().decode("utf-8").strip()
+        url = str(resp.read().decode("utf-8").strip())
     if not url.startswith("http"):
         raise ValueError(f"Unexpected response from dpaste.com: {url[:200]}")
     return url

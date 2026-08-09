@@ -562,7 +562,7 @@ def _agent_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> lis
         session_id="wf_" + ctx.execution_id,
         model=runtime["model"],
         max_iterations=max_iterations,
-        enabled_toolsets=toolsets or None,
+        enabled_toolsets=toolsets or [],
         api_key=runtime["runtime"].get("api_key"),
         base_url=runtime["runtime"].get("base_url"),
         provider=runtime["runtime"].get("provider"),
@@ -570,12 +570,12 @@ def _agent_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> lis
         command=runtime["runtime"].get("command"),
         args=list(runtime["runtime"].get("args") or []),
         credential_pool=runtime["runtime"].get("credential_pool"),
-        request_overrides=runtime.get("request_overrides"),
+        request_overrides=runtime.get("request_overrides") or {},
         quiet_mode=True,
         platform="web",
         session_db=None,
         skip_memory=skip_memory,
-        working_dir=working_dir,
+        working_dir=working_dir or "",
     )
     ctx.emit("agent.started", {"nodeId": node.id, "model": runtime["model"], "maxIterations": max_iterations})
     reply = agent.chat(prompt)

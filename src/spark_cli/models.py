@@ -668,7 +668,7 @@ def fetch_models_with_pricing(
             result[mid] = entry
 
     _pricing_cache[cache_key] = result
-    return cast("list[dict[str, str]]", result)
+    return result
 
 
 def _resolve_openrouter_api_key() -> str:

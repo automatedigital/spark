@@ -27,7 +27,7 @@ def clarify_callback(cli, question, choices):
     from core.cli import CLI_CONFIG
 
     timeout = CLI_CONFIG.get("clarify", {}).get("timeout", 120)
-    response_queue = queue.Queue()
+    response_queue: queue.Queue = queue.Queue()
     is_open_ended = not choices
 
     cli._clarify_state = {
@@ -103,7 +103,7 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
         }
 
     timeout = 120
-    response_queue = queue.Queue()
+    response_queue: queue.Queue = queue.Queue()
 
     cli._secret_state = {
         "var_name": var_name,
@@ -229,7 +229,7 @@ def approval_callback(cli, command: str, description: str) -> str:
                 cli._approval_deadline = 0
                 if hasattr(cli, "_app") and cli._app:
                     cli._app.invalidate()
-                return result
+                return str(result)
             except queue.Empty:
                 remaining = cli._approval_deadline - _time.monotonic()
                 if remaining <= 0:

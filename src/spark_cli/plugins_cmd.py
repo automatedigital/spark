@@ -746,7 +746,7 @@ def cmd_toggle() -> None:
     try:
         import yaml
     except ImportError:
-        yaml = None
+        yaml = None  # type: ignore[assignment]
 
     console = Console()
     plugins_dir = _plugins_dir()

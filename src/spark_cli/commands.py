@@ -329,7 +329,7 @@ def _resolve_config_gates() -> set[str]:
     result: set[str] = set()
     for cmd in gated:
         val: Any = cfg
-        for key in cmd.gateway_config_gate.split("."):
+        for key in (cmd.gateway_config_gate or "").split("."):
             if isinstance(val, dict):
                 val = val.get(key)
             else:

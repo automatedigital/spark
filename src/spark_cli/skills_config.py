@@ -113,7 +113,7 @@ def _toggle_by_category(skills: list[dict], disabled: set[str]) -> set[str]:
         cat_labels, pre_selected, cancel_returns=pre_selected,
     )
 
-    new_disabled = set(disabled)
+    new_disabled: set[str] = set(disabled)
     for i, cat in enumerate(categories):
         cat_skills = {s["name"] for s in skills if (s["category"] or "uncategorized") == cat}
         if i in chosen:
