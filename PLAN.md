@@ -269,7 +269,7 @@ with `src/tools/`.
 ### 7. Get `mypy` to zero on its declared scope
 
 - [x] Gate the clean modules in CI so they cannot regress
-- [ ] Clear the 41 modules still listed in the mypy overrides block
+- [ ] Clear the 17 modules still listed in the mypy overrides block
 
 **Partly done.** 588 errors -> 336, and 56 of 111 modules with errors -> 17.
 So **94 of 111 modules are clean and gated in CI**, up from 55 when this
