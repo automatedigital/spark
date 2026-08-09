@@ -426,7 +426,7 @@ first, then promote it once it is stable.
 | 1 | Tests in CI | **Done** | — |
 | 2 | Six undefined names | **Done** | — |
 | 3 | Split `web_server.py` | **54 of 123 routes** | 3 days for the core extraction |
-| 4 | Finish `run_agent` + `cli` splits | **run_agent 11,341 -> 8,159** | needs run_conversation decomposed |
+| 4 | Finish `run_agent` + `cli` splits | **11,341 -> 1,744 and 4,101 -> 1,134** | the two constructors |
 | 5 | Widen CI ratchet | **Done** | — |
 | 6 | Log swallowed exceptions | **Done** (873 of 955) | — |
 | 7 | `mypy` to zero | **96 of 111 modules clean and gated** | 15 modules, 323 errors |
