@@ -79,6 +79,7 @@ from spark_cli.onboarding_validation import (
     normalize_model_name,
     validate_env_assignment,
 )
+from spark_cli.profiles_routes import register_profiles_routes
 from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
 
@@ -3097,30 +3098,6 @@ class GatewayControlRequest(BaseModel):
     confirm: bool = False
 
 
-class ProfileCreateRequest(BaseModel):
-    name: str
-    clone_from: str | None = None
-    clone_config: bool = False
-    clone_all: bool = False
-    no_alias: bool = True
-
-
-class ProfileRenameRequest(BaseModel):
-    new_name: str
-    confirm: bool = False
-
-
-class ProfileExportRequest(BaseModel):
-    output_path: str | None = None
-    confirm: bool = False
-
-
-class ProfileImportRequest(BaseModel):
-    archive_path: str
-    name: str | None = None
-    confirm: bool = False
-
-
 class McpServerCreate(BaseModel):
     name: str
     url: str | None = None
@@ -3400,21 +3377,6 @@ def _run_admin_action(run_id: str, action: AdminAction, args: dict) -> None:
     finally:
         run["finished_at"] = time.time()
         _queue_admin_event(run_id, {"type": "done", "run": run})
-
-
-def _profile_info_dict(info: Any, active: str) -> dict:
-    return {
-        "name": info.name,
-        "path": str(info.path),
-        "is_default": info.is_default,
-        "is_active": info.name == active,
-        "gateway_running": info.gateway_running,
-        "model": info.model,
-        "provider": info.provider,
-        "has_env": info.has_env,
-        "skill_count": info.skill_count,
-        "alias_path": str(info.alias_path) if info.alias_path else None,
-    }
 
 
 def _list_plugin_dirs() -> list[dict]:
@@ -4037,100 +3999,6 @@ async def gateway_control(payload: GatewayControlRequest):
     run_id, _queue = _new_admin_run(action_id, {})
     threading.Thread(target=_run_admin_action, args=(run_id, action, {}), daemon=True).start()
     return {"run_id": run_id, "status": "queued"}
-
-
-@app.get("/api/profiles")
-async def profiles_list():
-    from spark_cli.profiles import get_active_profile, list_profiles
-
-    active = get_active_profile()
-    return {"ok": True, "active": active, "profiles": [_profile_info_dict(p, active) for p in list_profiles()]}
-
-
-@app.post("/api/profiles")
-async def profiles_create(payload: ProfileCreateRequest):
-    from spark_cli.profiles import create_profile, get_active_profile, list_profiles
-
-    try:
-        path = create_profile(
-            payload.name,
-            clone_from=payload.clone_from,
-            clone_config=payload.clone_config,
-            clone_all=payload.clone_all,
-            no_alias=payload.no_alias,
-        )
-    except (ValueError, FileExistsError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    active = get_active_profile()
-    return {
-        "ok": True,
-        "path": str(path),
-        "profiles": [_profile_info_dict(p, active) for p in list_profiles()],
-    }
-
-
-@app.post("/api/profiles/{name}/use")
-async def profiles_use(name: str):
-    from spark_cli.profiles import set_active_profile
-
-    try:
-        set_active_profile(name)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "active": name}
-
-
-@app.post("/api/profiles/{name}/rename")
-async def profiles_rename(name: str, payload: ProfileRenameRequest):
-    if not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import rename_profile
-
-    try:
-        path = rename_profile(name, payload.new_name)
-    except (ValueError, FileExistsError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path), "name": payload.new_name}
-
-
-@app.delete("/api/profiles/{name}")
-async def profiles_delete(name: str, confirm: bool = False):
-    if not confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import delete_profile
-
-    try:
-        path = delete_profile(name, yes=True)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path)}
-
-
-@app.post("/api/profiles/{name}/export")
-async def profiles_export(name: str, payload: ProfileExportRequest):
-    if not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import export_profile
-
-    output = payload.output_path or str(get_spark_home() / "backups" / f"profile-{name}-{int(time.time())}.tar.gz")
-    try:
-        path = export_profile(name, output)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path)}
-
-
-@app.post("/api/profiles/import")
-async def profiles_import(payload: ProfileImportRequest):
-    if not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import import_profile
-
-    try:
-        path = import_profile(payload.archive_path, payload.name)
-    except (ValueError, FileExistsError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path)}
 
 
 @app.get("/api/plugins")
@@ -11167,6 +11035,7 @@ def mount_spa(application: FastAPI):
 register_cron_routes(app)
 register_analytics_routes(app)
 register_kanban_routes(app)
+register_profiles_routes(app)
 register_logs_routes(app)
 register_workspace_routes(app)
 register_connectors_routes(app)
