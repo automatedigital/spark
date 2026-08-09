@@ -251,7 +251,7 @@ class TestWebServerEndpoints:
         }
 
     def test_direct_openai_catalog_keeps_documented_gpt_56_models_separate(self):
-        from spark_cli.web_server import _PROVIDER_MODEL_SUGGESTIONS
+        from spark_cli.model_routes import _PROVIDER_MODEL_SUGGESTIONS
 
         direct = _PROVIDER_MODEL_SUGGESTIONS["openai"]
         codex = _PROVIDER_MODEL_SUGGESTIONS["openai-codex"]
@@ -328,7 +328,7 @@ class TestWebServerEndpoints:
 
     def test_available_models_config_defined_provider(self):
         """Config-defined providers expose their curated model list to the dashboard."""
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as ws
 
         with patch.object(
             ws,
@@ -2035,9 +2035,9 @@ class TestModelInfoEndpoint:
         assert "capabilities" in data
 
     def test_model_info_with_dict_config(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": {
                 "default": "anthropic/claude-opus-4.6",
                 "provider": "openrouter",
@@ -2056,9 +2056,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 100000  # override wins
 
     def test_model_info_auto_detect_when_no_override(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": {"default": "anthropic/claude-opus-4.6", "provider": "openrouter"}
         })
 
@@ -2071,9 +2071,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 200000  # auto wins
 
     def test_model_info_empty_model(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {"model": ""})
+        monkeypatch.setattr(mr, "load_config", lambda: {"model": ""})
 
         resp = self.client.get("/api/model/info")
         data = resp.json()
@@ -2081,9 +2081,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 0
 
     def test_model_info_bare_string_model(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": "anthropic/claude-sonnet-4"
         })
 
@@ -2097,9 +2097,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 200000
 
     def test_model_info_capabilities(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": {"default": "anthropic/claude-opus-4.6", "provider": "openrouter"}
         })
 
@@ -2124,9 +2124,9 @@ class TestModelInfoEndpoint:
 
     def test_model_info_graceful_on_metadata_error(self, monkeypatch):
         """Endpoint should return zeros on import/resolution errors, not 500."""
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": "some/obscure-model"
         })
 

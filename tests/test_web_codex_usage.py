@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from spark_cli.web_server import _codex_usage_windows, get_codex_usage
+from spark_cli.model_routes import _codex_usage_windows, get_codex_usage
 
 
 def test_codex_usage_windows_uses_duration_not_position_for_weekly_label():
@@ -59,7 +59,7 @@ def test_codex_usage_endpoint_does_not_require_optional_http2_runtime():
     token = "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnt9fQ.signature"
 
     with (
-        patch("spark_cli.web_server.load_config", return_value={
+        patch("spark_cli.model_routes.load_config", return_value={
             "model": {"provider": "openai-codex", "default": "gpt-5.6-sol"},
         }),
         patch("spark_cli.auth.get_codex_auth_status", return_value={
