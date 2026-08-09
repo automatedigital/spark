@@ -492,12 +492,10 @@ def _resolve_openrouter_runtime(
     explicit_base_url: str | None = None,
 ) -> dict[str, Any]:
     model_cfg = _get_model_config()
-    cfg_base_url = (
-        model_cfg.get("base_url") if isinstance(model_cfg.get("base_url"), str) else ""
-    )
-    cfg_provider = (
-        model_cfg.get("provider") if isinstance(model_cfg.get("provider"), str) else ""
-    )
+    _raw_base = model_cfg.get("base_url")
+    cfg_base_url: str = _raw_base if isinstance(_raw_base, str) else ""
+    _raw_provider = model_cfg.get("provider")
+    cfg_provider: str = _raw_provider if isinstance(_raw_provider, str) else ""
     cfg_api_key = ""
     for k in ("api_key", "api"):
         v = model_cfg.get(k)

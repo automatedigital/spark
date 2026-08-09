@@ -502,8 +502,8 @@ class InsightsEngine:
         ]
 
         # Busiest day and hour
-        busiest_day = max(day_breakdown, key=lambda x: x["count"]) if day_breakdown else None
-        busiest_hour = max(hour_breakdown, key=lambda x: x["count"]) if hour_breakdown else None
+        busiest_day = max(day_breakdown, key=lambda x: int(x["count"])) if day_breakdown else None
+        busiest_hour = max(hour_breakdown, key=lambda x: int(x["count"])) if hour_breakdown else None
 
         # Active days (days with at least one session)
         active_days = len(daily_counts)

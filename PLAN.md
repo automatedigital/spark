@@ -153,49 +153,6 @@ drive the real installer earlier in this work. Where a name is patched widely,
 the mixins resolve it through the package at call time via a `_pkg()` accessor,
 with a comment saying why.
 
-**Done: `run_agent/__init__.py` 11,341 -> 8,159 lines**, a 28% cut. `AIAgent`
-now composes four new mixins next to the `_PromptCacheMixin` the package
-already used, so this follows the established pattern:
-
-| Module | Methods | What it owns |
-| --- | --- | --- |
-| `codex_streaming.py` | 7 | Responses-API input shaping, streaming, normalization |
-| `tool_execution.py` | 5 | tool dispatch, concurrent and sequential batches, budgets |
-| `provider_transport.py` | 6 | interruptible API calls, request kwargs, sanitizer, recovery |
-| `failover.py` | 3 | fallback activation, credential-pool recovery, dead connections |
-
-Plus `stream_events.py`, a two-line predicate both `AIAgent` and the Codex
-mixin need, which would otherwise have forced an import cycle.
-
-**Why the 1,000-line target is not reachable this way.** `AIAgent` has 110
-methods left totalling about 7,400 lines, but two of them are
-`run_conversation` at 3,185 lines and `__init__` at 1,040 — **54% of the
-class in two methods**. Extracting every remaining method into mixins would
-still leave `__init__.py` around 4,900 lines. Getting under 1,000 means
-decomposing `run_conversation`, the agent turn loop itself, which is a
-different and much riskier piece of work than relocating methods.
-
-**`cli/__init__.py` is worse.** It is 4,101 lines and `SparkCLI` has only
-**five** methods: `run` at 1,949 lines, `chat` at 510, `process_command` at
-456, `__init__` at 322. There is nothing to relocate — the file is large
-because those methods are large, and `run` is the interactive prompt_toolkit
-event loop, which `CLAUDE.md` already flags with specific pitfalls
-(`patch_stdout`, `\033[K`). Splitting it needs manual TUI verification that a
-type checker and a unit suite cannot provide.
-
-**What this actually needs.** Decompose `run_conversation` and `SparkCLI.run`
-into named phases with explicit state, one phase per PR, each verified by
-running the CLI. That is the real item, and it is not a mechanical refactor.
-
-**Lesson recorded twice on this branch.** Both extractions broke test
-monkeypatching: 27 patch targets named `core.run_agent.handle_function_call`
-and stopped covering the code once it moved. The suite caught it. The same
-failure mode in `mac_routes` did not have a test in front of it, and it
-relaunched the desktop app against a temp `SPARK_HOME`. When moving code,
-grep the tests for `<old.module>.<name>` before assuming the move is safe.
-
----
-
 ### 5. Widen the CI ratchet beyond one rule
 
 - [x] Add `F` and `B` rule families to the CI ratchet

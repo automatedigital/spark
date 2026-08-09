@@ -641,7 +641,9 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 else:
                     lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt.locking(  # type: ignore[attr-defined]
+                        lock_file.fileno(), msvcrt.LK_NBLCK, 1  # type: ignore[attr-defined]
+                    )
                 break
             except (BlockingIOError, OSError, PermissionError) as err:
                 if time.time() >= deadline:
@@ -658,7 +660,9 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
             elif msvcrt:
                 try:
                     lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    msvcrt.locking(  # type: ignore[attr-defined]
+                        lock_file.fileno(), msvcrt.LK_UNLCK, 1  # type: ignore[attr-defined]
+                    )
                 except OSError:
                     logger.debug("Ignoring error in _auth_store_lock()", exc_info=True)
 

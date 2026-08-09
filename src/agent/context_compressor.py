@@ -19,7 +19,10 @@ Improvements over v2:
 
 import logging
 import time
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from agent.context_checkpoint import ContextCheckpoint
 
 from agent.context_engine import ContextEngine
 from agent.model_metadata import (
@@ -83,9 +86,9 @@ class ContextCompressor(ContextEngine):
         super().on_session_reset()
         self._context_probed = False
         self._context_probe_persistable = False
-        self._previous_summary = None
-        self._typed_checkpoint = None
-        self._last_shadow_checkpoint = None
+        self._previous_summary: str | None = None
+        self._typed_checkpoint: "ContextCheckpoint | None" = None
+        self._last_shadow_checkpoint: "ContextCheckpoint | None" = None
 
     def update_model(
         self,

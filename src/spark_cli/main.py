@@ -48,7 +48,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 
 def _require_tty(command_name: str) -> None:
@@ -1368,9 +1367,9 @@ def select_provider_and_model(
             selected_provider.startswith("custom:")
             or selected_provider in _custom_provider_map
         ):
-            provider_info: dict[str, Any] | None = _named_custom_provider_map(
-                load_config()
-            ).get(selected_provider)
+            provider_info = _named_custom_provider_map(load_config()).get(
+                selected_provider
+            )
             if provider_info is None:
                 print(
                     "Warning: the selected saved custom provider is no longer available. "

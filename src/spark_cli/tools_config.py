@@ -121,7 +121,7 @@ PLATFORMS = {
 # we use this to show provider selection and prompt for the right API keys.
 # Toolsets not in this map either need no config or use the simple fallback.
 
-TOOL_CATEGORIES = {
+TOOL_CATEGORIES: dict[str, dict] = {
     "tts": {
         "name": "Text-to-Speech",
         "icon": "🔊",

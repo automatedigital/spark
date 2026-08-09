@@ -208,13 +208,12 @@ def _parse_absolute_timestamp(value: Any) -> float | None:
         raw = value.strip()
         if not raw:
             return None
-        numeric: float | None
         try:
-            numeric = float(raw)
+            parsed: float | None = float(raw)
         except ValueError:
-            numeric = None
-        if numeric is not None:
-            return numeric / 1000.0 if numeric > 1_000_000_000_000 else numeric
+            parsed = None
+        if parsed is not None:
+            return parsed / 1000.0 if parsed > 1_000_000_000_000 else parsed
         try:
             return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
         except ValueError:
