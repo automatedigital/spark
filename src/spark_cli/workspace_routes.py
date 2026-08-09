@@ -40,7 +40,7 @@ except ImportError:  # pragma: no cover - exercised by Windows CI
     pty = None  # type: ignore[assignment]
     termios = None  # type: ignore[assignment]
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -905,7 +905,7 @@ class RenameBody(BaseModel):
 
 
 @router.put("/files")
-def write_chat_file(path: str = Query(...), body: WriteFileBody = ...):
+def write_chat_file(path: str = Query(...), body: WriteFileBody = Body(...)):
     """Write text content to a file in the workspace files directory."""
     workspace = _workspace_root()
     rel = path.lstrip("/")
@@ -978,7 +978,7 @@ def delete_file(slug: str, path: str = Query(...)):
 
 
 @router.put("/projects/{slug}/file")
-def write_project_file(slug: str, path: str = Query(...), body: WriteFileBody = ...):
+def write_project_file(slug: str, path: str = Query(...), body: WriteFileBody = Body(...)):
     """Create or overwrite a text file inside a project workspace."""
     project_dir = _project_dir(slug)
     target = _safe_path(project_dir, path)

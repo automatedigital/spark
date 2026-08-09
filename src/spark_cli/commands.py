@@ -32,8 +32,8 @@ try:
 except ImportError:  # pragma: no cover
     AutoSuggest = object  # type: ignore[assignment,misc]
     Completer = object    # type: ignore[assignment,misc]
-    Suggestion = None     # type: ignore[assignment]
-    Completion = None     # type: ignore[assignment]
+    Suggestion = None     # type: ignore[assignment,misc]
+    Completion = None     # type: ignore[assignment,misc]
 
 
 # ---------------------------------------------------------------------------

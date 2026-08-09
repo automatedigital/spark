@@ -328,7 +328,7 @@ def build_welcome_banner(
     console: Console,
     model: str,
     cwd: str,
-    tools: list[dict] = None,
+    tools: list[dict] | None = None,
     enabled_toolsets: list[str] | None = None,
     session_id: str | None = None,
     get_toolset_for_tool=None,

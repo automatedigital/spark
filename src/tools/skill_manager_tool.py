@@ -189,7 +189,7 @@ def _validate_content_size(content: str, label: str = "SKILL.md") -> str | None:
     return None
 
 
-def _resolve_skill_dir(name: str, category: str = None) -> Path:
+def _resolve_skill_dir(name: str, category: str | None = None) -> Path:
     """Build the directory path for a new skill, optionally under a category."""
     if category:
         return SKILLS_DIR / category / name

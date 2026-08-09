@@ -698,7 +698,7 @@ _KNOWN_PROVIDER_NAMES: set[str] = (
 )
 
 
-def list_available_providers() -> list[dict[str, str]]:
+def list_available_providers() -> list[dict[str, Any]]:
     """Return info about all providers the user could use with ``provider:model``.
 
     Each dict has ``id``, ``label``, and ``aliases``.

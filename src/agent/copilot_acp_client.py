@@ -403,6 +403,7 @@ class CopilotACPClient:
                 "method": method,
                 "params": params,
             }
+            assert proc.stdin is not None  # opened with stdin=PIPE
             proc.stdin.write(json.dumps(payload) + "\n")
             proc.stdin.flush()
 

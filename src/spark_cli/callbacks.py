@@ -205,7 +205,7 @@ def approval_callback(cli, command: str, description: str) -> str:
     with lock:
         from core.cli import CLI_CONFIG
         timeout = CLI_CONFIG.get("approvals", {}).get("timeout", 60)
-        response_queue = queue.Queue()
+        response_queue: queue.Queue = queue.Queue()
         choices = ["once", "session", "always", "deny"]
         if len(command) > 70:
             choices.append("view")
