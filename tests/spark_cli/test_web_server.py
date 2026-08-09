@@ -356,7 +356,7 @@ class TestWebServerEndpoints:
         assert data["strict"] is False
 
     def test_mac_update_installer_script_stages_and_installs_app(self, tmp_path):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         script = ws._build_mac_update_installer_script(
             dmg_path=tmp_path / "Spark-1.3.11.dmg",
@@ -379,7 +379,7 @@ class TestWebServerEndpoints:
         assert "Install verification failed" in script
 
     def test_run_mac_update_downloads_and_starts_detached_installer(self, monkeypatch, tmp_path):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         work_dir = tmp_path / "spark-update"
         popen_calls = []
@@ -429,7 +429,7 @@ class TestWebServerEndpoints:
         assert "expected_version=info.get" in script or "EXPECTED_VERSION" in script
 
     def test_run_mac_update_requires_downloadable_release_asset(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
         # The endpoint also gates on sys.platform, so pin it: this logic
@@ -447,7 +447,7 @@ class TestWebServerEndpoints:
         assert "No downloadable macOS release found" in resp.json()["detail"]
 
     def test_run_mac_update_reports_download_failure(self, monkeypatch, tmp_path):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         work_dir = tmp_path / "spark-update"
 
@@ -498,9 +498,12 @@ class TestWebServerEndpoints:
     def test_oauth_start_accepts_trusted_local_client(self):
         """Local desktop/web clients should pass the same auth rule as the
         dashboard middleware instead of being forced through session-token auth."""
-        import spark_cli.web_server as ws
+        import spark_cli.env_routes as env_routes
+        import spark_cli.providers_routes as ws
 
-        with patch.object(ws, "get_configured_dashboard_secret", return_value="testsecret"), \
+        # The auth check lives in env_routes (_reveal_authorized), which
+        # providers_routes reuses, so the secret lookup is patched there.
+        with patch.object(env_routes, "get_configured_dashboard_secret", return_value="testsecret"), \
              patch.object(ws, "_start_device_code_flow", return_value={"session_id": "s", "flow": "device_code"}):
             resp = self.client.post(
                 "/api/providers/oauth/openai-codex/start",
@@ -512,7 +515,7 @@ class TestWebServerEndpoints:
     def test_codex_cli_auth_preference_only_when_installed(self, monkeypatch):
         """Auto mode uses the official Codex CLI only when it is installed; users
         without Codex installed still get Spark's built-in device-code flow."""
-        import spark_cli.web_server as ws
+        import spark_cli.providers_routes as ws
 
         monkeypatch.delenv("SPARK_CODEX_DEVICE_AUTH_IMPL", raising=False)
         monkeypatch.setattr(ws.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)
@@ -528,7 +531,7 @@ class TestWebServerEndpoints:
     def test_codex_cli_auth_returns_false_when_no_code_is_emitted(self, monkeypatch):
         """The WebUI must not sit forever at "requesting code" if an installed
         Codex CLI does not print a device code; Spark should fall back inline."""
-        import spark_cli.web_server as ws
+        import spark_cli.providers_routes as ws
 
         class SilentCodexProcess:
             stdout = []
