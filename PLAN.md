@@ -401,51 +401,55 @@ Fixed in `src/core/run_agent/__init__.py`:
   discarded whenever no `base_url` came with it, so a caller that did supply a
   key still got "Missing credentials".
 
-### Fixed: a cancelled turn reported success
+### Fixed: turns could report success, or never finish at all
 
 - [x] `run_agent_task` records `CancelledError` instead of reporting success
+- [x] `chat.turn_done` and the active-turn clear always run
 
-**The bug.** `asyncio.CancelledError` is a `BaseException`, so the
-`except Exception` in `run_agent_task` never caught it. `result` stayed `None`
-and the `finally` block published `chat.turn_done` with
-`turn_outcome.status: "completed"` and no `backend_error_class`. A turn that
-never ran reported success to the user.
+Two related bugs, both in the turn lifecycle, both user-visible.
 
-**Confirmed, not guessed.** Patching `_run_web_turn_in_executor` to log what it
-raises printed `EXECUTOR raised CancelledError` immediately followed by
-`PAYLOAD result=None`. An earlier draft of this document dismissed this
-explanation; that was wrong, and the trace is what settled it.
+**A turn that never ran reported success.** `asyncio.CancelledError` is a
+`BaseException`, so the `except Exception` in `run_agent_task` never caught
+it. `result` stayed `None` and the `finally` published `chat.turn_done` with
+`turn_outcome.status: "completed"` and no `backend_error_class`.
 
-**The fix.** All four `run_agent_task` bodies (`/api/conversations`, its
-`messages` and `retry` variants, and the workspace one) now catch
-`asyncio.CancelledError` ahead of `except Exception`, log a warning, and set
-`backend_error_class` to `"CancelledError"` so the turn reports failure.
+Confirmed by patching `_run_web_turn_in_executor` to log what it raises, which
+printed `EXECUTOR raised CancelledError` immediately followed by
+`PAYLOAD result=None`. An earlier draft of this document dismissed that
+explanation; the trace is what settled it.
 
-**Regression test.**
-`test_cancelled_web_turn_reports_failure_not_success` in
-`tests/spark_cli/test_web_server_events.py`, verified to fail when the handler
-is removed.
+**A turn could also never finish.** The `finally` did its persistence and
+projection work *before* publishing `turn_done` and clearing the active turn.
+Those steps await on the shared async runtime, so if it had gone away they
+raised and the publish never happened. The session then stayed active forever
+with no `turn_done` — in the web UI, a chat that spins indefinitely.
 
-### Still open: test isolation for the same two tests
+**The fix.** All four turn handlers (`/api/conversations`, its `messages` and
+`retry` variants, and the workspace one) now catch `CancelledError` ahead of
+`Exception`, and wrap the best-effort work in `try/except` with the publish,
+the queue close, and `_clear_web_turn` in an inner `finally` so they run
+whatever happened.
 
-`test_backend_exception_publishes_turn_done_and_clears_active` and
-`test_completed_conversation_without_stream_consumer_is_not_active` remain
-skipped on CI, but for a narrower reason than before. They additionally assert
-that the turn stops being active. `test_async_runtime` and
-`test_tool_scheduler` shut down the shared `AsyncRuntime`, so a web turn that
-runs afterwards has its work future cancelled and the turn never clears.
+**Regression test.** `test_cancelled_web_turn_reports_failure_not_success`,
+verified to fail when the handler is removed.
 
-This is a test-environment artifact — nothing shuts the runtime down mid-request
-in production — but it should still be fixed, because it hides real coverage.
+### Still open: test isolation in the web-turn module
 
-**Ruled out.** Not a timeout (2s to 15s does not help). Not fixed by resetting
-the runtime in the web fixture, nor by draining turns at teardown, nor by xdist
-grouping (`--dist loadfile` made it worse: 21 failures).
+One test, `test_conversation_message_continues_latest_compressed_leaf`, skips
+on CI. It needs the agent turn to actually execute, and when
+`test_async_runtime` or `test_tool_scheduler` has torn down the shared
+`AsyncRuntime`, the work future is cancelled before it runs. The turn now
+finalizes correctly in that situation, which is why the other two tests in
+this family came off the skip list, but this one asserts on work that never
+happens.
 
-**Likely fix.** Give `AsyncRuntime.shutdown` responsibility for its named
-executors — it currently closes clients and stops the loop but leaves
-`_named_executors` running — and stop the async-runtime tests from affecting
-the process-wide singleton.
+**Ruled out.** Not a timeout (2s to 45s does not help). Not fixed by resetting
+the runtime in the web fixture, nor by draining turns at teardown, nor by
+xdist grouping (`--dist loadfile` made it worse: 21 failures).
+
+**Likely fix.** `AsyncRuntime.shutdown` closes clients and stops the loop but
+leaves `_named_executors` running; give it responsibility for those, and stop
+the async-runtime tests from touching the process-wide singleton.
 
 ## Work completed
 
