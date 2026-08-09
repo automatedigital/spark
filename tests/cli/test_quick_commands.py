@@ -94,7 +94,7 @@ class TestCLIQuickCommands:
 
     def test_unknown_command_still_shows_error(self):
         cli = self._make_cli({})
-        with patch("core.cli._cprint") as mock_cprint:
+        with patch("core.cli.main_loop._cprint") as mock_cprint:
             cli.process_command("/nonexistent")
             mock_cprint.assert_called()
             printed = " ".join(str(c) for c in mock_cprint.call_args_list)
