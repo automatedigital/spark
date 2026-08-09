@@ -63,7 +63,7 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
         else:
             normalized = raw_identifier.lstrip("/")
 
-        loaded_skill = json.loads(skill_view(normalized, task_id=task_id))
+        loaded_skill = json.loads(skill_view(normalized, task_id=task_id or ""))
     except Exception:
         return None
 

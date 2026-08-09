@@ -211,7 +211,7 @@ async def task_patch(task_id: str, body: TaskPatchBody):
             result=body.result,
             in_triage=body.in_triage,
             workspace_path=body.workspace_path,
-            workspace_path_set="workspace_path" in provided_fields,
+            workspace_path_set="workspace_path" in (provided_fields or set()),
             actor=body.actor,
             origin_session_key=body.origin_session_key,
             origin_kind=body.origin_kind,

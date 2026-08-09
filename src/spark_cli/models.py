@@ -13,7 +13,7 @@ import os
 import urllib.error
 import urllib.request
 from difflib import get_close_matches
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from core.network_tls import urllib_request_kwargs
 
@@ -668,7 +668,7 @@ def fetch_models_with_pricing(
             result[mid] = entry
 
     _pricing_cache[cache_key] = result
-    return result
+    return cast("list[dict[str, str]]", result)
 
 
 def _resolve_openrouter_api_key() -> str:

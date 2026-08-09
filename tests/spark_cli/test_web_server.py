@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import subprocess
 import urllib.request
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -407,8 +408,14 @@ class TestWebServerEndpoints:
             def __init__(self, args, **kwargs):
                 popen_calls.append((args, kwargs))
 
-        monkeypatch.setattr(ws.urllib.request, "urlretrieve", fake_urlretrieve)
-        monkeypatch.setattr(ws.subprocess, "Popen", FakePopen)
+        # Patch the source modules, not this module's references to them.
+        # A module-attribute patch silently stops covering the handler if the
+        # handler moves to another module, and then this test runs the REAL
+        # installer: it quits Spark.app, installs a DMG, and relaunches the
+        # app with pytest's environment. That happened once during the route
+        # extraction and left the desktop app pointed at a temp SPARK_HOME.
+        monkeypatch.setattr(urllib.request, "urlretrieve", fake_urlretrieve)
+        monkeypatch.setattr(subprocess, "Popen", FakePopen)
 
         resp = self.client.post("/api/mac/update/run")
 

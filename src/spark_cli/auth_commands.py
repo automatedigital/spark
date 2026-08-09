@@ -35,7 +35,7 @@ _OAUTH_CAPABLE_PROVIDERS = {"anthropic", "openai-codex", "qwen-oauth"}
 _DEPRECATED_PROVIDERS = {"nous", "nous-research"}
 
 
-def _get_custom_provider_names() -> list:
+def _get_custom_provider_names() -> list[tuple[str, str, str]]:
     """Return list of (display_name, pool_key, provider_key) tuples."""
     try:
         from spark_cli.config import get_compatible_custom_providers, load_config

@@ -112,3 +112,36 @@ def _ensure_current_event_loop(request):
                 loop.close()
             finally:
                 asyncio.set_event_loop(None)
+
+@pytest.fixture(autouse=True)
+def _block_desktop_app_spawn(monkeypatch):
+    """Stop a test from driving the installed desktop app.
+
+    A mac-update test patched subprocess.Popen through a module attribute.
+    When the handler moved to another module the patch stopped covering it,
+    the real installer ran: it quit Spark.app, installed a DMG, and relaunched
+    the app with pytest's SPARK_HOME, so the app came back pointed at a temp
+    directory and showed an empty session list.
+
+    Ordinary subprocess use is untouched. Only commands that would act on the
+    installed app are refused.
+    """
+    import subprocess
+
+    real_popen = subprocess.Popen
+    danger = ("/Applications/Spark.app", "spark.app", "hdiutil", "osascript")
+
+    class _GuardedPopen(real_popen):  # type: ignore[misc,valid-type]
+        def __init__(self, args, *a, **kw):
+            argv = args if isinstance(args, str) else " ".join(str(x) for x in args)
+            low = argv.lower()
+            if any(d in low for d in danger):
+                raise AssertionError(
+                    "A test tried to drive the installed desktop app:\n"
+                    f"  {argv[:300]}\n"
+                    "Patch subprocess.Popen at its source module, not through a "
+                    "module attribute that stops matching when code moves."
+                )
+            super().__init__(args, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", _GuardedPopen)

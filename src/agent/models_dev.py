@@ -23,7 +23,7 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -198,7 +198,7 @@ def _load_disk_cache() -> dict[str, Any]:
         cache_path = _get_cache_path()
         if cache_path.exists():
             with open(cache_path, encoding="utf-8") as f:
-                return json.load(f)
+                return cast("dict[str, Any]", json.load(f))
     except Exception as e:
         logger.debug("Failed to load models.dev disk cache: %s", e)
     return {}

@@ -442,7 +442,9 @@ def resolve_user_provider(
     if not user_config or not isinstance(user_config, dict):
         return None
 
-    matched = next(_iter_user_provider_matches(name, user_config), None)
+    matched: tuple[str, dict[str, Any]] | None = next(
+        iter(_iter_user_provider_matches(name, user_config)), None
+    )
     if matched is None:
         return None
     provider_key, entry = matched
